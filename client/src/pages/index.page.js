@@ -13,11 +13,11 @@ export default function HomePage(props) {
 
   switch (i18n.language) {
     case "en":
-      title = "";
+      title = "Gusto Manager";
       description = "";
       break;
     default:
-      title = "";
+      title = "Gusto Manager";
       description = "";
   }
   return (
