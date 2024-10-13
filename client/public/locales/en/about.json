@@ -1,0 +1,47 @@
+{
+    "main": {
+      "title": "Founded by a team of passionate individuals",
+      "subtitle": "We believe that every child deserves a rich and playful education.",
+      "button": {
+        "discover": "Discover our programs"
+      }
+    },
+    "counter": {
+      "1": "Satisfaction clients",
+      "2": "Utilisateurs",
+      "3": "Team members",
+      "4": "Company growth"
+    },
+    "mission": {
+      "title": "Our mission",
+      "subtitle": "At Les Petits Bilingues de Newham, we believe that every child deserves a fun and engaging education in a nurturing environment. Our goal is to help children master the French language through fun activities and educational methods adapted to their age and level. ",
+      "text": "We aim to immerse children in the French language and culture while helping them develop a lifelong love for learning.",
+      "button": {
+        "discover": "Discover our programs"
+      }
+    },
+    "team": {
+      "title": "The team at Les Petits Bilingues de Newham",
+      "subtitle": "Our team consists of qualified teachers who are passionate about education and sharing the French language. Each one brings their personal touch to create a warm and motivating atmosphere for the children.",
+      "teacher": {
+        "1": "Teacher for Young leaf",
+        "2": "Teacher for Young Sprout",
+        "3": "Teacher for Young Clover"
+      },
+      "button": {
+        "join": "Join our team"
+      }
+    },
+    "history": {
+      "title": "Our history",
+      "text": {
+        "1": "Founded by a team of passionate individuals dedicated to the French language and culture, our school has been helping children from French-speaking and non-French-speaking families for many years. We are proud to be part of the FLAM network and to be supported by institutions such as the Institut Français and the AEFE.",
+        "2": "We are fortunate to collaborate with organizations such as the Institut Français, the FLAM network, and the French Consulate in London. Together, we are committed to promoting the French language and culture to children of expatriate families and bilingual homes."
+      },
+      "partners": "Our partners",
+      "button": {
+        "discover": "Discover our programs"
+      }
+    }
+  }
+  

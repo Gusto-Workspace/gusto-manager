@@ -1,0 +1,47 @@
+{
+    "main": {
+      "title": "Fondée par une équipe de passionnés ",
+      "subtitle": "Nous croyons que chaque enfant mérite une éducation enrichissante et ludique.",
+      "button": {
+        "discover": "Découvrez nos programmes"
+      }
+    },
+    "counter": {
+      "1": "Satisfaction clients",
+      "2": "Utilisateurs",
+      "3": "Team members",
+      "4": "Company growth"
+    },
+    "mission": {
+      "title": "Notre Mission",
+      "subtitle": "Chez Les Petits Bilingues de Newham, nous croyons que chaque enfant mérite une éducation enrichissante et ludique. Nous avons pour mission d'aider les enfants à s'approprier la langue française à travers des méthodes pédagogiques interactives, des jeux, et un véritable échange culturel. ",
+      "text": "L’apprentissage doit être une aventure, et ici, nous faisons en sorte qu'elle soit inoubliable !",
+      "button": {
+        "discover": "Découvrez nos programmes"
+      }
+    },
+    "team": {
+      "title": "L’équipe des Petits Bilingues de Newham",
+      "subtitle": "Notre équipe est composée d'enseignants qualifiés, passionnés par l'éducation des enfants et le partage de la langue française. Chacun d’eux apporte sa touche personnelle pour créer une ambiance chaleureuse et motivante.",
+      "teacher": {
+        "1": "Enseignante Jeunes Feuilles",
+        "2": "Enseignante Jeunes Pousses",
+        "3": "Enseignante Jeunes Trèfles"
+      },
+      "button": {
+        "join": "On recrute !"
+      }
+    },
+    "history": {
+      "title": "Notre Histoire",
+      "text": {
+        "1": "Fondée par une équipe de passionnés de la langue et de la culture française, notre école accompagne les enfants francophones et non-francophones depuis plusieurs années. Nous sommes fiers de faire partie du réseau FLAM, et d'être soutenus par des institutions telles que l'Institut Français et la AEFE.",
+        "2": "Nous avons la chance de collaborer avec des organisations reconnues telles que l'Institut Français, le réseau FLAM et le Consulat de France à Londres. Ensemble, nous nous engageons à promouvoir la langue et la culture françaises auprès des jeunes expatriés et des familles locales."
+      },
+      "partners": "Nos partenaires",
+      "button": {
+        "discover": "Découvrez nos programmes"
+      }
+    }
+  }
+  

@@ -1,0 +1,124 @@
+{
+  "main": {
+    "title": "Faites éclore le potentiel de votre enfant !",
+    "subtitle": "Chez Les Petits Bilingues de Newham, nous cultivons la curiosité et l’amour du français dès le plus jeune âge. Chaque enfant grandit à son rythme, guidé par des méthodes ludiques et immersives, dans un environnement bienveillant et naturel.",
+    "button": {
+      "discover": "En savoir plus"
+    }
+  },
+  "growing": {
+    "title1": "Des apprentis jardiniers",
+    "title2": "qui grandissent à leur rythme !",
+    "button": {
+      "signup": "Inscrire mon enfant"
+    },
+    "list": {
+      "1": {
+        "picto": "/img/home/picto-prog-1.webp",
+        "category": "Jeune pousse",
+        "age": "de 3 à 6 ans",
+        "title": "Découvrir le français comme on explore un jardin !",
+        "subtitle": "Dans cette classe, vos tout-petits commencent leur voyage linguistique. Comme de jeunes pousses, ils découvrent le français à travers des jeux, des chansons et des histoires. Nous favorisons leur éveil et leur curiosité naturelle, en douceur, pour qu’ils s’épanouissent à leur rythme dans un environnement bienveillant.",
+        "card": {
+          "french": {
+            "title": "Système Français",
+            "subtitle": "Maternelle - CP"
+          },
+          "english": {
+            "title": "Equivalent Système Anglais",
+            "subtitle": "Reception – Y1"
+          }
+        }
+      },
+      "2": {
+        "picto": "/img/home/picto-prog-2.webp",
+        "category": "Jeune Trèfle",
+        "age": "de 7 à 8 ans",
+        "title": "Faire ses premiers pas solides dans la langue !",
+        "subtitle": "Les jeunes trèfles commencent à s’enraciner dans la langue française. À travers des activités ludiques et interactives, ils apprennent à construire des phrases simples et à s’exprimer avec plus d’assurance. C’est l’étape où ils prennent confiance et commencent à fleurir dans leur apprentissage du français.",
+        "card": {
+          "french": {
+            "title": "French system",
+            "subtitle": "CP - CE1"
+          },
+          "english": {
+            "title": "Equivalent English system",
+            "subtitle": "Year 2 - Year 3"
+          }
+        }
+      },
+      "3": {
+        "picto": "/img/home/picto-prog-3.webp",
+        "category": "Jeune Fleur",
+        "age": "de 9 à 10 ans",
+        "title": "Épanouissement et premières conversations !",
+        "subtitle": "Les jeunes fleurs commencent à véritablement éclore. Ici, ils affinent leurs compétences en compréhension et en expression orale. Nous les accompagnons dans des discussions plus structurées, des activités créatives, tout en renforçant leur maîtrise de la langue écrite. Le français devient une aventure pleine de découvertes !",
+        "card": {
+          "french": {
+            "title": "French system",
+            "subtitle": "CE2 - CM1"
+          },
+          "english": {
+            "title": "Equivalent English system",
+            "subtitle": "Year 4 - Year 5"
+          }
+        }
+      },
+      "4": {
+        "picto": "/img/home/picto-prog-4.webp",
+        "category": "Jeune Feuille",
+        "age": "de 11 à 16 ans",
+        "title": "S’envoler vers une maîtrise plus approfondie !",
+        "subtitle": "Nos jeunes feuilles sont sur le point de déployer pleinement leurs ailes. À ce stade, les élèves travaillent sur des compétences avancées en français. Discussions, projets et ateliers culturels les aident à s'approprier la langue de manière fluide et naturelle. Ils sont prêts à se connecter avec le monde francophone, tout en développant leur esprit critique et créatif.",
+        "card": {
+          "french": {
+            "title": "French system",
+            "subtitle": "Collège"
+          },
+          "english": {
+            "title": "Equivalent English system",
+            "subtitle": "Year 6 - Year 11"
+          }
+        }
+      }
+    }
+  },
+  "faq": {
+    "title": "Questions fréquentes",
+    "subtitle": "Nous avons rassemblé ici les réponses aux questions que l’on nous pose le plus souvent. Si vous ne trouvez pas l’information que vous cherchez, n’hésitez pas à nous contacter directement !",
+    "list": {
+      "1": {
+        "title": "Qui peut s'inscrire aux cours ?",
+        "desc": "Nos cours sont ouverts aux enfants francophones âgés de 3 à 16 ans, qui souhaitent maintenir leur maîtrise du français et rester connectés à la culture française."
+      },
+      "2": {
+        "title": "Mon enfant ne parle pas couramment le français, est-ce un problème ?",
+        "desc": "Pas du tout ! Nos cours sont adaptés à tous les niveaux de français, des enfants qui comprennent mais ne parlent pas beaucoup, à ceux qui sont déjà plus avancés."
+      },
+      "3": {
+        "title": "Quel est l'horaire des cours ?",
+        "desc": "Les cours ont lieu tous les samedis, avec des horaires adaptés en fonction du niveau et de l'âge des élèves."
+      },
+      "4": {
+        "title": "Où se déroulent les cours ?",
+        "desc": "Les cours ont lieu dans un centre dédié, facilement accessible depuis différentes zones de la région."
+      },
+      "5": {
+        "title": "Que doit apporter mon enfant pour les cours ?",
+        "desc": "Votre enfant aura besoin de son cahier, stylos, et tout autre matériel pédagogique fourni par l’enseignant en début d’année."
+      },
+      "6": {
+        "title": "Quel est le tarif des cours ?",
+        "desc": "Nos tarifs varient en fonction du nombre d’enfants inscrits par famille et du niveau de cours. Pour plus de détails, consultez notre page Tarifs ou contactez-nous directement."
+      },
+      "7": {
+        "title": "Comment sont organisés les niveaux ?",
+        "desc": "Les enfants sont répartis par groupes d'âge et de niveau linguistique, pour que chacun puisse progresser à son rythme."
+      },
+      "8": {
+        "title": "Y a-t-il des activités en dehors des cours ?",
+        "desc": "Oui, nous organisons régulièrement des activités culturelles pour permettre aux enfants de découvrir davantage la culture française tout en s’amusant !"
+      }
+    }
+  }
+}

@@ -1,0 +1,107 @@
+{
+  "title": "Inscription",
+  "steps": {
+    "1": "Informations sur l'enfant",
+    "2": "Détails des parents",
+    "3": "Informations médicales",
+    "4": "Autorisations",
+    "5": "Informations scolaires",
+    "6": "Accords et signature"
+  },
+  "form": {
+    "childLastName": "Nom de l'enfant",
+    "childFirstName": "Prénom de l'enfant",
+    "dateOfBirth": "Date de naissance",
+    "placeOfBirth": "Lieu de naissance",
+    "nationality": "Nationalité",
+    "languagesSpoken": "Langues parlées",
+    "frenchContactRate": "Évaluation du contact avec la langue française",
+    "britishSchoolYear": "Niveau scolaire britannique",
+    "englishSchoolName": "Nom et lieu de l'école anglaise fréquentée",
+
+    "parent1FullName": "Nom et prénom Parent 1",
+    "parent1Address": "Adresse Parent 1",
+    "parent1Nationality": "Nationalité Parent 1",
+    "parent1Email": "Email Parent 1",
+    "parent1Phone": "Téléphone portable Parent 1",
+
+    "parent2FullName": "Nom et prénom Parent 2 (optionnel)",
+    "parent2Address": "Adresse Parent 2",
+    "parent2Nationality": "Nationalité Parent 2",
+    "parent2Email": "Email Parent 2",
+    "parent2Phone": "Téléphone portable Parent 2",
+
+    "emergencyContact": "Personnes à prévenir en cas d'urgence",
+    "childAllergies": "Votre enfant est-il sujet à des allergies ?",
+    "allergiesDetails": "Si oui, précisez",
+    "childAsthma": "Votre enfant fait-il de l'asthme ?",
+    "medicalCondition": "Votre enfant présente-t-il une pathologie nécessitant une attention particulière ?",
+    "medicalConditionDetails": "Si oui, précisez",
+    "vaccinationsUpToDate": "Votre enfant est-il à jour dans ses vaccins ?",
+    "doctorName": "Nom du médecin traitant",
+    "doctorAddress": "Adresse du médecin traitant",
+    "doctorPhone": "Téléphone du médecin traitant",
+
+    "photoVideoAuthorization": "Autorisez-vous Les Petits Bilingues de Newham à prendre des photos ou vidéos de votre enfant lors des activités ?",
+    "usePhotosWebsiteAuthorization": "Autorisez-vous Les Petits Bilingues de Newham à utiliser les photos ou vidéos de votre enfant sur son site Web ou pour des supports promotionnels ?",
+    "medicalEmergencyAuthorization": "Autorisez-vous Les Petits Bilingues de Newham à emmener votre enfant à l'hôpital et à lui fournir des soins médicaux en cas d'urgence ?",
+    "educationalTripsAuthorization": "Autorisez-vous Les Petits Bilingues de Newham à emmener votre enfant en sorties éducatives ?",
+
+    "schoolOption": "Quelle option choisissez-vous pour votre enfant à la Petite école ?",
+    "specialEducationalSupport": "Votre enfant bénéficie-t-il d'une aide scolaire particulière ?",
+    "educationalSupportDetails": "Si oui, laquelle ?",
+    "personalizedAccommodations": "La scolarisation de votre enfant requiert-elle des aménagements personnalisés ?",
+    "accommodationsDetails": "Si oui, veuillez fournir les documents nécessaires",
+    "previousFrenchSchool": "Nom et durée de l’ancienne école française fréquentée",
+    "reasonForChangingSchool": "Raison(s) de changement d'école",
+    "childHobbies": "Loisirs et intérêts de votre enfant",
+
+    "authorizedPersons": "Nom et prénom des personnes autorisées à récupérer votre enfant à la sortie",
+    "infoAccuracy": "Je reconnais l'exactitude des renseignements fournis.",
+    "agreeToRules": "J'accepte de me conformer au règlement intérieur des Petits Bilingues de Newham.",
+    "agreeToGDPR": "J'accepte le traitement de mes données personnelles conformément au règlement GDPR.",
+
+    "parentSignature": "Signature des parents",
+    "date": "Date",
+    "saveSignature": "Enregistrer la signature",
+    "clearSignature": "Effacer la signature",
+
+    "nursery": "Nursery",
+    "reception": "Reception",
+    "year1": "Year 1",
+    "year2": "Year 2",
+    "year3": "Year 3",
+    "year4": "Year 4",
+    "year5": "Year 5",
+    "year6": "Year 6",
+    "year7": "Year 7",
+    "year8": "Year 8",
+    "year9": "Year 9",
+    "year10": "Year 10",
+    "year11": "Year 11",
+    "sixthform": "Sixth form",
+
+    "maternelle1": "Maternelle (1 heure)",
+    "maternelle2": "Maternelle (2 heures 30)",
+    "primaire": "Primaire (3 heures)",
+
+    "signature": "Signature",
+
+    "errors": {
+      "required": "Ce champ est requis",
+      "invalidEmail": "Veuillez entrer une adresse email valide",
+      "signatureRequired": "Veuillez signer le formulaire"
+    },
+    "button": {
+      "next": "Suivant",
+      "previous": "Précédent",
+      "submit": "Valider",
+      "sent": "Envoyé !",
+      "loading": "En cours ..."
+    },
+    "select": "Selectionner",
+    "yes": "Oui",
+    "no": "Non",
+    "link": "Lien"
+  }
+}

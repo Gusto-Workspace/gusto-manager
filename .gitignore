@@ -1,0 +1,20 @@
+# IDE
+.idea
+.DS_Store
+/client/.DS_Store
+
+# environment
+/client/.env
+/client/.env.local
+
+# node_modules
+/client/node_modules/
+
+# next.js
+/client/.next/
+
+# production
+/client/build
+client/public/.DS_Store
+client/public/.DS_Store
+

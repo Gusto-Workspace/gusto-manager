@@ -1,0 +1,47 @@
+{
+  "nav": {
+    "list": {
+      "about": "About",
+      "programs": "Our programs",
+      "contact": "Contact"
+    },
+    "button": {
+      "inscription": "Sign Up"
+    }
+  },
+  "testimony": {
+    "title": "Testimony",
+    "list": {
+      "1": {
+        "text": "My son looks forward to his French classes every week. The teaching staff is very kind and attentive. He's made tremendous progress, and I love seeing how much joy he takes in learning.",
+        "author": "— Marc, father of Julien"
+      },
+      "2": {
+        "text": "We enrolled our daughter in Saturday classes, and she loves it! In addition to making progress in French, she's met other French-speaking children. It's a great initiative to maintain the French language and culture even while living outside France.",
+        "author": "— Sophie, mother of Léa"
+      },
+      "3": {
+        "text": "We were worried that our children would lose their French as expatriates, but thanks to this association, not only have they maintained the language, but they've developed a true attachment to French culture. The teachers are amazing!",
+        "author": "— Claire and Thomas, parents of Camille and Lucas"
+      }
+    }
+  },
+  "footer": {
+    "join": {
+      "young": "Young Sprouts",
+      "title": "Ready to join the adventure?",
+      "subtitle": "Sign your child up today to help them discover French in a fun and nurturing environment!",
+      "inscription": "Sign up"
+    },
+    "main": {
+      "about": "About",
+      "programs": "Our programs",
+      "recruitment": "Recruitement",
+      "inscription": "Sign up",
+      "contact": "Contact",
+      "policy": "Privacy Policy",
+      "legal": "Legal Notice",
+      "reserved": "© Les Petits Bilingues de Newham 2024. All rights reserved."
+    }
+  }
+}

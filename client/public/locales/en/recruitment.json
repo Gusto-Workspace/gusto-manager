@@ -1,0 +1,33 @@
+{
+  "title": "Join our team",
+  "subtitle": "We're looking for passionate people to join our team! ",
+  "form": {
+    "1": {
+      "label": "Personal information*",
+      "input": {
+        "firstname": "Firstname",
+        "lastname": "Lastname",
+        "email": "Email",
+        "phone": "Phone"
+      }
+    },
+    "2": {
+      "label": "Why do you want to join Les Petits Bilingues de Newham?*"
+    },
+    "3": {
+      "label": "Upload your CV*",
+      "choose": "Upload a file",
+      "size": "Size",
+      "selected": "Selected file"
+    },
+    "button": {
+      "send": "Send my application",
+      "sent": "Sent !",
+      "loading": "Loading ..."
+    },
+    "errors": {
+      "required": "This field is required and must be valid",
+      "fileSize": "The file must not exceed 10 Mo"
+    }
+  }
+}

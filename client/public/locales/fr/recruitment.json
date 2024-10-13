@@ -1,0 +1,33 @@
+{
+  "title": "Rejoignez-nous",
+  "subtitle": "Nous recherchons des personnes passionnées pour rejoindre notre équipe ! ",
+  "form": {
+    "1": {
+      "label": "Informations personnelles*",
+      "input": {
+        "firstname": "Prénom",
+        "lastname": "Nom",
+        "email": "Email",
+        "phone": "Téléphone"
+      }
+    },
+    "2": {
+      "label": "Pourquoi souhaitez-vous rejoindre les Petits Bilingues de Newham ?*"
+    },
+    "3": {
+      "label": "Téléchargez votre CV*",
+      "choose": "Ajouter un fichier",
+      "size": "Taille",
+      "selected": "Fichier sélectionné"
+    },
+    "button": {
+      "send": "Envoyer ma candidature",
+      "sent": "Envoyé !",
+      "loading": "En cours ..."
+    },
+    "errors": {
+      "required": "Ce champs est requis et doit etre valide",
+      "fileSize": "Le fichier ne doit pas dépasser 10 Mo"
+    }
+  }
+}

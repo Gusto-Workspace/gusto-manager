@@ -1,0 +1,61 @@
+{
+  "main": {
+    "hero": {
+      "google": "sur google.avis",
+      "title": "Cours de français à East London.",
+      "subtitle": "Nous aidons les enfants à découvrir la langue et la culture françaises tout en s'amusant ! Que votre enfant soit débutant ou qu'il ait déjà des bases, nos cours interactifs leur permettront d'apprendre tout en s'épanouissant.",
+      "button": {
+        "discover": "Découvrez nos programmes"
+      }
+    },
+    "programs": {
+      "list": {
+        "1": {
+          "title": "Jeune pousse",
+          "age": "de 3 à 6 ans"
+        },
+        "2": {
+          "title": "Jeune trèfle",
+          "age": "de 7 à 8 ans"
+        },
+        "3": {
+          "title": "Jeune fleur",
+          "age": "de 9 à 10 ans"
+        },
+        "4": {
+          "title": "Jeune feuille",
+          "age": "de 11 à 16 ans"
+        }
+      },
+      "button": {
+        "more": "En savoir plus"
+      }
+    }
+  },
+  "learning": {
+    "title": "Un apprentissage joyeux et immersif",
+    "text": "Chez Les Petits Bilingues de Newham, nous offrons une expérience d'apprentissage amusante et interactive où chaque enfant s'épanouit à son rythme. À travers des méthodes ludiques et une immersion culturelle, nous aidons les enfants à découvrir le plaisir d'apprendre le français.",
+    "list": {
+      "1": {
+        "title": "Une méthode ludique",
+        "desc": "Apprendre en s'amusant avec des jeux, des chansons, et des activités créatives."
+      },
+      "2": {
+        "title": "Une immersion culturelle",
+        "desc": "Découvrir non seulement la langue, mais aussi les traditions et la culture françaises."
+      },
+      "3": {
+        "title": "Un cadre bienveillant",
+        "desc": "Chaque enfant est encouragé à progresser à son propre rythme, dans une ambiance chaleureuse et sécurisante."
+      },
+      "4": {
+        "title": "Des cours interactifs",
+        "desc": "Participation active des enfants à travers des jeux de rôle, des discussions, et des projets en groupe."
+      },
+      "5": {
+        "title": "Un apprentissage durable",
+        "desc": "Développer des compétences linguistiques qui resteront avec eux tout au long de leur vie."
+      }
+    }
+  }
+}
