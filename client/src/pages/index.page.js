@@ -5,6 +5,7 @@ import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 
 // COMPONENTS
+import MainHomeComponent from "@/components/home/main.home.component";
 
 export default function HomePage(props) {
   let title;
@@ -41,7 +42,9 @@ export default function HomePage(props) {
         </> */}
       </Head>
 
-      <div></div>
+      <div>
+        <MainHomeComponent />
+      </div>
     </>
   );
 }
