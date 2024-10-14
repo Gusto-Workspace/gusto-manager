@@ -25,10 +25,8 @@ mongoose
 app.use(
   cors({
     origin: [
-      "http://localhost:6010", // Client
-      "http://localhost:6011", // Server
-      "https://saona.tx-studio.com", // Demo Client
-      "https://saona.tx-studio.com/api", // Demo Server
+      "http://localhost:8002", // Client
+      "http://localhost:8012", // Server
     ],
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,

@@ -4,6 +4,8 @@ module.exports = {
   theme: {
     colors: {
       white: "#FFFFFF",
+      black: "#000000",
+      red: "#FF7664",
     },
     screens: {
       ultraWild: "1400px",
