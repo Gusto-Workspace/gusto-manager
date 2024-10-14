@@ -13,7 +13,7 @@ export default function FormAdminComponent() {
 
   return (
     <section className="bg-white flex flex-col justify-center items-center gap-8 rounded-xl p-12 w-[500px]">
-      <h1 className="text-4xl">Admin</h1>
+      <h1 className="text-4xl">Gusto</h1>
       <form
         onSubmit={handleSubmit(onSubmit)}
         className="w-full flex flex-col items-center gap-4"
