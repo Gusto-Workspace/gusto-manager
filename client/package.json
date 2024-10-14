@@ -1,5 +1,5 @@
 {
-  "name": "gusto-manager",
+  "name": "gusto-manager-client",
   "version": "0.1.0",
   "private": true,
   "scripts": {

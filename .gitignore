@@ -2,13 +2,16 @@
 .idea
 .DS_Store
 /client/.DS_Store
+/server/.DS_Store
 
 # environment
 /client/.env
 /client/.env.local
+/server/.env
 
 # node_modules
 /client/node_modules/
+/server/node_modules/
 
 # next.js
 /client/.next/
@@ -17,4 +20,5 @@
 /client/build
 client/public/.DS_Store
 client/public/.DS_Store
+server/public/.DS_Store
 
