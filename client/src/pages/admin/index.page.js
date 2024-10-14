@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
 
@@ -8,12 +8,15 @@ import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 
 export default function AdminPage(props) {
   const router = useRouter();
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const token = localStorage.getItem("admin-token");
 
     if (!token) {
       router.push("/admin/login");
+    } else {
+      setLoading(false);
     }
   }, [router]);
 
@@ -51,7 +54,15 @@ export default function AdminPage(props) {
         </> */}
       </Head>
 
-      <div></div>
+      <div>
+        {loading ? (
+          <div className="flex justify-center items-center h-screen">
+            <div className="loader">Loading...</div>
+          </div>
+        ) : (
+          <div></div>
+        )}
+      </div>
     </>
   );
 }
