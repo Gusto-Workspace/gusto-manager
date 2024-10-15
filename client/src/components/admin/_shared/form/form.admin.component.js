@@ -1,4 +1,11 @@
+import { useRouter } from "next/router";
+import { useState } from "react";
+
+// REACT HOOK FORM
 import { useForm } from "react-hook-form";
+
+// AXIOS
+import axios from "axios";
 
 export default function FormAdminComponent() {
   const {
@@ -6,9 +13,34 @@ export default function FormAdminComponent() {
     handleSubmit,
     formState: { errors },
   } = useForm();
+  const router = useRouter();
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
-  function onSubmit(data) {
-    console.log("Login data:", data);
+  async function onSubmit(data) {
+    setLoading(true);
+    setErrorMessage("");
+
+    try {
+      const response = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/admin/login`,
+        data
+      );
+
+      const { token } = response.data;
+
+      localStorage.setItem("admin-token", token);
+
+      router.push("/admin");
+    } catch (error) {
+      if (error.response && error.response.data) {
+        setErrorMessage(error.response.data.message || "Login failed");
+      } else {
+        setErrorMessage("An error occurred. Please try again.");
+      }
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -38,11 +70,14 @@ export default function FormAdminComponent() {
           />
         </div>
 
+        {errorMessage && <p className="text-red-500">{errorMessage}</p>}
+
         <button
           type="submit"
           className="bg-black text-white rounded-full py-2 px-12 hover:bg-opacity-70 w-fit mt-6"
+          disabled={loading}
         >
-          Login
+          {loading ? "Loading..." : "Login"}
         </button>
       </form>
     </section>

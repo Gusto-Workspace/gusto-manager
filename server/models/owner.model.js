@@ -1,10 +1,16 @@
 const mongoose = require("mongoose");
 
+// BCRYPT
+const bcrypt = require("bcryptjs");
+
 const ownerSchema = new mongoose.Schema({
+  firstname: String,
+  lastname: String,
   username: String,
   email: String,
-  password: String, // Mot de passe haché
-  restaurant_ids: [{ type: mongoose.Schema.Types.ObjectId, ref: "Restaurant" }], // Référence aux restaurants qu'il possède
+  password: String,
+  stripeCustomerId: { type: String },
+  restaurants: [{ type: mongoose.Schema.Types.ObjectId, ref: "Restaurant" }], // Référence aux restaurants qu'il possède
   created_at: { type: Date, default: Date.now },
 });
 

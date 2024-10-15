@@ -1,0 +1,40 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "restaurants": "Restaurants",
+    "owners": "Propriétaires",
+    "subscriptions": "Abonnements"
+  },
+  "buttons": {
+    "logout": "Déconnexion"
+  },
+  "restaurants": {
+    "form": {
+      "add": "Ajouter un restaurant",
+      "name": "Nom du restaurant",
+      "adress": "Adresse",
+      "phone": "Téléphone",
+      "web": "Site Web",
+      "buttons": {
+        "add": "Ajouter",
+        "cancel": "Annuler"
+      },
+      "errors": {
+        "add": "Erreur lors de l'ajout du restaurant"
+      }
+    }
+  },
+  "owner": {
+    "form": {
+      "infos": "Informations sur le propriétaire",
+      "createNew": "Créer un nouveau",
+      "selectExisting": "Déjà existant",
+      "select": "Sélectionner",
+      "firstname": "Prénom",
+      "lastname": "Nom",
+      "username": "Nom d'utilisateur",
+      "email": "Email",
+      "password": "Mot de passe"
+    }
+  }
+}

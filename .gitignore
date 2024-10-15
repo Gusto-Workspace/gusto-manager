@@ -13,6 +13,9 @@
 /client/node_modules/
 /server/node_modules/
 
+# utils
+/server/utils/
+
 # next.js
 /client/.next/
 

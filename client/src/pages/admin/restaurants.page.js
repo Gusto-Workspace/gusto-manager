@@ -1,28 +1,17 @@
-import Head from "next/head";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
+import Head from "next/head";
 
 // I18N
 import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 
 // COMPONENTS
-import FormAdminComponent from "@/components/admin/_shared/form/form.admin.component";
+import NavAdminComponent from "@/components/admin/_shared/nav/nav.admin.component";
+import ListRestaurantsAdminComponent from "@/components/admin/restaurants/list-restaurants.admin.component";
+import AddRestaurantModal from "@/components/admin/restaurants/add-restaurant-modal.admin";
 
-export default function AdminLoginPage(props) {
-  const router = useRouter();
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const token = localStorage.getItem("admin-token");
-
-    if (token) {
-      router.push("/admin");
-    } else {
-      setLoading(false);
-    }
-  }, [router]);
-
+export default function RestaurantsPage(props) {
   let title;
   let description;
 
@@ -35,6 +24,21 @@ export default function AdminLoginPage(props) {
       title = "Gusto Manager";
       description = "";
   }
+
+  const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  useEffect(() => {
+    const token = localStorage.getItem("admin-token");
+
+    if (!token) {
+      router.push("/admin/login");
+    } else {
+      setLoading(false);
+    }
+  }, [router]);
+
   return (
     <>
       <Head>
@@ -57,13 +61,25 @@ export default function AdminLoginPage(props) {
         </> */}
       </Head>
 
-      <div className="min-h-[100vh] bg-black bg-opacity-20 flex justify-center items-center">
+      <div className="w-[100vw]">
         {loading ? (
-          <div className="flex justify-center items-center h-screen">
+          <div className="flex justify-center items-center ">
             <div className="loader">Loading...</div>
           </div>
         ) : (
-          <FormAdminComponent />
+          <div className="flex">
+            <NavAdminComponent />
+
+            <div className="border h-screen overflow-y-auto flex-1 p-12">
+              <ListRestaurantsAdminComponent
+                handleAddClick={() => setIsModalOpen(true)}
+              />
+            </div>
+
+            {isModalOpen && (
+              <AddRestaurantModal closeModal={() => setIsModalOpen(false)} />
+            )}
+          </div>
         )}
       </div>
     </>

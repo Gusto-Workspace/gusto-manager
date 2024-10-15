@@ -1,0 +1,40 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "restaurants": "Restaurants",
+    "owners": "Owners",
+    "subscriptions": "Subscriptions"
+  },
+  "buttons": {
+    "logout": "Log Out"
+  },
+  "restaurants": {
+    "form": {
+      "add": "Add a restaurant",
+      "name": "Name of the restaurant",
+      "adress": "Adress",
+      "phone": "Phone Number",
+      "web": "Website",
+      "buttons": {
+        "add": "Add",
+        "cancel": "Cancel"
+      },
+      "errors": {
+        "add": "Error when adding restaurant"
+      }
+    }
+  },
+  "owner": {
+    "form": {
+      "infos": "Owner Informations",
+      "createNew" : "Create new",
+      "selectExisting" : "Select existing",
+      "select" : "Select",
+      "firstname": "Firstname",
+      "lastname": "Lastname",
+      "username": "Username",
+      "email": "Email",
+      "password": "Password"
+    }
+  }
+}

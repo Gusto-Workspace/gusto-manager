@@ -6,6 +6,13 @@ import Head from "next/head";
 import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 
+// AXIOS
+import axios from "axios";
+
+// COMPONENTS
+import NavAdminComponent from "@/components/admin/_shared/nav/nav.admin.component";
+import DashboardAdminComponent from "@/components/admin/dashboard/dashboard.admin.component";
+
 export default function AdminPage(props) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -16,7 +23,22 @@ export default function AdminPage(props) {
     if (!token) {
       router.push("/admin/login");
     } else {
-      setLoading(false);
+      axios
+        .get(`${process.env.NEXT_PUBLIC_API_URL}/admin/dashboard`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        })
+        .then((response) => {
+          console.log(response.data.message);
+          setLoading(false);
+        })
+        .catch((error) => {
+          if (error.response.status === 403) {
+            localStorage.removeItem("admin-token");
+            router.push("/admin/login");
+          }
+        });
     }
   }, [router]);
 
@@ -36,31 +58,20 @@ export default function AdminPage(props) {
     <>
       <Head>
         <title>{title}</title>
-
-        {/* <>
-          {description && <meta name="description" content={description} />}
-          {title && <meta property="og:title" content={title} />}
-          {description && (
-            <meta property="og:description" content={description} />
-          )}
-          <meta
-            property="og:url"
-            content="https://lespetitsbilingues-newham.com/"
-          />
-          <meta property="og:type" content="website" />
-          <meta property="og:image" content="/img/open-graph.jpg" />
-          <meta property="og:image:width" content="1200" />
-          <meta property="og:image:height" content="630" />
-        </> */}
       </Head>
 
-      <div>
+      <div className="w-[100vw]">
         {loading ? (
-          <div className="flex justify-center items-center h-screen">
+          <div className="flex justify-center items-center ">
             <div className="loader">Loading...</div>
           </div>
         ) : (
-          <div></div>
+          <div className="flex">
+            <NavAdminComponent />
+            <div className="border h-screen overflow-y-auto flex-1">
+              <DashboardAdminComponent />
+            </div>
+          </div>
         )}
       </div>
     </>
