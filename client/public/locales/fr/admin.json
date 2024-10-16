@@ -6,22 +6,33 @@
     "subscriptions": "Abonnements"
   },
   "buttons": {
-    "logout": "Déconnexion"
+    "logout": "Déconnexion",
+    "loading": "Chargement...",
+    "delete": "Supprimer",
+    "confirm" : "Confirmer"
   },
   "restaurants": {
     "form": {
+      "edit": "Modifier un restaurant",
       "add": "Ajouter un restaurant",
       "name": "Nom du restaurant",
       "adress": "Adresse",
       "phone": "Téléphone",
       "web": "Site Web",
+      "owner": "Propriétaire",
       "buttons": {
         "add": "Ajouter",
-        "cancel": "Annuler"
+        "cancel": "Annuler",
+        "edit": "Modifier"
       },
+
       "errors": {
         "add": "Erreur lors de l'ajout du restaurant"
       }
+    },
+    "list": {
+      "loading": "Chargement des restaurants...",
+      "emptyList": "Aucun restaurant trouvé."
     }
   },
   "owner": {
@@ -33,6 +44,7 @@
       "firstname": "Prénom",
       "lastname": "Nom",
       "username": "Nom d'utilisateur",
+      "phoneNumber": "Numéro de téléphone",
       "email": "Email",
       "password": "Mot de passe"
     }

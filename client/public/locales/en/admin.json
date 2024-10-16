@@ -6,33 +6,45 @@
     "subscriptions": "Subscriptions"
   },
   "buttons": {
-    "logout": "Log Out"
+    "logout": "Log Out",
+    "loading": "Loading...",
+    "delete" : "Delete",
+    "confirm" : "Confirm"
   },
   "restaurants": {
     "form": {
+      "edit": "Edit a restaurant",
       "add": "Add a restaurant",
       "name": "Name of the restaurant",
       "adress": "Adress",
       "phone": "Phone Number",
       "web": "Website",
+      "owner": "Owner",
       "buttons": {
         "add": "Add",
-        "cancel": "Cancel"
+        "cancel": "Cancel",
+        "edit": "Edit"
       },
+
       "errors": {
         "add": "Error when adding restaurant"
       }
+    },
+    "list": {
+      "loading": "Loading restaurants...",
+      "emptyList": "Restaurants not found."
     }
   },
   "owner": {
     "form": {
       "infos": "Owner Informations",
-      "createNew" : "Create new",
-      "selectExisting" : "Select existing",
-      "select" : "Select",
+      "createNew": "Create new",
+      "selectExisting": "Select existing",
+      "select": "Select",
       "firstname": "Firstname",
       "lastname": "Lastname",
       "username": "Username",
+      "phoneNumber": "Phone Number",
       "email": "Email",
       "password": "Password"
     }

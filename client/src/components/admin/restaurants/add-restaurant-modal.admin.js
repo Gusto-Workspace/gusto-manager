@@ -9,15 +9,22 @@ import axios from "axios";
 // I18N
 import { useTranslation } from "next-i18next";
 
+// COMPONENTS
+import FormInputComponent from "@/components/_shared/inputs/form-input.component";
+
 export default function AddRestaurantModal(props) {
   const { t } = useTranslation("admin");
+
   const [owners, setOwners] = useState([]);
-  const [isExistingOwner, setIsExistingOwner] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const {
     register,
     handleSubmit,
     formState: { errors },
+    reset,
+    setValue,
+    watch,
   } = useForm();
 
   useEffect(() => {
@@ -27,70 +34,120 @@ export default function AddRestaurantModal(props) {
           `${process.env.NEXT_PUBLIC_API_URL}/admin/owners`
         );
         setOwners(response.data.owners);
+
+        if (props.restaurant && props.restaurant.owner_id) {
+          setValue("existingOwnerId", props.restaurant.owner_id._id);
+        }
       } catch (error) {
         console.error("Erreur lors du chargement des propriétaires:", error);
       }
     }
 
     fetchOwners();
-  }, []);
+
+    if (props.restaurant) {
+      reset({
+        restaurantData: {
+          name: props.restaurant.name,
+          address: props.restaurant.address,
+          phone: props.restaurant.phone,
+          website: props.restaurant.website,
+        },
+      });
+    } else {
+      reset();
+      props.setIsExistingOwner(false);
+    }
+  }, [props.restaurant, reset, setValue]);
+
+  useEffect(() => {
+    if (props.restaurant && props.restaurant.owner_id) {
+      setValue("existingOwnerId", props.restaurant.owner_id._id);
+    }
+  }, [owners, props.restaurant, setValue]);
 
   async function onSubmit(data) {
-    const { restaurantData, ownerData, existingOwnerId } = data;
+    const restaurantData = data.restaurantData;
+    let ownerData = null;
+    let existingOwnerId = null;
+
+    if (props.isExistingOwner) {
+      existingOwnerId = data.existingOwnerId;
+    } else {
+      ownerData = data.ownerData;
+    }
 
     try {
+      setLoading(true);
+
       const payload = {
         restaurantData,
-        ownerData: isExistingOwner ? { existingOwnerId } : ownerData, // Si un propriétaire existant est sélectionné, envoyer son ID
+        ownerData,
+        existingOwnerId,
       };
 
-      await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/admin/add-restaurant`,
-        payload
-      );
+      let response;
+      if (props.restaurant) {
+        response = await axios.put(
+          `${process.env.NEXT_PUBLIC_API_URL}/admin/restaurants/${props.restaurant._id}`,
+          payload
+        );
+        props.handleEditRestaurant(response.data.restaurant);
+      } else {
+        response = await axios.post(
+          `${process.env.NEXT_PUBLIC_API_URL}/admin/add-restaurant`,
+          payload
+        );
+        props.handleAddRestaurant(response.data.restaurant);
+      }
+
+      setLoading(false);
       props.closeModal();
     } catch (error) {
-      console.error("Erreur lors de l'ajout du restaurant:", error);
-      alert("Erreur lors de l'ajout du restaurant.");
+      console.error("Erreur lors de l'ajout/mise à jour du restaurant:", error);
+      alert("Erreur lors de l'ajout/mise à jour du restaurant.");
     }
   }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
       <div className="bg-white p-8 rounded-lg flex flex-col gap-4 w-[550px]">
-        <h2>{t("restaurants.form.add")}</h2>
+        <h2>
+          {props.restaurant
+            ? t("restaurants.form.edit")
+            : t("restaurants.form.add")}
+        </h2>
 
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
-          <input
-            type="text"
+          <FormInputComponent
             name="restaurantData.name"
             placeholder={t("restaurants.form.name")}
-            {...register("restaurantData.name", { required: true })}
-            className={`border p-2  ${errors.restaurantData?.name ? "border-red-500" : ""}`}
+            register={register}
+            required={true}
+            errors={errors}
           />
 
-          <input
-            type="text"
+          <FormInputComponent
             name="restaurantData.address"
             placeholder={t("restaurants.form.adress")}
-            {...register("restaurantData.address", { required: true })}
-            className={`border p-2  ${errors.restaurantData?.address ? "border-red-500" : ""}`}
+            register={register}
+            required={true}
+            errors={errors}
           />
 
-          <input
-            type="text"
+          <FormInputComponent
             name="restaurantData.phone"
             placeholder={t("restaurants.form.phone")}
-            {...register("restaurantData.phone", { required: true })}
-            className={`border p-2  ${errors.restaurantData?.phone ? "border-red-500" : ""}`}
+            register={register}
+            required={true}
+            errors={errors}
           />
 
-          <input
-            type="text"
+          <FormInputComponent
             name="restaurantData.website"
             placeholder={t("restaurants.form.web")}
-            {...register("restaurantData.website")}
-            className="border p-2 "
+            register={register}
+            errors={errors}
           />
 
           <h3>{t("owner.form.infos")}</h3>
@@ -101,8 +158,8 @@ export default function AddRestaurantModal(props) {
                 type="radio"
                 name="ownerType"
                 value="new"
-                checked={!isExistingOwner}
-                onChange={() => setIsExistingOwner(false)}
+                checked={!props.isExistingOwner}
+                onChange={() => props.setIsExistingOwner(false)}
               />
               {t("owner.form.createNew")}
             </label>
@@ -112,19 +169,21 @@ export default function AddRestaurantModal(props) {
                 type="radio"
                 name="ownerType"
                 value="existing"
-                checked={isExistingOwner}
-                onChange={() => setIsExistingOwner(true)}
+                checked={props.isExistingOwner}
+                onChange={() => props.setIsExistingOwner(true)}
               />
               {t("owner.form.selectExisting")}
             </label>
           </div>
 
-          {isExistingOwner ? (
-            <div>
+          {props.isExistingOwner ? (
+            <div className="w-full">
               <select
                 name="existingOwnerId"
                 {...register("existingOwnerId", { required: true })}
-                className={`border p-2  ${errors.existingOwnerId ? "border-red-500" : ""}`}
+                value={watch("existingOwnerId") || ""}
+                onChange={(e) => setValue("existingOwnerId", e.target.value)}
+                className={`w-full border p-2 rounded-lg ${errors.existingOwnerId ? "border-red" : ""}`}
               >
                 <option value="">{t("owner.form.select")}</option>
                 {owners.map((owner) => (
@@ -137,54 +196,70 @@ export default function AddRestaurantModal(props) {
           ) : (
             <div className="flex flex-col gap-4">
               <div className="flex gap-2">
-                <input
-                  type="text"
+                <FormInputComponent
                   name="ownerData.firstname"
                   placeholder={t("owner.form.firstname")}
-                  {...register("ownerData.firstname", { required: true })}
-                  className={`border p-2 w-full  ${errors.ownerData?.firstname ? "border-red-500" : ""}`}
+                  register={register}
+                  required={true}
+                  errors={errors}
                 />
 
-                <input
-                  type="text"
+                <FormInputComponent
                   name="ownerData.lastname"
                   placeholder={t("owner.form.lastname")}
-                  {...register("ownerData.lastname", { required: true })}
-                  className={`border p-2 w-full ${errors.ownerData?.lastname ? "border-red-500" : ""}`}
+                  register={register}
+                  required={true}
+                  errors={errors}
                 />
               </div>
 
-              <input
-                type="text"
+              <FormInputComponent
                 name="ownerData.username"
                 placeholder={t("owner.form.username")}
-                {...register("ownerData.username", { required: true })}
-                className={`border p-2  ${errors.ownerData?.username ? "border-red-500" : ""}`}
+                register={register}
+                required={true}
+                errors={errors}
               />
 
-              <input
-                type="email"
+              <FormInputComponent
+                name="ownerData.phoneNumber"
+                placeholder={t("owner.form.phoneNumber")}
+                register={register}
+                required={true}
+                errors={errors}
+              />
+
+              <FormInputComponent
                 name="ownerData.email"
                 placeholder={t("owner.form.email")}
-                {...register("ownerData.email", { required: true })}
-                className={`border p-2  ${errors.ownerData?.email ? "border-red-500" : ""}`}
+                register={register}
+                required={true}
+                errors={errors}
               />
 
-              <input
-                type="password"
-                name="ownerData.password"
-                placeholder={t("owner.form.password")}
-                {...register("ownerData.password", { required: true })}
-                className={`border p-2  ${errors.ownerData?.password ? "border-red-500" : ""}`}
-              />
+              {!props.restaurant && (
+                <FormInputComponent
+                  name="ownerData.password"
+                  placeholder={t("owner.form.password")}
+                  register={register}
+                  required={true}
+                  errors={errors}
+                  type="password"
+                />
+              )}
             </div>
           )}
 
           <button
             type="submit"
+            disabled={loading}
             className="bg-blue text-white px-4 py-2 rounded-lg"
           >
-            {t("restaurants.form.buttons.add")}
+            {loading
+              ? t("buttons.loading")
+              : props.restaurant
+                ? t("restaurants.form.buttons.edit")
+                : t("restaurants.form.buttons.add")}
           </button>
 
           <button

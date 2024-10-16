@@ -7,6 +7,8 @@ module.exports = {
       black: "#000000",
       red: "#FF7664",
       blue: "#4583FF",
+      green: "#D5F346",
+      darkBlue: "#131E36",
     },
     screens: {
       ultraWild: "1400px",

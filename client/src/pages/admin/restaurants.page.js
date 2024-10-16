@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
 
+// AXIOS
+import axios from "axios";
+
 // I18N
 import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
@@ -28,6 +31,9 @@ export default function RestaurantsPage(props) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [restaurants, setRestaurants] = useState([]);
+  const [selectedRestaurant, setSelectedRestaurant] = useState(null);
+  const [isExistingOwner, setIsExistingOwner] = useState(true);
 
   useEffect(() => {
     const token = localStorage.getItem("admin-token");
@@ -35,30 +41,66 @@ export default function RestaurantsPage(props) {
     if (!token) {
       router.push("/admin/login");
     } else {
-      setLoading(false);
+      setLoading(true);
     }
   }, [router]);
+
+  useEffect(() => {
+    const token = localStorage.getItem("admin-token");
+
+    if (!token) {
+      router.push("/admin/login");
+    } else {
+      axios
+        .get(`${process.env.NEXT_PUBLIC_API_URL}/admin/restaurants`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        })
+        .then((response) => {
+          setRestaurants(response.data.restaurants);
+          setLoading(false);
+        })
+        .catch((error) => {
+          if (error.response && error.response.status === 403) {
+            localStorage.removeItem("admin-token");
+            router.push("/admin/login");
+          } else {
+            console.error(
+              "Erreur lors de la récupération des restaurants:",
+              error
+            );
+            setLoading(false);
+          }
+        });
+    }
+  }, [router]);
+
+  function handleAddRestaurant(newRestaurant) {
+    setRestaurants((prevRestaurants) => [...prevRestaurants, newRestaurant]);
+  }
+
+  function handleEditRestaurant(updatedRestaurant) {
+    setRestaurants((prevRestaurants) =>
+      prevRestaurants.map((restaurant) =>
+        restaurant._id === updatedRestaurant._id
+          ? updatedRestaurant
+          : restaurant
+      )
+    );
+    setSelectedRestaurant(null);
+  }
+
+  function handleEditClick(restaurant) {
+    setIsExistingOwner(true);
+    setSelectedRestaurant(restaurant);
+    setIsModalOpen(true);
+  }
 
   return (
     <>
       <Head>
         <title>{title}</title>
-
-        {/* <>
-          {description && <meta name="description" content={description} />}
-          {title && <meta property="og:title" content={title} />}
-          {description && (
-            <meta property="og:description" content={description} />
-          )}
-          <meta
-            property="og:url"
-            content="https://lespetitsbilingues-newham.com/"
-          />
-          <meta property="og:type" content="website" />
-          <meta property="og:image" content="/img/open-graph.jpg" />
-          <meta property="og:image:width" content="1200" />
-          <meta property="og:image:height" content="630" />
-        </> */}
       </Head>
 
       <div className="w-[100vw]">
@@ -72,12 +114,27 @@ export default function RestaurantsPage(props) {
 
             <div className="border h-screen overflow-y-auto flex-1 p-12">
               <ListRestaurantsAdminComponent
-                handleAddClick={() => setIsModalOpen(true)}
+                handleAddClick={() => {
+                  setSelectedRestaurant(null);
+                  setIsModalOpen(true);
+                  setIsExistingOwner(true);
+                }}
+                handleEditClick={handleEditClick}
+                restaurants={restaurants}
+                loading={loading}
+                setRestaurants={setRestaurants}
               />
             </div>
 
             {isModalOpen && (
-              <AddRestaurantModal closeModal={() => setIsModalOpen(false)} />
+              <AddRestaurantModal
+                closeModal={() => setIsModalOpen(false)}
+                handleAddRestaurant={handleAddRestaurant}
+                handleEditRestaurant={handleEditRestaurant}
+                restaurant={selectedRestaurant}
+                isExistingOwner={isExistingOwner}
+                setIsExistingOwner={setIsExistingOwner}
+              />
             )}
           </div>
         )}
