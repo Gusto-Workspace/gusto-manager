@@ -8,8 +8,8 @@
   "buttons": {
     "logout": "Log Out",
     "loading": "Loading...",
-    "delete" : "Delete",
-    "confirm" : "Confirm"
+    "delete": "Delete",
+    "confirm": "Confirm"
   },
   "restaurants": {
     "form": {
@@ -32,21 +32,31 @@
     },
     "list": {
       "loading": "Loading restaurants...",
-      "emptyList": "Restaurants not found."
+      "emptyList": "Restaurants not found.",
+      "noOwner": "No owner"
     }
   },
   "owner": {
     "form": {
       "infos": "Owner Informations",
+      "add": "Ajouter un propriéraire",
       "createNew": "Create new",
       "selectExisting": "Select existing",
       "select": "Select",
       "firstname": "Firstname",
       "lastname": "Lastname",
-      "username": "Username",
       "phoneNumber": "Phone Number",
       "email": "Email",
       "password": "Password"
+    },
+    "list": {
+      "listRestaurants": "Restaurants list",
+      "noRestaurant": "No restaurant",
+      "buttons": {
+        "add": "Add",
+        "cancel": "Cancel",
+        "edit": "Edit"
+      }
     }
   }
 }

@@ -6,17 +6,20 @@ const bcrypt = require("bcryptjs");
 const ownerSchema = new mongoose.Schema({
   firstname: String,
   lastname: String,
-  username: String,
   email: String,
   password: String,
   phoneNumber: String,
   stripeCustomerId: { type: String },
-  restaurants: [{ type: mongoose.Schema.Types.ObjectId, ref: "Restaurant" }], // Référence aux restaurants qu'il possède
+  restaurants: [{ type: mongoose.Schema.Types.ObjectId, ref: "Restaurant" }],
   created_at: { type: Date, default: Date.now },
 });
 
-// Index sur le champ email pour rendre les recherches par email rapides
+// Index sur les champs pour rendre les recherches rapides
 ownerSchema.index({ email: 1 });
+
+ownerSchema.index({ restaurants: 1 });
+
+ownerSchema.index({ firstname: 1, lastname: 1 });
 
 // FUNCTIONS
 ownerSchema.pre("save", async function (next) {

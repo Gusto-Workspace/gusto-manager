@@ -4,7 +4,6 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 
 const adminSchema = new mongoose.Schema({
-  username: String,
   email: String,
   password: String, // Mot de passe haché
   role: { type: String, default: "admin" },

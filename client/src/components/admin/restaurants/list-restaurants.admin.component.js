@@ -1,13 +1,15 @@
+import { useState } from "react";
+
+// AXIOS
 import axios from "axios";
 
 // I18N
 import { useTranslation } from "next-i18next";
-import { useState } from "react";
 
 export default function ListRestaurantsAdminComponent(props) {
   const { t } = useTranslation("admin");
   const [restaurantToDelete, setRestaurantToDelete] = useState(null);
-  const [loadingDelete, setLoadingDelete] = useState(false); // État pour le chargement
+  const [loadingDelete, setLoadingDelete] = useState(false);
 
   async function confirmDelete(restaurantId) {
     setLoadingDelete(true);
@@ -62,11 +64,19 @@ export default function ListRestaurantsAdminComponent(props) {
                   </p>
                   <p>
                     {t("restaurants.form.owner")} :{" "}
-                    {restaurant?.owner_id.firstname}{" "}
-                    {restaurant?.owner_id.lastname}{" "}
-                    <span className="text-sm italic opacity-40">
-                      ({restaurant?.owner_id.email})
-                    </span>
+                    {restaurant?.owner_id ? (
+                      <>
+                        {restaurant.owner_id.firstname}{" "}
+                        {restaurant.owner_id.lastname}{" "}
+                        <span className="text-sm italic opacity-40">
+                          ({restaurant.owner_id.email})
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-sm italic opacity-40">
+                        {t("restaurants.list.noOwner")}
+                      </span>
+                    )}
                   </p>
 
                   {restaurantToDelete === restaurant._id ? (

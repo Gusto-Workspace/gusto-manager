@@ -14,7 +14,7 @@ router.get("/admin/restaurants", authenticateToken, async (req, res) => {
   try {
     const restaurants = await RestaurantModel.find().populate(
       "owner_id",
-      "username firstname lastname phoneNumber email"
+      "firstname lastname phoneNumber email"
     );
 
     res.status(200).json({ restaurants });
@@ -42,7 +42,6 @@ router.post("/admin/add-restaurant", async (req, res) => {
       owner = new OwnerModel({
         firstname: ownerData.firstname,
         lastname: ownerData.lastname,
-        username: ownerData.username,
         email: ownerData.email,
         password: ownerData.password,
         phoneNumber: ownerData.phoneNumber,
@@ -86,7 +85,7 @@ router.post("/admin/add-restaurant", async (req, res) => {
     // 5. Populer les informations du propriétaire avant de renvoyer la réponse
     const populatedRestaurant = await RestaurantModel.findById(
       newRestaurant._id
-    ).populate("owner_id", "firstname lastname email username");
+    ).populate("owner_id", "firstname lastname email");
 
     res.status(201).json({
       message: "Restaurant ajouté avec succès",
@@ -113,7 +112,10 @@ router.put("/admin/restaurants/:id", async (req, res) => {
     let newOwner = null;
 
     // Si un propriétaire existant est sélectionné et qu'il est différent de l'actuel
-    if (existingOwnerId && existingOwnerId !== restaurant.owner_id.toString()) {
+    if (
+      existingOwnerId &&
+      existingOwnerId !== restaurant.owner_id?.toString()
+    ) {
       newOwner = await OwnerModel.findById(existingOwnerId);
       if (!newOwner) {
         return res
@@ -121,18 +123,19 @@ router.put("/admin/restaurants/:id", async (req, res) => {
           .json({ message: "Nouveau propriétaire non trouvé" });
       }
 
-      // Trouver l'ancien propriétaire
-      previousOwner = await OwnerModel.findById(restaurant.owner_id);
+      // Trouver l'ancien propriétaire (si le restaurant avait un propriétaire)
+      if (restaurant.owner_id) {
+        previousOwner = await OwnerModel.findById(restaurant.owner_id);
 
-      // Retirer le restaurant de la liste des restaurants de l'ancien propriétaire
-      if (previousOwner) {
-        previousOwner.restaurants = previousOwner.restaurants.filter(
-          (restaurantId) =>
-            restaurantId.toString() !== restaurant._id.toString()
-        );
-        await previousOwner.save();
+        // Retirer le restaurant de la liste des restaurants de l'ancien propriétaire
+        if (previousOwner) {
+          previousOwner.restaurants = previousOwner.restaurants.filter(
+            (restaurantId) =>
+              restaurantId.toString() !== restaurant._id.toString()
+          );
+          await previousOwner.save();
+        }
       }
-
       // Ajouter le restaurant dans la liste du nouveau propriétaire
       newOwner.restaurants.push(restaurant._id);
       await newOwner.save();
@@ -140,14 +143,13 @@ router.put("/admin/restaurants/:id", async (req, res) => {
       // Mettre à jour le propriétaire dans le restaurant
       restaurant.owner_id = newOwner._id;
     } else if (!existingOwnerId && ownerData && ownerData.firstname) {
-      // Si on crée un nouveau propriétaire
-
-      previousOwner = await OwnerModel.findById(restaurant.owner_id);
+      if (restaurant.owner_id) {
+        previousOwner = await OwnerModel.findById(restaurant.owner_id);
+      }
 
       const newOwnerData = new OwnerModel({
         firstname: ownerData.firstname,
         lastname: ownerData.lastname,
-        username: ownerData.username,
         email: ownerData.email,
         password: ownerData.password,
         phoneNumber: ownerData.phoneNumber,
@@ -194,7 +196,7 @@ router.put("/admin/restaurants/:id", async (req, res) => {
     // Populer les informations du propriétaire avant de renvoyer la réponse
     const updatedRestaurant = await RestaurantModel.findById(
       restaurant._id
-    ).populate("owner_id", "firstname lastname email username");
+    ).populate("owner_id", "firstname lastname email");
 
     res.status(200).json({
       message: "Restaurant mis à jour avec succès",
@@ -226,7 +228,7 @@ router.delete("/admin/restaurants/:id", async (req, res) => {
     }
 
     // Supprimer le restaurant
-    await RestaurantModel.deleteOne({ _id: restaurant._id }); // Utilisation de deleteOne() à la place de remove()
+    await RestaurantModel.deleteOne({ _id: restaurant._id });
 
     res.status(200).json({ message: "Restaurant supprimé avec succès" });
   } catch (error) {

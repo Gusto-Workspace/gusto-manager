@@ -9,7 +9,7 @@
     "logout": "Déconnexion",
     "loading": "Chargement...",
     "delete": "Supprimer",
-    "confirm" : "Confirmer"
+    "confirm": "Confirmer"
   },
   "restaurants": {
     "form": {
@@ -25,28 +25,37 @@
         "cancel": "Annuler",
         "edit": "Modifier"
       },
-
       "errors": {
         "add": "Erreur lors de l'ajout du restaurant"
       }
     },
     "list": {
       "loading": "Chargement des restaurants...",
-      "emptyList": "Aucun restaurant trouvé."
+      "emptyList": "Aucun restaurant trouvé.",
+      "noOwner" : "Aucun propriéraire"
     }
   },
   "owner": {
     "form": {
       "infos": "Informations sur le propriétaire",
+      "add": "Ajouter un propriéraire",
       "createNew": "Créer un nouveau",
       "selectExisting": "Déjà existant",
       "select": "Sélectionner",
       "firstname": "Prénom",
       "lastname": "Nom",
-      "username": "Nom d'utilisateur",
       "phoneNumber": "Numéro de téléphone",
       "email": "Email",
       "password": "Mot de passe"
+    },
+    "list": {
+      "listRestaurants": "Liste des restaurants",
+      "noRestaurant": "Aucun restaurant",
+      "buttons": {
+        "add": "Ajouter",
+        "cancel": "Annuler",
+        "edit": "Modifier"
+      }
     }
   }
 }

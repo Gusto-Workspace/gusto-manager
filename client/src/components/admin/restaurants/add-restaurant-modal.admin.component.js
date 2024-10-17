@@ -147,6 +147,7 @@ export default function AddRestaurantModal(props) {
             name="restaurantData.website"
             placeholder={t("restaurants.form.web")}
             register={register}
+            required={true}
             errors={errors}
           />
 
@@ -214,14 +215,6 @@ export default function AddRestaurantModal(props) {
               </div>
 
               <FormInputComponent
-                name="ownerData.username"
-                placeholder={t("owner.form.username")}
-                register={register}
-                required={true}
-                errors={errors}
-              />
-
-              <FormInputComponent
                 name="ownerData.phoneNumber"
                 placeholder={t("owner.form.phoneNumber")}
                 register={register}
@@ -237,16 +230,14 @@ export default function AddRestaurantModal(props) {
                 errors={errors}
               />
 
-              {!props.restaurant && (
-                <FormInputComponent
-                  name="ownerData.password"
-                  placeholder={t("owner.form.password")}
-                  register={register}
-                  required={true}
-                  errors={errors}
-                  type="password"
-                />
-              )}
+              <FormInputComponent
+                name="ownerData.password"
+                placeholder={t("owner.form.password")}
+                register={register}
+                required={true}
+                errors={errors}
+                type="password"
+              />
             </div>
           )}
 

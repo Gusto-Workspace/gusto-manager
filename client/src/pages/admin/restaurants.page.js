@@ -12,7 +12,7 @@ import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 // COMPONENTS
 import NavAdminComponent from "@/components/admin/_shared/nav/nav.admin.component";
 import ListRestaurantsAdminComponent from "@/components/admin/restaurants/list-restaurants.admin.component";
-import AddRestaurantModal from "@/components/admin/restaurants/add-restaurant-modal.admin";
+import AddRestaurantModal from "@/components/admin/restaurants/add-restaurant-modal.admin.component";
 
 export default function RestaurantsPage(props) {
   let title;
@@ -97,6 +97,12 @@ export default function RestaurantsPage(props) {
     setIsModalOpen(true);
   }
 
+  function handleAddClick() {
+    setIsExistingOwner(false);
+    setSelectedRestaurant(null);
+    setIsModalOpen(true);
+  }
+
   return (
     <>
       <Head>
@@ -114,11 +120,7 @@ export default function RestaurantsPage(props) {
 
             <div className="border h-screen overflow-y-auto flex-1 p-12">
               <ListRestaurantsAdminComponent
-                handleAddClick={() => {
-                  setSelectedRestaurant(null);
-                  setIsModalOpen(true);
-                  setIsExistingOwner(true);
-                }}
+                handleAddClick={handleAddClick}
                 handleEditClick={handleEditClick}
                 restaurants={restaurants}
                 loading={loading}

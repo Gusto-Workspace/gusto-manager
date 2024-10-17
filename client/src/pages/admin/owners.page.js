@@ -1,29 +1,14 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
-
-// I18N
+import axios from "axios";
 import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
-
-// COMPONENTS
 import NavAdminComponent from "@/components/admin/_shared/nav/nav.admin.component";
-import OwnersAdminComponent from "@/components/admin/owners/owners.admin.component";
+import ListOwnersAdminComponent from "@/components/admin/owners/list-owners.admin.component";
+import AddOwnerModalComponent from "@/components/admin/owners/add-owner-modal.admin.component";
 
 export default function OwnersPage(props) {
-  const router = useRouter();
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const token = localStorage.getItem("admin-token");
-
-    if (!token) {
-      router.push("/admin/login");
-    } else {
-      setLoading(false);
-    }
-  }, [router]);
-
   let title;
   let description;
 
@@ -36,26 +21,86 @@ export default function OwnersPage(props) {
       title = "Gusto Manager";
       description = "";
   }
+
+  const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [owners, setOwners] = useState([]);
+  const [selectedOwner, setSelectedOwner] = useState(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem("admin-token");
+
+    if (!token) {
+      router.push("/admin/login");
+    } else {
+      setLoading(true);
+    }
+  }, [router]);
+
+  useEffect(() => {
+    const token = localStorage.getItem("admin-token");
+
+    if (!token) {
+      router.push("/admin/login");
+    } else {
+      axios
+        .get(`${process.env.NEXT_PUBLIC_API_URL}/admin/owners`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        })
+        .then((response) => {
+          setOwners(response.data.owners);
+          setLoading(false);
+        })
+        .catch((error) => {
+          if (error.response && error.response.status === 403) {
+            localStorage.removeItem("admin-token");
+            router.push("/admin/login");
+          } else {
+            console.error(
+              "Erreur lors de la récupération des propriétaires:",
+              error
+            );
+            setLoading(false);
+          }
+        });
+    }
+  }, [router]);
+
+  function handleAddOwner(newOwner) {
+    setOwners((prevOwners) => [...prevOwners, newOwner]);
+  }
+
+  function handleEditOwner(updatedOwner) {
+    setOwners((prevOwners) =>
+      prevOwners.map((owner) =>
+        owner._id === updatedOwner._id ? updatedOwner : owner
+      )
+    );
+    setSelectedOwner(null);
+  }
+
+  function handleEditClick(owner) {
+    setSelectedOwner(owner);
+    setIsModalOpen(true);
+  }
+
+  function handleAddClick() {
+    setSelectedOwner(null);
+    setIsModalOpen(true);
+  }
+
+  function closeModal() {
+    setSelectedOwner(null);
+    setIsModalOpen(false);
+  }
+
   return (
     <>
       <Head>
         <title>{title}</title>
-
-        {/* <>
-          {description && <meta name="description" content={description} />}
-          {title && <meta property="og:title" content={title} />}
-          {description && (
-            <meta property="og:description" content={description} />
-          )}
-          <meta
-            property="og:url"
-            content="https://lespetitsbilingues-newham.com/"
-          />
-          <meta property="og:type" content="website" />
-          <meta property="og:image" content="/img/open-graph.jpg" />
-          <meta property="og:image:width" content="1200" />
-          <meta property="og:image:height" content="630" />
-        </> */}
       </Head>
 
       <div className="w-[100vw]">
@@ -66,10 +111,25 @@ export default function OwnersPage(props) {
         ) : (
           <div className="flex">
             <NavAdminComponent />
-            
-            <div className="border h-screen overflow-y-auto flex-1">
-              <OwnersAdminComponent />
+
+            <div className="border h-screen overflow-y-auto flex-1 p-12">
+              <ListOwnersAdminComponent
+                handleAddClick={handleAddClick}
+                handleEditClick={handleEditClick}
+                owners={owners}
+                loading={loading}
+                setOwners={setOwners}
+              />
             </div>
+
+            {isModalOpen && (
+              <AddOwnerModalComponent
+                closeModal={closeModal}
+                handleAddOwner={handleAddOwner}
+                handleEditOwner={handleEditOwner}
+                owner={selectedOwner}
+              />
+            )}
           </div>
         )}
       </div>
