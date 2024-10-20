@@ -3,7 +3,6 @@ import { Fragment, useState } from "react";
 // SVG
 import { ChevronSvg, NotificationSvg } from "../_svgs/_index";
 
-
 // COMPONENTS
 import SimpleSkeletonComonent from "../skeleton/simple-skeleton.component";
 
@@ -21,7 +20,11 @@ export default function SettingsComponent(props) {
 
       <div
         className={`bg-white flex-1 h-full px-6 items-center flex justify-between drop-shadow-sm rounded-lg ${props.restaurantsList?.length > 1 ? "cursor-pointer" : ""}`}
-        onClick={() => setShowRestaurantList(!showRestaurantList)}
+        onClick={() => {
+          props?.restaurantsList?.length > 1
+            ? setShowRestaurantList(!showRestaurantList)
+            : null;
+        }}
       >
         {props.dataLoading ? (
           <SimpleSkeletonComonent />

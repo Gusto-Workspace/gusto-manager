@@ -36,7 +36,7 @@ const drinkSchema = new mongoose.Schema(
     name: { type: String, required: true },
     type: {
       type: String,
-      enum: ["wine", "cocktail", "beer", "soft drink"],
+      enum: ["wine", "cocktail", "beer", "soft drink", "hot drink"],
       required: true,
     },
     price: { type: Number, required: true },
