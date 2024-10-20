@@ -14,9 +14,17 @@
     "to": "à",
     "close": "Fermé"
   },
-  "contact":{
-    "title" : "Informations de contact"
+  "contact": {
+    "title": "Informations de contact",
+    "mail": "Adresse mail",
+    "address": "Adresse",
+    "phone": "Téléphone",
+    "instagram": "Instagram",
+    "facebook": "Facebook",
+    "twitter": "Twitter",
+    "linkedIn": "LinkedIn",
+    "youtube": "Youtube"
   },
   "save": "Enregistrer",
-  "cancel" : "Annuler"
+  "cancel": "Annuler"
 }

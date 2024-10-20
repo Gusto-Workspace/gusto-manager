@@ -24,7 +24,7 @@ export default function ContactRestaurantComponent() {
   }
 
   return (
-    <section className="bg-white p-6 rounded-lg drop-shadow-sm w-full">
+    <section className="bg-white p-6 rounded-lg drop-shadow-sm w-full h-fit">
       <div className="flex justify-between">
         <h1 className="font-bold text-lg">{t("contact.title")}</h1>
 

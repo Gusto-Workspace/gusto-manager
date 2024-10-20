@@ -9,8 +9,8 @@ const openingHourSchema = new mongoose.Schema(
       {
         open: { type: String, required: true },
         close: { type: String, required: true },
-      }
-    ]
+      },
+    ],
   },
   { _id: false }
 );
@@ -54,12 +54,25 @@ const newsSchema = new mongoose.Schema(
   { _id: false }
 );
 
+// Sous-schéma pour les réseaux sociaux
+const socialMediaSchema = new mongoose.Schema(
+  {
+    facebook: { type: String, default: null },
+    instagram: { type: String, default: null },
+    twitter: { type: String, default: null },
+    linkedIn: { type: String, default: null },
+    youtube: { type: String, default: null },
+  },
+  { _id: false }
+);
+
 // Schéma principal pour le restaurant
 const restaurantSchema = new mongoose.Schema({
   name: { type: String, required: true },
   address: { type: String, required: true },
   phone: { type: String, required: true },
   website: { type: String },
+  social_media: { type: socialMediaSchema, default: {} },
   owner_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Owner",

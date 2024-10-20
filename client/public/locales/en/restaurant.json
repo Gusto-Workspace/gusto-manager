@@ -15,7 +15,15 @@
     "close": "Closed"
   },
   "contact": {
-    "title": "Contact informations"
+    "title": "Contact informations",
+    "mail": "Email",
+    "address": "Addresse",
+    "phone": "Phone number",
+    "instagram": "Instagram",
+    "facebook": "Facebook",
+    "twitter": "Twitter",
+    "linkedIn": "LinkedIn",
+    "youtube" : "Youtube"
   },
   "save": "Save",
   "cancel": "Cancel"
