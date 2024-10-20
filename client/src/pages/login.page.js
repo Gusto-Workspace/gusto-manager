@@ -1,4 +1,6 @@
 import Head from "next/head";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/router";
 
 // I18N
 import { i18n } from "next-i18next";
@@ -8,6 +10,19 @@ import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import FormLoginComponent from "@/components/login/form.login.component";
 
 export default function LoginPage(props) {
+  const router = useRouter();
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+
+    if (token) {
+      router.push("/");
+    } else {
+      setLoading(false);
+    }
+  }, [router]);
+
   let title;
   let description;
 
@@ -20,6 +35,7 @@ export default function LoginPage(props) {
       title = "Gusto Manager";
       description = "";
   }
+
   return (
     <>
       <Head>
@@ -43,7 +59,13 @@ export default function LoginPage(props) {
       </Head>
 
       <div className="min-h-[100vh] bg-black bg-opacity-20 flex justify-center items-center">
-        <FormLoginComponent />
+        {loading ? (
+          <div className="flex justify-center items-center h-screen">
+            <div className="loader">Loading...</div>
+          </div>
+        ) : (
+          <FormLoginComponent />
+        )}
       </div>
     </>
   );

@@ -1,0 +1,22 @@
+{
+  "hours": {
+    "title": "Opening hours",
+    "days": {
+      "monday": "Monday",
+      "tuesday": "Tuesday",
+      "wednesday": "Wednesday",
+      "thursday": "Thursday",
+      "friday": "Friday",
+      "saturday": "Saturday",
+      "sunday": "Sunday"
+    },
+    "open": "Open",
+    "to": "to",
+    "close": "Closed"
+  },
+  "contact": {
+    "title": "Contact informations"
+  },
+  "save": "Save",
+  "cancel": "Cancel"
+}

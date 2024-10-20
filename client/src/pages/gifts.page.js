@@ -7,9 +7,9 @@ import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 
 // COMPONENTS
-import MainHomeComponent from "@/components/home/main.home.component";
+import NavComponent from "@/components/_shared/nav/nav.component";
 
-export default function ContactPage(props) {
+export default function GiftsPage(props) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
 
@@ -64,7 +64,10 @@ export default function ContactPage(props) {
             <div className="loader">Loading...</div>
           </div>
         ) : (
-          <div> </div>
+          <div className="flex">
+            <NavComponent />
+            <div className="border h-screen overflow-y-auto flex-1"></div>
+          </div>
         )}
       </div>
     </>
@@ -74,7 +77,7 @@ export default function ContactPage(props) {
 export async function getStaticProps({ locale }) {
   return {
     props: {
-      ...(await serverSideTranslations(locale, ["common", "contact"])),
+      ...(await serverSideTranslations(locale, ["common", "gift"])),
     },
   };
 }

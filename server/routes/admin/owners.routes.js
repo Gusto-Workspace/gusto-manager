@@ -3,8 +3,8 @@ const router = express.Router();
 const stripe = require("stripe")(process.env.STRIPE_API_SECRET_KEY);
 
 // MODELS
-const OwnerModel = require("../models/owner.model");
-const RestaurantModel = require("../models/restaurant.model");
+const OwnerModel = require("../../models/owner.model");
+const RestaurantModel = require("../../models/restaurant.model");
 
 // OWNERS LIST
 router.get("/admin/owners", async (req, res) => {

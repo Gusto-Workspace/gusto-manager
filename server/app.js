@@ -36,14 +36,25 @@ app.use(
 // ROUTES
 const apiRoutes = "/api";
 const authRoutes = require("./routes/auth.routes");
-const adminRoutes = require("./routes/admin.routes");
-const restaurantsRoutes = require("./routes/restaurants.routes");
-const ownersRoutes = require("./routes/owners.routes");
 
 app.use(apiRoutes, authRoutes);
-app.use(apiRoutes, adminRoutes);
+
+// ADMIN
+const dashboardAdminRoutes = require("./routes/admin/dashboard.routes");
+const restaurantsAdminRoutes = require("./routes/admin/restaurants.routes");
+const ownersAdminRoutes = require("./routes/admin/owners.routes");
+
+app.use(apiRoutes, dashboardAdminRoutes);
+app.use(apiRoutes, restaurantsAdminRoutes);
+app.use(apiRoutes, ownersAdminRoutes);
+
+// OWNER
+const restaurantsRoutes = require("./routes/restaurants.routes");
+const hoursRoutes = require("./routes/hours.routes");
+
 app.use(apiRoutes, restaurantsRoutes);
-app.use(apiRoutes, ownersRoutes);
+app.use(apiRoutes, hoursRoutes)
+
 
 // ÉCOUTE DU PORT
 server.listen(PORT, () => {

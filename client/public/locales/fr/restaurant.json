@@ -1,0 +1,22 @@
+{
+  "hours": {
+    "title": "Horaires d'ouverture",
+    "days": {
+      "monday": "Lundi",
+      "tuesday": "Mardi",
+      "wednesday": "Mercredi",
+      "thursday": "Jeudi",
+      "friday": "Vendredi",
+      "saturday": "Samedi",
+      "sunday": "Dimanche"
+    },
+    "open": "Ouvert",
+    "to": "à",
+    "close": "Fermé"
+  },
+  "contact":{
+    "title" : "Informations de contact"
+  },
+  "save": "Enregistrer",
+  "cancel" : "Annuler"
+}

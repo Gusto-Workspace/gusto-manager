@@ -7,7 +7,7 @@ import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 
 // COMPONENTS
-import MainHomeComponent from "@/components/home/main.home.component";
+import NavComponent from "@/components/_shared/nav/nav.component";
 
 export default function MenusPage(props) {
   const router = useRouter();
@@ -64,7 +64,10 @@ export default function MenusPage(props) {
             <div className="loader">Loading...</div>
           </div>
         ) : (
-          <div> </div>
+          <div className="flex">
+            <NavComponent />
+            <div className="border h-screen overflow-y-auto flex-1"></div>
+          </div>
         )}
       </div>
     </>

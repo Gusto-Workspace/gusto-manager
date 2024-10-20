@@ -7,9 +7,10 @@ import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 
 // COMPONENTS
-import MainHomeComponent from "@/components/home/main.home.component";
+import DashboardComponent from "@/components/dashboard/dashboard.component";
+import NavComponent from "@/components/_shared/nav/nav.component";
 
-export default function HomePage(props) {
+export default function DashboardPage(props) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
 
@@ -38,7 +39,7 @@ export default function HomePage(props) {
 
   return (
     <>
-        <Head>
+      <Head>
         <title>{title}</title>
 
         {/* <>
@@ -64,7 +65,12 @@ export default function HomePage(props) {
             <div className="loader">Loading...</div>
           </div>
         ) : (
-          <MainHomeComponent />
+          <div className="flex">
+            <NavComponent />
+            <div className= "bg-lightGrey overflow-y-auto flex-1 p-12 -z-10 h-screen">
+              <DashboardComponent />
+            </div>
+          </div>
         )}
       </div>
     </>

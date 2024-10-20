@@ -4,8 +4,13 @@ const mongoose = require("mongoose");
 const openingHourSchema = new mongoose.Schema(
   {
     day: { type: String, required: true },
-    open: { type: String, required: true },
-    close: { type: String, required: true },
+    isClosed: { type: Boolean, default: false }, // Ajout de la possibilité de spécifier si le restaurant est fermé ce jour-là
+    hours: [
+      {
+        open: { type: String, required: true },
+        close: { type: String, required: true },
+      }
+    ]
   },
   { _id: false }
 );

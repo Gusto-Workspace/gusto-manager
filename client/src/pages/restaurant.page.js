@@ -2,16 +2,29 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
 
+// JWT
+import { jwtDecode } from "jwt-decode";
+
+// AXIOS
+import axios from "axios";
+
 // I18N
 import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 
 // COMPONENTS
-import MainHomeComponent from "@/components/home/main.home.component";
+import NavComponent from "@/components/_shared/nav/nav.component";
+import SettingsComponent from "@/components/_shared/settings/settings.component";
+import HoursRestaurantComponent from "@/components/restaurant/hours.restaurant.component";
+import ContactRestaurantComponent from "@/components/restaurant/contact.restaurant.component";
 
 export default function RestaurantPage(props) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [isFadingOut, setIsFadingOut] = useState(false);
+  const [restaurant, setRestaurant] = useState(null);
+  const [restaurantsList, setRestaurantsList] = useState([]);
+  const [hoursLoading, setHoursLoading] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -19,10 +32,108 @@ export default function RestaurantPage(props) {
     if (!token) {
       router.push("/login");
     } else {
-      setLoading(false);
+      try {
+        const decodedToken = jwtDecode(token);
+
+        if (!decodedToken.id) {
+          throw new Error("Invalid token: ownerId is missing");
+        }
+
+        axios
+          .get(`${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+            params: {
+              ownerId: decodedToken.id,
+            },
+          })
+          .then((response) => {
+            setRestaurantsList(response.data.restaurants);
+
+            const selectedRestaurantId =
+              decodedToken.restaurantId || response.data.restaurants[0]._id;
+
+            return axios.get(
+              `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${selectedRestaurantId}`,
+              {
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                },
+              }
+            );
+          })
+          .then((response) => {
+            setRestaurant(response.data.restaurant);
+            setTimeout(() => {
+              setIsFadingOut(true);
+              setTimeout(() => {
+                setLoading(false);
+              }, 125);
+            }, 250);
+          })
+          .catch((error) => {
+            console.error(
+              "Erreur lors de la récupération des restaurants:",
+              error
+            );
+            localStorage.removeItem("token");
+            router.push("/login");
+          });
+      } catch (error) {
+        console.error("Invalid token:", error);
+        localStorage.removeItem("token");
+        router.push("/login");
+      }
     }
   }, [router]);
 
+  function handleRestaurantSelect(restaurantId) {
+    const token = localStorage.getItem("token");
+    if (token) {
+      const delayTimeout = setTimeout(() => {
+        setHoursLoading(true);
+      }, 1000);
+  
+      axios
+        .post(
+          `${process.env.NEXT_PUBLIC_API_URL}/owner/change-restaurant`,
+          { restaurantId },
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        )
+        .then((response) => {
+          const { token: updatedToken } = response.data;
+          localStorage.setItem("token", updatedToken);
+  
+          return axios.get(
+            `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${restaurantId}`,
+            {
+              headers: {
+                Authorization: `Bearer ${updatedToken}`,
+              },
+            }
+          );
+        })
+        .then((response) => {
+          setRestaurant(response.data.restaurant);
+          clearTimeout(delayTimeout);
+          setHoursLoading(false);
+        })
+        .catch((error) => {
+          console.error(
+            "Erreur lors de la mise à jour du restaurant sélectionné:",
+            error
+          );
+          clearTimeout(delayTimeout);
+          setHoursLoading(false);
+        });
+    }
+  }
+  
   let title;
   let description;
 
@@ -40,31 +151,42 @@ export default function RestaurantPage(props) {
     <>
       <Head>
         <title>{title}</title>
-
-        {/* <>
-          {description && <meta name="description" content={description} />}
-          {title && <meta property="og:title" content={title} />}
-          {description && (
-            <meta property="og:description" content={description} />
-          )}
-          <meta
-            property="og:url"
-            content="https://lespetitsbilingues-newham.com/"
-          />
-          <meta property="og:type" content="website" />
-          <meta property="og:image" content="/img/open-graph.jpg" />
-          <meta property="og:image:width" content="1200" />
-          <meta property="og:image:height" content="630" />
-        </> */}
       </Head>
 
       <div>
         {loading ? (
           <div className="flex justify-center items-center h-screen">
-            <div className="loader">Loading...</div>
+            <img
+              src="/img/logo.webp"
+              alt="loader"
+              draggable={false}
+              className={`max-w-[125px] ${
+                isFadingOut ? "fade-out" : "fade-in"
+              }`}
+            />
           </div>
         ) : (
-          <div> </div>
+          <div className="flex">
+            <NavComponent />
+
+            <div className="bg-lightGrey text-darkBlue overflow-y-auto flex-1 p-6 h-screen flex flex-col gap-6">
+              <SettingsComponent
+                restaurantName={restaurant?.name}
+                ownerFirstname={restaurant?.owner_id?.firstname}
+                restaurantsList={restaurantsList}
+                onRestaurantSelect={handleRestaurantSelect}
+              />
+              <div className="flex gap-6">
+                <HoursRestaurantComponent
+                  openingHours={restaurant?.opening_hours}
+                  restaurantId={restaurant._id}
+                  hoursLoading={hoursLoading}
+                />
+
+                <ContactRestaurantComponent />
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </>
