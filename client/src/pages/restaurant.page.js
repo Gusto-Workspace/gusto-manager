@@ -24,7 +24,7 @@ export default function RestaurantPage(props) {
   const [isFadingOut, setIsFadingOut] = useState(false);
   const [restaurant, setRestaurant] = useState(null);
   const [restaurantsList, setRestaurantsList] = useState([]);
-  const [hoursLoading, setHoursLoading] = useState(false);
+  const [dataLoading, setDataLoading] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -92,7 +92,7 @@ export default function RestaurantPage(props) {
     const token = localStorage.getItem("token");
     if (token) {
       const delayTimeout = setTimeout(() => {
-        setHoursLoading(true);
+        setDataLoading(true);
       }, 1000);
   
       axios
@@ -121,7 +121,7 @@ export default function RestaurantPage(props) {
         .then((response) => {
           setRestaurant(response.data.restaurant);
           clearTimeout(delayTimeout);
-          setHoursLoading(false);
+          setDataLoading(false);
         })
         .catch((error) => {
           console.error(
@@ -129,7 +129,7 @@ export default function RestaurantPage(props) {
             error
           );
           clearTimeout(delayTimeout);
-          setHoursLoading(false);
+          setDataLoading(false);
         });
     }
   }
@@ -175,12 +175,13 @@ export default function RestaurantPage(props) {
                 ownerFirstname={restaurant?.owner_id?.firstname}
                 restaurantsList={restaurantsList}
                 onRestaurantSelect={handleRestaurantSelect}
+                dataLoading={dataLoading}
               />
               <div className="flex gap-6">
                 <HoursRestaurantComponent
                   openingHours={restaurant?.opening_hours}
                   restaurantId={restaurant._id}
-                  hoursLoading={hoursLoading}
+                  dataLoading={dataLoading}
                 />
 
                 <ContactRestaurantComponent />

@@ -3,6 +3,10 @@ import { Fragment, useState } from "react";
 // SVG
 import { ChevronSvg, NotificationSvg } from "../_svgs/_index";
 
+
+// COMPONENTS
+import SimpleSkeletonComonent from "../skeleton/simple-skeleton.component";
+
 export default function SettingsComponent(props) {
   const [showRestaurantList, setShowRestaurantList] = useState(false);
 
@@ -19,7 +23,11 @@ export default function SettingsComponent(props) {
         className={`bg-white flex-1 h-full px-6 items-center flex justify-between drop-shadow-sm rounded-lg ${props.restaurantsList?.length > 1 ? "cursor-pointer" : ""}`}
         onClick={() => setShowRestaurantList(!showRestaurantList)}
       >
-        <h1>Restaurant - {props.restaurantName}</h1>
+        {props.dataLoading ? (
+          <SimpleSkeletonComonent />
+        ) : (
+          <h1>Restaurant - {props.restaurantName}</h1>
+        )}
 
         {props?.restaurantsList?.length > 1 && <ChevronSvg />}
 

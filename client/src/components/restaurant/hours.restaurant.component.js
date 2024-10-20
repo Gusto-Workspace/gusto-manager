@@ -12,6 +12,9 @@ import { daysOfWeeksData } from "@/_assets/data/days-of-week.data";
 // AXIOS
 import axios from "axios";
 
+// COMPONENTS
+import DoubleSkeletonComonent from "../_shared/skeleton/double-skeleton.component";
+
 export default function HoursRestaurantComponent(props) {
   const { t } = useTranslation("restaurant");
 
@@ -108,12 +111,8 @@ export default function HoursRestaurantComponent(props) {
             <li className="flex justify-between items-center py-2 h-16">
               <span>{t(hour.day)}</span>
 
-              {props.hoursLoading ? (
-                <div className="flex justify-end gap-2 w-full animate-pulse">
-                  <div className="bg-black bg-opacity-15 h-6 w-16 rounded-lg "></div>
-
-                  <div className="bg-black bg-opacity-15 h-6 w-16 rounded-lg "></div>
-                </div>
+              {props.dataLoading ? (
+                <DoubleSkeletonComonent />
               ) : editing ? (
                 <div className="flex items-center gap-2">
                   <input
