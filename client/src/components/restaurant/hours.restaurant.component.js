@@ -41,6 +41,12 @@ export default function HoursRestaurantComponent(props) {
     setEditing(!editing);
   }
 
+  useEffect(() => {
+    if (props.closeEditing) {
+      setEditing(false);
+    }
+  }, [props.closeEditing]);
+
   function handleChange(day, field, value) {
     setLocalHours((prev) =>
       prev.map((item) =>
@@ -57,11 +63,11 @@ export default function HoursRestaurantComponent(props) {
     );
   }
 
-  async function handleSave() {
-    try {
-      const token = localStorage.getItem("token");
+  function handleSave() {
+    const token = localStorage.getItem("token");
 
-      await axios.put(
+    axios
+      .put(
         `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${props.restaurantId}/hours`,
         { openingHours: localHours },
         {
@@ -69,12 +75,16 @@ export default function HoursRestaurantComponent(props) {
             Authorization: `Bearer ${token}`,
           },
         }
-      );
-    } catch (error) {
-      console.error("Erreur lors de la mise à jour des horaires :", error);
-    } finally {
-      setEditing(false);
-    }
+      )
+      .then((response) => {
+        props.handleUpdateData(response.data.restaurant);
+      })
+      .catch((error) => {
+        console.error("Erreur lors de la mise à jour des horaires :", error);
+      })
+      .finally(() => {
+        setEditing(false);
+      });
   }
 
   return (

@@ -51,6 +51,7 @@ export default function AddRestaurantModal(props) {
           name: props.restaurant.name,
           address: props.restaurant.address,
           phone: props.restaurant.phone,
+          email: props.restaurant.email,
           website: props.restaurant.website,
         },
       });
@@ -130,6 +131,14 @@ export default function AddRestaurantModal(props) {
           <FormInputComponent
             name="restaurantData.address"
             placeholder={t("restaurants.form.adress")}
+            register={register}
+            required={true}
+            errors={errors}
+          />
+
+          <FormInputComponent
+            name="restaurantData.email"
+            placeholder={t("restaurants.form.email")}
             register={register}
             required={true}
             errors={errors}

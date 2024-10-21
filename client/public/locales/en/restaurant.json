@@ -15,9 +15,9 @@
     "close": "Closed"
   },
   "contact": {
-    "title": "Contact informations",
-    "mail": "Email",
-    "address": "Addresse",
+    "title": "Contact",
+    "email": "Email",
+    "address": "Address",
     "phone": "Phone number",
     "instagram": "Instagram",
     "facebook": "Facebook",
@@ -26,5 +26,7 @@
     "youtube" : "Youtube"
   },
   "save": "Save",
-  "cancel": "Cancel"
+  "cancel": "Cancel",
+  "notUsed" : "Not used",
+   "emptyInput" : "Keep empty if not used"
 }

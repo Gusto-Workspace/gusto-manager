@@ -1,27 +1,19 @@
-import { useEffect, useState } from "react";
-import { useRouter } from "next/router";
+import { useContext } from "react";
 import Head from "next/head";
 
 // I18N
 import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 
+// CONTEXT
+import { GlobalContext } from "@/contexts/global.context";
+
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
+import SettingsComponent from "@/components/_shared/settings/settings.component";
 
 export default function DishesPage(props) {
-  const router = useRouter();
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const token = localStorage.getItem("token");
-
-    if (!token) {
-      router.push("/login");
-    } else {
-      setLoading(false);
-    }
-  }, [router]);
+  const { restaurantContext } = useContext(GlobalContext);
 
   let title;
   let description;
@@ -59,16 +51,19 @@ export default function DishesPage(props) {
       </Head>
 
       <div>
-        {loading ? (
-          <div className="flex justify-center items-center h-screen">
-            <div className="loader">Loading...</div>
+        <div className="flex">
+          <NavComponent />
+
+          <div className="bg-lightGrey text-darkBlue overflow-y-auto flex-1 p-6 h-screen flex flex-col gap-6">
+            <SettingsComponent
+              dataLoading={restaurantContext.dataLoading}
+              setDataLoading={restaurantContext.setDataLoading}
+              closeEditing={restaurantContext.closeEditing}
+              setRestaurantData={restaurantContext.setRestaurantData}
+              restaurantData={restaurantContext.restaurantData}
+            />
           </div>
-        ) : (
-          <div className="flex">
-            <NavComponent />
-            <div className="border h-screen overflow-y-auto flex-1"></div>
-          </div>
-        )}
+        </div>
       </div>
     </>
   );

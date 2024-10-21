@@ -18,6 +18,7 @@
       "name": "Name of the restaurant",
       "adress": "Adress",
       "phone": "Phone Number",
+      "email": "Contact email",
       "web": "Website",
       "owner": "Owner",
       "buttons": {

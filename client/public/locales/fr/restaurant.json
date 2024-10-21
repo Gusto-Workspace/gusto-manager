@@ -15,8 +15,8 @@
     "close": "Fermé"
   },
   "contact": {
-    "title": "Informations de contact",
-    "mail": "Adresse mail",
+    "title": "Contact",
+    "email": "Adresse mail",
     "address": "Adresse",
     "phone": "Téléphone",
     "instagram": "Instagram",
@@ -26,5 +26,7 @@
     "youtube": "Youtube"
   },
   "save": "Enregistrer",
-  "cancel": "Annuler"
+  "cancel": "Annuler",
+  "notUsed" : "Non utilisé",
+  "emptyInput" : "Laisser vide si non utilisé"
 }

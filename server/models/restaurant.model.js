@@ -4,7 +4,7 @@ const mongoose = require("mongoose");
 const openingHourSchema = new mongoose.Schema(
   {
     day: { type: String, required: true },
-    isClosed: { type: Boolean, default: false }, // Ajout de la possibilité de spécifier si le restaurant est fermé ce jour-là
+    isClosed: { type: Boolean, default: false },
     hours: [
       {
         open: { type: String, required: true },
@@ -21,11 +21,7 @@ const dishSchema = new mongoose.Schema(
     name: { type: String, required: true },
     description: { type: String, required: true },
     price: { type: Number, required: true },
-    category: {
-      type: String,
-      enum: ["starter", "main", "dessert"],
-      required: true,
-    },
+    category: { type: String, required: true },
   },
   { _id: false }
 );
@@ -71,6 +67,7 @@ const restaurantSchema = new mongoose.Schema({
   name: { type: String, required: true },
   address: { type: String, required: true },
   phone: { type: String, required: true },
+  email: { type: String, required: true },
   website: { type: String },
   social_media: { type: socialMediaSchema, default: {} },
   owner_id: {

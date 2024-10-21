@@ -17,6 +17,7 @@
       "add": "Ajouter un restaurant",
       "name": "Nom du restaurant",
       "adress": "Adresse",
+      "email": "Email de contact",
       "phone": "Téléphone",
       "web": "Site Web",
       "owner": "Propriétaire",
@@ -32,7 +33,7 @@
     "list": {
       "loading": "Chargement des restaurants...",
       "emptyList": "Aucun restaurant trouvé.",
-      "noOwner" : "Aucun propriéraire"
+      "noOwner": "Aucun propriéraire"
     }
   },
   "owner": {

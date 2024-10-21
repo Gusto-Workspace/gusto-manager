@@ -67,6 +67,7 @@ router.post("/admin/add-restaurant", async (req, res) => {
       name: restaurantData.name,
       address: restaurantData.address,
       phone: restaurantData.phone,
+      email: restaurantData.email,
       website: restaurantData.website,
       owner_id: owner._id,
       opening_hours: restaurantData.opening_hours,
@@ -188,6 +189,7 @@ router.put("/admin/restaurants/:id", async (req, res) => {
     restaurant.name = restaurantData.name;
     restaurant.address = restaurantData.address;
     restaurant.phone = restaurantData.phone;
+    restaurant.email = restaurantData.email;
     restaurant.website = restaurantData.website;
 
     // Sauvegarder les modifications du restaurant

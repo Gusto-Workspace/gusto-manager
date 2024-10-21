@@ -1,0 +1,143 @@
+import { useEffect, useState } from "react";
+import { useRouter } from "next/router";
+
+// AXIOS
+import axios from "axios";
+
+// JWT
+import { jwtDecode } from "jwt-decode";
+
+export default function RestaurantContext() {
+  const router = useRouter();
+  const [restaurantData, setRestaurantData] = useState(null);
+  const [restaurantsList, setRestaurantsList] = useState([]);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [closeEditing, setCloseEditing] = useState(false);
+
+  function fetchRestaurantData(token, restaurantId) {
+    setDataLoading(true);
+
+    axios
+      .get(
+        `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${restaurantId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      )
+      .then((response) => {
+        setRestaurantData(response.data.restaurant);
+        setDataLoading(false);
+      })
+      .catch((error) => {
+        console.error(
+          "Erreur lors de la récupération des données du restaurant:",
+          error
+        );
+        setDataLoading(false);
+      });
+  }
+
+  function fetchRestaurantsList() {
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      router.push("/login");
+    } else {
+      try {
+        const decodedToken = jwtDecode(token);
+
+        if (!decodedToken.id) {
+          throw new Error("Invalid token: ownerId is missing");
+        }
+
+        setDataLoading(true);
+
+        axios
+          .get(`${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+            params: {
+              ownerId: decodedToken.id,
+            },
+          })
+          .then((response) => {
+            setRestaurantsList(response.data.restaurants);
+
+            const selectedRestaurantId =
+              decodedToken.restaurantId || response.data.restaurants[0]._id;
+
+            fetchRestaurantData(token, selectedRestaurantId);
+          })
+          .catch((error) => {
+            console.error(
+              "Erreur lors de la récupération des restaurants:",
+              error
+            );
+            localStorage.removeItem("token");
+            router.push("/login");
+          });
+      } catch (error) {
+        console.error("Invalid token:", error);
+        localStorage.removeItem("token");
+        router.push("/login");
+      }
+    }
+  }
+
+  function handleRestaurantSelect(restaurantId) {
+    const token = localStorage.getItem("token");
+    if (token) {
+      setDataLoading(true);
+      setCloseEditing(true);
+      axios
+        .post(
+          `${process.env.NEXT_PUBLIC_API_URL}/owner/change-restaurant`,
+          { restaurantId },
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        )
+        .then((response) => {
+          const { token: updatedToken } = response.data;
+          localStorage.setItem("token", updatedToken);
+          fetchRestaurantData(updatedToken, restaurantId);
+          setCloseEditing(false);
+        })
+        .catch((error) => {
+          console.error("Erreur lors de la sélection du restaurant:", error);
+          setDataLoading(false);
+          setCloseEditing(false);
+        });
+    }
+  }
+
+  function logout() {
+    localStorage.removeItem("token");
+    setRestaurantData(null);
+    setRestaurantsList([]);
+    router.replace("/");
+  }
+
+  useEffect(() => {
+    fetchRestaurantsList();
+  }, []);
+
+  return {
+    restaurantData,
+    setRestaurantData,
+    restaurantsList,
+    dataLoading,
+    setRestaurantsList,
+    handleRestaurantSelect,
+    fetchRestaurantsList,
+    fetchRestaurantData,
+    logout,
+    setCloseEditing,
+    closeEditing,
+  };
+}

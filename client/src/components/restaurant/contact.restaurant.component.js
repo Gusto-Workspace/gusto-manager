@@ -1,43 +1,179 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
 
 // I18N
 import { useTranslation } from "next-i18next";
 
 // SVG
 import { EditSvg } from "../_shared/_svgs/_index";
+import * as icons from "../_shared/_svgs/_index";
+
+// DATA
+import { contactData } from "@/_assets/data/contact.data";
 
 // AXIOS
 import axios from "axios";
 
-export default function ContactRestaurantComponent() {
-  const { t } = useTranslation("restaurant");
+// COMPONENTS
+import SimpleSkeletonComonent from "../_shared/skeleton/simple-skeleton.component";
 
+export default function ContactRestaurantComponent(props) {
+  const { t } = useTranslation("restaurant");
   const [editing, setEditing] = useState(false);
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+    reset,
+  } = useForm({
+    defaultValues: getDefaultValues(props.restaurantData),
+  });
+
+  useEffect(() => {
+    if (props.restaurantData) {
+      reset(getDefaultValues(props.restaurantData));
+    }
+  }, [props.restaurantData, reset]);
+
+  useEffect(() => {
+    if (props.closeEditing) {
+      setEditing(false);
+    }
+  }, [props.closeEditing]);
 
   function handleToggleEdit() {
     setEditing(!editing);
   }
 
-  async function handleSave() {
-    console.log("save");
-    setEditing(false);
+  function getDefaultValues(data) {
+    return {
+      address: data?.address || "",
+      email: data?.email || "",
+      phone: data?.phone || "",
+      facebook: data?.social_media?.facebook || "",
+      instagram: data?.social_media?.instagram || "",
+      youtube: data?.social_media?.youtube || "",
+      linkedIn: data?.social_media?.linkedIn || "",
+      twitter: data?.social_media?.twitter || "",
+    };
+  }
+
+  async function onSubmit(data) {
+    const token = localStorage.getItem("token");
+
+    axios
+      .put(
+        `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${props.restaurantId}/contact`,
+        {
+          address: data.address,
+          email: data.email,
+          phone: data.phone,
+          social_media: {
+            facebook: data.facebook,
+            instagram: data.instagram,
+            youtube: data.youtube,
+            linkedIn: data.linkedIn,
+            twitter: data.twitter,
+          },
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      )
+      .then((response) => {
+        props.handleUpdateData(response.data.restaurant);
+      })
+      .catch((error) => {
+        console.error(
+          "Erreur lors de la mise à jour des informations de contact :",
+          error
+        );
+      })
+      .finally(() => {
+        setEditing(false);
+      });
   }
 
   return (
-    <section className="bg-white p-6 rounded-lg drop-shadow-sm w-full h-fit">
+    <section className="bg-white p-6 pb-3 rounded-lg drop-shadow-sm w-full h-fit">
       <div className="flex justify-between">
         <h1 className="font-bold text-lg">{t("contact.title")}</h1>
-
-        <button onClick={editing ? handleSave : handleToggleEdit}>
-          {editing ? (
-            <span className="text-white bg-blue px-4 py-2 rounded-lg">
-              {t("save")}
-            </span>
-          ) : (
-            <EditSvg />
+        <div className="flex gap-2">
+          {editing && (
+            <button onClick={handleToggleEdit}>
+              <span className="text-white bg-red px-4 py-2 rounded-lg">
+                {t("cancel")}
+              </span>
+            </button>
           )}
-        </button>
+          <button onClick={editing ? handleSubmit(onSubmit) : handleToggleEdit}>
+            {editing ? (
+              <span className="text-white bg-blue px-4 py-2 rounded-lg">
+                {t("save")}
+              </span>
+            ) : (
+              <EditSvg />
+            )}
+          </button>
+        </div>
       </div>
+
+      <hr className="opacity-20 mt-6 mb-4" />
+
+      <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-2">
+        {contactData.map((item) => {
+          const IconComponent = icons[item.icon];
+          const isRequired = item.required;
+          const fieldValue =
+            props.restaurantData?.social_media?.[item.field] ||
+            props.restaurantData?.[item.field];
+
+          return (
+            <div
+              className="flex justify-between items-center gap-4 h-12"
+              key={item.field}
+            >
+              <div className="flex items-center gap-3 w-[150px]">
+                {IconComponent && (
+                  <IconComponent
+                    width={25}
+                    height={25}
+                    fillColor="#131E3660"
+                    strokeColor="#131E3660"
+                  />
+                )}
+                <h3 className="flex items-center font-semibold">
+                  {t(item.label)}
+                </h3>
+              </div>
+
+              {props.dataLoading ? (
+                <SimpleSkeletonComonent justify="justify-end" />
+              ) : editing ? (
+                <input
+                  type="text"
+                  {...register(item.field, {
+                    required: isRequired ? t("error.required") : false,
+                  })}
+                  className={`border p-1 rounded-lg w-1/2 ${
+                    errors[item.field] ? "border-red" : ""
+                  }`}
+                  placeholder={t("emptyInput")}
+                />
+              ) : (
+                <p className="text-right">
+                  {fieldValue || (
+                    <span className="text-sm italic">{t("notUsed")}</span>
+                  )}
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </form>
     </section>
   );
 }

@@ -1,7 +1,12 @@
 import { useForm } from "react-hook-form";
 import { useRouter } from "next/router";
-import { useState } from "react";
+import { useContext, useState } from "react";
+
+// AXIOS
 import axios from "axios";
+
+// CONTEXT
+import { GlobalContext } from "@/contexts/global.context";
 
 export default function FormLoginComponent() {
   const {
@@ -12,8 +17,9 @@ export default function FormLoginComponent() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [restaurants, setRestaurants] = useState([]);
   const [selectedRestaurant, setSelectedRestaurant] = useState("");
+
+  const { restaurantContext } = useContext(GlobalContext);
 
   async function onSubmit(data) {
     setLoading(true);
@@ -27,12 +33,11 @@ export default function FormLoginComponent() {
 
       const { token, owner } = response.data;
 
-      // Stocker le token dans le localStorage pour authentification future
       localStorage.setItem("token", token);
 
       // Vérifier le nombre de restaurants du propriétaire
       if (owner.restaurants.length > 1) {
-        setRestaurants(owner.restaurants); // Masquer les inputs de connexion et afficher la sélection de restaurants
+        restaurantContext.setRestaurantsList(owner.restaurants);
       } else {
         // Si le propriétaire n'a qu'un restaurant, regénérer le token avec l'ID du restaurant
         handleRestaurantSelect(owner.restaurants[0]._id, token);
@@ -57,10 +62,10 @@ export default function FormLoginComponent() {
 
       const newToken = response.data.token;
 
-      // Stocker le nouveau token contenant l'ID du restaurant
       localStorage.setItem("token", newToken);
 
-      // Rediriger l'utilisateur vers sa page d'accueil ou tableau de bord
+      await restaurantContext.fetchRestaurantData(newToken, restaurantId);
+
       router.push("/");
     } catch (error) {
       console.error("Erreur lors de la sélection du restaurant:", error);
@@ -72,7 +77,7 @@ export default function FormLoginComponent() {
     <section className="bg-white flex flex-col justify-center items-center gap-8 rounded-xl p-12 w-[500px]">
       <h1 className="text-4xl">Welcome</h1>
 
-      {restaurants.length === 0 ? (
+      {restaurantContext?.restaurantsList?.length === 0 ? (
         <form
           onSubmit={handleSubmit(onSubmit)}
           className="w-full flex flex-col items-center gap-4"
@@ -116,7 +121,7 @@ export default function FormLoginComponent() {
             onChange={(e) => setSelectedRestaurant(e.target.value)}
           >
             <option value="">Select a restaurant</option>
-            {restaurants.map((restaurant) => (
+            {restaurantContext?.restaurantsList?.map((restaurant) => (
               <option key={restaurant._id} value={restaurant._id}>
                 {restaurant.name}
               </option>
@@ -126,7 +131,12 @@ export default function FormLoginComponent() {
             className={`bg-blue text-white px-4 py-2 rounded mt-4 ${
               !selectedRestaurant ? "opacity-50 cursor-not-allowed" : ""
             }`}
-            onClick={() => handleRestaurantSelect(selectedRestaurant, localStorage.getItem("token"))}
+            onClick={() =>
+              handleRestaurantSelect(
+                selectedRestaurant,
+                localStorage.getItem("token")
+              )
+            }
             disabled={!selectedRestaurant}
           >
             Go to Restaurant

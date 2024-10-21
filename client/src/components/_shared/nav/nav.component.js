@@ -4,22 +4,20 @@ import Link from "next/link";
 // I18N
 import { useTranslation } from "next-i18next";
 
+// CONTEXT
+import { GlobalContext } from "@/contexts/global.context";
+
 // DATA
 import { navItemsData } from "@/_assets/data/_index.data";
 
 // ICONS
 import * as icons from "@/components/_shared/_svgs/_index";
+import { useContext } from "react";
 
 export default function NavComponent() {
   const { t } = useTranslation("admin");
-
+  const { restaurantContext } = useContext(GlobalContext);
   const router = useRouter();
-
-  function handleLogout() {
-    localStorage.removeItem("token");
-
-    router.push("/login");
-  }
 
   return (
     <nav
@@ -49,12 +47,13 @@ export default function NavComponent() {
               >
                 {IconComponent && (
                   <div
-                    className={`${router.pathname === item.href ? "bg-blue" : ""} p-[10px] rounded-full`}
+                    className={`${router.pathname === item.href ? "bg-blue" : ""} p-[8px] rounded-full`}
                   >
                     <IconComponent
-                      width={20}
-                      height={20}
-                      fillColor={`${router.pathname === item.href ? "white" : ""}`}
+                      width={23}
+                      height={23}
+                      fillColor={`${router.pathname === item.href ? "white" : "#131E3699"}`}
+                      strokeColor={`${router.pathname === item.href ? "white" : "#131E3699"}`}
                     />
                   </div>
                 )}
@@ -67,7 +66,7 @@ export default function NavComponent() {
 
       <button
         className="text-white bg-red py-2 rounded-lg"
-        onClick={handleLogout}
+        onClick={restaurantContext.logout}
       >
         Déconnexion
       </button>
