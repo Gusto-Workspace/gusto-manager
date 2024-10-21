@@ -1,3 +1,4 @@
+import { useContext } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
 
@@ -12,12 +13,18 @@ import { navItemsData } from "@/_assets/data/_index.data";
 
 // ICONS
 import * as icons from "@/components/_shared/_svgs/_index";
-import { useContext } from "react";
 
 export default function NavComponent() {
   const { t } = useTranslation("admin");
   const { restaurantContext } = useContext(GlobalContext);
   const router = useRouter();
+
+  function isActive(itemHref) {
+    if (itemHref === "/") {
+      return router.pathname === "/";
+    }
+    return router.pathname.startsWith(itemHref) && router.pathname !== "/";
+  }
 
   return (
     <nav
@@ -33,12 +40,13 @@ export default function NavComponent() {
       <ul className="flex-1 flex flex-col gap-8">
         {navItemsData.map((item) => {
           const IconComponent = icons[item.icon];
+          const active = isActive(item.href);
+
           return (
             <li
               key={item.href}
-              className={`h-12 flex items-center  pl-1 pr-6 ${
-                router.pathname === item.href &&
-                "text-blue bg-blue bg-opacity-30 rounded-full"
+              className={`h-12 flex items-center pl-1 pr-6 ${
+                active ? "text-blue bg-blue bg-opacity-30 rounded-full" : ""
               }`}
             >
               <Link
@@ -47,13 +55,13 @@ export default function NavComponent() {
               >
                 {IconComponent && (
                   <div
-                    className={`${router.pathname === item.href ? "bg-blue" : ""} p-[8px] rounded-full`}
+                    className={`${active ? "bg-blue" : ""} p-[8px] rounded-full`}
                   >
                     <IconComponent
                       width={23}
                       height={23}
-                      fillColor={`${router.pathname === item.href ? "white" : "#131E3699"}`}
-                      strokeColor={`${router.pathname === item.href ? "white" : "#131E3699"}`}
+                      fillColor={`${active ? "white" : "#131E3699"}`}
+                      strokeColor={`${active ? "white" : "#131E3699"}`}
                     />
                   </div>
                 )}

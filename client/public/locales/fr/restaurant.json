@@ -1,4 +1,5 @@
 {
+  "title": "Informations du Restaurant",
   "hours": {
     "title": "Horaires d'ouverture",
     "days": {
@@ -27,6 +28,6 @@
   },
   "save": "Enregistrer",
   "cancel": "Annuler",
-  "notUsed" : "Non utilisé",
-  "emptyInput" : "Laisser vide si non utilisé"
+  "notUsed": "Non utilisé",
+  "emptyInput": "Laisser vide si non utilisé"
 }

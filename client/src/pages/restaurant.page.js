@@ -4,6 +4,7 @@ import Head from "next/head";
 // I18N
 import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
+import { useTranslation } from "next-i18next";
 
 // CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
@@ -15,6 +16,7 @@ import HoursRestaurantComponent from "@/components/restaurant/hours.restaurant.c
 import ContactRestaurantComponent from "@/components/restaurant/contact.restaurant.component";
 
 export default function RestaurantPage(props) {
+  const { t } = useTranslation("");
   const { restaurantContext } = useContext(GlobalContext);
 
   function handleUpdateData(updatedRestaurant) {
@@ -52,6 +54,10 @@ export default function RestaurantPage(props) {
               setRestaurantData={restaurantContext.setRestaurantData}
               restaurantData={restaurantContext.restaurantData}
             />
+
+            <hr className="opacity-20" />
+
+            <h1 className="pl-2 text-2xl">{t("restaurant:title")}</h1>
 
             <div className="flex gap-6">
               <HoursRestaurantComponent

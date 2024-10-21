@@ -1,4 +1,5 @@
 {
+  "title": "Restaurant Informations",
   "hours": {
     "title": "Opening hours",
     "days": {
@@ -23,10 +24,10 @@
     "facebook": "Facebook",
     "twitter": "Twitter",
     "linkedIn": "LinkedIn",
-    "youtube" : "Youtube"
+    "youtube": "Youtube"
   },
   "save": "Save",
   "cancel": "Cancel",
-  "notUsed" : "Not used",
-   "emptyInput" : "Keep empty if not used"
+  "notUsed": "Not used",
+  "emptyInput": "Keep empty if not used"
 }

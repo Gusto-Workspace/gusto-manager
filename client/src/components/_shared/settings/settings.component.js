@@ -1,4 +1,5 @@
 import { Fragment, useState, useContext } from "react";
+import { useRouter } from "next/router";
 
 // SVG
 import { ChevronSvg, NotificationSvg } from "../_svgs/_index";
@@ -10,8 +11,12 @@ import { GlobalContext } from "@/contexts/global.context";
 import SimpleSkeletonComonent from "../skeleton/simple-skeleton.component";
 
 export default function SettingsComponent() {
+  const router = useRouter();
   const [showRestaurantList, setShowRestaurantList] = useState(false);
   const { restaurantContext } = useContext(GlobalContext);
+
+  const isSubRoute =
+    router.pathname !== "/" && router.pathname.split("/").length > 2;
 
   return (
     <section className="z-10 flex min-h-16 gap-12 justify-between items-center relative">
@@ -23,20 +28,24 @@ export default function SettingsComponent() {
       )}
 
       <div
-        className={`bg-white flex-1 h-full px-6 items-center flex justify-between drop-shadow-sm rounded-lg ${restaurantContext.restaurantsList?.length > 1 ? "cursor-pointer" : ""}`}
+        className={`bg-white flex-1 h-full px-6 items-center flex justify-between drop-shadow-sm rounded-lg ${restaurantContext.restaurantsList?.length > 1 && !isSubRoute ? "cursor-pointer" : ""}`}
         onClick={() => {
-          restaurantContext.restaurantsList?.length > 1
-            ? setShowRestaurantList(!showRestaurantList)
-            : null;
+          if (!isSubRoute && restaurantContext.restaurantsList?.length > 1) {
+            setShowRestaurantList(!showRestaurantList);
+          }
         }}
       >
         {restaurantContext.dataLoading ? (
           <SimpleSkeletonComonent />
         ) : (
-          <h1>Restaurant - {restaurantContext.restaurantData?.name}</h1>
+          <h1 className={`${isSubRoute && "opacity-40"}`}>
+            Restaurant - {restaurantContext.restaurantData?.name}
+          </h1>
         )}
 
-        {restaurantContext.restaurantsList?.length > 1 && <ChevronSvg />}
+        {!isSubRoute && restaurantContext.restaurantsList?.length > 1 && (
+          <ChevronSvg />
+        )}
 
         {showRestaurantList &&
           restaurantContext.restaurantsList?.length > 1 && (

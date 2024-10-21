@@ -4,21 +4,21 @@ body {
   font-family: "Nunito", sans-serif;
 }
 
-::-webkit-input-placeholder { /* WebKit, Blink, Edge */
-  font-size:12px;
+::-webkit-input-placeholder { 
+  font-size:14px;
   font-style: italic;
 }
-:-moz-placeholder { /* Mozilla Firefox 4 to 18 */
-  font-size:12px;
+:-moz-placeholder { 
+  font-size:14px;
   font-style: italic;
   opacity:  1;
 }
-::-moz-placeholder { /* Mozilla Firefox 19+ */
-  font-size:12px;
+::-moz-placeholder {
+  font-size:14px;
   font-style: italic;
 }
-:-ms-input-placeholder { /* Internet Explorer 10-11 */
-  font-size:12px;
+:-ms-input-placeholder { 
+  font-size:14px;
   font-style: italic;
 }
 
