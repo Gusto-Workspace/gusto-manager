@@ -1,3 +1,4 @@
+import { useContext } from "react";
 import { useRouter } from "next/router";
 
 // REACT HOOK FORM
@@ -6,8 +7,15 @@ import { useForm } from "react-hook-form";
 // I18N
 import { useTranslation } from "next-i18next";
 
+// CONTEXT
+import { GlobalContext } from "@/contexts/global.context";
+
+// AXIOS
+import axios from "axios";
+
 export default function AddDishesComponent() {
   const { t } = useTranslation("dishes");
+  const { restaurantContext } = useContext(GlobalContext);
   const router = useRouter();
   const { locale } = router;
 
@@ -17,10 +25,31 @@ export default function AddDishesComponent() {
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm();
+  } = useForm({
+    defaultValues: {
+      showOnSite: "yes",
+    },
+  });
 
-  function onSubmit(data) {
-    console.log("Form Data:", data);
+  async function onSubmit(data) {
+    const formattedData = {
+      ...data,
+      showOnWebsite: data.showOnSite === "yes",
+      price: parseFloat(data.price),
+    };
+
+    try {
+      const response = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes`,
+        formattedData
+      );
+
+      restaurantContext.setRestaurantData(response.data.restaurant);
+
+      router.push("/dishes");
+    } catch (error) {
+      console.error("Error adding dish:", error);
+    }
   }
 
   return (
@@ -34,73 +63,76 @@ export default function AddDishesComponent() {
         className="bg-white p-6 rounded-lg drop-shadow-sm flex flex-col gap-6"
       >
         <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block font-semibold">{t("menu_name")}</label>
+          <div className="flex flex-col gap-1">
+            <label className="block font-semibold">
+              {t("form.labels.name")}
+            </label>
+
             <input
               type="text"
-              placeholder="Product Name"
-              {...register("menuName", { required: true })}
+              placeholder="-"
+              {...register("name", { required: true })}
               className={`border p-2 rounded-lg w-full ${
-                errors.menuName ? "border-red" : ""
+                errors.name ? "border-red" : ""
               }`}
             />
           </div>
 
-          <div>
-            <label className="block font-semibold">{t("ingredients")}</label>
+          <div className="flex flex-col gap-1">
+            <label className="block font-semibold">
+              <span>{t("form.labels.description")}</span>
+
+              <span className="text-xs opacity-50 ml-2 italic">
+                {t("form.labels.optional")}
+              </span>
+            </label>
+
             <input
               type="text"
-              placeholder="Lorem Ipsum Text..."
-              {...register("ingredients", { required: true })}
-              className={`border p-2 rounded-lg w-full ${
-                errors.ingredients ? "border-red" : ""
-              }`}
+              placeholder="-"
+              {...register("description", { required: false })}
+              className={`border p-2 rounded-lg w-full `}
             />
           </div>
 
-          <div>
-            <label className="block font-semibold">{t("category")}</label>
+          <div className="flex flex-col gap-1">
+            <label className="block font-semibold">
+              {t("form.labels.category")}
+            </label>
+
             <select
               {...register("category", { required: true })}
               className={`border p-2 rounded-lg w-full ${
                 errors.category ? "border-red" : ""
               }`}
             >
-              <option value="">Sélectionner</option>
-              <option value="Category 1">Category 1</option>
-              <option value="Category 2">Category 2</option>
-              <option value="Category 3">Category 3</option>
+              <option value="">{t("form.labels.select")}</option>
+
+              <option value="appetizer">
+                {t("form.categories.appetizer")}
+              </option>
+
+              <option value="starter">{t("form.categories.starter")}</option>
+
+              <option value="mainCourse">
+                {t("form.categories.mainCourse")}
+              </option>
+
+              <option value="dessert">{t("form.categories.dessert")}</option>
             </select>
           </div>
 
-          <div>
-            <label className="block font-semibold">{t("status")}</label>
-            <div className="flex items-center gap-4">
-              <label className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  value="published"
-                  {...register("status", { required: true })}
-                />
-                {t("published")}
-              </label>
-              <label className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  value="draft"
-                  {...register("status", { required: true })}
-                />
-                {t("draft")}
-              </label>
-            </div>
-          </div>
+          <div className="flex flex-col gap-1">
+            <label className="block font-semibold">
+              {t("form.labels.price")}
+            </label>
 
-          <div>
-            <label className="block font-semibold">{t("price")}</label>
             <div className="flex items-center">
               <span
                 className={`px-3 py-2 rounded-l-lg  ${
-                  errors.price ? "border-t border-l border-b border-t-red border-l-red border-b-red" : "border-t border-l border-b"
+                  errors.price
+                    ? "border-t border-l border-b border-t-red border-l-red border-b-red"
+                    : "border-t border-l border-b"
                 }`}
               >
                 {currencySymbol}
@@ -108,7 +140,8 @@ export default function AddDishesComponent() {
 
               <input
                 type="number"
-                placeholder="270"
+                placeholder="-"
+                step="0.01"
                 {...register("price", { required: true })}
                 className={`border p-2 rounded-r-lg w-full ${
                   errors.price ? "border-red" : ""
@@ -116,40 +149,31 @@ export default function AddDishesComponent() {
               />
             </div>
           </div>
-
-          <div>
-            <label className="block font-semibold">{t("discount")}</label>
-            <div className="flex items-center">
-              <span className="px-3 py-2 rounded-l-lg border-t border-l border-b">
-                %
-              </span>
-              <input
-                type="number"
-                placeholder="50"
-                {...register("discount")}
-                className="border p-2 rounded-r-lg w-full"
-              />
-            </div>
-          </div>
         </div>
 
-        <div>
+        <div className="flex gap-6">
           <label className="block font-semibold">
-            {t("ingredients_description")}
+            {t("form.labels.status")}
           </label>
-          <textarea
-            placeholder="There are many variations of passages of Lorem Ipsum available..."
-            {...register("description")}
-            className="border p-2 rounded-lg w-full"
-            rows="5"
-          />
+
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2">
+              <input type="radio" value="yes" {...register("showOnSite")} />
+              {t("buttons.yes")}
+            </label>
+
+            <label className="flex items-center gap-2">
+              <input type="radio" value="no" {...register("showOnSite")} />
+              {t("buttons.no")}
+            </label>
+          </div>
         </div>
 
         <button
           type="submit"
           className="bg-blue w-fit text-white px-4 py-2 rounded-lg hover:bg-blue-600"
         >
-          {t("save")}
+          {t("buttons.save")}
         </button>
       </form>
     </section>

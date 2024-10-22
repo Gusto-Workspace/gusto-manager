@@ -120,7 +120,7 @@ export default function RestaurantContext() {
     localStorage.removeItem("token");
     setRestaurantData(null);
     setRestaurantsList([]);
-    router.replace("/");
+    router.push("/login");
   }
 
   useEffect(() => {

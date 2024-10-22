@@ -12,8 +12,8 @@ module.exports = {
       darkBlue: "#131E36",
     },
     screens: {
-      ultraWild: "1400px",
-      desktop: "1024px",
+      ultraWild: "1472px",
+      desktop: "1224px",
       tablet: "768px",
     },
     extend: {},

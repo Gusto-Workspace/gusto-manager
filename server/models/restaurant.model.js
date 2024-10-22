@@ -7,8 +7,8 @@ const openingHourSchema = new mongoose.Schema(
     isClosed: { type: Boolean, default: false },
     hours: [
       {
-        open: { type: String, required: true },
-        close: { type: String, required: true },
+        open: { type: String },
+        close: { type: String },
       },
     ],
   },
@@ -19,9 +19,18 @@ const openingHourSchema = new mongoose.Schema(
 const dishSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
-    description: { type: String, required: true },
+    description: { type: String },
     price: { type: Number, required: true },
-    category: { type: String, required: true },
+    showOnWebsite: { type: Boolean, default: true },
+  },
+  { _id: false }
+);
+
+// Sous-schéma pour les catégories de plats
+const dishCategorySchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true },
+    dishes: { type: [dishSchema], default: [] },
   },
   { _id: false }
 );
@@ -76,7 +85,7 @@ const restaurantSchema = new mongoose.Schema({
     required: true,
   },
   opening_hours: { type: [openingHourSchema], default: [] },
-  dishes: { type: [dishSchema], default: [] },
+  dish_categories: { type: [dishCategorySchema], default: [] },
   drinks: { type: [drinkSchema], default: [] },
   news: { type: [newsSchema], default: [] },
   menus: [{ type: mongoose.Schema.Types.ObjectId, ref: "Menu" }],

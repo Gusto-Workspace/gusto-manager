@@ -3,7 +3,30 @@
     "main": "Individual Dishes",
     "add": "Individual Dishes - Add"
   },
+  "form": {
+    "labels": {
+      "name": "Name of the dish",
+      "description": "Short description",
+      "optional": "(optional)",
+      "category": "Category",
+      "price": "Price",
+      "status": "Show on site",
+      "select": "Select",
+      "categoryName": "Category Name"
+    },
+    "categories": {
+      "appetizer": "Appetizer",
+      "starter": "Starter",
+      "mainCourse": "Main course",
+      "dessert": "Dessert"
+    }
+  },
   "buttons": {
-    "add": "Add"
+    "add": "Add",
+    "addCategory": "Add a Category",
+    "save": "Save",
+    "yes": "Yes",
+    "no": "No",
+    "cancel": "Annuler"
   }
 }

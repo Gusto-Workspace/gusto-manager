@@ -19,11 +19,11 @@ export default function SettingsComponent() {
     router.pathname !== "/" && router.pathname.split("/").length > 2;
 
   return (
-    <section className="z-10 flex min-h-16 gap-12 justify-between items-center relative">
+    <section className="z-50 flex min-h-16 gap-12 justify-between items-center relative">
       {showRestaurantList && (
         <div
           onClick={() => setShowRestaurantList(false)}
-          className="fixed inset-0 bg-black bg-opacity-15"
+          className="fixed inset-0 bg-black bg-opacity-20"
         />
       )}
 
