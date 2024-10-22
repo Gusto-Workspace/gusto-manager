@@ -1,15 +1,27 @@
 import { useContext, useState } from "react";
 import { useRouter } from "next/router";
+
+// REACT HOOK FORM
 import { useForm } from "react-hook-form";
+
+// AXIOS
 import axios from "axios";
+
+// CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
+
+// I18N
 import { useTranslation } from "next-i18next";
+
+// SVG
+import { DeleteSvg, DishSvg, EditSvg } from "../_shared/_svgs/_index";
 
 export default function CategoriesListDishesComponent() {
   const { t } = useTranslation("dishes");
   const router = useRouter();
   const { restaurantContext } = useContext(GlobalContext);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [hoveredCategoryId, setHoveredCategoryId] = useState(null);
 
   const {
     register,
@@ -43,7 +55,10 @@ export default function CategoriesListDishesComponent() {
       <hr className="opacity-20" />
 
       <div className="flex justify-between">
-        <h1 className="pl-2 text-2xl">{t("titles.main")}</h1>
+        <div className="pl-2 flex gap-2 items-center">
+          <DishSvg width={30} height={30} fillColor="#131E3690" />
+          <h1 className="pl-2 text-2xl">{t("titles.main")}</h1>
+        </div>
 
         <button
           onClick={() => setIsModalOpen(true)}
@@ -58,15 +73,49 @@ export default function CategoriesListDishesComponent() {
           (category, i) => (
             <div
               key={i}
-              className="bg-white p-6 rounded-lg drop-shadow-sm cursor-pointer"
+              className="bg-white pl-6 pr-2 h-[75px] rounded-lg drop-shadow-sm cursor-pointer flex justify-between items-center"
               onClick={() => handleCategoryClick(category)}
+              onMouseEnter={() => setHoveredCategoryId(category._id)}
+              onMouseLeave={() => setHoveredCategoryId(null)}
             >
-              <h2>{category.name}</h2>
+              <h2 className="text-lg">{category.name}</h2>
+              {hoveredCategoryId === category._id && (
+                <div className="flex gap-2">
+                  <button
+                    className="hover:bg-[#4583FF] bg-[#4583FF99] p-[6px] rounded-full drop-shadow-xl transition-colors duration-300"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      console.log("edit");
+                    }}
+                  >
+                    <EditSvg
+                      width={20}
+                      height={20}
+                      strokeColor="white"
+                      fillColor="white"
+                    />
+                  </button>
+
+                  <button
+                    className="hover:bg-[#FF7664] bg-[#FF766499] p-[6px] rounded-full drop-shadow-xl transition-colors duration-300"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      console.log("delete");
+                    }}
+                  >
+                    <DeleteSvg
+                      width={20}
+                      height={20}
+                      strokeColor="white"
+                      fillColor="white"
+                    />
+                  </button>
+                </div>
+              )}
             </div>
           )
         )}
       </div>
-
       {isModalOpen && (
         <div className="fixed inset-0 flex items-center justify-center z-[100]">
           <div

@@ -11,7 +11,11 @@
       "price": "Price",
       "status": "Show on site",
       "select": "Select",
-      "categoryName": "Category Name"
+      "categoryName": "Category Name",
+      "vegan": "Vegan",
+      "glutenFree": "Gluten Free",
+      "vegetarian": "Vegetarian",
+      "bio": "Organic"
     }
   },
   "buttons": {

@@ -1,8 +1,14 @@
 import { useRouter } from "next/router";
 import { useTranslation } from "next-i18next";
+
+// SVG
 import {
   BioSvg,
+  DeleteSvg,
+  DishSvg,
+  EditSvg,
   GlutenFreeSvg,
+  NoVisibleSvg,
   VeganSvg,
   VegetarianSvg,
 } from "../_shared/_svgs/_index";
@@ -18,16 +24,18 @@ export default function ListDishesComponent(props) {
     router.push(`/dishes/${props.category._id}/add`);
   }
 
-  console.log(props.category);
-
   return (
     <section className="flex flex-col gap-6">
       <hr className="opacity-20" />
 
       <div className="flex justify-between">
-        <h1 className="pl-2 text-2xl">
-          {t("titles.main")} - {props.category.name}
-        </h1>
+        <div className="pl-2 flex gap-2 items-center">
+          <DishSvg width={30} height={30} fillColor="#131E3690" />
+
+          <h1 className="pl-2 text-2xl">
+            {t("titles.main")} / {props.category.name}
+          </h1>
+        </div>
 
         <button
           onClick={handleAddClick}
@@ -45,52 +53,90 @@ export default function ListDishesComponent(props) {
               className="bg-white p-6 rounded-lg drop-shadow-sm flex justify-between items-center"
             >
               <div>
-                <h3>{dish.name}</h3>
-                <p>{dish.description}</p>
+                <h3 className="text-lg">
+                  {dish.name.charAt(0).toUpperCase() + dish.name.slice(1)}
+                </h3>
+
+                <p className="text-sm opacity-50">
+                  {dish.description.charAt(0).toUpperCase() +
+                    dish.description.slice(1)}
+                </p>
               </div>
 
-              <div className="flex gap-2 items-center">
-                {dish.vegan && (
-                  <VeganSvg
-                    fillColor="white"
-                    width={18}
-                    height={18}
-                    className="bg-red p-2 w-8 h-8 rounded-full opacity-70"
-                  />
-                )}
-                {dish.vegetarian && (
-                  <VegetarianSvg
-                    fillColor="white"
-                    width={18}
-                    height={18}
-                    className="bg-violet p-2 w-8 h-8 rounded-full opacity-70"
-                  />
-                )}
-                {dish.bio && (
-                  <BioSvg
-                    fillColor="white"
-                    width={18}
-                    height={18}
-                    className="bg-darkBlue p-2 w-8 h-8 rounded-full opacity-70"
-                  />
-                )}
-                {dish.glutenFree && (
-                  <GlutenFreeSvg
-                    fillColor="white"
-                    width={18}
-                    height={18}
-                    className="bg-blue p-2 w-8 h-8 rounded-full opacity-70"
-                  />
-                )}
-
-                <p>
+              <div className="flex gap-6 items-center">
+                <div className="flex gap-2">
+                  {dish.vegan && (
+                    <VeganSvg
+                      fillColor="white"
+                      width={18}
+                      height={18}
+                      className="bg-red p-2 w-8 h-8 rounded-full opacity-70"
+                    />
+                  )}
+                  {dish.vegetarian && (
+                    <VegetarianSvg
+                      fillColor="white"
+                      width={18}
+                      height={18}
+                      className="bg-violet p-2 w-8 h-8 rounded-full opacity-70"
+                    />
+                  )}
+                  {dish.bio && (
+                    <BioSvg
+                      fillColor="white"
+                      width={18}
+                      height={18}
+                      className="bg-darkBlue p-2 w-8 h-8 rounded-full opacity-70"
+                    />
+                  )}
+                  {dish.glutenFree && (
+                    <GlutenFreeSvg
+                      fillColor="white"
+                      width={18}
+                      height={18}
+                      className="bg-blue p-2 w-8 h-8 rounded-full opacity-70"
+                    />
+                  )}
+                </div>
+                <p className="text-lg">
                   {dish.price.toFixed(2)} {currencySymbol}
                 </p>
-                <p>
-                  {dish.showOnWebsite
-                    ? t("form.labels.visible")
-                    : t("form.labels.masked")}
-                </p>
+
+                <NoVisibleSvg
+                  width={22}
+                  height={22}
+                  className={`${dish.showOnWebsite ? "opacity-10" : ""}`}
+                />
+
+                <div className="flex gap-2">
+                  <button
+                    className="hover:bg-[#4583FF] bg-[#4583FF99] p-[6px] rounded-full drop-shadow-xl transition-colors duration-300"
+                    onClick={(e) => {
+                      console.log("edit");
+                    }}
+                  >
+                    <EditSvg
+                      width={20}
+                      height={20}
+                      strokeColor="white"
+                      fillColor="white"
+                    />
+                  </button>
+
+                  <button
+                    className="hover:bg-[#FF7664] bg-[#FF766499] p-[6px] rounded-full drop-shadow-xl transition-colors duration-300"
+                    onClick={(e) => {
+                      console.log("delete");
+                    }}
+                  >
+                    <DeleteSvg
+                      width={20}
+                      height={20}
+                      strokeColor="white"
+                      fillColor="white"
+                    />
+                  </button>
+                </div>
               </div>
             </div>
           );

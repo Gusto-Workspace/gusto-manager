@@ -19,3 +19,5 @@ export { VeganSvg } from "./vegan.svg";
 export { VegetarianSvg } from "./vegetarian.svg";
 export { GlutenFreeSvg } from "./gluten-free.svg";
 export { BioSvg } from "./bio.svg";
+export { NoVisibleSvg } from "./no-visible.svg";
+export { DeleteSvg } from "./delete.svg";

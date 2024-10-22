@@ -13,6 +13,15 @@ import { GlobalContext } from "@/contexts/global.context";
 // AXIOS
 import axios from "axios";
 
+// SVG
+import {
+  BioSvg,
+  DishSvg,
+  GlutenFreeSvg,
+  VeganSvg,
+  VegetarianSvg,
+} from "../_shared/_svgs/_index";
+
 export default function AddDishesComponent(props) {
   const { t } = useTranslation("dishes");
   const { restaurantContext } = useContext(GlobalContext);
@@ -57,10 +66,13 @@ export default function AddDishesComponent(props) {
     <section className="flex flex-col gap-6">
       <hr className="opacity-20" />
 
-      <h1 className="pl-2 text-2xl flex gap-2">
-        <span>{t("titles.main")}</span> | {props?.category?.name} |
-        <span>{t("buttons.add")}</span>
-      </h1>
+      <div className="flex pl-2 gap-2 py-1 items-center">
+        <DishSvg width={30} height={30} fillColor="#131E3690" />
+
+        <h1 className="pl-2 text-2xl flex  items-center">
+          {t("titles.main")} / {props?.category?.name} / {t("buttons.add")}
+        </h1>
+      </div>
 
       <form
         onSubmit={handleSubmit(onSubmit)}
@@ -128,25 +140,49 @@ export default function AddDishesComponent(props) {
           </div>
         </div>
 
-        <div className="flex gap-4 flex-wrap">
+        <div className="flex gap-12 flex-wrap">
           <label className="flex items-center gap-2">
             <input type="checkbox" {...register("vegan")} />
             {t("form.labels.vegan")}
+            <VeganSvg
+              fillColor="white"
+              width={18}
+              height={18}
+              className="bg-red p-2 w-8 h-8 rounded-full opacity-70"
+            />
           </label>
 
           <label className="flex items-center gap-2">
             <input type="checkbox" {...register("vegetarian")} />
             {t("form.labels.vegetarian")}
+            <VegetarianSvg
+              fillColor="white"
+              width={18}
+              height={18}
+              className="bg-violet p-2 w-8 h-8 rounded-full opacity-70"
+            />
           </label>
 
           <label className="flex items-center gap-2">
             <input type="checkbox" {...register("bio")} />
             {t("form.labels.bio")}
+            <BioSvg
+              fillColor="white"
+              width={18}
+              height={18}
+              className="bg-darkBlue p-2 w-8 h-8 rounded-full opacity-70"
+            />
           </label>
 
           <label className="flex items-center gap-2">
             <input type="checkbox" {...register("glutenFree")} />
             {t("form.labels.glutenFree")}
+            <GlutenFreeSvg
+              fillColor="white"
+              width={18}
+              height={18}
+              className="bg-blue p-2 w-8 h-8 rounded-full opacity-70"
+            />
           </label>
         </div>
 

@@ -14,6 +14,7 @@ import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import HoursRestaurantComponent from "@/components/restaurant/hours.restaurant.component";
 import ContactRestaurantComponent from "@/components/restaurant/contact.restaurant.component";
+import { RestaurantSvg } from "@/components/_shared/_svgs/restaurant.svg";
 
 export default function RestaurantPage(props) {
   const { t } = useTranslation("");
@@ -56,8 +57,10 @@ export default function RestaurantPage(props) {
             />
 
             <hr className="opacity-20" />
-
-            <h1 className="pl-2 text-2xl">{t("restaurant:title")}</h1>
+            <div className="pl-2 flex gap-2 items-center">
+              <RestaurantSvg width={30} height={30} fillColor="#131E3690" />
+              <h1 className="pl-2 py-1 text-2xl">{t("restaurant:title")}</h1>
+            </div>
 
             <div className="flex gap-6">
               <HoursRestaurantComponent
