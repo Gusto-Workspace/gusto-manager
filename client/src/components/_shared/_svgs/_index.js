@@ -15,3 +15,7 @@ export { DishSvg } from "./dish.svg";
 export { DrinkSvg } from "./drink.svg";
 export { NewsSvg } from "./news.svg";
 export { GiftSvg } from "./gift.svg";
+export { VeganSvg } from "./vegan.svg";
+export { VegetarianSvg } from "./vegetarian.svg";
+export { GlutenFreeSvg } from "./gluten-free.svg";
+export { BioSvg } from "./bio.svg";

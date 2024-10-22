@@ -1,7 +1,6 @@
 {
   "titles": {
-    "main": "La Carte",
-    "add": "La Carte - Ajouter"
+    "main": "La Carte"
   },
   "form": {
     "labels": {
@@ -13,12 +12,6 @@
       "status": "Afficher sur le site",
       "select": "Sélectionner",
       "categoryName": "Nom de la catégorie"
-    },
-    "categories": {
-      "appetizer": "Amuse-bouche",
-      "starter": "Entrée",
-      "mainCourse": "Plat principal",
-      "dessert": "Dessert"
     }
   },
   "buttons": {

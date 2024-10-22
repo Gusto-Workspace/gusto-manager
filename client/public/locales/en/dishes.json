@@ -1,7 +1,6 @@
 {
   "titles": {
-    "main": "Individual Dishes",
-    "add": "Individual Dishes - Add"
+    "main": "Individual Dishes"
   },
   "form": {
     "labels": {
@@ -13,12 +12,6 @@
       "status": "Show on site",
       "select": "Select",
       "categoryName": "Category Name"
-    },
-    "categories": {
-      "appetizer": "Appetizer",
-      "starter": "Starter",
-      "mainCourse": "Main course",
-      "dessert": "Dessert"
     }
   },
   "buttons": {

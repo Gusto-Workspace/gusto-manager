@@ -22,18 +22,19 @@ const dishSchema = new mongoose.Schema(
     description: { type: String },
     price: { type: Number, required: true },
     showOnWebsite: { type: Boolean, default: true },
+    vegan: { type: Boolean, default: false },
+    vegetarian: { type: Boolean, default: false },
+    bio: { type: Boolean, default: false },
+    glutenFree: { type: Boolean, default: false },
   },
   { _id: false }
 );
 
 // Sous-schéma pour les catégories de plats
-const dishCategorySchema = new mongoose.Schema(
-  {
-    name: { type: String, required: true },
-    dishes: { type: [dishSchema], default: [] },
-  },
-  { _id: false }
-);
+const dishCategorySchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  dishes: { type: [dishSchema], default: [] },
+});
 
 // Sous-schéma pour les boissons
 const drinkSchema = new mongoose.Schema(

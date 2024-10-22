@@ -13,7 +13,7 @@ import { GlobalContext } from "@/contexts/global.context";
 // AXIOS
 import axios from "axios";
 
-export default function AddDishesComponent() {
+export default function AddDishesComponent(props) {
   const { t } = useTranslation("dishes");
   const { restaurantContext } = useContext(GlobalContext);
   const router = useRouter();
@@ -36,6 +36,7 @@ export default function AddDishesComponent() {
       ...data,
       showOnWebsite: data.showOnSite === "yes",
       price: parseFloat(data.price),
+      categoryId: props.category._id,
     };
 
     try {
@@ -46,7 +47,7 @@ export default function AddDishesComponent() {
 
       restaurantContext.setRestaurantData(response.data.restaurant);
 
-      router.push("/dishes");
+      router.push(`/dishes/${props.category._id}`);
     } catch (error) {
       console.error("Error adding dish:", error);
     }
@@ -56,7 +57,10 @@ export default function AddDishesComponent() {
     <section className="flex flex-col gap-6">
       <hr className="opacity-20" />
 
-      <h1 className="pl-2 text-2xl">{t("titles.add")}</h1>
+      <h1 className="pl-2 text-2xl flex gap-2">
+        <span>{t("titles.main")}</span> | {props?.category?.name} |
+        <span>{t("buttons.add")}</span>
+      </h1>
 
       <form
         onSubmit={handleSubmit(onSubmit)}
@@ -97,33 +101,6 @@ export default function AddDishesComponent() {
 
           <div className="flex flex-col gap-1">
             <label className="block font-semibold">
-              {t("form.labels.category")}
-            </label>
-
-            <select
-              {...register("category", { required: true })}
-              className={`border p-2 rounded-lg w-full ${
-                errors.category ? "border-red" : ""
-              }`}
-            >
-              <option value="">{t("form.labels.select")}</option>
-
-              <option value="appetizer">
-                {t("form.categories.appetizer")}
-              </option>
-
-              <option value="starter">{t("form.categories.starter")}</option>
-
-              <option value="mainCourse">
-                {t("form.categories.mainCourse")}
-              </option>
-
-              <option value="dessert">{t("form.categories.dessert")}</option>
-            </select>
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="block font-semibold">
               {t("form.labels.price")}
             </label>
 
@@ -149,6 +126,28 @@ export default function AddDishesComponent() {
               />
             </div>
           </div>
+        </div>
+
+        <div className="flex gap-4 flex-wrap">
+          <label className="flex items-center gap-2">
+            <input type="checkbox" {...register("vegan")} />
+            {t("form.labels.vegan")}
+          </label>
+
+          <label className="flex items-center gap-2">
+            <input type="checkbox" {...register("vegetarian")} />
+            {t("form.labels.vegetarian")}
+          </label>
+
+          <label className="flex items-center gap-2">
+            <input type="checkbox" {...register("bio")} />
+            {t("form.labels.bio")}
+          </label>
+
+          <label className="flex items-center gap-2">
+            <input type="checkbox" {...register("glutenFree")} />
+            {t("form.labels.glutenFree")}
+          </label>
         </div>
 
         <div className="flex gap-6">

@@ -1,16 +1,8 @@
 import { useContext, useState } from "react";
 import { useRouter } from "next/router";
-
-// REACT HOOK FORM
 import { useForm } from "react-hook-form";
-
-// AXIOS
 import axios from "axios";
-
-// CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
-
-// I18N
 import { useTranslation } from "next-i18next";
 
 export default function CategoriesListDishesComponent() {
@@ -42,6 +34,10 @@ export default function CategoriesListDishesComponent() {
       });
   }
 
+  function handleCategoryClick(category) {
+    router.push(`/dishes/${category._id}`);
+  }
+
   return (
     <section className="flex flex-col gap-6">
       <hr className="opacity-20" />
@@ -63,7 +59,7 @@ export default function CategoriesListDishesComponent() {
             <div
               key={i}
               className="bg-white p-6 rounded-lg drop-shadow-sm cursor-pointer"
-              onClick={() => console.log(category)}
+              onClick={() => handleCategoryClick(category)}
             >
               <h2>{category.name}</h2>
             </div>
@@ -73,12 +69,10 @@ export default function CategoriesListDishesComponent() {
 
       {isModalOpen && (
         <div className="fixed inset-0 flex items-center justify-center z-[100]">
-          {isModalOpen && (
-            <div
-              onClick={() => setIsModalOpen(false)}
-              className="fixed inset-0 bg-black bg-opacity-20"
-            />
-          )}
+          <div
+            onClick={() => setIsModalOpen(false)}
+            className="fixed inset-0 bg-black bg-opacity-20"
+          />
 
           <div className="bg-white p-6 rounded-lg shadow-lg w-[400px] z-10">
             <h2 className="text-xl font-semibold mb-6 text-center">
