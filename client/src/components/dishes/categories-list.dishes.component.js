@@ -82,7 +82,7 @@ export default function CategoriesListDishesComponent() {
               {hoveredCategoryId === category._id && (
                 <div className="flex gap-2">
                   <button
-                    className="hover:bg-[#4583FF] bg-[#4583FF99] p-[6px] rounded-full drop-shadow-xl transition-colors duration-300"
+                    className="hover:bg-[#4583FF] bg-[#4583FF99] p-[6px] rounded-full transition-colors duration-300"
                     onClick={(e) => {
                       e.stopPropagation();
                       console.log("edit");
@@ -97,7 +97,7 @@ export default function CategoriesListDishesComponent() {
                   </button>
 
                   <button
-                    className="hover:bg-[#FF7664] bg-[#FF766499] p-[6px] rounded-full drop-shadow-xl transition-colors duration-300"
+                    className="hover:bg-[#FF7664] bg-[#FF766499] p-[6px] rounded-full transition-colors duration-300"
                     onClick={(e) => {
                       e.stopPropagation();
                       console.log("delete");
