@@ -1,0 +1,26 @@
+{
+  "titles": {
+    "main": "News"
+  },
+  "form": {
+    "labels": {
+      "title": "Aritcle's title",
+      "description": "Article's Content",
+      "image": "Image",
+      "optional": "(optional)",
+      "choose": "Choose an image",
+      "selected": "Image selected",
+      "size": "Maximum size"
+    }
+  },
+  "buttons": {
+    "add": "Add",
+    "edit": "Edit",
+    "confirmDelete": "Confirm deletion ?",
+    "save": "Save",
+    "confirm": "Confirm",
+    "yes": "Yes",
+    "no": "No",
+    "cancel": "Annuler"
+  }
+}

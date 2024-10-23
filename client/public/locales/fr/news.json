@@ -1,0 +1,26 @@
+{
+  "titles": {
+    "main": "Les Actualités"
+  },
+  "form": {
+    "labels": {
+      "title": "Titre de l'article",
+      "description": "Contenu de l'article",
+      "image": "Image",
+      "optional": "(optionnel)",
+      "choose": "Sélectionner une image",
+      "selected": "Image Sélectionnée",
+      "size": "Taille maximum"
+    }
+  },
+  "buttons": {
+    "add": "Ajouter",
+    "edit": "Modifier",
+    "confirmDelete": "Confirmer la suppression ?",
+    "save": "Enregister",
+    "confirm": "Confirmer",
+    "yes": "Oui",
+    "no": "Non",
+    "cancel": "Annuler"
+  }
+}

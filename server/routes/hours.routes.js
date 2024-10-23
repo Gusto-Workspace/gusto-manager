@@ -22,7 +22,7 @@ router.put("/owner/restaurants/:id/hours", async (req, res) => {
       restaurantId,
       { opening_hours: formattedOpeningHours },
       { new: true }
-    );
+    ).populate("owner_id", "firstname");
 
     if (!restaurant) {
       return res.status(404).json({ message: "Restaurant not found" });

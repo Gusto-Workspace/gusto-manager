@@ -11,6 +11,7 @@ import { GlobalContext } from "@/contexts/global.context";
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
+import ListNewsComponent from "@/components/news/list.news.component";
 
 export default function NewsPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
@@ -62,6 +63,8 @@ export default function NewsPage(props) {
               setRestaurantData={restaurantContext.setRestaurantData}
               restaurantData={restaurantContext.restaurantData}
             />
+            
+            <ListNewsComponent />
           </div>
         </div>
       </div>

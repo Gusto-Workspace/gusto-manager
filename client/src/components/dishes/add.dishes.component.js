@@ -22,7 +22,7 @@ import {
   VegetarianSvg,
 } from "../_shared/_svgs/_index";
 
-export default function AddDishesComponent({ category, dish }) {
+export default function AddDishesComponent(props) {
   const { t } = useTranslation("dishes");
   const { restaurantContext } = useContext(GlobalContext);
   const router = useRouter();
@@ -45,16 +45,16 @@ export default function AddDishesComponent({ category, dish }) {
   });
 
   useEffect(() => {
-    if (dish) {
+    if (props.dish) {
       reset({
-        name: dish.name,
-        description: dish.description,
-        price: dish.price,
-        vegan: dish.vegan,
-        vegetarian: dish.vegetarian,
-        bio: dish.bio,
-        glutenFree: dish.glutenFree,
-        showOnSite: dish.showOnWebsite ? "yes" : "no",
+        name: props.dish.name,
+        description: props.dish.description,
+        price: props.dish.price,
+        vegan: props.dish.vegan,
+        vegetarian: props.dish.vegetarian,
+        bio: props.dish.bio,
+        glutenFree: props.dish.glutenFree,
+        showOnSite: props.dish.showOnWebsite ? "yes" : "no",
       });
     } else {
       reset({
@@ -65,28 +65,28 @@ export default function AddDishesComponent({ category, dish }) {
         glutenFree: false,
       });
     }
-  }, [dish, reset]);
+  }, [props.dish, reset]);
 
   async function onSubmit(data) {
     const formattedData = {
       ...data,
       showOnWebsite: data.showOnSite === "yes",
       price: parseFloat(data.price),
-      categoryId: category._id,
+      categoryId: props.category._id,
     };
 
     try {
-      const apiUrl = dish
-        ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes/${dish._id}`
+      const apiUrl = props.dish
+        ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes/${props.dish._id}`
         : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes`;
 
-      const method = dish ? "put" : "post";
+      const method = props.dish ? "put" : "post";
 
       const response = await axios[method](apiUrl, formattedData);
 
       restaurantContext.setRestaurantData(response.data.restaurant);
 
-      router.push(`/dishes/${category._id}`);
+      router.push(`/dishes/${props.category._id}`);
     } catch (error) {
       console.error("Error adding or editing dish:", error);
     }
@@ -100,8 +100,8 @@ export default function AddDishesComponent({ category, dish }) {
         <DishSvg width={30} height={30} fillColor="#131E3690" />
 
         <h1 className="pl-2 text-2xl flex items-center">
-          {t("titles.main")} / {category?.name} /{" "}
-          {dish ? t("buttons.edit") : t("buttons.add")}
+          {t("titles.main")} / {props.category?.name} /{" "}
+          {props.dish ? t("buttons.edit") : t("buttons.add")}
         </h1>
       </div>
 

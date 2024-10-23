@@ -22,3 +22,4 @@ export { BioSvg } from "./bio.svg";
 export { NoVisibleSvg } from "./no-visible.svg";
 export { DeleteSvg } from "./delete.svg";
 export { RightArrowSvg } from "./right-arrow.svg";
+export { UploadSvg } from "./upload.svg";
