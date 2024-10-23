@@ -1,4 +1,4 @@
-import { useContext } from "react";
+import { useContext, useEffect } from "react";
 import { useRouter } from "next/router";
 
 // REACT HOOK FORM
@@ -7,11 +7,11 @@ import { useForm } from "react-hook-form";
 // I18N
 import { useTranslation } from "next-i18next";
 
-// CONTEXT
-import { GlobalContext } from "@/contexts/global.context";
-
 // AXIOS
 import axios from "axios";
+
+// CONTEXT
+import { GlobalContext } from "@/contexts/global.context";
 
 // SVG
 import {
@@ -22,43 +22,73 @@ import {
   VegetarianSvg,
 } from "../_shared/_svgs/_index";
 
-export default function AddDishesComponent(props) {
+export default function AddDishesComponent({ category, dish }) {
   const { t } = useTranslation("dishes");
   const { restaurantContext } = useContext(GlobalContext);
   const router = useRouter();
   const { locale } = router;
-
   const currencySymbol = locale === "fr" ? "€" : "$";
 
   const {
     register,
     handleSubmit,
+    reset,
     formState: { errors },
   } = useForm({
     defaultValues: {
       showOnSite: "yes",
+      vegan: false,
+      vegetarian: false,
+      bio: false,
+      glutenFree: false,
     },
   });
+
+  useEffect(() => {
+    if (dish) {
+      reset({
+        name: dish.name,
+        description: dish.description,
+        price: dish.price,
+        vegan: dish.vegan,
+        vegetarian: dish.vegetarian,
+        bio: dish.bio,
+        glutenFree: dish.glutenFree,
+        showOnSite: dish.showOnWebsite ? "yes" : "no",
+      });
+    } else {
+      reset({
+        showOnSite: "yes",
+        vegan: false,
+        vegetarian: false,
+        bio: false,
+        glutenFree: false,
+      });
+    }
+  }, [dish, reset]);
 
   async function onSubmit(data) {
     const formattedData = {
       ...data,
       showOnWebsite: data.showOnSite === "yes",
       price: parseFloat(data.price),
-      categoryId: props.category._id,
+      categoryId: category._id,
     };
 
     try {
-      const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes`,
-        formattedData
-      );
+      const apiUrl = dish
+        ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes/${dish._id}`
+        : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes`;
+
+      const method = dish ? "put" : "post";
+
+      const response = await axios[method](apiUrl, formattedData);
 
       restaurantContext.setRestaurantData(response.data.restaurant);
 
-      router.push(`/dishes/${props.category._id}`);
+      router.push(`/dishes/${category._id}`);
     } catch (error) {
-      console.error("Error adding dish:", error);
+      console.error("Error adding or editing dish:", error);
     }
   }
 
@@ -69,8 +99,9 @@ export default function AddDishesComponent(props) {
       <div className="flex pl-2 gap-2 py-1 items-center">
         <DishSvg width={30} height={30} fillColor="#131E3690" />
 
-        <h1 className="pl-2 text-2xl flex  items-center">
-          {t("titles.main")} / {props?.category?.name} / {t("buttons.add")}
+        <h1 className="pl-2 text-2xl flex items-center">
+          {t("titles.main")} / {category?.name} /{" "}
+          {dish ? t("buttons.edit") : t("buttons.add")}
         </h1>
       </div>
 
@@ -88,16 +119,13 @@ export default function AddDishesComponent(props) {
               type="text"
               placeholder="-"
               {...register("name", { required: true })}
-              className={`border p-2 rounded-lg w-full ${
-                errors.name ? "border-red" : ""
-              }`}
+              className={`border p-2 rounded-lg w-full ${errors.name ? "border-red" : ""}`}
             />
           </div>
 
           <div className="flex flex-col gap-1">
             <label className="block font-semibold">
               <span>{t("form.labels.description")}</span>
-
               <span className="text-xs opacity-50 ml-2 italic">
                 {t("form.labels.optional")}
               </span>
@@ -106,8 +134,8 @@ export default function AddDishesComponent(props) {
             <input
               type="text"
               placeholder="-"
-              {...register("description", { required: false })}
-              className={`border p-2 rounded-lg w-full `}
+              {...register("description")}
+              className="border p-2 rounded-lg w-full"
             />
           </div>
 
@@ -118,11 +146,7 @@ export default function AddDishesComponent(props) {
 
             <div className="flex items-center">
               <span
-                className={`px-3 py-2 rounded-l-lg  ${
-                  errors.price
-                    ? "border-t border-l border-b border-t-red border-l-red border-b-red"
-                    : "border-t border-l border-b"
-                }`}
+                className={`px-3 py-2 rounded-l-lg ${errors.price ? " border border-r-0 border-t-red border-l-red border-b-red" : " border-t border-l border-b"}`}
               >
                 {currencySymbol}
               </span>
@@ -132,9 +156,7 @@ export default function AddDishesComponent(props) {
                 placeholder="-"
                 step="0.01"
                 {...register("price", { required: true })}
-                className={`border p-2 rounded-r-lg w-full ${
-                  errors.price ? "border-red" : ""
-                }`}
+                className={`border p-2 rounded-r-lg w-full ${errors.price ? "border-red" : ""}`}
               />
             </div>
           </div>
@@ -204,12 +226,22 @@ export default function AddDishesComponent(props) {
           </div>
         </div>
 
-        <button
-          type="submit"
-          className="bg-blue w-fit text-white px-4 py-2 rounded-lg hover:bg-blue-600"
-        >
-          {t("buttons.save")}
-        </button>
+        <div className="flex gap-4">
+          <button
+            type="submit"
+            className="bg-blue w-fit text-white px-4 py-2 rounded-lg "
+          >
+            {t("buttons.save")}
+          </button>
+
+          <button
+            type="button"
+            className="bg-red text-white px-4 py-2 rounded-lg "
+            onClick={() => router.back()}
+          >
+            {t("buttons.cancel")}
+          </button>
+        </div>
       </form>
     </section>
   );

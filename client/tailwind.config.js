@@ -8,9 +8,9 @@ module.exports = {
       black: "#000000",
       red: "#FF7664",
       blue: "#4583FF",
-      green: "#D5F346",
+      green: "#4EAD7A",
       darkBlue: "#131E36",
-      violet : "#634FD2"
+      violet: "#634FD2",
     },
     screens: {
       ultraWild: "1472px",

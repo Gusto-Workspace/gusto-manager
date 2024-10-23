@@ -65,7 +65,7 @@ export default function AddDishPage(props) {
               restaurantData={restaurantContext.restaurantData}
             />
 
-            <AddDishesComponent category={props.category}/>
+            <AddDishesComponent category={props.category} dish={props.dish} />
           </div>
         </div>
       </div>
@@ -73,29 +73,36 @@ export default function AddDishPage(props) {
   );
 }
 
-export async function getServerSideProps({ params, locale }) {
-    const { categoryId } = params;
-  
-    try {
-      const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/categories/${categoryId}/dishes`
-      );
-      const { category } = response.data;
-  
-      return {
-        props: {
-          category,
-          ...(await serverSideTranslations(locale, ["common", "dishes"])),
-        },
-      };
-    } catch (error) {
-      console.error("Error fetching category data:", error);
-      return {
-        props: {
-          category: null,
-          ...(await serverSideTranslations(locale, ["common", "dishes"])),
-        },
-      };
+export async function getServerSideProps({ params, query, locale }) {
+  const { categoryId } = params;
+  const { dishId } = query;
+
+  try {
+    const response = await axios.get(
+      `${process.env.NEXT_PUBLIC_API_URL}/categories/${categoryId}/dishes`
+    );
+    const { category } = response.data;
+
+    let dish = null;
+    if (dishId) {
+      dish = category.dishes.find((d) => d._id === dishId) || null;
     }
+
+    return {
+      props: {
+        category,
+        dish,
+        ...(await serverSideTranslations(locale, ["common", "dishes"])),
+      },
+    };
+  } catch (error) {
+    console.error("Error fetching category or dish data:", error);
+    return {
+      props: {
+        category: null,
+        dish: null,
+        ...(await serverSideTranslations(locale, ["common", "dishes"])),
+      },
+    };
   }
-  
+}

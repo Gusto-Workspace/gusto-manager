@@ -27,12 +27,13 @@ const dishSchema = new mongoose.Schema(
     bio: { type: Boolean, default: false },
     glutenFree: { type: Boolean, default: false },
   },
-  { _id: false }
+ 
 );
 
 // Sous-schéma pour les catégories de plats
 const dishCategorySchema = new mongoose.Schema({
   name: { type: String, required: true },
+  visible: { type: Boolean, default: true },
   dishes: { type: [dishSchema], default: [] },
 });
 

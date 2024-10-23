@@ -30,6 +30,7 @@ export default function CategorieDishesPage(props) {
       description = "";
   }
 
+
   return (
     <>
       <Head>

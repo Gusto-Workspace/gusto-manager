@@ -15,13 +15,21 @@
       "vegan": "Vegan",
       "glutenFree": "Gluten Free",
       "vegetarian": "Vegetarian",
+      "visible": "Visible on menu",
+      "notVisible": "Not visible on menu",
       "bio": "Organic"
     }
   },
   "buttons": {
     "add": "Add",
+    "edit": "Edit",
     "addCategory": "Add a Category",
+    "editCategory": "Modify the category",
+    "deleteCategory": "Delete the category",
+    "deleteDish": "Delete a dish",
+    "confirmDelete": "Confirm deletion ?",
     "save": "Save",
+    "confirm": "Confirm",
     "yes": "Yes",
     "no": "No",
     "cancel": "Annuler"
