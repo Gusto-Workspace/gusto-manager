@@ -21,11 +21,13 @@
   "buttons": {
     "add": "Add",
     "edit": "Edit",
+    "deleteNews": "Delete news",
     "confirmDelete": "Confirm deletion ?",
     "save": "Save",
     "confirm": "Confirm",
     "yes": "Yes",
     "no": "No",
-    "cancel": "Annuler"
+    "cancel": "Annuler",
+    "loading" : "Loading..."
   }
 }

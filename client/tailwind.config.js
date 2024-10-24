@@ -15,7 +15,7 @@ module.exports = {
     screens: {
       ultraWild: "1472px",
       desktop: "1224px",
-      tablet: "768px",
+      tablet: "900px",
     },
     extend: {},
   },

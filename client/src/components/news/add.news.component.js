@@ -1,10 +1,22 @@
 import { useContext, useEffect, useState } from "react";
 import { useRouter } from "next/router";
+
+// REACT HOOK FORM
 import { useForm } from "react-hook-form";
+
+// AXIOS
 import axios from "axios";
+
+//I18N
 import { useTranslation } from "next-i18next";
+
+// CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
-import { NewsSvg, UploadSvg } from "../_shared/_svgs/_index";
+
+// SVG
+import { NewsSvg, RemoveSvg, UploadSvg } from "../_shared/_svgs/_index";
+
+// COMPONENTS
 import TiptapEditor from "../_shared/editor/tiptatp.editor.component";
 
 export default function AddNewsComponent(props) {
@@ -14,6 +26,8 @@ export default function AddNewsComponent(props) {
   const [imagePreview, setImagePreview] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [fileError, setFileError] = useState(null);
+  const [imageToRemove, setImageToRemove] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const {
     register,
@@ -23,10 +37,12 @@ export default function AddNewsComponent(props) {
     setValue,
     formState: { errors },
   } = useForm({
-    defaultValues: props.news || {},
+    defaultValues: {
+      title: "",
+      description: "",
+      image: null,
+    },
   });
-
-  const imageFile = watch("image");
 
   const description = watch("description");
 
@@ -34,16 +50,28 @@ export default function AddNewsComponent(props) {
     setValue("description", value);
   };
 
+  useEffect(() => {
+    if (props.news) {
+      reset({
+        title: props.news.title,
+        description: props.news.description,
+      });
+      if (props.news.image) {
+        setImagePreview(props.news.image);
+      }
+    }
+  }, [props.news, reset]);
+
   function handleFileChange(e) {
     const file = e.target.files[0];
     if (file) {
       if (file.size > 10 * 1024 * 1024) {
-        // 10 MB size limit
         setFileError(t("form.errors.fileSize"));
         setSelectedFile(null);
       } else {
         setFileError(null);
         setSelectedFile(file);
+        setImageToRemove(false);
         const reader = new FileReader();
         reader.onload = () => setImagePreview(reader.result);
         reader.readAsDataURL(file);
@@ -54,22 +82,22 @@ export default function AddNewsComponent(props) {
     }
   }
 
-  useEffect(() => {
-    if (imageFile && imageFile[0]) {
-      const reader = new FileReader();
-      reader.onload = () => setImagePreview(reader.result);
-      reader.readAsDataURL(imageFile[0]);
-    } else {
-      setImagePreview(null);
-    }
-  }, [imageFile]);
+  function handleRemoveImage() {
+    setSelectedFile(null);
+    setImagePreview(null);
+    setImageToRemove(true);
+  }
 
   async function onSubmit(data) {
+    setIsLoading(true);
     const formData = new FormData();
     formData.append("title", data.title);
     formData.append("description", data.description);
     if (selectedFile) {
       formData.append("image", selectedFile);
+    }
+    if (imageToRemove) {
+      formData.append("removeImage", "true");
     }
 
     try {
@@ -89,6 +117,7 @@ export default function AddNewsComponent(props) {
       router.push("/news");
     } catch (error) {
       console.error("Error adding or editing news:", error);
+      setIsLoading(false);
     }
   }
 
@@ -98,7 +127,6 @@ export default function AddNewsComponent(props) {
 
       <div className="flex pl-2 gap-2 py-1 items-center">
         <NewsSvg width={30} height={30} fillColor="#131E3690" />
-
         <h1 className="pl-2 text-2xl flex items-center">
           {t("titles.main")} /{" "}
           {props.news ? t("buttons.edit") : t("buttons.add")}
@@ -114,13 +142,14 @@ export default function AddNewsComponent(props) {
           <input
             type="text"
             {...register("title", { required: true })}
-            className={`border p-2 rounded-lg w-full ${errors.title ? "border-red" : ""}`}
+            className={`border p-2 rounded-lg w-full ${
+              errors.title ? "border-red" : ""
+            }`}
           />
         </div>
 
         <div className="flex flex-col gap-2">
           <label>{t("form.labels.description")}</label>
-
           <TiptapEditor
             value={description}
             onChange={handleDescriptionChange}
@@ -135,7 +164,7 @@ export default function AddNewsComponent(props) {
             </span>
           </label>
 
-          <div className="flex  items-center w-full">
+          <div className="flex items-center w-full">
             <label
               htmlFor="image-upload"
               className={`flex flex-col justify-center items-center w-1/2 h-[150px] p-3 border-1 border-dashed rounded-lg cursor-pointer ${
@@ -144,7 +173,6 @@ export default function AddNewsComponent(props) {
             >
               <div className="flex flex-col items-center justify-center pt-5 pb-6">
                 <UploadSvg />
-
                 {selectedFile ? (
                   <p className="mb-2 text-lg font-semibold">
                     {t("form.labels.selected")}: {selectedFile.name}
@@ -167,27 +195,40 @@ export default function AddNewsComponent(props) {
               />
             </label>
           </div>
+
           {imagePreview && (
-            <img
-              src={imagePreview}
-              alt="Preview"
-              className="mt-2 max-w-[400px] h-auto"
-            />
+            <div className="relative mt-2 max-w-[400px] h-auto group">
+              <img
+                src={imagePreview}
+                alt="Preview"
+                className="w-full h-auto rounded-lg"
+              />
+              <div className="absolute rounded-lg inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 flex items-center justify-center  transition-all duration-200">
+                <div
+                  onClick={handleRemoveImage}
+                  className="cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex justify-center items-center"
+                >
+                  <RemoveSvg width={50} height={50} fillColor="white" />
+                </div>
+              </div>
+            </div>
           )}
         </div>
 
         <div className="flex gap-4">
           <button
             type="submit"
-            className="bg-blue w-fit text-white px-4 py-2 rounded-lg"
+            className="bg-blue w-fit text-white px-4 py-2 rounded-lg flex items-center justify-center"
+            disabled={isLoading}
           >
-            {t("buttons.save")}
+            {isLoading ? t("buttons.loading") : t("buttons.save")}
           </button>
 
           <button
             type="button"
             className="bg-red text-white px-4 py-2 rounded-lg"
             onClick={() => router.back()}
+            disabled={isLoading}
           >
             {t("buttons.cancel")}
           </button>

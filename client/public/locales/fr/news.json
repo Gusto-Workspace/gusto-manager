@@ -22,11 +22,13 @@
   "buttons": {
     "add": "Ajouter",
     "edit": "Modifier",
+    "deleteNews": "Suppression d'une actualité",
     "confirmDelete": "Confirmer la suppression ?",
     "save": "Enregister",
     "confirm": "Confirmer",
     "yes": "Oui",
     "no": "Non",
-    "cancel": "Annuler"
+    "cancel": "Annuler",
+    "loading" : "En cours..."
   }
 }

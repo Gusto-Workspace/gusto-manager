@@ -15,6 +15,7 @@ import { OrderedListSvg } from "../_svgs/ordered-list.svg";
 
 // I18N
 import { useTranslation } from "next-i18next";
+import { useEffect } from "react";
 
 function MenuBar({ editor, t }) {
   if (!editor) {
@@ -160,7 +161,7 @@ export default function TiptapEditor({ value = "", onChange }) {
         placeholder: t("editor.startWrite"),
       }),
     ],
-    content: value,
+    content: value, // Passer la valeur initiale ici
     onUpdate: ({ editor }) => {
       const html = editor.getHTML().replace(/<p><\/p>/g, "<br>");
       if (onChange) {
@@ -174,6 +175,12 @@ export default function TiptapEditor({ value = "", onChange }) {
     },
     immediatelyRender: false,
   });
+
+  useEffect(() => {
+    if (editor && value !== editor.getHTML()) {
+      editor.commands.setContent(value); // Mettre à jour le contenu lorsque la valeur change
+    }
+  }, [value, editor]);
 
   return (
     <div className="tiptap-editor">

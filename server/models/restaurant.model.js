@@ -16,19 +16,16 @@ const openingHourSchema = new mongoose.Schema(
 );
 
 // Sous-schéma pour les plats
-const dishSchema = new mongoose.Schema(
-  {
-    name: { type: String, required: true },
-    description: { type: String },
-    price: { type: Number, required: true },
-    showOnWebsite: { type: Boolean, default: true },
-    vegan: { type: Boolean, default: false },
-    vegetarian: { type: Boolean, default: false },
-    bio: { type: Boolean, default: false },
-    glutenFree: { type: Boolean, default: false },
-  },
- 
-);
+const dishSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  description: { type: String },
+  price: { type: Number, required: true },
+  showOnWebsite: { type: Boolean, default: true },
+  vegan: { type: Boolean, default: false },
+  vegetarian: { type: Boolean, default: false },
+  bio: { type: Boolean, default: false },
+  glutenFree: { type: Boolean, default: false },
+});
 
 // Sous-schéma pour les catégories de plats
 const dishCategorySchema = new mongoose.Schema({
@@ -52,15 +49,14 @@ const drinkSchema = new mongoose.Schema(
 );
 
 // Sous-schéma pour les actualités
-const newsSchema = new mongoose.Schema(
-  {
-    title: { type: String, required: true },
-    description: { type: String, required: true },
-    image: { type: String },
-    published_at: { type: Date, default: Date.now },
-  },
-  { _id: false }
-);
+const newsSchema = new mongoose.Schema({
+  title: { type: String, required: true },
+  description: { type: String, required: true },
+  image: { type: String },
+  imagePublicId: { type: String },
+  visible: { type: Boolean, default: true },
+  published_at: { type: Date, default: Date.now },
+});
 
 // Sous-schéma pour les réseaux sociaux
 const socialMediaSchema = new mongoose.Schema(

@@ -12,6 +12,7 @@ import { GlobalContext } from "@/contexts/global.context";
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import AddNewsComponent from "@/components/news/add.news.component";
+import axios from "axios";
 
 export default function AddNewsPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
@@ -64,7 +65,7 @@ export default function AddNewsPage(props) {
               restaurantData={restaurantContext.restaurantData}
             />
 
-            <AddNewsComponent />
+            <AddNewsComponent news={props.news} />
           </div>
         </div>
       </div>
@@ -72,10 +73,32 @@ export default function AddNewsPage(props) {
   );
 }
 
-export async function getStaticProps({ locale }) {
-  return {
-    props: {
-      ...(await serverSideTranslations(locale, ["common", "news"])),
-    },
-  };
+export async function getServerSideProps({ query, locale }) {
+  const { newsId } = query;
+
+  try {
+    let news = null;
+
+    if (newsId) {
+      const response = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/news/${newsId}`
+      );
+      news = response.data.news;
+    }
+
+    return {
+      props: {
+        news,
+        ...(await serverSideTranslations(locale, ["common", "news"])),
+      },
+    };
+  } catch (error) {
+    console.error("Error fetching news data:", error);
+    return {
+      props: {
+        news: null,
+        ...(await serverSideTranslations(locale, ["common", "news"])),
+      },
+    };
+  }
 }
