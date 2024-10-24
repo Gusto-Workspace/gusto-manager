@@ -10,8 +10,14 @@
       "optional": "(optionnel)",
       "choose": "Sélectionner une image",
       "selected": "Image sélectionnée",
-      "size": "Taille maximum"
+      "size": "Taille maximum",
+      "startWrite": "Commencer à écrire ..."
     }
+  },
+  "editor": {
+    "title": "Titre",
+    "text": "Texte",
+    "startWrite": "Commencer à écrire ..."
   },
   "buttons": {
     "add": "Ajouter",

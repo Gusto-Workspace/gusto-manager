@@ -109,13 +109,20 @@ export default function ContactRestaurantComponent(props) {
               </span>
             </button>
           )}
-          <button onClick={editing ? handleSubmit(onSubmit) : handleToggleEdit}>
+          <button cl onClick={editing ? handleSubmit(onSubmit) : handleToggleEdit}>
             {editing ? (
               <span className="text-white bg-blue px-4 py-2 rounded-lg">
                 {t("save")}
               </span>
             ) : (
-              <EditSvg />
+              <div className="hover:opacity-100 opacity-20 p-[4px] rounded-full transition-opacity duration-300">
+                <EditSvg
+                  width={20}
+                  height={20}
+                  strokeColor="#131E36"
+                  fillColor="#131E36"
+                />
+              </div>
             )}
           </button>
         </div>

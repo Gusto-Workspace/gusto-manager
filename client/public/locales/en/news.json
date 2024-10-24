@@ -13,6 +13,11 @@
       "size": "Maximum size"
     }
   },
+  "editor": {
+    "title": "Title",
+    "text": "Text",
+    "startWrite": "Start writing ..."
+  },
   "buttons": {
     "add": "Add",
     "edit": "Edit",

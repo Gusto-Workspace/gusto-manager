@@ -107,7 +107,14 @@ export default function HoursRestaurantComponent(props) {
                 {t("save")}
               </span>
             ) : (
-              <EditSvg />
+              <div className="hover:opacity-100 opacity-20 p-[4px] rounded-full transition-opacity duration-300">
+                <EditSvg
+                  width={20}
+                  height={20}
+                  strokeColor="#131E36"
+                  fillColor="#131E36"
+                />
+              </div>
             )}
           </button>
         </div>

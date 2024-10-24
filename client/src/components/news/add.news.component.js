@@ -5,6 +5,7 @@ import axios from "axios";
 import { useTranslation } from "next-i18next";
 import { GlobalContext } from "@/contexts/global.context";
 import { NewsSvg, UploadSvg } from "../_shared/_svgs/_index";
+import TiptapEditor from "../_shared/editor/tiptatp.editor.component";
 
 export default function AddNewsComponent(props) {
   const { t } = useTranslation("news");
@@ -19,12 +20,19 @@ export default function AddNewsComponent(props) {
     handleSubmit,
     reset,
     watch,
+    setValue,
     formState: { errors },
   } = useForm({
     defaultValues: props.news || {},
   });
 
   const imageFile = watch("image");
+
+  const description = watch("description");
+
+  const handleDescriptionChange = (value) => {
+    setValue("description", value);
+  };
 
   function handleFileChange(e) {
     const file = e.target.files[0];
@@ -62,7 +70,6 @@ export default function AddNewsComponent(props) {
     formData.append("description", data.description);
     if (selectedFile) {
       formData.append("image", selectedFile);
-      console.log("Image added to formData:", selectedFile);
     }
 
     try {
@@ -114,9 +121,9 @@ export default function AddNewsComponent(props) {
         <div className="flex flex-col gap-2">
           <label>{t("form.labels.description")}</label>
 
-          <textarea
-            {...register("description", { required: true })}
-            className={`border p-2 rounded-lg w-full ${errors.description ? "border-red" : ""}`}
+          <TiptapEditor
+            value={description}
+            onChange={handleDescriptionChange}
           />
         </div>
 
@@ -137,6 +144,7 @@ export default function AddNewsComponent(props) {
             >
               <div className="flex flex-col items-center justify-center pt-5 pb-6">
                 <UploadSvg />
+
                 {selectedFile ? (
                   <p className="mb-2 text-lg font-semibold">
                     {t("form.labels.selected")}: {selectedFile.name}

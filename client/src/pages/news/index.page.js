@@ -28,6 +28,7 @@ export default function NewsPage(props) {
       title = "Gusto Manager";
       description = "";
   }
+  
 
   return (
     <>
@@ -63,8 +64,8 @@ export default function NewsPage(props) {
               setRestaurantData={restaurantContext.setRestaurantData}
               restaurantData={restaurantContext.restaurantData}
             />
-            
-            <ListNewsComponent />
+
+            <ListNewsComponent news={restaurantContext?.restaurantData?.news} />
           </div>
         </div>
       </div>

@@ -6,7 +6,7 @@ import { useTranslation } from "next-i18next";
 // SVG
 import { NewsSvg } from "../_shared/_svgs/_index";
 
-export default function ListNewsComponent() {
+export default function ListNewsComponent(props) {
   const { t } = useTranslation("news");
   const router = useRouter();
 
@@ -30,6 +30,20 @@ export default function ListNewsComponent() {
         >
           {t("buttons.add")}
         </button>
+      </div>
+
+      <div className="grid grid-cols-1 tablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-4 gap-6">
+        {props?.news?.map((data, i) => {
+          return (
+            <div key={i} className="bg-white rounded-lg drop-shadow-sm p-6 h-fit">
+              <h1>{data.title}</h1>
+              <div
+                dangerouslySetInnerHTML={{ __html: data.description }}
+                className="prose"
+              />
+            </div>
+          );
+        })}
       </div>
     </section>
   );

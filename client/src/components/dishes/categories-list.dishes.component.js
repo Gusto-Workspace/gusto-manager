@@ -132,15 +132,13 @@ export default function CategoriesListDishesComponent() {
                 }}
                 className="absolute right-0 top-0 flex flex-col items-center gap-1 p-2"
               >
-                <div className="relative">
-                  <div className="hover:opacity-100 opacity-20 p-[6px] rounded-full transition-opacity duration-300">
-                    <EditSvg
-                      width={20}
-                      height={20}
-                      strokeColor="#131E36"
-                      fillColor="#131E36"
-                    />
-                  </div>
+                <div className="hover:opacity-100 opacity-20 p-[6px] rounded-full transition-opacity duration-300">
+                  <EditSvg
+                    width={20}
+                    height={20}
+                    strokeColor="#131E36"
+                    fillColor="#131E36"
+                  />
                 </div>
               </button>
 
