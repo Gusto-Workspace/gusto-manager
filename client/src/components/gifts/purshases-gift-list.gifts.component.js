@@ -9,6 +9,7 @@ import { GlobalContext } from "@/contexts/global.context";
 // I18N
 import { useTranslation } from "next-i18next";
 import { GiftSvg } from "../_shared/_svgs/gift.svg";
+import { ChevronSvg } from "../_shared/_svgs/chevron.svg";
 
 export default function PurchasesGiftListComponent(props) {
   const { t } = useTranslation("gifts");
@@ -50,22 +51,29 @@ export default function PurchasesGiftListComponent(props) {
   }
 
   return (
-    <div>
+    <div className="flex flex-col gap-6">
       <div className="pl-2 flex gap-2 items-center">
         <GiftSvg width={30} height={30} fillColor="#131E3690" />
 
         <h1 className="pl-2 text-2xl">{t("titles.second")}</h1>
       </div>
 
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-12">
         {Object.entries(purchasesByStatus).map(([status, purchases]) => (
           <div key={status} className="flex flex-col gap-4">
-            <h2 className="text-lg font-semibold text-center uppercase">
-              {statusTranslations[status]}
-            </h2>
+            <div className="relative">
+              <h2 className="relative flex gap-2 items-center text-lg font-semibold w-fit px-6 mx-auto text-center uppercase bg-lightGrey z-50">
+                {statusTranslations[status]}{" "}
+                <span className="text-base opacity-50">
+                  ({purchases.length})
+                </span>
+              </h2>
+
+              <hr className="bg-darkBlue absolute h-[1px] w-[350px] left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 z-10" />
+            </div>
 
             {purchases.length > 0 ? (
-              <ul className="flex flex-col gap-2">
+              <ul className="flex flex-col gap-2 max-h-[325px] overflow-y-auto">
                 {purchases.map((purchase) => (
                   <li
                     key={purchase._id}
@@ -107,7 +115,9 @@ export default function PurchasesGiftListComponent(props) {
                 ))}
               </ul>
             ) : (
-              <p className="italic">{t("labels.emptyCard")}</p>
+              <div className="p-6 bg-white drop-shadow-sm rounded-lg">
+                <p className="italic">{t("labels.emptyCard")}</p>
+              </div>
             )}
           </div>
         ))}
