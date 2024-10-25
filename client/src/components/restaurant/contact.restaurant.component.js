@@ -109,7 +109,7 @@ export default function ContactRestaurantComponent(props) {
               </span>
             </button>
           )}
-          <button cl onClick={editing ? handleSubmit(onSubmit) : handleToggleEdit}>
+          <button onClick={editing ? handleSubmit(onSubmit) : handleToggleEdit}>
             {editing ? (
               <span className="text-white bg-blue px-4 py-2 rounded-lg">
                 {t("save")}

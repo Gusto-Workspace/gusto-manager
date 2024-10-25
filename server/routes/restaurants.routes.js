@@ -8,7 +8,22 @@ const authenticateToken = require("../middleware/authentificate-token");
 
 // MODELS
 const RestaurantModel = require("../models/restaurant.model");
-const OwnerModel = require("../models/owner.model");
+
+// Fonction pour mettre à jour le statut des cartes cadeaux expirées
+async function updateExpiredStatus(restaurantId) {
+  const restaurant = await RestaurantModel.findById(restaurantId);
+  const now = new Date();
+
+  restaurant.gifts.forEach((gift) => {
+    gift.purchases.forEach((purchase) => {
+      if (purchase.status === "Valid" && purchase.validUntil < now) {
+        purchase.status = "Expired";
+      }
+    });
+  });
+
+  await restaurant.save();
+}
 
 // GET ALL OWNER RESTAURANTS
 router.get("/owner/restaurants", async (req, res) => {
@@ -42,6 +57,11 @@ router.post("/owner/change-restaurant", authenticateToken, (req, res) => {
 router.get("/owner/restaurants/:id", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
+
+    // Met à jour les statuts des cartes expirées avant de récupérer les données
+
+    await updateExpiredStatus(id);
+
     const restaurant = await RestaurantModel.findById(id).populate(
       "owner_id",
       "firstname"
@@ -50,7 +70,6 @@ router.get("/owner/restaurants/:id", authenticateToken, async (req, res) => {
     if (!restaurant) {
       return res.status(404).json({ message: "Restaurant not found" });
     }
-
 
     res.status(200).json({ restaurant });
   } catch (error) {

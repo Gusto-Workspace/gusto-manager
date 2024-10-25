@@ -5,5 +5,5 @@ export const navItemsData = [
   { href: "/dishes", label: "La carte", icon: "DishSvg" },
   { href: "/drinks", label: "Les boissons", icon: "DrinkSvg" },
   { href: "/news", label: "Les actualités", icon: "NewsSvg" },
-  { href: "/gifts", label: "Carte cadeaux", icon: "GiftSvg" },
+  { href: "/gifts", label: "Cartes cadeau", icon: "GiftSvg" },
 ];

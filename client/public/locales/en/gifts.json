@@ -1,0 +1,23 @@
+{
+  "titles": {
+    "main": "Gift Cards"
+  },
+  "form": {
+    "labels": {
+      "titvaluee": "Card's value"
+    }
+  },
+  "buttons": {
+    "add": "Add",
+    "addGift": "Add gift card",
+    "edit": "Edit",
+    "deleteNews": "Delete news",
+    "confirmDelete": "Confirm deletion ?",
+    "save": "Save",
+    "confirm": "Confirm",
+    "yes": "Yes",
+    "no": "No",
+    "cancel": "Annuler",
+    "loading": "Loading..."
+  }
+}

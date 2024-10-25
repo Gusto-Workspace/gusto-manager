@@ -1,0 +1,23 @@
+{
+  "titles": {
+    "main": "Cartes Cadeau"
+  },
+  "form": {
+    "labels": {
+      "value": "Montant de la carte"
+    }
+  },
+  "buttons": {
+    "add": "Ajouter",
+    "addGift": "Ajouter une carte cadeau",
+    "edit": "Modifier",
+    "deleteGifts": "Suppression d'une carte cadeaux",
+    "confirmDelete": "Confirmer la suppression ?",
+    "save": "Enregister",
+    "confirm": "Confirmer",
+    "yes": "Oui",
+    "no": "Non",
+    "cancel": "Annuler",
+    "loading": "En cours..."
+  }
+}

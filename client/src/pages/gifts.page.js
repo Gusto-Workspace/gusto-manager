@@ -11,6 +11,7 @@ import { GlobalContext } from "@/contexts/global.context";
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
+import ListGiftsComponent from "@/components/gifts/list.gifts.component";
 
 export default function GiftsPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
@@ -61,6 +62,8 @@ export default function GiftsPage(props) {
               setRestaurantData={restaurantContext.setRestaurantData}
               restaurantData={restaurantContext.restaurantData}
             />
+
+            <ListGiftsComponent/>
           </div>
         </div>
       </div>
@@ -71,7 +74,7 @@ export default function GiftsPage(props) {
 export async function getStaticProps({ locale }) {
   return {
     props: {
-      ...(await serverSideTranslations(locale, ["common", "gift"])),
+      ...(await serverSideTranslations(locale, ["common", "gifts"])),
     },
   };
 }
