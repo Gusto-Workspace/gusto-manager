@@ -1,26 +1,32 @@
-import { useState, useContext } from "react";
+import { useState, useContext, useId } from "react";
 import { useRouter } from "next/router";
 
 // I18N
 import { useTranslation } from "next-i18next";
 
 // SVG
-import {
-  BioSvg,
-  DeleteSvg,
-  DishSvg,
-  EditSvg,
-  GlutenFreeSvg,
-  NoVisibleSvg,
-  VeganSvg,
-  VegetarianSvg,
-} from "../_shared/_svgs/_index";
+import { DishSvg } from "../_shared/_svgs/_index";
 
 // AXIOS
 import axios from "axios";
 
 // CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
+
+// DND
+import {
+  DndContext,
+  closestCenter,
+  MouseSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import { arrayMove, SortableContext } from "@dnd-kit/sortable";
+import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
+
+// COMPONENTS
+import DetailsDishComponent from "./details-dish.dishes.component";
 
 export default function ListDishesComponent(props) {
   const { t } = useTranslation("dishes");
@@ -33,6 +39,14 @@ export default function ListDishesComponent(props) {
   const [selectedDish, setSelectedDish] = useState(null);
   const [hoveredTooltip, setHoveredTooltip] = useState(null);
   const [dishes, setDishes] = useState(props.category.dishes);
+
+  // GENERE UN ID POUR DND
+  const id = useId();
+
+  // Définir les capteurs pour prendre en charge à la fois la souris et le toucher
+  const mouseSensor = useSensor(MouseSensor);
+  const touchSensor = useSensor(TouchSensor);
+  const sensors = useSensors(mouseSensor, touchSensor);
 
   function handleAddClick() {
     router.push(`/dishes/${props.category._id}/add`);
@@ -71,8 +85,47 @@ export default function ListDishesComponent(props) {
       });
   }
 
+  function handleDragEnd(event) {
+    const { active, over } = event;
+
+    if (!active || !over) {
+      return;
+    }
+
+    if (active.id === over?.id) return;
+
+    if (active.id !== over.id) {
+      setDishes((prevDishes) => {
+        const oldIndex = prevDishes.findIndex((dish) => dish._id === active.id);
+        const newIndex = prevDishes.findIndex((dish) => dish._id === over.id);
+
+        const newDishesOrder = arrayMove(prevDishes, oldIndex, newIndex);
+
+        saveNewDishOrder(newDishesOrder);
+
+        return newDishesOrder;
+      });
+    }
+  }
+
+  function saveNewDishOrder(updatedDishes) {
+    const orderedDishIds = updatedDishes.map((dish) => dish._id);
+
+    axios
+      .put(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/categories/${props.category._id}/dishes/order`,
+        { orderedDishIds }
+      )
+      .then((response) => {
+        restaurantContext.setRestaurantData(response.data.restaurant);
+      })
+      .catch((error) => {
+        console.error("Error saving dish order:", error);
+      });
+  }
+
   return (
-    <section className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6">
       <hr className="opacity-20" />
 
       <div className="flex justify-between">
@@ -93,163 +146,27 @@ export default function ListDishesComponent(props) {
       </div>
 
       <div className="flex flex-col gap-4">
-        {dishes.map((dish) => (
-          <div
-            key={dish._id}
-            className="bg-white p-6 rounded-lg drop-shadow-sm flex gap-4 justify-between items-center"
-          >
-            <div>
-              <h3 className="text-lg">
-                {dish.name.charAt(0).toUpperCase() + dish.name.slice(1)}
-              </h3>
-
-              <p className="text-sm opacity-50">
-                {dish.description.charAt(0).toUpperCase() +
-                  dish.description.slice(1)}
-              </p>
-            </div>
-
-            <div className="flex gap-6 items-center">
-              <div className="relative flex gap-2">
-                {dish.vegan && (
-                  <div
-                    onMouseEnter={() => setHoveredTooltip(`${dish._id}-vegan`)}
-                    onMouseLeave={() => setHoveredTooltip(null)}
-                    className="relative"
-                  >
-                    <VeganSvg
-                      fillColor="white"
-                      width={18}
-                      height={18}
-                      className="bg-red p-2 w-8 h-8 rounded-full opacity-70"
-                    />
-                    {hoveredTooltip === `${dish._id}-vegan` && (
-                      <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 bg-darkBlue text-white text-xs p-2 rounded-lg whitespace-nowrap z-50">
-                        {t("form.labels.vegan")}
-                      </div>
-                    )}
-                  </div>
-                )}
-                {dish.vegetarian && (
-                  <div
-                    onMouseEnter={() =>
-                      setHoveredTooltip(`${dish._id}-vegetarian`)
-                    }
-                    onMouseLeave={() => setHoveredTooltip(null)}
-                    className="relative"
-                  >
-                    <VegetarianSvg
-                      fillColor="white"
-                      width={18}
-                      height={18}
-                      className="bg-violet p-2 w-8 h-8 rounded-full opacity-70"
-                    />
-                    {hoveredTooltip === `${dish._id}-vegetarian` && (
-                      <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 bg-darkBlue text-white text-xs p-2 rounded-lg whitespace-nowrap z-50">
-                        {t("form.labels.vegetarian")}
-                      </div>
-                    )}
-                  </div>
-                )}
-                {dish.bio && (
-                  <div
-                    onMouseEnter={() => setHoveredTooltip(`${dish._id}-bio`)}
-                    onMouseLeave={() => setHoveredTooltip(null)}
-                    className="relative"
-                  >
-                    <BioSvg
-                      fillColor="white"
-                      width={18}
-                      height={18}
-                      className="bg-darkBlue p-2 w-8 h-8 rounded-full opacity-70"
-                    />
-                    {hoveredTooltip === `${dish._id}-bio` && (
-                      <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 bg-darkBlue text-white text-xs p-2 rounded-lg whitespace-nowrap z-50">
-                        {t("form.labels.bio")}
-                      </div>
-                    )}
-                  </div>
-                )}
-                {dish.glutenFree && (
-                  <div
-                    onMouseEnter={() =>
-                      setHoveredTooltip(`${dish._id}-glutenFree`)
-                    }
-                    onMouseLeave={() => setHoveredTooltip(null)}
-                    className="relative"
-                  >
-                    <GlutenFreeSvg
-                      fillColor="white"
-                      width={18}
-                      height={18}
-                      className="bg-blue p-2 w-8 h-8 rounded-full opacity-70"
-                    />
-                    {hoveredTooltip === `${dish._id}-glutenFree` && (
-                      <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 bg-darkBlue text-white text-xs p-2 rounded-lg whitespace-nowrap z-50">
-                        {t("form.labels.glutenFree")}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <p className="text-lg whitespace-nowrap">
-                {dish.price.toFixed(2)} {currencySymbol}
-              </p>
-
-              <div
-                onMouseEnter={() => setHoveredTooltip(`${dish._id}-visibility`)}
-                onMouseLeave={() => setHoveredTooltip(null)}
-                className="relative flex items-center"
-              >
-                <NoVisibleSvg
-                  width={22}
-                  height={22}
-                  className={`${dish.showOnWebsite ? "opacity-10" : ""}`}
-                />
-                {hoveredTooltip === `${dish._id}-visibility` && (
-                  <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 bg-darkBlue text-white text-xs p-2 rounded-lg whitespace-nowrap z-50">
-                    {dish.showOnWebsite
-                      ? t("form.labels.visible")
-                      : t("form.labels.notVisible")}
-                  </div>
-                )}
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  className="hover:bg-[#4583FF] bg-[#4583FF99] p-[6px] rounded-full transition-colors duration-300"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleEditClick(dish);
-                  }}
-                >
-                  <EditSvg
-                    width={20}
-                    height={20}
-                    strokeColor="white"
-                    fillColor="white"
-                  />
-                </button>
-
-                <button
-                  className="hover:bg-[#FF7664] bg-[#FF766499] p-[6px] rounded-full transition-colors duration-300"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeleteClick(dish);
-                  }}
-                >
-                  <DeleteSvg
-                    width={20}
-                    height={20}
-                    strokeColor="white"
-                    fillColor="white"
-                  />
-                </button>
-              </div>
-            </div>
-          </div>
-        ))}
+        <DndContext
+          id={id}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+          sensors={sensors}
+          modifiers={[restrictToVerticalAxis]}
+        >
+          <SortableContext items={dishes.map((dish) => dish._id)}>
+            {dishes.map((dish) => (
+              <DetailsDishComponent
+                key={dish._id}
+                hoveredTooltip={hoveredTooltip}
+                setHoveredTooltip={setHoveredTooltip}
+                dish={dish}
+                handleEditClick={handleEditClick}
+                handleDeleteClick={handleDeleteClick}
+                currencySymbol={currencySymbol}
+              />
+            ))}
+          </SortableContext>
+        </DndContext>
       </div>
 
       {isDeleteModalOpen && (
@@ -287,6 +204,6 @@ export default function ListDishesComponent(props) {
           </div>
         </div>
       )}
-    </section>
+    </div>
   );
 }

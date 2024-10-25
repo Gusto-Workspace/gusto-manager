@@ -31,3 +31,4 @@ export { BulletListSvg } from "./bullet-list.svg";
 export { OrderedListSvg } from "./ordered-list.svg";
 export { NoImageSvg } from "./no-image.svg";
 export { RemoveSvg } from "./remove.svg";
+export { DragSvg } from "./drag.svg";

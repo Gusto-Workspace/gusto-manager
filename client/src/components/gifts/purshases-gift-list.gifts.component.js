@@ -62,7 +62,7 @@ export default function PurchasesGiftListComponent(props) {
         {Object.entries(purchasesByStatus).map(([status, purchases]) => (
           <div key={status} className="flex flex-col gap-4">
             <div className="relative">
-              <h2 className="relative flex gap-2 items-center text-lg font-semibold w-fit px-6 mx-auto text-center uppercase bg-lightGrey z-50">
+              <h2 className="relative flex gap-2 items-center text-lg font-semibold w-fit px-6 mx-auto text-center uppercase bg-lightGrey z-20">
                 {statusTranslations[status]}{" "}
                 <span className="text-base opacity-50">
                   ({purchases.length})

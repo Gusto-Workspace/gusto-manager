@@ -97,7 +97,7 @@ export default function CategoriesListDishesComponent() {
   }
 
   return (
-    <section className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6">
       <hr className="opacity-20" />
 
       <div className="flex justify-between">
@@ -284,6 +284,6 @@ export default function CategoriesListDishesComponent() {
           </div>
         </div>
       )}
-    </section>
+    </div>
   );
 }
