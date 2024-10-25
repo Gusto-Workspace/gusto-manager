@@ -1,20 +1,35 @@
 {
   "titles": {
-    "main": "Gift Cards"
+    "main": "Gift Cards",
+    "second" : "Buyed on website"
   },
   "form": {
     "labels": {
-      "titvaluee": "Card's value"
+      "value": "Card's value"
     }
+  },
+  "labels": {
+    "valid": "Valid",
+    "used": "Used",
+    "expired": "Expired",
+    "amount": "Amount",
+    "owner": "Owner",
+    "code": "Code",
+    "valididy": "Valid until",
+    "emptyCard": "No gift card"
   },
   "buttons": {
     "add": "Add",
     "addGift": "Add gift card",
     "edit": "Edit",
-    "deleteNews": "Delete news",
+    "deleteGift": "Delete gift card",
     "confirmDelete": "Confirm deletion ?",
     "save": "Save",
     "confirm": "Confirm",
+    "delete": "Delete",
+    "usedCard": "Gift card used",
+    "visible": "Visible",
+    "noVisible": "Masked",
     "yes": "Yes",
     "no": "No",
     "cancel": "Annuler",

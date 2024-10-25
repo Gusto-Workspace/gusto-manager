@@ -1,64 +1,117 @@
-import axios from "axios";
 import { useContext } from "react";
+
+// AXIOS
+import axios from "axios";
+
+// CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
 
-export default function PurchasesGiftListComponent({ purchases }) {
+// I18N
+import { useTranslation } from "next-i18next";
+import { GiftSvg } from "../_shared/_svgs/gift.svg";
+
+export default function PurchasesGiftListComponent(props) {
+  const { t } = useTranslation("gifts");
   const { restaurantContext } = useContext(GlobalContext);
 
-  async function handleMarkAsUsed() {
-   
+  const purchasesByStatus = {
+    Valid: [],
+    Used: [],
+    Expired: [],
+  };
+
+  const statusTranslations = {
+    Valid: t("labels.valid"),
+    Used: t("labels.used"),
+    Expired: t("labels.expired"),
+  };
+
+  props?.purchasesGiftCards?.forEach((purchase) => {
+    const { status } = purchase;
+    if (purchasesByStatus[status]) {
+      purchasesByStatus[status].push(purchase);
+    }
+  });
+
+  function markAsUsed(purchaseId) {
+    axios
+      .put(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/purchases/${purchaseId}/use`
+      )
+      .then((response) => {
+        restaurantContext.setRestaurantData(response.data.restaurant);
+      })
+      .catch((error) => {
+        console.error(
+          "Erreur lors de la mise à jour de la carte cadeau :",
+          error
+        );
+      });
   }
 
-  // Filtrer les achats par statut
-  const validPurchases = purchases?.filter(
-    (purchase) => purchase.status === "Valid"
-  );
-  const usedPurchases = purchases?.filter(
-    (purchase) => purchase.status === "Used"
-  );
-  const expiredPurchases = purchases?.filter(
-    (purchase) => purchase.status === "Expired"
-  );
-
-  // Fonction pour afficher une catégorie d'achats
-  const renderPurchaseList = (title, items, bgColor, showButton = false) => (
-    <div>
-      <h2 className="text-lg font-semibold mb-4">{title}</h2>
-      <ul className="space-y-2">
-        {items?.length > 0 ? (
-          items.map((purchase) => (
-            <li
-              key={purchase._id}
-              className={`${bgColor} p-4 rounded-lg shadow`}
-            >
-              <p>Code : {purchase.purchaseCode}</p>
-              <p>
-                {title === "Expirées"
-                  ? `Expiré le : ${new Date(purchase.validUntil).toLocaleDateString()}`
-                  : `Valable jusqu'au : ${new Date(purchase.validUntil).toLocaleDateString()}`}
-              </p>
-              {showButton && (
-                <button
-                  onClick={() => handleMarkAsUsed('used')}
-                  className="mt-2 px-4 py-2 bg-violet text-white rounded-lg"
-                >
-                  Carte cadeau utilisée
-                </button>
-              )}
-            </li>
-          ))
-        ) : (
-          <p>Aucune carte cadeau {title.toLowerCase()}.</p>
-        )}
-      </ul>
-    </div>
-  );
-
   return (
-    <div className="flex flex-col gap-6">
-      {renderPurchaseList("Valides", validPurchases, "bg-green", true)}
-      {renderPurchaseList("Utilisées", usedPurchases, "bg-blue")}
-      {renderPurchaseList("Expirées", expiredPurchases, "bg-red")}
+    <div>
+      <div className="pl-2 flex gap-2 items-center">
+        <GiftSvg width={30} height={30} fillColor="#131E3690" />
+
+        <h1 className="pl-2 text-2xl">{t("titles.second")}</h1>
+      </div>
+
+      <div className="flex flex-col gap-6">
+        {Object.entries(purchasesByStatus).map(([status, purchases]) => (
+          <div key={status} className="flex flex-col gap-4">
+            <h2 className="text-lg font-semibold text-center uppercase">
+              {statusTranslations[status]}
+            </h2>
+
+            {purchases.length > 0 ? (
+              <ul className="flex flex-col gap-2">
+                {purchases.map((purchase) => (
+                  <li
+                    key={purchase._id}
+                    className="bg-white p-4 rounded-lg drop-shadow-sm flex justify-between items-center"
+                  >
+                    <div>
+                      <p>
+                        {t("labels.amount")}: {purchase.value}€
+                      </p>
+
+                      <p>
+                        {t("labels.owner")}: {purchase.beneficiaryFirstName}{" "}
+                        {purchase.beneficiaryLastName}
+                      </p>
+
+                      <p>
+                        {t("labels.code")}: {purchase.purchaseCode}
+                      </p>
+
+                      {status === "Valid" && (
+                        <p>
+                          {t("labels.valididy")}:{" "}
+                          {new Date(purchase.validUntil).toLocaleDateString(
+                            "fr-FR"
+                          )}
+                        </p>
+                      )}
+                    </div>
+
+                    {status === "Valid" && (
+                      <button
+                        className="mt-2 px-4 py-2 bg-blue text-white rounded hover:bg-blue-600"
+                        onClick={() => markAsUsed(purchase._id)}
+                      >
+                        {t("buttons.usedCard")}
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="italic">{t("labels.emptyCard")}</p>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

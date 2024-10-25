@@ -20,6 +20,8 @@ import {
   DeleteSvg,
   NoVisibleSvg,
 } from "../_shared/_svgs/_index";
+
+// COMPONENTS
 import PurchasesGiftListComponent from "./purshases-gift-list.gifts.component";
 
 export default function ListGiftsComponent(props) {
@@ -46,73 +48,6 @@ export default function ListGiftsComponent(props) {
       reset({ value: null });
     }
   }, [editingGift, reset]);
-
-  async function simulateGiftPurchases() {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-    const restaurantId = restaurantContext?.restaurantData?._id;
-  
-    try {
-      // Rechercher les cartes cadeaux de 40€, 50€, 100€, et 200€ à partir des données du contexte
-      const gift40 = restaurantContext?.restaurantData?.gifts?.find(
-        (gift) => gift.value === 40
-      );
-      // const gift50 = restaurantContext?.restaurantData?.gifts?.find(
-      //   (gift) => gift.value === 50
-      // );
-      // const gift100 = restaurantContext?.restaurantData?.gifts?.find(
-      //   (gift) => gift.value === 100
-      // );
-      const gift200 = restaurantContext?.restaurantData?.gifts?.find(
-        (gift) => gift.value === 200
-      );
-  
-      // Vérifier si les cartes existent
-      if (!gift40 || !gift40._id) throw new Error("Carte cadeau de 40€ non trouvée");
-      // if (!gift50 || !gift50._id) throw new Error("Carte cadeau de 50€ non trouvée");
-      // if (!gift100 || !gift100._id) throw new Error("Carte cadeau de 100€ non trouvée");
-      if (!gift200 || !gift200._id) throw new Error("Carte cadeau de 200€ non trouvée");
-  
-      // Simuler l'achat pour les cartes de 40€ et 200€
-      const purchase1 = await axios.post(
-        `${apiUrl}/restaurants/${restaurantId}/gifts/${gift40._id}/purchase`
-      );
-      const purchase2 = await axios.post(
-        `${apiUrl}/restaurants/${restaurantId}/gifts/${gift200._id}/purchase`
-      );
-  
-      // // Simuler 3 achats utilisés pour la carte de 50€
-      // for (let i = 0; i < 3; i++) {
-      //   const usedPurchase = await axios.post(
-      //     `${apiUrl}/restaurants/${restaurantId}/gifts/${gift50._id}/purchase`
-      //   );
-  
-      //   // Marquer l'achat comme utilisé
-      //   await axios.put(
-      //     `${apiUrl}/restaurants/${restaurantId}/gifts/${gift50._id}/purchases/${usedPurchase.data.purchaseCode}`,
-      //     { status: "Used" }
-      //   );
-      // }
-  
-      // // Simuler 4 achats expirés pour la carte de 100€
-      // for (let i = 0; i < 4; i++) {
-      //   const expiredPurchase = await axios.post(
-      //     `${apiUrl}/restaurants/${restaurantId}/gifts/${gift100._id}/purchase`
-      //   );
-  
-      //   // Marquer l'achat comme expiré
-      //   await axios.put(
-      //     `${apiUrl}/restaurants/${restaurantId}/gifts/${gift100._id}/purchases/${expiredPurchase.data.purchaseCode}`,
-      //     { status: "Expired" }
-      //   );
-      // }
-    } catch (error) {
-      console.error(
-        "Erreur lors de la simulation des achats de cartes cadeaux :",
-        error.response?.data || error.message
-      );
-    }
-  }
-  
 
   function handleEditClick(gift) {
     setEditingGift(gift);
@@ -170,13 +105,6 @@ export default function ListGiftsComponent(props) {
           <GiftSvg width={30} height={30} fillColor="#131E3690" />
 
           <h1 className="pl-2 text-2xl">{t("titles.main")}</h1>
-
-          <button
-            onClick={simulateGiftPurchases}
-            className="bg-blue px-6 py-2 rounded-lg text-white cursor-pointer"
-          >
-            Simuler les achats de cartes cadeaux
-          </button>
         </div>
 
         <button
@@ -191,10 +119,10 @@ export default function ListGiftsComponent(props) {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 tablet:grid-cols-3 desktop:grid-cols-4 ultraWild:grid-cols-5 gap-6">
-        {restaurantContext?.restaurantData?.gifts
+      <div className="mb-12 grid grid-cols-1 tablet:grid-cols-3 desktop:grid-cols-4 ultraWild:grid-cols-5 gap-6">
+        {restaurantContext?.restaurantData?.giftCards
           ?.sort((a, b) => a.value - b.value)
-          .map((gift, i) => {
+          .map((giftCard, i) => {
             return (
               <div
                 key={i}
@@ -203,7 +131,7 @@ export default function ListGiftsComponent(props) {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleEditClick(gift);
+                    handleEditClick(giftCard);
                   }}
                   className="absolute right-0 top-0 flex flex-col items-center gap-1 p-2"
                 >
@@ -217,8 +145,8 @@ export default function ListGiftsComponent(props) {
                   </div>
                 </button>
 
-                <h2 className="text-xl text-center">
-                  {gift.value} {currencySymbol}
+                <h2 className="text-xl text-center font-semibold">
+                  {giftCard.value} {currencySymbol}
                 </h2>
 
                 <hr className="bg-darkBlue h-[1px] w-[90%] opacity-20 mx-auto" />
@@ -227,13 +155,13 @@ export default function ListGiftsComponent(props) {
                   <div className="w-1/2 flex justify-center">
                     <button
                       onClick={(e) => {
-                        handleVisibilityToggle(gift);
+                        handleVisibilityToggle(giftCard);
                       }}
                       className="flex flex-col items-center gap-1 p-2"
                     >
                       <div
                         className={`bg-green ${
-                          gift.visible ? "bg-opacity-20" : ""
+                          giftCard.visible ? "bg-opacity-20" : ""
                         } p-[6px] rounded-full transition-colors duration-300`}
                       >
                         <NoVisibleSvg
@@ -244,7 +172,9 @@ export default function ListGiftsComponent(props) {
                         />
                       </div>
                       <p className="text-xs text-center">
-                        {gift.visible ? "Visible" : "Non Visible"}
+                        {giftCard.visible
+                          ? t("buttons.visible")
+                          : t("buttons.noVisible")}
                       </p>
                     </button>
                   </div>
@@ -253,7 +183,7 @@ export default function ListGiftsComponent(props) {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleDeleteClick(gift);
+                        handleDeleteClick(giftCard);
                       }}
                       className="flex flex-col items-center gap-1 p-2"
                     >
@@ -265,7 +195,9 @@ export default function ListGiftsComponent(props) {
                           fillColor="white"
                         />
                       </div>
-                      <p className="text-xs text-center">Supprimer</p>
+                      <p className="text-xs text-center">
+                        {t("buttons.delete")}
+                      </p>
                     </button>
                   </div>
                 </div>
@@ -275,9 +207,9 @@ export default function ListGiftsComponent(props) {
       </div>
 
       <PurchasesGiftListComponent
-        purchases={restaurantContext?.restaurantData?.gifts.flatMap(
-          (gift) => gift.purchases
-        )}
+        purchasesGiftCards={
+          restaurantContext?.restaurantData?.purchasesGiftCards
+        }
       />
 
       {/* MODALES */}

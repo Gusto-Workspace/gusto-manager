@@ -1,20 +1,35 @@
 {
   "titles": {
-    "main": "Cartes Cadeau"
+    "main": "Cartes Cadeau",
+    "second": "Achetées sur le site"
   },
   "form": {
     "labels": {
       "value": "Montant de la carte"
     }
   },
+  "labels": {
+    "valid": "Valides",
+    "used": "Utilisées",
+    "expired": "Expirées",
+    "amount": "Montant",
+    "owner": "Bénéficiaire",
+    "code": "Code",
+    "valididy": "Valide jusqu'au",
+    "emptyCard": "Aucune carte cadeau"
+  },
   "buttons": {
     "add": "Ajouter",
     "addGift": "Ajouter une carte cadeau",
     "edit": "Modifier",
-    "deleteGifts": "Suppression d'une carte cadeaux",
+    "deleteGift": "Suppression d'une carte cadeaux",
     "confirmDelete": "Confirmer la suppression ?",
     "save": "Enregister",
     "confirm": "Confirmer",
+    "delete": "Supprimer",
+    "usedCard": "Carte cadeau utilisée",
+    "visible": "Visible",
+    "noVisible": "Non visible",
     "yes": "Oui",
     "no": "Non",
     "cancel": "Annuler",

@@ -25,7 +25,7 @@ router.post("/restaurants/:id/gifts", async (req, res) => {
 
     const restaurant = await RestaurantModel.findByIdAndUpdate(
       restaurantId,
-      { $push: { gifts: newGiftCard } },
+      { $push: { giftCards: newGiftCard } },
       { new: true }
     ).populate("owner_id", "firstname");
 
@@ -42,16 +42,23 @@ router.put("/restaurants/:id/gifts/:giftId", async (req, res) => {
   const { value, visible } = req.body;
 
   try {
+    // Mise à jour de la carte cadeau spécifique dans le tableau `giftCards`
     const restaurant = await RestaurantModel.findOneAndUpdate(
-      { _id: restaurantId, "gifts._id": giftId },
+      { _id: restaurantId, "giftCards._id": giftId },
       {
         $set: {
-          "gifts.$.value": value,
-          "gifts.$.visible": visible,
+          "giftCards.$.value": value,
+          "giftCards.$.visible": visible,
         },
       },
       { new: true }
     ).populate("owner_id", "firstname");
+
+    if (!restaurant) {
+      return res
+        .status(404)
+        .json({ error: "Restaurant or gift card not found" });
+    }
 
     res.status(200).json({ restaurant });
   } catch (error) {
@@ -65,11 +72,18 @@ router.delete("/restaurants/:id/gifts/:giftId", async (req, res) => {
   const giftId = req.params.giftId;
 
   try {
+    // Supprime la carte cadeau spécifique dans le tableau `giftCards`
     const restaurant = await RestaurantModel.findByIdAndUpdate(
       restaurantId,
-      { $pull: { gifts: { _id: giftId } } },
+      { $pull: { giftCards: { _id: giftId } } },
       { new: true }
     ).populate("owner_id", "firstname");
+
+    if (!restaurant) {
+      return res
+        .status(404)
+        .json({ error: "Restaurant or gift card not found" });
+    }
 
     res.status(200).json({ restaurant });
   } catch (error) {
@@ -81,13 +95,15 @@ router.delete("/restaurants/:id/gifts/:giftId", async (req, res) => {
 router.post("/restaurants/:id/gifts/:giftId/purchase", async (req, res) => {
   const restaurantId = req.params.id;
   const giftId = req.params.giftId;
+  const { beneficiaryFirstName, beneficiaryLastName } = req.body;
 
   try {
-    // Cherche la carte cadeau correspondante
+    // Cherche le restaurant et la carte cadeau correspondante
     const restaurant = await RestaurantModel.findOne({
       _id: restaurantId,
     }).populate("owner_id", "firstname");
-    const gift = restaurant.gifts.id(giftId);
+
+    const gift = restaurant.giftCards.id(giftId);
 
     if (!gift) {
       return res.status(404).json({ error: "Gift card not found" });
@@ -96,15 +112,18 @@ router.post("/restaurants/:id/gifts/:giftId/purchase", async (req, res) => {
     // Génère un code de 6 caractères pour l'achat de la carte cadeau
     const purchaseCode = generateGiftCode();
 
-    // Crée un nouvel objet pour l'achat avec code et validité de 6 mois
+    // Crée un nouvel objet pour l'achat avec code, valeur et validité de 6 mois
     const newPurchase = {
+      value: gift.value, // Inclut la valeur de la carte cadeau dans l'achat
       purchaseCode,
       validUntil: new Date(Date.now() + 6 * 30 * 24 * 60 * 60 * 1000), // Validité de 6 mois
       status: "Valid", // Par défaut, le statut est "Valid"
+      beneficiaryFirstName,
+      beneficiaryLastName,
     };
 
-    // Ajoute l'achat dans le tableau des achats de la carte
-    gift.purchases.push(newPurchase);
+    // Ajoute l'achat dans le tableau des achats de cartes cadeaux du restaurant
+    restaurant.purchasesGiftCards.push(newPurchase);
 
     // Sauvegarde la mise à jour
     await restaurant.save();
@@ -115,52 +134,37 @@ router.post("/restaurants/:id/gifts/:giftId/purchase", async (req, res) => {
   }
 });
 
-// UPDATE PURCHASE STATUS
-router.put("/restaurants/:id/gifts/:giftId/purchases/:purchaseId", async (req, res) => {
-  const { id: restaurantId, giftId, purchaseId } = req.params;
-  const { status } = req.body;
+// UPDATE GIFT CARD STATUS TO USED
+router.put(
+  "/restaurants/:restaurantId/purchases/:purchaseId/use",
+  async (req, res) => {
+    const { restaurantId, purchaseId } = req.params;
 
-  console.log("Received Params:", req.params);
-  console.log("Received Body:", req.body);
+    try {
+      // Mettre à jour le statut de la carte cadeau achetée
+      const restaurant = await RestaurantModel.findOneAndUpdate(
+        {
+          _id: restaurantId,
+          "purchasesGiftCards._id": purchaseId,
+        },
+        {
+          $set: { "purchasesGiftCards.$.status": "Used" },
+        },
+        { new: true }
+      ).populate("owner_id", "firstname");
 
-  try {
-    const restaurant = await RestaurantModel.findOne({ _id: restaurantId }).populate("owner_id", "firstname");
-    console.log("Found Restaurant:", restaurant ? restaurant._id : "Not Found");
+      if (!restaurant) {
+        return res
+          .status(404)
+          .json({ error: "Restaurant or purchase not found" });
+      }
 
-    if (!restaurant) {
-      return res.status(404).json({ error: "Restaurant not found" });
+      res.status(200).json({ restaurant });
+    } catch (error) {
+      console.error("Error updating gift card status:", error);
+      res.status(500).json({ error: "Error updating gift card status" });
     }
-
-    const gift = restaurant.gifts.id(giftId);
-    console.log("Found Gift Card:", gift ? gift._id : "Not Found");
-
-    if (!gift) {
-      return res.status(404).json({ error: "Gift card not found" });
-    }
-
-    // Trouver l'achat spécifique par son `_id` (purchaseId)
-    const purchase = gift.purchases.id(purchaseId);
-    console.log("Found Purchase:", purchase ? purchase._id : "Not Found");
-
-    if (!purchase) {
-      return res.status(404).json({ error: "Purchase not found" });
-    }
-
-    // Met à jour le statut de l'achat si un statut est fourni
-    if (status) {
-      purchase.status = status;
-    }
-
-    // Sauvegarde la mise à jour
-    await restaurant.save();
-
-    // Renvoie les données complètes du restaurant mis à jour
-    res.status(200).json({ message: "Purchase status updated", restaurant });
-  } catch (error) {
-    console.error("Error updating purchase status:", error);
-    res.status(500).json({ error: "Error updating purchase status" });
   }
-});
-
+);
 
 module.exports = router;

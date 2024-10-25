@@ -48,8 +48,15 @@ const drinkSchema = new mongoose.Schema(
   { _id: false }
 );
 
-// Sous-schéma pour les achats de cartes cadeaux
+// Schéma pour les cartes cadeaux
+const giftCardSchema = new mongoose.Schema({
+  value: { type: Number, required: true },
+  visible: { type: Boolean, default: true },
+});
+
+// Schéma pour les achats de cartes cadeaux
 const giftCardPurchaseSchema = new mongoose.Schema({
+  value: { type: Number, required: true },
   purchaseCode: { type: String, required: true },
   validUntil: { type: Date, required: true },
   status: {
@@ -57,13 +64,8 @@ const giftCardPurchaseSchema = new mongoose.Schema({
     enum: ["Valid", "Used", "Expired"],
     default: "Valid",
   },
-});
-
-// Sous-schéma pour les cartes cadeaux
-const giftCardSchema = new mongoose.Schema({
-  value: { type: Number, required: true },
-  purchases: { type: [giftCardPurchaseSchema], default: [] },
-  visible: { type: Boolean, default: true },
+  beneficiaryFirstName: { type: String, required: true },
+  beneficiaryLastName: { type: String, required: true },
 });
 
 // Sous-schéma pour les actualités
@@ -105,8 +107,9 @@ const restaurantSchema = new mongoose.Schema({
   dish_categories: { type: [dishCategorySchema], default: [] },
   drinks: { type: [drinkSchema], default: [] },
   news: { type: [newsSchema], default: [] },
-  gifts: { type: [giftCardSchema], default: [] },
   menus: [{ type: mongoose.Schema.Types.ObjectId, ref: "Menu" }],
+  giftCards: { type: [giftCardSchema], default: [] },
+  purchasesGiftCards: { type: [giftCardPurchaseSchema], default: [] },
   created_at: { type: Date, default: Date.now },
 });
 

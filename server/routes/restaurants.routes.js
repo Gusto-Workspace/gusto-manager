@@ -12,14 +12,18 @@ const RestaurantModel = require("../models/restaurant.model");
 // Fonction pour mettre à jour le statut des cartes cadeaux expirées
 async function updateExpiredStatus(restaurantId) {
   const restaurant = await RestaurantModel.findById(restaurantId);
+
+  if (!restaurant) {
+    console.error("Restaurant not found with ID:", restaurantId);
+    return;
+  }
+
   const now = new Date();
 
-  restaurant.gifts.forEach((gift) => {
-    gift.purchases.forEach((purchase) => {
-      if (purchase.status === "Valid" && purchase.validUntil < now) {
-        purchase.status = "Expired";
-      }
-    });
+  restaurant.purchasesGiftCards.forEach((purchase) => {
+    if (purchase.status === "Valid" && purchase.validUntil < now) {
+      purchase.status = "Expired";
+    }
   });
 
   await restaurant.save();
