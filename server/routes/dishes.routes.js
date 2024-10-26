@@ -308,6 +308,45 @@ router.delete("/restaurants/:restaurantId/dishes/:dishId", async (req, res) => {
   }
 });
 
+// UPDATE CATEGORY ORDER
+router.put(
+  "/restaurants/:restaurantId/categories-list/order",
+  async (req, res) => {
+    const { restaurantId } = req.params;
+    const { orderedCategoryIds } = req.body;
+
+    try {
+      const restaurant = await RestaurantModel.findById(restaurantId).populate(
+        "owner_id",
+        "firstname"
+      );
+
+      if (!restaurant) {
+        return res.status(404).json({ message: "Restaurant not found." });
+      }
+
+      // Réorganiser les catégories selon l'ordre donné
+      restaurant.dish_categories = orderedCategoryIds.map((categoryId) =>
+        restaurant.dish_categories.find(
+          (cat) => cat._id.toString() === categoryId
+        )
+      );
+
+      await restaurant.save();
+
+      res.status(200).json({
+        message: "Category order updated successfully.",
+        restaurant,
+      });
+    } catch (error) {
+      console.error("Error updating category order:", error);
+      res
+        .status(500)
+        .json({ message: "Server error. Please try again later." });
+    }
+  }
+);
+
 // UPDATE DISH ORDER IN A CATEGORY
 router.put(
   "/restaurants/:restaurantId/categories/:categoryId/dishes/order",

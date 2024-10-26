@@ -20,6 +20,9 @@
       "bio": "Organic"
     }
   },
+  "labels": {
+    "numberOfDishes": "Number of dishes"
+  },
   "buttons": {
     "add": "Add",
     "edit": "Edit",
@@ -29,6 +32,8 @@
     "deleteDish": "Delete a dish",
     "confirmDelete": "Confirm deletion ?",
     "save": "Save",
+    "delete": "Delete",
+    "access": "Access",
     "confirm": "Confirm",
     "yes": "Yes",
     "no": "No",
