@@ -1,6 +1,7 @@
 {
   "titles": {
-    "main": "Individual Dishes"
+    "main": "Individual Dishes",
+    "second": "Preview"
   },
   "form": {
     "labels": {

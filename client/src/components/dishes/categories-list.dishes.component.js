@@ -30,6 +30,7 @@ import { arrayMove, SortableContext } from "@dnd-kit/sortable";
 // COMPONENTS
 import CardCategoryListComponent from "./card-category-list.dishes.component";
 import AddModaleDishesComponent from "./add-modale.dishes.component";
+import GlobalDishesComponent from "./global.dishes.component";
 
 export default function CategoriesListDishesComponent() {
   const { t } = useTranslation("dishes");
@@ -184,26 +185,32 @@ export default function CategoriesListDishesComponent() {
       </div>
 
       {categories && (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
-          <SortableContext items={categories?.map((category) => category._id)}>
-            <div className="grid grid-cols-1 tablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-4 gap-6">
-              {categories?.map((category, i) => (
-                <CardCategoryListComponent
-                  key={category._id}
-                  category={category}
-                  handleEditClick={handleEditClick}
-                  handleVisibilityToggle={handleVisibilityToggle}
-                  handleDeleteClick={handleDeleteClick}
-                  handleCategoryClick={handleCategoryClick}
-                />
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
+        <div className="flex flex-col gap-12">
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={categories?.map((category) => category._id)}
+            >
+              <div className="grid grid-cols-1 tablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-4 gap-6">
+                {categories?.map((category, i) => (
+                  <CardCategoryListComponent
+                    key={category._id}
+                    category={category}
+                    handleEditClick={handleEditClick}
+                    handleVisibilityToggle={handleVisibilityToggle}
+                    handleDeleteClick={handleDeleteClick}
+                    handleCategoryClick={handleCategoryClick}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+
+          <GlobalDishesComponent categories={categories}/>
+        </div>
       )}
 
       {isModalOpen && (

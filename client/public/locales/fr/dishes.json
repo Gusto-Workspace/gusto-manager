@@ -1,6 +1,7 @@
 {
   "titles": {
-    "main": "La Carte"
+    "main": "La Carte",
+    "second" : "Aperçu"
   },
   "form": {
     "labels": {
