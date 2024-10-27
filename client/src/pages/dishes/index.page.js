@@ -13,7 +13,6 @@ import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import CategoriesListDishesComponent from "@/components/dishes/categories-list.dishes.component";
 
-
 export default function DishesPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
 
@@ -29,6 +28,8 @@ export default function DishesPage(props) {
       title = "Gusto Manager";
       description = "";
   }
+
+  if (!restaurantContext.isAuth) return null;
 
   return (
     <>
@@ -65,7 +66,7 @@ export default function DishesPage(props) {
               restaurantData={restaurantContext.restaurantData}
             />
 
-            <CategoriesListDishesComponent/>
+            <CategoriesListDishesComponent />
           </div>
         </div>
       </div>

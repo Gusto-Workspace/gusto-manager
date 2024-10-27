@@ -13,6 +13,7 @@ export default function RestaurantContext() {
   const [restaurantsList, setRestaurantsList] = useState([]);
   const [dataLoading, setDataLoading] = useState(false);
   const [closeEditing, setCloseEditing] = useState(false);
+  const [isAuth, setIsAuth] = useState(false);
 
   function fetchRestaurantData(token, restaurantId) {
     setDataLoading(true);
@@ -70,6 +71,7 @@ export default function RestaurantContext() {
               decodedToken.restaurantId || response.data.restaurants[0]._id;
 
             fetchRestaurantData(token, selectedRestaurantId);
+            setIsAuth(true);
           })
           .catch((error) => {
             console.error(
@@ -120,6 +122,7 @@ export default function RestaurantContext() {
     localStorage.removeItem("token");
     setRestaurantData(null);
     setRestaurantsList([]);
+    setIsAuth(false);
     router.replace("/login");
   }
 
@@ -143,5 +146,7 @@ export default function RestaurantContext() {
     logout,
     setCloseEditing,
     closeEditing,
+    isAuth,
+    setIsAuth,
   };
 }

@@ -1,0 +1,45 @@
+{
+  "titles": {
+    "main": "Les Boissons",
+    "second" : "Aperçu"
+  },
+  "form": {
+    "labels": {
+      "name": "Nom du plat",
+      "description": "Courte description",
+      "optional": "(optionnel)",
+      "category": "Catégorie",
+      "price": "Prix",
+      "status": "Afficher sur le site",
+      "select": "Sélectionner",
+      "categoryName": "Nom de la catégorie",
+      "vegan": "Végan",
+      "glutenFree": "Sans gluten",
+      "vegetarian": "Végétarien",
+      "visible": "Visible sur la carte",
+      "notVisible": "Non visible sur la carte",
+      "bio": "Bio"
+    }
+  },
+  "labels": {
+    "numberOfDishes": "Nombre de plats"
+  },
+  "buttons": {
+    "add": "Ajouter",
+    "addDrink": "Ajouter une boisson",
+    "edit": "Modifier",
+    "addCategory": "Ajouter une catégorie",
+    "addSubCategory": "Ajouter une sous-catégorie",
+    "editCategory": "Modifier la catégorie",
+    "deleteCategory": "Supprimer la catégorie",
+    "deleteDish": "Suppression d'un plat",
+    "confirmDelete": "Confirmer la suppression ?",
+    "save": "Enregister",
+    "delete": "Supprimer",
+    "access": "Accéder",
+    "confirm": "Confirmer",
+    "yes": "Oui",
+    "no": "Non",
+    "cancel": "Annuler"
+  }
+}

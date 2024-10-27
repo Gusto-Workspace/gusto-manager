@@ -1,0 +1,45 @@
+{
+  "titles": {
+    "main": "Drinks",
+    "second": "Preview"
+  },
+  "form": {
+    "labels": {
+      "name": "Name of the dish",
+      "description": "Short description",
+      "optional": "(optional)",
+      "category": "Category",
+      "price": "Price",
+      "status": "Show on site",
+      "select": "Select",
+      "categoryName": "Category Name",
+      "vegan": "Vegan",
+      "glutenFree": "Gluten Free",
+      "vegetarian": "Vegetarian",
+      "visible": "Visible on menu",
+      "notVisible": "Not visible on menu",
+      "bio": "Organic"
+    }
+  },
+  "labels": {
+    "numberOfDishes": "Number of dishes"
+  },
+  "buttons": {
+    "add": "Add",
+    "addDrink": "Add a drink",
+    "edit": "Edit",
+    "addCategory": "Add a Category",
+    "addSubCategory": "Add a subcategory",
+    "editCategory": "Modify the category",
+    "deleteCategory": "Delete the category",
+    "deleteDish": "Delete a dish",
+    "confirmDelete": "Confirm deletion ?",
+    "save": "Save",
+    "delete": "Delete",
+    "access": "Access",
+    "confirm": "Confirm",
+    "yes": "Yes",
+    "no": "No",
+    "cancel": "Annuler"
+  }
+}

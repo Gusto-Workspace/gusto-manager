@@ -28,6 +28,8 @@ export default function DashboardPage(props) {
       description = "";
   }
 
+  if (!restaurantContext.isAuth) return null;
+
   return (
     <>
       <Head>

@@ -10,6 +10,9 @@ import { DishSvg } from "../_shared/_svgs/_index";
 // AXIOS
 import axios from "axios";
 
+// REACT HOOK FORM
+import { useForm } from "react-hook-form";
+
 // CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
 
@@ -26,19 +29,31 @@ import { arrayMove, SortableContext } from "@dnd-kit/sortable";
 import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 
 // COMPONENTS
-import DetailsDishComponent from "./details-dish.dishes.component";
+import DetailsDrinkComponent from "./details-drink.drinks.component";
+import AddModaleDrinksComponent from "./add-modale.drinks.component";
 
-export default function ListDishesComponent(props) {
-  const { t } = useTranslation("dishes");
+export default function ListDrinksComponent(props) {
+  const { t } = useTranslation("drinks");
   const router = useRouter();
   const { locale } = router;
   const { restaurantContext } = useContext(GlobalContext);
   const currencySymbol = locale === "fr" ? "€" : "$";
 
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [selectedDish, setSelectedDish] = useState(null);
+  const [selectedDrink, setSelectedDish] = useState(null);
   const [hoveredTooltip, setHoveredTooltip] = useState(null);
-  const [dishes, setDishes] = useState(props.category.dishes);
+  const [drinks, setDrinks] = useState(props.category.drinks);
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm();
 
   // GENERE UN ID POUR DND
   const id = useId();
@@ -49,15 +64,20 @@ export default function ListDishesComponent(props) {
   const sensors = useSensors(mouseSensor, touchSensor);
 
   function handleAddClick() {
-    router.push(`/dishes/${props.category._id}/add`);
+    router.push(`/drinks/${props.category._id}/add`);
   }
 
-  function handleEditClick(dish) {
-    router.push(`/dishes/${props.category._id}/add?dishId=${dish._id}`);
+  function handleEditClick(drink) {
+    router.push(`/drinks/${props.category._id}/add?drinkId=${drink._id}`);
   }
 
-  function handleDeleteClick(dish) {
-    setSelectedDish(dish);
+  function handleAddSubCategoryClick() {
+    setEditingCategory(true); // Efface la sélection de catégorie principale
+    setIsModalOpen(true);
+  }
+
+  function handleDeleteClick(drink) {
+    setSelectedDish(drink);
     setIsDeleteModalOpen(true);
   }
 
@@ -67,21 +87,21 @@ export default function ListDishesComponent(props) {
   }
 
   function handleDeleteConfirm() {
-    if (!selectedDish) return;
+    if (!selectedDrink) return;
 
     axios
       .delete(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes/${selectedDish._id}`
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/${selectedDrink._id}`
       )
       .then((response) => {
-        setDishes((prevDishes) =>
-          prevDishes.filter((dish) => dish._id !== selectedDish._id)
+        setDrinks((prevDrinks) =>
+          prevDrinks.filter((drink) => drink._id !== selectedDrink._id)
         );
         restaurantContext.setRestaurantData(response.data.restaurant);
         closeDeleteModal();
       })
       .catch((error) => {
-        console.error("Error deleting dish:", error);
+        console.error("Error deleting drink:", error);
       });
   }
 
@@ -95,11 +115,13 @@ export default function ListDishesComponent(props) {
     if (active.id === over?.id) return;
 
     if (active.id !== over.id) {
-      setDishes((prevDishes) => {
-        const oldIndex = prevDishes.findIndex((dish) => dish._id === active.id);
-        const newIndex = prevDishes.findIndex((dish) => dish._id === over.id);
+      setDrinks((prevDrinks) => {
+        const oldIndex = prevDrinks.findIndex(
+          (drink) => drink._id === active.id
+        );
+        const newIndex = prevDrinks.findIndex((drink) => drink._id === over.id);
 
-        const newDishesOrder = arrayMove(prevDishes, oldIndex, newIndex);
+        const newDishesOrder = arrayMove(prevDrinks, oldIndex, newIndex);
 
         saveNewDishOrder(newDishesOrder);
 
@@ -108,20 +130,24 @@ export default function ListDishesComponent(props) {
     }
   }
 
-  function saveNewDishOrder(updatedDishes) {
-    const orderedDishIds = updatedDishes.map((dish) => dish._id);
+  function saveNewDishOrder(updatedDrinks) {
+    const orderedDrinkIds = updatedDrinks.map((drink) => drink._id);
 
     axios
       .put(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes/categories/${props.category._id}/dishes/order`,
-        { orderedDishIds }
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/categories/${props.category._id}/drinks/order`,
+        { orderedDrinkIds }
       )
       .then((response) => {
         restaurantContext.setRestaurantData(response.data.restaurant);
       })
       .catch((error) => {
-        console.error("Error saving dish order:", error);
+        console.error("Error saving drink order:", error);
       });
+  }
+
+  function onSubmit(data) {
+    console.log(data);
   }
 
   return (
@@ -137,12 +163,21 @@ export default function ListDishesComponent(props) {
           </h1>
         </div>
 
-        <button
-          onClick={handleAddClick}
-          className="bg-blue px-6 py-2 rounded-lg text-white cursor-pointer"
-        >
-          {t("buttons.add")}
-        </button>
+        <div className="flex gap-4">
+          <button
+            onClick={handleAddClick}
+            className="bg-blue px-6 py-2 rounded-lg text-white cursor-pointer"
+          >
+            {t("buttons.addDrink")}
+          </button>
+
+          <button
+            onClick={handleAddSubCategoryClick}
+            className="bg-blue px-6 py-2 rounded-lg text-white cursor-pointer"
+          >
+            {t("buttons.addSubCategory")}
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col gap-4">
@@ -153,13 +188,13 @@ export default function ListDishesComponent(props) {
           sensors={sensors}
           modifiers={[restrictToVerticalAxis]}
         >
-          <SortableContext items={dishes.map((dish) => dish._id)}>
-            {dishes.map((dish) => (
-              <DetailsDishComponent
-                key={dish._id}
+          <SortableContext items={drinks.map((drink) => drink._id)}>
+            {drinks.map((drink) => (
+              <DetailsDrinkComponent
+                key={drink._id}
                 hoveredTooltip={hoveredTooltip}
                 setHoveredTooltip={setHoveredTooltip}
-                dish={dish}
+                drink={drink}
                 handleEditClick={handleEditClick}
                 handleDeleteClick={handleDeleteClick}
                 currencySymbol={currencySymbol}
@@ -182,7 +217,7 @@ export default function ListDishesComponent(props) {
 
             <p className="mb-6 text-center">
               {t("buttons.confirmDelete", {
-                dishName: selectedDish?.name,
+                drinkName: selectedDrink?.name,
               })}
             </p>
 
@@ -203,6 +238,20 @@ export default function ListDishesComponent(props) {
             </div>
           </div>
         </div>
+      )}
+
+      {isModalOpen && (
+        <AddModaleDrinksComponent
+          setIsModalOpen={setIsModalOpen}
+          setEditingCategory={setEditingCategory}
+          setIsDeleting={setIsDeleting}
+          isDeleting={isDeleting}
+          editingCategory={editingCategory}
+          onSubmit={onSubmit}
+          handleSubmit={handleSubmit}
+          register={register}
+          errors={errors}
+        />
       )}
     </div>
   );

@@ -37,6 +37,8 @@ export default function RestaurantPage(props) {
       description = "";
   }
 
+  if (!restaurantContext.isAuth) return null;
+
   return (
     <>
       <Head>

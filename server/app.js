@@ -55,6 +55,7 @@ const contactRoutes = require("./routes/contact.routes");
 const dishesRoutes = require("./routes/dishes.routes");
 const newsRoutes = require("./routes/news.routes");
 const giftsRoutes = require("./routes/gifts.routes");
+const drinksRoutes = require("./routes/drinks.routes");
 
 app.use(apiRoutes, restaurantsRoutes);
 app.use(apiRoutes, hoursRoutes);
@@ -62,6 +63,7 @@ app.use(apiRoutes, contactRoutes);
 app.use(apiRoutes, dishesRoutes);
 app.use(apiRoutes, newsRoutes);
 app.use(apiRoutes, giftsRoutes);
+app.use(apiRoutes, drinksRoutes);
 
 // ÉCOUTE DU PORT
 server.listen(PORT, () => {

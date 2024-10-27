@@ -5,7 +5,7 @@ const router = express.Router();
 const RestaurantModel = require("../models/restaurant.model");
 
 // ADD A CATEGORY
-router.post("/restaurants/:restaurantId/categories", async (req, res) => {
+router.post("/restaurants/:restaurantId/dishes/categories", async (req, res) => {
   const { restaurantId } = req.params;
   const { name } = req.body;
 
@@ -56,7 +56,7 @@ router.post("/restaurants/:restaurantId/categories", async (req, res) => {
 
 // UPDATE A CATEGORY
 router.put(
-  "/restaurants/:restaurantId/categories/:categoryId",
+  "/restaurants/:restaurantId/dishes/categories/:categoryId",
   async (req, res) => {
     const { restaurantId, categoryId } = req.params;
     const { name, visible } = req.body;
@@ -97,7 +97,7 @@ router.put(
 
 // DELETE A CATEGORY
 router.delete(
-  "/restaurants/:restaurantId/categories/:categoryId",
+  "/restaurants/:restaurantId/dishes/categories/:categoryId",
   async (req, res) => {
     const { restaurantId, categoryId } = req.params;
 
@@ -310,7 +310,7 @@ router.delete("/restaurants/:restaurantId/dishes/:dishId", async (req, res) => {
 
 // UPDATE CATEGORY ORDER
 router.put(
-  "/restaurants/:restaurantId/categories-list/order",
+  "/restaurants/:restaurantId/dishes/categories-list/order",
   async (req, res) => {
     const { restaurantId } = req.params;
     const { orderedCategoryIds } = req.body;
@@ -349,7 +349,7 @@ router.put(
 
 // UPDATE DISH ORDER IN A CATEGORY
 router.put(
-  "/restaurants/:restaurantId/categories/:categoryId/dishes/order",
+  "/restaurants/:restaurantId/dishes/categories/:categoryId/dishes/order",
   async (req, res) => {
     const { restaurantId, categoryId } = req.params;
     const { orderedDishIds } = req.body;

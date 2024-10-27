@@ -13,8 +13,6 @@ import {
 export default function GlobalDishesComponent(props) {
   const { t } = useTranslation("dishes");
 
-  console.log(props.categories);
-
   return (
     <div className="flex flex-col gap-6">
       <div className="pl-2 flex gap-2 items-center">
@@ -32,19 +30,21 @@ export default function GlobalDishesComponent(props) {
           )
           .map((category, i) => (
             <div key={i} className="flex flex-col gap-6">
-
               <div className="relative">
                 <h2 className="relative text-xl font-semibold uppercase text-center bg-white px-6 w-fit mx-auto z-20">
                   {category.name}
                 </h2>
-              <hr className="bg-darkBlue absolute h-[1px] w-full top-1/2 -translate-y-1/2 z-10 opacity-50" />
+                <hr className="bg-darkBlue absolute h-[1px] w-full top-1/2 -translate-y-1/2 z-10 opacity-50" />
               </div>
 
               <div className="flex flex-col gap-4">
                 {category?.dishes
                   .filter((dish) => dish.showOnWebsite)
                   .map((dish, j) => (
-                    <div key={j} className="flex items-center justify-between">
+                    <div
+                      key={j}
+                      className="flex items-center gap-4 justify-between"
+                    >
                       <div className="flex flex-col">
                         <h3 className="text-lg font-semibold">{dish.name}</h3>
 

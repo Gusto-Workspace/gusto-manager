@@ -29,6 +29,8 @@ export default function GiftsPage(props) {
       description = "";
   }
 
+  if (!restaurantContext.isAuth) return null;
+
   return (
     <>
       <Head>
@@ -53,7 +55,7 @@ export default function GiftsPage(props) {
       <div>
         <div className="flex">
           <NavComponent />
-         
+
           <div className="bg-lightGrey text-darkBlue overflow-y-auto flex-1 p-6 h-screen flex flex-col gap-6">
             <SettingsComponent
               dataLoading={restaurantContext.dataLoading}
@@ -63,7 +65,7 @@ export default function GiftsPage(props) {
               restaurantData={restaurantContext.restaurantData}
             />
 
-            <ListGiftsComponent/>
+            <ListGiftsComponent />
           </div>
         </div>
       </div>

@@ -38,6 +38,7 @@ export default function FormLoginComponent() {
       // Vérifier le nombre de restaurants du propriétaire
       if (owner.restaurants.length > 1) {
         restaurantContext.setRestaurantsList(owner.restaurants);
+        restaurantContext.setIsAuth(true);
       } else {
         // Si le propriétaire n'a qu'un restaurant, regénérer le token avec l'ID du restaurant
         handleRestaurantSelect(owner.restaurants[0]._id, token);
@@ -65,7 +66,7 @@ export default function FormLoginComponent() {
       localStorage.setItem("token", newToken);
 
       await restaurantContext.fetchRestaurantData(newToken, restaurantId);
-
+      restaurantContext.setIsAuth(true);
       router.push("/");
     } catch (error) {
       console.error("Erreur lors de la sélection du restaurant:", error);

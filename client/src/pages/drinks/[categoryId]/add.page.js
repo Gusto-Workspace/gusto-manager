@@ -8,11 +8,15 @@ import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 // CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
 
+// AXIOS
+import axios from "axios";
+
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
+import AddDrinksComponent from "@/components/drinks/add.drinks.component";
 
-export default function MenusPage(props) {
+export default function AddDrinkPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
 
   let title;
@@ -27,8 +31,6 @@ export default function MenusPage(props) {
       title = "Gusto Manager";
       description = "";
   }
-
-  if (!restaurantContext.isAuth) return null;
 
   return (
     <>
@@ -64,6 +66,8 @@ export default function MenusPage(props) {
               setRestaurantData={restaurantContext.setRestaurantData}
               restaurantData={restaurantContext.restaurantData}
             />
+
+            <AddDrinksComponent category={props.category} drink={props.drink} />
           </div>
         </div>
       </div>
@@ -71,10 +75,36 @@ export default function MenusPage(props) {
   );
 }
 
-export async function getStaticProps({ locale }) {
-  return {
-    props: {
-      ...(await serverSideTranslations(locale, ["common", "menus"])),
-    },
-  };
+export async function getServerSideProps({ params, query, locale }) {
+  const { categoryId } = params;
+  const { drinkId } = query;
+
+  try {
+    const response = await axios.get(
+      `${process.env.NEXT_PUBLIC_API_URL}/categories/${categoryId}/drinks`
+    );
+    const { category } = response.data;
+
+    let drink = null;
+    if (drinkId) {
+      drink = category.drinks.find((d) => d._id === drinkId) || null;
+    }
+
+    return {
+      props: {
+        category,
+        drink,
+        ...(await serverSideTranslations(locale, ["common", "drinks"])),
+      },
+    };
+  } catch (error) {
+    console.error("Error fetching category or drink data:", error);
+    return {
+      props: {
+        category: null,
+        dish: null,
+        ...(await serverSideTranslations(locale, ["common", "drinks"])),
+      },
+    };
+  }
 }

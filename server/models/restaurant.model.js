@@ -35,19 +35,28 @@ const dishCategorySchema = new mongoose.Schema({
 });
 
 // Sous-schéma pour les boissons
-const drinkSchema = new mongoose.Schema(
-  {
-    name: { type: String, required: true },
-    type: {
-      type: String,
-      enum: ["wine", "cocktail", "beer", "soft drink", "hot drink"],
-      required: true,
-    },
-    price: { type: Number, required: true },
-  },
-  { _id: false }
-);
+const drinkSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  description: { type: String },
+  price: { type: Number, required: true },
+  showOnWebsite: { type: Boolean, default: true },
+  year: { type: Number },
+  isBio: { type: Boolean, default: false },
+});
 
+// Sous-schéma pour les sous-catégories de boissons
+const drinkSubCategorySchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  drinks: { type: [drinkSchema], default: [] },
+});
+
+// Schéma pour les catégories de boissons
+const drinkCategorySchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  visible: { type: Boolean, default: true },
+  subCategories: { type: [drinkSubCategorySchema], default: [] },
+  drinks: { type: [drinkSchema], default: [] },
+});
 // Schéma pour les cartes cadeaux
 const giftCardSchema = new mongoose.Schema({
   value: { type: Number, required: true },
@@ -105,7 +114,7 @@ const restaurantSchema = new mongoose.Schema({
   },
   opening_hours: { type: [openingHourSchema], default: [] },
   dish_categories: { type: [dishCategorySchema], default: [] },
-  drinks: { type: [drinkSchema], default: [] },
+  drink_categories: { type: [drinkCategorySchema], default: [] },
   news: { type: [newsSchema], default: [] },
   menus: [{ type: mongoose.Schema.Types.ObjectId, ref: "Menu" }],
   giftCards: { type: [giftCardSchema], default: [] },

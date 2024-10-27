@@ -29,6 +29,7 @@ export default function NewsPage(props) {
       description = "";
   }
   
+  if (!restaurantContext.isAuth) return null;
 
   return (
     <>

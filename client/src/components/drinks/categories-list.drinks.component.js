@@ -14,7 +14,7 @@ import { GlobalContext } from "@/contexts/global.context";
 import { useTranslation } from "next-i18next";
 
 // SVG
-import { DishSvg } from "../_shared/_svgs/_index";
+import { DrinkSvg } from "../_shared/_svgs/_index";
 
 // DND
 import {
@@ -28,12 +28,11 @@ import {
 import { arrayMove, SortableContext } from "@dnd-kit/sortable";
 
 // COMPONENTS
-import CardCategoryListComponent from "./card-category-list.dishes.component";
-import AddModaleDishesComponent from "./add-modale.dishes.component";
-import GlobalDishesComponent from "./global.dishes.component";
+import CardCategoryListComponent from "./card-category-list.drinks.component";
+import AddModaleDrinksComponent from "./add-modale.drinks.component";
 
-export default function CategoriesListDishesComponent() {
-  const { t } = useTranslation("dishes");
+export default function CategoriesListDrinksComponent() {
+  const { t } = useTranslation("drinks");
   const router = useRouter();
   const { restaurantContext } = useContext(GlobalContext);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -47,7 +46,7 @@ export default function CategoriesListDishesComponent() {
   const sensors = useSensors(mouseSensor, touchSensor);
 
   useEffect(() => {
-    setCategories(restaurantContext?.restaurantData?.dish_categories);
+    setCategories(restaurantContext?.restaurantData?.drink_categories);
   }, [restaurantContext?.restaurantData]);
 
   const {
@@ -71,7 +70,7 @@ export default function CategoriesListDishesComponent() {
   }
 
   function handleCategoryClick(category) {
-    router.push(`/dishes/${category._id}`);
+    router.push(`/drinks/${category._id}`);
   }
 
   function handleDeleteClick(category) {
@@ -85,7 +84,7 @@ export default function CategoriesListDishesComponent() {
 
     axios
       .put(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes/categories/${category._id}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/categories/${category._id}`,
         { visible: updatedVisibility }
       )
       .then((response) => {
@@ -98,8 +97,8 @@ export default function CategoriesListDishesComponent() {
 
   function onSubmit(data) {
     const apiUrl = editingCategory
-      ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes/categories/${editingCategory._id}`
-      : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes/categories`;
+      ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/categories/${editingCategory._id}`
+      : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/categories`;
 
     const method = isDeleting ? "delete" : editingCategory ? "put" : "post";
 
@@ -150,7 +149,7 @@ export default function CategoriesListDishesComponent() {
 
     axios
       .put(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes/categories-list/order`,
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/categories-list/order`,
         { orderedCategoryIds }
       )
       .then((response) => {
@@ -167,7 +166,7 @@ export default function CategoriesListDishesComponent() {
 
       <div className="flex justify-between">
         <div className="pl-2 flex gap-2 items-center">
-          <DishSvg width={30} height={30} fillColor="#131E3690" />
+          <DrinkSvg width={30} height={30} fillColor="#131E3690" />
 
           <h1 className="pl-2 text-2xl">{t("titles.main")}</h1>
         </div>
@@ -208,13 +207,11 @@ export default function CategoriesListDishesComponent() {
               </div>
             </SortableContext>
           </DndContext>
-
-          <GlobalDishesComponent categories={categories}/>
         </div>
       )}
 
       {isModalOpen && (
-        <AddModaleDishesComponent
+        <AddModaleDrinksComponent
           setIsModalOpen={setIsModalOpen}
           setEditingCategory={setEditingCategory}
           setIsDeleting={setIsDeleting}
