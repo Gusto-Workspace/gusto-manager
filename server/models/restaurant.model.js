@@ -41,12 +41,13 @@ const drinkSchema = new mongoose.Schema({
   price: { type: Number, required: true },
   showOnWebsite: { type: Boolean, default: true },
   year: { type: Number },
-  isBio: { type: Boolean, default: false },
+  bio: { type: Boolean, default: false },
 });
 
 // Sous-schéma pour les sous-catégories de boissons
 const drinkSubCategorySchema = new mongoose.Schema({
   name: { type: String, required: true },
+  visible: { type: Boolean, default: true },
   drinks: { type: [drinkSchema], default: [] },
 });
 
@@ -57,6 +58,7 @@ const drinkCategorySchema = new mongoose.Schema({
   subCategories: { type: [drinkSubCategorySchema], default: [] },
   drinks: { type: [drinkSchema], default: [] },
 });
+
 // Schéma pour les cartes cadeaux
 const giftCardSchema = new mongoose.Schema({
   value: { type: Number, required: true },

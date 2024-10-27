@@ -5,11 +5,11 @@ const router = express.Router();
 const RestaurantModel = require("../models/restaurant.model");
 
 // ADD A CATEGORY
-router.post( "/restaurants/:restaurantId/drinks/categories",
+router.post(
+  "/restaurants/:restaurantId/drinks/categories",
   async (req, res) => {
     const { restaurantId } = req.params;
     const { name } = req.body;
-    
 
     // Validation des données
     if (!name) {
@@ -412,42 +412,40 @@ router.post(
     const { restaurantId, categoryId } = req.params;
     const { name } = req.body;
 
-    console.log(req.params);
-    console.log(req.body);
-    
-    
+    if (!name) {
+      return res.status(400).json({ message: "Subcategory name is required." });
+    }
 
-    // if (!name) {
-    //   return res.status(400).json({ message: "Subcategory name is required." });
-    // }
+    try {
+      const restaurant = await RestaurantModel.findById(restaurantId).populate(
+        "owner_id",
+        "firstname"
+      );
 
-    // try {
-    //   const restaurant = await RestaurantModel.findById(restaurantId);
+      if (!restaurant) {
+        return res.status(404).json({ message: "Restaurant not found." });
+      }
 
-    //   if (!restaurant) {
-    //     return res.status(404).json({ message: "Restaurant not found." });
-    //   }
+      const category = restaurant.drink_categories.id(categoryId);
 
-    //   const category = restaurant.drink_categories.id(categoryId);
+      if (!category) {
+        return res.status(404).json({ message: "Category not found." });
+      }
 
-    //   if (!category) {
-    //     return res.status(404).json({ message: "Category not found." });
-    //   }
+      const newSubCategory = { name, drinks: [] };
+      category.subCategories.push(newSubCategory);
 
-    //   const newSubCategory = { name, drinks: [] };
-    //   category.subCategories.push(newSubCategory);
+      await restaurant.save();
 
-    //   await restaurant.save();
-
-    //   res
-    //     .status(201)
-    //     .json({ message: "Subcategory added successfully.", restaurant });
-    // } catch (error) {
-    //   console.error("Error adding subcategory:", error);
-    //   res
-    //     .status(500)
-    //     .json({ message: "Server error. Please try again later." });
-    // }
+      res
+        .status(201)
+        .json({ message: "Subcategory added successfully.", restaurant });
+    } catch (error) {
+      console.error("Error adding subcategory:", error);
+      res
+        .status(500)
+        .json({ message: "Server error. Please try again later." });
+    }
   }
 );
 
@@ -459,7 +457,10 @@ router.put(
     const { name, visible } = req.body;
 
     try {
-      const restaurant = await RestaurantModel.findById(restaurantId);
+      const restaurant = await RestaurantModel.findById(restaurantId).populate(
+        "owner_id",
+        "firstname"
+      );
 
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found." });
@@ -499,7 +500,10 @@ router.delete(
     const { restaurantId, categoryId, subCategoryId } = req.params;
 
     try {
-      const restaurant = await RestaurantModel.findById(restaurantId);
+      const restaurant = await RestaurantModel.findById(restaurantId).populate(
+        "owner_id",
+        "firstname"
+      );
 
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found." });
@@ -510,7 +514,11 @@ router.delete(
         return res.status(404).json({ message: "Category not found." });
       }
 
-      category.subCategories.id(subCategoryId).remove();
+      // Utiliser $pull pour retirer la sous-catégorie
+      category.subCategories = category.subCategories.filter(
+        (subCategory) => subCategory._id.toString() !== subCategoryId
+      );
+
       await restaurant.save();
 
       res
@@ -539,7 +547,10 @@ router.post(
     }
 
     try {
-      const restaurant = await RestaurantModel.findById(restaurantId);
+      const restaurant = await RestaurantModel.findById(restaurantId).populate(
+        "owner_id",
+        "firstname"
+      );
 
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found." });
@@ -559,14 +570,55 @@ router.post(
 
       await restaurant.save();
 
-      res
-        .status(201)
-        .json({
-          message: "Drink added to subcategory successfully.",
-          restaurant,
-        });
+      res.status(201).json({
+        message: "Drink added to subcategory successfully.",
+        restaurant,
+      });
     } catch (error) {
       console.error("Error adding drink to subcategory:", error);
+      res
+        .status(500)
+        .json({ message: "Server error. Please try again later." });
+    }
+  }
+);
+
+// UPDATE SUBCATEGORIES ORDER
+router.put(
+  "/restaurants/:restaurantId/drinks/categories/:categoryId/list-subcategories/order",
+  async (req, res) => {
+    const { restaurantId, categoryId } = req.params;
+    const { orderedSubCategoryIds } = req.body;
+
+    try {
+      const restaurant = await RestaurantModel.findById(restaurantId).populate(
+        "owner_id",
+        "firstname"
+      );
+      if (!restaurant) {
+        return res.status(404).json({ message: "Restaurant not found." });
+      }
+
+      const category = restaurant.drink_categories.id(categoryId);
+      if (!category) {
+        return res.status(404).json({ message: "Category not found." });
+      }
+
+      // Réorganiser les sous-catégories selon l'ordre donné
+      category.subCategories = orderedSubCategoryIds.map((subCategoryId) =>
+        category.subCategories.find(
+          (sub) => sub._id.toString() === subCategoryId
+        )
+      );
+
+      await restaurant.save();
+
+      res.status(200).json({
+        message: "Subcategory order updated successfully.",
+        restaurant,
+      });
+    } catch (error) {
+      console.error("Error updating subcategory order:", error);
       res
         .status(500)
         .json({ message: "Server error. Please try again later." });
