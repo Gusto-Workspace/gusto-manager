@@ -1,6 +1,5 @@
 import { useContext } from "react";
 import Head from "next/head";
-import axios from "axios";
 
 // I18N
 import { i18n } from "next-i18next";
@@ -9,12 +8,15 @@ import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 // CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
 
+// AXIOS
+import axios from "axios";
+
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
-import ListDrinksComponent from "@/components/drinks/list.drinks.component";
+import AddDrinksComponent from "@/components/drinks/add.drinks.component";
 
-export default function CategoriesDrinksPage(props) {
+export default function AddDrinkPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
 
   let title;
@@ -30,11 +32,26 @@ export default function CategoriesDrinksPage(props) {
       description = "";
   }
 
-
   return (
     <>
       <Head>
         <title>{title}</title>
+
+        {/* <>
+          {description && <meta name="description" content={description} />}
+          {title && <meta property="og:title" content={title} />}
+          {description && (
+            <meta property="og:description" content={description} />
+          )}
+          <meta
+            property="og:url"
+            content="https://lespetitsbilingues-newham.com/"
+          />
+          <meta property="og:type" content="website" />
+          <meta property="og:image" content="/img/open-graph.jpg" />
+          <meta property="og:image:width" content="1200" />
+          <meta property="og:image:height" content="630" />
+        </> */}
       </Head>
 
       <div>
@@ -50,7 +67,7 @@ export default function CategoriesDrinksPage(props) {
               restaurantData={restaurantContext.restaurantData}
             />
 
-            <ListDrinksComponent category={props.category} />
+            <AddDrinksComponent category={props.category} drink={props.drink} />
           </div>
         </div>
       </div>
@@ -58,8 +75,9 @@ export default function CategoriesDrinksPage(props) {
   );
 }
 
-export async function getServerSideProps({ params, locale }) {
+export async function getServerSideProps({ params, query, locale }) {
   const { categoryId } = params;
+  const { drinkId } = query;
 
   try {
     const response = await axios.get(
@@ -67,17 +85,24 @@ export async function getServerSideProps({ params, locale }) {
     );
     const { category } = response.data;
 
+    let drink = null;
+    if (drinkId) {
+      drink = category.drinks.find((d) => d._id === drinkId) || null;
+    }
+
     return {
       props: {
         category,
+        drink,
         ...(await serverSideTranslations(locale, ["common", "drinks"])),
       },
     };
   } catch (error) {
-    console.error("Error fetching category data:", error);
+    console.error("Error fetching category or drink data:", error);
     return {
       props: {
         category: null,
+        dish: null,
         ...(await serverSideTranslations(locale, ["common", "drinks"])),
       },
     };

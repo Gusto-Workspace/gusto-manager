@@ -14,7 +14,7 @@ import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import ListDrinksComponent from "@/components/drinks/list.drinks.component";
 
-export default function CategoriesDrinksPage(props) {
+export default function SubCategorieDrinksPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
 
   let title;

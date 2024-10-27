@@ -269,7 +269,7 @@ export default function ListDrinksComponent(props) {
   }
 
   function handleSubCategoryClick(subCategory) {
-    router.push(`/drinks/${props.category._id}/sub-cat/${subCategory._id}`);
+    router.push(`/drinks/${props.category._id}/${subCategory._id}`);
   }
 
   function onSubmit(data) {

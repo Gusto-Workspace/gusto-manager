@@ -34,6 +34,24 @@ const dishCategorySchema = new mongoose.Schema({
   dishes: { type: [dishSchema], default: [] },
 });
 
+// Sous-schéma pour les vins
+const wineSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  description: { type: String },
+  price: { type: Number, required: true },
+  showOnWebsite: { type: Boolean, default: true },
+  year: { type: Number },
+  origin: { type: String },
+  bio: { type: Boolean, default: false },
+});
+
+// Schéma pour les catégories de vins
+const wineCategorySchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  visible: { type: Boolean, default: true },
+  wines: { type: [wineSchema], default: [] },
+});
+
 // Sous-schéma pour les boissons
 const drinkSchema = new mongoose.Schema({
   name: { type: String, required: true },
@@ -117,6 +135,7 @@ const restaurantSchema = new mongoose.Schema({
   opening_hours: { type: [openingHourSchema], default: [] },
   dish_categories: { type: [dishCategorySchema], default: [] },
   drink_categories: { type: [drinkCategorySchema], default: [] },
+  wine_categories: { type: [wineCategorySchema], default: [] },
   news: { type: [newsSchema], default: [] },
   menus: [{ type: mongoose.Schema.Types.ObjectId, ref: "Menu" }],
   giftCards: { type: [giftCardSchema], default: [] },
