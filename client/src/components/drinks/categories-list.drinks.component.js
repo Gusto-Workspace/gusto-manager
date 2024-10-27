@@ -38,6 +38,7 @@ export default function CategoriesListDrinksComponent() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [categories, setCategories] = useState([]);
 
   // Détecte les capteurs pour le drag-and-drop (souris et tactile)
@@ -97,12 +98,13 @@ export default function CategoriesListDrinksComponent() {
   }
 
   function onSubmit(data) {
+    setIsSubmitting(true); 
     const apiUrl = editingCategory
       ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/categories/${editingCategory._id}`
       : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/categories`;
-
+  
     const method = isDeleting ? "delete" : editingCategory ? "put" : "post";
-
+  
     axios[method](apiUrl, isDeleting ? {} : data)
       .then((response) => {
         restaurantContext.setRestaurantData(response.data.restaurant);
@@ -113,8 +115,12 @@ export default function CategoriesListDrinksComponent() {
       })
       .catch((error) => {
         console.error("Error modifying, adding or deleting category:", error);
+      })
+      .finally(() => {
+        setIsSubmitting(false); // Désactive le loader
       });
   }
+  
 
   function handleDragEnd(event) {
     const { active, over } = event;
@@ -222,6 +228,7 @@ export default function CategoriesListDrinksComponent() {
           handleSubmit={handleSubmit}
           register={register}
           errors={errors}
+          isSubmitting={isSubmitting}
         />
       )}
     </div>

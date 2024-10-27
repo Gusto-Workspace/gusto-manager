@@ -43,7 +43,7 @@ export default function ListDrinksComponent(props) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
-
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [selectedDrink, setSelectedDish] = useState(null);
   const [hoveredTooltip, setHoveredTooltip] = useState(null);
@@ -287,6 +287,7 @@ export default function ListDrinksComponent(props) {
   }
 
   function onSubmit(data) {
+    setIsSubmitting(true);
     const apiUrl = editingCategory
       ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/categories/${props.category._id}/subcategories/${editingCategory._id}`
       : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/categories/${props.category._id}/subcategories/`;
@@ -303,6 +304,9 @@ export default function ListDrinksComponent(props) {
       })
       .catch((error) => {
         console.error("Error modifying, adding or deleting category:", error);
+      })
+      .finally(() => {
+        setIsSubmitting(false);
       });
   }
 
@@ -336,7 +340,6 @@ export default function ListDrinksComponent(props) {
               {t("buttons.addSubCategory")}
             </button>
           )}
-
         </div>
       </div>
 
@@ -438,6 +441,7 @@ export default function ListDrinksComponent(props) {
           handleSubmit={handleSubmit}
           register={register}
           errors={errors}
+          isSubmitting={isSubmitting}
         />
       )}
     </div>

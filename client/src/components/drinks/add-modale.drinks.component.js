@@ -8,9 +8,12 @@ export default function AddModaleDrinksComponent(props) {
     <div className="fixed inset-0 flex items-center justify-center z-[100]">
       <div
         onClick={() => {
-          props.setIsModalOpen(false);
-          props.setEditingCategory(null);
-          props.setIsDeleting(false);
+          if (!props.isSubmitting) {
+            // Empêche de fermer la modale pendant la soumission
+            props.setIsModalOpen(false);
+            props.setEditingCategory(null);
+            props.setIsDeleting(false);
+          }
         }}
         className="fixed inset-0 bg-black bg-opacity-20"
       />
@@ -37,30 +40,39 @@ export default function AddModaleDrinksComponent(props) {
               type="text"
               placeholder="-"
               defaultValue={props.editingCategory?.name || ""}
-              disabled={props.isDeleting}
+              disabled={props.isDeleting || props.isSubmitting} // Désactive le champ pendant la soumission ou suppression
               {...props.register("name", { required: !props.isDeleting })}
               className={`border p-2 rounded-lg w-full ${
                 props.errors.name ? "border-red" : ""
-              } ${props.isDeleting ? "opacity-50 cursor-not-allowed" : ""}`}
+              } ${props.isDeleting || props.isSubmitting ? "opacity-50 cursor-not-allowed" : ""}`}
             />
           </div>
 
           <div className="flex gap-4">
             <button
               type="submit"
-              className="px-4 py-2 rounded-lg bg-blue text-white"
+              className="px-4 py-2 rounded-lg bg-blue text-white flex items-center gap-2"
+              disabled={props.isSubmitting} // Désactive le bouton pendant la soumission
             >
-              {props.isDeleting ? t("buttons.confirm") : t("buttons.save")}
+              {props.isSubmitting
+                ? t("buttons.loading") // Ajouter un loader ici (ex: spinner)
+                : props.isDeleting
+                  ? t("buttons.confirm")
+                  : t("buttons.save")}
             </button>
 
             <button
               type="button"
               onClick={() => {
-                props.setIsModalOpen(false);
-                props.setEditingCategory(null);
-                props.setIsDeleting(false);
+                if (!props.isSubmitting) {
+                  // Empêche de fermer la modale pendant la soumission
+                  props.setIsModalOpen(false);
+                  props.setEditingCategory(null);
+                  props.setIsDeleting(false);
+                }
               }}
               className="px-4 py-2 rounded-lg text-white bg-red"
+              disabled={props.isSubmitting} // Désactive le bouton pendant la soumission
             >
               {t("buttons.cancel")}
             </button>

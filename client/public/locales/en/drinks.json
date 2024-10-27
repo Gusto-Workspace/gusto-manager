@@ -38,6 +38,7 @@
     "delete": "Delete",
     "access": "Access",
     "confirm": "Confirm",
+    "loading": "Loading...",
     "yes": "Yes",
     "no": "No",
     "cancel": "Annuler"
