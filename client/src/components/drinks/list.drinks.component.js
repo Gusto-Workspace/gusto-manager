@@ -5,7 +5,7 @@ import { useRouter } from "next/router";
 import { useTranslation } from "next-i18next";
 
 // SVG
-import { DishSvg } from "../_shared/_svgs/_index";
+import { DrinkSvg } from "../_shared/_svgs/_index";
 
 // AXIOS
 import axios from "axios";
@@ -47,16 +47,21 @@ export default function ListDrinksComponent(props) {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [selectedDrink, setSelectedDish] = useState(null);
   const [hoveredTooltip, setHoveredTooltip] = useState(null);
-  const [drinks, setDrinks] = useState(props.category.drinks);
+  const [drinks, setDrinks] = useState(
+    props.subCategory ? props.subCategory.drinks : props.category.drinks
+  );
 
   const [subCategories, setSubCategories] = useState([]);
 
   useEffect(() => {
-    setSubCategories(
-      restaurantContext?.restaurantData?.drink_categories?.find(
-        (category) => category._id === props.category._id
-      )?.subCategories
-    );
+    {
+      !props.subCategory &&
+        setSubCategories(
+          restaurantContext?.restaurantData?.drink_categories?.find(
+            (category) => category._id === props.category._id
+          )?.subCategories
+        );
+    }
   }, [restaurantContext?.restaurantData, props.category_id]);
 
   const {
@@ -269,7 +274,16 @@ export default function ListDrinksComponent(props) {
   }
 
   function handleSubCategoryClick(subCategory) {
-    router.push(`/drinks/${props.category._id}/${subCategory._id}`);
+    const formattedCategoryName = props.category.name
+      .replace(/\s+/g, "-")
+      .toLowerCase();
+    const formattedSubCategoryName = subCategory.name
+      .replace(/\s+/g, "-")
+      .toLowerCase();
+
+    router.push(
+      `/drinks/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${subCategory._id}`
+    );
   }
 
   function onSubmit(data) {
@@ -298,10 +312,11 @@ export default function ListDrinksComponent(props) {
 
       <div className="flex justify-between">
         <div className="pl-2 flex gap-2 items-center">
-          <DishSvg width={30} height={30} fillColor="#131E3690" />
+          <DrinkSvg width={30} height={30} fillColor="#131E3690" />
 
           <h1 className="pl-2 text-2xl">
-            {t("titles.main")} / {props.category.name}
+            {t("titles.main")} / {props?.category?.name}
+            {props.subCategory ? ` / ${props.subCategory.name}` : ""}
           </h1>
         </div>
 
@@ -313,12 +328,15 @@ export default function ListDrinksComponent(props) {
             {t("buttons.addDrink")}
           </button>
 
-          <button
-            onClick={handleAddSubCategoryClick}
-            className="bg-blue px-6 py-2 rounded-lg text-white cursor-pointer"
-          >
-            {t("buttons.addSubCategory")}
-          </button>
+          {!props.subCategory && (
+            <button
+              onClick={handleAddSubCategoryClick}
+              className="bg-blue px-6 py-2 rounded-lg text-white cursor-pointer"
+            >
+              {t("buttons.addSubCategory")}
+            </button>
+          )}
+
         </div>
       </div>
 

@@ -30,7 +30,6 @@ export default function SubCategorieDrinksPage(props) {
       description = "";
   }
 
-
   return (
     <>
       <Head>
@@ -50,7 +49,10 @@ export default function SubCategorieDrinksPage(props) {
               restaurantData={restaurantContext.restaurantData}
             />
 
-            <ListDrinksComponent category={props.category} />
+            <ListDrinksComponent
+              category={props.category}
+              subCategory={props.subCategory}
+            />
           </div>
         </div>
       </div>
@@ -59,25 +61,28 @@ export default function SubCategorieDrinksPage(props) {
 }
 
 export async function getServerSideProps({ params, locale }) {
-  const { categoryId } = params;
+  const categoryId = params.categoryId.split("-").pop();
+  const subCategoryId = params.subCategoryId?.split("-").pop();
 
   try {
     const response = await axios.get(
-      `${process.env.NEXT_PUBLIC_API_URL}/categories/${categoryId}/drinks`
+      `${process.env.NEXT_PUBLIC_API_URL}/categories/${categoryId}/subcategories/${subCategoryId}/drinks`
     );
-    const { category } = response.data;
+    const { category, subCategory } = response.data;
 
     return {
       props: {
         category,
+        subCategory,
         ...(await serverSideTranslations(locale, ["common", "drinks"])),
       },
     };
   } catch (error) {
-    console.error("Error fetching category data:", error);
+    console.error("Error fetching subcategory data:", error);
     return {
       props: {
         category: null,
+        subCategory: null,
         ...(await serverSideTranslations(locale, ["common", "drinks"])),
       },
     };

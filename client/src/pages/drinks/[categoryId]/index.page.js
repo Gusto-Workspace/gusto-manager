@@ -61,9 +61,11 @@ export default function CategoriesDrinksPage(props) {
 export async function getServerSideProps({ params, locale }) {
   const { categoryId } = params;
 
+  const actualCategoryId = categoryId.split("-").pop();
+
   try {
     const response = await axios.get(
-      `${process.env.NEXT_PUBLIC_API_URL}/categories/${categoryId}/drinks`
+      `${process.env.NEXT_PUBLIC_API_URL}/categories/${actualCategoryId}/drinks`
     );
     const { category } = response.data;
 
@@ -83,3 +85,4 @@ export async function getServerSideProps({ params, locale }) {
     };
   }
 }
+

@@ -70,7 +70,8 @@ export default function CategoriesListDrinksComponent() {
   }
 
   function handleCategoryClick(category) {
-    router.push(`/drinks/${category._id}`);
+    const formattedName = category.name.replace(/\s+/g, "-").toLowerCase();
+    router.push(`/drinks/${formattedName}-${category._id}`);
   }
 
   function handleDeleteClick(category) {
