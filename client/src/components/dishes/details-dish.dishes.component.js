@@ -33,7 +33,7 @@ export default function DetailsDishComponent(props) {
     <div
       ref={setNodeRef}
       style={style}
-      className="bg-white p-6 pl-4 rounded-lg drop-shadow-sm flex gap-4 justify-between items-center"
+      className="bg-white p-6 pl-4 rounded-lg drop-shadow-sm flex gap-4 justify-between items-center min-h-[100px]"
     >
       <div className="flex gap-4">
         <button {...listeners} className="opacity-50 cursor-grab">

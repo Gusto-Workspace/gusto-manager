@@ -5,7 +5,7 @@
   },
   "form": {
     "labels": {
-      "name": "Nom du plat",
+      "name": "Nom de la boisson",
       "description": "Courte description",
       "optional": "(optionnel)",
       "category": "Catégorie",
@@ -13,16 +13,13 @@
       "status": "Afficher sur le site",
       "select": "Sélectionner",
       "categoryName": "Nom de la catégorie",
-      "vegan": "Végan",
-      "glutenFree": "Sans gluten",
-      "vegetarian": "Végétarien",
       "visible": "Visible sur la carte",
       "notVisible": "Non visible sur la carte",
       "bio": "Bio"
     }
   },
   "labels": {
-    "numberOfDishes": "Nombre de plats"
+    "numberOfDishes": "Nombre de boissons"
   },
   "buttons": {
     "add": "Ajouter",

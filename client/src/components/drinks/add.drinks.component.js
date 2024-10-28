@@ -34,13 +34,11 @@ export default function AddDrinksComponent(props) {
         price: props.drink.price,
         bio: props.drink.bio,
         showOnSite: props.drink.showOnWebsite ? "yes" : "no",
-        year: props.drink.year || "",
       });
     } else {
       reset({
         showOnSite: "yes",
         bio: false,
-        year: "",
       });
     }
   }, [props.drink, reset]);
@@ -51,20 +49,35 @@ export default function AddDrinksComponent(props) {
       showOnWebsite: data.showOnSite === "yes",
       price: parseFloat(data.price),
       bio: data.bio || false,
-      year: data.year ? parseInt(data.year, 10) : undefined,
       categoryId: props.category._id,
     };
 
     try {
-      const apiUrl = props.drink
-        ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/${props.drink._id}`
-        : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks`;
+      let apiUrl;
+      let method = props.drink ? "put" : "post";
 
-      const method = props.drink ? "put" : "post";
+      if (props.subCategory) {
+        // Si la boisson est ajoutée dans une sous-catégorie
+        apiUrl = props.drink
+          ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/categories/${props.category._id}/subcategories/${props.subCategory._id}/drinks/${props.drink._id}`
+          : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/categories/${props.category._id}/subcategories/${props.subCategory._id}/drinks`;
+      } else {
+        // Si la boisson est ajoutée dans une catégorie principale
+        apiUrl = props.drink
+          ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/${props.drink._id}`
+          : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks`;
+      }
+
       const response = await axios[method](apiUrl, formattedData);
 
       restaurantContext.setRestaurantData(response.data.restaurant);
-      router.push(`/drinks/${props.category._id}`);
+
+      // Redirige vers la catégorie ou sous-catégorie appropriée après l'ajout ou la modification
+      if (props.subCategory) {
+        router.push(`/drinks/${props.category._id}/${props.subCategory._id}`);
+      } else {
+        router.push(`/drinks/${props.category._id}`);
+      }
     } catch (error) {
       console.error("Error adding or editing drink:", error);
     }
@@ -78,7 +91,8 @@ export default function AddDrinksComponent(props) {
         <DrinkSvg width={30} height={30} fillColor="#131E3690" />
 
         <h1 className="pl-2 text-2xl flex items-center">
-          {t("titles.main")} / {props.category?.name} /{" "}
+          {t("titles.main")} / {props?.category?.name} /{" "}
+          {props.subCategory ? `${props.subCategory.name} / ` : ""}
           {props.drink ? t("buttons.edit") : t("buttons.add")}
         </h1>
       </div>
@@ -87,68 +101,58 @@ export default function AddDrinksComponent(props) {
         onSubmit={handleSubmit(onSubmit)}
         className="bg-white p-6 rounded-lg drop-shadow-sm flex flex-col gap-6"
       >
-        {/* Name Field */}
-        <div className="flex flex-col gap-2">
-          <label className="block font-semibold">{t("form.labels.name")}</label>
-          <input
-            type="text"
-            placeholder="-"
-            {...register("name", { required: true })}
-            className={`border p-2 rounded-lg w-full ${errors.name ? "border-red" : ""}`}
-          />
-          {errors.name && <span className="text-red">{t("form.errors.required")}</span>}
-        </div>
-
-        {/* Description Field */}
-        <div className="flex flex-col gap-2">
-          <label className="block font-semibold">{t("form.labels.description")}</label>
-          <textarea
-            placeholder="-"
-            {...register("description")}
-            className="border p-2 rounded-lg w-full"
-          />
-        </div>
-
-        {/* Price Field */}
-        <div className="flex flex-col gap-2">
-          <label className="block font-semibold">{t("form.labels.price")}</label>
-          <input
-            type="number"
-            step="0.01"
-            placeholder={`0.00 ${currencySymbol}`}
-            {...register("price", { required: true })}
-            className={`border p-2 rounded-lg w-full ${errors.price ? "border-red" : ""}`}
-          />
-          {errors.price && <span className="text-red">{t("form.errors.required")}</span>}
-        </div>
-
-        {/* Year Field */}
-        <div className="flex flex-col gap-2">
-          <label className="block font-semibold">{t("form.labels.year")}</label>
-          <input
-            type="number"
-            placeholder="-"
-            {...register("year")}
-            className="border p-2 rounded-lg w-full"
-          />
-        </div>
-
-        {/* Show on Site Field */}
-        <div className="flex flex-col gap-2">
-          <label className="block font-semibold">{t("form.labels.showOnSite")}</label>
-          <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2">
-              <input type="radio" value="yes" {...register("showOnSite")} />
-              {t("form.labels.yes")}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="flex flex-col gap-1">
+            <label className="block font-semibold">
+              {t("form.labels.name")}
             </label>
-            <label className="flex items-center gap-2">
-              <input type="radio" value="no" {...register("showOnSite")} />
-              {t("form.labels.no")}
+
+            <input
+              type="text"
+              placeholder="-"
+              {...register("name", { required: true })}
+              className={`border p-2 rounded-lg w-full ${errors.name ? "border-red" : ""}`}
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="block font-semibold">
+              <span>{t("form.labels.description")}</span>
+              <span className="text-xs opacity-50 ml-2 italic">
+                {t("form.labels.optional")}
+              </span>
             </label>
+
+            <input
+              type="text"
+              placeholder="-"
+              {...register("description")}
+              className="border p-2 rounded-lg w-full"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="block font-semibold">
+              {t("form.labels.price")}
+            </label>
+
+            <div className="flex items-center">
+              <span
+                className={`px-3 py-2 rounded-l-lg ${errors.price ? " border border-r-0 border-t-red border-l-red border-b-red" : " border-t border-l border-b"}`}
+              >
+                {currencySymbol}
+              </span>
+
+              <input
+                type="number"
+                placeholder="-"
+                step="0.01"
+                {...register("price", { required: true })}
+                className={`border p-2 rounded-r-lg w-full ${errors.price ? "border-red" : ""}`}
+              />
+            </div>
           </div>
         </div>
 
-        {/* Bio Field */}
         <div className="flex items-center gap-2">
           <input
             type="checkbox"
@@ -156,13 +160,38 @@ export default function AddDrinksComponent(props) {
             id="bio"
             className="w-4 h-4"
           />
-          <label htmlFor="bio" className="font-semibold flex items-center gap-2">
-            <BioSvg width={20} height={20} fillColor="#131E3690" />
+          <label
+            htmlFor="bio"
+            className="font-semibold flex items-center gap-2"
+          >
+            <BioSvg
+              fillColor="white"
+              width={18}
+              height={18}
+              className="bg-darkBlue p-2 w-8 h-8 rounded-full opacity-70"
+            />
             {t("form.labels.bio")}
           </label>
         </div>
 
-        {/* Buttons */}
+        <div className="flex gap-6">
+          <label className="block font-semibold">
+            {t("form.labels.status")}
+          </label>
+
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2">
+              <input type="radio" value="yes" {...register("showOnSite")} />
+              {t("buttons.yes")}
+            </label>
+
+            <label className="flex items-center gap-2">
+              <input type="radio" value="no" {...register("showOnSite")} />
+              {t("buttons.no")}
+            </label>
+          </div>
+        </div>
+
         <div className="flex gap-4">
           <button
             type="submit"
@@ -170,6 +199,7 @@ export default function AddDrinksComponent(props) {
           >
             {t("buttons.save")}
           </button>
+
           <button
             type="button"
             className="bg-red text-white px-4 py-2 rounded-lg "

@@ -80,11 +80,44 @@ export default function ListDrinksComponent(props) {
   const sensors = useSensors(mouseSensor, touchSensor);
 
   function handleAddClick() {
-    router.push(`/drinks/${props.category._id}/add`);
+    if (props.subCategory) {
+      const formattedCategoryName = props.category.name
+        .replace(/\s+/g, "-")
+        .toLowerCase();
+      const formattedSubCategoryName = props.subCategory.name
+        .replace(/\s+/g, "-")
+        .toLowerCase();
+
+      router.push(
+        `/drinks/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${props.subCategory._id}/add`
+      );
+    } else {
+      const formattedName = props.category.name
+        .replace(/\s+/g, "-")
+        .toLowerCase();
+      router.push(`/drinks/${formattedName}-${props.category._id}/add`);
+    }
   }
 
   function handleEditClick(drink) {
-    router.push(`/drinks/${props.category._id}/add?drinkId=${drink._id}`);
+    if (props.subCategory) {
+      const formattedCategoryName = props.category.name
+        .replace(/\s+/g, "-")
+        .toLowerCase();
+      const formattedSubCategoryName = props.subCategory.name
+        .replace(/\s+/g, "-")
+        .toLowerCase();
+      router.push(
+        `/drinks/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${props.subCategory._id}/add?drinkId=${drink._id}`
+      );
+    } else {
+      const formattedCategoryName = props.category.name
+        .replace(/\s+/g, "-")
+        .toLowerCase();
+      router.push(
+        `/drinks/${formattedCategoryName}-${props.category._id}/add?drinkId=${drink._id}`
+      );
+    }
   }
 
   function handleEditClickSubCategory(category) {
@@ -214,11 +247,17 @@ export default function ListDrinksComponent(props) {
   function saveNewDishOrder(updatedDrinks) {
     const orderedDrinkIds = updatedDrinks.map((drink) => drink._id);
 
+    let apiUrl;
+    if (props.subCategory) {
+      // URL pour réorganiser les boissons dans une sous-catégorie
+      apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/categories/${props.category._id}/subcategories/${props.subCategory._id}/drinks/order`;
+    } else {
+      // URL pour réorganiser les boissons dans une catégorie
+      apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/categories/${props.category._id}/drinks/order`;
+    }
+
     axios
-      .put(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/categories/${props.category._id}/drinks/order`,
-        { orderedDrinkIds }
-      )
+      .put(apiUrl, { orderedDrinkIds })
       .then((response) => {
         restaurantContext.setRestaurantData(response.data.restaurant);
       })

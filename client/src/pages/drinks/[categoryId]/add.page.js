@@ -76,7 +76,7 @@ export default function AddDrinkPage(props) {
 }
 
 export async function getServerSideProps({ params, query, locale }) {
-  const { categoryId } = params;
+  const categoryId = params.categoryId.split("-").pop();
   const { drinkId } = query;
 
   try {

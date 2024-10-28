@@ -5,7 +5,7 @@
   },
   "form": {
     "labels": {
-      "name": "Name of the dish",
+      "name": "Name of the drink",
       "description": "Short description",
       "optional": "(optional)",
       "category": "Category",
@@ -13,16 +13,13 @@
       "status": "Show on site",
       "select": "Select",
       "categoryName": "Category Name",
-      "vegan": "Vegan",
-      "glutenFree": "Gluten Free",
-      "vegetarian": "Vegetarian",
       "visible": "Visible on menu",
       "notVisible": "Not visible on menu",
       "bio": "Organic"
     }
   },
   "labels": {
-    "numberOfDishes": "Number of dishes"
+    "numberOfDishes": "Number of drinks"
   },
   "buttons": {
     "add": "Add",

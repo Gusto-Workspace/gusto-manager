@@ -18,6 +18,7 @@ import {
 import { useTranslation } from "next-i18next";
 
 export default function DetailsDrinkComponent(props) {
+  
   const { t } = useTranslation("drinks");
 
   const { listeners, setNodeRef, transform, transition } = useSortable({
@@ -33,7 +34,7 @@ export default function DetailsDrinkComponent(props) {
     <div
       ref={setNodeRef}
       style={style}
-      className="bg-white p-6 pl-4 rounded-lg drop-shadow-sm flex gap-4 justify-between items-center"
+      className="bg-white p-6 pl-4 rounded-lg drop-shadow-sm flex gap-4 justify-between items-center min-h-[100px]"
     >
       <div className="flex gap-4">
         <button {...listeners} className="opacity-50 cursor-grab">
@@ -47,12 +48,12 @@ export default function DetailsDrinkComponent(props) {
           </h3>
 
           <p className="text-sm opacity-50">
-            {props.drink.description.length > 35
-              ? props.drink.description.charAt(0).toUpperCase() +
-                props.drink.description.slice(1, 35) +
+            {props?.drink?.description?.length > 35
+              ? props?.drink?.description.charAt(0).toUpperCase() +
+                props?.drink?.description.slice(1, 35) +
                 "..."
-              : props.drink.description.charAt(0).toUpperCase() +
-                props.drink.description.slice(1)}
+              : props?.drink?.description?.charAt(0).toUpperCase() +
+                props?.drink?.description?.slice(1)}
           </p>
         </div>
       </div>

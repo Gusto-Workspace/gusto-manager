@@ -58,7 +58,6 @@ const drinkSchema = new mongoose.Schema({
   description: { type: String },
   price: { type: Number, required: true },
   showOnWebsite: { type: Boolean, default: true },
-  year: { type: Number },
   bio: { type: Boolean, default: false },
 });
 

@@ -67,7 +67,11 @@ export default function AddDrinkPage(props) {
               restaurantData={restaurantContext.restaurantData}
             />
 
-            <AddDrinksComponent category={props.category} drink={props.drink} />
+            <AddDrinksComponent
+              subCategory={props.subCategory}
+              category={props.category}
+              drink={props.drink}
+            />
           </div>
         </div>
       </div>
@@ -76,23 +80,26 @@ export default function AddDrinkPage(props) {
 }
 
 export async function getServerSideProps({ params, query, locale }) {
-  const { categoryId } = params;
+  const categoryId = params.categoryId.split("-").pop();
+  const subCategoryId = params.subCategoryId?.split("-").pop();
+
   const { drinkId } = query;
 
   try {
     const response = await axios.get(
-      `${process.env.NEXT_PUBLIC_API_URL}/categories/${categoryId}/drinks`
+      `${process.env.NEXT_PUBLIC_API_URL}/categories/${categoryId}/subcategories/${subCategoryId}/drinks`
     );
-    const { category } = response.data;
+    const { category, subCategory } = response.data;
 
     let drink = null;
     if (drinkId) {
-      drink = category.drinks.find((d) => d._id === drinkId) || null;
+      drink = subCategory.drinks.find((d) => d._id === drinkId) || null;
     }
 
     return {
       props: {
         category,
+        subCategory,
         drink,
         ...(await serverSideTranslations(locale, ["common", "drinks"])),
       },

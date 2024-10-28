@@ -174,6 +174,61 @@ router.post("/restaurants/:restaurantId/drinks", async (req, res) => {
   }
 });
 
+// UPDATE A DRINK IN CATEGORY
+router.put("/restaurants/:restaurantId/drinks/:drinkId", async (req, res) => {
+  const { restaurantId, drinkId } = req.params;
+  const { name, description, price, showOnWebsite, bio } = req.body;
+
+  // Validation des données
+  if (!name || !price) {
+    return res.status(400).json({ message: "Name and price are required." });
+  }
+
+  try {
+    // Vérifier si le restaurant existe
+    const restaurant = await RestaurantModel.findById(restaurantId).populate(
+      "owner_id",
+      "firstname"
+    );
+
+    if (!restaurant) {
+      return res.status(404).json({ message: "Restaurant not found." });
+    }
+
+    // Trouver le plat à mettre à jour dans toutes les catégories
+    let drinkFound = false;
+
+    for (const category of restaurant.drink_categories) {
+      const drink = category.drinks.id(drinkId);
+      if (drink) {
+        // Mettre à jour les informations du plat
+        drink.name = name;
+        drink.description = description;
+        drink.price = price;
+        drink.showOnWebsite = showOnWebsite;
+        drink.bio = bio;
+
+        drinkFound = true;
+        break; // Sortir de la boucle une fois la boisson trouvée et mis à jour
+      }
+    }
+
+    if (!drinkFound) {
+      return res.status(404).json({ message: "Drink not found." });
+    }
+
+    // Sauvegarder les modifications
+    await restaurant.save();
+
+    res
+      .status(200)
+      .json({ message: "Drink updated successfully.", restaurant });
+  } catch (error) {
+    console.error("Error updating drink:", error);
+    res.status(500).json({ message: "Server error. Please try again later." });
+  }
+});
+
 // GET DRINKS BY CATEGORY
 router.get("/categories/:categoryId/drinks", async (req, res) => {
   const { categoryId } = req.params;
@@ -250,61 +305,6 @@ router.get(
     }
   }
 );
-
-// UPDATE A DRINK
-router.put("/restaurants/:restaurantId/drinks/:drinkId", async (req, res) => {
-  const { restaurantId, drinkId } = req.params;
-  const { name, description, price, showOnWebsite, bio } = req.body;
-
-  // Validation des données
-  if (!name || !price) {
-    return res.status(400).json({ message: "Name and price are required." });
-  }
-
-  try {
-    // Vérifier si le restaurant existe
-    const restaurant = await RestaurantModel.findById(restaurantId).populate(
-      "owner_id",
-      "firstname"
-    );
-
-    if (!restaurant) {
-      return res.status(404).json({ message: "Restaurant not found." });
-    }
-
-    // Trouver le plat à mettre à jour dans toutes les catégories
-    let drinkFound = false;
-
-    for (const category of restaurant.drink_categories) {
-      const drink = category.drinks.id(drinkId);
-      if (drink) {
-        // Mettre à jour les informations du plat
-        drink.name = name;
-        drink.description = description;
-        drink.price = price;
-        drink.showOnWebsite = showOnWebsite;
-        drink.bio = bio;
-
-        drinkFound = true;
-        break; // Sortir de la boucle une fois la boisson trouvée et mis à jour
-      }
-    }
-
-    if (!drinkFound) {
-      return res.status(404).json({ message: "Drink not found." });
-    }
-
-    // Sauvegarder les modifications
-    await restaurant.save();
-
-    res
-      .status(200)
-      .json({ message: "Drink updated successfully.", restaurant });
-  } catch (error) {
-    console.error("Error updating drink:", error);
-    res.status(500).json({ message: "Server error. Please try again later." });
-  }
-});
 
 // DELETE A DRINK
 router.delete(
@@ -432,6 +432,54 @@ router.put(
       });
     } catch (error) {
       console.error("Error updating drink order:", error);
+      res
+        .status(500)
+        .json({ message: "Server error. Please try again later." });
+    }
+  }
+);
+
+// UPDATE DRINK ORDER IN A SUBCATEGORY
+router.put(
+  "/restaurants/:restaurantId/drinks/categories/:categoryId/subcategories/:subCategoryId/drinks/order",
+  async (req, res) => {
+    const { restaurantId, categoryId, subCategoryId } = req.params;
+    const { orderedDrinkIds } = req.body;
+
+    try {
+      const restaurant = await RestaurantModel.findById(restaurantId).populate(
+        "owner_id",
+        "firstname"
+      );
+
+      if (!restaurant) {
+        return res.status(404).json({ message: "Restaurant not found." });
+      }
+
+      const category = restaurant.drink_categories.id(categoryId);
+      if (!category) {
+        return res.status(404).json({ message: "Category not found." });
+      }
+
+      const subCategory = category.subCategories.id(subCategoryId);
+      if (!subCategory) {
+        return res.status(404).json({ message: "Subcategory not found." });
+      }
+
+      // Réorganiser les boissons dans la sous-catégorie selon l'ordre fourni
+      subCategory.drinks = orderedDrinkIds.map((drinkId) =>
+        subCategory.drinks.find((drink) => drink._id.toString() === drinkId)
+      );
+
+      // Sauvegarder les modifications
+      await restaurant.save();
+
+      res.status(200).json({
+        message: "Drink order in subcategory updated successfully.",
+        restaurant,
+      });
+    } catch (error) {
+      console.error("Error updating drink order in subcategory:", error);
       res
         .status(500)
         .json({ message: "Server error. Please try again later." });
@@ -572,7 +620,7 @@ router.post(
   "/restaurants/:restaurantId/drinks/categories/:categoryId/subcategories/:subCategoryId/drinks",
   async (req, res) => {
     const { restaurantId, categoryId, subCategoryId } = req.params;
-    const { name, price } = req.body;
+    const { name, price, description } = req.body;
 
     if (!name || !price) {
       return res
@@ -600,7 +648,7 @@ router.post(
         return res.status(404).json({ message: "Subcategory not found." });
       }
 
-      subCategory.drinks.push({ name, price });
+      subCategory.drinks.push({ name, price, description });
 
       await restaurant.save();
 
@@ -610,6 +658,72 @@ router.post(
       });
     } catch (error) {
       console.error("Error adding drink to subcategory:", error);
+      res
+        .status(500)
+        .json({ message: "Server error. Please try again later." });
+    }
+  }
+);
+
+// UPDATE A DRINK IN A SUBCATEGORY
+router.put(
+  "/restaurants/:restaurantId/drinks/categories/:categoryId/subcategories/:subCategoryId/drinks/:drinkId",
+  async (req, res) => {
+    const { restaurantId, categoryId, subCategoryId, drinkId } = req.params;
+    const { name, description, price, showOnWebsite, bio } = req.body;
+
+    // Validation des données
+    if (!name || !price) {
+      return res.status(400).json({ message: "Name and price are required." });
+    }
+
+    try {
+      // Vérifier si le restaurant existe
+      const restaurant = await RestaurantModel.findById(restaurantId).populate(
+        "owner_id",
+        "firstname"
+      );
+
+      if (!restaurant) {
+        return res.status(404).json({ message: "Restaurant not found." });
+      }
+
+      // Trouver la catégorie
+      const category = restaurant.drink_categories.id(categoryId);
+      if (!category) {
+        return res.status(404).json({ message: "Category not found." });
+      }
+
+      // Trouver la sous-catégorie
+      const subCategory = category.subCategories.id(subCategoryId);
+      if (!subCategory) {
+        return res.status(404).json({ message: "Subcategory not found." });
+      }
+
+      // Trouver la boisson dans la sous-catégorie
+      const drink = subCategory.drinks.id(drinkId);
+      if (!drink) {
+        return res.status(404).json({ message: "Drink not found." });
+      }
+
+      // Mettre à jour les informations de la boisson
+      drink.name = name;
+      drink.description = description;
+      drink.price = price;
+      drink.showOnWebsite = showOnWebsite;
+      drink.bio = bio;
+
+      // Sauvegarder les modifications
+      await restaurant.save();
+
+      res
+        .status(200)
+        .json({
+          message: "Drink updated successfully in subcategory.",
+          restaurant,
+        });
+    } catch (error) {
+      console.error("Error updating drink in subcategory:", error);
       res
         .status(500)
         .json({ message: "Server error. Please try again later." });
