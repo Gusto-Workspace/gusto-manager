@@ -19,7 +19,7 @@ router.post("/admin/login", async (req, res) => {
       return res.status(404).json({ message: "Admin not found" });
     }
 
-    const isMatch = bcrypt.compare(password, admin.password);
+    const isMatch = await bcrypt.compare(password, admin.password);
     if (!isMatch) {
       return res.status(401).json({ message: "Invalid credentials" });
     }
@@ -45,7 +45,7 @@ router.post("/owner/login", async (req, res) => {
       return res.status(404).json({ message: "Owner not found" });
     }
 
-    const isMatch =  bcrypt.compare(password, owner.password);
+    const isMatch = await bcrypt.compare(password, owner.password);
     if (!isMatch) {
       return res.status(401).json({ message: "Invalid credentials" });
     }
