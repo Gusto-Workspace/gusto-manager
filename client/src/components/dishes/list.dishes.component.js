@@ -49,11 +49,19 @@ export default function ListDishesComponent(props) {
   const sensors = useSensors(mouseSensor, touchSensor);
 
   function handleAddClick() {
-    router.push(`/dishes/${props.category._id}/add`);
+    const formattedCategoryName = props.category.name
+      .replace(/\s+/g, "-")
+      .toLowerCase();
+    router.push(`/dishes/${formattedCategoryName}-${props.category._id}/add`);
   }
 
   function handleEditClick(dish) {
-    router.push(`/dishes/${props.category._id}/add?dishId=${dish._id}`);
+    const formattedCategoryName = props.category.name
+      .replace(/\s+/g, "-")
+      .toLowerCase();
+    router.push(
+      `/dishes/${formattedCategoryName}-${props.category._id}/add?dishId=${dish._id}`
+    );
   }
 
   function handleDeleteClick(dish) {
@@ -124,6 +132,12 @@ export default function ListDishesComponent(props) {
       });
   }
 
+  // Chemins formatés pour les niveaux de navigation
+  const baseRoute = "/dishes";
+  const formattedCategoryRoute = props.category
+    ? `/dishes/${props.category.name.replace(/\s+/g, "-").toLowerCase()}-${props.category._id}`
+    : baseRoute;
+
   return (
     <div className="flex flex-col gap-6">
       <hr className="opacity-20" />
@@ -132,8 +146,25 @@ export default function ListDishesComponent(props) {
         <div className="pl-2 flex gap-2 items-center">
           <DishSvg width={30} height={30} fillColor="#131E3690" />
 
-          <h1 className="pl-2 text-2xl">
-            {t("titles.main")} / {props.category.name}
+          <h1 className="pl-2 text-2xl flex items-center gap-2">
+            <span
+              className="cursor-pointer hover:underline"
+              onClick={() => router.push(baseRoute)}
+            >
+              {t("titles.main")}
+            </span>
+
+            {props.category && (
+              <>
+                <span>/</span>
+                <span
+                  className="cursor-pointer hover:underline"
+                  onClick={() => router.push(formattedCategoryRoute)}
+                >
+                  {props.category.name}
+                </span>
+              </>
+            )}
           </h1>
         </div>
 

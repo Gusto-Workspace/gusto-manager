@@ -30,6 +30,7 @@ import { arrayMove, SortableContext } from "@dnd-kit/sortable";
 // COMPONENTS
 import CardCategoryListComponent from "./card-category-list.drinks.component";
 import AddModaleDrinksComponent from "./add-modale.drinks.component";
+import GlobalDrinksComponent from "./global.drinks.component";
 
 export default function CategoriesListDrinksComponent() {
   const { t } = useTranslation("drinks");
@@ -98,13 +99,13 @@ export default function CategoriesListDrinksComponent() {
   }
 
   function onSubmit(data) {
-    setIsSubmitting(true); 
+    setIsSubmitting(true);
     const apiUrl = editingCategory
       ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/categories/${editingCategory._id}`
       : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/categories`;
-  
+
     const method = isDeleting ? "delete" : editingCategory ? "put" : "post";
-  
+
     axios[method](apiUrl, isDeleting ? {} : data)
       .then((response) => {
         restaurantContext.setRestaurantData(response.data.restaurant);
@@ -120,7 +121,6 @@ export default function CategoriesListDrinksComponent() {
         setIsSubmitting(false); // Désactive le loader
       });
   }
-  
 
   function handleDragEnd(event) {
     const { active, over } = event;
@@ -214,6 +214,8 @@ export default function CategoriesListDrinksComponent() {
               </div>
             </SortableContext>
           </DndContext>
+
+          <GlobalDrinksComponent categories={categories} />
         </div>
       )}
 

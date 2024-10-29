@@ -74,7 +74,7 @@ export default function AddDishPage(props) {
 }
 
 export async function getServerSideProps({ params, query, locale }) {
-  const { categoryId } = params;
+  const categoryId = params.categoryId.split("-").pop();
   const { dishId } = query;
 
   try {

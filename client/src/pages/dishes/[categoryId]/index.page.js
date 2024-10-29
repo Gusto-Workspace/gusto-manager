@@ -61,9 +61,11 @@ export default function CategorieDishesPage(props) {
 export async function getServerSideProps({ params, locale }) {
   const { categoryId } = params;
 
+  const actualCategoryId = categoryId.split("-").pop();
+
   try {
     const response = await axios.get(
-      `${process.env.NEXT_PUBLIC_API_URL}/categories/${categoryId}/dishes`
+      `${process.env.NEXT_PUBLIC_API_URL}/categories/${actualCategoryId}/dishes`
     );
     const { category } = response.data;
 

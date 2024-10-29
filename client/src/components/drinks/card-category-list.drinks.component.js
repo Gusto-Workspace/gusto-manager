@@ -26,6 +26,16 @@ export default function CardCategoryListComponent(props) {
     transition,
   };
 
+  const totalDrinksCount =
+    (props.category.drinks ? props.category.drinks.length : 0) +
+    (props.category.subCategories
+      ? props.category.subCategories.reduce(
+          (count, subCategory) =>
+            count + (subCategory.drinks ? subCategory.drinks.length : 0),
+          0
+        )
+      : 0);
+
   return (
     <div
       ref={setNodeRef}
@@ -59,7 +69,7 @@ export default function CardCategoryListComponent(props) {
       <h2 className="text-xl font-semibold">{props.category.name}</h2>
 
       <p className="text-sm opacity-50 mb-2">
-        {t("labels.numberOfDishes")} : {props.category.drinks.length}
+        {t("labels.numberOfDishes")} : {totalDrinksCount}
       </p>
 
       <hr className="bg-darkBlue h-[1px] w-[90%] opacity-20" />

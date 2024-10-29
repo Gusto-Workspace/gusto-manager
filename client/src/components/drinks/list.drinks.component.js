@@ -148,25 +148,6 @@ export default function ListDrinksComponent(props) {
   }
 
   function handleDeleteConfirm() {
-    if (!selectedDrink) return;
-
-    axios
-      .delete(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/${selectedDrink._id}`
-      )
-      .then((response) => {
-        setDrinks((prevDrinks) =>
-          prevDrinks.filter((drink) => drink._id !== selectedDrink._id)
-        );
-        restaurantContext.setRestaurantData(response.data.restaurant);
-        closeDeleteModal();
-      })
-      .catch((error) => {
-        console.error("Error deleting drink:", error);
-      });
-  }
-
-  function handleDeleteConfirm() {
     if (editingCategory) {
       axios
         .delete(
@@ -186,10 +167,16 @@ export default function ListDrinksComponent(props) {
           console.error("Error deleting subcategory:", error);
         });
     } else if (selectedDrink) {
+      const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/${selectedDrink._id}`;
+      const params = props.subCategory
+        ? {
+            categoryId: props.category._id,
+            subCategoryId: props.subCategory._id,
+          }
+        : {};
+
       axios
-        .delete(
-          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/${selectedDrink._id}`
-        )
+        .delete(apiUrl, { params })
         .then((response) => {
           setDrinks((prevDrinks) =>
             prevDrinks.filter((drink) => drink._id !== selectedDrink._id)
@@ -349,6 +336,16 @@ export default function ListDrinksComponent(props) {
       });
   }
 
+  // Chemins pour la navigation avec le formatage de nom et d'ID
+  const baseRoute = "/drinks";
+  const formattedCategoryRoute = props.category
+    ? `/drinks/${props.category.name.replace(/\s+/g, "-").toLowerCase()}-${props.category._id}`
+    : baseRoute;
+
+  const formattedSubCategoryRoute = props.subCategory
+    ? `/drinks/${props.category.name.replace(/\s+/g, "-").toLowerCase()}-${props.category._id}/${props.subCategory.name.replace(/\s+/g, "-").toLowerCase()}-${props.subCategory._id}`
+    : formattedCategoryRoute;
+
   return (
     <div className="flex flex-col gap-6">
       <hr className="opacity-20" />
@@ -357,9 +354,37 @@ export default function ListDrinksComponent(props) {
         <div className="pl-2 flex gap-2 items-center">
           <DrinkSvg width={30} height={30} fillColor="#131E3690" />
 
-          <h1 className="pl-2 text-2xl">
-            {t("titles.main")} / {props?.category?.name}
-            {props.subCategory ? ` / ${props.subCategory.name}` : ""}
+          <h1 className="pl-2 text-2xl flex items-center gap-2">
+            <span
+              className="cursor-pointer hover:underline"
+              onClick={() => router.push(baseRoute)}
+            >
+              {t("titles.main")}
+            </span>
+
+            {props.category && (
+              <>
+                <span>/</span>
+                <span
+                  className="cursor-pointer hover:underline"
+                  onClick={() => router.push(formattedCategoryRoute)}
+                >
+                  {props.category.name}
+                </span>
+              </>
+            )}
+
+            {props.subCategory && (
+              <>
+                <span>/</span>
+                <span
+                  className="cursor-pointer hover:underline"
+                  onClick={() => router.push(formattedSubCategoryRoute)}
+                >
+                  {props.subCategory.name}
+                </span>
+              </>
+            )}
           </h1>
         </div>
 
