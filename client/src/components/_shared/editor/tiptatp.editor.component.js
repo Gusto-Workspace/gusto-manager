@@ -5,6 +5,7 @@ import TextStyle from "@tiptap/extension-text-style";
 import Color from "@tiptap/extension-color";
 import Underline from "@tiptap/extension-underline";
 import Placeholder from "@tiptap/extension-placeholder";
+import ListItem from "@tiptap/extension-list-item";
 
 import { BoldSvg } from "../_svgs/bold.svg";
 import { ItalicSvg } from "../_svgs/italic.svg";
@@ -153,32 +154,48 @@ export default function TiptapEditor({ value = "", onChange }) {
   const { t } = useTranslation("news");
   const editor = useEditor({
     extensions: [
-      StarterKit,
+      StarterKit.configure({
+        listItem: false, // Désactive listItem dans StarterKit
+      }),
+      ListItem.configure({
+        // Configuration de listItem
+        HTMLAttributes: { class: "my-0 py-0" },
+      }),
       TextStyle,
       Color,
       Underline,
       Placeholder.configure({
-        placeholder: t("editor.startWrite"),
+        placeholder: "Commencez à écrire...",
       }),
     ],
-    content: value, // Passer la valeur initiale ici
+    content: value,
     onUpdate: ({ editor }) => {
-      const html = editor.getHTML().replace(/<p><\/p>/g, "<br>");
-      if (onChange) {
-        onChange(html);
-      }
+      let html = editor.getHTML();
+
+      // Utilise un conteneur temporaire pour appliquer les sauts de ligne seulement hors liste
+      const container = document.createElement("div");
+      container.innerHTML = html;
+      container.querySelectorAll("p").forEach((p) => {
+        if (!p.textContent.trim() && !p.closest("ul") && !p.closest("ol")) {
+          const br = document.createElement("br");
+          p.replaceWith(br);
+        }
+      });
+      html = container.innerHTML;
+
+      if (onChange) onChange(html);
     },
     editorProps: {
       attributes: {
-        class: "prose  focus:outline-none",
+        class: "prose focus:outline-none",
       },
     },
     immediatelyRender: false,
   });
 
   useEffect(() => {
-    if (editor && value !== editor.getHTML()) {
-      editor.commands.setContent(value); // Mettre à jour le contenu lorsque la valeur change
+    if (editor && value && value !== editor.getHTML()) {
+      editor.commands.setContent(value);
     }
   }, [value, editor]);
 

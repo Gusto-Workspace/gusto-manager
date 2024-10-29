@@ -7,7 +7,7 @@ import { useForm } from "react-hook-form";
 // AXIOS
 import axios from "axios";
 
-//I18N
+// I18N
 import { useTranslation } from "next-i18next";
 
 // CONTEXT
@@ -33,7 +33,6 @@ export default function AddNewsComponent(props) {
     register,
     handleSubmit,
     reset,
-    watch,
     setValue,
     formState: { errors },
   } = useForm({
@@ -43,8 +42,6 @@ export default function AddNewsComponent(props) {
       image: null,
     },
   });
-
-  const description = watch("description");
 
   const handleDescriptionChange = (value) => {
     setValue("description", value);
@@ -127,6 +124,7 @@ export default function AddNewsComponent(props) {
 
       <div className="flex pl-2 gap-2 py-1 items-center">
         <NewsSvg width={30} height={30} fillColor="#131E3690" />
+
         <h1 className="pl-2 text-2xl flex items-center">
           {t("titles.main")} /{" "}
           {props.news ? t("buttons.edit") : t("buttons.add")}
@@ -139,6 +137,7 @@ export default function AddNewsComponent(props) {
       >
         <div className="flex flex-col gap-2">
           <label>{t("form.labels.title")}</label>
+
           <input
             type="text"
             {...register("title", { required: true })}
@@ -150,8 +149,9 @@ export default function AddNewsComponent(props) {
 
         <div className="flex flex-col gap-2">
           <label>{t("form.labels.description")}</label>
+
           <TiptapEditor
-            value={description}
+            value={props.news ? props.news.description : ""}
             onChange={handleDescriptionChange}
           />
         </div>
@@ -203,14 +203,18 @@ export default function AddNewsComponent(props) {
                 alt="Preview"
                 className="w-full h-auto rounded-lg"
               />
-              <div className="absolute rounded-lg inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 flex items-center justify-center  transition-all duration-200">
-                <div
-                  onClick={handleRemoveImage}
-                  className="cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex justify-center items-center"
-                >
-                  <RemoveSvg width={50} height={50} fillColor="white" />
+
+              {!isLoading && (
+                <div className="absolute rounded-lg inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 flex items-center justify-center  transition-all duration-200">
+                  <div
+                    onClick={handleRemoveImage}
+                    disabled={isLoading}
+                    className="cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex justify-center items-center"
+                  >
+                    <RemoveSvg width={50} height={50} fillColor="white" />
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
         </div>
