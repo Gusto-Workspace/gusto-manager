@@ -1,8 +1,8 @@
 // I18N
 import { useTranslation } from "next-i18next";
 
-export default function AddModaleDrinksComponent(props) {
-  const { t } = useTranslation("drinks");
+export default function AddModaleWinesComponent(props) {
+  const { t } = useTranslation("wines");
 
   return (
     <div className="fixed inset-0 flex items-center justify-center z-[100]">
@@ -39,7 +39,7 @@ export default function AddModaleDrinksComponent(props) {
               type="text"
               placeholder="-"
               defaultValue={props.editingCategory?.name || ""}
-              disabled={props.isDeleting || props.isSubmitting} // Désactive le champ pendant la soumission ou suppression
+              disabled={props.isDeleting || props.isSubmitting}
               {...props.register("name", { required: !props.isDeleting })}
               className={`border p-2 rounded-lg w-full ${
                 props.errors.name ? "border-red" : ""
@@ -51,10 +51,10 @@ export default function AddModaleDrinksComponent(props) {
             <button
               type="submit"
               className="px-4 py-2 rounded-lg bg-blue text-white flex items-center gap-2"
-              disabled={props.isSubmitting} // Désactive le bouton pendant la soumission
+              disabled={props.isSubmitting}
             >
               {props.isSubmitting
-                ? t("buttons.loading") // Ajouter un loader ici (ex: spinner)
+                ? t("buttons.loading")
                 : props.isDeleting
                   ? t("buttons.confirm")
                   : t("buttons.save")}

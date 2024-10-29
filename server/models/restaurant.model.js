@@ -37,18 +37,27 @@ const dishCategorySchema = new mongoose.Schema({
 // Sous-schéma pour les vins
 const wineSchema = new mongoose.Schema({
   name: { type: String, required: true },
-  description: { type: String },
+  appellation: { type: String },
+  volume: { type: String, required: true },
+  unit: { type: String, required: true },
   price: { type: Number, required: true },
   showOnWebsite: { type: Boolean, default: true },
   year: { type: Number },
-  origin: { type: String },
   bio: { type: Boolean, default: false },
+});
+
+// Sous-schéma pour les sous-catégories de vins
+const wineSubCategorySchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  visible: { type: Boolean, default: true },
+  wines: { type: [wineSchema], default: [] },
 });
 
 // Schéma pour les catégories de vins
 const wineCategorySchema = new mongoose.Schema({
   name: { type: String, required: true },
   visible: { type: Boolean, default: true },
+  subCategories: { type: [wineSubCategorySchema], default: [] },
   wines: { type: [wineSchema], default: [] },
 });
 

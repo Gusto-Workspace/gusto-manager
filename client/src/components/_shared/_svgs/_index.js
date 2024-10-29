@@ -33,3 +33,4 @@ export { NoImageSvg } from "./no-image.svg";
 export { RemoveSvg } from "./remove.svg";
 export { DragSvg } from "./drag.svg";
 export { DragMultiSvg } from "./drag-multi.svg";
+export { WineSvg } from "./wine.svg";

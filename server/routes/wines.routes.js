@@ -5,63 +5,52 @@ const router = express.Router();
 const RestaurantModel = require("../models/restaurant.model");
 
 // ADD A CATEGORY
-router.post(
-  "/restaurants/:restaurantId/drinks/categories",
-  async (req, res) => {
-    const { restaurantId } = req.params;
-    const { name } = req.body;
+router.post("/restaurants/:restaurantId/wines/categories", async (req, res) => {
+  const { restaurantId } = req.params;
+  const { name } = req.body;
 
-    // Validation des données
-    if (!name) {
-      return res.status(400).json({ message: "Category name is required." });
-    }
-
-    try {
-      // Vérifier si le restaurant existe
-      const restaurant = await RestaurantModel.findById(restaurantId).populate(
-        "owner_id",
-        "firstname"
-      );
-
-      if (!restaurant) {
-        return res.status(404).json({ message: "Restaurant not found." });
-      }
-
-      // Vérifier si la catégorie existe déjà
-      const existingCategory = restaurant.drink_categories.find(
-        (category) => category.name.toLowerCase() === name.toLowerCase()
-      );
-
-      if (existingCategory) {
-        return res.status(400).json({ message: "Category already exists." });
-      }
-
-      // Ajouter la nouvelle catégorie
-      const newCategory = {
-        name,
-        drinks: [],
-      };
-
-      restaurant.drink_categories.push(newCategory);
-
-      // Sauvegarder les modifications
-      await restaurant.save();
-
-      res
-        .status(201)
-        .json({ message: "Category added successfully.", restaurant });
-    } catch (error) {
-      console.error("Error adding category:", error);
-      res
-        .status(500)
-        .json({ message: "Server error. Please try again later." });
-    }
+  if (!name) {
+    return res.status(400).json({ message: "Category name is required." });
   }
-);
+
+  try {
+    const restaurant = await RestaurantModel.findById(restaurantId).populate(
+      "owner_id",
+      "firstname"
+    );
+
+    if (!restaurant) {
+      return res.status(404).json({ message: "Restaurant not found." });
+    }
+
+    const existingCategory = restaurant.wine_categories.find(
+      (category) => category.name.toLowerCase() === name.toLowerCase()
+    );
+
+    if (existingCategory) {
+      return res.status(400).json({ message: "Category already exists." });
+    }
+
+    const newCategory = {
+      name,
+      wines: [],
+    };
+
+    restaurant.wine_categories.push(newCategory);
+    await restaurant.save();
+
+    res
+      .status(201)
+      .json({ message: "Category added successfully.", restaurant });
+  } catch (error) {
+    console.error("Error adding category:", error);
+    res.status(500).json({ message: "Server error. Please try again later." });
+  }
+});
 
 // UPDATE A CATEGORY
 router.put(
-  "/restaurants/:restaurantId/drinks/categories/:categoryId",
+  "/restaurants/:restaurantId/wines/categories/:categoryId",
   async (req, res) => {
     const { restaurantId, categoryId } = req.params;
     const { name, visible } = req.body;
@@ -76,7 +65,7 @@ router.put(
         return res.status(404).json({ message: "Restaurant not found." });
       }
 
-      const category = restaurant.drink_categories.id(categoryId);
+      const category = restaurant.wine_categories.id(categoryId);
 
       if (!category) {
         return res.status(404).json({ message: "Category not found." });
@@ -102,7 +91,7 @@ router.put(
 
 // DELETE A CATEGORY
 router.delete(
-  "/restaurants/:restaurantId/drinks/categories/:categoryId",
+  "/restaurants/:restaurantId/wines/categories/:categoryId",
   async (req, res) => {
     const { restaurantId, categoryId } = req.params;
 
@@ -110,7 +99,7 @@ router.delete(
       const restaurant = await RestaurantModel.findByIdAndUpdate(
         restaurantId,
         {
-          $pull: { drink_categories: { _id: categoryId } },
+          $pull: { wine_categories: { _id: categoryId } },
         },
         { new: true }
       ).populate("owner_id", "firstname");
@@ -131,8 +120,8 @@ router.delete(
   }
 );
 
-// ADD A DRINK TO A CATEGORY
-router.post("/restaurants/:restaurantId/drinks", async (req, res) => {
+// ADD A WINE TO A CATEGORY
+router.post("/restaurants/:restaurantId/wines", async (req, res) => {
   const { restaurantId } = req.params;
   const { categoryId } = req.body;
 
@@ -155,60 +144,30 @@ router.post("/restaurants/:restaurantId/drinks", async (req, res) => {
     }
 
     // Trouver la catégorie à laquelle ajouter la boisson
-    const category = restaurant.drink_categories.id(categoryId);
+    const category = restaurant.wine_categories.id(categoryId);
 
     if (!category) {
       return res.status(404).json({ message: "Category not found." });
     }
 
     // Ajouter la nouvelle boisson à la catégorie
-    category.drinks.push(req.body);
+    category.wines.push(req.body);
 
     // Sauvegarder les modifications
     await restaurant.save();
 
-    res.status(201).json({ message: "Drink added successfully.", restaurant });
+    res.status(201).json({ message: "Wine added successfully.", restaurant });
   } catch (error) {
-    console.error("Error adding drink:", error);
+    console.error("Error adding wine:", error);
     res.status(500).json({ message: "Server error. Please try again later." });
   }
 });
 
-// GET DRINKS BY CATEGORY
-router.get("/categories/:categoryId/drinks", async (req, res) => {
-  const { categoryId } = req.params;
-
-  try {
-    // Rechercher la catégorie avec l'ID donné
-    const restaurant = await RestaurantModel.findOne({
-      "drink_categories._id": categoryId,
-    });
-
-    if (!restaurant) {
-      return res.status(404).json({ message: "Category not found." });
-    }
-
-    // Trouver la catégorie spécifique
-    const category = restaurant.drink_categories.find(
-      (cat) => cat._id.toString() === categoryId
-    );
-
-    if (!category) {
-      return res.status(404).json({ message: "Category not found." });
-    }
-
-    // Retourner directement la catégorie trouvée
-    res.status(200).json({ category });
-  } catch (error) {
-    console.error("Error fetching drinks by category:", error);
-    res.status(500).json({ message: "Server error. Please try again later." });
-  }
-});
-
-// UPDATE A DRINK
-router.put("/restaurants/:restaurantId/drinks/:drinkId", async (req, res) => {
-  const { restaurantId, drinkId } = req.params;
-  const { name, description, price, showOnWebsite, bio } = req.body;
+// UPDATE A WINE IN CATEGORY
+router.put("/restaurants/:restaurantId/wines/:wineId", async (req, res) => {
+  const { restaurantId, wineId } = req.params;
+  const { name, appellation, volume, unit, price, year, showOnWebsite, bio } =
+    req.body;
 
   // Validation des données
   if (!name || !price) {
@@ -226,83 +185,108 @@ router.put("/restaurants/:restaurantId/drinks/:drinkId", async (req, res) => {
       return res.status(404).json({ message: "Restaurant not found." });
     }
 
-    // Trouver le plat à mettre à jour dans toutes les catégories
-    let drinkFound = false;
+    // Trouver le plat à mettre à jour dans toutes les catégorie
+    let wineFound = false;
 
-    for (const category of restaurant.drink_categories) {
-      const drink = category.drinks.id(drinkId);
-      if (drink) {
-        // Mettre à jour les informations du plat
-        drink.name = name;
-        drink.description = description;
-        drink.price = price;
-        drink.showOnWebsite = showOnWebsite;
-        drink.bio = bio;
-
-        drinkFound = true;
-        break; // Sortir de la boucle une fois la boisson trouvée et mis à jour
+    for (const category of restaurant.wine_categories) {
+      const wine = category.wines.id(wineId);
+      if (wine) {
+        wine.appellation = appellation;
+        wine.name = name;
+        wine.volume = volume;
+        wine.unit = unit;
+        wine.price = price;
+        wine.year = year;
+        wine.showOnWebsite = showOnWebsite;
+        wine.bio = bio;
+        wineFound = true;
+        break;
       }
     }
 
-    if (!drinkFound) {
-      return res.status(404).json({ message: "Drink not found." });
+    if (!wineFound) {
+      return res.status(404).json({ message: "Wine not found." });
     }
 
-    // Sauvegarder les modifications
     await restaurant.save();
 
-    res
-      .status(200)
-      .json({ message: "Drink updated successfully.", restaurant });
+    res.status(200).json({ message: "Wine updated successfully.", restaurant });
   } catch (error) {
-    console.error("Error updating drink:", error);
+    console.error("Error updating wine:", error);
     res.status(500).json({ message: "Server error. Please try again later." });
   }
 });
 
-// DELETE A DRINK
-router.delete(
-  "/restaurants/:restaurantId/drinks/:drinkId",
+// GET WINES BY CATEGORY
+router.get("/categories/:categoryId/wines", async (req, res) => {
+  const { categoryId } = req.params;
+
+  try {
+    // Rechercher la catégorie avec l'ID donné
+    const restaurant = await RestaurantModel.findOne({
+      "wine_categories._id": categoryId,
+    });
+
+    if (!restaurant) {
+      return res.status(404).json({ message: "Category not found." });
+    }
+
+    // Trouver la catégorie spécifique
+    const category = restaurant.wine_categories.find(
+      (cat) => cat._id.toString() === categoryId
+    );
+
+    if (!category) {
+      return res.status(404).json({ message: "Category not found." });
+    }
+
+    // Retourner directement la catégorie trouvée
+    res.status(200).json({ category });
+  } catch (error) {
+    console.error("Error fetching wines by category:", error);
+    res.status(500).json({ message: "Server error. Please try again later." });
+  }
+});
+
+// GET WINES BY SUBCATEGORY
+router.get(
+  "/categories/:categoryId/subcategories/:subCategoryId/wines",
   async (req, res) => {
-    const { restaurantId, drinkId } = req.params;
+    const { categoryId, subCategoryId } = req.params;
 
     try {
-      const restaurant = await RestaurantModel.findById(restaurantId).populate(
-        "owner_id",
-        "firstname"
-      );
+      // Rechercher le restaurant qui contient la catégorie avec l'ID donné
+      const restaurant = await RestaurantModel.findOne({
+        "wine_categories._id": categoryId,
+      });
 
       if (!restaurant) {
-        return res.status(404).json({ message: "Restaurant not found." });
+        return res.status(404).json({ message: "Category not found." });
       }
 
-      // Parcourir les catégories pour trouver le plat à supprimer
-      let drinkFound = false;
+      // Trouver la catégorie spécifique
+      const category = restaurant.wine_categories.find(
+        (cat) => cat._id.toString() === categoryId
+      );
 
-      for (const category of restaurant.drink_categories) {
-        const drinkIndex = category.drinks.findIndex(
-          (drink) => drink._id.toString() === drinkId
-        );
-
-        if (drinkIndex > -1) {
-          // Supprimer le plat trouvé avec splice
-          category.drinks.splice(drinkIndex, 1);
-          drinkFound = true;
-          break;
-        }
+      if (!category) {
+        return res.status(404).json({ message: "Category not found." });
       }
 
-      if (!drinkFound) {
-        return res.status(404).json({ message: "Drink not found." });
+      // Trouver la sous-catégorie spécifique
+      const subCategory = category.subCategories.find(
+        (subCat) => subCat._id.toString() === subCategoryId
+      );
+
+      if (!subCategory) {
+        return res.status(404).json({ message: "Subcategory not found." });
       }
 
-      await restaurant.save();
+      // Retourner la categorie et sous-catégorie trouvées
 
-      res
-        .status(200)
-        .json({ message: "Drink deleted successfully.", restaurant });
+      res.status(200).json({ category, subCategory });
     } catch (error) {
-      console.error("Error deleting drink:", error);
+      console.error("Error fetching wines by subcategory:", error);
       res
         .status(500)
         .json({ message: "Server error. Please try again later." });
@@ -310,9 +294,70 @@ router.delete(
   }
 );
 
+// DELETE A WINE
+router.delete("/restaurants/:restaurantId/wines/:wineId", async (req, res) => {
+  const { restaurantId, wineId } = req.params;
+  const { categoryId, subCategoryId } = req.query;
+
+  try {
+    const restaurant = await RestaurantModel.findById(restaurantId).populate(
+      "owner_id",
+      "firstname"
+    );
+
+    if (!restaurant) {
+      return res.status(404).json({ message: "Restaurant not found." });
+    }
+
+    let wineFound = false;
+
+    // Si un subCategoryId est fourni, chercher dans la sous-catégorie
+    if (subCategoryId) {
+      const category = restaurant.wine_categories.id(categoryId);
+      if (!category)
+        return res.status(404).json({ message: "Category not found." });
+
+      const subCategory = category.subCategories.id(subCategoryId);
+      if (!subCategory)
+        return res.status(404).json({ message: "Subcategory not found." });
+
+      const wineIndex = subCategory.wines.findIndex(
+        (wine) => wine._id.toString() === wineId
+      );
+      if (wineIndex > -1) {
+        subCategory.wines.splice(wineIndex, 1);
+        wineFound = true;
+      }
+    } else {
+      // Sinon, chercher dans la catégorie principale
+      for (const category of restaurant.wine_categories) {
+        const wineIndex = category.wines.findIndex(
+          (wine) => wine._id.toString() === wineId
+        );
+
+        if (wineIndex > -1) {
+          category.wines.splice(wineIndex, 1);
+          wineFound = true;
+          break;
+        }
+      }
+    }
+
+    if (!wineFound) {
+      return res.status(404).json({ message: "Wine not found." });
+    }
+
+    await restaurant.save();
+    res.status(200).json({ message: "Wine deleted successfully.", restaurant });
+  } catch (error) {
+    console.error("Error deleting wine:", error);
+    res.status(500).json({ message: "Server error. Please try again later." });
+  }
+});
+
 // UPDATE CATEGORY ORDER
 router.put(
-  "/restaurants/:restaurantId/drinks/categories-list/order",
+  "/restaurants/:restaurantId/wines/categories-list/order",
   async (req, res) => {
     const { restaurantId } = req.params;
     const { orderedCategoryIds } = req.body;
@@ -328,8 +373,8 @@ router.put(
       }
 
       // Réorganiser les catégories selon l'ordre donné
-      restaurant.drink_categories = orderedCategoryIds.map((categoryId) =>
-        restaurant.drink_categories.find(
+      restaurant.wine_categories = orderedCategoryIds.map((categoryId) =>
+        restaurant.wine_categories.find(
           (cat) => cat._id.toString() === categoryId
         )
       );
@@ -349,12 +394,12 @@ router.put(
   }
 );
 
-// UPDATE DRINK ORDER IN A CATEGORY
+// UPDATE WINE ORDER IN A CATEGORY
 router.put(
-  "/restaurants/:restaurantId/drinks/categories/:categoryId/drinks/order",
+  "/restaurants/:restaurantId/wines/categories/:categoryId/wines/order",
   async (req, res) => {
     const { restaurantId, categoryId } = req.params;
-    const { orderedDrinkIds } = req.body;
+    const { orderedWineIds } = req.body;
 
     try {
       const restaurant = await RestaurantModel.findById(restaurantId).populate(
@@ -366,26 +411,74 @@ router.put(
         return res.status(404).json({ message: "Restaurant not found." });
       }
 
-      const category = restaurant.drink_categories.id(categoryId);
+      const category = restaurant.wine_categories.id(categoryId);
 
       if (!category) {
         return res.status(404).json({ message: "Category not found." });
       }
 
       // Réorganiser les plats selon l'ordre fourni
-      category.drinks = orderedDrinkIds.map((drinkId) =>
-        category.drinks.find((drink) => drink._id.toString() === drinkId)
+      category.wines = orderedWineIds.map((wineId) =>
+        category.wines.find((wine) => wine._id.toString() === wineId)
       );
 
       // Sauvegarder les modifications
       await restaurant.save();
 
       res.status(200).json({
-        message: "Drink order updated successfully.",
+        message: "Wine order updated successfully.",
         restaurant,
       });
     } catch (error) {
-      console.error("Error updating drink order:", error);
+      console.error("Error updating wine order:", error);
+      res
+        .status(500)
+        .json({ message: "Server error. Please try again later." });
+    }
+  }
+);
+
+// UPDATE WINE ORDER IN A SUBCATEGORY
+router.put(
+  "/restaurants/:restaurantId/wines/categories/:categoryId/subcategories/:subCategoryId/wines/order",
+  async (req, res) => {
+    const { restaurantId, categoryId, subCategoryId } = req.params;
+    const { orderedWineIds } = req.body;
+
+    try {
+      const restaurant = await RestaurantModel.findById(restaurantId).populate(
+        "owner_id",
+        "firstname"
+      );
+
+      if (!restaurant) {
+        return res.status(404).json({ message: "Restaurant not found." });
+      }
+
+      const category = restaurant.wine_categories.id(categoryId);
+      if (!category) {
+        return res.status(404).json({ message: "Category not found." });
+      }
+
+      const subCategory = category.subCategories.id(subCategoryId);
+      if (!subCategory) {
+        return res.status(404).json({ message: "Subcategory not found." });
+      }
+
+      // Réorganiser les boissons dans la sous-catégorie selon l'ordre fourni
+      subCategory.wines = orderedWineIds.map((wineId) =>
+        subCategory.wines.find((wine) => wine._id.toString() === wineId)
+      );
+
+      // Sauvegarder les modifications
+      await restaurant.save();
+
+      res.status(200).json({
+        message: "Wine order in subcategory updated successfully.",
+        restaurant,
+      });
+    } catch (error) {
+      console.error("Error updating wine order in subcategory:", error);
       res
         .status(500)
         .json({ message: "Server error. Please try again later." });
@@ -395,7 +488,7 @@ router.put(
 
 // ADD A SUBCATEGORY TO A CATEGORY
 router.post(
-  "/restaurants/:restaurantId/drinks/categories/:categoryId/subcategories",
+  "/restaurants/:restaurantId/wines/categories/:categoryId/subcategories",
   async (req, res) => {
     const { restaurantId, categoryId } = req.params;
     const { name } = req.body;
@@ -414,15 +507,13 @@ router.post(
         return res.status(404).json({ message: "Restaurant not found." });
       }
 
-      const category = restaurant.drink_categories.id(categoryId);
-
+      const category = restaurant.wine_categories.id(categoryId);
       if (!category) {
         return res.status(404).json({ message: "Category not found." });
       }
 
-      const newSubCategory = { name, drinks: [] };
+      const newSubCategory = { name, wines: [] };
       category.subCategories.push(newSubCategory);
-
       await restaurant.save();
 
       res
@@ -439,7 +530,7 @@ router.post(
 
 // UPDATE A SUBCATEGORY
 router.put(
-  "/restaurants/:restaurantId/drinks/categories/:categoryId/subcategories/:subCategoryId",
+  "/restaurants/:restaurantId/wines/categories/:categoryId/subcategories/:subCategoryId",
   async (req, res) => {
     const { restaurantId, categoryId, subCategoryId } = req.params;
     const { name, visible } = req.body;
@@ -454,7 +545,7 @@ router.put(
         return res.status(404).json({ message: "Restaurant not found." });
       }
 
-      const category = restaurant.drink_categories.id(categoryId);
+      const category = restaurant.wine_categories.id(categoryId);
       if (!category) {
         return res.status(404).json({ message: "Category not found." });
       }
@@ -483,7 +574,7 @@ router.put(
 
 // DELETE A SUBCATEGORY
 router.delete(
-  "/restaurants/:restaurantId/drinks/categories/:categoryId/subcategories/:subCategoryId",
+  "/restaurants/:restaurantId/wines/categories/:categoryId/subcategories/:subCategoryId",
   async (req, res) => {
     const { restaurantId, categoryId, subCategoryId } = req.params;
 
@@ -497,7 +588,7 @@ router.delete(
         return res.status(404).json({ message: "Restaurant not found." });
       }
 
-      const category = restaurant.drink_categories.id(categoryId);
+      const category = restaurant.wine_categories.id(categoryId);
       if (!category) {
         return res.status(404).json({ message: "Category not found." });
       }
@@ -521,17 +612,17 @@ router.delete(
   }
 );
 
-// ADD A DRINK TO A SUBCATEGORY
+// ADD A WINE TO A SUBCATEGORY
 router.post(
-  "/restaurants/:restaurantId/drinks/categories/:categoryId/subcategories/:subCategoryId/drinks",
+  "/restaurants/:restaurantId/wines/categories/:categoryId/subcategories/:subCategoryId/wines",
   async (req, res) => {
     const { restaurantId, categoryId, subCategoryId } = req.params;
-    const { name, price } = req.body;
+    const { name, appellation, price, year, bio, volume, unit } = req.body;
 
     if (!name || !price) {
       return res
         .status(400)
-        .json({ message: "Drink name and price are required." });
+        .json({ message: "Wine name and price are required." });
     }
 
     try {
@@ -544,7 +635,7 @@ router.post(
         return res.status(404).json({ message: "Restaurant not found." });
       }
 
-      const category = restaurant.drink_categories.id(categoryId);
+      const category = restaurant.wine_categories.id(categoryId);
       if (!category) {
         return res.status(404).json({ message: "Category not found." });
       }
@@ -554,16 +645,24 @@ router.post(
         return res.status(404).json({ message: "Subcategory not found." });
       }
 
-      subCategory.drinks.push({ name, price });
+      subCategory.wines.push({
+        name,
+        appellation,
+        price,
+        year,
+        bio,
+        volume,
+        unit,
+      });
 
       await restaurant.save();
 
       res.status(201).json({
-        message: "Drink added to subcategory successfully.",
+        message: "Wine added to subcategory successfully.",
         restaurant,
       });
     } catch (error) {
-      console.error("Error adding drink to subcategory:", error);
+      console.error("Error adding wine to subcategory:", error);
       res
         .status(500)
         .json({ message: "Server error. Please try again later." });
@@ -573,7 +672,7 @@ router.post(
 
 // UPDATE SUBCATEGORIES ORDER
 router.put(
-  "/restaurants/:restaurantId/drinks/categories/:categoryId/list-subcategories/order",
+  "/restaurants/:restaurantId/wines/categories/:categoryId/list-subcategories/order",
   async (req, res) => {
     const { restaurantId, categoryId } = req.params;
     const { orderedSubCategoryIds } = req.body;
@@ -587,7 +686,7 @@ router.put(
         return res.status(404).json({ message: "Restaurant not found." });
       }
 
-      const category = restaurant.drink_categories.id(categoryId);
+      const category = restaurant.wine_categories.id(categoryId);
       if (!category) {
         return res.status(404).json({ message: "Category not found." });
       }
@@ -607,6 +706,61 @@ router.put(
       });
     } catch (error) {
       console.error("Error updating subcategory order:", error);
+      res
+        .status(500)
+        .json({ message: "Server error. Please try again later." });
+    }
+  }
+);
+
+// UPDATE A WINE IN A SUBCATEGORY
+router.put(
+  "/restaurants/:restaurantId/wines/categories/:categoryId/subcategories/:subCategoryId/wines/:wineId",
+  async (req, res) => {
+    const { restaurantId, categoryId, subCategoryId, wineId } = req.params;
+    const { name, appellation, volume, unit, price, year, showOnWebsite, bio } =
+      req.body;
+
+    if (!name || !price) {
+      return res.status(400).json({ message: "Name and price are required." });
+    }
+
+    try {
+      const restaurant = await RestaurantModel.findById(restaurantId).populate(
+        "owner_id",
+        "firstname"
+      );
+
+      if (!restaurant) {
+        return res.status(404).json({ message: "Restaurant not found." });
+      }
+
+      const category = restaurant.wine_categories.id(categoryId);
+      if (!category)
+        return res.status(404).json({ message: "Category not found." });
+
+      const subCategory = category.subCategories.id(subCategoryId);
+      if (!subCategory)
+        return res.status(404).json({ message: "Subcategory not found." });
+
+      const wine = subCategory.wines.id(wineId);
+      if (!wine) return res.status(404).json({ message: "Wine not found." });
+
+      wine.appellation = appellation;
+      wine.name = name;
+      wine.volume = volume;
+      wine.unit = unit;
+      wine.price = price;
+      wine.year = year;
+      wine.showOnWebsite = showOnWebsite;
+      wine.bio = bio;
+
+      await restaurant.save();
+      res
+        .status(200)
+        .json({ message: "Wine updated successfully.", restaurant });
+    } catch (error) {
+      console.error("Error updating wine in subcategory:", error);
       res
         .status(500)
         .json({ message: "Server error. Please try again later." });

@@ -5,7 +5,7 @@ import { useRouter } from "next/router";
 import { useTranslation } from "next-i18next";
 
 // SVG
-import { DrinkSvg } from "../_shared/_svgs/_index";
+import { WineSvg } from "../_shared/_svgs/_index";
 
 // AXIOS
 import axios from "axios";
@@ -29,12 +29,12 @@ import { arrayMove, SortableContext } from "@dnd-kit/sortable";
 import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 
 // COMPONENTS
-import DetailsDrinkComponent from "./details-drink.drinks.component";
-import AddModaleDrinksComponent from "./add-modale.drinks.component";
-import CardCategoryListComponent from "./card-category-list.drinks.component";
+import DetailsWineComponent from "./details-wine.wines.component";
+import AddModaleWinesComponent from "./add-modale.wines.component";
+import CardCategoryListComponent from "./card-category-list.wines.component";
 
-export default function ListDrinksComponent(props) {
-  const { t } = useTranslation("drinks");
+export default function ListWinesComponent(props) {
+  const { t } = useTranslation("wines");
   const router = useRouter();
   const { locale } = router;
   const { restaurantContext } = useContext(GlobalContext);
@@ -45,10 +45,10 @@ export default function ListDrinksComponent(props) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [selectedDrink, setSelectedDrink] = useState(null);
+  const [selectedWine, setSelectedWine] = useState(null);
   const [hoveredTooltip, setHoveredTooltip] = useState(null);
-  const [drinks, setDrinks] = useState(
-    props.subCategory ? props.subCategory.drinks : props.category.drinks
+  const [wines, setWines] = useState(
+    props.subCategory ? props.subCategory.wines : props.category.wines
   );
 
   const [subCategories, setSubCategories] = useState([]);
@@ -57,7 +57,7 @@ export default function ListDrinksComponent(props) {
     {
       !props.subCategory &&
         setSubCategories(
-          restaurantContext?.restaurantData?.drink_categories?.find(
+          restaurantContext?.restaurantData?.wine_categories?.find(
             (category) => category._id === props.category._id
           )?.subCategories
         );
@@ -89,17 +89,17 @@ export default function ListDrinksComponent(props) {
         .toLowerCase();
 
       router.push(
-        `/drinks/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${props.subCategory._id}/add`
+        `/wines/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${props.subCategory._id}/add`
       );
     } else {
       const formattedName = props.category.name
         .replace(/\s+/g, "-")
         .toLowerCase();
-      router.push(`/drinks/${formattedName}-${props.category._id}/add`);
+      router.push(`/wines/${formattedName}-${props.category._id}/add`);
     }
   }
 
-  function handleEditClick(drink) {
+  function handleEditClick(wine) {
     if (props.subCategory) {
       const formattedCategoryName = props.category.name
         .replace(/\s+/g, "-")
@@ -108,14 +108,14 @@ export default function ListDrinksComponent(props) {
         .replace(/\s+/g, "-")
         .toLowerCase();
       router.push(
-        `/drinks/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${props.subCategory._id}/add?drinkId=${drink._id}`
+        `/wines/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${props.subCategory._id}/add?wineId=${wine._id}`
       );
     } else {
       const formattedCategoryName = props.category.name
         .replace(/\s+/g, "-")
         .toLowerCase();
       router.push(
-        `/drinks/${formattedCategoryName}-${props.category._id}/add?drinkId=${drink._id}`
+        `/wines/${formattedCategoryName}-${props.category._id}/add?wineId=${wine._id}`
       );
     }
   }
@@ -131,8 +131,8 @@ export default function ListDrinksComponent(props) {
     setIsModalOpen(true);
   }
 
-  function handleDeleteClick(drink) {
-    setSelectedDrink(drink);
+  function handleDeleteClick(wine) {
+    setSelectedWine(wine);
     setIsDeleteModalOpen(true);
   }
 
@@ -143,7 +143,7 @@ export default function ListDrinksComponent(props) {
   }
 
   function closeDeleteModal() {
-    setSelectedDrink(null);
+    setSelectedWine(null);
     setIsDeleteModalOpen(false);
   }
 
@@ -151,7 +151,7 @@ export default function ListDrinksComponent(props) {
     if (editingCategory) {
       axios
         .delete(
-          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/categories/${props.category._id}/subcategories/${editingCategory._id}`
+          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/wines/categories/${props.category._id}/subcategories/${editingCategory._id}`
         )
         .then((response) => {
           setSubCategories((prevSubCategories) =>
@@ -166,8 +166,8 @@ export default function ListDrinksComponent(props) {
         .catch((error) => {
           console.error("Error deleting subcategory:", error);
         });
-    } else if (selectedDrink) {
-      const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/${selectedDrink._id}`;
+    } else if (selectedWine) {
+      const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/wines/${selectedWine._id}`;
       const params = props.subCategory
         ? {
             categoryId: props.category._id,
@@ -178,14 +178,14 @@ export default function ListDrinksComponent(props) {
       axios
         .delete(apiUrl, { params })
         .then((response) => {
-          setDrinks((prevDrinks) =>
-            prevDrinks.filter((drink) => drink._id !== selectedDrink._id)
+          setWines((prevWines) =>
+            prevWines.filter((wine) => wine._id !== selectedWine._id)
           );
           restaurantContext.setRestaurantData(response.data.restaurant);
           closeDeleteModal();
         })
         .catch((error) => {
-          console.error("Error deleting drink:", error);
+          console.error("Error deleting wine:", error);
         });
     }
   }
@@ -195,7 +195,7 @@ export default function ListDrinksComponent(props) {
 
     axios
       .put(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/categories/${props.category._id}/subcategories/${subCategory._id}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/wines/categories/${props.category._id}/subcategories/${subCategory._id}`,
         { visible: updatedVisibility }
       )
       .then((response) => {
@@ -216,13 +216,11 @@ export default function ListDrinksComponent(props) {
     if (active.id === over?.id) return;
 
     if (active.id !== over.id) {
-      setDrinks((prevDrinks) => {
-        const oldIndex = prevDrinks.findIndex(
-          (drink) => drink._id === active.id
-        );
-        const newIndex = prevDrinks.findIndex((drink) => drink._id === over.id);
+      setWines((prevWines) => {
+        const oldIndex = prevWines.findIndex((wine) => wine._id === active.id);
+        const newIndex = prevWines.findIndex((wine) => wine._id === over.id);
 
-        const newDishesOrder = arrayMove(prevDrinks, oldIndex, newIndex);
+        const newDishesOrder = arrayMove(prevWines, oldIndex, newIndex);
 
         saveNewDishOrder(newDishesOrder);
 
@@ -231,25 +229,25 @@ export default function ListDrinksComponent(props) {
     }
   }
 
-  function saveNewDishOrder(updatedDrinks) {
-    const orderedDrinkIds = updatedDrinks.map((drink) => drink._id);
+  function saveNewDishOrder(updatedWines) {
+    const orderedWineIds = updatedWines.map((wine) => wine._id);
 
     let apiUrl;
     if (props.subCategory) {
       // URL pour réorganiser les boissons dans une sous-catégorie
-      apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/categories/${props.category._id}/subcategories/${props.subCategory._id}/drinks/order`;
+      apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/wines/categories/${props.category._id}/subcategories/${props.subCategory._id}/wines/order`;
     } else {
       // URL pour réorganiser les boissons dans une catégorie
-      apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/categories/${props.category._id}/drinks/order`;
+      apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/wines/categories/${props.category._id}/wines/order`;
     }
 
     axios
-      .put(apiUrl, { orderedDrinkIds })
+      .put(apiUrl, { orderedWineIds })
       .then((response) => {
         restaurantContext.setRestaurantData(response.data.restaurant);
       })
       .catch((error) => {
-        console.error("Error saving drink order:", error);
+        console.error("Error saving wine order:", error);
       });
   }
 
@@ -260,7 +258,7 @@ export default function ListDrinksComponent(props) {
 
     axios
       .put(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/categories/${props.category._id}/list-subcategories/order`,
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/wines/categories/${props.category._id}/list-subcategories/order`,
         { orderedSubCategoryIds }
       )
       .then((response) => {
@@ -308,15 +306,15 @@ export default function ListDrinksComponent(props) {
       .toLowerCase();
 
     router.push(
-      `/drinks/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${subCategory._id}`
+      `/wines/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${subCategory._id}`
     );
   }
 
   function onSubmit(data) {
     setIsSubmitting(true);
     const apiUrl = editingCategory
-      ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/categories/${props.category._id}/subcategories/${editingCategory._id}`
-      : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/categories/${props.category._id}/subcategories/`;
+      ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/wines/categories/${props.category._id}/subcategories/${editingCategory._id}`
+      : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/wines/categories/${props.category._id}/subcategories/`;
 
     const method = isDeleting ? "delete" : editingCategory ? "put" : "post";
 
@@ -337,13 +335,13 @@ export default function ListDrinksComponent(props) {
   }
 
   // Chemins pour la navigation avec le formatage de nom et d'ID
-  const baseRoute = "/drinks";
+  const baseRoute = "/wines";
   const formattedCategoryRoute = props.category
-    ? `/drinks/${props.category.name.replace(/\s+/g, "-").toLowerCase()}-${props.category._id}`
+    ? `/wines/${props.category.name.replace(/\s+/g, "-").toLowerCase()}-${props.category._id}`
     : baseRoute;
 
   const formattedSubCategoryRoute = props.subCategory
-    ? `/drinks/${props.category.name.replace(/\s+/g, "-").toLowerCase()}-${props.category._id}/${props.subCategory.name.replace(/\s+/g, "-").toLowerCase()}-${props.subCategory._id}`
+    ? `/wines/${props.category.name.replace(/\s+/g, "-").toLowerCase()}-${props.category._id}/${props.subCategory.name.replace(/\s+/g, "-").toLowerCase()}-${props.subCategory._id}`
     : formattedCategoryRoute;
 
   return (
@@ -352,7 +350,7 @@ export default function ListDrinksComponent(props) {
 
       <div className="flex justify-between">
         <div className="pl-2 flex gap-2 items-center">
-          <DrinkSvg width={30} height={30} fillColor="#131E3690" />
+          <WineSvg width={30} height={30} fillColor="#131E3690" />
 
           <h1 className="pl-2 text-2xl flex items-center gap-2">
             <span
@@ -393,7 +391,7 @@ export default function ListDrinksComponent(props) {
             onClick={handleAddClick}
             className="bg-blue px-6 py-2 rounded-lg text-white cursor-pointer"
           >
-            {t("buttons.addDrink")}
+            {t("buttons.addWine")}
           </button>
 
           {!props.subCategory && (
@@ -442,13 +440,13 @@ export default function ListDrinksComponent(props) {
           sensors={sensors}
           modifiers={[restrictToVerticalAxis]}
         >
-          <SortableContext items={drinks.map((drink) => drink._id)}>
-            {drinks.map((drink) => (
-              <DetailsDrinkComponent
-                key={drink._id}
+          <SortableContext items={wines.map((wine) => wine._id)}>
+            {wines.map((wine) => (
+              <DetailsWineComponent
+                key={wine._id}
                 hoveredTooltip={hoveredTooltip}
                 setHoveredTooltip={setHoveredTooltip}
-                drink={drink}
+                wine={wine}
                 handleEditClick={handleEditClick}
                 handleDeleteClick={handleDeleteClick}
                 currencySymbol={currencySymbol}
@@ -471,7 +469,7 @@ export default function ListDrinksComponent(props) {
 
             <p className="mb-6 text-center">
               {t("buttons.confirmDelete", {
-                drinkName: selectedDrink?.name,
+                wineName: selectedWine?.name,
               })}
             </p>
 
@@ -495,7 +493,7 @@ export default function ListDrinksComponent(props) {
       )}
 
       {isModalOpen && (
-        <AddModaleDrinksComponent
+        <AddModaleWinesComponent
           setIsModalOpen={setIsModalOpen}
           setEditingCategory={setEditingCategory}
           setIsDeleting={setIsDeleting}

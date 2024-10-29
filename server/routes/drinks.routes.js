@@ -201,7 +201,6 @@ router.put("/restaurants/:restaurantId/drinks/:drinkId", async (req, res) => {
     for (const category of restaurant.drink_categories) {
       const drink = category.drinks.id(drinkId);
       if (drink) {
-        // Mettre à jour les informations du plat
         drink.name = name;
         drink.description = description;
         drink.price = price;
@@ -209,7 +208,7 @@ router.put("/restaurants/:restaurantId/drinks/:drinkId", async (req, res) => {
         drink.bio = bio;
 
         drinkFound = true;
-        break; // Sortir de la boucle une fois la boisson trouvée et mis à jour
+        break;
       }
     }
 
@@ -217,7 +216,6 @@ router.put("/restaurants/:restaurantId/drinks/:drinkId", async (req, res) => {
       return res.status(404).json({ message: "Drink not found." });
     }
 
-    // Sauvegarder les modifications
     await restaurant.save();
 
     res

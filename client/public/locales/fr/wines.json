@@ -1,0 +1,45 @@
+{
+  "titles": {
+    "main": "Les Vins",
+    "second": "Aperçu"
+  },
+  "form": {
+    "labels": {
+      "appellation": "Appellation",
+      "name": "Nom de la bouteille",
+      "volume": "Volume",
+      "unit": "Unité",
+      "year": "Année",
+      "optional": "(optionnel)",
+      "category": "Catégorie",
+      "price": "Prix",
+      "status": "Afficher sur le site",
+      "select": "Sélectionner",
+      "categoryName": "Nom de la catégorie",
+      "visible": "Visible sur la carte",
+      "notVisible": "Non visible sur la carte",
+      "bio": "Bio"
+    }
+  },
+  "labels": {
+    "numberOfWines": "Nombre de bouteilles"
+  },
+  "buttons": {
+    "add": "Ajouter",
+    "addWine": "Ajouter une bouteille",
+    "edit": "Modifier",
+    "addCategory": "Ajouter une catégorie",
+    "addSubCategory": "Ajouter une sous-catégorie",
+    "editCategory": "Modifier la catégorie",
+    "deleteCategory": "Supprimer la catégorie",
+    "deleteWine": "Suppression d'une référence",
+    "confirmDelete": "Confirmer la suppression ?",
+    "save": "Enregister",
+    "delete": "Supprimer",
+    "access": "Accéder",
+    "confirm": "Confirmer",
+    "yes": "Oui",
+    "no": "Non",
+    "cancel": "Annuler"
+  }
+}

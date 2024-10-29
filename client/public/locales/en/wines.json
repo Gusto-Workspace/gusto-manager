@@ -1,0 +1,45 @@
+{
+  "titles": {
+    "main": "Wines",
+    "second": "Preview"
+  },
+  "form": {
+    "labels": {
+      "appellation": "Appellation",
+      "name": "Name of the bottle",
+      "volume": "Volume",
+      "unit": "Unit",
+      "year": "Year",
+      "optional": "(optional)",
+      "category": "Category",
+      "price": "Price",
+      "status": "Show on site",
+      "select": "Select",
+      "categoryName": "Category Name",
+      "visible": "Visible on menu",
+      "notVisible": "Not visible on menu",
+      "bio": "Organic"
+    }
+  },
+  "labels": {
+    "numberOfWines": "Number of bottles"
+  },
+  "buttons": {
+    "add": "Add",
+    "addWine": "Add a bottle",
+    "edit": "Edit",
+    "addCategory": "Add a Category",
+    "addSubCategory": "Add a subcategory",
+    "editCategory": "Modify the category",
+    "deleteCategory": "Delete the category",
+    "deleteWine": "Delete a dish",
+    "confirmDelete": "Confirm deletion ?",
+    "save": "Save",
+    "delete": "Delete",
+    "access": "Access",
+    "confirm": "Confirm",
+    "yes": "Yes",
+    "no": "No",
+    "cancel": "Annuler"
+  }
+}
