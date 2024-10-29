@@ -39,7 +39,9 @@ export default function CategoriesListDishesComponent() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [categories, setCategories] = useState([]);
+  const [categories, setCategories] = useState(
+    restaurantContext?.restaurantData?.dish_categories
+  );
 
   // Détecte les capteurs pour le drag-and-drop (souris et tactile)
   const mouseSensor = useSensor(MouseSensor);
@@ -210,7 +212,7 @@ export default function CategoriesListDishesComponent() {
             </SortableContext>
           </DndContext>
 
-          <GlobalDishesComponent categories={categories}/>
+          <GlobalDishesComponent categories={categories} />
         </div>
       )}
 

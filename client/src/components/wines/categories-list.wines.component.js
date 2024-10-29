@@ -40,7 +40,9 @@ export default function CategoriesListWinesComponent() {
   const [editingCategory, setEditingCategory] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [categories, setCategories] = useState([]);
+  const [categories, setCategories] = useState(
+    restaurantContext?.restaurantData?.wine_categories
+  );
 
   // Détecte les capteurs pour le drag-and-drop (souris et tactile)
   const mouseSensor = useSensor(MouseSensor);
