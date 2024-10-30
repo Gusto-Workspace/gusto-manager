@@ -34,3 +34,7 @@ export { RemoveSvg } from "./remove.svg";
 export { DragSvg } from "./drag.svg";
 export { DragMultiSvg } from "./drag-multi.svg";
 export { WineSvg } from "./wine.svg";
+export { SettingsSvg } from "./settings.svg";
+export { HelpSvg } from "./help.svg";
+export { VisibleSvg } from "./visible.svg";
+export { AboutSvg } from "./about.svg";

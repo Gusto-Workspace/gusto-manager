@@ -1,12 +1,22 @@
 {
   "nav": {
-    "list": {
-      "about": "À propos",
-      "programs": "Nos programmes",
-      "contact": "Contact"
-    },
-    "button": {
-      "inscription": "Inscription"
-    }
+    "dashboard": "Dashboard",
+    "restaurant": "Infos restaurant",
+    "menus": "Les menus",
+    "dishes": "La carte",
+    "drinks": "Les boissons",
+    "wines": "Les vins",
+    "news": "Les actualités",
+    "giftCards": "Cartes cadeaux"
+  },
+  "settings": {
+    "hello": "Bonjour",
+    "restaurant": "Restaurant",
+    "settings": "Paramètres",
+    "help" : "Aide",
+    "about" : "À propos"
+  },
+  "buttons": {
+    "logout": "Déconnexion"
   }
 }

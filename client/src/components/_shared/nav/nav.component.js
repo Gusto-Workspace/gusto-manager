@@ -15,7 +15,7 @@ import { navItemsData } from "@/_assets/data/_index.data";
 import * as icons from "@/components/_shared/_svgs/_index";
 
 export default function NavComponent() {
-  const { t } = useTranslation("admin");
+  const { t } = useTranslation("common");
   const { restaurantContext } = useContext(GlobalContext);
   const router = useRouter();
 
@@ -65,7 +65,7 @@ export default function NavComponent() {
                     />
                   </div>
                 )}
-                {item.label}
+                {t(item.label)}
               </Link>
             </li>
           );
@@ -76,7 +76,7 @@ export default function NavComponent() {
         className="text-white bg-red py-2 rounded-lg"
         onClick={restaurantContext.logout}
       >
-        Déconnexion
+        {t("buttons.logout")}
       </button>
     </nav>
   );

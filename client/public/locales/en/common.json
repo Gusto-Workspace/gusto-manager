@@ -1,12 +1,22 @@
 {
   "nav": {
-    "list": {
-      "about": "À propos",
-      "programs": "Nos programmes",
-      "contact": "Contact"
-    },
-    "button": {
-      "inscription": "Inscription"
-    }
+    "dashboard": "Dashboard",
+    "restaurant": "Restaurant's infos",
+    "menus": "Menus",
+    "dishes": "Individual dishes",
+    "drinks": "Drinks",
+    "wines": "Wines",
+    "news": "News",
+    "giftCards": "Gift cards"
+  },
+  "settings": {
+    "hello": "Hello",
+    "restaurant": "Restaurant",
+    "settings": "Settings",
+    "help": "Help",
+    "about": "About"
+  },
+  "buttons": {
+    "logout": "Log Out"
   }
 }

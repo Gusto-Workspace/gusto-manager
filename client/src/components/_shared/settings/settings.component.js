@@ -1,8 +1,17 @@
-import { Fragment, useState, useContext } from "react";
+import { Fragment, useState, useContext, useRef, useEffect } from "react";
 import { useRouter } from "next/router";
 
+// I18N
+import { useTranslation } from "next-i18next";
+
 // SVG
-import { ChevronSvg, NotificationSvg } from "../_svgs/_index";
+import {
+  AboutSvg,
+  ChevronSvg,
+  HelpSvg,
+  NotificationSvg,
+  SettingsSvg,
+} from "../_svgs/_index";
 
 // CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
@@ -11,12 +20,34 @@ import { GlobalContext } from "@/contexts/global.context";
 import SimpleSkeletonComonent from "../skeleton/simple-skeleton.component";
 
 export default function SettingsComponent() {
+  const { t } = useTranslation("");
   const router = useRouter();
   const [showRestaurantList, setShowRestaurantList] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const { restaurantContext } = useContext(GlobalContext);
+
+  const userMenuRef = useRef(null);
+  const userNameRef = useRef(null);
 
   const isSubRoute =
     router.pathname !== "/" && router.pathname.split("/").length > 2;
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (
+        userMenuRef.current &&
+        !userMenuRef.current.contains(event.target) &&
+        !userNameRef.current.contains(event.target)
+      ) {
+        setShowUserMenu(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
 
   return (
     <section className="z-50 flex min-h-16 gap-12 justify-between items-center relative">
@@ -39,7 +70,8 @@ export default function SettingsComponent() {
           <SimpleSkeletonComonent />
         ) : (
           <h1 className={`${isSubRoute && "opacity-40"}`}>
-            Restaurant - {restaurantContext.restaurantData?.name}
+            {t("settings.restaurant")} -{" "}
+            {restaurantContext.restaurantData?.name}
           </h1>
         )}
 
@@ -81,9 +113,13 @@ export default function SettingsComponent() {
           </button>
         </div>
 
-        <div className="pl-8 flex items-center gap-4 text-sm">
+        <div
+          ref={userNameRef}
+          className="pl-8 flex items-center gap-4 text-sm cursor-pointer"
+          onClick={() => setShowUserMenu((prev) => !prev)}
+        >
           <p>
-            Bonjour,
+            {t("settings.hello")},
             <span className="font-bold ml-1">
               {restaurantContext.restaurantData?.owner_id?.firstname}
             </span>
@@ -92,6 +128,44 @@ export default function SettingsComponent() {
           <div className="h-10 w-10 rounded-full bg-black bg-opacity-20 text-white text-xl flex items-center justify-center">
             {restaurantContext.restaurantData?.owner_id?.firstname?.charAt(0)}
           </div>
+        </div>
+
+        <div
+          ref={userMenuRef}
+          className={`absolute right-0 top-full mt-2 bg-white shadow-lg rounded-lg w-44 z-10 transition-all duration-300 overflow-hidden ${
+            showUserMenu ? "max-h-[200px]" : "max-h-0"
+          }`}
+          style={{ maxHeight: showUserMenu ? "200px" : "0" }}
+        >
+          <ul className="flex flex-col">
+            <li
+              className="cursor-pointer flex gap-4 items-center hover:bg-darkBlue hover:bg-opacity-10 px-4 py-2 my-2"
+              onClick={() => router.push("/settings")}
+            >
+              <SettingsSvg width={20} height={20} />
+              {t("settings.settings")}
+            </li>
+
+            <hr className="h-[1px] bg-darkBlue opacity-20 mx-4" />
+           
+            <li
+              className="cursor-pointer flex gap-4 items-center hover:bg-darkBlue hover:bg-opacity-10 px-4 py-2 my-2"
+              onClick={() => router.push("/help")}
+            >
+              <HelpSvg width={20} height={20} />
+              {t("settings.help")}
+            </li>
+
+            <hr className="h-[1px] bg-darkBlue opacity-20 mx-4" />
+
+            <li
+              className="cursor-pointer flex gap-4 items-center hover:bg-darkBlue hover:bg-opacity-10 px-4 py-2 my-2"
+              onClick={() => router.push("/about")}
+            >
+              <AboutSvg width={18} height={18} />
+              {t("settings.about")}
+            </li>
+          </ul>
         </div>
       </div>
     </section>
