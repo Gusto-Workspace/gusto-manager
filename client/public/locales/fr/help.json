@@ -1,0 +1,21 @@
+{
+  "titles": {
+    "main": "Aide"
+  },
+  "form": {
+    "labels": {
+      "firstname": "Prénom",
+      "lastname": "Nom de famille",
+      "email": "Email",
+      "phone": "Numéro de téléphone"
+    },
+    "errors": {
+      "current": "Le mot de passe actuel est incorrect",
+      "new": "Le mot de passe doit contenir au moins 6 caractères"
+    }
+  },
+  "buttons": {
+    "save": "Enregistrer",
+    "loading": "En cours..."
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "titles": {
+    "main": "Help"
+  },
+  "form": {
+    "labels": {
+      "firstname": "Firstname",
+      "lastname": "Lastname",
+      "email": "Email",
+      "phone": "Phone number"
+    },
+
+    "errors": {
+      "current": "Current password is incorrect",
+      "new": "New password must contain at least 6 characters"
+    }
+  },
+  "buttons": {
+    "save": "Save",
+    "loading": "Loading..."
+  }
+}
