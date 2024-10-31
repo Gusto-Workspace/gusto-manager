@@ -78,7 +78,7 @@ export default function AddMenuPage(props) {
 export async function getStaticProps({ locale }) {
   return {
     props: {
-      ...(await serverSideTranslations(locale, ["common", "menus"])),
+      ...(await serverSideTranslations(locale, ["common", "dishes", "menus"])),
     },
   };
 }

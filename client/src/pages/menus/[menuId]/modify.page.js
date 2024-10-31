@@ -75,36 +75,10 @@ export default function ModifyMenuPage(props) {
   );
 }
 
-export async function getServerSideProps({ params, query, locale }) {
-  const categoryId = params.categoryId.split("-").pop();
-  const { dishId } = query;
-
-  try {
-    const response = await axios.get(
-      `${process.env.NEXT_PUBLIC_API_URL}/categories/${categoryId}/dishes`
-    );
-    const { category } = response.data;
-
-    let dish = null;
-    if (dishId) {
-      dish = category.dishes.find((d) => d._id === dishId) || null;
-    }
-
-    return {
-      props: {
-        category,
-        dish,
-        ...(await serverSideTranslations(locale, ["common", "dishes"])),
-      },
-    };
-  } catch (error) {
-    console.error("Error fetching category or dish data:", error);
-    return {
-      props: {
-        category: null,
-        dish: null,
-        ...(await serverSideTranslations(locale, ["common", "dishes"])),
-      },
-    };
-  }
+export async function getStaticProps({ locale }) {
+  return {
+    props: {
+      ...(await serverSideTranslations(locale, ["common", "menus"])),
+    },
+  };
 }
