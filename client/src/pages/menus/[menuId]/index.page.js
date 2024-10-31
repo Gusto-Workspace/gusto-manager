@@ -50,7 +50,7 @@ export default function MenuDetailsPage(props) {
               restaurantData={restaurantContext.restaurantData}
             />
 
-            <MenuDetailsComponent menu={props.menu} />
+            <MenuDetailsComponent menu={props?.menu} />
           </div>
         </div>
       </div>
@@ -58,30 +58,30 @@ export default function MenuDetailsPage(props) {
   );
 }
 
-export async function getServerSideProps({ params, locale }) {
-  const { menuId } = params;
+// export async function getServerSideProps({ params, locale }) {
+//   const { menuId } = params;
 
-  const actualMenuId = menuId.split("-").pop();
+//   const actualMenuId = menuId.split("-").pop();
 
-  try {
-    const response = await axios.get(
-      `${process.env.NEXT_PUBLIC_API_URL}/menus/${actualMenuId}`
-    );
-    const { menu } = response.data;
+//   try {
+//     const response = await axios.get(
+//       `${process.env.NEXT_PUBLIC_API_URL}/menus/${actualMenuId}`
+//     );
+//     const { menu } = response.data;
 
-    return {
-      props: {
-        menu,
-        ...(await serverSideTranslations(locale, ["common", "menus"])),
-      },
-    };
-  } catch (error) {
-    console.error("Error fetching menu data:", error);
-    return {
-      props: {
-        menu: null,
-        ...(await serverSideTranslations(locale, ["common", "menus"])),
-      },
-    };
-  }
-}
+//     return {
+//       props: {
+//         menu,
+//         ...(await serverSideTranslations(locale, ["common", "menus"])),
+//       },
+//     };
+//   } catch (error) {
+//     console.error("Error fetching menu data:", error);
+//     return {
+//       props: {
+//         menu: null,
+//         ...(await serverSideTranslations(locale, ["common", "menus"])),
+//       },
+//     };
+//   }
+// }
