@@ -1,5 +1,6 @@
 const express = require("express");
 const router = express.Router();
+const stripe = require("stripe")(process.env.STRIPE_API_SECRET_KEY);
 
 // MODELS
 const OwnerModel = require("../models/owner.model");
@@ -42,6 +43,25 @@ router.put("/owner/update-data", authenticateToken, async (req, res) => {
     owner.phoneNumber = phoneNumber;
 
     await owner.save();
+
+    if (owner.stripeCustomerId) {
+      // Mettre à jour le client Stripe avec les nouvelles informations du propriétaire
+      try {
+        await stripe.customers.update(owner.stripeCustomerId, {
+          email: owner.email,
+          name: `${owner.firstname} ${owner.lastname}`,
+        });
+      } catch (stripeError) {
+        console.error(
+          "Erreur lors de la mise à jour du client Stripe :",
+          stripeError
+        );
+        return res
+          .status(500)
+          .json({ message: "Erreur lors de la mise à jour du client Stripe" });
+      }
+    }
+
     res.status(200).json({ message: "Owner information updated successfully" });
   } catch (error) {
     console.error("Erreur lors de la mise à jour du propriétaire :", error);

@@ -1,13 +1,15 @@
 {
   "titles": {
-    "main": "Aide"
+    "main": "Aide",
+    "second": "Contactez-nous"
   },
+  "description": "Vous avez une question ou rencontrez un problème ? N'hésitez pas à nous contacter via ce formulaire. Nous reviendrons vers vous dans les plus brefs délais !",
   "form": {
     "labels": {
-      "firstname": "Prénom",
-      "lastname": "Nom de famille",
+      "name": "Prénom & nom",
       "email": "Email",
-      "phone": "Numéro de téléphone"
+      "phone": "Numéro de téléphone",
+      "message": "Message"
     },
     "errors": {
       "current": "Le mot de passe actuel est incorrect",
@@ -15,7 +17,8 @@
     }
   },
   "buttons": {
-    "save": "Enregistrer",
+    "send": "Envoyer",
+    "success": "Succès !",
     "loading": "En cours..."
   }
 }

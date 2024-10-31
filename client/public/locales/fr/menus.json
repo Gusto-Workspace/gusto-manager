@@ -1,0 +1,30 @@
+{
+  "titles": {
+    "main": "Les Menus",
+    "second": "Aperçu"
+  },
+  "form": {
+    "labels": {
+      "name": "Nom du menu"
+    }
+  },
+  "labels": {
+    "numberOfDishes": "Nombre de plats"
+  },
+  "buttons": {
+    "add": "Ajouter",
+    "edit": "Modifier",
+    "addMenu": "Créer un menu",
+    "editMenu": "Modifier la catégorie",
+    "deleteMenu": "Supprimer la catégorie",
+    "deleteDish": "Suppression d'un plat",
+    "confirmDelete": "Confirmer la suppression ?",
+    "save": "Enregister",
+    "delete": "Supprimer",
+    "access": "Accéder",
+    "confirm": "Confirmer",
+    "yes": "Oui",
+    "no": "Non",
+    "cancel": "Annuler"
+  }
+}

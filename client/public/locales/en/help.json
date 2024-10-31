@@ -1,13 +1,16 @@
 {
   "titles": {
-    "main": "Help"
+    "main": "Help",
+    "second": "Contact-us"
   },
+  "description": "Vous avez une question ou rencontrez un problème ? N'hésitez pas à nous contacter via ce formulaire. Nous reviendrons vers vous dans les plus brefs délais !",
+
   "form": {
     "labels": {
-      "firstname": "Firstname",
-      "lastname": "Lastname",
+      "name": "Firstname & lastname",
       "email": "Email",
-      "phone": "Phone number"
+      "phone": "Phone number",
+      "message": "Message"
     },
 
     "errors": {
@@ -16,7 +19,8 @@
     }
   },
   "buttons": {
-    "save": "Save",
+    "send": "Send",
+    "success": "Success !",
     "loading": "Loading..."
   }
 }

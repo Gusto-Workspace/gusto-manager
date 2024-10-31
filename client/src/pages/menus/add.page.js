@@ -4,21 +4,19 @@ import Head from "next/head";
 // I18N
 import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
-import { useTranslation } from "next-i18next";
 
 // CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
 
-// SVG
-import { HelpSvg } from "@/components/_shared/_svgs/_index";
+// AXIOS
+import axios from "axios";
 
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
-import ContactFormHelpComponent from "@/components/help/contact-form.help.component";
+import AddMenusComponent from "@/components/menus/add.menus.component";
 
-export default function HelpPage(props) {
-  const { t } = useTranslation("");
+export default function AddMenuPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
 
   let title;
@@ -33,8 +31,6 @@ export default function HelpPage(props) {
       title = "Gusto Manager";
       description = "";
   }
-
-  if (!restaurantContext.isAuth) return null;
 
   return (
     <>
@@ -71,17 +67,7 @@ export default function HelpPage(props) {
               restaurantData={restaurantContext.restaurantData}
             />
 
-            <hr className="opacity-20" />
-
-            <div className="flex justify-between">
-              <div className="pl-2 flex gap-2 items-center">
-                <HelpSvg width={30} height={30} fillColor="#131E3690" />
-
-                <h1 className="pl-2 text-2xl">{t("help:titles.main")}</h1>
-              </div>
-            </div>
-
-            <ContactFormHelpComponent/>
+            <AddMenusComponent menu={props.menu} />
           </div>
         </div>
       </div>
@@ -92,7 +78,8 @@ export default function HelpPage(props) {
 export async function getStaticProps({ locale }) {
   return {
     props: {
-      ...(await serverSideTranslations(locale, ["common", "help"])),
+      ...(await serverSideTranslations(locale, ["common", "menus"])),
     },
   };
 }
+
