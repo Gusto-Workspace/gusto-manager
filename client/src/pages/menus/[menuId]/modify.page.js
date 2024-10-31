@@ -16,7 +16,7 @@ import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import AddMenusComponent from "@/components/menus/add.menus.component";
 
-export default function AddMenuPage(props) {
+export default function ModifyMenuPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
 
   let title;
