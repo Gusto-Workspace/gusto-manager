@@ -25,8 +25,8 @@ mongoose
 app.use(
   cors({
     origin: [
-      "http://localhost:8002", // Client
-      "http://localhost:8012", // Server
+      "https://www.gusto-manager.com", // Client
+      "https://gusto-manager.onrender.com", // Server
     ],
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
