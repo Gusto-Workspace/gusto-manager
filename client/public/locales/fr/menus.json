@@ -3,21 +3,40 @@
     "main": "Les Menus",
     "second": "Aperçu"
   },
+  "labels": {
+    "menuType": "Type de menu",
+    "select": "Sélectionner",
+    "fixed": "Menu standard",
+    "custom": "Menu libre"
+  },
   "form": {
-    "labels": {
-      "name": "Nom du menu"
+    "fixed": {
+      "labels": {
+        "option": "Option",
+        "name": "Nom du menu",
+        "description": "Description",
+        "generaleDescription": "Description générale du menu, plats concernés par ce menu ...",
+        "optional": "(optionnel)",
+        "price": "Prix du menu",
+        "addOption": "Ajouter une option"
+      }
+    },
+
+    "custom": {
+      "labels": {
+        "name": "Nom du menu"
+      }
     }
   },
-  "labels": {
-    "numberOfDishes": "Nombre de plats"
-  },
+
   "buttons": {
     "add": "Ajouter",
     "edit": "Modifier",
     "addMenu": "Créer un menu",
-    "editMenu": "Modifier la catégorie",
-    "deleteMenu": "Supprimer la catégorie",
-    "deleteDish": "Suppression d'un plat",
+    "addOption": "Ajouter une option",
+    "editMenu": "Modifier le menu",
+    "deleteMenu": "Supprimer le menu",
+    "deleteOption": "Supprimer l'option",
     "confirmDelete": "Confirmer la suppression ?",
     "save": "Enregister",
     "delete": "Supprimer",

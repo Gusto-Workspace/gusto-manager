@@ -1,4 +1,4 @@
-import { useState, useContext } from "react";
+import { useState, useContext, useEffect } from "react";
 import { useRouter } from "next/router";
 
 // I18N
@@ -18,6 +18,7 @@ import {
   NoImageSvg,
   NoVisibleSvg,
 } from "../_shared/_svgs/_index";
+import CardListMenuComponent from "./card-list-menu.menus.component";
 
 export default function ListMenusComponent(props) {
   const { t } = useTranslation("menus");
@@ -26,6 +27,13 @@ export default function ListMenusComponent(props) {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [selectedMenu, setSelectedMenu] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [menus, setMenus] = useState(
+    restaurantContext?.setRestaurantData?.menus
+  );
+
+  useEffect(() => {
+    setMenus(restaurantContext.restaurantData?.menus);
+  }, [restaurantContext?.restaurantData?.menus]);
 
   function handleAddClick() {
     router.push(`/menus/add`);
@@ -100,7 +108,11 @@ export default function ListMenusComponent(props) {
         </button>
       </div>
 
-     
+      <div className="grid grid-cols-1 tablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-4 gap-6">
+        {menus?.map((menu, i) => {
+          return <CardListMenuComponent key={i} menu={menu} />;
+        })}
+      </div>
 
       {isDeleteModalOpen && (
         <div className="fixed inset-0 flex items-center justify-center z-[100]">

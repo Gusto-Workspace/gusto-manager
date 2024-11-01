@@ -15,7 +15,7 @@ export default function GlobalDishesComponent(props) {
 
   return (
     <div className="flex flex-col gap-6">
-      {!props.menu && (
+      {!props.createMenu && (
         <div className="pl-2 flex gap-2 items-center">
           <DishSvg width={30} height={30} fillColor="#131E3690" />
 
@@ -44,10 +44,9 @@ export default function GlobalDishesComponent(props) {
                   .filter((dish) => dish.showOnWebsite)
                   .map((dish, j) => (
                     <div
-                    onClick={() => console.log({ dish, category })}
-
+                      onClick={() => props.onDishClick(category, dish)}
                       key={j}
-                      className="flex items-center gap-4 justify-between"
+                      className={`flex items-center gap-4 justify-between ${props.createMenu && "cursor-pointer"}`}
                     >
                       <div className="flex flex-col">
                         <h3 className="text-lg font-semibold">{dish.name}</h3>
@@ -98,7 +97,7 @@ export default function GlobalDishesComponent(props) {
                           )}
                         </div>
 
-                        <p className="text-md font-semibold">
+                        <p className="text-md font-semibold whitespace-nowrap">
                           {dish.price.toFixed(2)} €
                         </p>
                       </div>

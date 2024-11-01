@@ -8,9 +8,6 @@ import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 // CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
 
-// AXIOS
-import axios from "axios";
-
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
@@ -82,4 +79,3 @@ export async function getStaticProps({ locale }) {
     },
   };
 }
-

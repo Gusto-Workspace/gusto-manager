@@ -13,6 +13,7 @@ const menuSchema = new mongoose.Schema({
   combinations: [
     {
       categories: [{ type: String, required: true }], // e.g., ["Entrée", "Plat", "Dessert"]
+      description: { type: String },
       price: { type: Number, required: true },
     },
   ],
