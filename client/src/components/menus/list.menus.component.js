@@ -11,13 +11,9 @@ import axios from "axios";
 import { GlobalContext } from "@/contexts/global.context";
 
 // SVG
-import {
-  DeleteSvg,
-  EditSvg,
-  MenuSvg,
-  NoImageSvg,
-  NoVisibleSvg,
-} from "../_shared/_svgs/_index";
+import { MenuSvg } from "../_shared/_svgs/_index";
+
+// COMPONENTS
 import CardListMenuComponent from "./card-list-menu.menus.component";
 
 export default function ListMenusComponent(props) {
@@ -39,7 +35,7 @@ export default function ListMenusComponent(props) {
     router.push(`/menus/add`);
   }
 
-  function handleEditClick(menu) {
+  function handleCategoryClick(menu) {
     router.push(`/menus/add?menuId=${menu._id}`);
   }
 
@@ -73,19 +69,19 @@ export default function ListMenusComponent(props) {
       });
   }
 
-  function handleVisibilityToggle(data) {
-    const updatedVisibility = !data.visible;
+  function handleVisibilityToggle(menu) {
+    const updatedVisibility = !menu.visible;
 
     axios
       .put(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/menus/${data._id}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/menus/${menu._id}/update`,
         { visible: updatedVisibility }
       )
       .then((response) => {
         restaurantContext.setRestaurantData(response.data.restaurant);
       })
       .catch((error) => {
-        console.error("Error updating category visibility:", error);
+        console.error("Error updating menu visibility:", error);
       });
   }
 
@@ -110,7 +106,15 @@ export default function ListMenusComponent(props) {
 
       <div className="grid grid-cols-1 tablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-4 gap-6">
         {menus?.map((menu, i) => {
-          return <CardListMenuComponent key={i} menu={menu} />;
+          return (
+            <CardListMenuComponent
+              key={i}
+              menu={menu}
+              handleCategoryClick={handleCategoryClick}
+              handleDeleteClick={handleDeleteClick}
+              handleVisibilityToggle={handleVisibilityToggle}
+            />
+          );
         })}
       </div>
 

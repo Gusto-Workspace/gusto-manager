@@ -28,7 +28,7 @@ export default function FixedMenuComponent(props) {
   const [isLoading, setIsLoading] = useState(false);
   const [errorFields, setErrorFields] = useState([]);
 
-  const { register, handleSubmit, control } = useForm({
+  const { register, handleSubmit, reset, control } = useForm({
     defaultValues: {
       combinations: [
         { categories: [{ value: "" }], price: "", description: "" },
@@ -44,6 +44,22 @@ export default function FixedMenuComponent(props) {
     control,
     name: "combinations",
   });
+
+  useEffect(() => {
+    if (props.menu) {
+      const formattedCombinations = props.menu.combinations.map((combo) => ({
+        categories: combo.categories.map((category) => ({ value: category })),
+        price: combo.price.toString(),
+        description: combo.description || "",
+      }));
+
+      reset({
+        name: props.menu.name || "",
+        description: props.menu.description || "",
+        combinations: formattedCombinations,
+      });
+    }
+  }, [props.menu, reset]);
 
   useEffect(() => {
     const modifiedCategories =
@@ -98,20 +114,19 @@ export default function FixedMenuComponent(props) {
       })),
     };
 
-    console.log(formattedData);
+    const apiUrl = props?.menu
+      ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/menus/${props.menu._id}/update`
+      : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/add-menus`;
 
-    const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/add-menus`;
+    const method = props?.menu ? "put" : "post";
 
-    axios
-      .post(apiUrl, formattedData)
+    axios[method](apiUrl, formattedData)
       .then((response) => {
         restaurantContext.setRestaurantData(response.data.restaurant);
         router.push("/menus");
       })
       .catch((error) => {
         console.error("Error saving menu:", error);
-      })
-      .finally(() => {
         setIsLoading(false);
       });
   }
@@ -122,11 +137,11 @@ export default function FixedMenuComponent(props) {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
-      <div className="bg-white p-6 drop-shadow-sm rounded-lg">
-       
-      <div className="flex flex-col gap-1">
+      <div className="bg-white p-6 drop-shadow-sm rounded-lg flex flex-col gap-4">
+        <div className="flex flex-col gap-1">
           <label className="block font-semibold">
             <span>{t("form.fixed.labels.name")}</span>
+
             <span className="text-xs opacity-50 ml-2 italic">
               {t("form.fixed.labels.optional")}
             </span>
@@ -137,9 +152,10 @@ export default function FixedMenuComponent(props) {
             placeholder="-"
             {...register("name")}
             className="p-2 border rounded-lg w-full"
+            disabled={props.isEditing}
           />
         </div>
-       
+
         <div className="flex flex-col gap-1">
           <label className="block font-semibold">
             <span>{t("form.fixed.labels.generaleDescription")}</span>
@@ -153,6 +169,7 @@ export default function FixedMenuComponent(props) {
             placeholder="-"
             {...register("description")}
             className="p-2 border rounded-lg w-full"
+            disabled={props.isEditing}
           />
         </div>
       </div>
@@ -161,25 +178,21 @@ export default function FixedMenuComponent(props) {
         {combinationFields.map((field, i) => (
           <div key={field.id} className="flex flex-col gap-4">
             <div className="flex justify-between">
-              <h2 className="text-lg font-semibold">
+              <h2 className="text-lg font-semibold py-2">
                 {t("form.fixed.labels.option")} {i + 1}
               </h2>
 
-              {/* Remove combination button */}
-              <div className="flex justify-end">
-                {combinationFields.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => removeCombination(i)}
-                    className="px-4 py-2 text-white bg-red rounded-lg"
-                  >
-                    {t("buttons.deleteOption")}
-                  </button>
-                )}
-              </div>
+              {!props.isEditing && combinationFields.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => removeCombination(i)}
+                  className="px-4 py-2 text-white bg-red rounded-lg"
+                >
+                  {t("buttons.deleteOption")}
+                </button>
+              )}
             </div>
 
-            {/* Field array for categories within each combination */}
             <div className="flex flex-wrap gap-4">
               <CategoriesInputFixedMenuComponent
                 control={control}
@@ -187,12 +200,11 @@ export default function FixedMenuComponent(props) {
                 combinationIndex={i}
                 categories={categories}
                 errorFields={errorFields}
+                isEditing={props.isEditing}
                 setErrorFields={setErrorFields}
-                t={t}
               />
             </div>
 
-            {/* Description for each combination */}
             <div className="flex flex-col gap-1">
               <label className="block font-semibold">
                 <span>{t("form.fixed.labels.description")}</span>
@@ -206,25 +218,17 @@ export default function FixedMenuComponent(props) {
                 placeholder="-"
                 {...register(`combinations.${i}.description`)}
                 className="p-2 border rounded-lg w-full"
+                disabled={props.isEditing}
               />
             </div>
 
-            {/* Price for each combination */}
             <div className="flex flex-col gap-1">
               <label className="block font-semibold">
                 {t("form.fixed.labels.price")}
               </label>
 
               <div className="flex items-center">
-                <span
-                  className={`px-3 py-2 rounded-l-lg border-t border-l border-b ${
-                    errorFields.some(
-                      (error) => error.comboIndex === i && error.emptyPrice
-                    )
-                      ? "border-red"
-                      : ""
-                  }`}
-                >
+                <span className="px-3 py-2 rounded-l-lg border-t border-l border-b">
                   {currencySymbol}
                 </span>
 
@@ -232,37 +236,35 @@ export default function FixedMenuComponent(props) {
                   type="number"
                   placeholder="-"
                   {...register(`combinations.${i}.price`, {})}
-                  className={`p-2 border rounded-r-lg w-24 ${
-                    errorFields.some(
-                      (error) => error.comboIndex === i && error.emptyPrice
-                    )
-                      ? "border-red"
-                      : ""
-                  }`}
+                  className="p-2 border rounded-r-lg w-24"
+                  disabled={props.isEditing}
                 />
               </div>
             </div>
           </div>
         ))}
 
-        {/* Add combination button */}
-        <button
-          type="button"
-          onClick={handleAddCombination}
-          className="px-4 py-2 w-fit text-white bg-green rounded-lg"
-        >
-          {t("buttons.addOption")}
-        </button>
+        {!props.isEditing && (
+          <button
+            type="button"
+            onClick={handleAddCombination}
+            className="px-4 py-2 w-fit bg-blue bg-opacity-30 text-blue rounded-lg"
+          >
+            {t("buttons.addOption")}
+          </button>
+        )}
       </div>
 
-      <div className="flex gap-4 mt-4">
-        <button
-          type="submit"
-          className="p-2 text-white rounded-lg bg-blue"
-          disabled={isLoading}
-        >
-          {isLoading ? t("buttons.saving") : t("buttons.save")}
-        </button>
+      <div className="flex gap-4 mx-auto">
+        {!props.isEditing && (
+          <button
+            type="submit"
+            className="p-2 text-white rounded-lg bg-blue"
+            disabled={isLoading}
+          >
+            {isLoading ? t("buttons.loading") : t("buttons.save")}
+          </button>
+        )}
 
         <button
           type="button"
@@ -275,5 +277,3 @@ export default function FixedMenuComponent(props) {
     </form>
   );
 }
-
-// Separate component to manage categories within each combination

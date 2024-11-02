@@ -7,7 +7,6 @@ import { useTranslation } from "next-i18next";
 import {
   DeleteSvg,
   DragMultiSvg,
-  EditSvg,
   NoVisibleSvg,
   RightArrowSvg,
 } from "../_shared/_svgs/_index";
@@ -29,7 +28,7 @@ export default function CardListMenuComponent(props) {
       </h2>
 
       {props?.menu?.combinations?.length > 0 && (
-        <ul>
+        <ul className="text-sm">
           {props.menu.combinations.map((comb, i) => (
             <li key={i} className="flex justify-center gap-2">
               <p>
@@ -49,19 +48,25 @@ export default function CardListMenuComponent(props) {
         </ul>
       )}
 
+      {props.menu.price && (
+        <p className="text-xl">
+          {props.menu.price} {currencySymbol}
+        </p>
+      )}
+
       <hr className="bg-darkBlue h-[1px] w-[90%] opacity-20" />
 
       <div className="flex w-full justify-center">
         <div className="w-1/3 flex justify-center">
           <button
             onClick={(e) => {
-              props.handleVisibilityToggle(null);
+              props.handleVisibilityToggle(props.menu);
             }}
             className="flex flex-col items-center gap-1 p-2"
           >
             <div
               className={`bg-green ${
-                props?.category?.visible ? "bg-opacity-20" : ""
+                props.menu.visible ? "bg-opacity-20" : ""
               } p-[6px] rounded-full transition-colors duration-300`}
             >
               <NoVisibleSvg
@@ -72,7 +77,7 @@ export default function CardListMenuComponent(props) {
               />
             </div>
             <p className="text-xs text-center">
-              {props?.category?.visible ? "Visible" : "Non Visible"}
+              {props.menu.visible ? "Visible" : "Non Visible"}
             </p>
           </button>
         </div>
@@ -80,7 +85,7 @@ export default function CardListMenuComponent(props) {
         <div className="w-1/3 flex justify-center">
           <button
             onClick={(e) => {
-              props.handleDeleteClick(null);
+              props.handleDeleteClick(props.menu);
             }}
             className="flex flex-col items-center gap-1 p-2"
           >
@@ -98,7 +103,7 @@ export default function CardListMenuComponent(props) {
 
         <div className="w-1/3 flex justify-center">
           <button
-            onClick={() => props.handleCategoryClick(null)}
+            onClick={() => props.handleCategoryClick(props.menu)}
             className="flex flex-col items-center gap-1 p-2"
           >
             <div className="hover:bg-[#634FD2] bg-[#634FD299] p-[6px] rounded-full transition-colors duration-300">

@@ -6,8 +6,8 @@
   "labels": {
     "menuType": "Type de menu",
     "select": "Sélectionner",
-    "fixed": "Menu standard",
-    "custom": "Menu libre"
+    "fixed": "Menu options",
+    "custom": "Menu à composer"
   },
   "form": {
     "fixed": {
@@ -24,7 +24,10 @@
 
     "custom": {
       "labels": {
-        "name": "Nom du menu"
+        "name": "Nom du menu",
+        "selectedDishes": "Plats sélectionnés",
+        "selectPlaceholder": " Sélectionnez des plats dans la carte pour les ajouter à votre menu",
+        "or": "ou"
       }
     }
   },
@@ -38,7 +41,8 @@
     "deleteMenu": "Supprimer le menu",
     "deleteOption": "Supprimer l'option",
     "confirmDelete": "Confirmer la suppression ?",
-    "save": "Enregister",
+    "save": "Sauvegarder le menu",
+    "loading": "En cours...",
     "delete": "Supprimer",
     "access": "Accéder",
     "confirm": "Confirmer",

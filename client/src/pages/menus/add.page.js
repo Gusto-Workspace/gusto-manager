@@ -12,6 +12,7 @@ import { GlobalContext } from "@/contexts/global.context";
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import AddMenusComponent from "@/components/menus/add.menus.component";
+import axios from "axios";
 
 export default function AddMenuPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
@@ -72,10 +73,36 @@ export default function AddMenuPage(props) {
   );
 }
 
-export async function getStaticProps({ locale }) {
-  return {
-    props: {
-      ...(await serverSideTranslations(locale, ["common", "dishes", "menus"])),
-    },
-  };
+export async function getServerSideProps({ query, locale }) {
+  const { menuId } = query;
+
+  try {
+    const response = await axios.get(
+      `${process.env.NEXT_PUBLIC_API_URL}/menus/${menuId}`
+    );
+    const { menu } = response.data;
+
+    return {
+      props: {
+        menu,
+        ...(await serverSideTranslations(locale, [
+          "common",
+          "dishes",
+          "menus",
+        ])),
+      },
+    };
+  } catch (error) {
+    console.error("Error fetching category or dish data:", error);
+    return {
+      props: {
+        menu: null,
+        ...(await serverSideTranslations(locale, [
+          "common",
+          "dishes",
+          "menus",
+        ])),
+      },
+    };
+  }
 }

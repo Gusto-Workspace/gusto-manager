@@ -8,7 +8,7 @@ const MenuModel = require("../models/menu.model");
 // ADD MENU
 router.post("/restaurants/:restaurantId/add-menus", async (req, res) => {
   const { restaurantId } = req.params;
-  const { combinations, description, name, type, dishes } = req.body;
+  const { combinations, description, name, type, price, dishes } = req.body;
 
   try {
     // Vérifiez si le restaurant existe
@@ -25,6 +25,7 @@ router.post("/restaurants/:restaurantId/add-menus", async (req, res) => {
       name,
       type,
       dishes,
+      price,
     });
     await newMenu.save();
 
@@ -46,6 +47,96 @@ router.post("/restaurants/:restaurantId/add-menus", async (req, res) => {
     res
       .status(500)
       .json({ message: "An error occurred while saving the menu" });
+  }
+});
+
+// GET MENU BY ID
+router.get("/menus/:menuId", async (req, res) => {
+  const { menuId } = req.params;
+
+  try {
+    const menu = await MenuModel.findById(menuId);
+    if (!menu) {
+      return res.status(404).json({ message: "Menu not found" });
+    }
+
+    res.status(200).json({ menu });
+  } catch (error) {
+    console.error("Error fetching menu:", error);
+    res
+      .status(500)
+      .json({ message: "An error occurred while fetching the menu" });
+  }
+});
+
+// UPDATE MENU
+router.put(
+  "/restaurants/:restaurantId/menus/:menuId/update",
+  async (req, res) => {
+    const { restaurantId, menuId } = req.params;
+    const updateData = req.body;
+
+    try {
+      // Mettre à jour le menu avec les données fournies
+      const menu = await MenuModel.findByIdAndUpdate(menuId, updateData, {
+        new: true,
+      });
+
+      if (!menu) {
+        return res.status(404).json({ message: "Menu not found" });
+      }
+
+      // Récupérer le restaurant avec les menus mis à jour
+      const updatedRestaurant = await RestaurantModel.findById(restaurantId)
+        .populate("owner_id", "firstname")
+        .populate("menus");
+
+      res.status(200).json({
+        message: "Menu updated successfully",
+        restaurant: updatedRestaurant,
+      });
+    } catch (error) {
+      console.error("Error updating menu:", error);
+      res.status(500).json({
+        message: "An error occurred while updating the menu",
+      });
+    }
+  }
+);
+
+// DELETE MENU
+router.delete("/restaurants/:restaurantId/menus/:menuId", async (req, res) => {
+  const { restaurantId, menuId } = req.params;
+
+  try {
+    // Supprimer le menu par ID
+    const menu = await MenuModel.findByIdAndDelete(menuId);
+    if (!menu) {
+      return res.status(404).json({ message: "Menu not found" });
+    }
+
+    // Retirer la référence du menu supprimé dans le restaurant
+    const restaurant = await RestaurantModel.findByIdAndUpdate(
+      restaurantId,
+      { $pull: { menus: menuId } },
+      { new: true }
+    )
+      .populate("owner_id", "firstname")
+      .populate("menus");
+
+    if (!restaurant) {
+      return res.status(404).json({ message: "Restaurant not found" });
+    }
+
+    res.status(200).json({
+      message: "Menu deleted successfully",
+      restaurant,
+    });
+  } catch (error) {
+    console.error("Error deleting menu:", error);
+    res
+      .status(500)
+      .json({ message: "An error occurred while deleting the menu" });
   }
 });
 

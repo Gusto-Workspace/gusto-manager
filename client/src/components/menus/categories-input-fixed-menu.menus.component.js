@@ -52,8 +52,11 @@ export default function CategoriesInputFixedMenuComponent(props) {
                 : ""
             }`}
             onChange={(e) => handleCategoryChange(e.target.value, j)}
+            disabled={props.isEditing} // Désactive le champ de sélection si isEditing est false
           >
-            <option value="" disabled>{t("labels.select")}</option>
+            <option value="" disabled>
+              {t("labels.select")}
+            </option>
             {props?.categories?.map((category, k) => (
               <option key={k} value={category.name}>
                 {category.name}
@@ -61,8 +64,8 @@ export default function CategoriesInputFixedMenuComponent(props) {
             ))}
           </select>
 
-          {/* Bouton + pour ajouter un champ, désactivé si un champ est vide */}
-          {j === fields.length - 1 && (
+          {/* Bouton + pour ajouter un champ, masqué si isEditing est false */}
+          {!props.isEditing && j === fields.length - 1 && (
             <button
               type="button"
               onClick={() => append({ value: "" })}
@@ -72,8 +75,8 @@ export default function CategoriesInputFixedMenuComponent(props) {
             </button>
           )}
 
-          {/* Bouton - pour supprimer le dernier champ si plus d'un champ */}
-          {fields.length > 1 && j === fields.length - 1 && (
+          {/* Bouton - pour supprimer le dernier champ si plus d'un champ, masqué si isEditing est false */}
+          {!props.isEditing && fields.length > 1 && j === fields.length - 1 && (
             <button
               type="button"
               onClick={() => remove(j)}

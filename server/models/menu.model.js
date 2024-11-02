@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 const menuSchema = new mongoose.Schema({
   name: String,
   description: String,
+  price: { type: Number },
   restaurant_id: { type: mongoose.Schema.Types.ObjectId, ref: "Restaurant" },
   type: {
     type: String,
@@ -19,6 +20,7 @@ const menuSchema = new mongoose.Schema({
   ],
   // List of selected dishes for custom menus
   dishes: [{ type: mongoose.Schema.Types.ObjectId, ref: "Dish" }],
+  visible: { type: Boolean, default: true },
   created_at: { type: Date, default: Date.now },
 });
 

@@ -16,6 +16,7 @@ export default function CustomMenuComponent(props) {
   const [categories, setCategories] = useState(
     restaurantContext?.restaurantData?.dish_categories
   );
+  const [isLoading, setIsLoading] = useState(false);
   const [selectedDishes, setSelectedDishes] = useState({});
   const { register, handleSubmit } = useForm();
 
@@ -63,9 +64,6 @@ export default function CustomMenuComponent(props) {
         .flat()
         .map((dish) => dish._id),
     };
-
-    console.log(formattedData);
-    
 
     const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/add-menus`;
 
@@ -136,12 +134,13 @@ export default function CustomMenuComponent(props) {
 
           {/* Affichage des plats sélectionnés par catégorie */}
           <div className="bg-white p-6 rounded-lg drop-shadow-sm">
-            <h2 className="text-lg font-semibold">Plats sélectionnés</h2>
+            <h2 className="text-lg font-semibold">
+              {t("form.custom.labels.selectedDishes")}
+            </h2>
 
             {Object.keys(selectedDishes).length === 0 ? (
               <p className="text-center opacity-40 italic text-sm mt-4">
-                Sélectionnez des plats dans la carte pour les ajouter à votre
-                menu
+                {t("form.custom.labels.selectPlaceholder")}
               </p>
             ) : (
               Object.keys(selectedDishes).map((categoryName) => (
@@ -177,7 +176,9 @@ export default function CustomMenuComponent(props) {
                         </div>
 
                         {i < selectedDishes[categoryName].length - 1 && (
-                          <p className="opacity-50 text-sm">- ou -</p>
+                          <p className="opacity-50 text-sm">
+                            - {t("form.custom.labels.or")} -
+                          </p>
                         )}
                       </li>
                     ))}
@@ -198,12 +199,23 @@ export default function CustomMenuComponent(props) {
         </div>
       </div>
 
-      <button
-        type="submit"
-        className="px-4 py-2 text-white bg-blue rounded-lg w-fit mx-auto"
-      >
-        Sauvegarder le menu
-      </button>
+      <div className="flex gap-4 mx-auto">
+        <button
+          type="submit"
+          className="p-2 text-white rounded-lg bg-blue"
+          disabled={isLoading}
+        >
+          {isLoading ? t("buttons.saving") : t("buttons.save")}
+        </button>
+
+        <button
+          type="button"
+          className="px-4 py-2 text-white bg-red rounded-lg"
+          onClick={() => router.back()}
+        >
+          {t("buttons.cancel")}
+        </button>
+      </div>
     </form>
   );
 }
