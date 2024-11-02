@@ -65,7 +65,10 @@ export default function AddMenuPage(props) {
               restaurantData={restaurantContext.restaurantData}
             />
 
-            <AddMenusComponent menu={props.menu} selectedDishes={props.selectedDishes} />
+            <AddMenusComponent
+              menu={props.menu}
+              selectedDishes={props.selectedDishes}
+            />
           </div>
         </div>
       </div>
@@ -76,6 +79,21 @@ export default function AddMenuPage(props) {
 export async function getServerSideProps({ query, locale }) {
   const { menuId } = query;
 
+  if (!menuId) {
+    return {
+      props: {
+        menu: null,
+        selectedDishes: null,
+        ...(await serverSideTranslations(locale, [
+          "common",
+          "dishes",
+          "menus",
+        ])),
+      },
+    };
+  }
+
+  // Si un menuId est présent, effectuez l'appel API pour récupérer les données du menu
   try {
     const response = await axios.get(
       `${process.env.NEXT_PUBLIC_API_URL}/menus/${menuId}`
