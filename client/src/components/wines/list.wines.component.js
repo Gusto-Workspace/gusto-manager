@@ -349,7 +349,7 @@ export default function ListWinesComponent(props) {
       <hr className="opacity-20" />
 
       <div className="flex justify-between">
-        <div className="pl-2 flex gap-2 items-center">
+        <div className="flex gap-2 items-center">
           <WineSvg width={30} height={30} fillColor="#131E3690" />
 
           <h1 className="pl-2 text-2xl flex items-center gap-2">

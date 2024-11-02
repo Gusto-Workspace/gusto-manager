@@ -19,7 +19,7 @@ export default function GlobalWinesComponent(props) {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="pl-2 flex gap-2 items-center">
+      <div className="flex gap-2 items-center">
         <WineSvg width={30} height={30} fillColor="#131E3690" />
         <h1 className="pl-2 text-2xl">{t("titles.second")}</h1>
       </div>

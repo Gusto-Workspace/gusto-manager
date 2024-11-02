@@ -86,7 +86,7 @@ export default function ListNewsComponent(props) {
       <hr className="opacity-20" />
 
       <div className="flex justify-between">
-        <div className="pl-2 flex gap-2 items-center">
+        <div className="flex gap-2 items-center">
           <NewsSvg width={30} height={30} strokeColor="#131E3690" />
 
           <h1 className="pl-2 text-2xl">{t("titles.main")}</h1>

@@ -74,7 +74,7 @@ export default function HelpPage(props) {
             <hr className="opacity-20" />
 
             <div className="flex justify-between">
-              <div className="pl-2 flex gap-2 items-center">
+              <div className="flex gap-2 items-center">
                 <HelpSvg width={30} height={30} fillColor="#131E3690" />
 
                 <h1 className="pl-2 text-2xl">{t("help:titles.main")}</h1>

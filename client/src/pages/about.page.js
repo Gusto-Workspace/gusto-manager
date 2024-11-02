@@ -71,7 +71,7 @@ export default function AboutPage(props) {
             <hr className="opacity-20" />
 
             <div className="flex justify-between">
-              <div className="pl-2 flex gap-2 items-center">
+              <div className="flex gap-2 items-center">
                 <AboutSvg width={26} height={26} fillColor="#131E3690" />
 
                 <h1 className="pl-2 text-2xl">{t("about:titles.main")}</h1>
