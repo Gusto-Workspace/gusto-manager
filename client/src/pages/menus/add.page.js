@@ -93,7 +93,6 @@ export async function getServerSideProps({ query, locale }) {
     };
   }
 
-  // Si un menuId est présent, effectuez l'appel API pour récupérer les données du menu
   try {
     const response = await axios.get(
       `${process.env.NEXT_PUBLIC_API_URL}/menus/${menuId}`
