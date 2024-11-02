@@ -1,11 +1,23 @@
 import { useContext, useEffect, useState } from "react";
 import { useRouter } from "next/router";
+
+// REACT HOOK FORM
 import { useForm } from "react-hook-form";
+
+// I18N
 import { useTranslation } from "next-i18next";
+
+// AXIOS
 import axios from "axios";
+
+// CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
-import GlobalDishesComponent from "../dishes/global.dishes.component";
+
+// SVG
 import { DeleteSvg } from "../_shared/_svgs/delete.svg";
+
+// COMPONENTS
+import GlobalDishesComponent from "../dishes/global.dishes.component";
 
 export default function CustomMenuComponent(props) {
   const { t } = useTranslation("menus");
@@ -18,11 +30,30 @@ export default function CustomMenuComponent(props) {
   );
   const [isLoading, setIsLoading] = useState(false);
   const [selectedDishes, setSelectedDishes] = useState({});
-  const { register, handleSubmit } = useForm();
+  const { register, handleSubmit, reset } = useForm();
 
   useEffect(() => {
     setCategories(restaurantContext?.restaurantData?.dish_categories);
-  }, [restaurantContext?.restaurantData]);
+
+    if (props.menu) {
+      reset({
+        name: props.menu.name || "",
+        description: props.menu.description || "",
+        price: props.menu.price || "",
+      });
+
+      // Initialiser les plats sélectionnés avec les données de props.selectedDishes
+      if (props.selectedDishes && props.selectedDishes.length > 0) {
+        const initialSelectedDishes = {};
+
+        props.selectedDishes.forEach((category) => {
+          initialSelectedDishes[category.category] = category.dishes;
+        });
+
+        setSelectedDishes(initialSelectedDishes);
+      }
+    }
+  }, [props.menu, reset, categories, props.selectedDishes]);
 
   function handleDishClick(category, dish) {
     setSelectedDishes((prev) => {
@@ -30,7 +61,6 @@ export default function CustomMenuComponent(props) {
       if (!newDishes[category.name]) {
         newDishes[category.name] = [];
       }
-      // Ajoute le plat si absent, sinon le retire
       const existingDishIndex = newDishes[category.name].findIndex(
         (d) => d._id === dish._id
       );
@@ -55,6 +85,8 @@ export default function CustomMenuComponent(props) {
   }
 
   function onSubmit(data) {
+    setIsLoading(true);
+
     const formattedData = {
       type: props.menuType,
       name: data.name,
@@ -65,16 +97,20 @@ export default function CustomMenuComponent(props) {
         .map((dish) => dish._id),
     };
 
-    const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/add-menus`;
+    const apiUrl = props?.menu
+      ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/menus/${props.menu._id}/update`
+      : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/add-menus`;
 
-    axios
-      .post(apiUrl, formattedData)
+    const method = props?.menu ? "put" : "post";
+
+    axios[method](apiUrl, formattedData)
       .then((response) => {
         restaurantContext.setRestaurantData(response.data.restaurant);
         router.push("/menus");
       })
       .catch((error) => {
         console.error("Error saving menu:", error);
+        setIsLoading(false);
       });
   }
 
@@ -93,6 +129,7 @@ export default function CustomMenuComponent(props) {
                 placeholder="-"
                 {...register("name")}
                 className="p-2 border rounded-lg w-full"
+                disabled={!props.isEditing}
               />
             </div>
 
@@ -109,6 +146,7 @@ export default function CustomMenuComponent(props) {
                 rows="4"
                 {...register("description")}
                 className="p-2 resize-none border rounded-lg w-full"
+                disabled={!props.isEditing}
               />
             </div>
 
@@ -125,8 +163,11 @@ export default function CustomMenuComponent(props) {
                 <input
                   type="number"
                   placeholder="-"
+                  step="0.01"
                   {...register("price")}
                   className="p-2 border rounded-r-lg w-full"
+                  disabled={!props.isEditing}
+                  onWheel={(e) => e.target.blur()}
                 />
               </div>
             </div>
@@ -160,19 +201,21 @@ export default function CustomMenuComponent(props) {
                             {dish.name}
                           </span>
 
-                          <button
-                            className="absolute right-0 flex items-center justify-center desktop:opacity-30 hover:opacity-100 transition-all duration-300"
-                            type="button"
-                            onClick={() =>
-                              handleRemoveDish(categoryName, dish._id)
-                            }
-                          >
-                            <DeleteSvg
-                              width={20}
-                              height={20}
-                              fillColor="#FF7664"
-                            />
-                          </button>
+                          {props.isEditing && (
+                            <button
+                              className="absolute right-0 flex items-center justify-center desktop:opacity-30 hover:opacity-100 transition-all duration-300"
+                              type="button"
+                              onClick={() =>
+                                handleRemoveDish(categoryName, dish._id)
+                              }
+                            >
+                              <DeleteSvg
+                                width={20}
+                                height={20}
+                                fillColor="#FF7664"
+                              />
+                            </button>
+                          )}
                         </div>
 
                         {i < selectedDishes[categoryName].length - 1 && (
@@ -189,31 +232,34 @@ export default function CustomMenuComponent(props) {
           </div>
         </div>
 
-        {/* Affichage de la carte avec sélection des plats */}
-        <div className="w-full">
-          <GlobalDishesComponent
-            createMenu={true}
-            categories={categories}
-            onDishClick={handleDishClick}
-          />
-        </div>
+        {props.isEditing && (
+          <div className="w-full">
+            <GlobalDishesComponent
+              createMenu={true}
+              categories={categories}
+              onDishClick={handleDishClick}
+            />
+          </div>
+        )}
       </div>
 
       <div className="flex gap-4 mx-auto">
-        <button
-          type="submit"
-          className="p-2 text-white rounded-lg bg-blue"
-          disabled={isLoading}
-        >
-          {isLoading ? t("buttons.saving") : t("buttons.save")}
-        </button>
+        {props.isEditing && (
+          <button
+            type="submit"
+            className="p-2 text-white rounded-lg bg-blue"
+            disabled={isLoading}
+          >
+            {isLoading ? t("buttons.loading") : t("buttons.save")}
+          </button>
+        )}
 
         <button
           type="button"
           className="px-4 py-2 text-white bg-red rounded-lg"
           onClick={() => router.back()}
         >
-          {t("buttons.cancel")}
+          {props.isEditing ? t("buttons.cancel") : t("buttons.return")}
         </button>
       </div>
     </form>

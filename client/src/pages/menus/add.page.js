@@ -65,7 +65,7 @@ export default function AddMenuPage(props) {
               restaurantData={restaurantContext.restaurantData}
             />
 
-            <AddMenusComponent menu={props.menu} />
+            <AddMenusComponent menu={props.menu} selectedDishes={props.selectedDishes} />
           </div>
         </div>
       </div>
@@ -80,11 +80,13 @@ export async function getServerSideProps({ query, locale }) {
     const response = await axios.get(
       `${process.env.NEXT_PUBLIC_API_URL}/menus/${menuId}`
     );
-    const { menu } = response.data;
+
+    const { menu, selectedDishes } = response.data;
 
     return {
       props: {
         menu,
+        selectedDishes,
         ...(await serverSideTranslations(locale, [
           "common",
           "dishes",
@@ -93,10 +95,11 @@ export async function getServerSideProps({ query, locale }) {
       },
     };
   } catch (error) {
-    console.error("Error fetching category or dish data:", error);
+    console.error("Error fetching menu or dish data:", error);
     return {
       props: {
         menu: null,
+        selectedDishes: null,
         ...(await serverSideTranslations(locale, [
           "common",
           "dishes",

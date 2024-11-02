@@ -152,7 +152,7 @@ export default function FixedMenuComponent(props) {
             placeholder="-"
             {...register("name")}
             className="p-2 border rounded-lg w-full"
-            disabled={props.isEditing}
+            disabled={!props.isEditing}
           />
         </div>
 
@@ -169,7 +169,7 @@ export default function FixedMenuComponent(props) {
             placeholder="-"
             {...register("description")}
             className="p-2 border rounded-lg w-full"
-            disabled={props.isEditing}
+            disabled={!props.isEditing}
           />
         </div>
       </div>
@@ -182,7 +182,7 @@ export default function FixedMenuComponent(props) {
                 {t("form.fixed.labels.option")} {i + 1}
               </h2>
 
-              {!props.isEditing && combinationFields.length > 1 && (
+              {props.isEditing && combinationFields.length > 1 && (
                 <button
                   type="button"
                   onClick={() => removeCombination(i)}
@@ -218,7 +218,7 @@ export default function FixedMenuComponent(props) {
                 placeholder="-"
                 {...register(`combinations.${i}.description`)}
                 className="p-2 border rounded-lg w-full"
-                disabled={props.isEditing}
+                disabled={!props.isEditing}
               />
             </div>
 
@@ -228,23 +228,39 @@ export default function FixedMenuComponent(props) {
               </label>
 
               <div className="flex items-center">
-                <span className="px-3 py-2 rounded-l-lg border-t border-l border-b">
+                <span
+                  className={`px-3 py-2 rounded-l-lg border-t border-l border-b ${
+                    errorFields.some(
+                      (error) => error.comboIndex === i && error.emptyPrice
+                    )
+                      ? "border-red"
+                      : ""
+                  }`}
+                >
                   {currencySymbol}
                 </span>
 
                 <input
                   type="number"
                   placeholder="-"
+                  step="0.01"
                   {...register(`combinations.${i}.price`, {})}
-                  className="p-2 border rounded-r-lg w-24"
-                  disabled={props.isEditing}
+                  className={`p-2 border rounded-r-lg w-24 ${
+                    errorFields.some(
+                      (error) => error.comboIndex === i && error.emptyPrice
+                    )
+                      ? "border-red"
+                      : ""
+                  }`}
+                  disabled={!props.isEditing}
+                  onWheel={(e) => e.target.blur()}
                 />
               </div>
             </div>
           </div>
         ))}
 
-        {!props.isEditing && (
+        {props.isEditing && (
           <button
             type="button"
             onClick={handleAddCombination}
@@ -256,7 +272,7 @@ export default function FixedMenuComponent(props) {
       </div>
 
       <div className="flex gap-4 mx-auto">
-        {!props.isEditing && (
+        {props.isEditing && (
           <button
             type="submit"
             className="p-2 text-white rounded-lg bg-blue"
@@ -271,7 +287,7 @@ export default function FixedMenuComponent(props) {
           className="px-4 py-2 text-white bg-red rounded-lg"
           onClick={() => router.back()}
         >
-          {t("buttons.cancel")}
+          {props.isEditing ? t("buttons.cancel") : t("buttons.return")}
         </button>
       </div>
     </form>

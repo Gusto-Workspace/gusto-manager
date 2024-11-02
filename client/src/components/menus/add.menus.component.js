@@ -15,7 +15,7 @@ export default function AddMenusComponent(props) {
   const { t } = useTranslation("menus");
   const router = useRouter();
   const [menuType, setMenuType] = useState(props?.menu?.type || "");
-  const [isEditing, setIsEditing] = useState(props?.menu ? true : false);
+  const [isEditing, setIsEditing] = useState(props?.menu ? false : true);
 
   return (
     <section className="flex flex-col gap-6">
@@ -39,12 +39,12 @@ export default function AddMenusComponent(props) {
           </h1>
         </div>
 
-        {props?.menu && isEditing && (
+        {props?.menu && !isEditing && (
           <button
             className="p-2 text-white rounded-lg bg-blue"
             onClick={() => setIsEditing((prev) => !prev)}
           >
-            {isEditing && t("buttons.editMenu")}
+            {!isEditing && t("buttons.editMenu")}
           </button>
         )}
       </div>
@@ -77,6 +77,7 @@ export default function AddMenusComponent(props) {
           menuType={menuType}
           menu={props?.menu}
           isEditing={isEditing}
+          selectedDishes={props?.selectedDishes}
         />
       ) : null}
     </section>

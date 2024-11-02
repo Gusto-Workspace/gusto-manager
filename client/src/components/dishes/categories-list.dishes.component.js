@@ -198,7 +198,7 @@ export default function CategoriesListDishesComponent() {
               items={categories?.map((category) => category._id)}
             >
               <div className="grid grid-cols-1 tablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-4 gap-6">
-                {categories?.map((category, i) => (
+                {categories?.map((category) => (
                   <CardCategoryListComponent
                     key={category._id}
                     category={category}

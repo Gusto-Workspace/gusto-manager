@@ -15,6 +15,7 @@ export default function ContactFormHelpComponent() {
   const {
     register,
     handleSubmit,
+    reset,
     formState: { errors },
   } = useForm();
   const [loading, setLoading] = useState(false);
@@ -29,6 +30,7 @@ export default function ContactFormHelpComponent() {
       .then((response) => {
         if (response.status === 200) {
           setMessageSent(true);
+          reset();
         }
       })
       .catch((error) => {
@@ -80,7 +82,7 @@ export default function ContactFormHelpComponent() {
           <label className="block text-sm font-medium">
             {t("form.labels.phone")}
           </label>
-          
+
           <input
             type="tel"
             {...register("phone", { required: true })}

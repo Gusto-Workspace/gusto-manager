@@ -1,20 +1,19 @@
 import { useState, useContext, useEffect } from "react";
 import { useRouter } from "next/router";
-
-// I18N
 import { useTranslation } from "next-i18next";
-
-// AXIOS
 import axios from "axios";
-
-// CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
-
-// SVG
 import { MenuSvg } from "../_shared/_svgs/_index";
-
-// COMPONENTS
 import CardListMenuComponent from "./card-list-menu.menus.component";
+import {
+  DndContext,
+  closestCenter,
+  MouseSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import { arrayMove, SortableContext } from "@dnd-kit/sortable";
 
 export default function ListMenusComponent(props) {
   const { t } = useTranslation("menus");
@@ -23,12 +22,14 @@ export default function ListMenusComponent(props) {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [selectedMenu, setSelectedMenu] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [menus, setMenus] = useState(
-    restaurantContext?.setRestaurantData?.menus
-  );
+  const [menus, setMenus] = useState(restaurantContext?.restaurantData?.menus);
+
+  const mouseSensor = useSensor(MouseSensor);
+  const touchSensor = useSensor(TouchSensor);
+  const sensors = useSensors(mouseSensor, touchSensor);
 
   useEffect(() => {
-    setMenus(restaurantContext.restaurantData?.menus);
+    setMenus(restaurantContext?.restaurantData?.menus);
   }, [restaurantContext?.restaurantData?.menus]);
 
   function handleAddClick() {
@@ -85,6 +86,41 @@ export default function ListMenusComponent(props) {
       });
   }
 
+  function handleDragEnd(event) {
+    const { active, over } = event;
+
+    if (!active || !over) return;
+
+    if (active.id !== over.id) {
+      setMenus((prevMenus) => {
+        const oldIndex = prevMenus.findIndex((menu) => menu._id === active.id);
+        const newIndex = prevMenus.findIndex((menu) => menu._id === over.id);
+
+        const newMenuOrder = arrayMove(prevMenus, oldIndex, newIndex);
+
+        saveNewMenuOrder(newMenuOrder);
+
+        return newMenuOrder;
+      });
+    }
+  }
+
+  function saveNewMenuOrder(updatedMenus) {
+    const orderedMenuIds = updatedMenus.map((menu) => menu._id);
+
+    axios
+      .put(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/menus/order`,
+        { orderedMenuIds }
+      )
+      .then((response) => {
+        restaurantContext.setRestaurantData(response.data.restaurant);
+      })
+      .catch((error) => {
+        console.error("Error saving menu order:", error);
+      });
+  }
+
   return (
     <section className="flex flex-col gap-6">
       <hr className="opacity-20" />
@@ -92,7 +128,6 @@ export default function ListMenusComponent(props) {
       <div className="flex justify-between">
         <div className="pl-2 flex gap-2 items-center">
           <MenuSvg width={30} height={30} fillColor="#131E3690" />
-
           <h1 className="pl-2 text-2xl">{t("titles.main")}</h1>
         </div>
 
@@ -104,19 +139,27 @@ export default function ListMenusComponent(props) {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 tablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-4 gap-6">
-        {menus?.map((menu, i) => {
-          return (
-            <CardListMenuComponent
-              key={i}
-              menu={menu}
-              handleCategoryClick={handleCategoryClick}
-              handleDeleteClick={handleDeleteClick}
-              handleVisibilityToggle={handleVisibilityToggle}
-            />
-          );
-        })}
-      </div>
+      {menus && (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext items={menus?.map((menu) => menu._id)}>
+            <div className="grid grid-cols-1 tablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-4 gap-6">
+              {menus?.map((menu, i) => (
+                <CardListMenuComponent
+                  key={menu._id}
+                  menu={menu}
+                  handleCategoryClick={handleCategoryClick}
+                  handleDeleteClick={handleDeleteClick}
+                  handleVisibilityToggle={handleVisibilityToggle}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
+      )}
 
       {isDeleteModalOpen && (
         <div className="fixed inset-0 flex items-center justify-center z-[100]">

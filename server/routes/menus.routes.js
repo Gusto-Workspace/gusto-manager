@@ -55,12 +55,36 @@ router.get("/menus/:menuId", async (req, res) => {
   const { menuId } = req.params;
 
   try {
+    // Récupérez le menu par son ID
     const menu = await MenuModel.findById(menuId);
     if (!menu) {
       return res.status(404).json({ message: "Menu not found" });
     }
 
-    res.status(200).json({ menu });
+    // Récupérez les plats en fonction de restaurant_id du menu
+    const restaurant = await RestaurantModel.findById(
+      menu.restaurant_id
+    ).lean();
+    if (!restaurant) {
+      return res.status(404).json({ message: "Restaurant not found" });
+    }
+
+    // Filtrez les plats du restaurant pour ne garder que ceux du menu
+    const selectedDishes = [];
+    restaurant.dish_categories.forEach((category) => {
+      const dishes = category.dishes.filter((dish) =>
+        menu.dishes.includes(dish._id.toString())
+      );
+      if (dishes.length > 0) {
+        selectedDishes.push({
+          category: category.name,
+          dishes: dishes,
+        });
+      }
+    });
+
+    // Retournez le menu avec les détails des plats
+    res.status(200).json({ menu, selectedDishes });
   } catch (error) {
     console.error("Error fetching menu:", error);
     res
@@ -137,6 +161,36 @@ router.delete("/restaurants/:restaurantId/menus/:menuId", async (req, res) => {
     res
       .status(500)
       .json({ message: "An error occurred while deleting the menu" });
+  }
+});
+
+// UPDATE MENU ORDER
+router.put("/restaurants/:restaurantId/menus/order", async (req, res) => {
+  const { restaurantId } = req.params;
+  const { orderedMenuIds } = req.body;
+
+  try {
+    const restaurant = await RestaurantModel.findById(restaurantId)
+      .populate("owner_id", "firstname")
+      .populate("menus");
+
+    if (!restaurant) {
+      return res.status(404).json({ message: "Restaurant not found." });
+    }
+
+    restaurant.menus = orderedMenuIds.map((menuId) =>
+      restaurant.menus.find((menu) => menu._id.toString() === menuId)
+    );
+
+    await restaurant.save();
+
+    res.status(200).json({
+      message: "Menu order updated successfully.",
+      restaurant,
+    });
+  } catch (error) {
+    console.error("Error updating menu order:", error);
+    res.status(500).json({ message: "Server error. Please try again later." });
   }
 });
 

@@ -11,15 +11,36 @@ import {
   RightArrowSvg,
 } from "../_shared/_svgs/_index";
 
+// DND
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+
 export default function CardListMenuComponent(props) {
   const { t } = useTranslation("menus");
+
+  const { listeners, setNodeRef, transform, transition } = useSortable({
+    id: props.menu._id,
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
   const router = useRouter();
   const { locale } = router;
   const currencySymbol = locale === "fr" ? "€" : "$";
 
   return (
-    <div className="relative bg-white p-6 pb-2 rounded-lg drop-shadow-sm flex flex-col gap-2 justify-between items-center">
-      <button className="absolute left-0 top-0 opacity-30 cursor-grab flex flex-col items-center gap-1 p-2">
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="relative bg-white p-6 pb-2 rounded-lg drop-shadow-sm flex flex-col gap-2 justify-between items-center"
+    >
+      <button
+        {...listeners}
+        className="absolute left-0 top-0 opacity-30 cursor-grab flex flex-col items-center gap-1 p-2"
+      >
         <DragMultiSvg width={20} height={20} />
       </button>
 
