@@ -4,6 +4,7 @@ import { useState } from "react";
 import axios from "axios";
 import { useTranslation } from "next-i18next";
 import { EmailSvg } from "../_shared/_svgs/email.svg";
+import { NoVisibleSvg, VisibleSvg } from "../_shared/_svgs/_index";
 
 export default function FormForgotPasswordComponent() {
   const { t } = useTranslation("login");
@@ -20,13 +21,14 @@ export default function FormForgotPasswordComponent() {
   const [code, setCode] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   async function onSubmit(data) {
     setLoading(true);
     setErrorMessage("");
 
     if (step === "email") {
-      // Envoie le code de réinitialisation
       try {
         await axios.post(
           `${process.env.NEXT_PUBLIC_API_URL}/owner/send-reset-code`,
@@ -40,14 +42,10 @@ export default function FormForgotPasswordComponent() {
         setLoading(false);
       }
     } else if (step === "code") {
-      // Vérifie le code
       try {
         const response = await axios.post(
           `${process.env.NEXT_PUBLIC_API_URL}/owner/verify-reset-code`,
-          {
-            email,
-            code,
-          }
+          { email, code }
         );
         if (response.status === 200) {
           setStep("password");
@@ -58,7 +56,6 @@ export default function FormForgotPasswordComponent() {
         setLoading(false);
       }
     } else if (step === "password") {
-      // Met à jour le mot de passe
       if (newPassword !== confirmPassword) {
         setErrorMessage(t("form.errors.passwords"));
         setLoading(false);
@@ -67,11 +64,7 @@ export default function FormForgotPasswordComponent() {
       try {
         await axios.put(
           `${process.env.NEXT_PUBLIC_API_URL}/owner/reset-password`,
-          {
-            email,
-            code,
-            newPassword,
-          }
+          { email, code, newPassword }
         );
         router.push("/login");
       } catch (error) {
@@ -133,22 +126,49 @@ export default function FormForgotPasswordComponent() {
 
         {step === "password" && (
           <>
-            <input
-              id="newPassword"
-              type="password"
-              placeholder="Nouveau mot de passe"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              className="border rounded-lg p-2 w-full"
-            />
-            <input
-              id="confirmPassword"
-              type="password"
-              placeholder="Confirmer le nouveau mot de passe"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              className="border rounded-lg p-2 w-full"
-            />
+            <div className="relative">
+              <input
+                id="newPassword"
+                type={showNewPassword ? "text" : "password"}
+                placeholder="Nouveau mot de passe"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="border rounded-lg p-2 w-full pr-8"
+              />
+              <button
+                type="button"
+                onClick={() => setShowNewPassword(!showNewPassword)}
+                className="absolute right-1 top-1/2 -translate-y-1/2 p-1 bg-white"
+              >
+                {showNewPassword ? (
+                  <VisibleSvg width={20} height={20} />
+                ) : (
+                  <NoVisibleSvg width={20} height={20} />
+                )}
+              </button>
+            </div>
+
+            <div className="relative">
+              <input
+                id="confirmPassword"
+                type={showConfirmPassword ? "text" : "password"}
+                placeholder="Confirmer le nouveau mot de passe"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="border rounded-lg p-2 w-full pr-8"
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                className="absolute right-1 top-1/2 -translate-y-1/2 p-1 bg-white"
+              >
+                {showConfirmPassword ? (
+                  <VisibleSvg width={20} height={20} />
+                ) : (
+                  <NoVisibleSvg width={20} height={20} />
+                )}
+              </button>
+            </div>
           </>
         )}
 

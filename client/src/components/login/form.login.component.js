@@ -14,6 +14,7 @@ import { GlobalContext } from "@/contexts/global.context";
 // SVG
 import { EmailSvg } from "../_shared/_svgs/email.svg";
 import { PasswordSvg } from "../_shared/_svgs/password.svg";
+import { NoVisibleSvg, VisibleSvg } from "../_shared/_svgs/_index";
 
 export default function FormLoginComponent() {
   const { t } = useTranslation("login");
@@ -28,6 +29,7 @@ export default function FormLoginComponent() {
   const [errorMessage, setErrorMessage] = useState("");
   const [selectedRestaurant, setSelectedRestaurant] = useState("");
   const [tempToken, setTempToken] = useState(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   const { restaurantContext } = useContext(GlobalContext);
 
@@ -110,24 +112,35 @@ export default function FormLoginComponent() {
             />
           </div>
 
-          <div>
+          <div className="relative">
             <div
-              className={`flex gap-2 pl-2 items-center border w-full rounded-lg  ${errors.password ? "border-red" : ""}`}
+              className={`flex gap-2 pl-2 items-center border w-full rounded-lg ${errors.password ? "border-red" : ""}`}
             >
               <PasswordSvg width={22} height={22} />
               <input
                 id="password"
-                type="password"
+                type={showPassword ? "text" : "password"}
                 placeholder={t("form.labels.password")}
-                className="py-2 w-full rounded-r-lg  border-l pl-2"
+                className="py-2 w-full rounded-r-lg border-l pl-2 pr-8"
                 {...register("password", { required: "Password is required" })}
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-1 p-1 bg-white"
+              >
+                {showPassword ? (
+                  <VisibleSvg width={20} height={20} />
+                ) : (
+                  <NoVisibleSvg width={20} height={20} />
+                )}
+              </button>
             </div>
 
             <button
               type="button"
               onClick={() => router.push("/login/forgot-password")}
-              className="text-left text-xs italic opacity-50"
+              className="text-left text-xs italic opacity-50 mt-1"
             >
               {t("form.labels.forgotPassword")}
             </button>
