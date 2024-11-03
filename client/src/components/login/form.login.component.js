@@ -5,10 +5,19 @@ import { useContext, useState } from "react";
 // AXIOS
 import axios from "axios";
 
+// I18N
+import { useTranslation } from "next-i18next";
+
 // CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
 
+// SVG
+import { EmailSvg } from "../_shared/_svgs/email.svg";
+import { PasswordSvg } from "../_shared/_svgs/password.svg";
+
 export default function FormLoginComponent() {
+  const { t } = useTranslation("login");
+
   const {
     register,
     handleSubmit,
@@ -18,6 +27,7 @@ export default function FormLoginComponent() {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [selectedRestaurant, setSelectedRestaurant] = useState("");
+  const [tempToken, setTempToken] = useState(null);
 
   const { restaurantContext } = useContext(GlobalContext);
 
@@ -33,7 +43,7 @@ export default function FormLoginComponent() {
 
       const { token, owner } = response.data;
 
-      localStorage.setItem("token", token);
+      setTempToken(token);
 
       // Vérifier le nombre de restaurants du propriétaire
       if (owner.restaurants.length > 1) {
@@ -75,72 +85,99 @@ export default function FormLoginComponent() {
   }
 
   return (
-    <section className="bg-white flex flex-col justify-center items-center gap-8 rounded-xl p-12 w-[500px]">
-      <h1 className="text-4xl">Welcome</h1>
+    <section className="relative h-[380px] bg-white flex flex-col rounded-lg p-12 drop-shadow-sm w-[500px]">
+      <div className="flex flex-col gap-2 items-center">
+        <h1 className="text-4xl font-semibold">{t("titles.main")}</h1>
+
+        <h2>{t("descriptions.main")}</h2>
+      </div>
 
       {restaurantContext?.restaurantsList?.length === 0 ? (
         <form
           onSubmit={handleSubmit(onSubmit)}
-          className="w-full flex flex-col items-center gap-4"
+          className="w-full flex flex-col gap-4 mt-auto"
         >
-          <div className="flex flex-col gap-2 items-center w-full">
+          <div
+            className={`flex gap-2 pl-2 items-center border w-full rounded-lg  ${errors.email ? "border-red" : ""}`}
+          >
+            <EmailSvg width={22} height={22} />
             <input
               id="email"
               type="email"
-              placeholder="Email"
-              className={`border rounded-lg p-2 w-full ${errors.email ? "border-red" : ""}`}
+              placeholder={t("form.labels.email")}
+              className="py-2 w-full rounded-r-lg  border-l pl-2"
               {...register("email", { required: "Email is required" })}
             />
           </div>
 
-          <div className="flex flex-col gap-2 items-center w-full">
-            <input
-              id="password"
-              type="password"
-              placeholder="Password"
-              className={`border rounded-lg p-2 w-full ${errors.password ? "border-red" : ""}`}
-              {...register("password", { required: "Password is required" })}
-            />
+          <div>
+            <div
+              className={`flex gap-2 pl-2 items-center border w-full rounded-lg  ${errors.password ? "border-red" : ""}`}
+            >
+              <PasswordSvg width={22} height={22} />
+              <input
+                id="password"
+                type="password"
+                placeholder={t("form.labels.password")}
+                className="py-2 w-full rounded-r-lg  border-l pl-2"
+                {...register("password", { required: "Password is required" })}
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={() => router.push("/login/forgot-password")}
+              className="text-left text-xs italic opacity-50"
+            >
+              {t("form.labels.forgotPassword")}
+            </button>
           </div>
 
-          {errorMessage && <p className="text-red-500">{errorMessage}</p>}
+          {errorMessage && (
+            <p className="absolute bottom-5 italic text-xs w-full text-center left-1/2 -translate-x-1/2 text-red">
+              {t(`form.${errorMessage}`)}
+            </p>
+          )}
 
           <button
             type="submit"
-            className="bg-black text-white rounded-full py-2 px-12 hover:bg-opacity-70 w-fit mt-6"
+            className="bg-black mx-auto text-white rounded-lg py-2 px-12 hover:bg-opacity-70 transition-all duration-300 w-fit"
             disabled={loading}
           >
-            {loading ? "Loading..." : "Login"}
+            {loading ? t("buttons.loading") : t("buttons.login")}
           </button>
         </form>
       ) : (
-        <div className="w-full mt-4">
-          <h2 className="text-lg">Select a Restaurant</h2>
-          <select
-            className="border rounded-lg p-2 w-full"
-            value={selectedRestaurant}
-            onChange={(e) => setSelectedRestaurant(e.target.value)}
-          >
-            <option value="">Select a restaurant</option>
-            {restaurantContext?.restaurantsList?.map((restaurant) => (
-              <option key={restaurant._id} value={restaurant._id}>
-                {restaurant.name}
-              </option>
-            ))}
-          </select>
+        <div className="w-full flex flex-col justify-between flex-1">
+          <div className="my-auto">
+            <h2 className="font-semibold mb-1">
+              {t("form.labels.selectRestaurant")}
+            </h2>
+
+            <select
+              className="border rounded-lg p-2 w-full"
+              value={selectedRestaurant}
+              onChange={(e) => setSelectedRestaurant(e.target.value)}
+            >
+              <option value="">{t("form.labels.select")}</option>
+              {restaurantContext?.restaurantsList?.map((restaurant) => (
+                <option key={restaurant._id} value={restaurant._id}>
+                  {restaurant.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <button
-            className={`bg-blue text-white px-4 py-2 rounded mt-4 ${
+            className={`bg-black mx-auto text-white rounded-lg py-2 px-12  transition-all duration-300 w-fit ${
               !selectedRestaurant ? "opacity-50 cursor-not-allowed" : ""
             }`}
             onClick={() =>
-              handleRestaurantSelect(
-                selectedRestaurant,
-                localStorage.getItem("token")
-              )
+              handleRestaurantSelect(selectedRestaurant, tempToken)
             }
             disabled={!selectedRestaurant}
           >
-            Go to Restaurant
+            {t("buttons.access")}
           </button>
         </div>
       )}

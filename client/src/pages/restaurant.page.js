@@ -59,7 +59,7 @@ export default function RestaurantPage(props) {
             />
 
             <hr className="opacity-20" />
-            <div className="pl-2 flex gap-2 items-center">
+            <div className="flex gap-2 items-center">
               <RestaurantSvg width={30} height={30} fillColor="#131E3690" />
               <h1 className="pl-2 py-1 text-2xl">{t("restaurant:title")}</h1>
             </div>

@@ -42,19 +42,19 @@ router.post("/owner/login", async (req, res) => {
       "name _id"
     );
     if (!owner) {
-      return res.status(404).json({ message: "Owner not found" });
+      return res.status(401).json({ message: "errors.incorrect" });
     }
 
     const isMatch = await bcrypt.compare(password, owner.password);
     if (!isMatch) {
-      return res.status(401).json({ message: "Invalid credentials" });
+      return res.status(401).json({ message: "errors.incorrect" });
     }
 
     const token = jwt.sign({ id: owner._id, role: "owner" }, JWT_SECRET);
 
     res.json({ token, owner });
   } catch (err) {
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: "errors.server" });
   }
 });
 

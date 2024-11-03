@@ -66,10 +66,9 @@ router.get("/owner/restaurants/:id", authenticateToken, async (req, res) => {
 
     await updateExpiredStatus(id);
 
-    const restaurant = await RestaurantModel.findById(id).populate(
-      "owner_id",
-      "firstname"
-    );
+    const restaurant = await RestaurantModel.findById(id)
+      .populate("owner_id", "firstname")
+      .populate("menus");
 
     if (!restaurant) {
       return res.status(404).json({ message: "Restaurant not found" });

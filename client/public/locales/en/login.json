@@ -1,0 +1,40 @@
+{
+  "titles": {
+    "main": "Welcome",
+    "second": "Forgot Password",
+    "third": "New Password"
+  },
+  "descriptions": {
+    "main": "Log in to access your personal space",
+    "second": "Enter your email address",
+    "code": "Please enter the code sent by email",
+    "password": "Please enter your new password"
+  },
+
+  "form": {
+    "labels": {
+      "email": "Email",
+      "password": "Password",
+      "forgotPassword": "Forgot password?",
+      "select": "Select",
+      "selectRestaurant": "Select a restaurant"
+    },
+    "errors": {
+      "incorrect": "Credentials not recognized, please check your information",
+      "server": "Internal error, unable to connect",
+      "passwords": "Passwords do not match",
+      "invalid": "Invalid or expired code",
+      "code": "Error sending the code",
+      "reset": "Error resetting the password"
+    }
+  },
+
+  "buttons": {
+    "login": "Log in",
+    "valid": "Validate",
+    "loading": "Logging in...",
+    "loading-2": "Loading...",
+    "access": "Access",
+    "reset": "Reset password"
+  }
+}

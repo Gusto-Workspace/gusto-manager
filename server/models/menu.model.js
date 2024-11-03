@@ -3,9 +3,24 @@ const mongoose = require("mongoose");
 const menuSchema = new mongoose.Schema({
   name: String,
   description: String,
-  restaurant_id: { type: mongoose.Schema.Types.ObjectId, ref: "Restaurant" }, // Référence au restaurant
-  dishes: [{ type: mongoose.Schema.Types.ObjectId, ref: "Dish" }], // Références des plats
-  drinks: [{ type: mongoose.Schema.Types.ObjectId, ref: "Drink" }], // Références des boissons
+  price: { type: Number },
+  restaurant_id: { type: mongoose.Schema.Types.ObjectId, ref: "Restaurant" },
+  type: {
+    type: String,
+    enum: ["fixed", "custom"],
+    required: true,
+  },
+  // Combinations of categories with prices for fixed menus
+  combinations: [
+    {
+      categories: [{ type: String, required: true }], // e.g., ["Entrée", "Plat", "Dessert"]
+      description: { type: String },
+      price: { type: Number, required: true },
+    },
+  ],
+  // List of selected dishes for custom menus
+  dishes: [{ type: mongoose.Schema.Types.ObjectId, ref: "Dish" }],
+  visible: { type: Boolean, default: true },
   created_at: { type: Date, default: Date.now },
 });
 

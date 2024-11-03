@@ -4,7 +4,6 @@ import Head from "next/head";
 // I18N
 import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
-import { useTranslation } from "next-i18next";
 
 // CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
@@ -12,10 +11,10 @@ import { GlobalContext } from "@/contexts/global.context";
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
-import { AboutSvg } from "@/components/_shared/_svgs/about.svg";
+import AddMenusComponent from "@/components/menus/add.menus.component";
+import axios from "axios";
 
-export default function AboutPage(props) {
-  const { t } = useTranslation("");
+export default function AddMenuPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
 
   let title;
@@ -30,8 +29,6 @@ export default function AboutPage(props) {
       title = "Gusto Manager";
       description = "";
   }
-
-  if (!restaurantContext.isAuth) return null;
 
   return (
     <>
@@ -68,24 +65,9 @@ export default function AboutPage(props) {
               restaurantData={restaurantContext.restaurantData}
             />
 
-            <hr className="opacity-20" />
-
-            <div className="flex justify-between">
-              <div className="flex gap-2 items-center">
-                <AboutSvg width={26} height={26} fillColor="#131E3690" />
-
-                <h1 className="pl-2 text-2xl">{t("about:titles.main")}</h1>
-              </div>
-            </div>
-
-            <div
-              className="bg-white drop-shadow-sm rounded-lg p-6"
-              dangerouslySetInnerHTML={{ __html: t("about:legal") }}
-            />
-
-            <div
-              className="bg-white drop-shadow-sm rounded-lg p-6"
-              dangerouslySetInnerHTML={{ __html: t("about:policy") }}
+            <AddMenusComponent
+              menu={props.menu}
+              selectedDishes={props.selectedDishes}
             />
           </div>
         </div>
@@ -94,10 +76,53 @@ export default function AboutPage(props) {
   );
 }
 
-export async function getStaticProps({ locale }) {
-  return {
-    props: {
-      ...(await serverSideTranslations(locale, ["common", "about"])),
-    },
-  };
+export async function getServerSideProps({ query, locale }) {
+  const { menuId } = query;
+
+  if (!menuId) {
+    return {
+      props: {
+        menu: null,
+        selectedDishes: null,
+        ...(await serverSideTranslations(locale, [
+          "common",
+          "dishes",
+          "menus",
+        ])),
+      },
+    };
+  }
+
+  try {
+    const response = await axios.get(
+      `${process.env.NEXT_PUBLIC_API_URL}/menus/${menuId}`
+    );
+
+    const { menu, selectedDishes } = response.data;
+
+    return {
+      props: {
+        menu,
+        selectedDishes,
+        ...(await serverSideTranslations(locale, [
+          "common",
+          "dishes",
+          "menus",
+        ])),
+      },
+    };
+  } catch (error) {
+    console.error("Error fetching menu or dish data:", error);
+    return {
+      props: {
+        menu: null,
+        selectedDishes: null,
+        ...(await serverSideTranslations(locale, [
+          "common",
+          "dishes",
+          "menus",
+        ])),
+      },
+    };
+  }
 }

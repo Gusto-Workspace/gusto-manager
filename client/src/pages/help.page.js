@@ -15,6 +15,7 @@ import { HelpSvg } from "@/components/_shared/_svgs/_index";
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
+import ContactFormHelpComponent from "@/components/help/contact-form.help.component";
 
 export default function HelpPage(props) {
   const { t } = useTranslation("");
@@ -73,12 +74,14 @@ export default function HelpPage(props) {
             <hr className="opacity-20" />
 
             <div className="flex justify-between">
-              <div className="pl-2 flex gap-2 items-center">
+              <div className="flex gap-2 items-center">
                 <HelpSvg width={30} height={30} fillColor="#131E3690" />
 
                 <h1 className="pl-2 text-2xl">{t("help:titles.main")}</h1>
               </div>
             </div>
+
+            <ContactFormHelpComponent/>
           </div>
         </div>
       </div>

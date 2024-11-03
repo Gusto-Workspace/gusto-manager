@@ -169,7 +169,7 @@ export default function CategoriesListDishesComponent() {
       <hr className="opacity-20" />
 
       <div className="flex justify-between">
-        <div className="pl-2 flex gap-2 items-center">
+        <div className="flex gap-2 items-center">
           <DishSvg width={30} height={30} fillColor="#131E3690" />
 
           <h1 className="pl-2 text-2xl">{t("titles.main")}</h1>
@@ -198,7 +198,7 @@ export default function CategoriesListDishesComponent() {
               items={categories?.map((category) => category._id)}
             >
               <div className="grid grid-cols-1 tablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-4 gap-6">
-                {categories?.map((category, i) => (
+                {categories?.map((category) => (
                   <CardCategoryListComponent
                     key={category._id}
                     category={category}

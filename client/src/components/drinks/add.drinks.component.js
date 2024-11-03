@@ -87,7 +87,7 @@ export default function AddDrinksComponent(props) {
     <section className="flex flex-col gap-6">
       <hr className="opacity-20" />
 
-      <div className="flex pl-2 gap-2 py-1 items-center">
+      <div className="flex gap-2 py-1 items-center">
         <DrinkSvg width={30} height={30} fillColor="#131E3690" />
 
         <h1 className="pl-2 text-2xl flex items-center gap-2">

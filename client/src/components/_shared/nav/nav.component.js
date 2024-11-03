@@ -29,15 +29,24 @@ export default function NavComponent() {
   return (
     <nav
       style={{ boxShadow: "3px 0 5px rgba(0, 0, 0, 0.05)" }}
-      className="w-[250px] h-screen overflow-y-auto flex flex-col pt-6 pb-12 px-4 gap-12 z-10 text-darkBlue"
+      className="w-[250px] h-screen overflow-y-auto flex flex-col py-6 px-4 gap-8 z-10 text-darkBlue"
     >
-      <img
-        src="/img/logo.webp"
-        draggable={false}
-        className="max-w-[50px] mx-auto opacity-40"
-        alt="logo"
-      />
-      <ul className="flex-1 flex flex-col gap-8">
+      <div className=" z-10 opacity-40">
+        <h1 className="flex flex-col items-center gap-2 text-lg font-semibold">
+          <img
+            src="/img/logo.webp"
+            draggable={false}
+            alt="logo"
+            className="max-w-[50px]"
+          />
+          <div className="flex gap-1">
+            <span>Gusto</span>
+            <span>Manager</span>
+          </div>
+        </h1>
+      </div>
+
+      <ul className="flex-1 flex flex-col gap-7">
         {navItemsData.map((item) => {
           const IconComponent = icons[item.icon];
           const active = isActive(item.href);

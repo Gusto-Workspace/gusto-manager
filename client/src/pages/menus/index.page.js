@@ -11,6 +11,7 @@ import { GlobalContext } from "@/contexts/global.context";
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
+import ListMenusComponent from "@/components/menus/list.menus.component";
 
 export default function MenusPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
@@ -27,7 +28,7 @@ export default function MenusPage(props) {
       title = "Gusto Manager";
       description = "";
   }
-
+  
   if (!restaurantContext.isAuth) return null;
 
   return (
@@ -64,6 +65,8 @@ export default function MenusPage(props) {
               setRestaurantData={restaurantContext.setRestaurantData}
               restaurantData={restaurantContext.restaurantData}
             />
+
+            <ListMenusComponent menus={restaurantContext?.restaurantData?.menus} />
           </div>
         </div>
       </div>

@@ -7,19 +7,16 @@ import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 
 // COMPONENTS
-import FormLoginComponent from "@/components/login/form.login.component";
+import FormForgotPasswordComponent from "@/components/login/form-forgot-password.login.component";
 
-export default function LoginPage(props) {
+export default function ForgotPasswordPage(props) {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
 
     if (token) {
       router.push("/");
-    } else {
-      setLoading(false);
     }
   }, [router]);
 
@@ -58,14 +55,8 @@ export default function LoginPage(props) {
         </> */}
       </Head>
 
-      <div className="min-h-[100vh] bg-black bg-opacity-20 flex justify-center items-center">
-        {loading ? (
-          <div className="flex justify-center items-center h-screen">
-            <div className="loader">Loading...</div>
-          </div>
-        ) : (
-          <FormLoginComponent />
-        )}
+      <div className="min-h-[100vh] bg-lightGrey flex justify-center items-center">
+        <FormForgotPasswordComponent />
       </div>
     </>
   );

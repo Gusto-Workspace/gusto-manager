@@ -12,6 +12,8 @@ const ownerSchema = new mongoose.Schema({
   stripeCustomerId: { type: String },
   restaurants: [{ type: mongoose.Schema.Types.ObjectId, ref: "Restaurant" }],
   created_at: { type: Date, default: Date.now },
+  resetCode: String,
+  resetCodeExpires: Date,
 });
 
 // Index sur les champs pour rendre les recherches rapides

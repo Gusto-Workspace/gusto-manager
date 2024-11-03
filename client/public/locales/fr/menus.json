@@ -1,0 +1,54 @@
+{
+  "titles": {
+    "main": "Les Menus",
+    "second": "Aperçu"
+  },
+  "labels": {
+    "menuType": "Type de menu",
+    "select": "Sélectionner",
+    "fixed": "Menu options",
+    "custom": "Menu à composer"
+  },
+  "form": {
+    "fixed": {
+      "labels": {
+        "option": "Option",
+        "name": "Nom du menu",
+        "description": "Description",
+        "generaleDescription": "Description générale du menu, plats concernés par ce menu ...",
+        "optional": "(optionnel)",
+        "price": "Prix du menu",
+        "addOption": "Ajouter une option"
+      }
+    },
+
+    "custom": {
+      "labels": {
+        "name": "Nom du menu",
+        "selectedDishes": "Plats sélectionnés",
+        "selectPlaceholder": " Sélectionnez des plats dans la carte pour les ajouter à votre menu",
+        "or": "ou"
+      }
+    }
+  },
+
+  "buttons": {
+    "add": "Ajouter",
+    "edit": "Modifier",
+    "addMenu": "Créer un menu",
+    "addOption": "Ajouter une option",
+    "editMenu": "Modifier le menu",
+    "deleteMenu": "Supprimer le menu",
+    "deleteOption": "Supprimer l'option",
+    "confirmDelete": "Confirmer la suppression ?",
+    "save": "Sauvegarder le menu",
+    "loading": "En cours...",
+    "delete": "Supprimer",
+    "access": "Accéder",
+    "confirm": "Confirmer",
+    "yes": "Oui",
+    "no": "Non",
+    "cancel": "Annuler",
+    "return": "Retour"
+  }
+}

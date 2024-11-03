@@ -1,0 +1,54 @@
+{
+  "titles": {
+    "main": "Menus",
+    "second": "Preview"
+  },
+  "labels": {
+    "menuType": "Menu type",
+    "select": "Select",
+    "fixed": "Menu with options",
+    "custom": "Menu to compose"
+  },
+  "form": {
+    "fixed": {
+      "labels": {
+        "option": "Option",
+        "name": "Menu name",
+        "description": "Description",
+        "generaleDescription": "Global Description of the menu, dishes concerned by this menu...",
+        "optional": "(optional)",
+        "price": "Menu price",
+        "addOption": "Add a option"
+      }
+    },
+
+    "custom": {
+      "labels": {
+        "name": "Menu name",
+        "selectedDishes": "Selected dishes",
+        "selectPlaceholder": " Sélect dishes on individuals dishes to add on this menu",
+        "or": "or"
+      }
+    }
+  },
+
+  "buttons": {
+    "add": "Add",
+    "edit": "Edit",
+    "addMenu": "Create a menu",
+    "addOption": "Add an option",
+    "editMenu": "Edit menu",
+    "deleteMenu": "Delete menu",
+    "deleteOption": "Delete option",
+    "confirmDelete": "Confirm deletion ?",
+    "save": "Save menu",
+    "loading": "Loading...",
+    "delete": "Delete",
+    "access": "Access",
+    "confirm": "Confirm",
+    "yes": "Yes",
+    "no": "No",
+    "cancel": "Cancel",
+    "return": "Return"
+  }
+}
