@@ -1,0 +1,25 @@
+{
+  "titles": {
+    "main": "Welcome"
+  },
+  "description": "Log in to access your personal space",
+
+  "form": {
+    "labels": {
+      "email": "Email",
+      "password": "Password",
+      "forgotPassword": "Forgot password ?",
+      "select": "Select",
+      "selectRestaurant": "Select a restaurant"
+    },
+    "errors": {
+      "incorrect": "Credentials not recognized, please check your information",
+      "server": "Internal error, unable to connect"
+    }
+  },
+  "buttons": {
+    "login": "Log in",
+    "loading": "Logging in...",
+    "access": "Access"
+  }
+}

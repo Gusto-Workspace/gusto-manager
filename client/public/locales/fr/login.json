@@ -1,0 +1,31 @@
+{
+  "titles": {
+    "main": "Bienvenue",
+    "second" : "Mot de passe oublié"
+  },
+  "descriptions": {
+    "main" : "Connectez-vous pour accéder à votre espace personnel",
+    "second" : "Saisissez votre adresse email" 
+  },
+
+  "form": {
+    "labels": {
+      "email": "Email",
+      "password": "Mot de passe",
+      "forgotPassword": "Mot de passe oublié ?",
+      "select": "Sélectionner",
+      "selectRestaurant": "Sélectionnez un restaurant"
+    },
+    "errors": {
+      "incorrect": "Identifants non reconnus, merci de vérifier vos informations",
+      "server": "Erreur interne, connexion impossible"
+    }
+  },
+
+  "buttons": {
+    "login": "Se connecter",
+    "valid" : "Valider",
+    "loading": "Connexion...",
+    "access": "Accéder"
+  }
+}
