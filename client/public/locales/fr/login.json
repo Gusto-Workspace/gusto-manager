@@ -1,11 +1,14 @@
 {
   "titles": {
     "main": "Bienvenue",
-    "second" : "Mot de passe oublié"
+    "second" : "Mot de passe oublié",
+    "third" : "Nouveau mot de passe"
   },
   "descriptions": {
     "main" : "Connectez-vous pour accéder à votre espace personnel",
-    "second" : "Saisissez votre adresse email" 
+    "second" : "Saisissez votre adresse email" ,
+    "code" : "Veuillez entrer le code envoyé par email",
+    "password" : "Veuillez saisir votre nouveau mot de passe"
   },
 
   "form": {
@@ -18,7 +21,11 @@
     },
     "errors": {
       "incorrect": "Identifants non reconnus, merci de vérifier vos informations",
-      "server": "Erreur interne, connexion impossible"
+      "server": "Erreur interne, connexion impossible",
+      "passwords" : "Les mots de passe ne correspondent pas",
+      "invalid" : "Code incorrect ou expiré",
+      "code" : "Erreur lors de l'envoi du code",
+      "reset": "Erreur lors de la réinitialisation du mot de passe"
     }
   },
 
@@ -26,6 +33,8 @@
     "login": "Se connecter",
     "valid" : "Valider",
     "loading": "Connexion...",
-    "access": "Accéder"
+    "loading-2" : "En cours...",
+    "access": "Accéder",
+    "reset" : "Réinitialiser le mot de passe"
   }
 }

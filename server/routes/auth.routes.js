@@ -42,7 +42,7 @@ router.post("/owner/login", async (req, res) => {
       "name _id"
     );
     if (!owner) {
-      return res.status(404).json({ message: "Owner not found" });
+      return res.status(401).json({ message: "errors.incorrect" });
     }
 
     const isMatch = await bcrypt.compare(password, owner.password);

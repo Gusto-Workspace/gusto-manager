@@ -27,6 +27,7 @@ export default function FormLoginComponent() {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [selectedRestaurant, setSelectedRestaurant] = useState("");
+  const [tempToken, setTempToken] = useState(null);
 
   const { restaurantContext } = useContext(GlobalContext);
 
@@ -42,7 +43,7 @@ export default function FormLoginComponent() {
 
       const { token, owner } = response.data;
 
-      localStorage.setItem("token", token);
+      setTempToken(token);
 
       // Vérifier le nombre de restaurants du propriétaire
       if (owner.restaurants.length > 1) {
@@ -172,10 +173,7 @@ export default function FormLoginComponent() {
               !selectedRestaurant ? "opacity-50 cursor-not-allowed" : ""
             }`}
             onClick={() =>
-              handleRestaurantSelect(
-                selectedRestaurant,
-                localStorage.getItem("token")
-              )
+              handleRestaurantSelect(selectedRestaurant, tempToken)
             }
             disabled={!selectedRestaurant}
           >
