@@ -4,6 +4,7 @@ import Head from "next/head";
 // I18N
 import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
+import { useTranslation } from "next-i18next";
 
 // CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
@@ -11,8 +12,11 @@ import { GlobalContext } from "@/contexts/global.context";
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
+import DashboardComponent from "@/components/dashboard/dashboard.component";
+import { AnalyticsSvg } from "@/components/_shared/_svgs/analytics.data";
 
 export default function DashboardPage(props) {
+  const { t } = useTranslation("");
   const { restaurantContext } = useContext(GlobalContext);
 
   let title;
@@ -62,6 +66,20 @@ export default function DashboardPage(props) {
               setDataLoading={restaurantContext.setDataLoading}
               closeEditing={restaurantContext.closeEditing}
               setRestaurantData={restaurantContext.setRestaurantData}
+              restaurantData={restaurantContext.restaurantData}
+            />
+
+            <hr className="opacity-20" />
+
+            <div className="flex justify-between">
+              <div className="flex gap-2 items-center">
+                <AnalyticsSvg width={30} height={30} strokeColor="#131E3690" />
+
+                <h1 className="pl-2 text-2xl">{t("index:titles.main")}</h1>
+              </div>
+            </div>
+
+            <DashboardComponent
               restaurantData={restaurantContext.restaurantData}
             />
           </div>

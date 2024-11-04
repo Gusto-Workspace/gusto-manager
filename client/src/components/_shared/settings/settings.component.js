@@ -25,37 +25,29 @@ export default function SettingsComponent() {
   const router = useRouter();
   const [showRestaurantList, setShowRestaurantList] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const [showNotifications, setShowNotifications] = useState(false); // État pour le menu des notifications
+  const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const { restaurantContext } = useContext(GlobalContext);
 
   const userMenuRef = useRef(null);
   const userNameRef = useRef(null);
-  const notificationsRef = useRef(null); // Référence pour le menu notifications
+  const notificationsRef = useRef(null);
+  const notificationsButtonRef = useRef(null);
 
   const isSubRoute =
     router.pathname !== "/" && router.pathname.split("/").length > 2;
 
   function handleFullScreenToggle() {
     const elem = document.documentElement;
-
     if (!isFullScreen) {
-      if (elem.requestFullscreen) {
-        elem.requestFullscreen();
-      } else if (elem.webkitRequestFullscreen) {
-        elem.webkitRequestFullscreen();
-      } else if (elem.msRequestFullscreen) {
-        elem.msRequestFullscreen();
-      }
+      elem.requestFullscreen?.() ||
+        elem.webkitRequestFullscreen?.() ||
+        elem.msRequestFullscreen?.();
     } else {
-      if (document.exitFullscreen) {
-        document.exitFullscreen();
-      } else if (document.webkitExitFullscreen) {
-        document.webkitExitFullscreen();
-      } else if (document.msExitFullscreen) {
-        document.msExitFullscreen();
-      }
+      document.exitFullscreen?.() ||
+        document.webkitExitFullscreen?.() ||
+        document.msExitFullscreen?.();
     }
     setIsFullScreen(!isFullScreen);
   }
@@ -71,16 +63,14 @@ export default function SettingsComponent() {
       }
       if (
         notificationsRef.current &&
-        !notificationsRef.current.contains(event.target)
+        !notificationsRef.current.contains(event.target) &&
+        !notificationsButtonRef.current.contains(event.target)
       ) {
         setShowNotifications(false);
       }
     }
-
     document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   return (
@@ -93,11 +83,7 @@ export default function SettingsComponent() {
       )}
 
       <div
-        className={`bg-white flex-1 h-full px-6 items-center flex justify-between drop-shadow-sm rounded-lg ${
-          restaurantContext.restaurantsList?.length > 1 && !isSubRoute
-            ? "cursor-pointer"
-            : ""
-        }`}
+        className={`bg-white flex-1 h-full px-6 items-center flex justify-between drop-shadow-sm rounded-lg ${restaurantContext.restaurantsList?.length > 1 && !isSubRoute ? "cursor-pointer" : ""}`}
         onClick={() => {
           if (!isSubRoute && restaurantContext.restaurantsList?.length > 1) {
             setShowRestaurantList(!showRestaurantList);
@@ -156,6 +142,7 @@ export default function SettingsComponent() {
 
         <div className="border-r pr-8 relative">
           <button
+            ref={notificationsButtonRef}
             className="bg-blue p-3 rounded-lg bg-opacity-40"
             onClick={() => setShowNotifications(!showNotifications)}
           >
@@ -171,9 +158,11 @@ export default function SettingsComponent() {
           >
             <ul className="flex flex-col p-4">
               {notifications.length > 0 ? (
-                notifications.map((notification, i) => {
-                  return <li key={i}>{notification}</li>;
-                })
+                notifications.map((notification, i) => (
+                  <li key={i} className="text-sm py-2">
+                    {notification}
+                  </li>
+                ))
               ) : (
                 <li className="opacity-40 italic text-sm">
                   Aucune notification
