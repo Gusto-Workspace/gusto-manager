@@ -103,6 +103,7 @@ const giftCardPurchaseSchema = new mongoose.Schema({
   },
   beneficiaryFirstName: { type: String, required: true },
   beneficiaryLastName: { type: String, required: true },
+  created_at: { type: Date, default: Date.now },
 });
 
 // Sous-schéma pour les actualités

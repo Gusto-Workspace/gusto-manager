@@ -51,17 +51,20 @@ export default function ListDrinksComponent(props) {
     props.subCategory ? props.subCategory.drinks : props.category.drinks
   );
 
-  const [subCategories, setSubCategories] = useState([]);
+  const [subCategories, setSubCategories] = useState(
+    !props.subCategory &&
+      restaurantContext?.restaurantData?.drink_categories?.find(
+        (category) => category._id === props.category._id
+      )?.subCategories
+  );
 
   useEffect(() => {
-    {
-      !props.subCategory &&
-        setSubCategories(
-          restaurantContext?.restaurantData?.drink_categories?.find(
-            (category) => category._id === props.category._id
-          )?.subCategories
-        );
-    }
+    !props.subCategory &&
+      setSubCategories(
+        restaurantContext?.restaurantData?.drink_categories?.find(
+          (category) => category._id === props.category._id
+        )?.subCategories
+      );
   }, [restaurantContext?.restaurantData, props.category_id]);
 
   const {
@@ -351,7 +354,7 @@ export default function ListDrinksComponent(props) {
       <hr className="opacity-20" />
 
       <div className="flex justify-between">
-        <div className="pl-2 flex gap-2 items-center">
+        <div className="flex gap-2 items-center">
           <DrinkSvg width={30} height={30} fillColor="#131E3690" />
 
           <h1 className="pl-2 text-2xl flex items-center gap-2">

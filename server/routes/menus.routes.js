@@ -36,7 +36,7 @@ router.post("/restaurants/:restaurantId/add-menus", async (req, res) => {
     // Récupérez le restaurant peuplé avec les menus après la mise à jour
     const updatedRestaurant = await RestaurantModel.findById(restaurantId)
       .populate("owner_id", "firstname")
-      .populate("menus"); // Ceci recharge les menus complets
+      .populate("menus");
 
     res.status(201).json({
       message: "Menu added successfully",

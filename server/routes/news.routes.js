@@ -71,7 +71,9 @@ router.post(
         restaurantId,
         { $push: { news: newNews } },
         { new: true }
-      ).populate("owner_id", "firstname");
+      )
+        .populate("owner_id", "firstname")
+        .populate("menus");
 
       // Vérifier si le restaurant existe
       if (!restaurant) {
@@ -97,7 +99,9 @@ router.get("/news/:newsId", async (req, res) => {
     // Rechercher le restaurant contenant la news avec cet ID
     const restaurant = await RestaurantModel.findOne({
       "news._id": newsId,
-    }).populate("owner_id", "firstname");
+    })
+      .populate("owner_id", "firstname")
+      .populate("menus");
 
     // Vérifier si le restaurant existe
     if (!restaurant) {
@@ -130,10 +134,9 @@ router.put(
     const imageFile = req.file;
 
     try {
-      const restaurant = await RestaurantModel.findById(restaurantId).populate(
-        "owner_id",
-        "firstname"
-      );
+      const restaurant = await RestaurantModel.findById(restaurantId)
+        .populate("owner_id", "firstname")
+        .populate("menus");
 
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found." });
@@ -180,9 +183,9 @@ router.put(
       }
 
       await restaurant.save();
-      const updatedRestaurant = await RestaurantModel.findById(
-        restaurantId
-      ).populate("owner_id", "firstname");
+      const updatedRestaurant = await RestaurantModel.findById(restaurantId)
+        .populate("owner_id", "firstname")
+        .populate("menus");
 
       res.status(200).json({
         message: "News updated successfully",
@@ -232,9 +235,9 @@ router.delete("/restaurants/:id/news/:newsId", async (req, res) => {
     await restaurant.save();
 
     // Renvoyer le restaurant mis à jour
-    const updatedRestaurant = await RestaurantModel.findById(
-      restaurantId
-    ).populate("owner_id", "firstname");
+    const updatedRestaurant = await RestaurantModel.findById(restaurantId)
+      .populate("owner_id", "firstname")
+      .populate("menus");
 
     res.status(200).json({
       message: "News deleted successfully",
