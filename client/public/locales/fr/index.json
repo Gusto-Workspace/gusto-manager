@@ -1,5 +1,29 @@
 {
   "titles": {
     "main": "Dashboard"
+  },
+  "labels": {
+    "totalMenu": "Total menus",
+    "totalDishes": "Total produits carte",
+    "totalDrinks": "Total boissons",
+    "totalWines": "Total vins",
+    "totalNews": "Total actualités",
+    "totalGiftCards": "Total cartes cadeaux",
+    "totalPurchasesGiftCards": "Total cartes cadeaux vendues",
+    "totalSold" : "Montant total des ventes des cartes cadeaux",
+    "notifications": "Notifications non lues",
+    "visible": "Visible(s)",
+    "masked": "Masqué(e)s",
+    "emptyMenu": "Aucun menu",
+    "emptyDish": "Aucun produit",
+    "emptyDrink": "Aucune boisson",
+    "emptyWine": "Aucun vin",
+    "emptyNew": "Aucune actualité",
+    "emptyNotification": "Aucune notification",
+    "emptySold": "Aucune vente",
+    "emptyGiftCard" : "Aucune carte cadeau",
+    "valid": "Valide(s)",
+    "used": "Utilisée(s)",
+    "expired": "Expirée(s)"
   }
 }

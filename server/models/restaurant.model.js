@@ -85,6 +85,12 @@ const drinkCategorySchema = new mongoose.Schema({
   drinks: { type: [drinkSchema], default: [] },
 });
 
+// Schéma pour les notifications
+const notificationSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  read: { type: Boolean, default: true },
+});
+
 // Schéma pour les cartes cadeaux
 const giftCardSchema = new mongoose.Schema({
   value: { type: Number, required: true },
@@ -146,6 +152,7 @@ const restaurantSchema = new mongoose.Schema({
   drink_categories: { type: [drinkCategorySchema], default: [] },
   wine_categories: { type: [wineCategorySchema], default: [] },
   news: { type: [newsSchema], default: [] },
+  notifications: { type: [notificationSchema], default: [] },
   menus: [{ type: mongoose.Schema.Types.ObjectId, ref: "Menu" }],
   giftCards: { type: [giftCardSchema], default: [] },
   purchasesGiftCards: { type: [giftCardPurchaseSchema], default: [] },
