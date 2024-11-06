@@ -11,8 +11,15 @@ router.get("/admin/owners", async (req, res) => {
   try {
     const owners = await OwnerModel.find(
       {},
-      "firstname lastname phoneNumber restaurants email _id created_at"
-    ).populate("restaurants", "name");
+      "firstname lastname phoneNumber restaurants email _id created_at stripeCustomerId"
+    ).populate({
+      path: "restaurants",
+      select: "name address phone",
+      populate: {
+        path: "address",
+        select: "line1 city postal_code",
+      },
+    });
 
     res.status(200).json({ owners });
   } catch (error) {
@@ -27,7 +34,14 @@ router.put("/admin/owners/:id", async (req, res) => {
 
   try {
     // Rechercher le propriétaire par son ID
-    const owner = await OwnerModel.findById(req.params.id);
+    const owner = await OwnerModel.findById(req.params.id).populate({
+      path: "restaurants",
+      select: "name address phone",
+      populate: {
+        path: "address",
+        select: "line1 city postal_code",
+      },
+    });
 
     if (!owner) {
       return res.status(404).json({ message: "Propriétaire non trouvé" });

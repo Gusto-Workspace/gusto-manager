@@ -1,14 +1,21 @@
-import { useEffect, useState } from "react";
-import { useRouter } from "next/router";
+import { useContext, useState } from "react";
 import Head from "next/head";
-import axios from "axios";
+
+ // I18N
 import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
+
+// COMPONENTS
 import NavAdminComponent from "@/components/admin/_shared/nav/nav.admin.component";
 import ListOwnersAdminComponent from "@/components/admin/owners/list-owners.admin.component";
 import AddOwnerModalComponent from "@/components/admin/owners/add-owner-modal.admin.component";
 
+// CONTEXT
+import { GlobalContext } from "@/contexts/global.context";
+
 export default function OwnersPage(props) {
+  const { adminContext } = useContext(GlobalContext);
+
   let title;
   let description;
 
@@ -22,59 +29,17 @@ export default function OwnersPage(props) {
       description = "";
   }
 
-  const router = useRouter();
-  const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [owners, setOwners] = useState([]);
   const [selectedOwner, setSelectedOwner] = useState(null);
 
-  useEffect(() => {
-    const token = localStorage.getItem("admin-token");
-
-    if (!token) {
-      router.push("/admin/login");
-    } else {
-      setLoading(true);
-    }
-  }, [router]);
-
-  useEffect(() => {
-    const token = localStorage.getItem("admin-token");
-
-    if (!token) {
-      router.push("/admin/login");
-    } else {
-      axios
-        .get(`${process.env.NEXT_PUBLIC_API_URL}/admin/owners`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        })
-        .then((response) => {
-          setOwners(response.data.owners);
-          setLoading(false);
-        })
-        .catch((error) => {
-          if (error.response && error.response.status === 403) {
-            localStorage.removeItem("admin-token");
-            router.push("/admin/login");
-          } else {
-            console.error(
-              "Erreur lors de la récupération des propriétaires:",
-              error
-            );
-            setLoading(false);
-          }
-        });
-    }
-  }, [router]);
+  if (!adminContext.isAuth) return null;
 
   function handleAddOwner(newOwner) {
-    setOwners((prevOwners) => [...prevOwners, newOwner]);
+    adminContext.setOwnersList((prevOwners) => [...prevOwners, newOwner]);
   }
 
   function handleEditOwner(updatedOwner) {
-    setOwners((prevOwners) =>
+    adminContext.setOwnersList((prevOwners) =>
       prevOwners.map((owner) =>
         owner._id === updatedOwner._id ? updatedOwner : owner
       )
@@ -103,34 +68,25 @@ export default function OwnersPage(props) {
         <title>{title}</title>
       </Head>
 
-      <div className="w-[100vw]">
-        {loading ? (
-          <div className="flex justify-center items-center ">
-            <div className="loader">Loading...</div>
-          </div>
-        ) : (
-          <div className="flex">
-            <NavAdminComponent />
+      <div className="flex">
+        <NavAdminComponent />
 
-            <div className="border h-screen overflow-y-auto flex-1 p-12">
-              <ListOwnersAdminComponent
-                handleAddClick={handleAddClick}
-                handleEditClick={handleEditClick}
-                owners={owners}
-                loading={loading}
-                setOwners={setOwners}
-              />
-            </div>
+        <div className="border h-screen overflow-y-auto flex-1 p-12">
+          <ListOwnersAdminComponent
+            handleAddClick={handleAddClick}
+            handleEditClick={handleEditClick}
+            owners={adminContext.ownersList}
+            setOwners={adminContext.setOwnersList}
+          />
+        </div>
 
-            {isModalOpen && (
-              <AddOwnerModalComponent
-                closeModal={closeModal}
-                handleAddOwner={handleAddOwner}
-                handleEditOwner={handleEditOwner}
-                owner={selectedOwner}
-              />
-            )}
-          </div>
+        {isModalOpen && (
+          <AddOwnerModalComponent
+            closeModal={closeModal}
+            handleAddOwner={handleAddOwner}
+            handleEditOwner={handleEditOwner}
+            owner={selectedOwner}
+          />
         )}
       </div>
     </>

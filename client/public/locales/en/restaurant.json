@@ -18,7 +18,13 @@
   "contact": {
     "title": "Contact",
     "email": "Email",
-    "address": "Address",
+    "address": {
+      "title": "Address",
+      "line1": "Address",
+      "zipCode": "Zip code",
+      "city": "City",
+      "country": "Country"
+    },
     "phone": "Phone number",
     "instagram": "Instagram",
     "facebook": "Facebook",

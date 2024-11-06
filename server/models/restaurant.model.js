@@ -1,5 +1,12 @@
 const mongoose = require("mongoose");
 
+const addressSchema = new mongoose.Schema({
+  line1: { type: String, required: true },
+  zipCode: { type: String, required: true },
+  city: { type: String, required: true },
+  country: { type: String, required: true, default: "France" },
+});
+
 // Sous-schéma pour les horaires d'ouverture
 const openingHourSchema = new mongoose.Schema(
   {
@@ -137,7 +144,7 @@ const socialMediaSchema = new mongoose.Schema(
 // Schéma principal pour le restaurant
 const restaurantSchema = new mongoose.Schema({
   name: { type: String, required: true },
-  address: { type: String, required: true },
+  address: { type: addressSchema, required: true },
   phone: { type: String, required: true },
   email: { type: String, required: true },
   website: { type: String },

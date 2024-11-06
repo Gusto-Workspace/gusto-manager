@@ -1,9 +1,5 @@
 import { useState } from "react";
-
-// AXIOS
 import axios from "axios";
-
-// I18N
 import { useTranslation } from "next-i18next";
 
 export default function ListRestaurantsAdminComponent(props) {
@@ -54,7 +50,17 @@ export default function ListRestaurantsAdminComponent(props) {
                 <li key={restaurant?._id} className="border p-4 rounded-lg">
                   <h2 className="text-2xl">{restaurant?.name}</h2>
                   <p>
-                    {t("restaurants.form.adress")} : {restaurant?.address}
+                    {t("restaurants.form.address.title")} :{" "}
+                    {restaurant?.address ? (
+                      <>
+                        {restaurant.address.line1}, {restaurant.address.zipCode}{" "}
+                        {restaurant.address.city}, {restaurant.address.country}
+                      </>
+                    ) : (
+                      <span className="text-sm italic opacity-40">
+                        {t("restaurants.list.noAddress")}
+                      </span>
+                    )}
                   </p>
                   <p>
                     {t("restaurants.form.phone")} : {restaurant?.phone}
