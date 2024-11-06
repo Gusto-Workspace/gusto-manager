@@ -27,12 +27,13 @@ router.post("/admin/create-subscription", async (req, res) => {
     req.body;
 
   try {
-    // 1. Créer l'abonnement en mode "default_incomplete"
+    // 1. Créer l'abonnement sans essayer de débiter un moyen de paiement
     const subscription = await stripe.subscriptions.create({
       customer: stripeCustomerId,
       items: [{ price: priceId }],
-      payment_behavior: "default_incomplete", // Génère une facture sans paiement immédiat
-      expand: ["latest_invoice"], // Inclut les informations de la facture dans la réponse
+      collection_method: "send_invoice", // Utiliser "send_invoice" pour un envoi manuel
+      days_until_due: 3, // Exemple de délai pour le paiement
+      expand: ["latest_invoice"], // Inclut les informations de la dernière facture
     });
 
     // 2. Mettre à jour les informations de facturation du client
@@ -47,9 +48,9 @@ router.post("/admin/create-subscription", async (req, res) => {
       preferred_locales: [language || "fr"], // Définit la langue par défaut
     });
 
-    // La facture sera envoyée automatiquement par Stripe
     res.status(201).json({
-      message: "Abonnement créé et la facture sera envoyée par Stripe.",
+      message:
+        "Abonnement créé et la facture sera envoyée pour paiement manuel.",
       subscription,
     });
   } catch (error) {
