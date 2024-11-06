@@ -10,7 +10,8 @@
     "totalNews": "Total actualités",
     "totalGiftCards": "Total cartes cadeaux",
     "totalPurchasesGiftCards": "Total cartes cadeaux vendues",
-    "totalSold" : "Montant total des ventes des cartes cadeaux",
+    "totalSold": "Montant total des ventes des cartes cadeaux",
+    "monthlySold": "Ventes mensuelles des cartes cadeaux",
     "notifications": "Notifications non lues",
     "visible": "Visible(s)",
     "masked": "Masqué(e)s",
@@ -21,7 +22,7 @@
     "emptyNew": "Aucune actualité",
     "emptyNotification": "Aucune notification",
     "emptySold": "Aucune vente",
-    "emptyGiftCard" : "Aucune carte cadeau",
+    "emptyGiftCard": "Aucune carte cadeau",
     "valid": "Valide(s)",
     "used": "Utilisée(s)",
     "expired": "Expirée(s)"

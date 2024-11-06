@@ -85,6 +85,7 @@ export default function DashboardComponent(props) {
               );
             }
           )}
+          
           <div className="bg-white p-6 rounded-lg drop-shadow-sm flex justify-between gap-4">
             <h3 className="font-semibold text-lg text-balance">
               {t("labels.totalSold")}

@@ -55,7 +55,7 @@ export default function ForgotPasswordPage(props) {
         </> */}
       </Head>
 
-      <div className="min-h-[100vh] bg-lightGrey flex justify-center items-center">
+      <div className="min-h-[100vh] bg-[url('/img/bg-1.webp')] bg-cover bg-center flex justify-center items-center">
         <FormForgotPasswordComponent />
       </div>
     </>
