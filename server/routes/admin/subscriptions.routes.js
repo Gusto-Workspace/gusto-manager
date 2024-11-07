@@ -27,13 +27,13 @@ router.post("/admin/create-subscription", async (req, res) => {
     req.body;
 
   try {
-    // 1. Créer l'abonnement sans essayer de débiter un moyen de paiement
+    // 1. Créer l'abonnement avec collection_method "send_invoice" et restreindre aux cartes
     const subscription = await stripe.subscriptions.create({
       customer: stripeCustomerId,
       items: [{ price: priceId }],
-      collection_method: "send_invoice", // Utiliser "send_invoice" pour un envoi manuel
-      days_until_due: 3, // Exemple de délai pour le paiement
-      expand: ["latest_invoice"], // Inclut les informations de la dernière facture
+      collection_method: "send_invoice",
+      days_until_due: 3,
+      expand: ["latest_invoice"],
     });
 
     // 2. Mettre à jour les informations de facturation du client
@@ -45,12 +45,25 @@ router.post("/admin/create-subscription", async (req, res) => {
         country: billingAddress.country,
       },
       phone: phone,
-      preferred_locales: [language || "fr"], // Définit la langue par défaut
+      preferred_locales: [language || "fr"],
     });
 
+    // 3. Finaliser la facture
+    const invoiceId = subscription.latest_invoice.id;
+    await stripe.invoices.finalizeInvoice(invoiceId);
+
+    // 4. Mettre à jour la facture pour n'autoriser que les paiements par carte
+    await stripe.invoices.update(invoiceId, {
+      payment_settings: {
+        payment_method_types: ["card"], // Limite aux paiements par carte uniquement
+      },
+    });
+
+    // 5. Envoyer la facture par email
+    await stripe.invoices.sendInvoice(invoiceId);
+
     res.status(201).json({
-      message:
-        "Abonnement créé et la facture sera envoyée pour paiement manuel.",
+      message: "Abonnement créé, et la facture a été envoyée au client.",
       subscription,
     });
   } catch (error) {
@@ -58,6 +71,63 @@ router.post("/admin/create-subscription", async (req, res) => {
     res
       .status(500)
       .json({ message: "Erreur lors de la création de l'abonnement" });
+  }
+});
+
+// SWITCH TO AUTOMATIC PAYMENT MODE
+router.post("/admin/switch-to-automatic", async (req, res) => {
+  const { subscriptionId } = req.body;
+
+  try {
+    // Met à jour l'abonnement pour passer au prélèvement automatique
+    await stripe.subscriptions.update(subscriptionId, {
+      collection_method: "charge_automatically",
+    });
+
+    res
+      .status(200)
+      .json({ message: "Abonnement mis à jour en mode automatique." });
+  } catch (error) {
+    console.error("Erreur lors du passage en mode automatique :", error);
+    res
+      .status(500)
+      .json({ message: "Erreur lors du passage en mode automatique." });
+  }
+});
+
+// GET ALL SUBSCRIPTIONS
+router.get("/admin/all-subscriptions", async (req, res) => {
+  try {
+    const subscriptions = await stripe.subscriptions.list({
+      limit: 100, // Limite, ajustez en fonction de vos besoins
+      expand: ["data.latest_invoice"], // Inclut la dernière facture pour chaque abonnement
+    });
+
+    res.status(200).json({ subscriptions: subscriptions.data });
+  } catch (error) {
+    console.error("Erreur lors de la récupération des abonnements:", error);
+    res
+      .status(500)
+      .json({ message: "Erreur lors de la récupération des abonnements" });
+  }
+});
+
+// GET ALL INVOICES FOR A SUBSCRIPTION
+router.get("/admin/subscription-invoices/:subscriptionId", async (req, res) => {
+  const { subscriptionId } = req.params;
+
+  try {
+    const invoices = await stripe.invoices.list({
+      subscription: subscriptionId,
+      limit: 100, // Limite de factures à récupérer (ajustable)
+    });
+
+    res.status(200).json({ invoices: invoices.data });
+  } catch (error) {
+    console.error("Erreur lors de la récupération des factures :", error);
+    res
+      .status(500)
+      .json({ message: "Erreur lors de la récupération des factures" });
   }
 });
 
