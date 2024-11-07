@@ -10,7 +10,8 @@ export default function ListSubscriptionsAdminComponent() {
   const router = useRouter();
   const [subscriptions, setSubscriptions] = useState([]);
   const [message, setMessage] = useState("");
-  const [invoices, setInvoices] = useState({}); // Stocke les factures par abonnement
+  const [invoices, setInvoices] = useState({});
+  const [showInvoices, setShowInvoices] = useState({});
 
   function handleAddClick() {
     router.push(`/admin/subscriptions/add`);
@@ -38,6 +39,10 @@ export default function ListSubscriptionsAdminComponent() {
           ...prevInvoices,
           [subscriptionId]: response.data.invoices,
         }));
+        setShowInvoices((prevShowInvoices) => ({
+          ...prevShowInvoices,
+          [subscriptionId]: !prevShowInvoices[subscriptionId],
+        }));
       })
       .catch((error) =>
         console.error("Erreur lors de la récupération des factures :", error)
@@ -64,6 +69,19 @@ export default function ListSubscriptionsAdminComponent() {
         console.error("Erreur lors du passage en mode automatique:", error);
         setMessage("Erreur lors du passage en mode automatique.");
       });
+  };
+
+  const getSubscriptionStatusLabel = (status) => {
+    switch (status) {
+      case "active":
+        return "Actif";
+      case "paused":
+        return "En pause";
+      case "canceled":
+        return "Annulé";
+      default:
+        return status;
+    }
   };
 
   return (
@@ -95,14 +113,21 @@ export default function ListSubscriptionsAdminComponent() {
         <ul className="list-disc pl-5">
           {subscriptions.map((subscription) => (
             <li key={subscription.id} className="border p-4 rounded-lg mb-4">
-              <div>Abonnement ID : {subscription.id}</div>
+              <div>Nom de l'abonnement : {subscription.productName}</div>
+              <div>
+                Montant : {subscription.productAmount}{" "}
+                {subscription.productCurrency}
+              </div>
               <div>
                 Client : {subscription.latest_invoice.customer_name}{" "}
                 <span className="text-sm italic opacity-50">
                   ({subscription.latest_invoice.customer_email})
                 </span>
               </div>
-              <div>Statut de l'abonnement : {subscription.status}</div>
+              <div>
+                Statut de l'abonnement :{" "}
+                {getSubscriptionStatusLabel(subscription.status)}
+              </div>
 
               {/* Mode de paiement : automatique ou manuel */}
               <div>
@@ -114,7 +139,12 @@ export default function ListSubscriptionsAdminComponent() {
 
               {subscription.latest_invoice && (
                 <>
-                  <div>Latest Facture ID : {subscription.latest_invoice.id}</div>
+                  <div>
+                    Dernière facture :{" "}
+                    {new Date(
+                      subscription.latest_invoice.created * 1000
+                    ).toLocaleDateString()}
+                  </div>
 
                   {/* Statut de la facture */}
                   <div>
@@ -151,52 +181,68 @@ export default function ListSubscriptionsAdminComponent() {
                       </button>
                     )}
 
-                  {/* Bouton pour afficher les factures */}
+                  {/* Bouton pour afficher/masquer les factures */}
                   <button
                     onClick={() => fetchInvoices(subscription.id)}
                     className="bg-blue text-white px-4 py-2 mt-2 rounded-lg hover:bg-blue-600"
                   >
-                    Afficher les factures
+                    {showInvoices[subscription.id]
+                      ? "Masquer les factures"
+                      : "Afficher les factures"}
                   </button>
 
                   {/* Affichage des factures */}
-                  {invoices[subscription.id] && (
-                    <div className="mt-2">
-                      <h3>Factures :</h3>
-                      <ul>
-                        {invoices[subscription.id].map((invoice) => (
-                          <li
-                            key={invoice.id}
-                            className="border p-2 rounded-lg"
-                          >
-                            <div>Facture ID : {invoice.id}</div>
-                            <div>
-                              Statut :{" "}
-                              <span
-                                className={
-                                  invoice.status === "paid"
-                                    ? "text-green"
+                  {showInvoices[subscription.id] &&
+                    invoices[subscription.id] && (
+                      <div className="mt-2">
+                        <h3>Factures :</h3>
+                        <ul>
+                          {invoices[subscription.id].map((invoice) => (
+                            <li
+                              key={invoice.id}
+                              className="border p-2 rounded-lg"
+                            >
+                              <div>
+                                Période :{" "}
+                                {new Date(
+                                  invoice.period_start * 1000
+                                ).toLocaleDateString()}{" "}
+                                -{" "}
+                                {new Date(
+                                  invoice.period_end * 1000
+                                ).toLocaleDateString()}
+                              </div>
+                              <div>
+                                Montant : {invoice.amount_due / 100}{" "}
+                                {invoice.currency.toUpperCase()}
+                              </div>
+                              <div>
+                                Statut :{" "}
+                                <span
+                                  className={
+                                    invoice.status === "paid"
+                                      ? "text-green"
+                                      : invoice.status === "open"
+                                        ? "text-violet"
+                                        : invoice.status === "draft"
+                                          ? "text-lightGrey"
+                                          : "text-red"
+                                  }
+                                >
+                                  {invoice.status === "paid"
+                                    ? "Payée"
                                     : invoice.status === "open"
-                                      ? "text-violet"
+                                      ? "Envoyée (En attente de paiement)"
                                       : invoice.status === "draft"
-                                        ? "text-lightGrey"
-                                        : "text-red"
-                                }
-                              >
-                                {invoice.status === "paid"
-                                  ? "Payée"
-                                  : invoice.status === "open"
-                                    ? "Envoyée (En attente de paiement)"
-                                    : invoice.status === "draft"
-                                      ? "Brouillon"
-                                      : "Non payée"}
-                              </span>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
+                                        ? "Brouillon"
+                                        : "Non payée"}
+                                </span>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                 </>
               )}
             </li>

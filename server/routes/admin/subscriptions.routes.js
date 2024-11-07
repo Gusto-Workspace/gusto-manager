@@ -52,13 +52,6 @@ router.post("/admin/create-subscription", async (req, res) => {
     const invoiceId = subscription.latest_invoice.id;
     await stripe.invoices.finalizeInvoice(invoiceId);
 
-    // 4. Mettre à jour la facture pour n'autoriser que les paiements par carte
-    await stripe.invoices.update(invoiceId, {
-      payment_settings: {
-        payment_method_types: ["card"], // Limite aux paiements par carte uniquement
-      },
-    });
-
     // 5. Envoyer la facture par email
     await stripe.invoices.sendInvoice(invoiceId);
 
@@ -98,12 +91,31 @@ router.post("/admin/switch-to-automatic", async (req, res) => {
 // GET ALL SUBSCRIPTIONS
 router.get("/admin/all-subscriptions", async (req, res) => {
   try {
+    // Récupère les abonnements
     const subscriptions = await stripe.subscriptions.list({
-      limit: 100, // Limite, ajustez en fonction de vos besoins
-      expand: ["data.latest_invoice"], // Inclut la dernière facture pour chaque abonnement
+      limit: 100,
+      expand: ["data.items.data.price", "data.latest_invoice"],
     });
 
-    res.status(200).json({ subscriptions: subscriptions.data });
+    // Pour chaque abonnement, obtenir les détails du produit associés
+    const formattedSubscriptions = await Promise.all(
+      subscriptions.data.map(async (subscription) => {
+        const price = subscription.items.data[0].price;
+        const productId = price.product;
+
+        // Récupérer le produit pour obtenir le nom
+        const product = await stripe.products.retrieve(productId);
+
+        return {
+          ...subscription,
+          productName: product.name,
+          productAmount: price.unit_amount / 100,
+          productCurrency: price.currency.toUpperCase(),
+        };
+      })
+    );
+
+    res.status(200).json({ subscriptions: formattedSubscriptions });
   } catch (error) {
     console.error("Erreur lors de la récupération des abonnements:", error);
     res
