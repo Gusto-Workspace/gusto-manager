@@ -18,7 +18,6 @@ export default function ListSubscriptionsAdminComponent() {
   }
 
   useEffect(() => {
-    // Récupérer la liste de tous les abonnements
     axios
       .get(`${process.env.NEXT_PUBLIC_API_URL}/admin/all-subscriptions`)
       .then((response) => {
@@ -29,7 +28,7 @@ export default function ListSubscriptionsAdminComponent() {
       );
   }, []);
 
-  const fetchInvoices = (subscriptionId) => {
+  function fetchInvoices(subscriptionId) {
     axios
       .get(
         `${process.env.NEXT_PUBLIC_API_URL}/admin/subscription-invoices/${subscriptionId}`
@@ -47,9 +46,9 @@ export default function ListSubscriptionsAdminComponent() {
       .catch((error) =>
         console.error("Erreur lors de la récupération des factures :", error)
       );
-  };
+  }
 
-  const handleSwitchToAutomatic = (subscriptionId) => {
+  function handleSwitchToAutomatic(subscriptionId) {
     axios
       .post(`${process.env.NEXT_PUBLIC_API_URL}/admin/switch-to-automatic`, {
         subscriptionId,
@@ -69,9 +68,9 @@ export default function ListSubscriptionsAdminComponent() {
         console.error("Erreur lors du passage en mode automatique:", error);
         setMessage("Erreur lors du passage en mode automatique.");
       });
-  };
+  }
 
-  const getSubscriptionStatusLabel = (status) => {
+  function getSubscriptionStatusLabel(status) {
     switch (status) {
       case "active":
         return "Actif";
@@ -82,7 +81,7 @@ export default function ListSubscriptionsAdminComponent() {
       default:
         return status;
     }
-  };
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -123,6 +122,11 @@ export default function ListSubscriptionsAdminComponent() {
                 <span className="text-sm italic opacity-50">
                   ({subscription.latest_invoice.customer_email})
                 </span>
+              </div>
+
+              <div>
+                Restaurant : {subscription.restaurantName} (ID :{" "}
+                {subscription.restaurantId})
               </div>
               <div>
                 Statut de l'abonnement :{" "}

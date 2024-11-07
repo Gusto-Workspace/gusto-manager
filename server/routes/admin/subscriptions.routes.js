@@ -21,22 +21,28 @@ router.get("/admin/subscriptions", async (req, res) => {
   }
 });
 
-// CREATE A SUBSCRIPTION FOR A OWNER
+// CREATE A SUBSCRIPTION FOR AN OWNER
 router.post("/admin/create-subscription", async (req, res) => {
-  const { stripeCustomerId, priceId, billingAddress, phone, language } =
-    req.body;
+  const {
+    stripeCustomerId,
+    priceId,
+    billingAddress,
+    phone,
+    language,
+    restaurantId,
+    restaurantName,
+  } = req.body;
 
   try {
-    // 1. Créer l'abonnement avec collection_method "send_invoice" et restreindre aux cartes
     const subscription = await stripe.subscriptions.create({
       customer: stripeCustomerId,
       items: [{ price: priceId }],
       collection_method: "send_invoice",
       days_until_due: 3,
       expand: ["latest_invoice"],
+      metadata: { restaurantId, restaurantName },
     });
 
-    // 2. Mettre à jour les informations de facturation du client
     await stripe.customers.update(stripeCustomerId, {
       address: {
         line1: billingAddress.line1,
@@ -48,11 +54,15 @@ router.post("/admin/create-subscription", async (req, res) => {
       preferred_locales: [language || "fr"],
     });
 
-    // 3. Finaliser la facture
     const invoiceId = subscription.latest_invoice.id;
     await stripe.invoices.finalizeInvoice(invoiceId);
 
-    // 5. Envoyer la facture par email
+    await stripe.invoices.update(invoiceId, {
+      payment_settings: {
+        payment_method_types: ["card"],
+      },
+    });
+
     await stripe.invoices.sendInvoice(invoiceId);
 
     res.status(201).json({
@@ -88,22 +98,18 @@ router.post("/admin/switch-to-automatic", async (req, res) => {
   }
 });
 
-// GET ALL SUBSCRIPTIONS
+// GET ALL SUBSCRIPTIONS FROM OWNERS
 router.get("/admin/all-subscriptions", async (req, res) => {
   try {
-    // Récupère les abonnements
     const subscriptions = await stripe.subscriptions.list({
       limit: 100,
       expand: ["data.items.data.price", "data.latest_invoice"],
     });
 
-    // Pour chaque abonnement, obtenir les détails du produit associés
     const formattedSubscriptions = await Promise.all(
       subscriptions.data.map(async (subscription) => {
         const price = subscription.items.data[0].price;
         const productId = price.product;
-
-        // Récupérer le produit pour obtenir le nom
         const product = await stripe.products.retrieve(productId);
 
         return {
@@ -111,6 +117,8 @@ router.get("/admin/all-subscriptions", async (req, res) => {
           productName: product.name,
           productAmount: price.unit_amount / 100,
           productCurrency: price.currency.toUpperCase(),
+          restaurantId: subscription.metadata.restaurantId, // Récupération de l'ID du restaurant
+          restaurantName: subscription.metadata.restaurantName, // Récupération du nom du restaurant
         };
       })
     );

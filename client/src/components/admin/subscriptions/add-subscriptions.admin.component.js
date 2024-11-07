@@ -57,6 +57,10 @@ export default function AddSubscriptionsAdminComponent() {
         billingAddress: restaurantData.address,
         phone: restaurantData.phone,
         language: restaurantData.language,
+        restaurantId: selectedRestaurant,
+        restaurantName: selectedOwner.restaurants.find(
+          (r) => r._id === selectedRestaurant
+        ).name,
       })
       .then((response) => {
         setMessage(response.data.message);
