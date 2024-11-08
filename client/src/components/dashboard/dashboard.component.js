@@ -27,7 +27,7 @@ export default function DashboardComponent(props) {
 
   return (
     <section className="flex flex-col gap-12">
-      <div className="grid grid-cols-1 tablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 tablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-3 gap-6">
         {dashboardData.map(
           ({ title, IconComponent, getCounts, emptyLabel }) => {
             const { visible, hidden, total } = getCounts(props.restaurantData);
@@ -85,8 +85,8 @@ export default function DashboardComponent(props) {
               );
             }
           )}
-          
-          <div className="bg-white p-6 rounded-lg drop-shadow-sm flex justify-between gap-4">
+
+          <div className="bg-white p-6 rounded-lg drop-shadow-sm flex justify-between items-center gap-8">
             <h3 className="font-semibold text-lg text-balance">
               {t("labels.totalSold")}
             </h3>

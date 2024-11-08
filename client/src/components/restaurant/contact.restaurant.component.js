@@ -5,7 +5,7 @@ import { EditSvg } from "../_shared/_svgs/_index";
 import * as icons from "../_shared/_svgs/_index";
 import { contactData } from "@/_assets/data/contact.data";
 import axios from "axios";
-import SimpleSkeletonComonent from "../_shared/skeleton/simple-skeleton.component";
+import SimpleSkeletonComponent from "../_shared/skeleton/simple-skeleton.component";
 
 export default function ContactRestaurantComponent(props) {
   const { t } = useTranslation("restaurant");
@@ -165,7 +165,7 @@ export default function ContactRestaurantComponent(props) {
               </div>
 
               {props.dataLoading ? (
-                <SimpleSkeletonComonent justify="justify-end" />
+                <SimpleSkeletonComponent justify="justify-end" />
               ) : editing ? (
                 <input
                   type="text"

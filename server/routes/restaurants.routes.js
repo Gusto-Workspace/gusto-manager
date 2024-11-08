@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const jwt = require("jsonwebtoken");
 const JWT_SECRET = process.env.JWT_SECRET;
+const stripe = require("stripe")(process.env.STRIPE_API_SECRET_KEY);
 
 // MIDDLEWARE
 const authenticateToken = require("../middleware/authentificate-token");
@@ -80,5 +81,73 @@ router.get("/owner/restaurants/:id", authenticateToken, async (req, res) => {
     res.status(500).json({ message: "Erreur interne du serveur" });
   }
 });
+
+// GET CURRENT SUBSCRIPTION FOR A RESTAURANT BY CUSTOMER ID
+router.get(
+  "/owner/restaurant-subscription",
+  authenticateToken,
+  async (req, res) => {
+    const { restaurantId } = req.query;
+    const stripeCustomerId = req.user?.stripeCustomerId;
+
+    if (!stripeCustomerId) {
+      return res.status(400).json({
+        message:
+          "stripeCustomerId est manquant dans les informations d'utilisateur.",
+      });
+    }
+
+    try {
+      // Récupère les abonnements spécifiques au client
+      const subscriptions = await stripe.subscriptions.list({
+        customer: stripeCustomerId,
+        expand: ["data.items.data.price"], // Expansion nécessaire
+      });
+
+      // Cherche l'abonnement correspondant dans les métadonnées
+      const restaurantSubscription = subscriptions.data.find(
+        (subscription) => subscription.metadata.restaurantId === restaurantId
+      );
+
+      if (!restaurantSubscription) {
+        return res
+          .status(404)
+          .json({ message: "Aucun abonnement trouvé pour ce restaurant." });
+      }
+
+      // Récupère l'ID du produit associé à l'abonnement
+      const price = restaurantSubscription.items.data[0].price;
+      const product = await stripe.products.retrieve(price.product);
+
+      // Récupérer les factures associées à l'abonnement
+      const invoices = await stripe.invoices.list({
+        subscription: restaurantSubscription.id,
+        limit: 100, // Ajustez cette limite si nécessaire
+      });
+
+      const subscriptionDetails = {
+        name: product.name,
+        amount: price.unit_amount / 100,
+        currency: price.currency.toUpperCase(),
+        status: restaurantSubscription.status,
+        invoices: invoices.data.map((invoice) => ({
+          id: invoice.id,
+          amount_due: invoice.amount_due / 100,
+          currency: invoice.currency.toUpperCase(),
+          status: invoice.status,
+          date: new Date(invoice.created * 1000).toLocaleDateString(),
+          download_url: invoice.invoice_pdf,
+        })),
+      };
+
+      res.status(200).json({ subscription: subscriptionDetails });
+    } catch (error) {
+      console.error("Erreur lors de la récupération de l'abonnement:", error);
+      res
+        .status(500)
+        .json({ message: "Erreur lors de la récupération de l'abonnement" });
+    }
+  }
+);
 
 module.exports = router;

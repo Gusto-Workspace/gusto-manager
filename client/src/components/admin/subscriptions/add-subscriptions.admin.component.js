@@ -66,8 +66,11 @@ export default function AddSubscriptionsAdminComponent() {
         setMessage(response.data.message);
       })
       .catch((error) => {
+        const errorMsg =
+          error.response?.data?.message ||
+          "Erreur lors de la création de l'abonnement.";
+        setMessage(errorMsg);
         console.error("Erreur lors de la création de l'abonnement:", error);
-        setMessage("Erreur lors de la création de l'abonnement.");
       })
       .finally(() => {
         setLoading(false);
@@ -90,7 +93,9 @@ export default function AddSubscriptionsAdminComponent() {
           value={selectedOwner ? selectedOwner._id : ""}
           onChange={handleOwnerChange}
         >
-          <option value="">-- Choisir un client --</option>
+          <option disabled value="">
+            -- Choisir un client --
+          </option>
           {adminContext.ownersList.map((owner) => (
             <option key={owner._id} value={owner._id}>
               {owner.firstname} {owner.lastname}
@@ -114,7 +119,9 @@ export default function AddSubscriptionsAdminComponent() {
             value={selectedRestaurant}
             onChange={handleRestaurantChange}
           >
-            <option value="">-- Choisir un restaurant --</option>
+            <option disabled value="">
+              -- Choisir un restaurant --
+            </option>
             {selectedOwner.restaurants.map((restaurant) => (
               <option key={restaurant._id} value={restaurant._id}>
                 {restaurant.name}
@@ -139,7 +146,9 @@ export default function AddSubscriptionsAdminComponent() {
             value={selectedSubscription}
             onChange={handleSubscriptionChange}
           >
-            <option value="">-- Choisir un abonnement --</option>
+            <option disabled value="">
+              -- Choisir un abonnement --
+            </option>
             {adminContext?.subscriptionsList?.map((subscription) => (
               <option
                 key={subscription.id}

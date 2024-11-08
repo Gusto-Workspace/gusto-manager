@@ -1,0 +1,16 @@
+{
+  "titles": {
+    "main": "Subscription",
+    "second": "Invoices"
+  },
+  "text": {
+    "subscription": "Current Subscription",
+    "month": "month",
+    "noSubscription": "No active subscription",
+    "invoiceDate": "Invoice dated",
+    "noInvoices": "No invoice available"
+  },
+  "buttons": {
+    "download": "Download"
+  }
+}

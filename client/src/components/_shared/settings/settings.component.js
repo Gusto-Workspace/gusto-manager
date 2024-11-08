@@ -10,6 +10,7 @@ import {
   ChevronSvg,
   FullScreenSvg,
   HelpSvg,
+  InvoiceSvg,
   NotificationSvg,
   SettingsSvg,
 } from "../_svgs/_index";
@@ -18,7 +19,7 @@ import {
 import { GlobalContext } from "@/contexts/global.context";
 
 // COMPONENTS
-import SimpleSkeletonComonent from "../skeleton/simple-skeleton.component";
+import SimpleSkeletonComponent from "../skeleton/simple-skeleton.component";
 
 export default function SettingsComponent() {
   const { t } = useTranslation("");
@@ -27,7 +28,6 @@ export default function SettingsComponent() {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState([]);
-  const [isFullScreen, setIsFullScreen] = useState(false);
   const { restaurantContext } = useContext(GlobalContext);
 
   const userMenuRef = useRef(null);
@@ -39,17 +39,15 @@ export default function SettingsComponent() {
     router.pathname !== "/" && router.pathname.split("/").length > 2;
 
   function handleFullScreenToggle() {
-    const elem = document.documentElement;
-    if (!isFullScreen) {
-      elem.requestFullscreen?.() ||
-        elem.webkitRequestFullscreen?.() ||
-        elem.msRequestFullscreen?.();
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen?.() ||
+        document.documentElement.webkitRequestFullscreen?.() ||
+        document.documentElement.msRequestFullscreen?.();
     } else {
       document.exitFullscreen?.() ||
         document.webkitExitFullscreen?.() ||
         document.msExitFullscreen?.();
     }
-    setIsFullScreen(!isFullScreen);
   }
 
   useEffect(() => {
@@ -91,7 +89,7 @@ export default function SettingsComponent() {
         }}
       >
         {restaurantContext.dataLoading ? (
-          <SimpleSkeletonComonent />
+          <SimpleSkeletonComponent />
         ) : (
           <h1 className={`${isSubRoute && "opacity-40"}`}>
             {t("settings.restaurant")} -{" "}
@@ -192,9 +190,9 @@ export default function SettingsComponent() {
         <div
           ref={userMenuRef}
           className={`absolute right-0 top-full mt-2 bg-white shadow-lg rounded-lg w-44 z-10 transition-all duration-300 overflow-hidden ${
-            showUserMenu ? "max-h-[200px]" : "max-h-0"
+            showUserMenu ? "max-h-[300px]" : "max-h-0"
           }`}
-          style={{ maxHeight: showUserMenu ? "200px" : "0" }}
+          style={{ maxHeight: showUserMenu ? "300px" : "0" }}
         >
           <ul className="flex flex-col">
             <li
@@ -203,6 +201,16 @@ export default function SettingsComponent() {
             >
               <SettingsSvg width={20} height={20} />
               {t("settings.settings")}
+            </li>
+
+            <hr className="h-[1px] bg-darkBlue opacity-20 mx-4" />
+
+            <li
+              className="cursor-pointer flex gap-4 items-center hover:bg-darkBlue hover:bg-opacity-10 px-4 py-2 my-2"
+              onClick={() => router.push("/subscription")}
+            >
+              <InvoiceSvg width={20} height={20} />
+              {t("settings.subscription")}
             </li>
 
             <hr className="h-[1px] bg-darkBlue opacity-20 mx-4" />

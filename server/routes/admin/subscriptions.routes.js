@@ -34,6 +34,23 @@ router.post("/admin/create-subscription", async (req, res) => {
   } = req.body;
 
   try {
+    // Vérifier si un abonnement existe déjà pour le restaurant
+    const existingSubscriptions = await stripe.subscriptions.list({
+      customer: stripeCustomerId,
+      expand: ["data.items.data.price"],
+    });
+
+    const existingSubscription = existingSubscriptions.data.find(
+      (subscription) => subscription.metadata.restaurantId === restaurantId
+    );
+
+    if (existingSubscription) {
+      return res.status(400).json({
+        message: "Un abonnement est déjà associé à ce restaurant.",
+      });
+    }
+
+    // Si aucun abonnement existant, procéder à la création
     const subscription = await stripe.subscriptions.create({
       customer: stripeCustomerId,
       items: [{ price: priceId }],
