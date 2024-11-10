@@ -1,0 +1,16 @@
+{
+  "titles": {
+    "main": "Abonnement",
+    "second": "Factures"
+  },
+  "text": {
+    "subscription": "Abonnement en cours",
+    "month": "mois",
+    "noSubscription": "Aucun abonnement en cours",
+    "invoiceDate": "Facture en date du",
+    "noInvoices": "Aucune facture disponible"
+  },
+  "buttons": {
+    "download": "Télécharger"
+  }
+}

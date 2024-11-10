@@ -1,21 +1,11 @@
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
-
-// I18N
 import { useTranslation } from "next-i18next";
-
-// SVG
 import { EditSvg } from "../_shared/_svgs/_index";
 import * as icons from "../_shared/_svgs/_index";
-
-// DATA
 import { contactData } from "@/_assets/data/contact.data";
-
-// AXIOS
 import axios from "axios";
-
-// COMPONENTS
-import SimpleSkeletonComonent from "../_shared/skeleton/simple-skeleton.component";
+import SimpleSkeletonComponent from "../_shared/skeleton/simple-skeleton.component";
 
 export default function ContactRestaurantComponent(props) {
   const { t } = useTranslation("restaurant");
@@ -48,7 +38,12 @@ export default function ContactRestaurantComponent(props) {
 
   function getDefaultValues(data) {
     return {
-      address: data?.address || "",
+      address: {
+        line1: data?.address?.line1 || "",
+        zipCode: data?.address?.zipCode || "",
+        city: data?.address?.city || "",
+        country: data?.address?.country || "France",
+      },
       email: data?.email || "",
       phone: data?.phone || "",
       facebook: data?.social_media?.facebook || "",
@@ -66,7 +61,12 @@ export default function ContactRestaurantComponent(props) {
       .put(
         `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${props.restaurantId}/contact`,
         {
-          address: data.address,
+          address: {
+            line1: data.address.line1,
+            zipCode: data.address.zipCode,
+            city: data.address.city,
+            country: data.address.country,
+          },
           email: data.email,
           phone: data.phone,
           social_media: {
@@ -134,9 +134,16 @@ export default function ContactRestaurantComponent(props) {
         {contactData.map((item) => {
           const IconComponent = icons[item.icon];
           const isRequired = item.required;
-          const fieldValue =
-            props.restaurantData?.social_media?.[item.field] ||
-            props.restaurantData?.[item.field];
+
+          let fieldValue;
+          if (item.field.startsWith("address.")) {
+            const addressPart = item.field.split(".")[1];
+            fieldValue = props.restaurantData?.address?.[addressPart];
+          } else {
+            fieldValue =
+              props.restaurantData?.social_media?.[item.field] ||
+              props.restaurantData?.[item.field];
+          }
 
           return (
             <div
@@ -152,13 +159,13 @@ export default function ContactRestaurantComponent(props) {
                     strokeColor="#131E3660"
                   />
                 )}
-                <h3 className="flex items-center font-semibold">
+                <h3 className="flex items-center font-semibold whitespace-nowrap">
                   {t(item.label)}
                 </h3>
               </div>
 
               {props.dataLoading ? (
-                <SimpleSkeletonComonent justify="justify-end" />
+                <SimpleSkeletonComponent justify="justify-end" />
               ) : editing ? (
                 <input
                   type="text"

@@ -5,54 +5,58 @@ const router = express.Router();
 const RestaurantModel = require("../models/restaurant.model");
 
 // ADD A CATEGORY
-router.post("/restaurants/:restaurantId/dishes/categories", async (req, res) => {
-  const { restaurantId } = req.params;
-  const { name } = req.body;
+router.post(
+  "/restaurants/:restaurantId/dishes/categories",
+  async (req, res) => {
+    const { restaurantId } = req.params;
+    const { name } = req.body;
 
-  // Validation des données
-  if (!name) {
-    return res.status(400).json({ message: "Category name is required." });
-  }
-
-  try {
-    // Vérifier si le restaurant existe
-    const restaurant = await RestaurantModel.findById(restaurantId).populate(
-      "owner_id",
-      "firstname"
-    );
-
-    if (!restaurant) {
-      return res.status(404).json({ message: "Restaurant not found." });
+    // Validation des données
+    if (!name) {
+      return res.status(400).json({ message: "Category name is required." });
     }
 
-    // Vérifier si la catégorie existe déjà
-    const existingCategory = restaurant.dish_categories.find(
-      (category) => category.name.toLowerCase() === name.toLowerCase()
-    );
+    try {
+      // Vérifier si le restaurant existe
+      const restaurant = await RestaurantModel.findById(restaurantId)
+        .populate("owner_id", "firstname")
+        .populate("menus");
 
-    if (existingCategory) {
-      return res.status(400).json({ message: "Category already exists." });
+      if (!restaurant) {
+        return res.status(404).json({ message: "Restaurant not found." });
+      }
+
+      // Vérifier si la catégorie existe déjà
+      const existingCategory = restaurant.dish_categories.find(
+        (category) => category.name.toLowerCase() === name.toLowerCase()
+      );
+
+      if (existingCategory) {
+        return res.status(400).json({ message: "Category already exists." });
+      }
+
+      // Ajouter la nouvelle catégorie
+      const newCategory = {
+        name,
+        dishes: [],
+      };
+
+      restaurant.dish_categories.push(newCategory);
+
+      // Sauvegarder les modifications
+      await restaurant.save();
+
+      res
+        .status(201)
+        .json({ message: "Category added successfully.", restaurant });
+    } catch (error) {
+      console.error("Error adding category:", error);
+      res
+        .status(500)
+        .json({ message: "Server error. Please try again later." });
     }
-
-    // Ajouter la nouvelle catégorie
-    const newCategory = {
-      name,
-      dishes: [],
-    };
-
-    restaurant.dish_categories.push(newCategory);
-
-    // Sauvegarder les modifications
-    await restaurant.save();
-
-    res
-      .status(201)
-      .json({ message: "Category added successfully.", restaurant });
-  } catch (error) {
-    console.error("Error adding category:", error);
-    res.status(500).json({ message: "Server error. Please try again later." });
   }
-});
+);
 
 // UPDATE A CATEGORY
 router.put(
@@ -62,10 +66,9 @@ router.put(
     const { name, visible } = req.body;
 
     try {
-      const restaurant = await RestaurantModel.findById(restaurantId).populate(
-        "owner_id",
-        "firstname"
-      );
+      const restaurant = await RestaurantModel.findById(restaurantId)
+        .populate("owner_id", "firstname")
+        .populate("menus");
 
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found." });
@@ -108,7 +111,9 @@ router.delete(
           $pull: { dish_categories: { _id: categoryId } },
         },
         { new: true }
-      ).populate("owner_id", "firstname");
+      )
+        .populate("owner_id", "firstname")
+        .populate("menus");
 
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found." });
@@ -140,10 +145,9 @@ router.post("/restaurants/:restaurantId/dishes", async (req, res) => {
 
   try {
     // Vérifier si le restaurant existe
-    const restaurant = await RestaurantModel.findById(restaurantId).populate(
-      "owner_id",
-      "firstname"
-    );
+    const restaurant = await RestaurantModel.findById(restaurantId)
+      .populate("owner_id", "firstname")
+      .populate("menus");
 
     if (!restaurant) {
       return res.status(404).json({ message: "Restaurant not found." });
@@ -221,10 +225,9 @@ router.put("/restaurants/:restaurantId/dishes/:dishId", async (req, res) => {
 
   try {
     // Vérifier si le restaurant existe
-    const restaurant = await RestaurantModel.findById(restaurantId).populate(
-      "owner_id",
-      "firstname"
-    );
+    const restaurant = await RestaurantModel.findById(restaurantId)
+      .populate("owner_id", "firstname")
+      .populate("menus");
 
     if (!restaurant) {
       return res.status(404).json({ message: "Restaurant not found." });
@@ -270,10 +273,9 @@ router.delete("/restaurants/:restaurantId/dishes/:dishId", async (req, res) => {
   const { restaurantId, dishId } = req.params;
 
   try {
-    const restaurant = await RestaurantModel.findById(restaurantId).populate(
-      "owner_id",
-      "firstname"
-    );
+    const restaurant = await RestaurantModel.findById(restaurantId)
+      .populate("owner_id", "firstname")
+      .populate("menus");
 
     if (!restaurant) {
       return res.status(404).json({ message: "Restaurant not found." });
@@ -316,10 +318,9 @@ router.put(
     const { orderedCategoryIds } = req.body;
 
     try {
-      const restaurant = await RestaurantModel.findById(restaurantId).populate(
-        "owner_id",
-        "firstname"
-      );
+      const restaurant = await RestaurantModel.findById(restaurantId)
+        .populate("owner_id", "firstname")
+        .populate("menus");
 
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found." });
@@ -355,10 +356,9 @@ router.put(
     const { orderedDishIds } = req.body;
 
     try {
-      const restaurant = await RestaurantModel.findById(restaurantId).populate(
-        "owner_id",
-        "firstname"
-      );
+      const restaurant = await RestaurantModel.findById(restaurantId)
+        .populate("owner_id", "firstname")
+        .populate("menus");
 
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found." });

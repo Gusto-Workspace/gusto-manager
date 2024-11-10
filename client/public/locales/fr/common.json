@@ -13,8 +13,9 @@
     "hello": "Bonjour",
     "restaurant": "Restaurant",
     "settings": "Paramètres",
-    "help" : "Aide",
-    "about" : "À propos"
+    "subscription": "Abonnement",
+    "help": "Aide",
+    "about": "À propos"
   },
   "buttons": {
     "logout": "Déconnexion"

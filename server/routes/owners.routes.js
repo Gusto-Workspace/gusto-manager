@@ -48,7 +48,6 @@ function sendTransactionalEmail(params) {
   }
 }
 
-
 // Route pour envoyer le code de réinitialisation de mot de passe
 router.post("/owner/send-reset-code", async (req, res) => {
   const { email } = req.body;
@@ -147,9 +146,9 @@ router.get("/owner/get-data", authenticateToken, async (req, res) => {
       return res.status(404).json({ message: "Owner not found" });
     }
 
-    const restaurant = await RestaurantModel.findById(
-      req.user.restaurantId
-    ).populate("owner_id", "firstname");
+    const restaurant = await RestaurantModel.findById(req.user.restaurantId)
+      .populate("owner_id", "firstname")
+      .populate("menus");
 
     res.status(200).json({ owner, restaurant });
   } catch (error) {

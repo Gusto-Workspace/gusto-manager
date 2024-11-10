@@ -39,3 +39,5 @@ export { HelpSvg } from "./help.svg";
 export { VisibleSvg } from "./visible.svg";
 export { AboutSvg } from "./about.svg";
 export { PasswordSvg } from "./password.svg";
+export { FullScreenSvg } from "./full-screen.svg";
+export { InvoiceSvg } from "./invoice.svg";

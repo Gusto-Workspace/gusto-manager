@@ -27,7 +27,9 @@ router.post("/restaurants/:id/gifts", async (req, res) => {
       restaurantId,
       { $push: { giftCards: newGiftCard } },
       { new: true }
-    ).populate("owner_id", "firstname");
+    )
+      .populate("owner_id", "firstname")
+      .populate("menus");
 
     res.status(200).json({ restaurant });
   } catch (error) {
@@ -52,7 +54,9 @@ router.put("/restaurants/:id/gifts/:giftId", async (req, res) => {
         },
       },
       { new: true }
-    ).populate("owner_id", "firstname");
+    )
+      .populate("owner_id", "firstname")
+      .populate("menus");
 
     if (!restaurant) {
       return res
@@ -77,7 +81,9 @@ router.delete("/restaurants/:id/gifts/:giftId", async (req, res) => {
       restaurantId,
       { $pull: { giftCards: { _id: giftId } } },
       { new: true }
-    ).populate("owner_id", "firstname");
+    )
+      .populate("owner_id", "firstname")
+      .populate("menus");
 
     if (!restaurant) {
       return res
@@ -101,7 +107,9 @@ router.post("/restaurants/:id/gifts/:giftId/purchase", async (req, res) => {
     // Cherche le restaurant et la carte cadeau correspondante
     const restaurant = await RestaurantModel.findOne({
       _id: restaurantId,
-    }).populate("owner_id", "firstname");
+    })
+      .populate("owner_id", "firstname")
+      .populate("menus");
 
     const gift = restaurant.giftCards.id(giftId);
 
@@ -151,7 +159,9 @@ router.put(
           $set: { "purchasesGiftCards.$.status": "Used" },
         },
         { new: true }
-      ).populate("owner_id", "firstname");
+      )
+        .populate("owner_id", "firstname")
+        .populate("menus");
 
       if (!restaurant) {
         return res

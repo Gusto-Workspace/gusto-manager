@@ -8,7 +8,9 @@ import { useTranslation } from "next-i18next";
 import {
   AboutSvg,
   ChevronSvg,
+  FullScreenSvg,
   HelpSvg,
+  InvoiceSvg,
   NotificationSvg,
   SettingsSvg,
 } from "../_svgs/_index";
@@ -17,20 +19,36 @@ import {
 import { GlobalContext } from "@/contexts/global.context";
 
 // COMPONENTS
-import SimpleSkeletonComonent from "../skeleton/simple-skeleton.component";
+import SimpleSkeletonComponent from "../skeleton/simple-skeleton.component";
 
 export default function SettingsComponent() {
   const { t } = useTranslation("");
   const router = useRouter();
   const [showRestaurantList, setShowRestaurantList] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [notifications, setNotifications] = useState([]);
   const { restaurantContext } = useContext(GlobalContext);
 
   const userMenuRef = useRef(null);
   const userNameRef = useRef(null);
+  const notificationsRef = useRef(null);
+  const notificationsButtonRef = useRef(null);
 
   const isSubRoute =
     router.pathname !== "/" && router.pathname.split("/").length > 2;
+
+  function handleFullScreenToggle() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen?.() ||
+        document.documentElement.webkitRequestFullscreen?.() ||
+        document.documentElement.msRequestFullscreen?.();
+    } else {
+      document.exitFullscreen?.() ||
+        document.webkitExitFullscreen?.() ||
+        document.msExitFullscreen?.();
+    }
+  }
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -41,12 +59,16 @@ export default function SettingsComponent() {
       ) {
         setShowUserMenu(false);
       }
+      if (
+        notificationsRef.current &&
+        !notificationsRef.current.contains(event.target) &&
+        !notificationsButtonRef.current.contains(event.target)
+      ) {
+        setShowNotifications(false);
+      }
     }
-
     document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   return (
@@ -67,7 +89,7 @@ export default function SettingsComponent() {
         }}
       >
         {restaurantContext.dataLoading ? (
-          <SimpleSkeletonComonent />
+          <SimpleSkeletonComponent />
         ) : (
           <h1 className={`${isSubRoute && "opacity-40"}`}>
             {t("settings.restaurant")} -{" "}
@@ -107,10 +129,45 @@ export default function SettingsComponent() {
       </div>
 
       <div className="flex">
-        <div className="border-r px-8">
-          <button className="bg-blue p-3 rounded-lg bg-opacity-60">
+        <div className="pr-3">
+          <button
+            className="bg-violet p-3 rounded-lg bg-opacity-40"
+            onClick={handleFullScreenToggle}
+          >
+            <FullScreenSvg width={25} height={25} fillColor="#634FD2" />
+          </button>
+        </div>
+
+        <div className="border-r pr-8 relative">
+          <button
+            ref={notificationsButtonRef}
+            className="bg-blue p-3 rounded-lg bg-opacity-40"
+            onClick={() => setShowNotifications(!showNotifications)}
+          >
             <NotificationSvg width={25} height={25} fillColor="#4583FF" />
           </button>
+
+          <div
+            ref={notificationsRef}
+            className={`absolute right-0 top-full mt-4 bg-white shadow-lg rounded-lg w-64 z-10 transition-all duration-300 overflow-hidden ${
+              showNotifications ? "max-h-[200px]" : "max-h-0"
+            }`}
+            style={{ maxHeight: showNotifications ? "200px" : "0" }}
+          >
+            <ul className="flex flex-col p-4">
+              {notifications.length > 0 ? (
+                notifications.map((notification, i) => (
+                  <li key={i} className="text-sm py-2">
+                    {notification}
+                  </li>
+                ))
+              ) : (
+                <li className="opacity-40 italic text-sm">
+                  Aucune notification
+                </li>
+              )}
+            </ul>
+          </div>
         </div>
 
         <div
@@ -119,7 +176,7 @@ export default function SettingsComponent() {
           onClick={() => setShowUserMenu((prev) => !prev)}
         >
           <p>
-            {t("settings.hello")},
+            {t("settings.hello")},{" "}
             <span className="font-bold ml-1">
               {restaurantContext.restaurantData?.owner_id?.firstname}
             </span>
@@ -133,9 +190,9 @@ export default function SettingsComponent() {
         <div
           ref={userMenuRef}
           className={`absolute right-0 top-full mt-2 bg-white shadow-lg rounded-lg w-44 z-10 transition-all duration-300 overflow-hidden ${
-            showUserMenu ? "max-h-[200px]" : "max-h-0"
+            showUserMenu ? "max-h-[300px]" : "max-h-0"
           }`}
-          style={{ maxHeight: showUserMenu ? "200px" : "0" }}
+          style={{ maxHeight: showUserMenu ? "300px" : "0" }}
         >
           <ul className="flex flex-col">
             <li
@@ -147,7 +204,17 @@ export default function SettingsComponent() {
             </li>
 
             <hr className="h-[1px] bg-darkBlue opacity-20 mx-4" />
-           
+
+            <li
+              className="cursor-pointer flex gap-4 items-center hover:bg-darkBlue hover:bg-opacity-10 px-4 py-2 my-2"
+              onClick={() => router.push("/subscription")}
+            >
+              <InvoiceSvg width={20} height={20} />
+              {t("settings.subscription")}
+            </li>
+
+            <hr className="h-[1px] bg-darkBlue opacity-20 mx-4" />
+
             <li
               className="cursor-pointer flex gap-4 items-center hover:bg-darkBlue hover:bg-opacity-10 px-4 py-2 my-2"
               onClick={() => router.push("/help")}

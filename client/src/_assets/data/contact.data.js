@@ -1,7 +1,25 @@
 export const contactData = [
   {
-    label: "contact.address",
-    field: "address",
+    label: "contact.address.line1",
+    field: "address.line1",
+    icon: "RestaurantSvg",
+    required: true,
+  },
+  {
+    label: "contact.address.zipCode",
+    field: "address.zipCode",
+    icon: "RestaurantSvg",
+    required: true,
+  },
+  {
+    label: "contact.address.city",
+    field: "address.city",
+    icon: "RestaurantSvg",
+    required: true,
+  },
+  {
+    label: "contact.address.country",
+    field: "address.country",
     icon: "RestaurantSvg",
     required: true,
   },

@@ -32,13 +32,11 @@ router.post("/admin/add-restaurant", async (req, res) => {
     let owner;
 
     if (existingOwnerId) {
-      // 1. Récupérer le propriétaire existant
       owner = await OwnerModel.findById(existingOwnerId);
       if (!owner) {
         return res.status(404).json({ message: "Propriétaire non trouvé" });
       }
     } else {
-      // 2. Créer un nouveau propriétaire
       owner = new OwnerModel({
         firstname: ownerData.firstname,
         lastname: ownerData.lastname,
@@ -49,7 +47,6 @@ router.post("/admin/add-restaurant", async (req, res) => {
 
       await owner.save();
 
-      // Créer le client Stripe pour le nouveau propriétaire
       const customer = await stripe.customers.create({
         email: owner.email,
         name: `${owner.firstname} ${owner.lastname}`,
@@ -62,10 +59,15 @@ router.post("/admin/add-restaurant", async (req, res) => {
       await owner.save();
     }
 
-    // 3. Créer le restaurant et lier le propriétaire
+    // Créer le restaurant avec l'adresse sous forme d'objet
     const newRestaurant = new RestaurantModel({
       name: restaurantData.name,
-      address: restaurantData.address,
+      address: {
+        line1: restaurantData.address.line1,
+        zipCode: restaurantData.address.zipCode,
+        city: restaurantData.address.city,
+        country: restaurantData.address.country || "France",
+      },
       phone: restaurantData.phone,
       email: restaurantData.email,
       website: restaurantData.website,
@@ -79,11 +81,9 @@ router.post("/admin/add-restaurant", async (req, res) => {
 
     await newRestaurant.save();
 
-    // 4. Mettre à jour le propriétaire pour inclure le restaurant
     owner.restaurants.push(newRestaurant._id);
     await owner.save();
 
-    // 5. Populer les informations du propriétaire avant de renvoyer la réponse
     const populatedRestaurant = await RestaurantModel.findById(
       newRestaurant._id
     ).populate("owner_id", "firstname lastname email");
@@ -103,7 +103,6 @@ router.put("/admin/restaurants/:id", async (req, res) => {
   const { restaurantData, ownerData, existingOwnerId } = req.body;
 
   try {
-    // Trouver le restaurant existant
     const restaurant = await RestaurantModel.findById(req.params.id);
     if (!restaurant) {
       return res.status(404).json({ message: "Restaurant non trouvé" });
@@ -112,7 +111,6 @@ router.put("/admin/restaurants/:id", async (req, res) => {
     let previousOwner = null;
     let newOwner = null;
 
-    // Si un propriétaire existant est sélectionné et qu'il est différent de l'actuel
     if (
       existingOwnerId &&
       existingOwnerId !== restaurant.owner_id?.toString()
@@ -124,11 +122,8 @@ router.put("/admin/restaurants/:id", async (req, res) => {
           .json({ message: "Nouveau propriétaire non trouvé" });
       }
 
-      // Trouver l'ancien propriétaire (si le restaurant avait un propriétaire)
       if (restaurant.owner_id) {
         previousOwner = await OwnerModel.findById(restaurant.owner_id);
-
-        // Retirer le restaurant de la liste des restaurants de l'ancien propriétaire
         if (previousOwner) {
           previousOwner.restaurants = previousOwner.restaurants.filter(
             (restaurantId) =>
@@ -137,11 +132,9 @@ router.put("/admin/restaurants/:id", async (req, res) => {
           await previousOwner.save();
         }
       }
-      // Ajouter le restaurant dans la liste du nouveau propriétaire
       newOwner.restaurants.push(restaurant._id);
       await newOwner.save();
 
-      // Mettre à jour le propriétaire dans le restaurant
       restaurant.owner_id = newOwner._id;
     } else if (!existingOwnerId && ownerData && ownerData.firstname) {
       if (restaurant.owner_id) {
@@ -158,7 +151,6 @@ router.put("/admin/restaurants/:id", async (req, res) => {
 
       await newOwnerData.save();
 
-      // Créer un client Stripe pour le nouveau propriétaire
       const customer = await stripe.customers.create({
         email: newOwnerData.email,
         name: `${newOwnerData.firstname} ${newOwnerData.lastname}`,
@@ -170,7 +162,6 @@ router.put("/admin/restaurants/:id", async (req, res) => {
       newOwnerData.stripeCustomerId = customer.id;
       await newOwnerData.save();
 
-      // Supprimer le restaurant de l'ancien propriétaire
       if (previousOwner) {
         previousOwner.restaurants = previousOwner.restaurants.filter(
           (restaurantId) =>
@@ -179,23 +170,25 @@ router.put("/admin/restaurants/:id", async (req, res) => {
         await previousOwner.save();
       }
 
-      // Mettre à jour le restaurant pour qu'il appartienne au nouveau propriétaire
       restaurant.owner_id = newOwnerData._id;
       newOwnerData.restaurants.push(restaurant._id);
       await newOwnerData.save();
     }
 
-    // Mettre à jour les informations du restaurant (si modifiées)
+    // Mise à jour des informations du restaurant, y compris l'adresse
     restaurant.name = restaurantData.name;
-    restaurant.address = restaurantData.address;
+    restaurant.address = {
+      line1: restaurantData.address.line1,
+      zipCode: restaurantData.address.zipCode,
+      city: restaurantData.address.city,
+      country: restaurantData.address.country || "France",
+    };
     restaurant.phone = restaurantData.phone;
     restaurant.email = restaurantData.email;
     restaurant.website = restaurantData.website;
 
-    // Sauvegarder les modifications du restaurant
     await restaurant.save();
 
-    // Populer les informations du propriétaire avant de renvoyer la réponse
     const updatedRestaurant = await RestaurantModel.findById(
       restaurant._id
     ).populate("owner_id", "firstname lastname email");

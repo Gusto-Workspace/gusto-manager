@@ -51,7 +51,12 @@ export default function ListWinesComponent(props) {
     props.subCategory ? props.subCategory.wines : props.category.wines
   );
 
-  const [subCategories, setSubCategories] = useState([]);
+  const [subCategories, setSubCategories] = useState(
+    !props.subCategory &&
+      restaurantContext?.restaurantData?.wine_categories?.find(
+        (category) => category._id === props.category._id
+      )?.subCategories
+  );
 
   useEffect(() => {
     {

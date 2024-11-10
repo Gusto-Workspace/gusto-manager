@@ -8,7 +8,7 @@ import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 
 // COMPONENTS
 import NavAdminComponent from "@/components/admin/_shared/nav/nav.admin.component";
-import SubscriptionsAdminComponent from "@/components/admin/subscriptions/subscriptions.admin.component";
+import ListSubscriptionsAdminComponent from "@/components/admin/subscriptions/list-subscriptions.admin.component";
 
 export default function SubscriptionsPage(props) {
   const router = useRouter();
@@ -67,8 +67,8 @@ export default function SubscriptionsPage(props) {
           <div className="flex">
             <NavAdminComponent />
             
-            <div className="border h-screen overflow-y-auto flex-1">
-              <SubscriptionsAdminComponent />
+            <div className="border h-screen overflow-y-auto flex-1 p-12">
+              <ListSubscriptionsAdminComponent />
             </div>
           </div>
         )}

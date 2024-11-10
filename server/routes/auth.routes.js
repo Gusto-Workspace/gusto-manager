@@ -50,7 +50,14 @@ router.post("/owner/login", async (req, res) => {
       return res.status(401).json({ message: "errors.incorrect" });
     }
 
-    const token = jwt.sign({ id: owner._id, role: "owner" }, JWT_SECRET);
+    const token = jwt.sign(
+      {
+        id: owner._id,
+        role: "owner",
+        stripeCustomerId: owner.stripeCustomerId,
+      },
+      JWT_SECRET
+    );
 
     res.json({ token, owner });
   } catch (err) {
@@ -68,7 +75,12 @@ router.post("/owner/select-restaurant", async (req, res) => {
 
     // Create a new token with the restaurant ID included
     const newToken = jwt.sign(
-      { id: decoded.id, role: "owner", restaurantId },
+      {
+        id: decoded.id,
+        role: "owner",
+        stripeCustomerId: decoded.stripeCustomerId,
+        restaurantId,
+      },
       JWT_SECRET
     );
 

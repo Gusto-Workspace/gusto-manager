@@ -1,0 +1,30 @@
+{
+  "titles": {
+    "main": "Dashboard"
+  },
+  "labels": {
+    "totalMenu": "Total menus",
+    "totalDishes": "Total individual products",
+    "totalDrinks": "Total drinks",
+    "totalWines": "Total wines",
+    "totalNews": "Total news",
+    "totalGiftCards": "Total gift cards",
+    "totalPurchasesGiftCards": "Total gift cards sold",
+    "totalSold": "Total gift card sales amount",
+    "monthlySold": "Monthly Gift Card Sales",
+    "notifications": "Unread notifications",
+    "visible": "Visible",
+    "masked": "Masked",
+    "emptyMenu": "No menu",
+    "emptyDish": "No product",
+    "emptyDrink": "No drink",
+    "emptyWine": "No wine",
+    "emptyNew": "No news",
+    "emptyNotification": "No notification",
+    "emptySold": "No sale",
+    "emptyGiftCard": "No gift card",
+    "valid": "Valid",
+    "used": "Used",
+    "expired": "Expired"
+  }
+}

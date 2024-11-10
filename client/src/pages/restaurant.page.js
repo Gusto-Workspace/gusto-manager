@@ -64,21 +64,21 @@ export default function RestaurantPage(props) {
               <h1 className="pl-2 py-1 text-2xl">{t("restaurant:title")}</h1>
             </div>
 
-            <div className="flex gap-6">
-              <HoursRestaurantComponent
-                openingHours={restaurantContext.restaurantData?.opening_hours}
-                restaurantId={restaurantContext.restaurantData?._id}
-                dataLoading={restaurantContext.dataLoading}
-                closeEditing={restaurantContext.closeEditing}
-                handleUpdateData={handleUpdateData}
-              />
-
+            <div className="flex gap-6 flex-col desktop:flex-row">
               <ContactRestaurantComponent
                 restaurantData={restaurantContext.restaurantData}
                 restaurantId={restaurantContext.restaurantData?._id}
                 handleUpdateData={handleUpdateData}
                 dataLoading={restaurantContext.dataLoading}
                 closeEditing={restaurantContext.closeEditing}
+              />
+
+              <HoursRestaurantComponent
+                openingHours={restaurantContext.restaurantData?.opening_hours}
+                restaurantId={restaurantContext.restaurantData?._id}
+                dataLoading={restaurantContext.dataLoading}
+                closeEditing={restaurantContext.closeEditing}
+                handleUpdateData={handleUpdateData}
               />
             </div>
           </div>

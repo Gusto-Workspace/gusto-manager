@@ -1,5 +1,12 @@
 const mongoose = require("mongoose");
 
+const addressSchema = new mongoose.Schema({
+  line1: { type: String, required: true },
+  zipCode: { type: String, required: true },
+  city: { type: String, required: true },
+  country: { type: String, required: true, default: "France" },
+});
+
 // Sous-schéma pour les horaires d'ouverture
 const openingHourSchema = new mongoose.Schema(
   {
@@ -85,6 +92,12 @@ const drinkCategorySchema = new mongoose.Schema({
   drinks: { type: [drinkSchema], default: [] },
 });
 
+// Schéma pour les notifications
+const notificationSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  read: { type: Boolean, default: true },
+});
+
 // Schéma pour les cartes cadeaux
 const giftCardSchema = new mongoose.Schema({
   value: { type: Number, required: true },
@@ -103,6 +116,7 @@ const giftCardPurchaseSchema = new mongoose.Schema({
   },
   beneficiaryFirstName: { type: String, required: true },
   beneficiaryLastName: { type: String, required: true },
+  created_at: { type: Date, default: Date.now },
 });
 
 // Sous-schéma pour les actualités
@@ -130,7 +144,7 @@ const socialMediaSchema = new mongoose.Schema(
 // Schéma principal pour le restaurant
 const restaurantSchema = new mongoose.Schema({
   name: { type: String, required: true },
-  address: { type: String, required: true },
+  address: { type: addressSchema, required: true },
   phone: { type: String, required: true },
   email: { type: String, required: true },
   website: { type: String },
@@ -145,6 +159,7 @@ const restaurantSchema = new mongoose.Schema({
   drink_categories: { type: [drinkCategorySchema], default: [] },
   wine_categories: { type: [wineCategorySchema], default: [] },
   news: { type: [newsSchema], default: [] },
+  notifications: { type: [notificationSchema], default: [] },
   menus: [{ type: mongoose.Schema.Types.ObjectId, ref: "Menu" }],
   giftCards: { type: [giftCardSchema], default: [] },
   purchasesGiftCards: { type: [giftCardPurchaseSchema], default: [] },

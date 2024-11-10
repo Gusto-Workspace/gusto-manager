@@ -1,22 +1,27 @@
-import Head from "next/head";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
+import Head from "next/head";
 
 // I18N
 import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 
 // COMPONENTS
-import FormLoginComponent from "@/components/login/form.login.component";
+import NavAdminComponent from "@/components/admin/_shared/nav/nav.admin.component";
+import AddSubscriptionsAdminComponent from "@/components/admin/subscriptions/add-subscriptions.admin.component";
 
-export default function LoginPage(props) {
+
+export default function AddSubscriptionsPage(props) {
   const router = useRouter();
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("admin-token");
 
-    if (token) {
-      router.push("/");
+    if (!token) {
+      router.push("/admin/login");
+    } else {
+      setLoading(false);
     }
   }, [router]);
 
@@ -32,7 +37,6 @@ export default function LoginPage(props) {
       title = "Gusto Manager";
       description = "";
   }
-
   return (
     <>
       <Head>
@@ -55,9 +59,20 @@ export default function LoginPage(props) {
         </> */}
       </Head>
 
-      <div className="min-h-[100vh] bg-[url('/img/bg-1.webp')] bg-cover bg-center flex justify-center items-center">
-      
-        <FormLoginComponent />
+      <div className="w-[100vw]">
+        {loading ? (
+          <div className="flex justify-center items-center ">
+            <div className="loader">Loading...</div>
+          </div>
+        ) : (
+          <div className="flex">
+            <NavAdminComponent />
+            
+            <div className="border h-screen overflow-y-auto flex-1 p-12">
+              <AddSubscriptionsAdminComponent/>
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
@@ -66,7 +81,7 @@ export default function LoginPage(props) {
 export async function getStaticProps({ locale }) {
   return {
     props: {
-      ...(await serverSideTranslations(locale, ["common", "login"])),
+      ...(await serverSideTranslations(locale, ["common", "admin"])),
     },
   };
 }

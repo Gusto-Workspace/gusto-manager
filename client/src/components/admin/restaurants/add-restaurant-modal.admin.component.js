@@ -49,7 +49,12 @@ export default function AddRestaurantModal(props) {
       reset({
         restaurantData: {
           name: props.restaurant.name,
-          address: props.restaurant.address,
+          address: {
+            line1: props.restaurant.address?.line1 || "",
+            zipCode: props.restaurant.address?.zipCode || "",
+            city: props.restaurant.address?.city || "",
+            country: props.restaurant.address?.country || "France",
+          },
           phone: props.restaurant.phone,
           email: props.restaurant.email,
           website: props.restaurant.website,
@@ -60,12 +65,6 @@ export default function AddRestaurantModal(props) {
       props.setIsExistingOwner(false);
     }
   }, [props.restaurant, reset, setValue]);
-
-  useEffect(() => {
-    if (props.restaurant && props.restaurant.owner_id) {
-      setValue("existingOwnerId", props.restaurant.owner_id._id);
-    }
-  }, [owners, props.restaurant, setValue]);
 
   async function onSubmit(data) {
     const restaurantData = data.restaurantData;
@@ -112,7 +111,7 @@ export default function AddRestaurantModal(props) {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
-      <div className="bg-white p-8 rounded-lg flex flex-col gap-4 w-[550px]">
+      <div className="bg-white p-8 rounded-lg flex flex-col gap-4 w-[550px] max-h-[80%] overflow-y-auto">
         <h2>
           {props.restaurant
             ? t("restaurants.form.edit")
@@ -128,12 +127,41 @@ export default function AddRestaurantModal(props) {
             errors={errors}
           />
 
+          <h3>{t("restaurants.form.contact")}</h3>
+
           <FormInputComponent
-            name="restaurantData.address"
-            placeholder={t("restaurants.form.adress")}
+            name="restaurantData.address.line1"
+            placeholder={t("restaurants.form.address.line1")}
             register={register}
             required={true}
             errors={errors}
+          />
+
+          <div className="flex gap-2">
+            <FormInputComponent
+              name="restaurantData.address.zipCode"
+              placeholder={t("restaurants.form.address.zipCode")}
+              register={register}
+              required={true}
+              errors={errors}
+            />
+
+            <FormInputComponent
+              name="restaurantData.address.city"
+              placeholder={t("restaurants.form.address.city")}
+              register={register}
+              required={true}
+              errors={errors}
+            />
+          </div>
+
+          <FormInputComponent
+            name="restaurantData.address.country"
+            placeholder={t("restaurants.form.address.country")}
+            register={register}
+            required={true}
+            errors={errors}
+            defaultValue="France"
           />
 
           <FormInputComponent

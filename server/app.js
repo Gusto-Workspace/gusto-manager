@@ -43,10 +43,12 @@ app.use(apiRoutes, authRoutes);
 const dashboardAdminRoutes = require("./routes/admin/dashboard.routes");
 const restaurantsAdminRoutes = require("./routes/admin/restaurants.routes");
 const ownersAdminRoutes = require("./routes/admin/owners.routes");
+const subscriptionsAdminRoutes = require("./routes/admin/subscriptions.routes");
 
 app.use(apiRoutes, dashboardAdminRoutes);
 app.use(apiRoutes, restaurantsAdminRoutes);
 app.use(apiRoutes, ownersAdminRoutes);
+app.use(apiRoutes, subscriptionsAdminRoutes);
 
 // OWNER
 const restaurantsRoutes = require("./routes/restaurants.routes");

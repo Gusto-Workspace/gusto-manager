@@ -16,11 +16,18 @@
       "edit": "Edit a restaurant",
       "add": "Add a restaurant",
       "name": "Name of the restaurant",
-      "adress": "Adress",
       "phone": "Phone Number",
       "email": "Contact email",
       "web": "Website",
       "owner": "Owner",
+      "contact": "Contact Informations",
+      "address": {
+        "title" : "Address",
+        "line1": "Line 1",
+        "zipCode": "Zip code",
+        "city": "City",
+        "country": "Country"
+      },
       "buttons": {
         "add": "Add",
         "cancel": "Cancel",

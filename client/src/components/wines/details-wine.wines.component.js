@@ -72,11 +72,11 @@ export default function DetailsWineComponent(props) {
 
         <p className="text-lg whitespace-nowrap">{props.wine.year}</p>
 
-        <p className="text-lg whitespace-nowrap">
+        <p className="text-lg whitespace-nowrap min-w-[60px] text-right">
           {props.wine.volume} {props.wine.unit}
         </p>
 
-        <p className="text-lg whitespace-nowrap">
+        <p className="text-lg whitespace-nowrap min-w-[90px] text-right">
           {props.wine.price.toFixed(2)} {props.currencySymbol}
         </p>
 
