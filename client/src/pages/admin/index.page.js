@@ -30,7 +30,6 @@ export default function AdminPage(props) {
           },
         })
         .then((response) => {
-          console.log(response.data.message);
           setLoading(false);
         })
         .catch((error) => {
