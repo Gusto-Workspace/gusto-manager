@@ -59,7 +59,7 @@ export default function FormLoginComponent() {
       if (error.response && error.response.data) {
         setErrorMessage(error.response.data.message || "Login failed");
       } else {
-        setErrorMessage("An error occurred. Please try again.");
+        setErrorMessage("errors.server");
       }
     } finally {
       setLoading(false);
@@ -68,6 +68,7 @@ export default function FormLoginComponent() {
 
   async function handleRestaurantSelect(restaurantId, token) {
     try {
+      setLoading(true)
       const response = await axios.post(
         `${process.env.NEXT_PUBLIC_API_URL}/owner/select-restaurant`,
         { token, restaurantId }
@@ -82,7 +83,8 @@ export default function FormLoginComponent() {
       router.push("/");
     } catch (error) {
       console.error("Erreur lors de la sélection du restaurant:", error);
-      setErrorMessage("An error occurred. Please try again.");
+      setErrorMessage("errors.server");
+      setLoading(false)
     }
   }
 
@@ -190,7 +192,7 @@ export default function FormLoginComponent() {
             }
             disabled={!selectedRestaurant}
           >
-            {t("buttons.access")}
+            {loading ? t("buttons.loading") : t("buttons.access")}
           </button>
         </div>
       )}

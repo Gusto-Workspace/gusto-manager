@@ -21,7 +21,7 @@
     },
     "errors": {
       "incorrect": "Credentials not recognized, please check your information",
-      "server": "Internal error, unable to connect",
+      "server": "Internal error, unable to connect. Try again later or contact customer service",
       "passwords": "Passwords do not match",
       "invalid": "Invalid or expired code",
       "code": "Error sending the code",
