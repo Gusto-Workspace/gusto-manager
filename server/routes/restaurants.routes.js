@@ -31,7 +31,7 @@ async function updateExpiredStatus(restaurantId) {
 }
 
 // GET ALL OWNER RESTAURANTS
-router.get("/owner/restaurants", async (req, res) => {
+router.get("/owner/restaurants", authenticateToken, async (req, res) => {
   const ownerId = req.query.ownerId;
 
   try {
