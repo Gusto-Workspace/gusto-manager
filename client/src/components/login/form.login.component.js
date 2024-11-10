@@ -110,7 +110,7 @@ export default function FormLoginComponent() {
               type="email"
               placeholder={t("form.labels.email")}
               className="py-2 w-full rounded-r-lg  border-l pl-2"
-              {...register("email", { required: "Email is required" })}
+              {...register("email", { required: true })}
             />
           </div>
 
@@ -124,7 +124,7 @@ export default function FormLoginComponent() {
                 type={showPassword ? "text" : "password"}
                 placeholder={t("form.labels.password")}
                 className="py-2 w-full rounded-r-lg border-l pl-2 pr-8"
-                {...register("password", { required: "Password is required" })}
+                {...register("password", { required: true })}
               />
               <button
                 type="button"

@@ -15,6 +15,12 @@ export default function RestaurantContext() {
   const [closeEditing, setCloseEditing] = useState(false);
   const [isAuth, setIsAuth] = useState(false);
 
+  function handleInvalidToken() {
+    setRestaurantsList([])
+    localStorage.removeItem("token");
+    router.push("/login");
+  }
+
   function fetchRestaurantData(token, restaurantId) {
     setDataLoading(true);
 
@@ -32,11 +38,15 @@ export default function RestaurantContext() {
         setDataLoading(false);
       })
       .catch((error) => {
-        console.error(
-          "Erreur lors de la récupération des données du restaurant:",
-          error
-        );
-        setDataLoading(false);
+        if (error.response?.status === 403) {
+          handleInvalidToken();
+        } else {
+          console.error(
+            "Erreur lors de la récupération des données du restaurant:",
+            error
+          );
+          setDataLoading(false);
+        }
       });
   }
 
@@ -44,7 +54,7 @@ export default function RestaurantContext() {
     const token = localStorage.getItem("token");
 
     if (!token) {
-      router.push("/login");
+      handleInvalidToken();
     } else {
       try {
         const decodedToken = jwtDecode(token);
@@ -74,17 +84,19 @@ export default function RestaurantContext() {
             setIsAuth(true);
           })
           .catch((error) => {
-            console.error(
-              "Erreur lors de la récupération des restaurants:",
-              error
-            );
-            localStorage.removeItem("token");
-            router.push("/login");
+            if (error.response?.status === 403) {
+              handleInvalidToken();
+            } else {
+              console.error(
+                "Erreur lors de la récupération des restaurants:",
+                error
+              );
+              setDataLoading(false);
+            }
           });
       } catch (error) {
         console.error("Invalid token:", error);
-        localStorage.removeItem("token");
-        router.push("/login");
+        handleInvalidToken();
       }
     }
   }
@@ -111,9 +123,13 @@ export default function RestaurantContext() {
           setCloseEditing(false);
         })
         .catch((error) => {
-          console.error("Erreur lors de la sélection du restaurant:", error);
-          setDataLoading(false);
-          setCloseEditing(false);
+          if (error.response?.status === 403) {
+            handleInvalidToken();
+          } else {
+            console.error("Erreur lors de la sélection du restaurant:", error);
+            setDataLoading(false);
+            setCloseEditing(false);
+          }
         });
     }
   }
