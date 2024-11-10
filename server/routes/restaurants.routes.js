@@ -135,7 +135,7 @@ router.get(
           amount_due: invoice.amount_due / 100,
           currency: invoice.currency.toUpperCase(),
           status: invoice.status,
-          date: new Date(invoice.created * 1000).toLocaleDateString(),
+          date: invoice.created,
           download_url: invoice.invoice_pdf,
         })),
       };

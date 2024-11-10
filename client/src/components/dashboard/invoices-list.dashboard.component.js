@@ -1,3 +1,5 @@
+import { useRouter } from "next/router";
+
 // I18N
 import { useTranslation } from "next-i18next";
 
@@ -6,6 +8,8 @@ import SimpleSkeletonComponent from "../_shared/skeleton/simple-skeleton.compone
 
 export default function InvoicesListComponent(props) {
   const { t } = useTranslation("subscription");
+  const router = useRouter();
+  const { locale } = router;
 
   if (props.isLoading) {
     return (
@@ -17,6 +21,15 @@ export default function InvoicesListComponent(props) {
 
   const { invoices } = props?.subscriptionData;
 
+  function formatDate(timestamp) {
+    const date = new Date(timestamp * 1000);
+    return date.toLocaleDateString(locale === "fr" ? "fr-FR" : "en-US", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+  }
+  
   return (
     <div className="flex flex-col gap-4">
       {invoices?.length > 0 ? (
@@ -28,7 +41,7 @@ export default function InvoicesListComponent(props) {
             >
               <div>
                 <p className="text-base font-medium">
-                  {t("text.invoiceDate")} {invoice.date}
+                  {t("text.invoiceDate")} {formatDate(invoice.date)}
                 </p>
               </div>
               <a

@@ -1,14 +1,14 @@
 {
   "titles": {
     "main": "Bienvenue",
-    "second" : "Mot de passe oublié",
-    "third" : "Nouveau mot de passe"
+    "second": "Mot de passe oublié",
+    "third": "Nouveau mot de passe"
   },
   "descriptions": {
-    "main" : "Connectez-vous pour accéder à votre espace personnel",
-    "second" : "Saisissez votre adresse email" ,
-    "code" : "Veuillez entrer le code envoyé par email",
-    "password" : "Veuillez saisir votre nouveau mot de passe"
+    "main": "Connectez-vous pour accéder à votre espace personnel",
+    "second": "Saisissez votre adresse email",
+    "code": "Veuillez entrer le code envoyé par email",
+    "password": "Veuillez saisir votre nouveau mot de passe"
   },
 
   "form": {
@@ -21,20 +21,20 @@
     },
     "errors": {
       "incorrect": "Identifants non reconnus, merci de vérifier vos informations",
-      "server": "Erreur interne, connexion impossible",
-      "passwords" : "Les mots de passe ne correspondent pas",
-      "invalid" : "Code incorrect ou expiré",
-      "code" : "Erreur lors de l'envoi du code",
+      "server": "Erreur interne, connexion impossible. Essayez plus tard ou contacter le service client",
+      "passwords": "Les mots de passe ne correspondent pas",
+      "invalid": "Code incorrect ou expiré",
+      "code": "Erreur lors de l'envoi du code",
       "reset": "Erreur lors de la réinitialisation du mot de passe"
     }
   },
 
   "buttons": {
     "login": "Se connecter",
-    "valid" : "Valider",
+    "valid": "Valider",
     "loading": "Connexion...",
-    "loading-2" : "En cours...",
+    "loading-2": "En cours...",
     "access": "Accéder",
-    "reset" : "Réinitialiser le mot de passe"
+    "reset": "Réinitialiser le mot de passe"
   }
 }
