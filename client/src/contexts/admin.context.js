@@ -12,8 +12,15 @@ export default function AdminContext() {
 
   const [ownersList, setOwnersList] = useState([]);
   const [subscriptionsList, setSubscriptionsList] = useState([]);
+  const [restaurantsList, setRestaurantsList] = useState([]);
+  const [ownersSubscriptionsList, setOwnersSubscriptionsList] = useState([]);
 
-  const [dataLoading, setDataLoading] = useState(false);
+  const [ownersLoading, setOwnersLoading] = useState(true);
+  const [subscriptionsLoading, setSubscriptionsLoading] = useState(true);
+  const [restaurantsLoading, setRestaurantsLoading] = useState(true);
+  const [ownersSubscriptionsLoading, setOwnersSubscriptionsLoading] =
+    useState(true);
+
   const [isAuth, setIsAuth] = useState(false);
 
   function fetchOwnersList() {
@@ -29,8 +36,6 @@ export default function AdminContext() {
           throw new Error("Invalid token: ownerId is missing");
         }
 
-        setDataLoading(true);
-
         axios
           .get(`${process.env.NEXT_PUBLIC_API_URL}/admin/owners`, {
             headers: {
@@ -39,6 +44,7 @@ export default function AdminContext() {
           })
           .then((response) => {
             setOwnersList(response.data.owners);
+            setOwnersLoading(false);
             setIsAuth(true);
           })
           .catch((error) => {
@@ -46,11 +52,12 @@ export default function AdminContext() {
               "Erreur lors de la récupération des restaurants:",
               error
             );
+            setOwnersLoading(false);
             localStorage.removeItem("token");
             router.push("/login");
           });
       } catch (error) {
-        console.error("Invalid token:", error);
+        setOwnersLoading(false);
         localStorage.removeItem("token");
         router.push("/admin/login");
       }
@@ -62,15 +69,81 @@ export default function AdminContext() {
       .get(`${process.env.NEXT_PUBLIC_API_URL}/admin/subscriptions`)
       .then((response) => {
         setSubscriptionsList(response.data.products);
+        setSubscriptionsLoading(false);
       })
       .catch((error) => {
         console.error("Erreur lors de la récupération des abonnements:", error);
+        setSubscriptionsLoading(false);
       });
+  }
+
+  function fetchRestaurantsList() {
+    const token = localStorage.getItem("admin-token");
+
+    if (!token) {
+      router.push("/admin/login");
+    } else {
+      axios
+        .get(`${process.env.NEXT_PUBLIC_API_URL}/admin/restaurants`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        })
+        .then((response) => {
+          setRestaurantsList(response.data.restaurants);
+          setRestaurantsLoading(false);
+        })
+        .catch((error) => {
+          if (error.response && error.response.status === 403) {
+            localStorage.removeItem("admin-token");
+            router.push("/admin/login");
+          } else {
+            console.error(
+              "Erreur lors de la récupération des restaurants:",
+              error
+            );
+            setRestaurantsLoading(false);
+          }
+        });
+    }
+  }
+
+  function fetchOwnersSubscriptionsList() {
+    const token = localStorage.getItem("admin-token");
+
+    if (!token) {
+      router.push("/admin/login");
+    } else {
+      axios
+        .get(`${process.env.NEXT_PUBLIC_API_URL}/admin/all-subscriptions`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        })
+        .then((response) => {
+          setOwnersSubscriptionsList(response.data.subscriptions);
+          setOwnersSubscriptionsLoading(false);
+        })
+        .catch((error) => {
+          if (error.response && error.response.status === 403) {
+            localStorage.removeItem("admin-token");
+            router.push("/admin/login");
+          } else {
+            console.error(
+              "Erreur lors de la récupération des abonnements des propriétaires:",
+              error
+            );
+            setOwnersSubscriptionsLoading(false);
+          }
+        });
+    }
   }
 
   function logout() {
     localStorage.removeItem("admin-token");
     setOwnersList([]);
+    setSubscriptionsList([]);
+    setRestaurantsList([]);
     setIsAuth(false);
     router.replace("/admin/login");
   }
@@ -81,17 +154,28 @@ export default function AdminContext() {
     if (pathname.includes("/admin")) {
       fetchOwnersList();
       fetchSubscriptionsList();
+      fetchRestaurantsList();
+      fetchOwnersSubscriptionsList();
     }
   }, []);
 
   return {
-    ownersList,
-    setOwnersList,
-    dataLoading,
-    setDataLoading,
     fetchOwnersList,
+    setOwnersList,
+    ownersList,
+    ownersLoading,
     fetchSubscriptionsList,
     subscriptionsList,
+    subscriptionsLoading,
+    fetchRestaurantsList,
+    setRestaurantsList,
+    restaurantsList,
+    restaurantsLoading,
+    fetchOwnersSubscriptionsList,
+    setOwnersSubscriptionsList,
+    ownersSubscriptionsList,
+    ownersSubscriptionsLoading,
+    setIsAuth,
     isAuth,
     logout,
   };

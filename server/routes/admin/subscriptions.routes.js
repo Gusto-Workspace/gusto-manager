@@ -1,7 +1,9 @@
-// Dans votre fichier de route
 const express = require("express");
 const router = express.Router();
 const stripe = require("stripe")(process.env.STRIPE_API_SECRET_KEY);
+
+// MIDDLEWARE
+const authenticateToken = require("../../middleware/authentificate-token");
 
 // GET STRIPE SUBSCRIPTIONS
 router.get("/admin/subscriptions", async (req, res) => {
@@ -116,7 +118,7 @@ router.post("/admin/switch-to-automatic", async (req, res) => {
 });
 
 // GET ALL SUBSCRIPTIONS FROM OWNERS
-router.get("/admin/all-subscriptions", async (req, res) => {
+router.get("/admin/all-subscriptions", authenticateToken, async (req, res) => {
   try {
     const subscriptions = await stripe.subscriptions.list({
       limit: 100,

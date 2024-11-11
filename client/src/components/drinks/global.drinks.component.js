@@ -59,7 +59,7 @@ export default function GlobalDrinksComponent(props) {
                             className="bg-darkBlue p-1 w-4 h-4 rounded-full opacity-70"
                           />
                         )}
-                        <p className="text-md font-semibold">
+                        <p className="text-md font-semibold min-w-[66px] text-right">
                           {drink.price.toFixed(2)} €
                         </p>
                       </div>
@@ -114,7 +114,7 @@ export default function GlobalDrinksComponent(props) {
                                   className="bg-darkBlue p-1 w-4 h-4 rounded-full opacity-70"
                                 />
                               )}
-                              <p className="text-md font-semibold">
+                              <p className="text-md font-semibold  min-w-[66px] text-right">
                                 {drink.price.toFixed(2)} €
                               </p>
                             </div>

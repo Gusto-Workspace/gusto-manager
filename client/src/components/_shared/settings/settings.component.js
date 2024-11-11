@@ -72,16 +72,16 @@ export default function SettingsComponent() {
   }, []);
 
   return (
-    <section className="z-50 flex min-h-16 gap-12 justify-between items-center relative">
+    <section className="flex min-h-16 gap-12 justify-between items-center relative">
       {showRestaurantList && (
         <div
           onClick={() => setShowRestaurantList(false)}
-          className="fixed inset-0 bg-black bg-opacity-20"
+          className="fixed inset-0 bg-black bg-opacity-20 z-40 "
         />
       )}
 
       <div
-        className={`bg-white flex-1 h-full px-6 items-center flex justify-between drop-shadow-sm rounded-lg ${restaurantContext.restaurantsList?.length > 1 && !isSubRoute ? "cursor-pointer" : ""}`}
+        className={`z-50 relative bg-white flex-1 h-full px-6 items-center flex justify-between drop-shadow-sm rounded-lg ${restaurantContext.restaurantsList?.length > 1 && !isSubRoute ? "cursor-pointer" : ""}`}
         onClick={() => {
           if (!isSubRoute && restaurantContext.restaurantsList?.length > 1) {
             setShowRestaurantList(!showRestaurantList);

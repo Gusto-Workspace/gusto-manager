@@ -93,7 +93,11 @@ export default function SettingsPage(props) {
       <div>
         <div className="flex">
           <NavComponent />
-          <div className="bg-lightGrey text-darkBlue overflow-y-auto flex-1 p-6 h-screen flex flex-col gap-6">
+
+          <div
+            style={{ willChange: "transform" }}
+            className="bg-lightGrey text-darkBlue overflow-y-auto flex-1 p-6 h-screen flex flex-col gap-6"
+          >
             <SettingsComponent
               dataLoading={restaurantContext.dataLoading}
               setDataLoading={restaurantContext.setDataLoading}
