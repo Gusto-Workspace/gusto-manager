@@ -2,7 +2,7 @@
 import { useTranslation } from "next-i18next";
 
 // SVG
-import { BioSvg, WineSvg } from "../_shared/_svgs/_index";
+import { BioSvg, GlassSvg } from "../_shared/_svgs/_index";
 
 export default function GlobalWinesComponent(props) {
   const { t } = useTranslation("wines");
@@ -20,7 +20,7 @@ export default function GlobalWinesComponent(props) {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex gap-2 items-center">
-        <WineSvg width={30} height={30} fillColor="#131E3690" />
+        <GlassSvg width={30} height={30} fillColor="#131E3690" />
         <h1 className="pl-2 text-2xl">{t("titles.second")}</h1>
       </div>
 

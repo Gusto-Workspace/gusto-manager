@@ -6,7 +6,14 @@ import CustomTooltipComponent from "./custom-tooltip.dashboard.component";
 
 export default function DonutChartComponent({ data = [], IconComponent }) {
   return (
-    <div style={{ minWidth: 100, height: 100, position: "relative" }}>
+    <div
+      style={{
+        minWidth: 100,
+        height: 100,
+        position: "relative",
+        willChange: "transform, opacity",
+      }}
+    >
       <ResponsiveContainer width="100%" height="100%">
         <PieChart>
           <Pie
@@ -37,7 +44,12 @@ export default function DonutChartComponent({ data = [], IconComponent }) {
           zIndex: "-10",
         }}
       >
-        <IconComponent width={25} height={25} strokeColor="#e66430" fillColor="#e66430" />
+        <IconComponent
+          width={25}
+          height={25}
+          strokeColor="#e66430"
+          fillColor="#e66430"
+        />
       </div>
     </div>
   );

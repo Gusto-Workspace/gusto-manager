@@ -1,8 +1,11 @@
 import { useRouter } from "next/router";
-import { useState } from "react";
+import { useContext, useState } from "react";
 
 // REACT HOOK FORM
 import { useForm } from "react-hook-form";
+
+// CONTEXT
+import { GlobalContext } from "@/contexts/global.context";
 
 // AXIOS
 import axios from "axios";
@@ -17,30 +20,36 @@ export default function FormAdminComponent() {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
-  async function onSubmit(data) {
+  const { adminContext } = useContext(GlobalContext);
+
+  function onSubmit(data) {
     setLoading(true);
     setErrorMessage("");
 
-    try {
-      const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/admin/login`,
-        data
-      );
+    axios
+      .post(`${process.env.NEXT_PUBLIC_API_URL}/admin/login`, data)
 
-      const { token } = response.data;
+      .then((response) => {
+        const { token } = response.data;
+        localStorage.setItem("admin-token", token);
 
-      localStorage.setItem("admin-token", token);
-
-      router.push("/admin");
-    } catch (error) {
-      if (error.response && error.response.data) {
-        setErrorMessage(error.response.data.message || "Login failed");
-      } else {
-        setErrorMessage("An error occurred. Please try again.");
-      }
-    } finally {
-      setLoading(false);
-    }
+        adminContext.fetchOwnersList();
+        adminContext.fetchSubscriptionsList();
+        adminContext.fetchRestaurantsList();
+        adminContext.fetchOwnersSubscriptionsList();
+        adminContext.setIsAuth(true);
+        router.push("/admin");
+      })
+      .catch((error) => {
+        if (error.response && error.response.data) {
+          setErrorMessage(error.response.data.message || "Login failed");
+        } else {
+          setErrorMessage("An error occurred. Please try again.");
+        }
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   }
 
   return (

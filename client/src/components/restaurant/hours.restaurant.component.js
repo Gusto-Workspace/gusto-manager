@@ -88,7 +88,10 @@ export default function HoursRestaurantComponent(props) {
   }
 
   return (
-    <section className="bg-white p-6 pb-2 rounded-lg drop-shadow-sm w-full text-darkBlue h-fit">
+    <div
+       
+      className="bg-white p-6 pb-2 rounded-lg drop-shadow-sm w-full text-darkBlue h-fit"
+    >
       <div className="flex justify-between">
         <h1 className="font-bold text-lg">{t("hours.title")}</h1>
 
@@ -181,6 +184,6 @@ export default function HoursRestaurantComponent(props) {
           </Fragment>
         ))}
       </ul>
-    </section>
+    </div>
   );
 }

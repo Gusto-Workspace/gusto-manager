@@ -1,6 +1,14 @@
 import { useState } from "react";
+
+// AXIOS
 import axios from "axios";
+
+ // I18N
 import { useTranslation } from "next-i18next";
+
+// COMPONENTS
+import SimpleSkeletonComponent from "@/components/_shared/skeleton/simple-skeleton.component";
+import DoubleSkeletonComonent from "@/components/_shared/skeleton/double-skeleton.component";
 
 export default function ListRestaurantsAdminComponent(props) {
   const { t } = useTranslation("admin");
@@ -28,9 +36,9 @@ export default function ListRestaurantsAdminComponent(props) {
   }
 
   return (
-    <section>
+    <div>
       <div className="flex justify-between">
-        <h1 className="text-4xl">{t("nav.restaurants")}</h1>
+        <h1 className="text-3xl">{t("nav.restaurants")}</h1>
 
         <button
           className="bg-blue text-white px-4 py-2 rounded-lg"
@@ -42,91 +50,91 @@ export default function ListRestaurantsAdminComponent(props) {
 
       <div className="mt-4">
         {props.loading ? (
-          <p>{t("restaurants.list.loading")}</p>
+          <div className="bg-white p-6 drop-shadow-sm flex flex-col gap-2 rounded-lg">
+            <DoubleSkeletonComonent justify="justify-start"/>
+            <SimpleSkeletonComponent />
+            <SimpleSkeletonComponent />
+          </div>
         ) : (
-          <ul className="space-y-4">
-            {props?.restaurants?.length > 0 ? (
-              props?.restaurants?.map((restaurant) => (
-                <li key={restaurant?._id} className="border p-4 rounded-lg">
-                  <h2 className="text-2xl">{restaurant?.name}</h2>
-                  <p>
-                    {t("restaurants.form.address.title")} :{" "}
-                    {restaurant?.address ? (
-                      <>
-                        {restaurant.address.line1}, {restaurant.address.zipCode}{" "}
-                        {restaurant.address.city}, {restaurant.address.country}
-                      </>
-                    ) : (
-                      <span className="text-sm italic opacity-40">
-                        {t("restaurants.list.noAddress")}
-                      </span>
-                    )}
-                  </p>
-                  <p>
-                    {t("restaurants.form.phone")} : {restaurant?.phone}
-                  </p>
-                  <p>
-                    {t("restaurants.form.web")} : {restaurant?.website}
-                  </p>
-                  <p>
-                    {t("restaurants.form.owner")} :{" "}
-                    {restaurant?.owner_id ? (
-                      <>
-                        {restaurant.owner_id.firstname}{" "}
-                        {restaurant.owner_id.lastname}{" "}
-                        <span className="text-sm italic opacity-40">
-                          ({restaurant.owner_id.email})
-                        </span>
-                      </>
-                    ) : (
-                      <span className="text-sm italic opacity-40">
-                        {t("restaurants.list.noOwner")}
-                      </span>
-                    )}
-                  </p>
-
-                  {restaurantToDelete === restaurant._id ? (
-                    <div className="flex gap-2 mt-2">
-                      <button
-                        className="bg-red text-white px-4 py-2 rounded-lg"
-                        onClick={() => confirmDelete(restaurant._id)}
-                        disabled={loadingDelete}
-                      >
-                        {loadingDelete
-                          ? t("buttons.loading")
-                          : t("buttons.confirm")}
-                      </button>
-                      <button
-                        className="bg-blue text-white px-4 py-2 rounded-lg"
-                        onClick={() => setRestaurantToDelete(null)}
-                      >
-                        {t("restaurants.form.buttons.cancel")}
-                      </button>
-                    </div>
+          <ul className="flex flex-col gap-4">
+            {props.restaurants.map((restaurant) => (
+              <li key={restaurant._id} className="bg-white p-6 rounded-lg drop-shadow-sm">
+                <h2 className="text-2xl">{restaurant.name}</h2>
+                <p>
+                  {t("restaurants.form.address.title")} :{" "}
+                  {restaurant.address ? (
+                    <>
+                      {restaurant.address.line1}, {restaurant.address.zipCode}{" "}
+                      {restaurant.address.city}, {restaurant.address.country}
+                    </>
                   ) : (
-                    <div className="flex gap-2 mt-2">
-                      <button
-                        className="bg-darkBlue text-white px-4 py-2 rounded-lg"
-                        onClick={() => props.handleEditClick(restaurant)}
-                      >
-                        {t("restaurants.form.buttons.edit")}
-                      </button>
-                      <button
-                        className="bg-red text-white px-4 py-2 rounded-lg"
-                        onClick={() => setRestaurantToDelete(restaurant._id)}
-                      >
-                        {t("buttons.delete")}
-                      </button>
-                    </div>
+                    <span className="text-sm italic opacity-40">
+                      {t("restaurants.list.noAddress")}
+                    </span>
                   )}
-                </li>
-              ))
-            ) : (
-              <p>{t("restaurants.list.emptyList")}</p>
-            )}
+                </p>
+                <p>
+                  {t("restaurants.form.phone")} : {restaurant.phone}
+                </p>
+                <p>
+                  {t("restaurants.form.web")} : {restaurant.website}
+                </p>
+                <p>
+                  {t("restaurants.form.owner")} :{" "}
+                  {restaurant.owner_id ? (
+                    <>
+                      {restaurant.owner_id.firstname}{" "}
+                      {restaurant.owner_id.lastname}{" "}
+                      <span className="text-sm italic opacity-40">
+                        ({restaurant.owner_id.email})
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-sm italic opacity-40">
+                      {t("restaurants.list.noOwner")}
+                    </span>
+                  )}
+                </p>
+
+                {restaurantToDelete === restaurant._id ? (
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      className="bg-red text-white px-4 py-2 rounded-lg"
+                      onClick={() => confirmDelete(restaurant._id)}
+                      disabled={loadingDelete}
+                    >
+                      {loadingDelete
+                        ? t("buttons.loading")
+                        : t("buttons.confirm")}
+                    </button>
+                    <button
+                      className="bg-blue text-white px-4 py-2 rounded-lg"
+                      onClick={() => setRestaurantToDelete(null)}
+                    >
+                      {t("restaurants.form.buttons.cancel")}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      className="bg-darkBlue text-white px-4 py-2 rounded-lg"
+                      onClick={() => props.handleEditClick(restaurant)}
+                    >
+                      {t("restaurants.form.buttons.edit")}
+                    </button>
+                    <button
+                      className="bg-red text-white px-4 py-2 rounded-lg"
+                      onClick={() => setRestaurantToDelete(restaurant._id)}
+                    >
+                      {t("buttons.delete")}
+                    </button>
+                  </div>
+                )}
+              </li>
+            ))}
           </ul>
         )}
       </div>
-    </section>
+    </div>
   );
 }

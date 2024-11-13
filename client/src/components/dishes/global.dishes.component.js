@@ -4,7 +4,7 @@ import { useTranslation } from "next-i18next";
 // SVG
 import {
   BioSvg,
-  DishSvg,
+  GlassSvg,
   GlutenFreeSvg,
   VeganSvg,
   VegetarianSvg,
@@ -17,7 +17,7 @@ export default function GlobalDishesComponent(props) {
     <div className="flex flex-col gap-6">
       {!props.createMenu && (
         <div className="flex gap-2 items-center">
-          <DishSvg width={30} height={30} fillColor="#131E3690" />
+          <GlassSvg width={30} height={30} fillColor="#131E3690" />
 
           <h1 className="pl-2 text-2xl">{t("titles.second")}</h1>
         </div>
@@ -44,7 +44,11 @@ export default function GlobalDishesComponent(props) {
                   .filter((dish) => dish.showOnWebsite)
                   .map((dish, j) => (
                     <div
-                      onClick={() => props.onDishClick(category, dish)}
+                      onClick={() => {
+                        props.createMenu
+                          ? props.onDishClick(category, dish)
+                          : null;
+                      }}
                       key={j}
                       className={`flex items-center gap-4 justify-between ${props.createMenu && "cursor-pointer"}`}
                     >

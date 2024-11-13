@@ -350,7 +350,7 @@ export default function ListDrinksComponent(props) {
     : formattedCategoryRoute;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div   className="flex flex-col gap-6">
       <hr className="opacity-20" />
 
       <div className="flex justify-between">

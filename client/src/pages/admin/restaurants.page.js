@@ -1,13 +1,12 @@
-import { useEffect, useState } from "react";
-import { useRouter } from "next/router";
+import { useContext, useState } from "react";
 import Head from "next/head";
-
-// AXIOS
-import axios from "axios";
 
 // I18N
 import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
+
+// CONTEXT
+import { GlobalContext } from "@/contexts/global.context";
 
 // COMPONENTS
 import NavAdminComponent from "@/components/admin/_shared/nav/nav.admin.component";
@@ -15,6 +14,8 @@ import ListRestaurantsAdminComponent from "@/components/admin/restaurants/list-r
 import AddRestaurantModal from "@/components/admin/restaurants/add-restaurant-modal.admin.component";
 
 export default function RestaurantsPage(props) {
+  const { adminContext } = useContext(GlobalContext);
+
   let title;
   let description;
 
@@ -28,60 +29,22 @@ export default function RestaurantsPage(props) {
       description = "";
   }
 
-  const router = useRouter();
-  const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [restaurants, setRestaurants] = useState([]);
+
   const [selectedRestaurant, setSelectedRestaurant] = useState(null);
   const [isExistingOwner, setIsExistingOwner] = useState(true);
 
-  useEffect(() => {
-    const token = localStorage.getItem("admin-token");
-
-    if (!token) {
-      router.push("/admin/login");
-    } else {
-      setLoading(true);
-    }
-  }, [router]);
-
-  useEffect(() => {
-    const token = localStorage.getItem("admin-token");
-
-    if (!token) {
-      router.push("/admin/login");
-    } else {
-      axios
-        .get(`${process.env.NEXT_PUBLIC_API_URL}/admin/restaurants`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        })
-        .then((response) => {
-          setRestaurants(response.data.restaurants);
-          setLoading(false);
-        })
-        .catch((error) => {
-          if (error.response && error.response.status === 403) {
-            localStorage.removeItem("admin-token");
-            router.push("/admin/login");
-          } else {
-            console.error(
-              "Erreur lors de la récupération des restaurants:",
-              error
-            );
-            setLoading(false);
-          }
-        });
-    }
-  }, [router]);
+  if (!adminContext.isAuth) return null;
 
   function handleAddRestaurant(newRestaurant) {
-    setRestaurants((prevRestaurants) => [...prevRestaurants, newRestaurant]);
+    adminContext.setRestaurantsList((prevRestaurants) => [
+      ...prevRestaurants,
+      newRestaurant,
+    ]);
   }
 
   function handleEditRestaurant(updatedRestaurant) {
-    setRestaurants((prevRestaurants) =>
+    adminContext.setRestaurantsList((prevRestaurants) =>
       prevRestaurants.map((restaurant) =>
         restaurant._id === updatedRestaurant._id
           ? updatedRestaurant
@@ -109,36 +72,28 @@ export default function RestaurantsPage(props) {
         <title>{title}</title>
       </Head>
 
-      <div className="w-[100vw]">
-        {loading ? (
-          <div className="flex justify-center items-center ">
-            <div className="loader">Loading...</div>
-          </div>
-        ) : (
-          <div className="flex">
-            <NavAdminComponent />
+      <div className="flex">
+        <NavAdminComponent />
 
-            <div className="border h-screen overflow-y-auto flex-1 p-12">
-              <ListRestaurantsAdminComponent
-                handleAddClick={handleAddClick}
-                handleEditClick={handleEditClick}
-                restaurants={restaurants}
-                loading={loading}
-                setRestaurants={setRestaurants}
-              />
-            </div>
+        <div className="ml-[250px] bg-lightGrey text-darkBlue overflow-y-auto flex-1 p-6 h-screen flex flex-col gap-6">
+          <ListRestaurantsAdminComponent
+            handleAddClick={handleAddClick}
+            handleEditClick={handleEditClick}
+            restaurants={adminContext.restaurantsList}
+            setRestaurants={adminContext.setRestaurantsList}
+            loading={adminContext.restaurantsLoading}
+          />
+        </div>
 
-            {isModalOpen && (
-              <AddRestaurantModal
-                closeModal={() => setIsModalOpen(false)}
-                handleAddRestaurant={handleAddRestaurant}
-                handleEditRestaurant={handleEditRestaurant}
-                restaurant={selectedRestaurant}
-                isExistingOwner={isExistingOwner}
-                setIsExistingOwner={setIsExistingOwner}
-              />
-            )}
-          </div>
+        {isModalOpen && (
+          <AddRestaurantModal
+            closeModal={() => setIsModalOpen(false)}
+            handleAddRestaurant={handleAddRestaurant}
+            handleEditRestaurant={handleEditRestaurant}
+            restaurant={selectedRestaurant}
+            isExistingOwner={isExistingOwner}
+            setIsExistingOwner={setIsExistingOwner}
+          />
         )}
       </div>
     </>

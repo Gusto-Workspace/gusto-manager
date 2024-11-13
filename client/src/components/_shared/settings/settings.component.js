@@ -71,17 +71,29 @@ export default function SettingsComponent() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    if (showRestaurantList) {
+      document.body.classList.add("no-scroll");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } else {
+      document.body.classList.remove("no-scroll");
+    }
+    return () => {
+      document.body.classList.remove("no-scroll");
+    };
+  }, [showRestaurantList]);
+
   return (
-    <section className="z-50 flex min-h-16 gap-12 justify-between items-center relative">
+    <section className="flex min-h-16 gap-12 justify-between items-center relative">
       {showRestaurantList && (
         <div
           onClick={() => setShowRestaurantList(false)}
-          className="fixed inset-0 bg-black bg-opacity-20"
+          className="fixed inset-0 bg-black bg-opacity-20 z-40 "
         />
       )}
 
       <div
-        className={`bg-white flex-1 h-full px-6 items-center flex justify-between drop-shadow-sm rounded-lg ${restaurantContext.restaurantsList?.length > 1 && !isSubRoute ? "cursor-pointer" : ""}`}
+        className={`z-50 relative bg-white flex-1 h-full px-6 items-center flex justify-between drop-shadow-sm rounded-lg ${restaurantContext.restaurantsList?.length > 1 && !isSubRoute ? "cursor-pointer" : ""}`}
         onClick={() => {
           if (!isSubRoute && restaurantContext.restaurantsList?.length > 1) {
             setShowRestaurantList(!showRestaurantList);

@@ -71,7 +71,7 @@ export default function AddOwnerModalComponent(props) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-10">
       <div className="bg-white p-8 rounded-lg flex flex-col gap-4 w-[550px]">
         <h2>{props.owner ? t("owner.form.edit") : t("owner.form.add")}</h2>
 

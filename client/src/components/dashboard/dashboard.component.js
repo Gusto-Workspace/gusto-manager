@@ -26,7 +26,10 @@ export default function DashboardComponent(props) {
     ) || 0;
 
   return (
-    <section className="flex flex-col gap-12">
+    <section
+       
+      className="flex flex-col gap-12"
+    >
       <div className="grid grid-cols-1 tablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-3 gap-6">
         {dashboardData.map(
           ({ title, IconComponent, getCounts, emptyLabel }) => {

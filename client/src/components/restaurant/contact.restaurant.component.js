@@ -98,7 +98,10 @@ export default function ContactRestaurantComponent(props) {
   }
 
   return (
-    <section className="bg-white p-6 pb-3 rounded-lg drop-shadow-sm w-full h-fit">
+    <div
+       
+      className="bg-white p-6 pb-3 rounded-lg drop-shadow-sm w-full h-fit"
+    >
       <div className="flex justify-between">
         <h1 className="font-bold text-lg">{t("contact.title")}</h1>
         <div className="flex gap-2">
@@ -188,6 +191,6 @@ export default function ContactRestaurantComponent(props) {
           );
         })}
       </form>
-    </section>
+    </div>
   );
 }

@@ -14,7 +14,7 @@ import { GlobalContext } from "@/contexts/global.context";
 // SVG
 import { EmailSvg } from "../_shared/_svgs/email.svg";
 import { PasswordSvg } from "../_shared/_svgs/password.svg";
-import { NoVisibleSvg, VisibleSvg } from "../_shared/_svgs/_index";
+import { ChevronSvg, NoVisibleSvg, VisibleSvg } from "../_shared/_svgs/_index";
 
 export default function FormLoginComponent() {
   const { t } = useTranslation("login");
@@ -68,7 +68,7 @@ export default function FormLoginComponent() {
 
   async function handleRestaurantSelect(restaurantId, token) {
     try {
-      setLoading(true)
+      setLoading(true);
       const response = await axios.post(
         `${process.env.NEXT_PUBLIC_API_URL}/owner/select-restaurant`,
         { token, restaurantId }
@@ -84,7 +84,7 @@ export default function FormLoginComponent() {
     } catch (error) {
       console.error("Erreur lors de la sélection du restaurant:", error);
       setErrorMessage("errors.server");
-      setLoading(false)
+      setLoading(false);
     }
   }
 
@@ -142,7 +142,7 @@ export default function FormLoginComponent() {
             <button
               type="button"
               onClick={() => router.push("/login/forgot-password")}
-              className="text-left text-xs italic opacity-50 mt-1"
+              className="text-left text-xs italic opacity-50 mt-1 pr-1"
             >
               {t("form.labels.forgotPassword")}
             </button>
@@ -169,18 +169,24 @@ export default function FormLoginComponent() {
               {t("form.labels.selectRestaurant")}
             </h2>
 
-            <select
-              className="border rounded-lg p-2 w-full"
-              value={selectedRestaurant}
-              onChange={(e) => setSelectedRestaurant(e.target.value)}
-            >
-              <option value="">{t("form.labels.select")}</option>
-              {restaurantContext?.restaurantsList?.map((restaurant) => (
-                <option key={restaurant._id} value={restaurant._id}>
-                  {restaurant.name}
-                </option>
-              ))}
-            </select>
+            <div className="relative w-full">
+              <select
+                className="border rounded-lg p-2 w-full appearance-none pr-8 cursor-pointer"
+                value={selectedRestaurant}
+                onChange={(e) => setSelectedRestaurant(e.target.value)}
+              >
+                <option value="">{t("form.labels.select")}</option>
+                {restaurantContext?.restaurantsList?.map((restaurant) => (
+                  <option key={restaurant._id} value={restaurant._id}>
+                    {restaurant.name}
+                  </option>
+                ))}
+              </select>
+
+              <div className="absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                <ChevronSvg />
+              </div>
+            </div>
           </div>
 
           <button
