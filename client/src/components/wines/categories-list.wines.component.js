@@ -193,7 +193,10 @@ export default function CategoriesListWinesComponent() {
       </div>
 
       {categories && (
-        <div className="flex flex-col gap-12">
+        <div
+           
+          className="flex flex-col gap-12"
+        >
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}

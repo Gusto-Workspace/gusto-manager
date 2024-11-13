@@ -44,7 +44,11 @@ export default function GlobalDishesComponent(props) {
                   .filter((dish) => dish.showOnWebsite)
                   .map((dish, j) => (
                     <div
-                      onClick={() => props.onDishClick(category, dish)}
+                      onClick={() => {
+                        props.createMenu
+                          ? props.onDishClick(category, dish)
+                          : null;
+                      }}
                       key={j}
                       className={`flex items-center gap-4 justify-between ${props.createMenu && "cursor-pointer"}`}
                     >

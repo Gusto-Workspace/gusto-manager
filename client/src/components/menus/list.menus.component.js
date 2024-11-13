@@ -122,7 +122,7 @@ export default function ListMenusComponent(props) {
   }
 
   return (
-    <section className="flex flex-col gap-6">
+    <div   className="flex flex-col gap-6">
       <hr className="opacity-20" />
 
       <div className="flex justify-between">
@@ -198,6 +198,6 @@ export default function ListMenusComponent(props) {
           </div>
         </div>
       )}
-    </section>
+    </div>
   );
 }

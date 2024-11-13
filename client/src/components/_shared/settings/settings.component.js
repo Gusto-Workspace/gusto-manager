@@ -71,6 +71,18 @@ export default function SettingsComponent() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    if (showRestaurantList) {
+      document.body.classList.add("no-scroll");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } else {
+      document.body.classList.remove("no-scroll");
+    }
+    return () => {
+      document.body.classList.remove("no-scroll");
+    };
+  }, [showRestaurantList]);
+
   return (
     <section className="flex min-h-16 gap-12 justify-between items-center relative">
       {showRestaurantList && (

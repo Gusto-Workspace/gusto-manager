@@ -110,7 +110,7 @@ export default function AddRestaurantModal(props) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-10">
       <div className="bg-white p-8 rounded-lg flex flex-col gap-4 w-[550px] max-h-[80%] overflow-y-auto">
         <h2>
           {props.restaurant

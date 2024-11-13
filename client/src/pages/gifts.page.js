@@ -52,14 +52,12 @@ export default function GiftsPage(props) {
           <meta property="og:image:height" content="630" />
         </> */}
       </Head>
+
       <div>
         <div className="flex">
           <NavComponent />
 
-          <div
-            style={{ willChange: "transform" }}
-            className="bg-lightGrey text-darkBlue overflow-y-auto flex-1 p-6 h-screen flex flex-col gap-6"
-          >
+           <div className="ml-[250px] bg-lightGrey text-darkBlue flex-1 p-6 flex flex-col gap-6 min-h-screen">
             <SettingsComponent
               dataLoading={restaurantContext.dataLoading}
               setDataLoading={restaurantContext.setDataLoading}

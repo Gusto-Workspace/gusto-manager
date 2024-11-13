@@ -65,5 +65,43 @@
         "edit": "Modifier"
       }
     }
+  },
+  "subscriptions": {
+    "list": {
+      "add": "Ajouter un abonnement",
+      "type": "Type abonnement",
+      "owner": "Propriétaire",
+      "restaurant": "Restaurant",
+      "manualMethod": "Manuel",
+      "automaticMethod": "Automatique",
+      "payment": "Mode de paiement",
+      "lastInvoice": "Dernière facture",
+      "invoiceStatus": "État de la facture",
+      "paid": "Payée",
+      "sent": "Envoyée (en attente de paiement)",
+      "draft": "Brouillon",
+      "unpaid": "Non payée",
+      "automatic": "Passer en mode de paiement automatique",
+      "showInvoices": "Afficher les factures",
+      "hideInvoices": "Masquer les factures",
+      "period": "Période",
+      "amount": "Montant",
+      "status": "État"
+    },
+
+    "add": {
+      "errors": {
+        "select": "Veuillez sélectionner un client, un restaurant et un abonnement",
+        "create": "Erreur lors de la création de l'abonnement",
+        "alreadyCreated" : "Un abonnement est déjà associé à ce restaurant"
+      },
+      "owner": "Sélectionner un propriétaire",
+      "restaurant": "Sélectionner un restaurant",
+      "subscription": "Sélectionner un abonnement",
+      "buttons": {
+        "loading": "Création en cours...",
+        "create": "Créer l'abonnement"
+      }
+    }
   }
 }

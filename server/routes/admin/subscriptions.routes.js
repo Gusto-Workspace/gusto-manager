@@ -48,7 +48,7 @@ router.post("/admin/create-subscription", async (req, res) => {
 
     if (existingSubscription) {
       return res.status(400).json({
-        message: "Un abonnement est déjà associé à ce restaurant.",
+        message: "subscriptions.add.errors.alreadyCreated",
       });
     }
 

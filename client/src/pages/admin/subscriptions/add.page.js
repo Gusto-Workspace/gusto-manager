@@ -35,13 +35,14 @@ export default function AddSubscriptionsPage(props) {
         <title>{title}</title>
       </Head>
 
-      <div className="w-[100vw]">
-        <div className="flex">
-          <NavAdminComponent />
+      <div className="flex">
+        <NavAdminComponent />
 
-          <div className="border h-screen overflow-y-auto flex-1 p-12">
-            <AddSubscriptionsAdminComponent />
-          </div>
+        <div
+           
+          className="bg-lightGrey text-darkBlue overflow-y-auto flex-1 p-6 h-screen flex flex-col gap-6"
+        >
+          <AddSubscriptionsAdminComponent />
         </div>
       </div>
     </>

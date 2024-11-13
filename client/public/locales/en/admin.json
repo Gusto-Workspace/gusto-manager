@@ -22,7 +22,7 @@
       "owner": "Owner",
       "contact": "Contact Informations",
       "address": {
-        "title" : "Address",
+        "title": "Address",
         "line1": "Line 1",
         "zipCode": "Zip code",
         "city": "City",
@@ -64,6 +64,43 @@
         "add": "Add",
         "cancel": "Cancel",
         "edit": "Edit"
+      }
+    }
+  },
+  "subscriptions": {
+    "list": {
+      "add": "Add a subscription",
+      "type": "Subscription type",
+      "owner": "Owner",
+      "restaurant": "Restaurant",
+      "manualMethod": "Manual",
+      "automaticMethod": "Automatic",
+      "payment": "Payment method",
+      "lastInvoice": "Last invoice",
+      "invoiceStatus": "Invoice status",
+      "paid": "Paid",
+      "sent": "Sent (awaiting payment)",
+      "draft": "Draft",
+      "unpaid": "Unpaid",
+      "automatic": "Switch to automatic payment",
+      "showInvoices": "Show invoices",
+      "hideInvoices": "Hide invoices",
+      "period": "Period",
+      "amount": "Amount",
+      "status": "Status"
+    },
+    "add": {
+      "errors": {
+        "select": "Please select a client, a restaurant, and a subscription",
+        "create": "Error creating the subscription",
+        "alreadyCreated": "A subscription is already associated with this restaurant"
+      },
+      "owner": "Select an owner",
+      "restaurant": "Select a restaurant",
+      "subscription": "Select a subscription",
+      "buttons": {
+        "loading": "Creating...",
+        "create": "Create subscription"
       }
     }
   }

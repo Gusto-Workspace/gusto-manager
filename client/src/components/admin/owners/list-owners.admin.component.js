@@ -1,6 +1,8 @@
 import { useState } from "react";
 import axios from "axios";
 import { useTranslation } from "next-i18next";
+import DoubleSkeletonComonent from "@/components/_shared/skeleton/double-skeleton.component";
+import SimpleSkeletonComponent from "@/components/_shared/skeleton/simple-skeleton.component";
 
 export default function ListOwnersAdminComponent(props) {
   const { t } = useTranslation("admin");
@@ -41,13 +43,20 @@ export default function ListOwnersAdminComponent(props) {
       </div>
 
       <div className="mt-4">
-        {props.loading ? (
-          <p>{t("owners.list.loading")}</p>
+        {props?.loading ? (
+          <div className="bg-white p-6 drop-shadow-sm flex flex-col gap-2 rounded-lg">
+            <DoubleSkeletonComonent justify="justify-start" />
+            <SimpleSkeletonComponent />
+            <SimpleSkeletonComponent />
+          </div>
         ) : (
-          <ul className="space-y-4">
+          <ul className="flex flex-col gap-4">
             {props?.owners?.length > 0 ? (
               props?.owners?.map((owner) => (
-                <li key={owner?._id} className="border p-4 rounded-lg">
+                <li
+                  key={owner?._id}
+                  className="bg-white p-6 rounded-lg drop-shadow-sm"
+                >
                   <div className="flex justify-between">
                     <h2 className="text-2xl">
                       {owner?.firstname} {owner?.lastname}

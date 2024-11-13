@@ -1,10 +1,17 @@
 import { useContext, useState } from "react";
+
+// AXIOS
 import axios from "axios";
+
+// I18N
+import { useTranslation } from "next-i18next";
 
 // CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
 
 export default function AddSubscriptionsAdminComponent() {
+  const { t } = useTranslation("admin");
+
   const { adminContext } = useContext(GlobalContext);
   const [selectedOwner, setSelectedOwner] = useState(null);
   const [selectedRestaurant, setSelectedRestaurant] = useState("");
@@ -41,9 +48,7 @@ export default function AddSubscriptionsAdminComponent() {
 
   function createSubscription() {
     if (!selectedOwner || !selectedSubscription || !selectedRestaurant) {
-      setMessage(
-        "Veuillez sélectionner un client, un restaurant, et un abonnement."
-      );
+      setMessage(t("subscriptions.add.errors.select"));
       return;
     }
 
@@ -67,10 +72,10 @@ export default function AddSubscriptionsAdminComponent() {
       })
       .catch((error) => {
         const errorMsg =
-          error.response?.data?.message ||
-          "Erreur lors de la création de l'abonnement.";
+          t(error.response?.data?.message) ||
+          t("subscriptions.add.errors.create");
         setMessage(errorMsg);
-        console.error("Erreur lors de la création de l'abonnement:", error);
+        console.error(t("subscriptions.add.errors.create"), error);
       })
       .finally(() => {
         setLoading(false);
@@ -85,7 +90,7 @@ export default function AddSubscriptionsAdminComponent() {
           htmlFor="ownerSelect"
           className="block text-sm font-medium text-gray-700"
         >
-          Sélectionner un client
+          {t("subscriptions.add.owner")}
         </label>
         <select
           id="ownerSelect"
@@ -94,7 +99,7 @@ export default function AddSubscriptionsAdminComponent() {
           onChange={handleOwnerChange}
         >
           <option disabled value="">
-            -- Choisir un client --
+            -
           </option>
           {adminContext.ownersList.map((owner) => (
             <option key={owner._id} value={owner._id}>
@@ -111,7 +116,7 @@ export default function AddSubscriptionsAdminComponent() {
             htmlFor="restaurantSelect"
             className="block text-sm font-medium text-gray-700"
           >
-            Sélectionner un restaurant
+            {t("subscriptions.add.restaurant")}
           </label>
           <select
             id="restaurantSelect"
@@ -120,7 +125,7 @@ export default function AddSubscriptionsAdminComponent() {
             onChange={handleRestaurantChange}
           >
             <option disabled value="">
-              -- Choisir un restaurant --
+              -
             </option>
             {selectedOwner.restaurants.map((restaurant) => (
               <option key={restaurant._id} value={restaurant._id}>
@@ -136,19 +141,21 @@ export default function AddSubscriptionsAdminComponent() {
         <div>
           <label
             htmlFor="subscriptionSelect"
-            className="block text-sm font-medium text-gray-700"
+            className="block text-sm font-medium"
           >
-            Sélectionner un abonnement
+            {t("subscriptions.add.subscription")}
           </label>
+
           <select
             id="subscriptionSelect"
-            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+            className="mt-1 block w-full border rounded-md shadow-sm"
             value={selectedSubscription}
             onChange={handleSubscriptionChange}
           >
             <option disabled value="">
-              -- Choisir un abonnement --
+              -
             </option>
+
             {adminContext?.subscriptionsList?.map((subscription) => (
               <option
                 key={subscription.id}
@@ -172,16 +179,16 @@ export default function AddSubscriptionsAdminComponent() {
         <button
           onClick={createSubscription}
           disabled={loading}
-          className="mt-4 bg-blue text-white px-4 py-2 rounded hover:bg-blue-600 disabled:opacity-50"
+          className="mt-4 bg-blue text-white px-4 py-2 rounded disabled:opacity-50"
         >
-          {loading ? "Création en cours..." : "Créer l'abonnement"}
+          {loading
+            ? t("subscriptions.add.buttons.loading")
+            : t("subscriptions.add.buttons.create")}
         </button>
       )}
 
       {/* Message de confirmation ou d'erreur */}
-      {message && (
-        <div className="mt-4 text-center text-sm text-gray-700">{message}</div>
-      )}
+      {message && <div className="mt-4 text-center text-sm">{message}</div>}
     </div>
   );
 }

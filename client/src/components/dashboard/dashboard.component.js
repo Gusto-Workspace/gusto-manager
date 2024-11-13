@@ -27,7 +27,7 @@ export default function DashboardComponent(props) {
 
   return (
     <section
-      style={{ willChange: "transform" }}
+       
       className="flex flex-col gap-12"
     >
       <div className="grid grid-cols-1 tablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-3 gap-6">

@@ -70,7 +70,7 @@ export default function ListSubscriptionsAdminComponent(props) {
               className="cursor-pointer hover:underline"
               onClick={() => router.push("/subscriptions")}
             >
-              {t("titles.main")}
+              {t("nav.subscriptions")}
             </span>
           </h1>
         </div>
@@ -79,7 +79,7 @@ export default function ListSubscriptionsAdminComponent(props) {
           onClick={handleAddClick}
           className="bg-blue px-6 py-2 rounded-lg text-white cursor-pointer"
         >
-          {t("buttons.add")}
+          {t("subscriptions.list.add")}
         </button>
       </div>
 
@@ -97,35 +97,37 @@ export default function ListSubscriptionsAdminComponent(props) {
                 key={subscription.id}
                 className="bg-white p-6 rounded-lg drop-shadow-sm"
               >
-                <div>Nom de l'abonnement : {subscription.productName}</div>
                 <div>
-                  Montant : {subscription.productAmount}{" "}
-                  {subscription.productCurrency}
+                  {t("subscriptions.list.type")} : {subscription.productName} -{" "}
+                  {subscription.productAmount} {subscription.productCurrency}
                 </div>
+
                 <div>
-                  Client : {subscription.latest_invoice.customer_name}{" "}
+                  {t("subscriptions.list.owner")} :{" "}
+                  {subscription.latest_invoice.customer_name}{" "}
                   <span className="text-sm italic opacity-50">
                     ({subscription.latest_invoice.customer_email})
                   </span>
                 </div>
 
                 <div>
-                  Restaurant : {subscription.restaurantName} (ID :{" "}
+                  {t("subscriptions.list.restaurant")} :{" "}
+                  {subscription.restaurantName} (ID :{" "}
                   {subscription.restaurantId})
                 </div>
 
                 {/* Mode de paiement : automatique ou manuel */}
                 <div>
-                  Mode de paiement :{" "}
+                  {t("subscriptions.list.payment")} :{" "}
                   {subscription.collection_method === "charge_automatically"
-                    ? "Automatique"
-                    : "Manuel"}
+                    ? t("subscriptions.list.automaticMethod")
+                    : t("subscriptions.list.manualMethod")}
                 </div>
 
                 {subscription.latest_invoice && (
                   <>
                     <div>
-                      Dernière facture :{" "}
+                      {t("subscriptions.list.lastInvoice")} :{" "}
                       {new Date(
                         subscription.latest_invoice.created * 1000
                       ).toLocaleDateString()}
@@ -133,7 +135,7 @@ export default function ListSubscriptionsAdminComponent(props) {
 
                     {/* Statut de la facture */}
                     <div>
-                      Statut de la facture :{" "}
+                      {t("subscriptions.list.invoiceStatus")} :{" "}
                       <span
                         className={
                           subscription.latest_invoice.status === "paid"
@@ -146,12 +148,12 @@ export default function ListSubscriptionsAdminComponent(props) {
                         }
                       >
                         {subscription.latest_invoice.status === "paid"
-                          ? "Payée"
+                          ? t("subscriptions.list.paid")
                           : subscription.latest_invoice.status === "open"
-                            ? "Envoyée (En attente de paiement)"
+                            ? t("subscriptions.list.sent")
                             : subscription.latest_invoice.status === "draft"
-                              ? "Brouillon"
-                              : "Non payée"}
+                              ? t("subscriptions.list.draft")
+                              : t("subscriptions.list.unpaid")}
                       </span>
                     </div>
 
@@ -164,7 +166,7 @@ export default function ListSubscriptionsAdminComponent(props) {
                           }
                           className="bg-blue text-white px-4 py-2 mt-2 rounded-lg hover:bg-green-600"
                         >
-                          Passer en mode paiement automatique
+                          {t("subscriptions.list.automatic")}
                         </button>
                       )}
 
@@ -174,15 +176,14 @@ export default function ListSubscriptionsAdminComponent(props) {
                       className="bg-blue text-white px-4 py-2 mt-2 rounded-lg hover:bg-blue-600"
                     >
                       {showInvoices[subscription.id]
-                        ? "Masquer les factures"
-                        : "Afficher les factures"}
+                        ? t("subscriptions.list.hideInvoices")
+                        : t("subscriptions.list.showInvoices")}
                     </button>
 
                     {/* Affichage des factures */}
                     {showInvoices[subscription.id] &&
                       invoices[subscription.id] && (
                         <div className="mt-2">
-                          <h3>Factures :</h3>
                           <ul>
                             {invoices[subscription.id].map((invoice) => (
                               <li
@@ -190,7 +191,7 @@ export default function ListSubscriptionsAdminComponent(props) {
                                 className="border p-2 rounded-lg"
                               >
                                 <div>
-                                  Période :{" "}
+                                  {t("subscriptions.list.period")} :{" "}
                                   {new Date(
                                     invoice.period_start * 1000
                                   ).toLocaleDateString()}{" "}
@@ -200,11 +201,12 @@ export default function ListSubscriptionsAdminComponent(props) {
                                   ).toLocaleDateString()}
                                 </div>
                                 <div>
-                                  Montant : {invoice.amount_due / 100}{" "}
+                                  {t("subscriptions.list.amount")} :{" "}
+                                  {invoice.amount_due / 100}{" "}
                                   {invoice.currency.toUpperCase()}
                                 </div>
                                 <div>
-                                  Statut :{" "}
+                                  {t("subscriptions.list.status")} :{" "}
                                   <span
                                     className={
                                       invoice.status === "paid"
@@ -217,12 +219,12 @@ export default function ListSubscriptionsAdminComponent(props) {
                                     }
                                   >
                                     {invoice.status === "paid"
-                                      ? "Payée"
+                                      ? t("subscriptions.list.paid")
                                       : invoice.status === "open"
-                                        ? "Envoyée (En attente de paiement)"
+                                        ? t("subscriptions.list.sent")
                                         : invoice.status === "draft"
-                                          ? "Brouillon"
-                                          : "Non payée"}
+                                          ? t("subscriptions.list.draft")
+                                          : t("subscriptions.list.unpaid")}
                                   </span>
                                 </div>
                               </li>

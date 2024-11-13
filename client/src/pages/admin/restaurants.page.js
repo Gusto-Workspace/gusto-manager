@@ -76,7 +76,7 @@ export default function RestaurantsPage(props) {
         <NavAdminComponent />
 
         <div
-          style={{ willChange: "transform" }}
+           
           className="bg-lightGrey text-darkBlue overflow-y-auto flex-1 p-6 h-screen flex flex-col gap-6"
         >
           <ListRestaurantsAdminComponent
