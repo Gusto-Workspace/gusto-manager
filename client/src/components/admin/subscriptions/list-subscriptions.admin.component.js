@@ -65,7 +65,7 @@ export default function ListSubscriptionsAdminComponent(props) {
     <div>
       <div className="flex justify-between">
         <div className="flex gap-2 items-center">
-          <h1 className="pl-2 text-2xl flex items-center gap-2">
+          <h1 className="text-3xl flex items-center gap-2">
             <span
               className="cursor-pointer hover:underline"
               onClick={() => router.push("/subscriptions")}

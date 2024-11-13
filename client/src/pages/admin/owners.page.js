@@ -71,10 +71,7 @@ export default function OwnersPage(props) {
       <div className="flex">
         <NavAdminComponent />
 
-        <div
-           
-          className="bg-lightGrey text-darkBlue overflow-y-auto flex-1 p-6 h-screen flex flex-col gap-6"
-        >
+        <div className="ml-[250px] bg-lightGrey text-darkBlue overflow-y-auto flex-1 p-6 h-screen flex flex-col gap-6">
           <ListOwnersAdminComponent
             handleAddClick={handleAddClick}
             handleEditClick={handleEditClick}

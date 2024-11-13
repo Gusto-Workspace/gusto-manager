@@ -59,19 +59,12 @@ export default function AdminPage(props) {
         <title>{title}</title>
       </Head>
 
-      <div className="w-[100vw]">
-        {loading ? (
-          <div className="flex justify-center items-center ">
-            <div className="loader">Loading...</div>
-          </div>
-        ) : (
-          <div className="flex">
-            <NavAdminComponent />
-            <div className="border h-screen overflow-y-auto flex-1">
-              <DashboardAdminComponent />
-            </div>
-          </div>
-        )}
+      <div className="flex">
+        <NavAdminComponent />
+
+        <div className="ml-[250px] bg-lightGrey text-darkBlue overflow-y-auto flex-1 p-6 h-screen flex flex-col gap-6">
+          <DashboardAdminComponent />
+        </div>
       </div>
     </>
   );

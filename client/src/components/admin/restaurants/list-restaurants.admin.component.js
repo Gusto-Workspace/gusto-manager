@@ -38,7 +38,7 @@ export default function ListRestaurantsAdminComponent(props) {
   return (
     <div>
       <div className="flex justify-between">
-        <h1 className="text-4xl">{t("nav.restaurants")}</h1>
+        <h1 className="text-3xl">{t("nav.restaurants")}</h1>
 
         <button
           className="bg-blue text-white px-4 py-2 rounded-lg"
