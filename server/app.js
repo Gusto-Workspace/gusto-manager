@@ -26,6 +26,7 @@ app.use(
   cors({
     origin: [
       "http://localhost:8002", // Client
+      "http://localhost:8003", // Client La coquille
       "http://localhost:8012", // Server
     ],
     methods: ["GET", "POST", "PUT", "DELETE"],
