@@ -44,7 +44,7 @@ export default function CardListMenuComponent(props) {
         <DragMultiSvg width={20} height={20} />
       </button>
 
-      <h2 className="text-xl font-semibold">
+      <h2 className="text-xl font-semibold text-pretty text-center">
         {props.menu.name ? props.menu.name : t("labels.fixed")}
       </h2>
 

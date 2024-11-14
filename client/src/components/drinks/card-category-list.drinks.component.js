@@ -66,7 +66,7 @@ export default function CardCategoryListComponent(props) {
         </div>
       </button>
 
-      <h2 className="text-xl font-semibold">{props.category.name}</h2>
+      <h2 className="text-xl font-semibold text-pretty text-center">{props.category.name}</h2>
 
       <p className="text-sm opacity-50 mb-2">
         {t("labels.numberOfDishes")} : {totalDrinksCount}
