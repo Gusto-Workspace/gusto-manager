@@ -101,12 +101,14 @@ const notificationSchema = new mongoose.Schema({
 // Schéma pour les cartes cadeaux
 const giftCardSchema = new mongoose.Schema({
   value: { type: Number, required: true },
+  description: { type: String },
   visible: { type: Boolean, default: true },
 });
 
 // Schéma pour les achats de cartes cadeaux
 const giftCardPurchaseSchema = new mongoose.Schema({
   value: { type: Number, required: true },
+  description: { type: String },
   purchaseCode: { type: String, required: true },
   validUntil: { type: Date, required: true },
   status: {

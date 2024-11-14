@@ -14,12 +14,13 @@ function generateGiftCode() {
 // ADD RESTAURANT GIFT CARDS
 router.post("/restaurants/:id/gifts", async (req, res) => {
   const restaurantId = req.params.id;
-  const { value } = req.body;
+  const { value, description } = req.body;
 
   try {
     // Crée une nouvelle carte cadeau sans code ni date de validité
     const newGiftCard = {
       value,
+      description,
       visible: true,
     };
 
@@ -41,7 +42,7 @@ router.post("/restaurants/:id/gifts", async (req, res) => {
 router.put("/restaurants/:id/gifts/:giftId", async (req, res) => {
   const restaurantId = req.params.id;
   const giftId = req.params.giftId;
-  const { value, visible } = req.body;
+  const { value, description, visible } = req.body;
 
   try {
     // Mise à jour de la carte cadeau spécifique dans le tableau `giftCards`
@@ -50,6 +51,7 @@ router.put("/restaurants/:id/gifts/:giftId", async (req, res) => {
       {
         $set: {
           "giftCards.$.value": value,
+          "giftCards.$.description": description,
           "giftCards.$.visible": visible,
         },
       },
@@ -122,7 +124,8 @@ router.post("/restaurants/:id/gifts/:giftId/purchase", async (req, res) => {
 
     // Crée un nouvel objet pour l'achat avec code, valeur et validité de 6 mois
     const newPurchase = {
-      value: gift.value, // Inclut la valeur de la carte cadeau dans l'achat
+      value: gift.value,
+      description: gift.description, // Inclut la valeur de la carte cadeau dans l'achat
       purchaseCode,
       validUntil: new Date(Date.now() + 6 * 30 * 24 * 60 * 60 * 1000), // Validité de 6 mois
       status: "Valid", // Par défaut, le statut est "Valid"

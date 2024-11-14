@@ -1,13 +1,21 @@
 import { useContext, useState } from "react";
+
+// AXIOS
 import axios from "axios";
+
+// CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
+
+// I18N
 import { useTranslation } from "next-i18next";
+
+// SVG
 import { GiftSvg } from "../_shared/_svgs/gift.svg";
 
 export default function PurchasesGiftListComponent(props) {
   const { t } = useTranslation("gifts");
   const { restaurantContext } = useContext(GlobalContext);
-  const [searchTerm, setSearchTerm] = useState(""); // State for search input
+  const [searchTerm, setSearchTerm] = useState("");
 
   const purchasesByStatus = {
     Valid: [],
@@ -98,13 +106,21 @@ export default function PurchasesGiftListComponent(props) {
                         <p>
                           {t("labels.amount")}: {purchase.value}€
                         </p>
+
+                        {purchase.description && (
+                          <p>
+                            {t("labels.description")}: {purchase.description}
+                          </p>
+                        )}
                         <p>
                           {t("labels.owner")}: {purchase.beneficiaryFirstName}{" "}
                           {purchase.beneficiaryLastName}
                         </p>
+
                         <p>
                           {t("labels.code")}: {purchase.purchaseCode}
                         </p>
+
                         {status === "Valid" && (
                           <p>
                             {t("labels.valididy")}:{" "}
