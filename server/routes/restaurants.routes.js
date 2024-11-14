@@ -58,7 +58,7 @@ router.post("/owner/change-restaurant", authenticateToken, (req, res) => {
   res.status(200).json({ token: updatedToken });
 });
 
-// GET RESTAURANT DETAILS
+// GET RESTAURANT DETAILS FROM PANEL
 router.get("/owner/restaurants/:id", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -66,6 +66,26 @@ router.get("/owner/restaurants/:id", authenticateToken, async (req, res) => {
     // Met à jour les statuts des cartes expirées avant de récupérer les données
 
     await updateExpiredStatus(id);
+
+    const restaurant = await RestaurantModel.findById(id)
+      .populate("owner_id", "firstname")
+      .populate("menus");
+
+    if (!restaurant) {
+      return res.status(404).json({ message: "Restaurant not found" });
+    }
+
+    res.status(200).json({ restaurant });
+  } catch (error) {
+    console.error("Erreur lors de la récupération du restaurant:", error);
+    res.status(500).json({ message: "Erreur interne du serveur" });
+  }
+});
+
+// GET RESTAURANT DETAILS FROM SITE
+router.get("/restaurants/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
 
     const restaurant = await RestaurantModel.findById(id)
       .populate("owner_id", "firstname")
