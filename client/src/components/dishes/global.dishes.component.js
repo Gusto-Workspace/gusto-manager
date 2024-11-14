@@ -53,7 +53,7 @@ export default function GlobalDishesComponent(props) {
                       className={`flex items-center gap-4 justify-between ${props.createMenu && "cursor-pointer"}`}
                     >
                       <div className="flex flex-col">
-                        <h3 className="text-lg font-semibold">{dish.name}</h3>
+                        <h3>{dish.name}</h3>
 
                         <p className="text-sm opacity-50">
                           {dish.description.length > 50
