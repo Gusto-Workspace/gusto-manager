@@ -230,6 +230,26 @@ export default function CustomMenuComponent(props) {
               ))
             )}
           </div>
+
+          <div className="flex gap-4 mx-auto pt-12">
+            {props.isEditing && (
+              <button
+                type="submit"
+                className="p-2 text-white rounded-lg bg-blue"
+                disabled={isLoading}
+              >
+                {isLoading ? t("buttons.loading") : t("buttons.save")}
+              </button>
+            )}
+
+            <button
+              type="button"
+              className="px-4 py-2 text-white bg-red rounded-lg"
+              onClick={() => router.back()}
+            >
+              {props.isEditing ? t("buttons.cancel") : t("buttons.return")}
+            </button>
+          </div>
         </div>
 
         {props.isEditing && (
@@ -241,26 +261,6 @@ export default function CustomMenuComponent(props) {
             />
           </div>
         )}
-      </div>
-
-      <div className="flex gap-4 mx-auto">
-        {props.isEditing && (
-          <button
-            type="submit"
-            className="p-2 text-white rounded-lg bg-blue"
-            disabled={isLoading}
-          >
-            {isLoading ? t("buttons.loading") : t("buttons.save")}
-          </button>
-        )}
-
-        <button
-          type="button"
-          className="px-4 py-2 text-white bg-red rounded-lg"
-          onClick={() => router.back()}
-        >
-          {props.isEditing ? t("buttons.cancel") : t("buttons.return")}
-        </button>
       </div>
     </form>
   );
