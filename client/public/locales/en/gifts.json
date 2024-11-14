@@ -1,11 +1,15 @@
 {
   "titles": {
     "main": "Gift Cards",
-    "second" : "Buyed on website"
+    "second": "Buyed on website",
+    "amountCard": "Gift cards with amount",
+    "menuCard": "Gift cards for menus"
   },
   "form": {
     "labels": {
-      "value": "Card's value"
+      "value": "Card's value",
+      "description": "Card's detail content",
+      "optional": "(optional)"
     }
   },
   "labels": {
@@ -14,6 +18,7 @@
     "expired": "Expired",
     "amount": "Amount",
     "owner": "Owner",
+    "description": "Description",
     "code": "Code",
     "valididy": "Valid until",
     "emptyCard": "No gift card"

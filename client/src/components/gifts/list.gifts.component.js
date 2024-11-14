@@ -14,15 +14,11 @@ import { GlobalContext } from "@/contexts/global.context";
 import { useTranslation } from "next-i18next";
 
 // SVG
-import {
-  EditSvg,
-  GiftSvg,
-  DeleteSvg,
-  NoVisibleSvg,
-} from "../_shared/_svgs/_index";
+import { GiftSvg } from "../_shared/_svgs/_index";
 
 // COMPONENTS
 import PurchasesGiftListComponent from "./purshases-gift-list.gifts.component";
+import CardGiftsComponent from "./card.gifts.component";
 
 export default function ListGiftsComponent(props) {
   const { t } = useTranslation("gifts");
@@ -43,9 +39,9 @@ export default function ListGiftsComponent(props) {
 
   useEffect(() => {
     if (editingGift) {
-      reset({ value: editingGift.value });
+      reset({ value: editingGift.value, description: editingGift.description });
     } else {
-      reset({ value: null });
+      reset({ value: null, description: null });
     }
   }, [editingGift, reset]);
 
@@ -119,93 +115,25 @@ export default function ListGiftsComponent(props) {
         </button>
       </div>
 
-      <div className="mb-12 grid grid-cols-1 tablet:grid-cols-3 desktop:grid-cols-4 ultraWild:grid-cols-5 gap-6">
-        {restaurantContext?.restaurantData?.giftCards
-          ?.sort((a, b) => a.value - b.value)
-          .map((giftCard, i) => {
-            return (
-              <div
-                key={i}
-                className="relative bg-white rounded-lg drop-shadow-sm p-6 pb-2 flex flex-col gap-2 h-fit"
-              >
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleEditClick(giftCard);
-                  }}
-                  className="absolute right-0 top-0 flex flex-col items-center gap-1 p-2"
-                >
-                  <div className="hover:opacity-100 opacity-20 p-[6px] rounded-full transition-opacity duration-300">
-                    <EditSvg
-                      width={20}
-                      height={20}
-                      strokeColor="#131E36"
-                      fillColor="#131E36"
-                    />
-                  </div>
-                </button>
+      <div className="mb-12">
+        <CardGiftsComponent
+          titleKey="titles.amountCard"
+          filterCondition={(giftCard) => !giftCard.description}
+          handleEditClick={handleEditClick}
+          handleDeleteClick={handleDeleteClick}
+          handleVisibilityToggle={handleVisibilityToggle}
+          currencySymbol={currencySymbol}
+        />
 
-                <h2 className="text-xl text-center font-semibold">
-                  {giftCard.value} {currencySymbol}
-                </h2>
-
-                <hr className="bg-darkBlue h-[1px] w-[90%] opacity-20 mx-auto" />
-
-                <div className="flex w-full justify-center">
-                  <div className="w-1/2 flex justify-center">
-                    <button
-                      onClick={(e) => {
-                        handleVisibilityToggle(giftCard);
-                      }}
-                      className="flex flex-col items-center gap-1 p-2"
-                    >
-                      <div
-                        className={`bg-green ${
-                          giftCard.visible ? "bg-opacity-20" : ""
-                        } p-[6px] rounded-full transition-colors duration-300`}
-                      >
-                        <NoVisibleSvg
-                          width={15}
-                          height={15}
-                          strokeColor="white"
-                          fillColor="white"
-                        />
-                      </div>
-                      <p className="text-xs text-center">
-                        {giftCard.visible
-                          ? t("buttons.visible")
-                          : t("buttons.noVisible")}
-                      </p>
-                    </button>
-                  </div>
-
-                  <div className="w-1/2 flex justify-center">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteClick(giftCard);
-                      }}
-                      className="flex flex-col items-center gap-1 p-2"
-                    >
-                      <div className="hover:bg-[#FF7664] bg-[#FF766499] p-[6px] rounded-full transition-colors duration-300">
-                        <DeleteSvg
-                          width={15}
-                          height={15}
-                          strokeColor="white"
-                          fillColor="white"
-                        />
-                      </div>
-                      <p className="text-xs text-center">
-                        {t("buttons.delete")}
-                      </p>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+        <CardGiftsComponent
+          titleKey="titles.menuCard"
+          filterCondition={(giftCard) => giftCard.description}
+          handleEditClick={handleEditClick}
+          handleDeleteClick={handleDeleteClick}
+          handleVisibilityToggle={handleVisibilityToggle}
+          currencySymbol={currencySymbol}
+        />
       </div>
-
       <PurchasesGiftListComponent
         purchasesGiftCards={
           restaurantContext?.restaurantData?.purchasesGiftCards
@@ -225,7 +153,7 @@ export default function ListGiftsComponent(props) {
             className="fixed inset-0 bg-black bg-opacity-20"
           />
 
-          <div className="bg-white p-6 rounded-lg shadow-lg w-[400px] z-10">
+          <div className="bg-white p-6 rounded-lg shadow-lg w-[450px] z-10">
             <h2 className="text-xl font-semibold mb-6 text-center">
               {isDeleting
                 ? t("buttons.deleteGift")
@@ -240,12 +168,25 @@ export default function ListGiftsComponent(props) {
             >
               <div className="flex flex-col gap-2">
                 <label className="block font-semibold">
+                  <span>{t("form.labels.description")}</span>
+                  <span className="text-xs opacity-50 ml-2 italic">
+                    {t("form.labels.optional")}
+                  </span>
+                </label>
+
+                <textarea
+                  className={`border p-2 rounded-lg w-full resize-none  ${isDeleting ? "opacity-50 cursor-not-allowed" : ""}`}
+                  {...register("description", { required: false })}
+                  disabled={isDeleting}
+                />
+
+                <label className="block font-semibold">
                   {t("form.labels.value")}
                 </label>
 
                 <div className="flex items-center">
                   <span
-                    className={`px-3 py-2 rounded-l-lg ${errors.value ? " border border-r-0 border-t-red border-l-red border-b-red" : " border-t border-l border-b"}`}
+                    className={`px-3 py-2 rounded-l-lg ${isDeleting ? "opacity-50 cursor-not-allowed" : ""}  ${errors.value ? " border border-r-0 border-t-red border-l-red border-b-red" : " border-t border-l border-b"}`}
                   >
                     {currencySymbol}
                   </span>
