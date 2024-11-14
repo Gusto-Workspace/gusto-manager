@@ -26,7 +26,6 @@ app.use(
   cors({
     origin: [
       "https://www.gusto-manager.com", // Client
-      "http://localhost:8003", // TODO METTRE ADRESSE DE PROD DE LA COQUILLE
       "https://gusto-manager.onrender.com", // Server
     ],
     methods: ["GET", "POST", "PUT", "DELETE"],
