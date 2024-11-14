@@ -101,7 +101,43 @@ router.get("/restaurants/:id", async (req, res) => {
       return res.status(404).json({ message: "Restaurant not found" });
     }
 
-    res.status(200).json({ restaurant });
+    const restaurantData = {
+      ...restaurant.toObject(),
+      menus: restaurant.menus.map((menu) => ({
+        _id: menu._id,
+        name: menu.name,
+        description: menu.description,
+        price: menu.price,
+        type: menu.type,
+        visible: menu.visible,
+        created_at: menu.created_at,
+        combinations: menu.combinations,
+        dishes: menu.dishes.map((dishId) => {
+          for (const category of restaurant.dish_categories) {
+            const dish = category.dishes.find(
+              (dish) => dish._id.toString() === dishId.toString()
+            );
+            if (dish) {
+              return {
+                _id: dish._id,
+                name: dish.name,
+                description: dish.description,
+                price: dish.price,
+                showOnWebsite: dish.showOnWebsite,
+                vegan: dish.vegan,
+                vegetarian: dish.vegetarian,
+                bio: dish.bio,
+                glutenFree: dish.glutenFree,
+                category: category.name,
+              };
+            }
+          }
+          return dishId;
+        }),
+      })),
+    };
+
+    res.status(200).json({ restaurant: restaurantData });
   } catch (error) {
     console.error("Erreur lors de la récupération du restaurant:", error);
     res.status(500).json({ message: "Erreur interne du serveur" });
