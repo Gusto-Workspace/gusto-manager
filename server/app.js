@@ -26,6 +26,7 @@ app.use(
   cors({
     origin: [
       "https://www.gusto-manager.com", // Client
+      "http://localhost:8003", // Client La coquille
       "https://gusto-manager.onrender.com", // Server
     ],
     methods: ["GET", "POST", "PUT", "DELETE"],
