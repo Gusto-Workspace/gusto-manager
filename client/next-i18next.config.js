@@ -5,4 +5,5 @@ module.exports = {
     defaultLocale: "fr",
   },
   localeDetection: false,
+  debug: true,
 };
