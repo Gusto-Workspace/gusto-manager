@@ -76,19 +76,24 @@ export default function AddMenuPage(props) {
   );
 }
 
-export async function getServerSideProps({ query, locale }) {
+export async function getServerSideProps(context) {
+  const { query, locale } = context;
   const { menuId } = query;
+
+  const translations = await serverSideTranslations(locale, [
+    "common",
+    "dishes",
+    "menus",
+  ]);
+
+  console.log(translations);
 
   if (!menuId) {
     return {
       props: {
         menu: null,
         selectedDishes: null,
-        ...(await serverSideTranslations(locale, [
-          "common",
-          "dishes",
-          "menus",
-        ])),
+        ...translations,
       },
     };
   }
@@ -104,11 +109,7 @@ export async function getServerSideProps({ query, locale }) {
       props: {
         menu,
         selectedDishes,
-        ...(await serverSideTranslations(locale, [
-          "common",
-          "dishes",
-          "menus",
-        ])),
+        ...translations,
       },
     };
   } catch (error) {
@@ -117,11 +118,7 @@ export async function getServerSideProps({ query, locale }) {
       props: {
         menu: null,
         selectedDishes: null,
-        ...(await serverSideTranslations(locale, [
-          "common",
-          "dishes",
-          "menus",
-        ])),
+        ...translations,
       },
     };
   }
