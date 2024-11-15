@@ -15,7 +15,7 @@ import { navItemsData } from "@/_assets/data/_index.data";
 import * as icons from "@/components/_shared/_svgs/_index";
 
 export default function NavComponent() {
-  const { t } = useTranslation("common");
+  const { t, i18n } = useTranslation("common"); // Hook pour la traduction
   const { restaurantContext } = useContext(GlobalContext);
   const router = useRouter();
 
