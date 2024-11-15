@@ -15,14 +15,9 @@ import { navItemsData } from "@/_assets/data/_index.data";
 import * as icons from "@/components/_shared/_svgs/_index";
 
 export default function NavComponent() {
-  const { t, i18n } = useTranslation("common"); // Hook pour la traduction
+  const { t } = useTranslation("common");
   const { restaurantContext } = useContext(GlobalContext);
   const router = useRouter();
-
-    // Loguer les informations importantes
-    console.log("Current Locale:", i18n.language); // Langue actuelle
-    console.log("Namespace Loaded:", i18n.reportNamespaces); // Vérifie si le namespace "common" est chargé
-  
 
   function isActive(itemHref) {
     if (itemHref === "/") {
@@ -58,8 +53,6 @@ export default function NavComponent() {
           const IconComponent = icons[item.icon];
           const active = isActive(item.href);
 
-          console.log(`Translating label: ${item.label} ->`, t(item.label));
-          
           return (
             <li
               key={item.href}
