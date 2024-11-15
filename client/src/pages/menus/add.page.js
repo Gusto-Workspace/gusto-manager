@@ -86,8 +86,6 @@ export async function getServerSideProps(context) {
     "menus",
   ]);
 
-  console.log(translations);
-
   if (!menuId) {
     return {
       props: {
