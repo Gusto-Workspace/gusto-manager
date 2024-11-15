@@ -19,6 +19,11 @@ export default function NavComponent() {
   const { restaurantContext } = useContext(GlobalContext);
   const router = useRouter();
 
+    // Loguer les informations importantes
+    console.log("Current Locale:", i18n.language); // Langue actuelle
+    console.log("Namespace Loaded:", i18n.reportNamespaces); // Vérifie si le namespace "common" est chargé
+  
+
   function isActive(itemHref) {
     if (itemHref === "/") {
       return router.pathname === "/";
@@ -53,6 +58,8 @@ export default function NavComponent() {
           const IconComponent = icons[item.icon];
           const active = isActive(item.href);
 
+          console.log(`Translating label: ${item.label} ->`, t(item.label));
+          
           return (
             <li
               key={item.href}
