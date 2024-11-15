@@ -1,4 +1,4 @@
-const path = require('path');
+const path = require("path");
 
 /** @type {import('next-i18next').UserConfig} */
 module.exports = {
@@ -7,7 +7,5 @@ module.exports = {
     defaultLocale: "fr",
     localeDetection: false,
   },
-  localePath: typeof window === 'undefined'
-    ? path.resolve('./public/locales') // pour le serveur
-    : '/locales' // pour le client
+  localePath: path.resolve("./public/locales"),
 };
