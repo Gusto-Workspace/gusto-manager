@@ -61,9 +61,12 @@ export default function CategoriesListDishesComponent() {
 
   useEffect(() => {
     if (editingCategory) {
-      reset({ name: editingCategory.name });
+      reset({
+        name: editingCategory.name,
+        description: editingCategory.description,
+      });
     } else {
-      reset({ name: "" });
+      reset({ name: null, description: null });
     }
   }, [editingCategory, reset]);
 

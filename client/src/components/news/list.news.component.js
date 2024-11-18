@@ -100,14 +100,16 @@ export default function ListNewsComponent(props) {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 tablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 tablet:grid-cols-2 desktop:grid-cols-3 gap-6">
         {props?.news?.map((data, i) => {
           return (
             <div
               key={i}
               className="bg-white rounded-lg drop-shadow-sm p-6 flex flex-col gap-4 h-fit"
             >
-              <h2 className="text-xl text-center">{data.title}</h2>
+              <h2 className="text-xl text-center min-h-[56px] text-balance flex items-center justify-center">
+                {data.title}
+              </h2>
 
               <hr className="bg-darkBlue h-[1px] w-full opacity-20 mx-auto" />
 
