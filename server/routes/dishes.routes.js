@@ -9,7 +9,7 @@ router.post(
   "/restaurants/:restaurantId/dishes/categories",
   async (req, res) => {
     const { restaurantId } = req.params;
-    const { name } = req.body;
+    const { name, description } = req.body;
 
     // Validation des données
     if (!name) {
@@ -38,6 +38,7 @@ router.post(
       // Ajouter la nouvelle catégorie
       const newCategory = {
         name,
+        description,
         dishes: [],
       };
 
@@ -63,7 +64,7 @@ router.put(
   "/restaurants/:restaurantId/dishes/categories/:categoryId",
   async (req, res) => {
     const { restaurantId, categoryId } = req.params;
-    const { name, visible } = req.body;
+    const { name, description, visible } = req.body;
 
     try {
       const restaurant = await RestaurantModel.findById(restaurantId)
@@ -82,6 +83,7 @@ router.put(
 
       // Mettre à jour le nom et la visibilité si fournis
       if (name !== undefined) category.name = name;
+      if (description !== undefined) category.description = description;
       if (visible !== undefined) category.visible = visible;
 
       await restaurant.save();

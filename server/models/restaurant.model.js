@@ -37,6 +37,7 @@ const dishSchema = new mongoose.Schema({
 // Sous-schéma pour les catégories de plats
 const dishCategorySchema = new mongoose.Schema({
   name: { type: String, required: true },
+  description: { type: String },
   visible: { type: Boolean, default: true },
   dishes: { type: [dishSchema], default: [] },
 });
