@@ -26,7 +26,7 @@ const openingHourSchema = new mongoose.Schema(
 const dishSchema = new mongoose.Schema({
   name: { type: String, required: true },
   description: { type: String },
-  price: { type: Number, required: true },
+  price: { type: Number },
   showOnWebsite: { type: Boolean, default: true },
   vegan: { type: Boolean, default: false },
   vegetarian: { type: Boolean, default: false },
@@ -42,13 +42,17 @@ const dishCategorySchema = new mongoose.Schema({
   dishes: { type: [dishSchema], default: [] },
 });
 
+// Sous-schéma pour les volumes
+const volumeSchema = new mongoose.Schema({
+  volume: { type: String, required: true },
+  price: { type: Number, required: true },
+});
+
 // Sous-schéma pour les vins
 const wineSchema = new mongoose.Schema({
   name: { type: String, required: true },
   appellation: { type: String },
-  volume: { type: String, required: true },
-  unit: { type: String, required: true },
-  price: { type: Number, required: true },
+  volumes: { type: [volumeSchema], required: true }, 
   showOnWebsite: { type: Boolean, default: true },
   year: { type: Number },
   bio: { type: Boolean, default: false },

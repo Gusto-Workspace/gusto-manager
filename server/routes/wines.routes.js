@@ -123,13 +123,13 @@ router.delete(
 // ADD A WINE TO A CATEGORY
 router.post("/restaurants/:restaurantId/wines", async (req, res) => {
   const { restaurantId } = req.params;
-  const { categoryId } = req.body;
+  const { categoryId, name, appellation, volumes, year, bio, showOnWebsite } = req.body;
 
   // Validation des données
-  if (!req.body.name || !req.body.price || !categoryId) {
+  if (!name || !volumes || volumes.length === 0 || !categoryId) {
     return res
       .status(400)
-      .json({ message: "Name, price, and category ID are required." });
+      .json({ message: "Name, volumes, and category ID are required." });
   }
 
   try {
@@ -142,15 +142,36 @@ router.post("/restaurants/:restaurantId/wines", async (req, res) => {
       return res.status(404).json({ message: "Restaurant not found." });
     }
 
-    // Trouver la catégorie à laquelle ajouter la boisson
+    // Trouver la catégorie à laquelle ajouter le vin
     const category = restaurant.wine_categories.id(categoryId);
 
     if (!category) {
       return res.status(404).json({ message: "Category not found." });
     }
 
-    // Ajouter la nouvelle boisson à la catégorie
-    category.wines.push(req.body);
+    // Vérifier et formater les volumes
+    const formattedVolumes = volumes.map((volume) => {
+      if (!volume.volume || !volume.price) {
+        throw new Error("Each volume must have a volume and a price.");
+      }
+      return {
+        volume: volume.volume, 
+        price: parseFloat(volume.price),
+      };
+    });
+
+    // Créer un nouvel objet vin
+    const newWine = {
+      name,
+      appellation,
+      volumes: formattedVolumes,
+      year: year ? parseInt(year, 10) : undefined,
+      bio: bio || false,
+      showOnWebsite: showOnWebsite || false,
+    };
+
+    // Ajouter le nouveau vin à la catégorie
+    category.wines.push(newWine);
 
     // Sauvegarder les modifications
     await restaurant.save();
@@ -165,12 +186,13 @@ router.post("/restaurants/:restaurantId/wines", async (req, res) => {
 // UPDATE A WINE IN CATEGORY
 router.put("/restaurants/:restaurantId/wines/:wineId", async (req, res) => {
   const { restaurantId, wineId } = req.params;
-  const { name, appellation, volume, unit, price, year, showOnWebsite, bio } =
-    req.body;
+  const { name, appellation, volumes, year, showOnWebsite, bio } = req.body;
 
   // Validation des données
-  if (!name || !price) {
-    return res.status(400).json({ message: "Name and price are required." });
+  if (!name || !volumes || volumes.length === 0) {
+    return res
+      .status(400)
+      .json({ message: "Name and at least one volume are required." });
   }
 
   try {
@@ -183,18 +205,25 @@ router.put("/restaurants/:restaurantId/wines/:wineId", async (req, res) => {
       return res.status(404).json({ message: "Restaurant not found." });
     }
 
-    // Trouver le plat à mettre à jour dans toutes les catégorie
+    // Trouver le vin à mettre à jour dans toutes les catégories
     let wineFound = false;
 
     for (const category of restaurant.wine_categories) {
       const wine = category.wines.id(wineId);
       if (wine) {
-        wine.appellation = appellation;
+        // Mettre à jour les propriétés du vin
         wine.name = name;
-        wine.volume = volume;
-        wine.unit = unit;
-        wine.price = price;
-        wine.year = year;
+        wine.appellation = appellation;
+        wine.volumes = volumes.map((volume) => {
+          if (!volume.volume || !volume.price) {
+            throw new Error("Each volume must have a volume and a price.");
+          }
+          return {
+            volume: volume.volume, // Ex: "75CL"
+            price: parseFloat(volume.price),
+          };
+        });
+        wine.year = year ? parseInt(year, 10) : undefined;
         wine.showOnWebsite = showOnWebsite;
         wine.bio = bio;
         wineFound = true;
@@ -214,6 +243,7 @@ router.put("/restaurants/:restaurantId/wines/:wineId", async (req, res) => {
     res.status(500).json({ message: "Server error. Please try again later." });
   }
 });
+
 
 // GET WINES BY CATEGORY
 router.get("/categories/:categoryId/wines", async (req, res) => {
@@ -608,12 +638,13 @@ router.post(
   "/restaurants/:restaurantId/wines/categories/:categoryId/subcategories/:subCategoryId/wines",
   async (req, res) => {
     const { restaurantId, categoryId, subCategoryId } = req.params;
-    const { name, appellation, price, year, bio, volume, unit } = req.body;
+    const { name, appellation, volumes, year, bio, showOnWebsite } = req.body;
 
-    if (!name || !price) {
+    // Validation des données
+    if (!name || !volumes || volumes.length === 0) {
       return res
         .status(400)
-        .json({ message: "Wine name and price are required." });
+        .json({ message: "Wine name and at least one volume are required." });
     }
 
     try {
@@ -635,16 +666,31 @@ router.post(
         return res.status(404).json({ message: "Subcategory not found." });
       }
 
-      subCategory.wines.push({
-        name,
-        appellation,
-        price,
-        year,
-        bio,
-        volume,
-        unit,
+      // Vérifier et formater les volumes
+      const formattedVolumes = volumes.map((volume) => {
+        if (!volume.volume || !volume.price) {
+          throw new Error("Each volume must have a volume and a price.");
+        }
+        return {
+          volume: volume.volume, // Ex: "75CL"
+          price: parseFloat(volume.price),
+        };
       });
 
+      // Créer un nouvel objet vin
+      const newWine = {
+        name,
+        appellation,
+        volumes: formattedVolumes,
+        year: year ? parseInt(year, 10) : undefined,
+        bio: bio || false,
+        showOnWebsite: showOnWebsite || false,
+      };
+
+      // Ajouter le nouveau vin à la sous-catégorie
+      subCategory.wines.push(newWine);
+
+      // Sauvegarder les modifications
       await restaurant.save();
 
       res.status(201).json({
@@ -707,14 +753,17 @@ router.put(
   "/restaurants/:restaurantId/wines/categories/:categoryId/subcategories/:subCategoryId/wines/:wineId",
   async (req, res) => {
     const { restaurantId, categoryId, subCategoryId, wineId } = req.params;
-    const { name, appellation, volume, unit, price, year, showOnWebsite, bio } =
-      req.body;
+    const { name, appellation, volumes, year, showOnWebsite, bio } = req.body;
 
-    if (!name || !price) {
-      return res.status(400).json({ message: "Name and price are required." });
+    // Validation des données
+    if (!name || !volumes || volumes.length === 0) {
+      return res
+        .status(400)
+        .json({ message: "Name and at least one volume are required." });
     }
 
     try {
+      // Vérifier si le restaurant existe
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
         .populate("menus");
@@ -734,16 +783,25 @@ router.put(
       const wine = subCategory.wines.id(wineId);
       if (!wine) return res.status(404).json({ message: "Wine not found." });
 
-      wine.appellation = appellation;
+      // Mettre à jour les champs du vin
       wine.name = name;
-      wine.volume = volume;
-      wine.unit = unit;
-      wine.price = price;
-      wine.year = year;
+      wine.appellation = appellation;
+      wine.volumes = volumes.map((volume) => {
+        if (!volume.volume || !volume.price) {
+          throw new Error("Each volume must have a volume and a price.");
+        }
+        return {
+          volume: volume.volume, // Ex: "75CL"
+          price: parseFloat(volume.price),
+        };
+      });
+      wine.year = year ? parseInt(year, 10) : undefined;
       wine.showOnWebsite = showOnWebsite;
       wine.bio = bio;
 
+      // Sauvegarder les modifications
       await restaurant.save();
+
       res
         .status(200)
         .json({ message: "Wine updated successfully.", restaurant });
@@ -755,5 +813,6 @@ router.put(
     }
   }
 );
+
 
 module.exports = router;

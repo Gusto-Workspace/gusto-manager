@@ -139,10 +139,10 @@ router.post("/restaurants/:restaurantId/dishes", async (req, res) => {
   const { categoryId } = req.body;
 
   // Validation des données
-  if (!req.body.name || !req.body.price || !categoryId) {
+  if (!req.body.name || !categoryId) {
     return res
       .status(400)
-      .json({ message: "Name, price, and category ID are required." });
+      .json({ message: "Name, and category ID are required." });
   }
 
   try {
@@ -221,8 +221,8 @@ router.put("/restaurants/:restaurantId/dishes/:dishId", async (req, res) => {
   } = req.body;
 
   // Validation des données
-  if (!name || !price) {
-    return res.status(400).json({ message: "Name and price are required." });
+  if (!name) {
+    return res.status(400).json({ message: "Name is required." });
   }
 
   try {

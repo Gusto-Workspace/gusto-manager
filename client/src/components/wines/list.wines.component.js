@@ -357,7 +357,7 @@ export default function ListWinesComponent(props) {
         <div className="flex gap-2 items-center">
           <WineSvg width={30} height={30} fillColor="#131E3690" />
 
-          <h1 className="pl-2 text-2xl flex items-center gap-2">
+          <h1 className="pl-2 text-2xl flex items-center gap-2 flex-wrap">
             <span
               className="cursor-pointer hover:underline"
               onClick={() => router.push(baseRoute)}
@@ -394,7 +394,7 @@ export default function ListWinesComponent(props) {
         <div className="flex gap-4">
           <button
             onClick={handleAddClick}
-            className="bg-blue px-6 py-2 rounded-lg text-white cursor-pointer"
+            className="bg-blue px-6 py-2 rounded-lg text-white cursor-pointer whitespace-nowrap h-fit"
           >
             {t("buttons.addWine")}
           </button>

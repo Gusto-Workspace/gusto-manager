@@ -7,7 +7,7 @@
     "labels": {
       "appellation": "Appellation",
       "name": "Name of the bottle",
-      "volume": "Volume",
+      "volumes": "Volumes",
       "unit": "Unit",
       "year": "Year",
       "optional": "(optional)",

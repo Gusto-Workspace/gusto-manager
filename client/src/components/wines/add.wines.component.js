@@ -1,6 +1,6 @@
 import { useContext, useEffect } from "react";
 import { useRouter } from "next/router";
-import { useForm } from "react-hook-form";
+import { useFieldArray, useForm } from "react-hook-form";
 import { useTranslation } from "next-i18next";
 import axios from "axios";
 import { GlobalContext } from "@/contexts/global.context";
@@ -17,13 +17,22 @@ export default function AddWinesComponent(props) {
     register,
     handleSubmit,
     reset,
+    control,
     formState: { errors },
   } = useForm({
     defaultValues: {
-      showOnSite: "yes",
+      name: "",
+      appellation: "",
+      volumes: [{ volume: "", unit: "CL", price: "" }],
+      year: "",
       bio: false,
-      unit: "CL",
+      showOnSite: "yes",
     },
+  });
+
+  const { fields, append, remove } = useFieldArray({
+    control,
+    name: "volumes",
   });
 
   useEffect(() => {
@@ -31,17 +40,22 @@ export default function AddWinesComponent(props) {
       reset({
         name: props.wine.name,
         appellation: props.wine.appellation,
-        volume: props.wine.volume,
-        unit: props.wine.unit || "CL",
-        year: props.wine.year,
-        price: props.wine.price,
-        bio: props.wine.bio,
+        volumes: props.wine.volumes.map((v) => {
+          const [volume, unit] = v.volume.split(" ");
+          return { volume, unit: unit || "CL", price: v.price };
+        }),
+        year: props.wine.year || "",
+        bio: props.wine.bio || false,
         showOnSite: props.wine.showOnWebsite ? "yes" : "no",
       });
     } else {
       reset({
-        showOnSite: "yes",
+        name: "",
+        appellation: "",
+        volumes: [{ volume: "", unit: "CL", price: "" }],
+        year: "",
         bio: false,
+        showOnSite: "yes",
       });
     }
   }, [props.wine, reset]);
@@ -50,9 +64,12 @@ export default function AddWinesComponent(props) {
     const formattedData = {
       ...data,
       showOnWebsite: data.showOnSite === "yes",
-      price: parseFloat(data.price),
       bio: data.bio || false,
       categoryId: props.category._id,
+      volumes: data.volumes.map((volume) => ({
+        volume: `${volume.volume} ${volume.unit}`,
+        price: parseFloat(volume.price),
+      })),
     };
 
     try {
@@ -60,12 +77,10 @@ export default function AddWinesComponent(props) {
       let method = props.wine ? "put" : "post";
 
       if (props.subCategory) {
-        // Si la boisson est ajoutée dans une sous-catégorie
         apiUrl = props.wine
           ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/wines/categories/${props.category._id}/subcategories/${props.subCategory._id}/wines/${props.wine._id}`
           : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/wines/categories/${props.category._id}/subcategories/${props.subCategory._id}/wines`;
       } else {
-        // Si la boisson est ajoutée dans une catégorie principale
         apiUrl = props.wine
           ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/wines/${props.wine._id}`
           : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/wines`;
@@ -75,7 +90,6 @@ export default function AddWinesComponent(props) {
 
       restaurantContext.setRestaurantData(response.data.restaurant);
 
-      // Redirige vers la catégorie ou sous-catégorie appropriée après l'ajout ou la modification
       if (props.subCategory) {
         router.push(`/wines/${props.category._id}/${props.subCategory._id}`);
       } else {
@@ -93,7 +107,7 @@ export default function AddWinesComponent(props) {
       <div className="flex gap-2 py-1 items-center">
         <WineSvg width={30} height={30} fillColor="#131E3690" />
 
-        <h1 className="pl-2 text-2xl flex items-center gap-2">
+        <h1 className="pl-2 text-2xl flex items-center gap-2 flex-wrap">
           <span>{t("titles.main")}</span>
 
           {props.category && (
@@ -150,70 +164,81 @@ export default function AddWinesComponent(props) {
             />
           </div>
 
-          <div className="flex gap-2">
-            <div className="flex flex-col gap-1 w-fit">
-              <label className="block font-semibold">
-                <span>{t("form.labels.volume")}</span>
-              </label>
-
-              <input
-                type="number"
-                step="0.01"
-                placeholder="-"
-                {...register("volume")}
-                className="border p-2 rounded-lg w-full"
-              />
-            </div>
-
-            <div className="flex flex-col gap-1 w-fit">
-              <label className="block font-semibold">
-                <span>{t("form.labels.unit")}</span>
-              </label>
-
-              <select
-                {...register("unit", { required: true })}
-                className="border p-2 rounded-lg w-full"
-              >
-                <option value="L">L</option>
-                <option value="CL">CL</option>
-              </select>
-            </div>
-          </div>
-
           <div className="flex flex-col gap-1">
             <label className="block font-semibold">
-              {t("form.labels.year")}
+              {t("form.labels.volumes")}
             </label>
 
-            <input
-              type="number"
-              placeholder="-"
-              {...register("year")}
-              className="border p-2 rounded-lg w-full"
-            />
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="block font-semibold">
-              {t("form.labels.price")}
-            </label>
-
-            <div className="flex items-center">
-              <span
-                className={`px-3 py-2 rounded-l-lg ${errors.price ? " border border-r-0 border-t-red border-l-red border-b-red" : " border-t border-l border-b"}`}
-              >
-                {currencySymbol}
-              </span>
-
-              <input
-                type="number"
-                placeholder="-"
-                step="0.01"
-                {...register("price", { required: true })}
-                className={`border p-2 rounded-r-lg w-full ${errors.price ? "border-red" : ""}`}
-              />
+            <div className="flex flex-col gap-4">
+              {fields.map((item, index) => (
+                <div key={item.id} className="flex gap-4 items-center">
+                  <input
+                    type="number"
+                    placeholder="Volume"
+                    step="0.5"
+                    {...register(`volumes.${index}.volume`, { required: true })}
+                    className="border p-2 rounded-lg w-24"
+                  />
+                  <select
+                    {...register(`volumes.${index}.unit`, { required: true })}
+                    className="border p-2 rounded-lg w-20"
+                  >
+                    <option value="CL">CL</option>
+                    <option value="L">L</option>
+                  </select>
+                  <div className="flex items-center">
+                    <span
+                      className={`px-3 py-2 rounded-l-lg ${
+                        errors?.volumes?.[index]?.price
+                          ? "border border-r-0 border-t-red border-l-red border-b-red"
+                          : "border-t border-l border-b"
+                      }`}
+                    >
+                      {currencySymbol}
+                    </span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder={t("form.labels.price")}
+                      {...register(`volumes.${index}.price`, {
+                        required: true,
+                      })}
+                      className={`border p-2 rounded-r-lg w-32 ${
+                        errors?.volumes?.[index]?.price ? "border-red" : ""
+                      }`}
+                    />
+                  </div>
+                  {fields.length > 1 && (
+                    <button
+                      type="button"
+                      className="bg-red text-white px-2 py-1 rounded-lg"
+                      onClick={() => remove(index)}
+                    >
+                      {t("buttons.delete")}
+                    </button>
+                  )}
+                </div>
+              ))}
             </div>
+
+            <button
+              type="button"
+              className="bg-blue bg-opacity-30 text-blue px-4 py-2 rounded-lg w-fit mt-4"
+              onClick={() => append({ volume: "", unit: "CL", price: "" })}
+            >
+              {t("buttons.add")}
+            </button>
           </div>
+        </div>
+        <div className="flex flex-col gap-1 w-[150px]">
+          <label className="block font-semibold">{t("form.labels.year")}</label>
+
+          <input
+            type="number"
+            placeholder="-"
+            {...register("year", { required: true })}
+            className={`border p-2 rounded-lg w-full ${errors.name ? "border-red" : ""}`}
+          />
         </div>
 
         <label className="flex items-center gap-2">

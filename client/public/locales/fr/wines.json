@@ -7,7 +7,7 @@
     "labels": {
       "appellation": "Appellation",
       "name": "Nom de la bouteille",
-      "volume": "Volume",
+      "volumes": "Volumes",
       "unit": "Unité",
       "year": "Année",
       "optional": "(optionnel)",
@@ -38,6 +38,7 @@
     "delete": "Supprimer",
     "access": "Accéder",
     "confirm": "Confirmer",
+    "loading": "En cours...",
     "yes": "Oui",
     "no": "Non",
     "cancel": "Annuler"

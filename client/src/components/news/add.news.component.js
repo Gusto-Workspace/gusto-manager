@@ -125,7 +125,7 @@ export default function AddNewsComponent(props) {
       <div className="flex gap-2 py-1 items-center">
         <NewsSvg width={30} height={30} fillColor="#131E3690" />
 
-        <h1 className="pl-2 text-2xl flex items-center">
+        <h1 className="pl-2 text-2xl flex items-center flex-wrap">
           {t("titles.main")} /{" "}
           {props.news ? t("buttons.edit") : t("buttons.add")}
         </h1>

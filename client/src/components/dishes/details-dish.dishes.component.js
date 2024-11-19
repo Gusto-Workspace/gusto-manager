@@ -145,7 +145,7 @@ export default function DetailsDishComponent(props) {
         </div>
 
         <p className="text-lg whitespace-nowrap">
-          {props.dish.price.toFixed(2)} {props.currencySymbol}
+          {props?.dish?.price?.toFixed(2)} {props?.dish?.price && props?.currencySymbol}
         </p>
 
         <div
