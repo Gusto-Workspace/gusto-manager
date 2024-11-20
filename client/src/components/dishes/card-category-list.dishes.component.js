@@ -56,7 +56,7 @@ export default function CardCategoryListComponent(props) {
         </div>
       </button>
 
-      <h2 className="text-xl font-semibold text-pretty text-center">
+      <h2 className="text-xl font-semibold text-pretty text-center min-h-[58px] mt-4">
         {props.category.name}
       </h2>
 
