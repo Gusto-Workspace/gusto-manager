@@ -16,7 +16,6 @@ export default function GlobalWinesComponent(props) {
     }, {});
   }
 
-  // Récupère tous les volumes uniques pour les colonnes
   function getAllVolumes(categories) {
     const allVolumes = new Set();
     categories.forEach((category) => {
@@ -29,7 +28,16 @@ export default function GlobalWinesComponent(props) {
         );
       });
     });
-    return Array.from(allVolumes).sort(); // Trier par ordre croissant
+
+    return Array.from(allVolumes)
+      .map((volume) => {
+        const [value, unit] = volume.split(" ");
+        const volumeInLiters =
+          unit === "CL" ? parseFloat(value) / 100 : parseFloat(value);
+        return { originalVolume: volume, volumeInLiters };
+      })
+      .sort((a, b) => a.volumeInLiters - b.volumeInLiters)
+      .map((v) => v.originalVolume);
   }
 
   const volumes = getAllVolumes(props.categories);

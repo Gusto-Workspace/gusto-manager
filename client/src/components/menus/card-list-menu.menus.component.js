@@ -35,7 +35,7 @@ export default function CardListMenuComponent(props) {
     <div
       ref={setNodeRef}
       style={style}
-      className="relative bg-white p-6 pb-2 rounded-lg drop-shadow-sm flex flex-col gap-2 justify-between items-center"
+      className="relative bg-white p-6 pb-2 rounded-lg drop-shadow-sm flex flex-col gap-4 justify-between items-center"
     >
       <button
         {...listeners}
@@ -44,7 +44,7 @@ export default function CardListMenuComponent(props) {
         <DragMultiSvg width={20} height={20} />
       </button>
 
-      <h2 className="text-xl font-semibold text-pretty text-center">
+      <h2 className="text-xl font-semibold text-pretty text-center mt-4">
         {props.menu.name ? props.menu.name : t("labels.fixed")}
       </h2>
 

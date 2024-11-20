@@ -1,4 +1,4 @@
-import { useContext, useEffect } from "react";
+import { useContext, useEffect, useState } from "react";
 import { useRouter } from "next/router";
 
 // REACT HOOK FORM
@@ -22,6 +22,8 @@ export default function AddWinesComponent(props) {
   const router = useRouter();
   const { locale } = router;
   const currencySymbol = locale === "fr" ? "€" : "$";
+
+  const [loading, setLoading] = useState(false);
 
   const {
     register,
@@ -71,21 +73,22 @@ export default function AddWinesComponent(props) {
   }, [props.wine, reset]);
 
   async function onSubmit(data) {
-    data.name = data.name.trim();
-    data.appellation = data.appellation.trim();
-
-    const formattedData = {
-      ...data,
-      showOnWebsite: data.showOnSite === "yes",
-      bio: data.bio || false,
-      categoryId: props.category._id,
-      volumes: data.volumes.map((volume) => ({
-        volume: `${volume.volume} ${volume.unit}`,
-        price: parseFloat(volume.price),
-      })),
-    };
-
+    setLoading(true);
     try {
+      data.name = data.name.trim();
+      data.appellation = data.appellation.trim();
+
+      const formattedData = {
+        ...data,
+        showOnWebsite: data.showOnSite === "yes",
+        bio: data.bio || false,
+        categoryId: props.category._id,
+        volumes: data.volumes.map((volume) => ({
+          volume: `${volume.volume} ${volume.unit}`,
+          price: parseFloat(volume.price),
+        })),
+      };
+
       let apiUrl;
       let method = props.wine ? "put" : "post";
 
@@ -108,8 +111,11 @@ export default function AddWinesComponent(props) {
       } else {
         router.push(`/wines/${props.category._id}`);
       }
+      setLoading(false);
     } catch (error) {
       console.error("Error adding or editing wine:", error);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -286,14 +292,20 @@ export default function AddWinesComponent(props) {
         <div className="flex gap-4">
           <button
             type="submit"
-            className="bg-blue w-fit text-white px-4 py-2 rounded-lg "
+            className={`bg-blue w-fit text-white px-4 py-2 rounded-lg ${
+              loading ? "opacity-50 cursor-not-allowed" : ""
+            }`}
+            disabled={loading}
           >
-            {t("buttons.save")}
+            {loading ? t("buttons.loading") : t("buttons.save")}
           </button>
 
           <button
             type="button"
-            className="bg-red text-white px-4 py-2 rounded-lg "
+            className={`bg-red text-white px-4 py-2 rounded-lg ${
+              loading ? "opacity-50 cursor-not-allowed" : ""
+            }`}
+            disabled={loading}
             onClick={() => router.back()}
           >
             {t("buttons.cancel")}
