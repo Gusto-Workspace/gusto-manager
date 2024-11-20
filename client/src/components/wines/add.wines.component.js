@@ -1,9 +1,19 @@
 import { useContext, useEffect } from "react";
 import { useRouter } from "next/router";
+
+// REACT HOOK FORM
 import { useFieldArray, useForm } from "react-hook-form";
+
+// I18N
 import { useTranslation } from "next-i18next";
+
+// AXIOS
 import axios from "axios";
+
+// CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
+
+// SVG
 import { BioSvg, WineSvg } from "../_shared/_svgs/_index";
 
 export default function AddWinesComponent(props) {
@@ -61,6 +71,9 @@ export default function AddWinesComponent(props) {
   }, [props.wine, reset]);
 
   async function onSubmit(data) {
+    data.name = data.name.trim();
+    data.appellation = data.appellation.trim();
+
     const formattedData = {
       ...data,
       showOnWebsite: data.showOnSite === "yes",
@@ -175,7 +188,7 @@ export default function AddWinesComponent(props) {
                   <input
                     type="number"
                     placeholder="Volume"
-                    step="0.5"
+                    step="0.01"
                     {...register(`volumes.${index}.volume`, { required: true })}
                     className="border p-2 rounded-lg w-24"
                   />

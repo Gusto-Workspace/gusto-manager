@@ -27,6 +27,7 @@
     "add": "Add",
     "addGift": "Add gift card",
     "edit": "Edit",
+    "editGift": "Edit gift card",
     "deleteGift": "Delete gift card",
     "confirmDelete": "Confirm deletion ?",
     "save": "Save",

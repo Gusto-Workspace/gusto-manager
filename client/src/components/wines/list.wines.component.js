@@ -127,12 +127,14 @@ export default function ListWinesComponent(props) {
 
   function handleEditClickSubCategory(category) {
     setEditingCategory(category);
+    reset({ name: category.name });
     setIsModalOpen(true);
   }
 
   function handleAddSubCategoryClick() {
     setEditingCategory(null);
     setIsDeleting(false);
+    reset({ name: "" });
     setIsModalOpen(true);
   }
 
@@ -469,7 +471,7 @@ export default function ListWinesComponent(props) {
           />
           <div className="bg-white p-6 rounded-lg shadow-lg w-[400px] z-10">
             <h2 className="text-xl font-semibold mb-6 text-center">
-              {t("buttons.deleteDish")}
+              {t("buttons.deleteWine")}
             </h2>
 
             <p className="mb-6 text-center">
@@ -505,6 +507,7 @@ export default function ListWinesComponent(props) {
           isDeleting={isDeleting}
           editingCategory={editingCategory}
           onSubmit={onSubmit}
+          reset={reset}
           handleSubmit={handleSubmit}
           register={register}
           errors={errors}
