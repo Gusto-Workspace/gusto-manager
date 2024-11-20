@@ -53,7 +53,13 @@ export default function CustomMenuComponent(props) {
         setSelectedDishes(initialSelectedDishes);
       }
     }
-  }, [props.menu, reset, categories, props.selectedDishes]);
+  }, [
+    props.menu,
+    reset,
+    categories,
+    props.selectedDishes,
+    restaurantContext?.restaurantData?.dish_categories,
+  ]);
 
   function handleDishClick(category, dish) {
     setSelectedDishes((prev) => {
@@ -197,7 +203,7 @@ export default function CustomMenuComponent(props) {
                     {selectedDishes[categoryName].map((dish, i) => (
                       <li key={dish._id} className="flex flex-col items-center">
                         <div className="relative flex text-center items-center w-full">
-                          <span className="w-full text-center">
+                          <span className="w-full text-center px-6">
                             {dish.name}
                           </span>
 

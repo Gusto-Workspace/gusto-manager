@@ -25,6 +25,20 @@ export default function DetailsWineComponent(props) {
     transition,
   };
 
+  const sortedVolumes = props.wine.volumes
+    .map((v) => {
+      const [volume, unit] = v.volume.split(" ");
+      const volumeInLiters =
+        unit === "CL" ? parseFloat(volume) / 100 : parseFloat(volume);
+      return {
+        originalVolume: volume,
+        originalUnit: unit || "CL",
+        volumeInLiters,
+        price: v.price,
+      };
+    })
+    .sort((a, b) => b.volumeInLiters - a.volumeInLiters);
+
   return (
     <div
       ref={setNodeRef}
@@ -41,9 +55,20 @@ export default function DetailsWineComponent(props) {
             {props.wine.name.charAt(0).toUpperCase() + props.wine.name.slice(1)}
           </h3>
 
-          <p className="text-sm opacity-50">
-            {props.wine.appellation}
-          </p>
+          <p className="text-sm opacity-50">{props.wine.appellation}</p>
+
+          <div className="flex gap-4 mt-1">
+            {sortedVolumes.map((volume, index) => (
+              <div key={index} className="flex gap-1 text-sm opacity-50">
+                <p>
+                  {volume.originalVolume} {volume.originalUnit} -
+                </p>
+                <p className="text-sm whitespace-nowrap font-medium">
+                  {volume.price.toFixed(2)} {props.currencySymbol}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -71,14 +96,6 @@ export default function DetailsWineComponent(props) {
         )}
 
         <p className="text-lg whitespace-nowrap">{props.wine.year}</p>
-
-        <p className="text-lg whitespace-nowrap min-w-[60px] text-right">
-          {props.wine.volume} {props.wine.unit}
-        </p>
-
-        <p className="text-lg whitespace-nowrap min-w-[90px] text-right">
-          {props.wine.price.toFixed(2)} {props.currencySymbol}
-        </p>
 
         <div
           onMouseEnter={() =>

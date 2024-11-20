@@ -99,7 +99,7 @@ export default function AddDishesComponent(props) {
       <div className="flex gap-2 py-1 items-center">
         <DishSvg width={30} height={30} fillColor="#131E3690" />
 
-        <h1 className="pl-2 text-2xl flex items-center gap-2">
+        <h1 className="pl-2 text-2xl flex items-center gap-2 flex-wrap">
           <span>{t("titles.main")}</span>
 
           {props.category && (
@@ -164,7 +164,7 @@ export default function AddDishesComponent(props) {
                 type="number"
                 placeholder="-"
                 step="0.01"
-                {...register("price", { required: true })}
+                {...register("price")}
                 className={`border p-2 rounded-r-lg w-full ${errors.price ? "border-red" : ""}`}
               />
             </div>

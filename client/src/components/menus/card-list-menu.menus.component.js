@@ -61,7 +61,7 @@ export default function CardListMenuComponent(props) {
                 ))}
               </p>
               :
-              <p>
+              <p className="whitespace-nowrap">
                 {comb.price} {currencySymbol}
               </p>
             </li>

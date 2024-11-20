@@ -25,11 +25,19 @@ export default function GlobalDishesComponent(props) {
 
       <div className="bg-white rounded-lg drop-shadow-sm p-12 max-w-[800px] mx-auto w-full flex flex-col gap-6">
         {props?.categories
-          ?.filter(
-            (category) =>
+          ?.filter((category) => {
+            const hasDishes = category.dishes && category.dishes.length > 0;
+
+            if (props.createMenu) {
+              return hasDishes;
+            }
+
+            return (
+              hasDishes &&
               category.visible &&
               category.dishes.some((dish) => dish.showOnWebsite)
-          )
+            );
+          })
           .map((category, i) => (
             <div key={i} className="flex flex-col gap-6">
               <div className="relative">
@@ -41,7 +49,7 @@ export default function GlobalDishesComponent(props) {
 
               <div className="flex flex-col gap-4">
                 {category?.dishes
-                  .filter((dish) => dish.showOnWebsite)
+                  .filter((dish) => props.createMenu || dish.showOnWebsite)
                   .map((dish, j) => (
                     <div
                       onClick={() => {
@@ -50,11 +58,12 @@ export default function GlobalDishesComponent(props) {
                           : null;
                       }}
                       key={j}
-                      className={`flex items-center gap-4 justify-between ${props.createMenu && "cursor-pointer"}`}
+                      className={`flex items-center gap-4 justify-between ${
+                        props.createMenu && "cursor-pointer"
+                      }`}
                     >
                       <div className="flex flex-col">
                         <h3>{dish.name}</h3>
-
                         <p className="text-sm opacity-50">
                           {dish.description.length > 50
                             ? dish.description.slice(0, 50) + "..."
@@ -102,7 +111,7 @@ export default function GlobalDishesComponent(props) {
                         </div>
 
                         <p className="text-md font-semibold whitespace-nowrap">
-                          {dish.price.toFixed(2)} €
+                          {dish?.price?.toFixed(2)} {dish?.price && "€"}
                         </p>
                       </div>
                     </div>

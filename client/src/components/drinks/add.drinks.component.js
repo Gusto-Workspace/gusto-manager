@@ -90,7 +90,7 @@ export default function AddDrinksComponent(props) {
       <div className="flex gap-2 py-1 items-center">
         <DrinkSvg width={30} height={30} fillColor="#131E3690" />
 
-        <h1 className="pl-2 text-2xl flex items-center gap-2">
+        <h1 className="pl-2 text-2xl flex items-center gap-2 flex-wrap">
           <span>{t("titles.main")}</span>
 
           {props.category && (

@@ -12,6 +12,7 @@ export default function AddModaleWinesComponent(props) {
             props.setIsModalOpen(false);
             props.setEditingCategory(null);
             props.setIsDeleting(false);
+            props.reset();
           }
         }}
         className="fixed inset-0 bg-black bg-opacity-20"
@@ -38,7 +39,6 @@ export default function AddModaleWinesComponent(props) {
             <input
               type="text"
               placeholder="-"
-              defaultValue={props.editingCategory?.name || ""}
               disabled={props.isDeleting || props.isSubmitting}
               {...props.register("name", { required: !props.isDeleting })}
               className={`border p-2 rounded-lg w-full ${
@@ -67,6 +67,7 @@ export default function AddModaleWinesComponent(props) {
                   // Empêche de fermer la modale pendant la soumission
                   props.setIsModalOpen(false);
                   props.setEditingCategory(null);
+                  props.reset();
                   props.setIsDeleting(false);
                 }
               }}
