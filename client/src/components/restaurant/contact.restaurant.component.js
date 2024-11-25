@@ -100,7 +100,7 @@ export default function ContactRestaurantComponent(props) {
   return (
     <div
        
-      className="bg-white p-6 pb-3 rounded-lg drop-shadow-sm w-full h-fit"
+      className="bg-white p-6 pb-3 rounded-lg drop-shadow-sm w-full desktop:w-1/2 h-fit"
     >
       <div className="flex justify-between">
         <h1 className="font-bold text-lg">{t("contact.title")}</h1>
@@ -150,7 +150,7 @@ export default function ContactRestaurantComponent(props) {
 
           return (
             <div
-              className="flex justify-between items-center gap-4 h-12"
+              className="flex justify-between items-center gap-12 h-12"
               key={item.field}
             >
               <div className="flex items-center gap-3 w-[150px]">
@@ -178,10 +178,10 @@ export default function ContactRestaurantComponent(props) {
                   className={`border p-1 rounded-lg w-1/2 ${
                     errors[item.field] ? "border-red" : ""
                   }`}
-                  placeholder={t("emptyInput")}
+                  placeholder={!isRequired ? t("emptyInput") : ""}
                 />
               ) : (
-                <p className="text-right">
+                <p className="text-right truncate max-w-[40%]">
                   {fieldValue || (
                     <span className="text-sm italic">{t("notUsed")}</span>
                   )}
