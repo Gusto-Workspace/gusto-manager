@@ -1,4 +1,4 @@
-import { useContext, useEffect } from "react";
+import { useContext, useEffect, useState } from "react";
 import { useRouter } from "next/router";
 
 // REACT HOOK FORM
@@ -28,6 +28,8 @@ export default function AddDishesComponent(props) {
   const router = useRouter();
   const { locale } = router;
   const currencySymbol = locale === "fr" ? "€" : "$";
+
+  const [isLoading, setIsLoading] = useState(false);
 
   const {
     register,
@@ -68,6 +70,7 @@ export default function AddDishesComponent(props) {
   }, [props.dish, reset]);
 
   async function onSubmit(data) {
+    setIsLoading(true);
     const formattedData = {
       ...data,
       showOnWebsite: data.showOnSite === "yes",
@@ -89,6 +92,8 @@ export default function AddDishesComponent(props) {
       router.push(`/dishes/${props.category._id}`);
     } catch (error) {
       console.error("Error adding or editing dish:", error);
+    } finally {
+      setIsLoading(false);
     }
   }
 
@@ -238,15 +243,17 @@ export default function AddDishesComponent(props) {
         <div className="flex gap-4">
           <button
             type="submit"
-            className="bg-blue w-fit text-white px-4 py-2 rounded-lg "
+            className="bg-blue w-fit text-white px-4 py-2 rounded-lg"
+            disabled={isLoading}
           >
-            {t("buttons.save")}
+            {isLoading ? t("buttons.loading") : t("buttons.save")}
           </button>
 
           <button
             type="button"
             className="bg-red text-white px-4 py-2 rounded-lg "
             onClick={() => router.back()}
+            disabled={isLoading}
           >
             {t("buttons.cancel")}
           </button>
