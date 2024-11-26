@@ -36,6 +36,7 @@
     "delete": "Supprimer",
     "access": "Accéder",
     "confirm": "Confirmer",
+    "loading" : "En cours...",
     "yes": "Oui",
     "no": "Non",
     "cancel": "Annuler"

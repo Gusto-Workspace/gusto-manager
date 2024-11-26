@@ -47,6 +47,7 @@ export default function ListDrinksComponent(props) {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [selectedDrink, setSelectedDrink] = useState(null);
   const [hoveredTooltip, setHoveredTooltip] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
   const [drinks, setDrinks] = useState(
     props.subCategory ? props.subCategory.drinks : props.category.drinks
   );
@@ -152,6 +153,7 @@ export default function ListDrinksComponent(props) {
 
   function handleDeleteConfirm() {
     if (editingCategory) {
+      setIsLoading(true);
       axios
         .delete(
           `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/categories/${props.category._id}/subcategories/${editingCategory._id}`
@@ -165,11 +167,14 @@ export default function ListDrinksComponent(props) {
           restaurantContext.setRestaurantData(response.data.restaurant);
           setEditingCategory(null);
           setIsModalOpen(false);
+          setIsLoading(false);
         })
         .catch((error) => {
           console.error("Error deleting subcategory:", error);
+          setIsLoading(false);
         });
     } else if (selectedDrink) {
+      setIsLoading(true);
       const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/${selectedDrink._id}`;
       const params = props.subCategory
         ? {
@@ -186,9 +191,11 @@ export default function ListDrinksComponent(props) {
           );
           restaurantContext.setRestaurantData(response.data.restaurant);
           closeDeleteModal();
+          setIsLoading(false);
         })
         .catch((error) => {
           console.error("Error deleting drink:", error);
+          setIsLoading(false);
         });
     }
   }
@@ -350,7 +357,7 @@ export default function ListDrinksComponent(props) {
     : formattedCategoryRoute;
 
   return (
-    <div   className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6">
       <hr className="opacity-20" />
 
       <div className="flex justify-between">
@@ -482,13 +489,15 @@ export default function ListDrinksComponent(props) {
               <button
                 className="px-4 py-2 rounded-lg bg-blue text-white"
                 onClick={handleDeleteConfirm}
+                disabled={isLoading}
               >
-                {t("buttons.yes")}
+                {isLoading ? t("buttons.loading") : t("buttons.yes")}
               </button>
 
               <button
                 className="px-4 py-2 rounded-lg bg-red text-white"
                 onClick={closeDeleteModal}
+                disabled={isLoading}
               >
                 {t("buttons.no")}
               </button>

@@ -1,9 +1,19 @@
-import { useContext, useEffect } from "react";
+import { useContext, useEffect, useState } from "react";
 import { useRouter } from "next/router";
+
+// REACT HOOK FORM
 import { useForm } from "react-hook-form";
+
+// I18N
 import { useTranslation } from "next-i18next";
+
+// AXIOS
 import axios from "axios";
+
+// CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
+
+// SVG
 import { BioSvg, DrinkSvg } from "../_shared/_svgs/_index";
 
 export default function AddDrinksComponent(props) {
@@ -12,6 +22,8 @@ export default function AddDrinksComponent(props) {
   const router = useRouter();
   const { locale } = router;
   const currencySymbol = locale === "fr" ? "€" : "$";
+
+  const [isLoading, setIsLoading] = useState(false);
 
   const {
     register,
@@ -44,6 +56,8 @@ export default function AddDrinksComponent(props) {
   }, [props.drink, reset]);
 
   async function onSubmit(data) {
+    setIsLoading(true);
+
     const formattedData = {
       ...data,
       showOnWebsite: data.showOnSite === "yes",
@@ -80,6 +94,8 @@ export default function AddDrinksComponent(props) {
       }
     } catch (error) {
       console.error("Error adding or editing drink:", error);
+    } finally {
+      setIsLoading(false);
     }
   }
 
@@ -210,15 +226,17 @@ export default function AddDrinksComponent(props) {
         <div className="flex gap-4">
           <button
             type="submit"
-            className="bg-blue w-fit text-white px-4 py-2 rounded-lg "
+            className="bg-blue w-fit text-white px-4 py-2 rounded-lg"
+            disabled={isLoading}
           >
-            {t("buttons.save")}
+            {isLoading ? t("buttons.loading") : t("buttons.save")}
           </button>
 
           <button
             type="button"
             className="bg-red text-white px-4 py-2 rounded-lg "
             onClick={() => router.back()}
+            disabled={isLoading}
           >
             {t("buttons.cancel")}
           </button>
