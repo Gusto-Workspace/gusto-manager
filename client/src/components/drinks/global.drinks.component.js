@@ -15,7 +15,7 @@ export default function GlobalDrinksComponent(props) {
         <h1 className="pl-2 text-2xl">{t("titles.second")}</h1>
       </div>
 
-      <div className="bg-white rounded-lg drop-shadow-sm p-12 max-w-[800px] mx-auto w-full flex flex-col gap-6">
+      <div className="bg-white rounded-lg drop-shadow-sm p-12 max-w-[1000px] mx-auto w-full flex flex-col gap-12">
         {props.categories
           .filter(
             (category) =>
@@ -28,7 +28,7 @@ export default function GlobalDrinksComponent(props) {
                 ))
           )
           .map((category, i) => (
-            <div key={i} className="flex flex-col gap-4">
+            <div key={i} className="flex flex-col gap-12">
               <div className="relative">
                 <h2 className="relative text-xl font-semibold uppercase text-center bg-white px-6 w-fit mx-auto z-20">
                   {category.name}
@@ -38,34 +38,41 @@ export default function GlobalDrinksComponent(props) {
               </div>
 
               {/* Affichage des boissons dans la catégorie principale */}
-              <div className="flex flex-col gap-2">
-                {category.drinks
-                  .filter((drink) => drink.showOnWebsite)
-                  .map((drink, j) => (
-                    <div key={j} className="flex items-center justify-between">
-                      <div className="flex flex-col">
-                        <h3 className="text-md font-semibold">{drink.name}</h3>
-                        <p className="text-sm opacity-50">
-                          {drink.description}
-                        </p>
-                      </div>
+              {category.drinks.some((drink) => drink.showOnWebsite) && (
+                <div className="desktop:w-[95%] mx-auto grid grid-cols-1 tablet:grid-cols-1 desktop:grid-cols-2 gap-y-6 gap-x-16">
+                  {category.drinks
+                    .filter((drink) => drink.showOnWebsite)
+                    .map((drink, j) => (
+                      <div
+                        key={j}
+                        className="flex  justify-between"
+                      >
+                        <div className="flex flex-col">
+                          <h3 className="text-md font-semibold">
+                            {drink.name}
+                          </h3>
+                          <p className="text-sm opacity-50">
+                            {drink.description}
+                          </p>
+                        </div>
 
-                      <div className="flex gap-4 items-center">
-                        {drink.bio && (
-                          <BioSvg
-                            fillColor="white"
-                            width={9}
-                            height={9}
-                            className="bg-darkBlue p-1 w-4 h-4 rounded-full opacity-70"
-                          />
-                        )}
-                        <p className="text-md font-semibold min-w-[66px] text-right">
-                          {drink.price.toFixed(2)} €
-                        </p>
+                        <div className="flex gap-4">
+                          {drink.bio && (
+                            <BioSvg
+                              fillColor="white"
+                              width={9}
+                              height={9}
+                              className="bg-darkBlue p-1 w-4 h-4 rounded-full opacity-70"
+                            />
+                          )}
+                          <p className="text-md font-semibold min-w-[66px] text-right">
+                            {drink.price.toFixed(2)} €
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  ))}
-              </div>
+                    ))}
+                </div>
+              )}
 
               {/* Affichage des sous-catégories visibles avec boissons */}
               {category.subCategories
@@ -75,7 +82,7 @@ export default function GlobalDrinksComponent(props) {
                     subCategory.drinks.some((drink) => drink.showOnWebsite)
                 )
                 .map((subCategory, k) => (
-                  <div key={k} className="flex flex-col gap-4 mt-4">
+                  <div key={k} className="flex flex-col gap-8 mt-4">
                     <div className="relative">
                       <h3 className="relative font-semibold bg-white px-4 w-fit mx-auto z-20">
                         {subCategory.name}
@@ -87,7 +94,7 @@ export default function GlobalDrinksComponent(props) {
                     </div>
 
                     {/* Affichage des boissons dans la sous-catégorie */}
-                    <div className="flex flex-col gap-2">
+                    <div className="desktop:w-[95%] mx-auto grid grid-cols-1 tablet:grid-cols-1 desktop:grid-cols-2 gap-y-6 gap-x-16">
                       {subCategory.drinks
                         .filter((drink) => drink.showOnWebsite)
                         .map((drink, l) => (
