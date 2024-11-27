@@ -138,7 +138,7 @@ export default function ListDishesComponent(props) {
   const baseRoute = "/dishes";
   const formattedCategoryRoute = props.category
     ? `/dishes/${props.category.name
-      .replace(/\//g, "-") 
+      .replace(/\//g, "-")
       .replace(/\s+/g, "&") 
       .toLowerCase()
     }-${props.category._id}`

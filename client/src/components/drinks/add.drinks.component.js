@@ -88,9 +88,26 @@ export default function AddDrinksComponent(props) {
 
       // Redirige vers la catégorie ou sous-catégorie appropriée après l'ajout ou la modification
       if (props.subCategory) {
-        router.push(`/drinks/${props.category._id}/${props.subCategory._id}`);
+        const formattedCategoryName = props.category.name
+          .replace(/\//g, "-")
+          .replace(/\s+/g, "&")
+          .toLowerCase();
+
+        const formattedSubCategoryName = props.subCategory.name
+          .replace(/\//g, "-")
+          .replace(/\s+/g, "&")
+          .toLowerCase();
+
+        router.push(
+          `/drinks/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${props.subCategory._id}`
+        );
       } else {
-        router.push(`/drinks/${props.category._id}`);
+        const formattedName = props.category.name
+          .replace(/\//g, "-")
+          .replace(/\s+/g, "&")
+          .toLowerCase();
+
+        router.push(`/drinks/${formattedName}-${props.category._id}`);
       }
     } catch (error) {
       console.error("Error adding or editing drink:", error);

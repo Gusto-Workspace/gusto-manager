@@ -107,10 +107,28 @@ export default function AddWinesComponent(props) {
       restaurantContext.setRestaurantData(response.data.restaurant);
 
       if (props.subCategory) {
-        router.push(`/wines/${props.category._id}/${props.subCategory._id}`);
+        const formattedCategoryName = props.category.name
+          .replace(/\//g, "-")
+          .replace(/\s+/g, "&")
+          .toLowerCase();
+
+        const formattedSubCategoryName = props.subCategory.name
+          .replace(/\//g, "-")
+          .replace(/\s+/g, "&")
+          .toLowerCase();
+
+        router.push(
+          `/wines/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${props.subCategory._id}`
+        );
       } else {
-        router.push(`/wines/${props.category._id}`);
+        const formattedName = props.category.name
+          .replace(/\//g, "-")
+          .replace(/\s+/g, "&")
+          .toLowerCase();
+
+        router.push(`/wines/${formattedName}-${props.category._id}`);
       }
+
       setLoading(false);
     } catch (error) {
       console.error("Error adding or editing wine:", error);
