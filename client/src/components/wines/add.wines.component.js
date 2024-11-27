@@ -273,7 +273,7 @@ export default function AddWinesComponent(props) {
           <input
             type="number"
             placeholder="-"
-            {...register("year", { required: true })}
+            {...register("year", { required: false })}
             className={`border p-2 rounded-lg w-full ${errors.name ? "border-red" : ""}`}
           />
         </div>
