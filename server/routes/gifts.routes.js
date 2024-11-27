@@ -180,4 +180,39 @@ router.put(
   }
 );
 
+// UPDATE GIFT CARD STATUS TO USED
+router.put(
+  "/restaurants/:restaurantId/purchases/:purchaseId/validate",
+  async (req, res) => {
+    const { restaurantId, purchaseId } = req.params;
+
+    try {
+      // Mettre à jour le statut de la carte cadeau achetée
+      const restaurant = await RestaurantModel.findOneAndUpdate(
+        {
+          _id: restaurantId,
+          "purchasesGiftCards._id": purchaseId,
+        },
+        {
+          $set: { "purchasesGiftCards.$.status": "Valid" },
+        },
+        { new: true }
+      )
+        .populate("owner_id", "firstname")
+        .populate("menus");
+
+      if (!restaurant) {
+        return res
+          .status(404)
+          .json({ error: "Restaurant or purchase not found" });
+      }
+
+      res.status(200).json({ restaurant });
+    } catch (error) {
+      console.error("Error updating gift card status:", error);
+      res.status(500).json({ error: "Error updating gift card status" });
+    }
+  }
+);
+
 module.exports = router;

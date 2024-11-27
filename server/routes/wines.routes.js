@@ -123,7 +123,8 @@ router.delete(
 // ADD A WINE TO A CATEGORY
 router.post("/restaurants/:restaurantId/wines", async (req, res) => {
   const { restaurantId } = req.params;
-  const { categoryId, name, appellation, volumes, year, bio, showOnWebsite } = req.body;
+  const { categoryId, name, appellation, volumes, year, bio, showOnWebsite } =
+    req.body;
 
   // Validation des données
   if (!name || !volumes || volumes.length === 0 || !categoryId) {
@@ -155,7 +156,7 @@ router.post("/restaurants/:restaurantId/wines", async (req, res) => {
         throw new Error("Each volume must have a volume and a price.");
       }
       return {
-        volume: volume.volume, 
+        volume: volume.volume,
         price: parseFloat(volume.price),
       };
     });
@@ -165,7 +166,7 @@ router.post("/restaurants/:restaurantId/wines", async (req, res) => {
       name,
       appellation,
       volumes: formattedVolumes,
-      year: year ? parseInt(year, 10) : undefined,
+      year: year || undefined,
       bio: bio || false,
       showOnWebsite: showOnWebsite || false,
     };
@@ -223,7 +224,7 @@ router.put("/restaurants/:restaurantId/wines/:wineId", async (req, res) => {
             price: parseFloat(volume.price),
           };
         });
-        wine.year = year ? parseInt(year, 10) : undefined;
+        wine.year = year || undefined;
         wine.showOnWebsite = showOnWebsite;
         wine.bio = bio;
         wineFound = true;
@@ -243,7 +244,6 @@ router.put("/restaurants/:restaurantId/wines/:wineId", async (req, res) => {
     res.status(500).json({ message: "Server error. Please try again later." });
   }
 });
-
 
 // GET WINES BY CATEGORY
 router.get("/categories/:categoryId/wines", async (req, res) => {
@@ -682,7 +682,7 @@ router.post(
         name,
         appellation,
         volumes: formattedVolumes,
-        year: year ? parseInt(year, 10) : undefined,
+        year: year || undefined,
         bio: bio || false,
         showOnWebsite: showOnWebsite || false,
       };
@@ -795,7 +795,7 @@ router.put(
           price: parseFloat(volume.price),
         };
       });
-      wine.year = year ? parseInt(year, 10) : undefined;
+      wine.year = year || undefined;
       wine.showOnWebsite = showOnWebsite;
       wine.bio = bio;
 
@@ -813,6 +813,5 @@ router.put(
     }
   }
 );
-
 
 module.exports = router;

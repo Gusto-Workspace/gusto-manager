@@ -54,7 +54,7 @@ const wineSchema = new mongoose.Schema({
   appellation: { type: String },
   volumes: { type: [volumeSchema], required: true }, 
   showOnWebsite: { type: Boolean, default: true },
-  year: { type: Number },
+  year: { type: String },
   bio: { type: Boolean, default: false },
 });
 
