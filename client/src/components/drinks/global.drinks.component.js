@@ -81,9 +81,9 @@ export default function GlobalDrinksComponent(props) {
                         {subCategory.name}
                       </h3>
 
-                      <hr className="bg-darkBlue absolute h-[1px] w-[350px] left-1/2 -translate-x-1/2 top-0 z-10 opacity-30" />
+                      <hr className="bg-darkBlue absolute h-[1px] w-[70%] left-1/2 -translate-x-1/2 top-0 z-10 opacity-30" />
 
-                      <hr className="bg-darkBlue absolute h-[1px] w-[350px] left-1/2 -translate-x-1/2 bottom-0 z-10 opacity-30" />
+                      <hr className="bg-darkBlue absolute h-[1px] w-[70%] left-1/2 -translate-x-1/2 bottom-0 z-10 opacity-30" />
                     </div>
 
                     {/* Affichage des boissons dans la sous-catégorie */}
