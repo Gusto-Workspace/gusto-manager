@@ -74,7 +74,10 @@ export default function CategoriesListDrinksComponent() {
   }
 
   function handleCategoryClick(category) {
-    const formattedName = category.name.replace(/\s+/g, "-").toLowerCase();
+    const formattedName = category.name
+    .replace(/\//g, "-") 
+    .replace(/\s+/g, "&") 
+    .toLowerCase();
     router.push(`/drinks/${formattedName}-${category._id}`);
   }
 

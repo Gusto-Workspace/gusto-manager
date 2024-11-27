@@ -50,14 +50,16 @@ export default function ListDishesComponent(props) {
 
   function handleAddClick() {
     const formattedCategoryName = props.category.name
-      .replace(/\s+/g, "-")
+      .replace(/\//g, "-")
+      .replace(/\s+/g, "&")
       .toLowerCase();
     router.push(`/dishes/${formattedCategoryName}-${props.category._id}/add`);
   }
 
   function handleEditClick(dish) {
     const formattedCategoryName = props.category.name
-      .replace(/\s+/g, "-")
+      .replace(/\//g, "-")
+      .replace(/\s+/g, "&")
       .toLowerCase();
     router.push(
       `/dishes/${formattedCategoryName}-${props.category._id}/add?dishId=${dish._id}`
@@ -135,7 +137,11 @@ export default function ListDishesComponent(props) {
   // Chemins formatés pour les niveaux de navigation
   const baseRoute = "/dishes";
   const formattedCategoryRoute = props.category
-    ? `/dishes/${props.category.name.replace(/\s+/g, "-").toLowerCase()}-${props.category._id}`
+    ? `/dishes/${props.category.name
+      .replace(/\//g, "-") 
+      .replace(/\s+/g, "&") 
+      .toLowerCase()
+    }-${props.category._id}`
     : baseRoute;
 
   return (
