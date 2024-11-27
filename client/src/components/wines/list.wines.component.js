@@ -87,10 +87,12 @@ export default function ListWinesComponent(props) {
   function handleAddClick() {
     if (props.subCategory) {
       const formattedCategoryName = props.category.name
-        .replace(/\s+/g, "-")
+        .replace(/\//g, "-")
+        .replace(/\s+/g, "&")
         .toLowerCase();
       const formattedSubCategoryName = props.subCategory.name
-        .replace(/\s+/g, "-")
+        .replace(/\//g, "-")
+        .replace(/\s+/g, "&")
         .toLowerCase();
 
       router.push(
@@ -98,7 +100,8 @@ export default function ListWinesComponent(props) {
       );
     } else {
       const formattedName = props.category.name
-        .replace(/\s+/g, "-")
+        .replace(/\//g, "-")
+        .replace(/\s+/g, "&")
         .toLowerCase();
       router.push(`/wines/${formattedName}-${props.category._id}/add`);
     }
@@ -107,17 +110,20 @@ export default function ListWinesComponent(props) {
   function handleEditClick(wine) {
     if (props.subCategory) {
       const formattedCategoryName = props.category.name
-        .replace(/\s+/g, "-")
+        .replace(/\//g, "-")
+        .replace(/\s+/g, "&")
         .toLowerCase();
       const formattedSubCategoryName = props.subCategory.name
-        .replace(/\s+/g, "-")
+        .replace(/\//g, "-")
+        .replace(/\s+/g, "&")
         .toLowerCase();
       router.push(
         `/wines/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${props.subCategory._id}/add?wineId=${wine._id}`
       );
     } else {
       const formattedCategoryName = props.category.name
-        .replace(/\s+/g, "-")
+        .replace(/\//g, "-")
+        .replace(/\s+/g, "&")
         .toLowerCase();
       router.push(
         `/wines/${formattedCategoryName}-${props.category._id}/add?wineId=${wine._id}`
@@ -306,10 +312,12 @@ export default function ListWinesComponent(props) {
 
   function handleSubCategoryClick(subCategory) {
     const formattedCategoryName = props.category.name
-      .replace(/\s+/g, "-")
+      .replace(/\//g, "-")
+      .replace(/\s+/g, "&")
       .toLowerCase();
     const formattedSubCategoryName = subCategory.name
-      .replace(/\s+/g, "-")
+      .replace(/\//g, "-")
+      .replace(/\s+/g, "&")
       .toLowerCase();
 
     router.push(
@@ -344,11 +352,20 @@ export default function ListWinesComponent(props) {
   // Chemins pour la navigation avec le formatage de nom et d'ID
   const baseRoute = "/wines";
   const formattedCategoryRoute = props.category
-    ? `/wines/${props.category.name.replace(/\s+/g, "-").toLowerCase()}-${props.category._id}`
+    ? `/wines/${props.category.name
+        .replace(/\//g, "-")
+        .replace(/\s+/g, "&")
+        .toLowerCase()}-${props.category._id}`
     : baseRoute;
 
   const formattedSubCategoryRoute = props.subCategory
-    ? `/wines/${props.category.name.replace(/\s+/g, "-").toLowerCase()}-${props.category._id}/${props.subCategory.name.replace(/\s+/g, "-").toLowerCase()}-${props.subCategory._id}`
+    ? `/wines/${props.category.name
+        .replace(/\//g, "-")
+        .replace(/\s+/g, "&")
+        .toLowerCase()}-${props.category._id}/${props.subCategory.name
+        .replace(/\//g, "-")
+        .replace(/\s+/g, "&")
+        .toLowerCase()}-${props.subCategory._id}`
     : formattedCategoryRoute;
 
   return (

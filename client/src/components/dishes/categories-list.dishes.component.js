@@ -76,7 +76,10 @@ export default function CategoriesListDishesComponent() {
   }
 
   function handleCategoryClick(category) {
-    const formattedName = category.name.replace(/\s+/g, "-").toLowerCase();
+    const formattedName = category.name
+      .replace(/\//g, "-")
+      .replace(/\s+/g, "&")
+      .toLowerCase();
     router.push(`/dishes/${formattedName}-${category._id}`);
   }
 
