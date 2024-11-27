@@ -180,7 +180,7 @@ router.put(
   }
 );
 
-// UPDATE GIFT CARD STATUS TO USED
+// UPDATE GIFT CARD STATUS TO VALID
 router.put(
   "/restaurants/:restaurantId/purchases/:purchaseId/validate",
   async (req, res) => {
