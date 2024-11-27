@@ -34,6 +34,7 @@
     "confirm": "Confirmer",
     "delete": "Supprimer",
     "usedCard": "Carte cadeau utilisée",
+    "revalidateCard" : "Repasser en statut - Valide -",
     "visible": "Visible",
     "noVisible": "Non visible",
     "yes": "Oui",

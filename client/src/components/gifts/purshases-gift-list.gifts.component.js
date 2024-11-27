@@ -52,6 +52,22 @@ export default function PurchasesGiftListComponent(props) {
       });
   }
 
+  function markAsValid(purchaseId) {
+    axios
+      .put(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/purchases/${purchaseId}/validate`
+      )
+      .then((response) => {
+        restaurantContext.setRestaurantData(response.data.restaurant);
+      })
+      .catch((error) => {
+        console.error(
+          "Erreur lors de la revalidation de la carte cadeau :",
+          error
+        );
+      });
+  }
+
   // Function to handle search input change
   function handleSearchChange(event) {
     setSearchTerm(event.target.value);
@@ -128,6 +144,15 @@ export default function PurchasesGiftListComponent(props) {
                               "fr-FR"
                             )}
                           </p>
+                        )}
+
+                        {status === "Used" && (
+                          <button
+                            className="mt-2 text-blue w-fit italic opacity-50"
+                            onClick={() => markAsValid(purchase._id)}
+                          >
+                            {t("buttons.revalidateCard")}
+                          </button>
                         )}
                       </div>
 

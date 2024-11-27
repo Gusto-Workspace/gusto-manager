@@ -185,50 +185,71 @@ export default function ListSubscriptionsAdminComponent(props) {
                       invoices[subscription.id] && (
                         <div className="mt-2">
                           <ul>
-                            {invoices[subscription.id].map((invoice) => (
-                              <li
-                                key={invoice.id}
-                                className="border p-2 rounded-lg"
-                              >
-                                <div>
-                                  {t("subscriptions.list.period")} :{" "}
-                                  {new Date(
-                                    invoice.period_start * 1000
-                                  ).toLocaleDateString()}{" "}
-                                  -{" "}
-                                  {new Date(
-                                    invoice.period_end * 1000
-                                  ).toLocaleDateString()}
-                                </div>
-                                <div>
-                                  {t("subscriptions.list.amount")} :{" "}
-                                  {invoice.amount_due / 100}{" "}
-                                  {invoice.currency.toUpperCase()}
-                                </div>
-                                <div>
-                                  {t("subscriptions.list.status")} :{" "}
-                                  <span
-                                    className={
-                                      invoice.status === "paid"
-                                        ? "text-green"
-                                        : invoice.status === "open"
-                                          ? "text-violet"
-                                          : invoice.status === "draft"
-                                            ? "text-lightGrey"
-                                            : "text-red"
-                                    }
+                            {invoices[subscription.id].map((invoice) => {
+                              return (
+                                <li
+                                  key={invoice.id}
+                                  className="border p-2 rounded-lg flex justify-between items-center w-full"
+                                >
+                                  <div>
+                                    <div>
+                                      {t("subscriptions.list.period")} :{" "}
+                                      {new Date(
+                                        invoice.period_start * 1000
+                                      ).toLocaleDateString()}{" "}
+                                      -{" "}
+                                      {new Date(
+                                        new Date(
+                                          invoice.period_start * 1000
+                                        ).setMonth(
+                                          new Date(
+                                            invoice.period_start * 1000
+                                          ).getMonth() + 1
+                                        )
+                                      ).toLocaleDateString()}
+                                    </div>
+
+                                    <div>
+                                      {t("subscriptions.list.amount")} :{" "}
+                                      {invoice.amount_due / 100}{" "}
+                                      {invoice.currency.toUpperCase()}
+                                    </div>
+
+                                    <div>
+                                      {t("subscriptions.list.status")} :{" "}
+                                      <span
+                                        className={
+                                          invoice.status === "paid"
+                                            ? "text-green"
+                                            : invoice.status === "open"
+                                              ? "text-violet"
+                                              : invoice.status === "draft"
+                                                ? "text-lightGrey"
+                                                : "text-red"
+                                        }
+                                      >
+                                        {invoice.status === "paid"
+                                          ? t("subscriptions.list.paid")
+                                          : invoice.status === "open"
+                                            ? t("subscriptions.list.sent")
+                                            : invoice.status === "draft"
+                                              ? t("subscriptions.list.draft")
+                                              : t("subscriptions.list.unpaid")}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <a
+                                    href={invoice.invoice_pdf}
+                                    download
+                                    rel="noopener noreferrer"
+                                    className="text-blue px-4 py-2 rounded-lg hover:bg-blue-600 transition"
                                   >
-                                    {invoice.status === "paid"
-                                      ? t("subscriptions.list.paid")
-                                      : invoice.status === "open"
-                                        ? t("subscriptions.list.sent")
-                                        : invoice.status === "draft"
-                                          ? t("subscriptions.list.draft")
-                                          : t("subscriptions.list.unpaid")}
-                                  </span>
-                                </div>
-                              </li>
-                            ))}
+                                    Télécharger
+                                  </a>
+                                </li>
+                              );
+                            })}
                           </ul>
                         </div>
                       )}

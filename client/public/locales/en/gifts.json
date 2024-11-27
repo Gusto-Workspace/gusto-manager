@@ -34,6 +34,7 @@
     "confirm": "Confirm",
     "delete": "Delete",
     "usedCard": "Gift card used",
+    "revalidateCard" : "Mark as Valid",
     "visible": "Visible",
     "noVisible": "Masked",
     "yes": "Yes",

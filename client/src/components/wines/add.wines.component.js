@@ -77,6 +77,7 @@ export default function AddWinesComponent(props) {
     try {
       data.name = data.name.trim();
       data.appellation = data.appellation.trim();
+      data.year = data.year.trim();
 
       const formattedData = {
         ...data,
@@ -271,7 +272,7 @@ export default function AddWinesComponent(props) {
           <label className="block font-semibold">{t("form.labels.year")}</label>
 
           <input
-            type="number"
+            type="text"
             placeholder="-"
             {...register("year")}
             className="border p-2 rounded-lg w-full"
