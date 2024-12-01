@@ -125,7 +125,7 @@ export default function ListNewsComponent(props) {
                   src={data.image}
                   alt="img"
                   draggable={false}
-                  className="h-[200px] w-full object-cover object-center  rounded-lg"
+                  className="h-[280px] w-full object-cover object-center  rounded-lg"
                 />
               ) : (
                 <div className="h-[200px] flex items-center justify-center">
