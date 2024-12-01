@@ -112,7 +112,7 @@ export default function PurchasesGiftListComponent(props) {
               </div>
 
               {filteredPurchases.length > 0 ? (
-                <ul className="flex flex-col gap-2 max-h-[340px] overflow-y-auto">
+                <ul className="flex flex-col gap-2 max-h-[430px] overflow-y-auto">
                   {filteredPurchases.map((purchase) => (
                     <li
                       key={purchase._id}
