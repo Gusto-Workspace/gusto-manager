@@ -196,6 +196,7 @@ export default function CustomMenuComponent(props) {
                     <h2 className="relative font-semibold uppercase text-center bg-white px-6 w-fit mx-auto z-20">
                       {categoryName}
                     </h2>
+                    
                     <hr className="bg-darkBlue absolute h-[1px] w-full top-1/2 -translate-y-1/2 z-10 opacity-50" />
                   </div>
 
