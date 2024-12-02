@@ -61,7 +61,9 @@ export default function AddMenusComponent(props) {
           <option value="" disabled>
             {t("labels.select")}
           </option>
+
           <option value="fixed">{t("labels.fixed")}</option>
+          
           <option value="custom">{t("labels.custom")}</option>
         </select>
       </div>
