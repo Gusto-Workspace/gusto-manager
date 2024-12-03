@@ -112,7 +112,7 @@ export default function PurchasesGiftListComponent(props) {
               </div>
 
               {filteredPurchases.length > 0 ? (
-                <ul className="flex flex-col gap-2 max-h-[430px] overflow-y-auto">
+                <ul className="flex flex-col gap-2 max-h-[470px] overflow-y-auto">
                   {filteredPurchases.map((purchase) => (
                     <li
                       key={purchase._id}
@@ -136,6 +136,13 @@ export default function PurchasesGiftListComponent(props) {
                         <p>
                           {t("labels.code")}: {purchase.purchaseCode}
                         </p>
+
+                        {purchase.sender && (
+                          <p>
+                            {t("labels.sender")}: {purchase.sender}{" "}
+                            {purchase.sendEmail && `(${purchase.sendEmail})`}
+                          </p>
+                        )}
 
                         {status === "Valid" && (
                           <p>
