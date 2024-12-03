@@ -21,6 +21,7 @@
     "description": "Description",
     "code": "Code",
     "valididy": "Valid until",
+    "sender" : "From",
     "emptyCard": "No gift card"
   },
   "buttons": {

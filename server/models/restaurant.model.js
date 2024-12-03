@@ -52,7 +52,7 @@ const volumeSchema = new mongoose.Schema({
 const wineSchema = new mongoose.Schema({
   name: { type: String, required: true },
   appellation: { type: String },
-  volumes: { type: [volumeSchema], required: true }, 
+  volumes: { type: [volumeSchema], required: true },
   showOnWebsite: { type: Boolean, default: true },
   year: { type: String },
   bio: { type: Boolean, default: false },
@@ -123,6 +123,8 @@ const giftCardPurchaseSchema = new mongoose.Schema({
   },
   beneficiaryFirstName: { type: String, required: true },
   beneficiaryLastName: { type: String, required: true },
+  sender: { type: String },
+  sendEmail: { type: String },
   created_at: { type: Date, default: Date.now },
 });
 

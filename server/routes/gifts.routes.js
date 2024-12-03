@@ -103,7 +103,8 @@ router.delete("/restaurants/:id/gifts/:giftId", async (req, res) => {
 router.post("/restaurants/:id/gifts/:giftId/purchase", async (req, res) => {
   const restaurantId = req.params.id;
   const giftId = req.params.giftId;
-  const { beneficiaryFirstName, beneficiaryLastName } = req.body;
+  const { beneficiaryFirstName, beneficiaryLastName, sender, sendEmail } =
+    req.body;
 
   try {
     // Cherche le restaurant et la carte cadeau correspondante
@@ -131,6 +132,8 @@ router.post("/restaurants/:id/gifts/:giftId/purchase", async (req, res) => {
       status: "Valid", // Par défaut, le statut est "Valid"
       beneficiaryFirstName,
       beneficiaryLastName,
+      sender,
+      sendEmail,
     };
 
     // Ajoute l'achat dans le tableau des achats de cartes cadeaux du restaurant
