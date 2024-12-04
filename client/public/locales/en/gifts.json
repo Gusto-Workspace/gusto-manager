@@ -20,8 +20,9 @@
     "owner": "Owner",
     "description": "Description",
     "code": "Code",
+    "orderedDay": "Ordered the",
     "valididy": "Valid until",
-    "sender" : "From",
+    "sender": "From",
     "emptyCard": "No gift card"
   },
   "buttons": {
@@ -35,7 +36,7 @@
     "confirm": "Confirm",
     "delete": "Delete",
     "usedCard": "Gift card used",
-    "revalidateCard" : "Mark as Valid",
+    "revalidateCard": "Mark as Valid",
     "visible": "Visible",
     "noVisible": "Masked",
     "yes": "Yes",

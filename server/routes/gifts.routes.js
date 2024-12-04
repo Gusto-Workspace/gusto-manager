@@ -218,4 +218,42 @@ router.put(
   }
 );
 
+// UPDATE GIFTCARDS ORDER
+router.put(
+  "/restaurants/:restaurantId/gifts/giftCards-list/order",
+  async (req, res) => {
+    const { restaurantId } = req.params;
+    const { orderedGiftCardIds } = req.body;
+
+    try {
+      const restaurant = await RestaurantModel.findById(restaurantId)
+        .populate("owner_id", "firstname")
+        .populate("menus");
+
+      if (!restaurant) {
+        return res.status(404).json({ message: "Restaurant not found." });
+      }
+
+      // Réorganiser les catégories selon l'ordre donné
+      restaurant.giftCards = orderedGiftCardIds.map((giftCardId) =>
+        restaurant.giftCards.find(
+          (cat) => cat._id.toString() === giftCardId
+        )
+      );
+
+      await restaurant.save();
+
+      res.status(200).json({
+        message: "GiftCards order updated successfully.",
+        restaurant,
+      });
+    } catch (error) {
+      console.error("Error updating GiftCards order:", error);
+      res
+        .status(500)
+        .json({ message: "Server error. Please try again later." });
+    }
+  }
+);
+
 module.exports = router;

@@ -112,7 +112,7 @@ export default function PurchasesGiftListComponent(props) {
               </div>
 
               {filteredPurchases.length > 0 ? (
-                <ul className="flex flex-col gap-2 max-h-[470px] overflow-y-auto">
+                <ul className="flex flex-col gap-2 max-h-[570px] overflow-y-auto">
                   {filteredPurchases.map((purchase) => (
                     <li
                       key={purchase._id}
@@ -128,6 +128,7 @@ export default function PurchasesGiftListComponent(props) {
                             {t("labels.description")}: {purchase.description}
                           </p>
                         )}
+
                         <p>
                           {t("labels.owner")}: {purchase.beneficiaryFirstName}{" "}
                           {purchase.beneficiaryLastName}
@@ -135,6 +136,13 @@ export default function PurchasesGiftListComponent(props) {
 
                         <p>
                           {t("labels.code")}: {purchase.purchaseCode}
+                        </p>
+
+                        <p>
+                          {t("labels.orderedDay")} :{" "}
+                          {new Date(purchase.created_at).toLocaleDateString(
+                            "fr-FR"
+                          )}
                         </p>
 
                         {purchase.sender && (
