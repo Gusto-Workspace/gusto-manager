@@ -1,5 +1,5 @@
 import { useRouter } from "next/router";
-import { useState, useContext, useEffect } from "react";
+import { useState, useContext, useEffect, useId } from "react";
 
 // REACT HOOK FORM
 import { useForm } from "react-hook-form";
@@ -16,6 +16,17 @@ import { useTranslation } from "next-i18next";
 // SVG
 import { GiftSvg } from "../_shared/_svgs/_index";
 
+// DND
+import {
+  DndContext,
+  closestCenter,
+  MouseSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import { arrayMove, SortableContext } from "@dnd-kit/sortable";
+
 // COMPONENTS
 import PurchasesGiftListComponent from "./purshases-gift-list.gifts.component";
 import CardGiftsComponent from "./card.gifts.component";
@@ -30,12 +41,28 @@ export default function ListGiftsComponent(props) {
   const [editingGift, setEditingGift] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  const [giftCards, setGiftCards] = useState(
+    restaurantContext?.restaurantData?.giftCards
+  );
+
   const {
     register,
     handleSubmit,
     reset,
     formState: { errors },
   } = useForm();
+
+  // GENERE UN ID POUR DND
+  const id = useId();
+
+  // Définir les capteurs pour prendre en charge à la fois la souris et le toucher
+  const mouseSensor = useSensor(MouseSensor);
+  const touchSensor = useSensor(TouchSensor);
+  const sensors = useSensors(mouseSensor, touchSensor);
+
+  useEffect(() => {
+    setGiftCards(restaurantContext?.restaurantData?.giftCards);
+  }, [restaurantContext?.restaurantData]);
 
   useEffect(() => {
     if (editingGift) {
@@ -92,6 +119,51 @@ export default function ListGiftsComponent(props) {
       });
   }
 
+  function handleDragEnd(event) {
+    const { active, over } = event;
+
+    if (!active || !over) {
+      return;
+    }
+
+    if (active.id !== over.id) {
+      setGiftCards((prevGiftCards) => {
+        const oldIndex = prevGiftCards.findIndex(
+          (cat) => cat._id === active.id
+        );
+        const newIndex = prevGiftCards.findIndex((cat) => cat._id === over.id);
+
+        const newCategoriesOrder = arrayMove(
+          prevGiftCards,
+          oldIndex,
+          newIndex
+        );
+
+        saveNewGiftCardsOrder(newCategoriesOrder);
+
+        return newCategoriesOrder;
+      });
+    }
+  }
+
+  function saveNewGiftCardsOrder(updatedGiftCards) {
+    const orderedGiftCardIds = updatedGiftCards.map(
+      (giftCard) => giftCard._id
+    );
+
+    axios
+      .put(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/gifts/giftCards-list/order`,
+        { orderedGiftCardIds }
+      )
+      .then((response) => {
+        restaurantContext.setRestaurantData(response.data.restaurant);
+      })
+      .catch((error) => {
+        console.error("Error saving giftCard order:", error);
+      });
+  }
+
   return (
     <section className="flex flex-col gap-6">
       <hr className="opacity-20" />
@@ -115,25 +187,49 @@ export default function ListGiftsComponent(props) {
         </button>
       </div>
 
-      <div className="mb-12">
-        <CardGiftsComponent
-          titleKey="titles.amountCard"
-          filterCondition={(giftCard) => !giftCard.description}
-          handleEditClick={handleEditClick}
-          handleDeleteClick={handleDeleteClick}
-          handleVisibilityToggle={handleVisibilityToggle}
-          currencySymbol={currencySymbol}
-        />
+      {giftCards && (
+        <div className="mb-12">
+          <DndContext
+            id={id}
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={giftCards?.map((giftCard) => giftCard._id)}
+            >
+              <CardGiftsComponent
+                titleKey="titles.amountCard"
+                filterCondition={(giftCard) => !giftCard.description}
+                handleEditClick={handleEditClick}
+                handleDeleteClick={handleDeleteClick}
+                handleVisibilityToggle={handleVisibilityToggle}
+                currencySymbol={currencySymbol}
+              />
+            </SortableContext>
+          </DndContext>
 
-        <CardGiftsComponent
-          titleKey="titles.menuCard"
-          filterCondition={(giftCard) => giftCard.description}
-          handleEditClick={handleEditClick}
-          handleDeleteClick={handleDeleteClick}
-          handleVisibilityToggle={handleVisibilityToggle}
-          currencySymbol={currencySymbol}
-        />
-      </div>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={giftCards?.map((giftCard) => giftCard._id)}
+            >
+              <CardGiftsComponent
+                titleKey="titles.menuCard"
+                filterCondition={(giftCard) => giftCard.description}
+                handleEditClick={handleEditClick}
+                handleDeleteClick={handleDeleteClick}
+                handleVisibilityToggle={handleVisibilityToggle}
+                currencySymbol={currencySymbol}
+              />
+            </SortableContext>
+          </DndContext>
+        </div>
+      )}
+
       <PurchasesGiftListComponent
         purchasesGiftCards={
           restaurantContext?.restaurantData?.purchasesGiftCards

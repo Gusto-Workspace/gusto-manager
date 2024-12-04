@@ -20,6 +20,7 @@
     "owner": "Bénéficiaire",
     "description": "Description",
     "code": "Code",
+    "orderedDay" : "Achetée le",
     "valididy": "Valide jusqu'au",
     "sender" : "De la part de",
     "emptyCard": "Aucune carte cadeau"
