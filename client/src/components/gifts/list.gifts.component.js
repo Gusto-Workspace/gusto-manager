@@ -41,9 +41,8 @@ export default function ListGiftsComponent(props) {
   const [editingGift, setEditingGift] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const [giftCards, setGiftCards] = useState(
-    restaurantContext?.restaurantData?.giftCards
-  );
+  const [giftCardsValue, setGiftCardsValue] = useState([]);
+  const [giftCardsDescription, setGiftCardsDescription] = useState([]);
 
   const {
     register,
@@ -61,7 +60,17 @@ export default function ListGiftsComponent(props) {
   const sensors = useSensors(mouseSensor, touchSensor);
 
   useEffect(() => {
-    setGiftCards(restaurantContext?.restaurantData?.giftCards);
+    setGiftCardsValue(
+      restaurantContext?.restaurantData?.giftCards.filter(
+        (giftCard) => !giftCard.description
+      )
+    );
+
+    setGiftCardsDescription(
+      restaurantContext?.restaurantData?.giftCards.filter(
+        (giftCard) => giftCard.description
+      )
+    );
   }, [restaurantContext?.restaurantData]);
 
   useEffect(() => {
@@ -121,35 +130,33 @@ export default function ListGiftsComponent(props) {
 
   function handleDragEnd(event) {
     const { active, over } = event;
-
+  
     if (!active || !over) {
       return;
     }
-
-    if (active.id !== over.id) {
-      setGiftCards((prevGiftCards) => {
-        const oldIndex = prevGiftCards.findIndex(
-          (cat) => cat._id === active.id
-        );
-        const newIndex = prevGiftCards.findIndex((cat) => cat._id === over.id);
-
-        const newCategoriesOrder = arrayMove(
-          prevGiftCards,
-          oldIndex,
-          newIndex
-        );
-
-        saveNewGiftCardsOrder(newCategoriesOrder);
-
-        return newCategoriesOrder;
-      });
+  
+    const allGiftCards = [...giftCardsValue, ...giftCardsDescription];
+  
+    const oldIndex = allGiftCards.findIndex((giftCard) => giftCard._id === active.id);
+    const newIndex = allGiftCards.findIndex((giftCard) => giftCard._id === over.id);
+  
+    if (oldIndex !== -1 && newIndex !== -1) {
+      const newOrder = arrayMove(allGiftCards, oldIndex, newIndex);
+  
+      // Met à jour les états des deux listes
+      const newGiftCardsValue = newOrder.filter((giftCard) => !giftCard.description);
+      const newGiftCardsDescription = newOrder.filter((giftCard) => giftCard.description);
+  
+      setGiftCardsValue(newGiftCardsValue);
+      setGiftCardsDescription(newGiftCardsDescription);
+  
+      saveNewGiftCardsOrder(newOrder); // Envoyer l'ordre combiné au backend
     }
   }
+  
 
   function saveNewGiftCardsOrder(updatedGiftCards) {
-    const orderedGiftCardIds = updatedGiftCards.map(
-      (giftCard) => giftCard._id
-    );
+    const orderedGiftCardIds = updatedGiftCards.map((giftCard) => giftCard._id);
 
     axios
       .put(
@@ -187,8 +194,15 @@ export default function ListGiftsComponent(props) {
         </button>
       </div>
 
-      {giftCards && (
-        <div className="mb-12">
+      {giftCardsValue && (
+        <div className="">
+          <div className="relative my-6">
+            <h2 className="relative flex gap-2 items-center font-semibold w-fit px-6 mx-auto text-center uppercase bg-lightGrey z-[4]">
+              {t("titles.amountCard")}
+            </h2>
+            <hr className="bg-darkBlue absolute h-[1px] w-[550px] left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 z-[3]" />
+          </div>
+
           <DndContext
             id={id}
             sensors={sensors}
@@ -196,39 +210,76 @@ export default function ListGiftsComponent(props) {
             onDragEnd={handleDragEnd}
           >
             <SortableContext
-              items={giftCards?.map((giftCard) => giftCard._id)}
+              items={giftCardsValue?.map((giftCard) => giftCard._id)}
             >
-              <CardGiftsComponent
-                titleKey="titles.amountCard"
-                filterCondition={(giftCard) => !giftCard.description}
-                handleEditClick={handleEditClick}
-                handleDeleteClick={handleDeleteClick}
-                handleVisibilityToggle={handleVisibilityToggle}
-                currencySymbol={currencySymbol}
-              />
+              <div className="my-12 grid grid-cols-1 tablet:grid-cols-3 desktop:grid-cols-4 ultraWild:grid-cols-5 gap-6">
+                {giftCardsValue?.map((giftCard, i) => (
+                  <CardGiftsComponent
+                    key={giftCard._id}
+                    giftCard={giftCard}
+                    handleEditClick={handleEditClick}
+                    handleDeleteClick={handleDeleteClick}
+                    handleVisibilityToggle={handleVisibilityToggle}
+                    currencySymbol={currencySymbol}
+                  />
+                ))}
+              </div>
             </SortableContext>
           </DndContext>
+        </div>
+      )}
+
+      {giftCardsDescription && (
+        <div className="mb-12">
+          <div className="relative my-6">
+            <h2 className="relative flex gap-2 items-center font-semibold w-fit px-6 mx-auto text-center uppercase bg-lightGrey z-20">
+              {t("titles.menuCard")}
+            </h2>
+            <hr className="bg-darkBlue absolute h-[1px] w-[550px] left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 z-10" />
+          </div>
 
           <DndContext
+            id={id}
             sensors={sensors}
             collisionDetection={closestCenter}
             onDragEnd={handleDragEnd}
           >
             <SortableContext
-              items={giftCards?.map((giftCard) => giftCard._id)}
+              items={giftCardsDescription?.map((giftCard) => giftCard._id)}
             >
-              <CardGiftsComponent
-                titleKey="titles.menuCard"
-                filterCondition={(giftCard) => giftCard.description}
-                handleEditClick={handleEditClick}
-                handleDeleteClick={handleDeleteClick}
-                handleVisibilityToggle={handleVisibilityToggle}
-                currencySymbol={currencySymbol}
-              />
+              <div className="my-12 grid grid-cols-1 tablet:grid-cols-3 desktop:grid-cols-4 ultraWild:grid-cols-5 gap-6">
+                {giftCardsDescription?.map((giftCard, i) => (
+                  <CardGiftsComponent
+                    key={giftCard._id}
+                    giftCard={giftCard}
+                    handleEditClick={handleEditClick}
+                    handleDeleteClick={handleDeleteClick}
+                    handleVisibilityToggle={handleVisibilityToggle}
+                    currencySymbol={currencySymbol}
+                  />
+                ))}
+              </div>
             </SortableContext>
           </DndContext>
         </div>
       )}
+
+      {/* <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext items={giftCards?.map((giftCard) => giftCard._id)}>
+          <CardGiftsComponent
+            titleKey="titles.menuCard"
+            filterCondition={(giftCard) => giftCard.description}
+            handleEditClick={handleEditClick}
+            handleDeleteClick={handleDeleteClick}
+            handleVisibilityToggle={handleVisibilityToggle}
+            currencySymbol={currencySymbol}
+          />
+        </SortableContext>
+      </DndContext> */}
 
       <PurchasesGiftListComponent
         purchasesGiftCards={
