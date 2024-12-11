@@ -125,10 +125,10 @@ export default function ListNewsComponent(props) {
                   src={data.image}
                   alt="img"
                   draggable={false}
-                  className="h-[280px] w-full object-cover object-center  rounded-lg"
+                  className="h-[500px] w-full object-contain object-center  rounded-lg"
                 />
               ) : (
-                <div className="h-[200px] flex items-center justify-center">
+                <div className="h-[500px] flex items-center justify-center">
                   <NoImageSvg width={80} height={80} className="opacity-10" />
                 </div>
               )}
