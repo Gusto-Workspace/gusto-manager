@@ -7,6 +7,8 @@ const jwt = require("jsonwebtoken");
 const AdminModel = require("../models/admin.model");
 const OwnerModel = require("../models/owner.model");
 
+
+// JWT
 const JWT_SECRET = process.env.JWT_SECRET;
 
 // CONNEXION ADMIN
