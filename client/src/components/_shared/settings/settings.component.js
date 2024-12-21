@@ -122,11 +122,11 @@ export default function SettingsComponent() {
                     <li
                       className="p-6 cursor-pointer"
                       onClick={() => {
+                        router.push("/");
                         setShowRestaurantList(false);
                         restaurantContext.handleRestaurantSelect(
                           restaurant._id
                         );
-                        router.push("/");
                       }}
                     >
                       {restaurant.name}

@@ -12,6 +12,7 @@ import { GlobalContext } from "@/contexts/global.context";
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import ListGiftsComponent from "@/components/gifts/list.gifts.component";
+import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
 
 export default function GiftsPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
@@ -57,7 +58,7 @@ export default function GiftsPage(props) {
         <div className="flex">
           <NavComponent />
 
-           <div className="ml-[270px] bg-lightGrey text-darkBlue flex-1 p-6 flex flex-col gap-6 min-h-screen">
+          <div className="ml-[270px] bg-lightGrey text-darkBlue flex-1 p-6 flex flex-col gap-6 min-h-screen">
             <SettingsComponent
               dataLoading={restaurantContext.dataLoading}
               setDataLoading={restaurantContext.setDataLoading}
@@ -66,7 +67,11 @@ export default function GiftsPage(props) {
               restaurantData={restaurantContext.restaurantData}
             />
 
-            <ListGiftsComponent />
+            {restaurantContext?.restaurantData?.options?.gift_card ? (
+              <ListGiftsComponent />
+            ) : (
+              <NoAvailableComponent />
+            )}
           </div>
         </div>
       </div>

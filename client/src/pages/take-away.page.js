@@ -11,6 +11,7 @@ import { GlobalContext } from "@/contexts/global.context";
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
+import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
 
 export default function TakeAwayPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
@@ -64,6 +65,12 @@ export default function TakeAwayPage(props) {
               setRestaurantData={restaurantContext.setRestaurantData}
               restaurantData={restaurantContext.restaurantData}
             />
+
+            {restaurantContext?.restaurantData?.options?.take_away ? (
+              <p>Vente à emporter</p>
+            ) : (
+              <NoAvailableComponent/>
+            )}
           </div>
         </div>
       </div>

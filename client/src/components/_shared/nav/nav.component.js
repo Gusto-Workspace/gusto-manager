@@ -27,6 +27,10 @@ export default function NavComponent() {
   }
 
   function isOptionEnabled(itemHref) {
+    if (restaurantContext.dataLoading) {
+      return false;
+    }
+
     const optionsMapping = {
       "/gifts": restaurantContext?.restaurantData?.options?.gift_card,
       "/reservations": restaurantContext?.restaurantData?.options?.reservations,
@@ -65,7 +69,7 @@ export default function NavComponent() {
         </h1>
       </div>
 
-      <ul className="flex-1 flex flex-col gap-7">
+      <ul className="flex-1 flex flex-col gap-6">
         {sortedNavItems.map((item) => {
           const IconComponent = icons[item.icon];
           const active = isActive(item.href);
