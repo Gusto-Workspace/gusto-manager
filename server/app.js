@@ -17,8 +17,8 @@ app.use(express.json());
 
 // MONGOOSE
 mongoose
-  .connect(process.env.CONNECTION_STRING_TEST, { connectTimeoutMS: 5000 })
-  .then(() => console.log("Connected to MongoDB Test BDD"))
+  .connect(process.env.CONNECTION_STRING, { connectTimeoutMS: 5000 })
+  .then(() => console.log("Connected to MongoDB"))
   .catch((err) => console.log("MongoDB connection error:", err));
 
 // CORS
