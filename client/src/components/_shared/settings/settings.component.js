@@ -126,6 +126,7 @@ export default function SettingsComponent() {
                         restaurantContext.handleRestaurantSelect(
                           restaurant._id
                         );
+                        router.push("/");
                       }}
                     >
                       {restaurant.name}
