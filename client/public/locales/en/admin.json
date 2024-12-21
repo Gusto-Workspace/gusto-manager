@@ -28,6 +28,12 @@
         "city": "City",
         "country": "Country"
       },
+      "options": {
+        "options": "Options",
+        "giftCard": "Gift Cards",
+        "reservations": "Online booking",
+        "takeAway": "Take Away"
+      },
       "buttons": {
         "add": "Add",
         "cancel": "Cancel",

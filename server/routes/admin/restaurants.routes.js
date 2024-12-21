@@ -73,6 +73,11 @@ router.post("/admin/add-restaurant", async (req, res) => {
       website: restaurantData.website,
       owner_id: owner._id,
       opening_hours: restaurantData.opening_hours,
+      options: {
+        gift_card: restaurantData.options?.gift_card || false,
+        reservations: restaurantData.options?.reservations || false,
+        take_away: restaurantData.options?.take_away || false,
+      },
       menus: [],
       dishes: [],
       drinks: [],
@@ -175,7 +180,7 @@ router.put("/admin/restaurants/:id", async (req, res) => {
       await newOwnerData.save();
     }
 
-    // Mise à jour des informations du restaurant, y compris l'adresse
+    // Mise à jour des informations du restaurant
     restaurant.name = restaurantData.name;
     restaurant.address = {
       line1: restaurantData.address.line1,
@@ -186,6 +191,11 @@ router.put("/admin/restaurants/:id", async (req, res) => {
     restaurant.phone = restaurantData.phone;
     restaurant.email = restaurantData.email;
     restaurant.website = restaurantData.website;
+    restaurant.options = {
+      gift_card: restaurantData.options?.gift_card || false,
+      reservations: restaurantData.options?.reservations || false,
+      take_away: restaurantData.options?.take_away || false,
+    };
 
     await restaurant.save();
 

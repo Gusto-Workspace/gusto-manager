@@ -42,3 +42,5 @@ export { PasswordSvg } from "./password.svg";
 export { FullScreenSvg } from "./full-screen.svg";
 export { InvoiceSvg } from "./invoice.svg";
 export { GlassSvg } from "./glass.svg";
+export { ReservationSvg } from "./reservation.svg";
+export { TakeAwaySvg } from "./take-away.svg";

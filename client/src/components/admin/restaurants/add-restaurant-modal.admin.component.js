@@ -58,6 +58,11 @@ export default function AddRestaurantModal(props) {
           phone: props.restaurant.phone,
           email: props.restaurant.email,
           website: props.restaurant.website,
+          options: {
+            gift_card: props.restaurant.options?.gift_card || false,
+            reservations: props.restaurant.options?.reservations || false,
+            take_away: props.restaurant.options?.take_away || false,
+          },
         },
       });
     } else {
@@ -187,6 +192,37 @@ export default function AddRestaurantModal(props) {
             required={true}
             errors={errors}
           />
+
+          <h3>{t("restaurants.form.options.title")}</h3>
+
+          <div className="flex flex-col gap-2">
+            <label>
+              <input
+              className="mr-2"
+                type="checkbox"
+                {...register("restaurantData.options.gift_card")}
+              />
+              {t("restaurants.form.options.giftCard")}
+            </label>
+
+            <label>
+              <input
+              className="mr-2"
+                type="checkbox"
+                {...register("restaurantData.options.reservations")}
+              />
+              {t("restaurants.form.options.reservations")}
+            </label>
+
+            <label>
+              <input
+              className="mr-2"
+                type="checkbox"
+                {...register("restaurantData.options.take_away")}
+              />
+              {t("restaurants.form.options.takeAway")}
+            </label>
+          </div>
 
           <h3>{t("owner.form.infos")}</h3>
 

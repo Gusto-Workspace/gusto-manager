@@ -26,12 +26,29 @@ export default function NavComponent() {
     return router.pathname.startsWith(itemHref) && router.pathname !== "/";
   }
 
+  function isOptionEnabled(itemHref) {
+    const optionsMapping = {
+      "/gifts": restaurantContext?.restaurantData?.options?.gift_card,
+      "/reservations": restaurantContext?.restaurantData?.options?.reservations,
+      "/take-away": restaurantContext?.restaurantData?.options?.take_away,
+    };
+
+    return optionsMapping[itemHref] ?? true;
+  }
+
+  const sortedNavItems = navItemsData
+    .map((item) => ({
+      ...item,
+      enabled: isOptionEnabled(item.href),
+    }))
+    .sort((a, b) => b.enabled - a.enabled);
+
   return (
     <nav
       style={{
         boxShadow: "3px 0 5px rgba(0, 0, 0, 0.05)",
       }}
-      className="w-[250px] fixed bg-white h-screen overflow-y-auto flex flex-col py-6 px-4 gap-8 z-10 text-darkBlue"
+      className="w-[270px] fixed bg-white h-screen overflow-y-auto flex flex-col py-6 px-4 gap-8 z-10 text-darkBlue"
     >
       <div className=" z-10 opacity-40 h-[86px]">
         <h1 className="flex flex-col items-center gap-2 text-lg font-semibold">
@@ -49,7 +66,7 @@ export default function NavComponent() {
       </div>
 
       <ul className="flex-1 flex flex-col gap-7">
-        {navItemsData.map((item) => {
+        {sortedNavItems.map((item) => {
           const IconComponent = icons[item.icon];
           const active = isActive(item.href);
 
@@ -58,26 +75,42 @@ export default function NavComponent() {
               key={item.href}
               className={`h-12 flex items-center pl-1 pr-6 ${
                 active ? "text-blue bg-blue bg-opacity-30 rounded-full" : ""
-              }`}
+              } ${!item.enabled ? "opacity-50 cursor-not-allowed" : ""}`}
             >
-              <Link
-                className="h-12 flex gap-2 items-center w-full"
-                href={item.href}
-              >
-                {IconComponent && (
-                  <div
-                    className={`${active ? "bg-blue" : ""} p-[8px] rounded-full`}
-                  >
-                    <IconComponent
-                      width={23}
-                      height={23}
-                      fillColor={`${active ? "white" : "#131E3699"}`}
-                      strokeColor={`${active ? "white" : "#131E3699"}`}
-                    />
-                  </div>
-                )}
-                {t(item.label)}
-              </Link>
+              {item.enabled ? (
+                <Link
+                  className="h-12 flex gap-2 items-center w-full"
+                  href={item.href}
+                >
+                  {IconComponent && (
+                    <div
+                      className={`${active ? "bg-blue" : ""} p-[8px] rounded-full`}
+                    >
+                      <IconComponent
+                        width={23}
+                        height={23}
+                        fillColor={`${active ? "white" : "#131E3699"}`}
+                        strokeColor={`${active ? "white" : "#131E3699"}`}
+                      />
+                    </div>
+                  )}
+                  {t(item.label)}
+                </Link>
+              ) : (
+                <div className="h-12 flex gap-2 items-center w-full">
+                  {IconComponent && (
+                    <div className={`p-[8px] rounded-full opacity-50`}>
+                      <IconComponent
+                        width={23}
+                        height={23}
+                        fillColor="#131E3699"
+                        strokeColor="#131E3699"
+                      />
+                    </div>
+                  )}
+                  {t(item.label)}
+                </div>
+              )}
             </li>
           );
         })}
