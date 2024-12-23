@@ -13,6 +13,8 @@ import { GlobalContext } from "@/contexts/global.context";
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import DashboardComponent from "@/components/dashboard/dashboard.component";
+
+// SVG
 import { AnalyticsSvg } from "@/components/_shared/_svgs/analytics.data";
 
 export default function DashboardPage(props) {
@@ -60,7 +62,7 @@ export default function DashboardPage(props) {
         <div className="flex">
           <NavComponent />
 
-           <div className="ml-[270px] bg-lightGrey text-darkBlue flex-1 p-6 flex flex-col gap-6 min-h-screen">
+          <div className="tablet:tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 p-6 flex flex-col gap-6 min-h-screen">
             <SettingsComponent
               dataLoading={restaurantContext.dataLoading}
               setDataLoading={restaurantContext.setDataLoading}

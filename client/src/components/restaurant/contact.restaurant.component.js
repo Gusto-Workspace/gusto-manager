@@ -1,10 +1,22 @@
 import { useEffect, useState } from "react";
+
+// REACT HOOK FORM
 import { useForm } from "react-hook-form";
+
+// I18N
 import { useTranslation } from "next-i18next";
+
+// SVG
 import { EditSvg } from "../_shared/_svgs/_index";
 import * as icons from "../_shared/_svgs/_index";
+
+// DATA
 import { contactData } from "@/_assets/data/contact.data";
+
+// AXIOS
 import axios from "axios";
+
+// COMPONENTS
 import SimpleSkeletonComponent from "../_shared/skeleton/simple-skeleton.component";
 
 export default function ContactRestaurantComponent(props) {
@@ -104,6 +116,7 @@ export default function ContactRestaurantComponent(props) {
     >
       <div className="flex justify-between">
         <h1 className="font-bold text-lg">{t("contact.title")}</h1>
+
         <div className="flex gap-2">
           {editing && (
             <button onClick={handleToggleEdit}>
@@ -112,6 +125,7 @@ export default function ContactRestaurantComponent(props) {
               </span>
             </button>
           )}
+
           <button onClick={editing ? handleSubmit(onSubmit) : handleToggleEdit}>
             {editing ? (
               <span className="text-white bg-blue px-4 py-2 rounded-lg">
@@ -139,6 +153,7 @@ export default function ContactRestaurantComponent(props) {
           const isRequired = item.required;
 
           let fieldValue;
+          
           if (item.field.startsWith("address.")) {
             const addressPart = item.field.split(".")[1];
             fieldValue = props.restaurantData?.address?.[addressPart];
