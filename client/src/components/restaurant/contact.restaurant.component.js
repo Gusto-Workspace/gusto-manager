@@ -110,11 +110,8 @@ export default function ContactRestaurantComponent(props) {
   }
 
   return (
-    <div
-       
-      className="bg-white p-6 pb-3 rounded-lg drop-shadow-sm w-full desktop:w-1/2 h-fit"
-    >
-      <div className="flex justify-between">
+    <div className="bg-white p-6 pb-3 rounded-lg drop-shadow-sm w-full desktop:w-1/2 h-fit">
+      <div className="flex gap-6 flex-wrap justify-between">
         <h1 className="font-bold text-lg">{t("contact.title")}</h1>
 
         <div className="flex gap-2">
@@ -153,7 +150,7 @@ export default function ContactRestaurantComponent(props) {
           const isRequired = item.required;
 
           let fieldValue;
-          
+
           if (item.field.startsWith("address.")) {
             const addressPart = item.field.split(".")[1];
             fieldValue = props.restaurantData?.address?.[addressPart];
@@ -165,10 +162,10 @@ export default function ContactRestaurantComponent(props) {
 
           return (
             <div
-              className="flex justify-between items-center gap-12 h-12"
+              className={`flex ${editing ? "flex-col mb-4" : "flex-row h-12 items-center"}  justify-between gap-2 tablet:gap-12 `}
               key={item.field}
             >
-              <div className="flex items-center gap-3 w-[150px]">
+              <div className="flex items-center gap-3 tablet:w-[150px]">
                 {IconComponent && (
                   <IconComponent
                     width={25}
@@ -190,13 +187,13 @@ export default function ContactRestaurantComponent(props) {
                   {...register(item.field, {
                     required: isRequired ? t("error.required") : false,
                   })}
-                  className={`border p-1 rounded-lg w-1/2 ${
+                  className={`border p-1 rounded-lg w-full mobile:w-1/2 ${
                     errors[item.field] ? "border-red" : ""
                   }`}
                   placeholder={!isRequired ? t("emptyInput") : ""}
                 />
               ) : (
-                <p className="text-right truncate max-w-[40%]">
+                <p className="text-right truncate max-w-[120px] mobile:max-w-[40%]">
                   {fieldValue || (
                     <span className="text-sm italic">{t("notUsed")}</span>
                   )}

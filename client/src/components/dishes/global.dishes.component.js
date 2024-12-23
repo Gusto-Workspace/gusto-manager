@@ -23,7 +23,7 @@ export default function GlobalDishesComponent(props) {
         </div>
       )}
 
-      <div className="bg-white rounded-lg drop-shadow-sm p-12 max-w-[800px] mx-auto w-full flex flex-col gap-6">
+      <div className="bg-white rounded-lg drop-shadow-sm p-4 tablet:p-12 max-w-[800px] mx-auto w-full flex flex-col gap-6">
         {props?.categories
           ?.filter((category) => {
             const hasDishes = category.dishes && category.dishes.length > 0;

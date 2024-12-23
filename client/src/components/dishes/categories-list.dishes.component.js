@@ -174,11 +174,11 @@ export default function CategoriesListDishesComponent() {
     <div className="flex flex-col gap-6">
       <hr className="opacity-20" />
 
-      <div className="flex justify-between">
-        <div className="flex gap-2 items-center">
+      <div className="flex flex-wrap gap-4 justify-between">
+        <div className="flex gap-2 items-center min-h-[40px]">
           <DishSvg width={30} height={30} fillColor="#131E3690" />
 
-          <h1 className="pl-2 text-2xl">{t("titles.main")}</h1>
+          <h1 className="pl-2 text-xl tablet:text-2xl">{t("titles.main")}</h1>
         </div>
 
         <button

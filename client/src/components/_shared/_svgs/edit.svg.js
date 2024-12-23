@@ -6,6 +6,7 @@ export function EditSvg(props) {
       height={props.height ?? 24}
       viewBox="0 0 24 24"
       fill="none"
+      className={props.className ?? ""}
     >
       <path
         stroke={props.strokeColor ?? "#000"}
