@@ -193,7 +193,7 @@ export default function FixedMenuComponent(props) {
               )}
             </div>
 
-            <div className="flex flex-wrap gap-4">
+            <div className="flex flex-col mobile:flex-row flex-wrap gap-4">
               <CategoriesInputFixedMenuComponent
                 control={control}
                 register={register}

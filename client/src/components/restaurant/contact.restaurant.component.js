@@ -162,10 +162,10 @@ export default function ContactRestaurantComponent(props) {
 
           return (
             <div
-              className={`flex ${editing ? "flex-col mb-4" : "flex-row h-12 items-center"}  justify-between gap-2 tablet:gap-12 `}
+              className={`flex ${editing ? "flex-col midTablet:flex-row mb-4" : "flex-row h-12 items-center"}  justify-between gap-2 midTablet:gap-12 `}
               key={item.field}
             >
-              <div className="flex items-center gap-3 tablet:w-[150px]">
+              <div className="flex items-center gap-3 midTablet:w-[150px]">
                 {IconComponent && (
                   <IconComponent
                     width={25}
@@ -187,7 +187,7 @@ export default function ContactRestaurantComponent(props) {
                   {...register(item.field, {
                     required: isRequired ? t("error.required") : false,
                   })}
-                  className={`border p-1 rounded-lg w-full mobile:w-1/2 ${
+                  className={`border p-1 rounded-lg w-full midTablet:w-1/2 ${
                     errors[item.field] ? "border-red" : ""
                   }`}
                   placeholder={!isRequired ? t("emptyInput") : ""}

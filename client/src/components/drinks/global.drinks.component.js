@@ -12,7 +12,7 @@ export default function GlobalDrinksComponent(props) {
       <div className="flex gap-2 items-center">
         <GlassSvg width={30} height={30} fillColor="#131E3690" />
 
-        <h1 className="pl-2 text-2xl">{t("titles.second")}</h1>
+        <h1 className="pl-2 text-xl tablet:text-2xl">{t("titles.second")}</h1>
       </div>
 
       <div className="bg-white rounded-lg drop-shadow-sm p-12 max-w-[1000px] mx-auto w-full flex flex-col gap-12">

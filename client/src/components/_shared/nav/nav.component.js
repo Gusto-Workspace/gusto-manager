@@ -1,12 +1,4 @@
-// NavComponent.jsx
-
-import {
-  useContext,
-  useState,
-  useLayoutEffect,
-  useEffect,
-  useRef,
-} from "react";
+import { useContext, useState, useEffect, useRef } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
 
@@ -44,7 +36,7 @@ export default function NavComponent() {
     }
   }
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (menuOpen) {
       calculateTranslateX();
       window.addEventListener("resize", calculateTranslateX);

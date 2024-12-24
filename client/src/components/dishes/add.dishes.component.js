@@ -222,7 +222,7 @@ export default function AddDishesComponent(props) {
           </label>
         </div>
 
-        <div className="flex gap-6">
+        <div className="flex flex-col mobile:flex-row gap-2 mobile:gap-6">
           <label className="block font-semibold">
             {t("form.labels.status")}
           </label>

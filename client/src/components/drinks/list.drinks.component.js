@@ -377,11 +377,11 @@ export default function ListDrinksComponent(props) {
     <div className="flex flex-col gap-6">
       <hr className="opacity-20" />
 
-      <div className="flex justify-between">
-        <div className="flex gap-2 items-center">
+      <div className="flex gap-4 flex-wrap justify-between">
+        <div className="flex gap-2 items-center min-h-[40px]">
           <DrinkSvg width={30} height={30} fillColor="#131E3690" />
 
-          <h1 className="pl-2 text-2xl flex items-center gap-2">
+          <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2">
             <span
               className="cursor-pointer hover:underline"
               onClick={() => router.push(baseRoute)}
@@ -415,7 +415,7 @@ export default function ListDrinksComponent(props) {
           </h1>
         </div>
 
-        <div className="flex gap-4">
+        <div className="flex flex-wrap gap-4">
           <button
             onClick={handleAddClick}
             className="bg-blue px-6 py-2 rounded-lg text-white cursor-pointer"
@@ -444,7 +444,7 @@ export default function ListDrinksComponent(props) {
             <SortableContext
               items={subCategories?.map((subCategory) => subCategory._id)}
             >
-              <div className="grid grid-cols-1 tablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-4 gap-6">
+              <div className="grid grid-cols-1 midTablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-4 gap-6">
                 {subCategories?.map((subCategory, i) => (
                   <CardCategoryListComponent
                     key={subCategory._id}
