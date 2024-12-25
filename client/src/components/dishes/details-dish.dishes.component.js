@@ -35,7 +35,7 @@ export default function DetailsDishComponent(props) {
       style={style}
       className="bg-white p-4 midTablet:p-6 midTablet:pl-4 rounded-lg drop-shadow-sm flex flex-col midTablet:flex-row gap-1 midTablet:justify-between midTablet:items-center min-h-[100px]"
     >
-      <div className="flex gap-4">
+      <div className="flex items-start midTablet:items-center gap-4">
         <button {...listeners} className="opacity-50 cursor-grab">
           <DragSvg width={25} height={25} />
         </button>
@@ -78,6 +78,7 @@ export default function DetailsDishComponent(props) {
                 )}
               </div>
             )}
+
             {props.dish.vegetarian && (
               <div
                 onMouseEnter={() =>

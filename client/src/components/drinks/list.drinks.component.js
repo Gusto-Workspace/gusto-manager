@@ -49,7 +49,7 @@ export default function ListDrinksComponent(props) {
   const [hoveredTooltip, setHoveredTooltip] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [drinks, setDrinks] = useState(
-    props.subCategory ? props.subCategory.drinks : props.category.drinks
+    props.subCategory ? props.subCategory?.drinks : props.category?.drinks
   );
 
   const [subCategories, setSubCategories] = useState(
@@ -381,7 +381,7 @@ export default function ListDrinksComponent(props) {
         <div className="flex gap-2 items-center min-h-[40px]">
           <DrinkSvg width={30} height={30} fillColor="#131E3690" />
 
-          <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2">
+          <h1 className="pl-2 text-xl tablet:text-2xl flex flex-wrap items-center gap-2">
             <span
               className="cursor-pointer hover:underline"
               onClick={() => router.push(baseRoute)}
@@ -491,7 +491,7 @@ export default function ListDrinksComponent(props) {
             onClick={closeDeleteModal}
             className="fixed inset-0 bg-black bg-opacity-20"
           />
-          <div className="bg-white p-6 rounded-lg shadow-lg w-[400px] z-10">
+          <div className="bg-white p-6 rounded-lg shadow-lg mx-6 w-[400px] z-10">
             <h2 className="text-xl font-semibold mb-6 text-center">
               {t("buttons.deleteDish")}
             </h2>

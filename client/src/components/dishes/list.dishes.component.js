@@ -212,7 +212,7 @@ export default function ListDishesComponent(props) {
             onClick={closeDeleteModal}
             className="fixed inset-0 bg-black bg-opacity-20"
           />
-          <div className="bg-white p-6 rounded-lg shadow-lg w-[400px] z-10">
+          <div className="bg-white p-6 rounded-lg shadow-lg mx-6 w-[400px] z-10">
             <h2 className="text-xl font-semibold mb-6 text-center">
               {t("buttons.deleteDish")}
             </h2>

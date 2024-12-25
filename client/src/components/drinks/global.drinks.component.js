@@ -39,7 +39,7 @@ export default function GlobalDrinksComponent(props) {
 
               {/* Affichage des boissons dans la catégorie principale */}
               {category.drinks.some((drink) => drink.showOnWebsite) && (
-                <div className="desktop:w-[95%] mx-auto grid grid-cols-1 tablet:grid-cols-1 desktop:grid-cols-2 gap-y-6 gap-x-16">
+                <div className="desktop:w-[95%] grid grid-cols-1 midTablet:grid-cols-2 gap-y-6 gap-x-16">
                   {category.drinks
                     .filter((drink) => drink.showOnWebsite)
                     .map((drink, j) => (
@@ -94,7 +94,7 @@ export default function GlobalDrinksComponent(props) {
                     </div>
 
                     {/* Affichage des boissons dans la sous-catégorie */}
-                    <div className="desktop:w-[95%] mx-auto grid grid-cols-1 tablet:grid-cols-1 desktop:grid-cols-2 gap-y-6 gap-x-16">
+                    <div className="desktop:w-[95%] grid grid-cols-1 midTablet:grid-cols-2 gap-y-6 gap-x-16">
                       {subCategory.drinks
                         .filter((drink) => drink.showOnWebsite)
                         .map((drink, l) => (

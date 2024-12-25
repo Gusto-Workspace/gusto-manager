@@ -149,7 +149,7 @@ export default function AddDrinksComponent(props) {
         onSubmit={handleSubmit(onSubmit)}
         className="bg-white p-6 rounded-lg drop-shadow-sm flex flex-col gap-6"
       >
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid tablet:grid-cols-2 gap-4">
           <div className="flex flex-col gap-1">
             <label className="block font-semibold">
               {t("form.labels.name")}
@@ -222,7 +222,7 @@ export default function AddDrinksComponent(props) {
           </label>
         </div>
 
-        <div className="flex gap-6">
+        <div className="flex flex-col mobile:flex-row gap-2 mobile:gap-6">
           <label className="block font-semibold">
             {t("form.labels.status")}
           </label>
