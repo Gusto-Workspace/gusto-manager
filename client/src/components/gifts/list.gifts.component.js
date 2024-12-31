@@ -286,7 +286,7 @@ export default function ListGiftsComponent(props) {
       {/* MODALES */}
 
       {isModalOpen && (
-        <div className="fixed inset-0 flex items-center justify-center z-[100]">
+        <div className="fixed inset-0 flex items-center mx-6 justify-center z-[100]">
           <div
             onClick={() => {
               setIsModalOpen(false);

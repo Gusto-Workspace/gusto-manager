@@ -174,7 +174,7 @@ export default function PurchasesGiftListComponent(props) {
 
                         {status === "Used" && (
                           <button
-                            className="mt-2 text-blue w-fit italic opacity-50"
+                            className="mt-2 text-blue w-fit mx-auto midTablet:mx-0 italic opacity-50"
                             onClick={() => markAsValid(purchase._id)}
                           >
                             {t("buttons.revalidateCard")}
