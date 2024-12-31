@@ -75,9 +75,9 @@ export default function CategoriesListDrinksComponent() {
 
   function handleCategoryClick(category) {
     const formattedName = category.name
-    .replace(/\//g, "-")
-    .replace(/\s+/g, "&") 
-    .toLowerCase();
+      .replace(/\//g, "-")
+      .replace(/\s+/g, "&")
+      .toLowerCase();
     router.push(`/drinks/${formattedName}-${category._id}`);
   }
 
@@ -173,12 +173,17 @@ export default function CategoriesListDrinksComponent() {
   }
 
   return (
-    <div   className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6">
       <hr className="opacity-20" />
 
       <div className="flex gap-4 flex-wrap justify-between">
         <div className="flex gap-2 min-h-[40px] items-center">
-          <DrinkSvg width={30} height={30} fillColor="#131E3690" />
+          <DrinkSvg
+            width={30}
+            height={30}
+            className="min-h-[30px] min-w-[30px]"
+            fillColor="#131E3690"
+          />
 
           <h1 className="pl-2 text-xl tablet:text-2xl">{t("titles.main")}</h1>
         </div>

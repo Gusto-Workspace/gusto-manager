@@ -379,7 +379,12 @@ export default function ListDrinksComponent(props) {
 
       <div className="flex gap-4 flex-wrap justify-between">
         <div className="flex gap-2 items-center min-h-[40px]">
-          <DrinkSvg width={30} height={30} fillColor="#131E3690" />
+          <DrinkSvg
+            width={30}
+            height={30}
+            className="min-h-[30px] min-w-[30px]"
+            fillColor="#131E3690"
+          />
 
           <h1 className="pl-2 text-xl tablet:text-2xl flex flex-wrap items-center gap-2">
             <span

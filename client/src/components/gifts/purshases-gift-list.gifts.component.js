@@ -84,20 +84,30 @@ export default function PurchasesGiftListComponent(props) {
 
         <input
           type="text"
-          placeholder="Rechercher un code..."
+          placeholder="Rechercher un code, un bénéfichaire, un email ..."
           value={searchTerm}
           onChange={handleSearchChange}
-          className="p-2 border border-[#131E3690] rounded-lg w-fit"
+          className="p-2 border border-[#131E3690] rounded-lg midTablet:w-[350px]"
         />
       </div>
 
       <div className="flex flex-col gap-12">
         {Object.entries(purchasesByStatus).map(([status, purchases]) => {
-          const filteredPurchases = purchases.filter((purchase) =>
-            purchase.purchaseCode
-              .toLowerCase()
-              .includes(searchTerm.toLowerCase())
-          );
+          const filteredPurchases = purchases.filter((purchase) => {
+            const term = searchTerm.toLowerCase();
+            return (
+              (purchase.purchaseCode &&
+                purchase.purchaseCode.toLowerCase().includes(term)) ||
+              (purchase.beneficiaryFirstName &&
+                purchase.beneficiaryFirstName.toLowerCase().includes(term)) ||
+              (purchase.beneficiaryLastName &&
+                purchase.beneficiaryLastName.toLowerCase().includes(term)) ||
+              (purchase.sender &&
+                purchase.sender.toLowerCase().includes(term)) ||
+              (purchase.sendEmail &&
+                purchase.sendEmail.toLowerCase().includes(term))
+            );
+          });
 
           return (
             <div key={status} className="flex flex-col gap-4">
@@ -108,7 +118,8 @@ export default function PurchasesGiftListComponent(props) {
                     ({filteredPurchases.length})
                   </span>
                 </h2>
-                <hr className="bg-darkBlue absolute h-[1px] w-[350px] left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 z-10" />
+
+                <hr className="bg-darkBlue absolute h-[1px] w-full midTablet:w-[350px] left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 z-10" />
               </div>
 
               {filteredPurchases.length > 0 ? (
@@ -116,7 +127,7 @@ export default function PurchasesGiftListComponent(props) {
                   {filteredPurchases.map((purchase) => (
                     <li
                       key={purchase._id}
-                      className="bg-white p-4 rounded-lg drop-shadow-sm flex justify-between items-center"
+                      className="bg-white p-4 rounded-lg drop-shadow-sm flex flex-col gap-4 midTablet:flex-row text-center midTablet:text-start justify-between items-center"
                     >
                       <div className="flex flex-col gap-2">
                         <p>

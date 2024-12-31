@@ -85,11 +85,18 @@ export default function ListNewsComponent(props) {
     <section className="flex flex-col gap-6">
       <hr className="opacity-20" />
 
-      <div className="flex justify-between">
-        <div className="flex gap-2 items-center">
-          <NewsSvg width={30} height={30} strokeColor="#131E3690" />
+      <div className="flex gap-4 flex-wrap justify-between">
+        <div className="flex gap-2 items-center min-h-[40px]">
+          <NewsSvg
+            width={30}
+            height={30}
+            className="min-h-[30px] min-w-[30px]"
+            strokeColor="#131E3690"
+          />
 
-          <h1 className="pl-2 text-2xl">{t("titles.main")}</h1>
+          <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2">
+            {t("titles.main")}
+          </h1>
         </div>
 
         <button
@@ -100,7 +107,7 @@ export default function ListNewsComponent(props) {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 tablet:grid-cols-2 desktop:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 midTablet:grid-cols-2 desktop:grid-cols-3 gap-6">
         {props?.news?.map((data, i) => {
           return (
             <div
@@ -115,7 +122,7 @@ export default function ListNewsComponent(props) {
 
               <div
                 dangerouslySetInnerHTML={{ __html: data.description }}
-                className="prose h-[200px] overflow-y-auto dro"
+                className="prose h-[250px] overflow-y-auto dro"
               />
 
               <hr className="bg-darkBlue h-[1px] w-[100%] opacity-20 mx-auto" />
@@ -125,10 +132,10 @@ export default function ListNewsComponent(props) {
                   src={data.image}
                   alt="img"
                   draggable={false}
-                  className="h-[500px] w-full object-contain object-center  rounded-lg"
+                  className="h-[350px] midTablet:h-[500px] w-full object-contain object-center  rounded-lg"
                 />
               ) : (
-                <div className="h-[500px] flex items-center justify-center">
+                <div className="h-[350px] midTablet:h-[500px] flex items-center justify-center">
                   <NoImageSvg width={80} height={80} className="opacity-10" />
                 </div>
               )}
