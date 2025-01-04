@@ -10,6 +10,9 @@ const authenticateToken = require("../middleware/authentificate-token");
 // MODELS
 const RestaurantModel = require("../models/restaurant.model");
 
+// CRYPTO
+const { decryptApiKey } = require("../services/encryption.service");
+
 // Fonction pour mettre à jour le statut des cartes cadeaux expirées
 async function updateExpiredStatus(restaurantId) {
   const restaurant = await RestaurantModel.findById(restaurantId);
@@ -205,5 +208,77 @@ router.get(
     }
   }
 );
+
+// RECUPERER LES TRANSACTIONS ET VIREMENTS STRIPE DES CARTES CADEAUX
+router.get("/owner/restaurants/:id/transactions", async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // Vérifiez si le restaurant a une clé Stripe configurée
+    const restaurant = await RestaurantModel.findById(id);
+
+    if (!restaurant || !restaurant.stripeSecretKey) {
+      return res
+        .status(404)
+        .json({ message: "Clé Stripe introuvable pour ce restaurant." });
+    }
+
+    const stripeInstance = require("stripe")(
+      decryptApiKey(restaurant.stripeSecretKey)
+    );
+
+    let hasMore = true;
+    let startingAfter = null;
+    const charges = [];
+    const payouts = [];
+
+    while (hasMore) {
+      // Préparer les paramètres pour la requête
+      const params = { limit: 100 };
+      if (startingAfter) {
+        params.starting_after = startingAfter;
+      }
+
+      // Récupérer les transactions Stripe
+      const transactions =
+        await stripeInstance.balanceTransactions.list(params);
+
+      // Trier les transactions entre "charges" et "payouts"
+      transactions.data.forEach((transaction) => {
+        if (transaction.type === "charge") {
+          charges.push({
+            id: transaction.id,
+            date: new Date(transaction.created * 1000).toISOString(),
+            grossAmount: transaction.amount / 100,
+            feeAmount: transaction.fee / 100,
+            netAmount: (transaction.amount - transaction.fee) / 100,
+            currency: transaction.currency.toUpperCase(),
+          });
+        } else if (transaction.type === "payout") {
+          payouts.push({
+            id: transaction.id,
+            date: new Date(transaction.created * 1000).toISOString(),
+            amount: transaction.amount / 100,
+            currency: transaction.currency.toUpperCase(),
+            description: transaction.description,
+          });
+        }
+      });
+
+      // Vérifier s'il y a plus de données à récupérer
+      hasMore = transactions.has_more;
+
+      // Définir le dernier ID pour la prochaine requête
+      if (hasMore) {
+        startingAfter = transactions.data[transactions.data.length - 1].id;
+      }
+    }
+
+    res.status(200).json({ charges, payouts });
+  } catch (error) {
+    console.error("Erreur lors de la récupération des transactions :", error);
+    res.status(500).json({ message: "Erreur interne du serveur" });
+  }
+});
 
 module.exports = router;

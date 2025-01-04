@@ -19,6 +19,7 @@
       "phone": "Phone Number",
       "email": "Contact email",
       "web": "Website",
+      "stripeSecretKey": "Restaurant Stripe key (if necessary)",
       "owner": "Owner",
       "contact": "Contact Informations",
       "address": {

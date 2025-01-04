@@ -83,6 +83,7 @@ export default function DashboardPage(props) {
 
             <DashboardComponent
               restaurantData={restaurantContext.restaurantData}
+              dataLoading={restaurantContext.dataLoading}
             />
           </div>
         </div>

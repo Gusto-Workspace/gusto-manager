@@ -167,6 +167,7 @@ const restaurantSchema = new mongoose.Schema({
   phone: { type: String, required: true },
   email: { type: String, required: true },
   website: { type: String },
+  stripeSecretKey: { type: String },
   social_media: { type: socialMediaSchema, default: {} },
   owner_id: {
     type: mongoose.Schema.Types.ObjectId,
