@@ -197,10 +197,9 @@ export default function DashboardComponent(props) {
                   </h3>
 
                   <p className="italic">
-                    En date du{" "}
                     {payouts.length > 0
-                      ? `${new Date(payouts.find((payout) => payout.status === "paid").arrivalDate * 1000).toLocaleDateString()}`
-                      : "Aucun virement"}
+                      ? `En date du ${new Date(payouts.find((payout) => payout.status === "paid").arrivalDate * 1000).toLocaleDateString()}`
+                      : ""}
                   </p>
                 </div>
                 {dataLoading ? (
@@ -217,7 +216,10 @@ export default function DashboardComponent(props) {
               <button
                 onClick={() => {
                   setShowPaymentsDetails(!showPaymentsDetails);
-                  window.scrollBy({ top: 500, behavior: "smooth" });
+                  
+                  setTimeout(() => {
+                    window.scrollBy({ top: 500, behavior: "smooth" });
+                  },[200])
                 }}
                 className="bg-blue text-white w-fit py-2 px-4 rounded-lg"
               >
