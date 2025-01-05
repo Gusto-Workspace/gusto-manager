@@ -25,44 +25,66 @@ export default function DashboardComponent(props) {
   const { locale } = router;
   const currencySymbol = locale === "fr" ? "€" : "$";
 
-  const [totalGiftCardSales, setTotalGiftCardSales] = useState(0);
-  const [dataLoading, setDataLoading] = useState(true);
+  const [transactions, setTransactions] = useState([]);
+  const [totalPayouts, setTotalPayouts] = useState(0);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [lastChargeId, setLastChargeId] = useState(null);
+  const [hasMore, setHasMore] = useState(false);
   const [showPaymentsDetails, setShowPaymentsDetails] = useState(false);
 
   useEffect(() => {
     setShowPaymentsDetails(false);
-
-    async function fetchGiftCardSales() {
-      try {
-        setDataLoading(true);
-        const response = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${props.restaurantData._id}/transactions`
-        );
-
-        // Filtrer les transactions "charges" et calculer le total des ventes nettes
-        const totalNetAmount =
-          response.data.charges?.reduce(
-            (acc, transaction) => acc + transaction.netAmount,
-            0
-          ) || 0;
-
-        setTotalGiftCardSales(totalNetAmount.toFixed(2));
-        setDataLoading(false);
-      } catch (error) {
-        console.error(
-          "Erreur lors de la récupération des ventes de cartes cadeaux :",
-          error
-        );
-      }
-    }
 
     if (!props.dataLoading && props.restaurantData?.options?.gift_card) {
       fetchGiftCardSales();
     }
   }, [props.restaurantData, props.dataLoading]);
 
+  useEffect(() => {
+    setLastChargeId(null);
+    setTransactions([]);
+  }, [props.restaurantData]);
+
+  async function fetchGiftCardSales(starting_after) {
+    setDataLoading(true);
+    try {
+      const response = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${
+          props.restaurantData._id
+        }/transactions`,
+        {
+          params: {
+            limit: 10,
+            starting_after,
+          },
+        }
+      );
+
+      const { charges, has_more, last_charge_id } = response.data;
+
+      setTransactions((prev) => [...prev, ...charges]);
+
+      setHasMore(has_more);
+      setLastChargeId(last_charge_id);
+
+      setDataLoading(false);
+    } catch (error) {
+      setDataLoading(false);
+      console.error(
+        "Erreur lors de la récupération des cartes cadeaux :",
+        error
+      );
+    }
+  }
+
+  function handleLoadMore() {
+    if (hasMore && lastChargeId) {
+      fetchGiftCardSales(lastChargeId);
+    }
+  }
+
   return (
-    <section className="flex flex-col gap-12">
+    <section className="flex flex-col gap-6">
       <div className="grid grid-cols-1 tablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-3 gap-6">
         {dashboardData.map(
           ({ title, IconComponent, getCounts, emptyLabel }) => {
@@ -125,30 +147,26 @@ export default function DashboardComponent(props) {
               }
             )}
 
-            <div className="bg-white p-6 rounded-lg drop-shadow-sm flex flex-col justify-between gap-2">
+            <div className="bg-white p-6 rounded-lg drop-shadow-sm flex flex-col justify-between gap-6">
               <div className="flex gap-8">
-                <h3 className="w-full font-semibold text-lg text-balance">
+                <h3 className="w-full font-semibold text-lg text-pretty">
                   {t("labels.totalSold")}
                 </h3>
 
-                {dataLoading ? (
-                  <SimpleSkeletonComponent
-                    justify="justify-end"
-                    height="h-[32px]"
-                  />
-                ) : (
-                  <p className="font-bold text-2xl whitespace-nowrap">
-                    {totalGiftCardSales} {currencySymbol}
-                  </p>
-                )}
+                <p className="font-bold text-2xl whitespace-nowrap">
+                  {totalPayouts} {currencySymbol}
+                </p>
               </div>
 
               <button
-                onClick={() => setShowPaymentsDetails(!showPaymentsDetails)}
+                onClick={() => {
+                  setShowPaymentsDetails(!showPaymentsDetails);
+                  window.scrollBy({ top: 500, behavior: "smooth" });
+                }}
                 className="bg-blue text-white w-fit py-2 px-4 rounded-lg"
               >
                 {showPaymentsDetails ? "Masquer" : "Afficher"} le détails des
-                paiements
+                virements et paiements
               </button>
             </div>
           </div>
@@ -156,7 +174,16 @@ export default function DashboardComponent(props) {
       )}
 
       {showPaymentsDetails && props.restaurantData?.options?.gift_card && (
-        <PaymentsDashboardComponent />
+        <PaymentsDashboardComponent transactions={transactions} />
+      )}
+
+      {showPaymentsDetails && hasMore && (
+        <button
+          className="text-white bg-blue py-2 px-4 rounded-lg w-fit mx-auto"
+          onClick={handleLoadMore}
+        >
+          Charger plus de transactions
+        </button>
       )}
     </section>
   );

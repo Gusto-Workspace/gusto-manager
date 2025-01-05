@@ -53,7 +53,7 @@ export default function MonthlyGiftCardSalesChart(props) {
   }, [props.purchasesGiftCards]);
 
   return (
-    <div className="bg-white rounded-lg drop-shadow-sm p-6">
+    <div className="bg-white rounded-lg drop-shadow-sm flex flex-col py-6 h-full justify-between">
       <h2 className="text-xl font-semibold text-center mb-4">
         {t("labels.monthlySold")}
       </h2>

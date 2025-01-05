@@ -209,14 +209,13 @@ router.get(
   }
 );
 
-// RECUPERER LES TRANSACTIONS ET VIREMENTS STRIPE DES CARTES CADEAUX
+// RECUPERER LES TRANSACTIONS STRIPE DES CARTES CADEAUX
 router.get("/owner/restaurants/:id/transactions", async (req, res) => {
   const { id } = req.params;
+  const { limit = 10, starting_after } = req.query;
 
   try {
-    // Vérifiez si le restaurant a une clé Stripe configurée
     const restaurant = await RestaurantModel.findById(id);
-
     if (!restaurant || !restaurant.stripeSecretKey) {
       return res
         .status(404)
@@ -227,57 +226,35 @@ router.get("/owner/restaurants/:id/transactions", async (req, res) => {
       decryptApiKey(restaurant.stripeSecretKey)
     );
 
-    let hasMore = true;
-    let startingAfter = null;
-    const charges = [];
-    const payouts = [];
+    const chargesList = await stripeInstance.charges.list({
+      limit: Number(limit),
+      starting_after,
+      expand: ["data.balance_transaction"],
+    });
 
-    while (hasMore) {
-      // Préparer les paramètres pour la requête
-      const params = { limit: 100 };
-      if (startingAfter) {
-        params.starting_after = startingAfter;
-      }
+    // Formatage
+    const charges = chargesList.data.map((charge) => {
+      const balanceTx = charge.balance_transaction;
+      return {
+        id: charge.id,
+        date: charge.created,
+        customer:
+          charge.billing_details?.name || charge.customer || "Non renseigné",
+        grossAmount: (charge.amount / 100).toFixed(2),
+        feeAmount: (balanceTx?.fee / 100).toFixed(2),
+        netAmount: (balanceTx?.net / 100).toFixed(2),
+      };
+    });
 
-      // Récupérer les transactions Stripe
-      const transactions =
-        await stripeInstance.balanceTransactions.list(params);
-
-      // Trier les transactions entre "charges" et "payouts"
-      transactions.data.forEach((transaction) => {
-        if (transaction.type === "charge") {
-          charges.push({
-            id: transaction.id,
-            date: new Date(transaction.created * 1000).toISOString(),
-            grossAmount: transaction.amount / 100,
-            feeAmount: transaction.fee / 100,
-            netAmount: (transaction.amount - transaction.fee) / 100,
-            currency: transaction.currency.toUpperCase(),
-          });
-        } else if (transaction.type === "payout") {
-          payouts.push({
-            id: transaction.id,
-            date: new Date(transaction.created * 1000).toISOString(),
-            amount: transaction.amount / 100,
-            currency: transaction.currency.toUpperCase(),
-            description: transaction.description,
-          });
-        }
-      });
-
-      // Vérifier s'il y a plus de données à récupérer
-      hasMore = transactions.has_more;
-
-      // Définir le dernier ID pour la prochaine requête
-      if (hasMore) {
-        startingAfter = transactions.data[transactions.data.length - 1].id;
-      }
-    }
-
-    res.status(200).json({ charges, payouts });
+    return res.status(200).json({
+      charges,
+      has_more: chargesList.has_more,
+      last_charge_id:
+        charges.length > 0 ? charges[charges.length - 1].id : null,
+    });
   } catch (error) {
     console.error("Erreur lors de la récupération des transactions :", error);
-    res.status(500).json({ message: "Erreur interne du serveur" });
+    return res.status(500).json({ message: "Erreur interne du serveur" });
   }
 });
 
