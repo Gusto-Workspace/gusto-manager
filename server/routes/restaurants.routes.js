@@ -258,4 +258,116 @@ router.get("/owner/restaurants/:id/transactions", async (req, res) => {
   }
 });
 
+// Récupérer les virements Stripe (payouts)
+router.get("/owner/restaurants/:id/payouts", async (req, res) => {
+  const { id } = req.params;
+  const { limit = 10, starting_after } = req.query;
+
+  try {
+    const restaurant = await RestaurantModel.findById(id);
+    if (!restaurant || !restaurant.stripeSecretKey) {
+      return res
+        .status(404)
+        .json({ message: "Clé Stripe introuvable pour ce restaurant." });
+    }
+
+    const stripeInstance = require("stripe")(
+      decryptApiKey(restaurant.stripeSecretKey)
+    );
+
+    // Liste paginée des virements
+    const payoutsList = await stripeInstance.payouts.list({
+      limit: Number(limit),
+      starting_after,
+    });
+
+    // Formatage
+    const payouts = payoutsList.data.map((payout) => {
+      return {
+        id: payout.id,
+        arrivalDate: payout.arrival_date, // timestamp UNIX
+        amount: (payout.amount / 100).toFixed(2),
+        currency: payout.currency,
+        status: payout.status,
+      };
+    });
+
+    return res.status(200).json({
+      payouts,
+      has_more: payoutsList.has_more,
+      last_payout_id:
+        payouts.length > 0 ? payouts[payouts.length - 1].id : null,
+    });
+  } catch (error) {
+    console.error("Erreur lors de la récupération des virements :", error);
+    return res.status(500).json({ message: "Erreur interne du serveur" });
+  }
+});
+
+// Récupérer les transactions associées à un payout
+router.get(
+  "/owner/restaurants/:id/payouts/:payoutId/transactions",
+  async (req, res) => {
+    const { id, payoutId } = req.params;
+    const { limit = 10, starting_after } = req.query;
+
+    try {
+      const restaurant = await RestaurantModel.findById(id);
+      if (!restaurant || !restaurant.stripeSecretKey) {
+        return res
+          .status(404)
+          .json({ message: "Clé Stripe introuvable pour ce restaurant." });
+      }
+
+      const stripeInstance = require("stripe")(
+        decryptApiKey(restaurant.stripeSecretKey)
+      );
+
+      const balanceTxList = await stripeInstance.balanceTransactions.list({
+        limit: Number(limit),
+        starting_after,
+        payout: payoutId,
+        expand: ["data.source"],
+      });
+
+      // Filtrer pour retirer la transaction de type "payout" elle-même
+      const filteredTx = balanceTxList.data.filter(
+        (tx) => tx.type !== "payout"
+      );
+
+      const payoutTransactions = filteredTx.map((tx) => {
+        let customerName = "Non renseigné";
+        if (tx.source?.object === "charge") {
+          customerName = tx.source.billing_details?.name || "Non renseigné";
+        }
+
+        return {
+          id: tx.id,
+          type: tx.type,
+          grossAmount: (tx.amount / 100).toFixed(2),
+          feeAmount: (tx.fee / 100).toFixed(2),
+          netAmount: (tx.net / 100).toFixed(2),
+          date: tx.created,
+          customer: customerName,
+        };
+      });
+
+      return res.status(200).json({
+        payoutTransactions,
+        has_more: balanceTxList.has_more,
+        last_tx_id:
+          payoutTransactions.length > 0
+            ? payoutTransactions[payoutTransactions.length - 1].id
+            : null,
+      });
+    } catch (error) {
+      console.error(
+        "Erreur lors de la récupération des transactions d'un payout :",
+        error
+      );
+      return res.status(500).json({ message: "Erreur interne du serveur" });
+    }
+  }
+);
+
 module.exports = router;

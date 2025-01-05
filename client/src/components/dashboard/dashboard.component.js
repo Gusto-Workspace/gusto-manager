@@ -25,11 +25,17 @@ export default function DashboardComponent(props) {
   const { locale } = router;
   const currencySymbol = locale === "fr" ? "€" : "$";
 
+  // ---- States pour les PAIEMENTS ----
   const [transactions, setTransactions] = useState([]);
-  const [totalPayouts, setTotalPayouts] = useState(0);
-  const [dataLoading, setDataLoading] = useState(false);
+  const [hasMoreTransactions, setHasMoreTransactions] = useState(false);
   const [lastChargeId, setLastChargeId] = useState(null);
-  const [hasMore, setHasMore] = useState(false);
+
+  // ---- States pour les PAYOUTS ----
+  const [payouts, setPayouts] = useState([]);
+  const [hasMorePayouts, setHasMorePayouts] = useState(false);
+  const [lastPayoutId, setLastPayoutId] = useState(null);
+
+  const [dataLoading, setDataLoading] = useState(false);
   const [showPaymentsDetails, setShowPaymentsDetails] = useState(false);
 
   useEffect(() => {
@@ -37,14 +43,18 @@ export default function DashboardComponent(props) {
 
     if (!props.dataLoading && props.restaurantData?.options?.gift_card) {
       fetchGiftCardSales();
+      fetchGiftCardPayouts();
     }
   }, [props.restaurantData, props.dataLoading]);
 
   useEffect(() => {
-    setLastChargeId(null);
     setTransactions([]);
+    setLastChargeId(null);
+    setPayouts([]);
+    setLastPayoutId(null);
   }, [props.restaurantData]);
 
+  // ---- Requête pour PAIEMENTS (charges) ----
   async function fetchGiftCardSales(starting_after) {
     setDataLoading(true);
     try {
@@ -63,23 +73,57 @@ export default function DashboardComponent(props) {
       const { charges, has_more, last_charge_id } = response.data;
 
       setTransactions((prev) => [...prev, ...charges]);
-
-      setHasMore(has_more);
+      setHasMoreTransactions(has_more);
       setLastChargeId(last_charge_id);
-
-      setDataLoading(false);
     } catch (error) {
-      setDataLoading(false);
       console.error(
         "Erreur lors de la récupération des cartes cadeaux :",
         error
       );
+    } finally {
+      setDataLoading(false);
     }
   }
 
-  function handleLoadMore() {
-    if (hasMore && lastChargeId) {
-      fetchGiftCardSales(lastChargeId);
+  // ---- Requête pour PAYOUTS (virements) ----
+  async function fetchGiftCardPayouts(starting_after) {
+    setDataLoading(true);
+    try {
+      const response = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${
+          props.restaurantData._id
+        }/payouts`,
+        {
+          params: {
+            limit: 10,
+            starting_after,
+          },
+        }
+      );
+
+      const { payouts, has_more, last_payout_id } = response.data;
+
+      setPayouts((prev) => [...prev, ...payouts]);
+      setHasMorePayouts(has_more);
+      setLastPayoutId(last_payout_id);
+    } catch (error) {
+      console.error("Erreur lors de la récupération des virements :", error);
+    } finally {
+      setDataLoading(false);
+    }
+  }
+
+  // ---- Handler load more : on sait si on est en mode payouts ou payments
+  function handleLoadMore(selectedOption) {
+    if (selectedOption === "payments") {
+      if (hasMoreTransactions && lastChargeId) {
+        fetchGiftCardSales(lastChargeId);
+      }
+    } else {
+      // "payouts"
+      if (hasMorePayouts && lastPayoutId) {
+        fetchGiftCardPayouts(lastPayoutId);
+      }
     }
   }
 
@@ -154,7 +198,7 @@ export default function DashboardComponent(props) {
                 </h3>
 
                 <p className="font-bold text-2xl whitespace-nowrap">
-                  {totalPayouts} {currencySymbol}
+                  {"totalPayouts"} {currencySymbol}
                 </p>
               </div>
 
@@ -174,16 +218,12 @@ export default function DashboardComponent(props) {
       )}
 
       {showPaymentsDetails && props.restaurantData?.options?.gift_card && (
-        <PaymentsDashboardComponent transactions={transactions} />
-      )}
-
-      {showPaymentsDetails && hasMore && (
-        <button
-          className="text-white bg-blue py-2 px-4 rounded-lg w-fit mx-auto"
-          onClick={handleLoadMore}
-        >
-          Charger plus de transactions
-        </button>
+        <PaymentsDashboardComponent
+          transactions={transactions}
+          payouts={payouts}
+          onLoadMore={handleLoadMore}
+          restaurantId={props.restaurantData._id}
+        />
       )}
     </section>
   );
