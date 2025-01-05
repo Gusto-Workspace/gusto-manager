@@ -235,11 +235,12 @@ export default function PaymentsDashboardComponent(props) {
                     </p>
 
                     <p>
-                      <strong>Frais Stripe :</strong> {transaction.feeAmount} €
+                      <strong>Frais Stripe : </strong>
+                      {transaction.status !== "succeeded" ? "-" : transaction.feeAmount} €
                     </p>
 
                     <p>
-                      <strong>Montant net :</strong> {transaction.netAmount} €
+                      <strong>Montant net :</strong> {transaction.status !== "succeeded" ? "-" : transaction.netAmount} €
                     </p>
 
                     <p>
@@ -247,7 +248,7 @@ export default function PaymentsDashboardComponent(props) {
                       {(() => {
                         switch (transaction.status) {
                           case "succeeded":
-                            return "Payé";
+                            return "Réussi";
                           case "pending":
                             return "En attente";
                           case "failed":
@@ -265,10 +266,11 @@ export default function PaymentsDashboardComponent(props) {
                     <p className="italic text-blue">Remboursé</p>
                   ) : (
                     <button
-                      className="bg-red text-white py-1 px-3 rounded-lg"
+                      className={`bg-red text-white py-1 px-3 rounded-lg ${transaction.status !== "succeeded" && "hidden"}`}
                       onClick={() =>
                         console.log(`Remboursement de ${transaction.id}`)
                       }
+                      disabled={transaction.status !== "succeeded"}
                     >
                       Rembourser
                     </button>
