@@ -1,17 +1,18 @@
 import { useState } from "react";
+
+// AXIOS
 import axios from "axios";
 
 export default function PaymentsDashboardComponent(props) {
   const [selectedOption, setSelectedOption] = useState("payouts");
-
   const [payoutTxMap, setPayoutTxMap] = useState({});
 
-  const handleOptionChange = (event) => {
+  function handleOptionChange(event) {
     setSelectedOption(event.target.value);
-  };
+  }
 
   // ---- Fonction pour aller chercher les transactions d'un payout ----
-  const fetchPayoutTransactions = async (payoutId) => {
+  async function fetchPayoutTransactions(payoutId) {
     try {
       const restaurantId = props.restaurantId;
 
@@ -44,10 +45,10 @@ export default function PaymentsDashboardComponent(props) {
         error
       );
     }
-  };
+  }
 
   // ---- Fonction pour "Charger plus" de transactions pour un payout ----
-  const loadMorePayoutTx = async (payoutId) => {
+  async function loadMorePayoutTx(payoutId) {
     const current = payoutTxMap[payoutId];
     if (!current || !current.hasMore || !current.lastTxId) {
       return;
@@ -81,7 +82,7 @@ export default function PaymentsDashboardComponent(props) {
         error
       );
     }
-  };
+  }
 
   return (
     <div className="bg-white drop-shadow-sm rounded-lg p-6 flex flex-col gap-6">
@@ -211,40 +212,80 @@ export default function PaymentsDashboardComponent(props) {
       {selectedOption === "payments" && (
         <div className="flex flex-col gap-4">
           {props.transactions && props.transactions.length > 0 ? (
-            props.transactions.map((transaction, index) => (
-              <div
-                key={index}
-                className="flex items-center justify-between p-4 border rounded-lg"
-              >
-                <div className="flex flex-col">
-                  <p className="font-medium">
-                    <strong>Date :</strong>{" "}
-                    {new Date(transaction.date * 1000).toLocaleDateString()}
-                  </p>
-                  <p>
-                    <strong>Client :</strong>{" "}
-                    {transaction.customer || "Non renseigné"}
-                  </p>
-                  <p>
-                    <strong>Montant payé :</strong> {transaction.grossAmount} €
-                  </p>
-                  <p>
-                    <strong>Frais Stripe :</strong> {transaction.feeAmount} €
-                  </p>
-                  <p>
-                    <strong>Montant net :</strong> {transaction.netAmount} €
-                  </p>
-                </div>
-                <button
-                  className="bg-red text-white py-1 px-3 rounded-lg"
-                  onClick={() =>
-                    console.log(`Remboursement de ${transaction.id}`)
-                  }
+            <>
+              {props.transactions.map((transaction, index) => (
+                <div
+                  key={index}
+                  className="flex items-center justify-between p-4 border rounded-lg"
                 >
-                  Rembourser
+                  <div className="flex flex-col">
+                    <p className="font-medium">
+                      <strong>Date :</strong>{" "}
+                      {new Date(transaction.date * 1000).toLocaleDateString()}
+                    </p>
+
+                    <p>
+                      <strong>Client :</strong>{" "}
+                      {transaction.customer || "Non renseigné"}
+                    </p>
+
+                    <p>
+                      <strong>Montant payé :</strong> {transaction.grossAmount}{" "}
+                      €
+                    </p>
+
+                    <p>
+                      <strong>Frais Stripe :</strong> {transaction.feeAmount} €
+                    </p>
+
+                    <p>
+                      <strong>Montant net :</strong> {transaction.netAmount} €
+                    </p>
+
+                    <p>
+                      <strong>Statut : </strong>
+                      {(() => {
+                        switch (transaction.status) {
+                          case "succeeded":
+                            return "Payé";
+                          case "pending":
+                            return "En attente";
+                          case "failed":
+                            return "Échoué";
+                          case "canceled":
+                            return "Annulé";
+                          default:
+                            return "Statut inconnu";
+                        }
+                      })()}
+                    </p>
+                  </div>
+
+                  {transaction.refunded ? (
+                    <p className="italic text-blue">Remboursé</p>
+                  ) : (
+                    <button
+                      className="bg-red text-white py-1 px-3 rounded-lg"
+                      onClick={() =>
+                        console.log(`Remboursement de ${transaction.id}`)
+                      }
+                    >
+                      Rembourser
+                    </button>
+                  )}
+                </div>
+              ))}
+
+              {/* Bouton "Charger plus" si on a encore des paiements */}
+              {props.hasMoreTransactions && (
+                <button
+                  className="bg-blue text-white py-1 px-3 rounded-lg w-fit self-center"
+                  onClick={() => props.onLoadMore("payments")}
+                >
+                  Charger plus de transactions
                 </button>
-              </div>
-            ))
+              )}
+            </>
           ) : (
             <p>Aucune transaction trouvée</p>
           )}

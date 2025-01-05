@@ -235,6 +235,7 @@ router.get("/owner/restaurants/:id/transactions", async (req, res) => {
     // Formatage
     const charges = chargesList.data.map((charge) => {
       const balanceTx = charge.balance_transaction;
+
       return {
         id: charge.id,
         date: charge.created,
@@ -243,6 +244,8 @@ router.get("/owner/restaurants/:id/transactions", async (req, res) => {
         grossAmount: (charge.amount / 100).toFixed(2),
         feeAmount: (balanceTx?.fee / 100).toFixed(2),
         netAmount: (balanceTx?.net / 100).toFixed(2),
+        status: charge.status,
+        refunded: charge.refunded,
       };
     });
 

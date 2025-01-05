@@ -35,7 +35,7 @@ export default function DashboardComponent(props) {
   const [hasMorePayouts, setHasMorePayouts] = useState(false);
   const [lastPayoutId, setLastPayoutId] = useState(null);
 
-  const [dataLoading, setDataLoading] = useState(false);
+  const [dataLoading, setDataLoading] = useState(true);
   const [showPaymentsDetails, setShowPaymentsDetails] = useState(false);
 
   useEffect(() => {
@@ -56,7 +56,6 @@ export default function DashboardComponent(props) {
 
   // ---- Requête pour PAIEMENTS (charges) ----
   async function fetchGiftCardSales(starting_after) {
-    setDataLoading(true);
     try {
       const response = await axios.get(
         `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${
@@ -87,7 +86,6 @@ export default function DashboardComponent(props) {
 
   // ---- Requête pour PAYOUTS (virements) ----
   async function fetchGiftCardPayouts(starting_after) {
-    setDataLoading(true);
     try {
       const response = await axios.get(
         `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${
@@ -192,14 +190,28 @@ export default function DashboardComponent(props) {
             )}
 
             <div className="bg-white p-6 rounded-lg drop-shadow-sm flex flex-col justify-between gap-6">
-              <div className="flex gap-8">
-                <h3 className="w-full font-semibold text-lg text-pretty">
-                  {t("labels.totalSold")}
-                </h3>
+              <div className="flex gap-8 justify-between">
+                <div>
+                  <h3 className="w-full font-semibold text-lg text-pretty">
+                    {t("labels.totalSold")}
+                  </h3>
 
-                <p className="font-bold text-2xl whitespace-nowrap">
-                  {"totalPayouts"} {currencySymbol}
-                </p>
+                  <p className="italic">
+                    En date du{" "}
+                    {payouts.length > 0
+                      ? `${new Date(payouts.find((payout) => payout.status === "paid").arrivalDate * 1000).toLocaleDateString()}`
+                      : "Aucun virement"}
+                  </p>
+                </div>
+                {dataLoading ? (
+                  <SimpleSkeletonComponent />
+                ) : (
+                  <p className="font-bold text-2xl whitespace-nowrap">
+                    {payouts.length > 0
+                      ? `${payouts[0].amount} ${currencySymbol}`
+                      : "Aucun virement"}
+                  </p>
+                )}
               </div>
 
               <button
@@ -223,6 +235,8 @@ export default function DashboardComponent(props) {
           payouts={payouts}
           onLoadMore={handleLoadMore}
           restaurantId={props.restaurantData._id}
+          hasMoreTransactions={hasMoreTransactions}
+          hasMorePayouts={hasMorePayouts}
         />
       )}
     </section>
