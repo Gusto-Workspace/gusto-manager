@@ -209,8 +209,8 @@ router.get(
   }
 );
 
-// RECUPERER LES TRANSACTIONS STRIPE DES CARTES CADEAUX
-router.get("/owner/restaurants/:id/transactions", async (req, res) => {
+// RECUPERER LES PAIEMENTS STRIPE DES CARTES CADEAUX
+router.get("/owner/restaurants/:id/payments", async (req, res) => {
   const { id } = req.params;
   const { limit = 10, starting_after } = req.query;
 
@@ -309,7 +309,7 @@ router.get("/owner/restaurants/:id/payouts", async (req, res) => {
 
 // Récupérer les transactions associées à un payout
 router.get(
-  "/owner/restaurants/:id/payouts/:payoutId/transactions",
+  "/owner/restaurants/:id/payouts/:payoutId/payments",
   async (req, res) => {
     const { id, payoutId } = req.params;
     const { limit = 10, starting_after } = req.query;
@@ -330,7 +330,7 @@ router.get(
         limit: Number(limit),
         starting_after,
         payout: payoutId,
-        expand: ["data.source"],
+        expand: ["data.source", "data.source.charge"],
       });
 
       // Filtrer pour retirer la transaction de type "payout" elle-même
@@ -340,8 +340,15 @@ router.get(
 
       const payoutTransactions = filteredTx.map((tx) => {
         let customerName = "Non renseigné";
+
         if (tx.source?.object === "charge") {
           customerName = tx.source.billing_details?.name || "Non renseigné";
+        } else if (tx.source?.object === "refund") {
+          const refundedCharge = tx.source.charge;
+          if (refundedCharge?.object === "charge") {
+            customerName =
+              refundedCharge.billing_details?.name || "Non renseigné";
+          }
         }
 
         return {

@@ -1,12 +1,8 @@
-import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 
 // DATA
 import { dashboardData } from "@/_assets/data/dashboard.data";
 import { giftDashboardData } from "@/_assets/data/gift-dashboard.data";
-
-// I18N
-import { useTranslation } from "next-i18next";
 
 // AXIOS
 import axios from "axios";
@@ -16,18 +12,13 @@ import DataCardCompnent from "./data-card.dashboard.component";
 import DonutChartComponent from "./donut-chart.dashboard.component";
 import StatusDonutChartComponent from "./status-donut-chart.dashboard.component";
 import MonthlyGiftCardSalesChart from "./monthly-gift-card-sales-chart.dashboard.component";
-import SimpleSkeletonComponent from "../_shared/skeleton/simple-skeleton.component";
-import PaymentsDashboardComponent from "./payments.dashboard.component";
+import TransactionsDashboardComponent from "./transactions.dashboard.component";
+import LastPayoutDashboardComponent from "./last-payout.dashboard.component";
 
 export default function DashboardComponent(props) {
-  const { t } = useTranslation("index");
-  const router = useRouter();
-  const { locale } = router;
-  const currencySymbol = locale === "fr" ? "€" : "$";
-
   // ---- States pour les PAIEMENTS ----
-  const [transactions, setTransactions] = useState([]);
-  const [hasMoreTransactions, setHasMoreTransactions] = useState(false);
+  const [payments, setPayments] = useState([]);
+  const [hasMorePayments, setHasMorePayments] = useState(false);
   const [lastChargeId, setLastChargeId] = useState(null);
 
   // ---- States pour les PAYOUTS ----
@@ -48,19 +39,19 @@ export default function DashboardComponent(props) {
   }, [props.restaurantData, props.dataLoading]);
 
   useEffect(() => {
-    setTransactions([]);
+    setPayments([]);
     setLastChargeId(null);
     setPayouts([]);
     setLastPayoutId(null);
   }, [props.restaurantData]);
 
-  // ---- Requête pour PAIEMENTS (charges) ----
+  // ---- Requête pour paiements (charges) ----
   async function fetchGiftCardSales(starting_after) {
     try {
       const response = await axios.get(
         `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${
           props.restaurantData._id
-        }/transactions`,
+        }/payments`,
         {
           params: {
             limit: 10,
@@ -71,8 +62,8 @@ export default function DashboardComponent(props) {
 
       const { charges, has_more, last_charge_id } = response.data;
 
-      setTransactions((prev) => [...prev, ...charges]);
-      setHasMoreTransactions(has_more);
+      setPayments((prev) => [...prev, ...charges]);
+      setHasMorePayments(has_more);
       setLastChargeId(last_charge_id);
     } catch (error) {
       console.error(
@@ -84,7 +75,7 @@ export default function DashboardComponent(props) {
     }
   }
 
-  // ---- Requête pour PAYOUTS (virements) ----
+  // ---- Requête pour les virements (payouts) ----
   async function fetchGiftCardPayouts(starting_after) {
     try {
       const response = await axios.get(
@@ -114,7 +105,7 @@ export default function DashboardComponent(props) {
   // ---- Handler load more : on sait si on est en mode payouts ou payments
   function handleLoadMore(selectedOption) {
     if (selectedOption === "payments") {
-      if (hasMoreTransactions && lastChargeId) {
+      if (hasMorePayments && lastChargeId) {
         fetchGiftCardSales(lastChargeId);
       }
     } else {
@@ -189,55 +180,23 @@ export default function DashboardComponent(props) {
               }
             )}
 
-            <div className="bg-white p-6 rounded-lg drop-shadow-sm flex flex-col justify-between gap-6">
-              <div className="flex gap-8 justify-between">
-                <div>
-                  <h3 className="w-full font-semibold text-lg text-pretty">
-                    {t("labels.totalSold")}
-                  </h3>
-
-                  <p className="italic">
-                    {payouts.length > 0
-                      ? `En date du ${new Date(payouts.find((payout) => payout.status === "paid").arrivalDate * 1000).toLocaleDateString()}`
-                      : ""}
-                  </p>
-                </div>
-                {dataLoading ? (
-                  <SimpleSkeletonComponent />
-                ) : (
-                  <p className="font-bold text-2xl whitespace-nowrap">
-                    {payouts.length > 0
-                      ? `${payouts[0].amount} ${currencySymbol}`
-                      : "Aucun virement"}
-                  </p>
-                )}
-              </div>
-
-              <button
-                onClick={() => {
-                  setShowPaymentsDetails(!showPaymentsDetails);
-                  
-                  setTimeout(() => {
-                    window.scrollBy({ top: 500, behavior: "smooth" });
-                  },[200])
-                }}
-                className="bg-blue text-white w-fit py-2 px-4 rounded-lg"
-              >
-                {showPaymentsDetails ? "Masquer" : "Afficher"} le détails des
-                virements et paiements
-              </button>
-            </div>
+            <LastPayoutDashboardComponent
+              dataLoading={dataLoading}
+              payouts={payouts}
+              setShowPaymentsDetails={setShowPaymentsDetails}
+              showPaymentsDetails={showPaymentsDetails}
+            />
           </div>
         </div>
       )}
 
       {showPaymentsDetails && props.restaurantData?.options?.gift_card && (
-        <PaymentsDashboardComponent
-          transactions={transactions}
+        <TransactionsDashboardComponent
+          payments={payments}
           payouts={payouts}
           onLoadMore={handleLoadMore}
           restaurantId={props.restaurantData._id}
-          hasMoreTransactions={hasMoreTransactions}
+          hasMorePayments={hasMorePayments}
           hasMorePayouts={hasMorePayouts}
         />
       )}
