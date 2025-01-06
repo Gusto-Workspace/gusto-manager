@@ -9,12 +9,17 @@ export default function TransactionsDashboardComponent(props) {
   const [selectedOption, setSelectedOption] = useState("payouts");
   const [payoutTxMap, setPayoutTxMap] = useState({});
 
+  const [payoutDataLoading, setPayoutDataLoading] = useState({});
+  const [loadMoreLoading, setLoadMoreLoading] = useState({});
+
   function handleOptionChange(event) {
     setSelectedOption(event.target.value);
   }
 
   // ---- Fonction pour aller chercher les transactions d'un payout ----
   async function fetchPayoutTransactions(payoutId) {
+    setPayoutDataLoading((prev) => ({ ...prev, [payoutId]: true }));
+
     try {
       const restaurantId = props.restaurantId;
 
@@ -46,6 +51,8 @@ export default function TransactionsDashboardComponent(props) {
         "Erreur lors du fetch des transactions d'un payout :",
         error
       );
+    } finally {
+      setPayoutDataLoading((prev) => ({ ...prev, [payoutId]: false }));
     }
   }
 
@@ -55,6 +62,8 @@ export default function TransactionsDashboardComponent(props) {
     if (!current || !current.hasMore || !current.lastTxId) {
       return;
     }
+
+    setLoadMoreLoading((prev) => ({ ...prev, [payoutId]: true }));
 
     try {
       const restaurantId = props.restaurantId;
@@ -83,6 +92,8 @@ export default function TransactionsDashboardComponent(props) {
         "Erreur lors du load more transactions d'un payout :",
         error
       );
+    } finally {
+      setLoadMoreLoading((prev) => ({ ...prev, [payoutId]: false }));
     }
   }
 
@@ -106,6 +117,8 @@ export default function TransactionsDashboardComponent(props) {
           fetchPayoutTransactions={fetchPayoutTransactions}
           setPayoutTxMap={setPayoutTxMap}
           loadMorePayoutTx={loadMorePayoutTx}
+          payoutDataLoading={payoutDataLoading}
+          loadMoreLoading={loadMoreLoading}
         />
       )}
 

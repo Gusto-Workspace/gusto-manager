@@ -380,4 +380,120 @@ router.get(
   }
 );
 
+// Récupérer les ventes mensuelles nettes (<= 1 an)
+router.get(
+  "/owner/restaurants/:id/payments/monthly-sales",
+  async (req, res) => {
+    const { id } = req.params;
+
+    try {
+      const restaurant = await RestaurantModel.findById(id);
+      if (!restaurant || !restaurant.stripeSecretKey) {
+        return res
+          .status(404)
+          .json({ message: "Clé Stripe introuvable pour ce restaurant." });
+      }
+
+      const stripe = require("stripe")(
+        decryptApiKey(restaurant.stripeSecretKey)
+      );
+
+      const oneYearAgo = Math.floor(Date.now() / 1000) - 365 * 24 * 60 * 60;
+
+      let allCharges = [];
+      let hasMore = true;
+      let lastChargeId = null;
+
+      while (hasMore) {
+        const listParams = {
+          limit: 100,
+          expand: ["data.balance_transaction"],
+        };
+
+        if (lastChargeId) {
+          listParams.starting_after = lastChargeId;
+        }
+
+        const chargesList = await stripe.charges.list(listParams);
+
+        // On ne garde que les charges dont la date >= oneYearAgo
+        const filteredData = chargesList.data.filter(
+          (c) => c.created >= oneYearAgo
+        );
+        allCharges.push(...filteredData);
+
+        hasMore = chargesList.has_more;
+        if (chargesList.data.length > 0) {
+          const oldestCharge = chargesList.data[chargesList.data.length - 1];
+          if (oldestCharge.created < oneYearAgo) {
+            hasMore = false;
+          } else {
+            lastChargeId = oldestCharge.id;
+          }
+        } else {
+          hasMore = false;
+        }
+      }
+
+      // Filtrer pour ne garder que les paiements réussis et non remboursés
+      const filteredCharges = allCharges.filter(
+        (charge) =>
+          charge.status === "succeeded" &&
+          charge.refunded === false &&
+          charge.amount_refunded === 0
+      );
+
+      // On va accumuler { [sortKey]: { netCents: number, displayMonth: string } }
+      const monthlySalesMap = {};
+
+      filteredCharges.forEach((charge) => {
+        const balanceTx = charge.balance_transaction;
+        if (!balanceTx || typeof balanceTx !== "object") return;
+        const netCents = balanceTx.net || 0;
+
+        // On récupère la date
+        const dateObj = new Date(charge.created * 1000);
+
+        const year = dateObj.getFullYear();
+        const monthIndex = dateObj.getMonth() + 1; // Janvier = 0
+
+        // sortKey = "YYYY-MM" pour un tri lexical cohérent (2024-11 < 2024-12 < 2025-01)
+        const sortKey = `${year}-${String(monthIndex).padStart(2, "0")}`;
+
+        // displayMonth = "MM/YYYY" ex: "02/2025"
+        const displayMonth = `${String(monthIndex).padStart(2, "0")}/${year}`;
+
+        if (!monthlySalesMap[sortKey]) {
+          monthlySalesMap[sortKey] = { netCents: 0, displayMonth };
+        }
+        monthlySalesMap[sortKey].netCents += netCents;
+      });
+
+      // On transforme l'objet en tableau et on trie
+      const monthlySalesArray = Object.entries(monthlySalesMap)
+        .map(([sortKey, info]) => ({
+          sortKey,
+          month: info.displayMonth, // "02/2025"
+          total: info.netCents / 100, // Montant net en euros
+        }))
+        .sort((a, b) => (a.sortKey < b.sortKey ? -1 : 1));
+      // Tri du plus ancien au plus récent
+
+      // On renvoie le tableau final
+      return res.status(200).json({
+        monthlySales: monthlySalesArray.map((item) => ({
+          month: item.month, // "02/2025"
+          total: item.total,
+        })),
+      });
+    } catch (error) {
+      console.error(
+        "Erreur lors de la récupération des ventes mensuelles :",
+        error
+      );
+      return res.status(500).json({ message: "Erreur interne du serveur" });
+    }
+  }
+);
+
 module.exports = router;

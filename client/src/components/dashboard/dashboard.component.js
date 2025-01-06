@@ -28,6 +28,8 @@ export default function DashboardComponent(props) {
 
   const [dataLoading, setDataLoading] = useState(true);
   const [showPaymentsDetails, setShowPaymentsDetails] = useState(false);
+  const [monthlySales, setMonthlySales] = useState([]);
+  const [monthlyDataLoading, setMonthlyDataLoading] = useState(true);
 
   useEffect(() => {
     setShowPaymentsDetails(false);
@@ -116,6 +118,27 @@ export default function DashboardComponent(props) {
     }
   }
 
+  // ---- Récupération des ventes mensuelles ----
+  useEffect(() => {
+    async function fetchMonthlySales() {
+      setMonthlyDataLoading(true);
+      try {
+        const response = await axios.get(
+          `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${props.restaurantData._id}/payments/monthly-sales`
+        );
+        setMonthlySales(response.data.monthlySales);
+      } catch (error) {
+        console.error("Erreur de fetch monthly-sales:", error);
+      } finally {
+        setMonthlyDataLoading(false);
+      }
+    }
+
+    if (!props.dataLoading && props.restaurantData?.options?.gift_card) {
+      fetchMonthlySales();
+    }
+  }, [props.restaurantData, props.dataLoading]);
+
   return (
     <section className="flex flex-col gap-6">
       <div className="grid grid-cols-1 tablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-3 gap-6">
@@ -148,9 +171,8 @@ export default function DashboardComponent(props) {
         <div className="flex flex-col desktop:flex-row gap-6">
           <div className="w-full">
             <MonthlyGiftCardSalesChart
-              purchasesGiftCards={
-                props?.restaurantData?.purchasesGiftCards || []
-              }
+              monthlyDataLoading={monthlyDataLoading}
+              monthlySales={monthlySales}
             />
           </div>
 

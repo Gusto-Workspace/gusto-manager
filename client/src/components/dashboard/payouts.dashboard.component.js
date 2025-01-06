@@ -43,7 +43,9 @@ export default function PayoutsDashboardComponent(props) {
                   onClick={() => props.fetchPayoutTransactions(payout.id)}
                   className="bg-blue text-white py-1 px-3 rounded-lg mt-2"
                 >
-                  Voir les transactions associées
+                  {props.payoutDataLoading[payout.id]
+                    ? "Chargement..."
+                    : "Voir les transactions associées"}
                 </button>
               ) : (
                 <button
@@ -112,7 +114,9 @@ export default function PayoutsDashboardComponent(props) {
                       onClick={() => props.loadMorePayoutTx(payout.id)}
                       className="bg-blue text-white py-2 px-4 rounded-lg"
                     >
-                      Charger plus
+                      {props.loadMoreLoading[payout.id]
+                        ? "Chargement..."
+                        : "Charger plus"}
                     </button>
                   )}
                 </div>
