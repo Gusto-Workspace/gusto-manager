@@ -99,15 +99,24 @@ export default function TransactionsDashboardComponent(props) {
 
   return (
     <div className="bg-white drop-shadow-sm rounded-lg p-6 flex flex-col gap-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-6">
         <select
           value={selectedOption}
           onChange={handleOptionChange}
-          className="border rounded-lg p-2"
+          className="border rounded-lg p-2 w-[250px]"
         >
           <option value="payouts">Détails des Virements</option>
           <option value="payments">Détails des Paiements</option>
         </select>
+
+        {selectedOption === "payouts" && (
+          <p className="italic">
+            <span className="underline font-semibold">INFORMATION</span> : Pour les virements
+            mensuels, les paiements encaissés entre 7 jours avant la date prévue
+            du virement et le jour même seront reportés sur le virement du mois
+            suivant
+          </p>
+        )}
       </div>
 
       {selectedOption === "payouts" && (
@@ -128,6 +137,7 @@ export default function TransactionsDashboardComponent(props) {
           payments={props.payments}
           hasMorePayments={props.hasMorePayments}
           onLoadMore={props.onLoadMore}
+          dataLoading={props.dataLoading}
         />
       )}
     </div>

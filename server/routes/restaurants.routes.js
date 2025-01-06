@@ -398,7 +398,7 @@ router.get(
         decryptApiKey(restaurant.stripeSecretKey)
       );
 
-      const oneYearAgo = Math.floor(Date.now() / 1000) - 365 * 24 * 60 * 60;
+      const sixMonthsAgo = Math.floor(Date.now() / 1000) - 6 * 30 * 24 * 60 * 60;
 
       let allCharges = [];
       let hasMore = true;
@@ -416,16 +416,16 @@ router.get(
 
         const chargesList = await stripe.charges.list(listParams);
 
-        // On ne garde que les charges dont la date >= oneYearAgo
+        // On ne garde que les charges dont la date >= sixMonthsAgo
         const filteredData = chargesList.data.filter(
-          (c) => c.created >= oneYearAgo
+          (c) => c.created >= sixMonthsAgo
         );
         allCharges.push(...filteredData);
 
         hasMore = chargesList.has_more;
         if (chargesList.data.length > 0) {
           const oldestCharge = chargesList.data[chargesList.data.length - 1];
-          if (oldestCharge.created < oneYearAgo) {
+          if (oldestCharge.created < sixMonthsAgo) {
             hasMore = false;
           } else {
             lastChargeId = oldestCharge.id;

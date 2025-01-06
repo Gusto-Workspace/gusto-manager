@@ -113,6 +113,7 @@ export default function PayoutsDashboardComponent(props) {
                     <button
                       onClick={() => props.loadMorePayoutTx(payout.id)}
                       className="bg-blue text-white py-2 px-4 rounded-lg"
+                      disabled={props.loadMoreLoading[payout.id]}
                     >
                       {props.loadMoreLoading[payout.id]
                         ? "Chargement..."

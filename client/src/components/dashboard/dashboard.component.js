@@ -49,6 +49,7 @@ export default function DashboardComponent(props) {
 
   // ---- Requête pour paiements (charges) ----
   async function fetchGiftCardSales(starting_after) {
+    setDataLoading(true);
     try {
       const response = await axios.get(
         `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${
@@ -79,6 +80,7 @@ export default function DashboardComponent(props) {
 
   // ---- Requête pour les virements (payouts) ----
   async function fetchGiftCardPayouts(starting_after) {
+    setDataLoading(true);
     try {
       const response = await axios.get(
         `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${
@@ -220,6 +222,7 @@ export default function DashboardComponent(props) {
           restaurantId={props.restaurantData._id}
           hasMorePayments={hasMorePayments}
           hasMorePayouts={hasMorePayouts}
+          dataLoading={dataLoading}
         />
       )}
     </section>
