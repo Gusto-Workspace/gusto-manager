@@ -2,6 +2,8 @@ import { useState } from "react";
 
 // AXIOS
 import axios from "axios";
+
+// COMPONENTS
 import PayoutsDashboardComponent from "./payouts.dashboard.component";
 import PaymentsDashboardComponent from "./payments.dashboard.component";
 

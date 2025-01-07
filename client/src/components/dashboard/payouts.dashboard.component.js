@@ -4,8 +4,6 @@ import { useState } from "react";
 import ExpendedDataPayoutDashboardComponent from "./expended-data-payout.dashboard.component";
 
 export default function PayoutsDashboardComponent(props) {
-  const { payouts, payoutTxMap } = props;
-
   // État local pour gérer les transactions étendues
   const [expandedTxIds, setExpandedTxIds] = useState([]);
 
@@ -17,15 +15,15 @@ export default function PayoutsDashboardComponent(props) {
   }
 
   // Vérifiez si au moins un virement est étendu
-  const anyExpanded = payouts.some(
-    (payout) => payoutTxMap[payout.id]?.data.length > 0
+  const anyExpanded = props?.payouts.some(
+    (payout) => props?.payoutTxMap[payout.id]?.data.length > 0
   );
 
   return (
     <div className="flex flex-col gap-4">
-      {payouts?.length > 0 ? (
-        payouts.map((payout) => {
-          const expandedData = payoutTxMap[payout.id]?.data || [];
+      {props?.payouts?.length > 0 ? (
+        props?.payouts.map((payout) => {
+          const expandedData = props?.payoutTxMap[payout.id]?.data || [];
           const isExpanded = expandedData.length > 0;
 
           const containerClasses = `transition-opacity duration-300 ${
@@ -72,9 +70,7 @@ export default function PayoutsDashboardComponent(props) {
                   <button
                     onClick={() => props.fetchPayoutTransactions(payout.id)}
                     className={`bg-blue text-white py-1 px-3 rounded-lg mt-2 ${
-                      anyExpanded && !isExpanded
-                        ? "opacity-50"
-                        : ""
+                      anyExpanded && !isExpanded ? "opacity-50" : ""
                     }`}
                     disabled={anyExpanded && !isExpanded}
                   >
