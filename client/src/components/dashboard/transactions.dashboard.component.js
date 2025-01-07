@@ -98,7 +98,7 @@ export default function TransactionsDashboardComponent(props) {
   }
 
   return (
-    <div className="bg-white drop-shadow-sm rounded-lg p-6 flex flex-col gap-6">
+    <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-6">
         <select
           value={selectedOption}

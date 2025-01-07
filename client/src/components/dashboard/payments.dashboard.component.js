@@ -6,7 +6,7 @@ export default function PaymentsDashboardComponent(props) {
           {props.payments.map((payment, index) => (
             <div
               key={index}
-              className="flex items-center justify-between p-4 border rounded-lg"
+              className="bg-white drop-shadow-sm flex items-center justify-between p-4 rounded-lg"
             >
               <div className="flex flex-col">
                 <p className="font-medium">

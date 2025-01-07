@@ -398,7 +398,8 @@ router.get(
         decryptApiKey(restaurant.stripeSecretKey)
       );
 
-      const sixMonthsAgo = Math.floor(Date.now() / 1000) - 6 * 30 * 24 * 60 * 60;
+      const sixMonthsAgo =
+        Math.floor(Date.now() / 1000) - 6 * 30 * 24 * 60 * 60;
 
       let allCharges = [];
       let hasMore = true;

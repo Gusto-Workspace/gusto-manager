@@ -42,25 +42,6 @@ export default function ListSubscriptionsAdminComponent(props) {
       );
   }
 
-  function handleSwitchToAutomatic(subscriptionId) {
-    axios
-      .post(`${process.env.NEXT_PUBLIC_API_URL}/admin/switch-to-automatic`, {
-        subscriptionId,
-      })
-      .then(() => {
-        props?.setOwnersSubscriptionsList((prevSubscriptions) =>
-          prevSubscriptions.map((subscription) =>
-            subscription.id === subscriptionId
-              ? { ...subscription, collection_method: "charge_automatically" }
-              : subscription
-          )
-        );
-      })
-      .catch((error) => {
-        console.error("Erreur lors du passage en mode automatique:", error);
-      });
-  }
-
   return (
     <div>
       <div className="flex justify-between">
@@ -85,10 +66,17 @@ export default function ListSubscriptionsAdminComponent(props) {
 
       <div className="mt-4">
         {props?.loading ? (
-          <div className="bg-white p-6 drop-shadow-sm flex flex-col gap-2 rounded-lg">
-            <DoubleSkeletonComonent justify="justify-start" />
-            <SimpleSkeletonComponent />
-            <SimpleSkeletonComponent />
+          <div className="flex flex-col gap-4">
+            {Array.from({ length: 3 }, (_, i) => (
+              <div
+                key={i}
+                className="bg-white p-6 drop-shadow-sm flex flex-col gap-2 rounded-lg"
+              >
+                <DoubleSkeletonComonent justify="justify-start" />
+                <SimpleSkeletonComponent />
+                <SimpleSkeletonComponent />
+              </div>
+            ))}
           </div>
         ) : (
           <ul className="flex flex-col gap-4">
@@ -156,19 +144,6 @@ export default function ListSubscriptionsAdminComponent(props) {
                               : t("subscriptions.list.unpaid")}
                       </span>
                     </div>
-
-                    {/* Bouton pour passer en mode automatique */}
-                    {subscription.latest_invoice.status === "paid" &&
-                      subscription.collection_method === "send_invoice" && (
-                        <button
-                          onClick={() =>
-                            handleSwitchToAutomatic(subscription.id)
-                          }
-                          className="bg-blue text-white px-4 py-2 mt-2 rounded-lg hover:bg-green-600"
-                        >
-                          {t("subscriptions.list.automatic")}
-                        </button>
-                      )}
 
                     {/* Bouton pour afficher/masquer les factures */}
                     <button

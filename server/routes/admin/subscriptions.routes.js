@@ -23,11 +23,31 @@ router.get("/admin/subscriptions", async (req, res) => {
   }
 });
 
-// CREATE A SUBSCRIPTION FOR AN OWNER
-router.post("/admin/create-subscription", async (req, res) => {
+// CREATE SETUP INTENT FOR SEPA
+router.post("/admin/create-setup-intent", async (req, res) => {
+  const { stripeCustomerId } = req.body; // ID Stripe du client
+
+  try {
+    // Créer un SetupIntent pour du SEPA Direct Debit
+    const setupIntent = await stripe.setupIntents.create({
+      customer: stripeCustomerId,
+      payment_method_types: ["sepa_debit"],
+    });
+
+    // Renvoyer le clientSecret au frontend
+    res.json({ clientSecret: setupIntent.client_secret });
+  } catch (err) {
+    console.error("Erreur lors de la création du SetupIntent:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// CREATE A SUBSCRIPTION FOR AN OWNER VIA SEPA
+router.post("/admin/create-subscription-sepa", async (req, res) => {
   const {
     stripeCustomerId,
     priceId,
+    paymentMethodId,
     billingAddress,
     phone,
     language,
@@ -52,16 +72,7 @@ router.post("/admin/create-subscription", async (req, res) => {
       });
     }
 
-    // Si aucun abonnement existant, procéder à la création
-    const subscription = await stripe.subscriptions.create({
-      customer: stripeCustomerId,
-      items: [{ price: priceId }],
-      collection_method: "send_invoice",
-      days_until_due: 3,
-      expand: ["latest_invoice"],
-      metadata: { restaurantId, restaurantName },
-    });
-
+    // Mettre à jour l'adresse et le téléphone du client
     await stripe.customers.update(stripeCustomerId, {
       address: {
         line1: billingAddress.line1,
@@ -73,19 +84,22 @@ router.post("/admin/create-subscription", async (req, res) => {
       preferred_locales: [language || "fr"],
     });
 
-    const invoiceId = subscription.latest_invoice.id;
-    await stripe.invoices.finalizeInvoice(invoiceId);
-
-    await stripe.invoices.update(invoiceId, {
-      payment_settings: {
-        payment_method_types: ["card"],
+    // Créer l'abonnement en prélèvement automatique
+    const subscription = await stripe.subscriptions.create({
+      customer: stripeCustomerId,
+      items: [{ price: priceId }],
+      default_payment_method: paymentMethodId,
+      collection_method: "charge_automatically",
+      metadata: {
+        restaurantId,
+        restaurantName,
       },
+      expand: ["latest_invoice.payment_intent"],
     });
 
-    await stripe.invoices.sendInvoice(invoiceId);
-
     res.status(201).json({
-      message: "Abonnement créé, et la facture a été envoyée au client.",
+      message:
+        "Abonnement SEPA créé avec succès. Le paiement sera prélevé automatiquement.",
       subscription,
     });
   } catch (error) {
@@ -97,25 +111,26 @@ router.post("/admin/create-subscription", async (req, res) => {
 });
 
 // SWITCH TO AUTOMATIC PAYMENT MODE
-router.post("/admin/switch-to-automatic", async (req, res) => {
-  const { subscriptionId } = req.body;
+// router.post("/admin/switch-to-automatic", async (req, res) => {
+//   const { subscriptionId } = req.body;
 
-  try {
-    // Met à jour l'abonnement pour passer au prélèvement automatique
-    await stripe.subscriptions.update(subscriptionId, {
-      collection_method: "charge_automatically",
-    });
+//   try {
+//     // Met à jour l'abonnement pour passer au prélèvement automatique
+//     await stripe.subscriptions.update(subscriptionId, {
+//       collection_method: "charge_automatically",
+//     });
 
-    res
-      .status(200)
-      .json({ message: "Abonnement mis à jour en mode automatique." });
-  } catch (error) {
-    console.error("Erreur lors du passage en mode automatique :", error);
-    res
-      .status(500)
-      .json({ message: "Erreur lors du passage en mode automatique." });
-  }
-});
+//     res
+//       .status(200)
+//       .json({ message: "Abonnement mis à jour en mode automatique." });
+//   } catch (error) {
+//     console.error("Erreur lors du passage en mode automatique :", error);
+//     res
+//       .status(500)
+//       .json({ message: "Erreur lors du passage en mode automatique." });
+//   }
+// });
+
 
 // GET ALL SUBSCRIPTIONS FROM OWNERS
 router.get("/admin/all-subscriptions", authenticateToken, async (req, res) => {
@@ -136,8 +151,8 @@ router.get("/admin/all-subscriptions", authenticateToken, async (req, res) => {
           productName: product.name,
           productAmount: price.unit_amount / 100,
           productCurrency: price.currency.toUpperCase(),
-          restaurantId: subscription.metadata.restaurantId, // Récupération de l'ID du restaurant
-          restaurantName: subscription.metadata.restaurantName, // Récupération du nom du restaurant
+          restaurantId: subscription.metadata.restaurantId, 
+          restaurantName: subscription.metadata.restaurantName,
         };
       })
     );
