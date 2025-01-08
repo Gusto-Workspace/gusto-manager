@@ -91,7 +91,7 @@
       "automatic": "Passer en mode de paiement automatique",
       "showInvoices": "Afficher les factures",
       "hideInvoices": "Masquer les factures",
-      "period": "Période",
+      "date": "Date",
       "amount": "Montant",
       "status": "État"
     },

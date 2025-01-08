@@ -143,17 +143,17 @@ export default function PaymentsDashboardComponent(props) {
       {/* Modale de confirmation */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg shadow-lg max-w-[550px] flex flex-col gap-6">
+          <div className="bg-white p-6 rounded-lg shadow-lg max-w-[550px] mx-6 flex flex-col gap-6">
             <p className="text-xl font-semibold mx-auto flex flex-col gap-4">
               {t("payments.modale.title")}
               <span className="w-[200px] h-[1px] mx-auto bg-black" />
             </p>
 
-            <p className="text-sm text-center">
+            <p className="text-md text-center">
               {t("payments.modale.infoFirst")}
             </p>
 
-            <p className="text-sm text-center">
+            <p className="text-md mb-2 text-center">
               {t("payments.modale.infoSecond")}
             </p>
             <div className="flex justify-center gap-2">

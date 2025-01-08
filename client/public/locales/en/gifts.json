@@ -24,7 +24,19 @@
     "valididy": "Valid until",
     "useDate": "Used on",
     "sender": "From",
-    "emptyCard": "No gift card"
+    "emptyCard": "No gift card",
+    "confirmUse": {
+      "title": "Confirm the card is used",
+      "text": "A gift card is marked as 'Used' when the recipient has redeemed it. However, if necessary, it can be changed back to 'Valid' later."
+    },
+    "confirmRevalidate": {
+      "title": "Confirm the card is valid",
+      "text": "When you change a gift card back to 'Valid', it becomes usable again for the recipient. This action allows the card to be reactivated for future use."
+    },
+    "confirmDelete": {
+      "title": "Confirm deletion",
+      "text": "Are you sure you want to delete this gift card? This action cannot be undone"
+    }
   },
   "buttons": {
     "add": "Add",

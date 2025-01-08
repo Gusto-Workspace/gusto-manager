@@ -92,7 +92,7 @@
       "automatic": "Switch to automatic payment",
       "showInvoices": "Show invoices",
       "hideInvoices": "Hide invoices",
-      "period": "Period",
+      "date": "Date",
       "amount": "Amount",
       "status": "Status"
     },

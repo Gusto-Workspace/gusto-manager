@@ -11,11 +11,15 @@ import { useTranslation } from "next-i18next";
 
 // SVG
 import { GiftSvg } from "../_shared/_svgs/gift.svg";
+import { TrashSvg } from "../_shared/_svgs/trash.svg";
 
 export default function PurchasesGiftListComponent(props) {
   const { t } = useTranslation("gifts");
   const { restaurantContext } = useContext(GlobalContext);
   const [searchTerm, setSearchTerm] = useState("");
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedPurchase, setSelectedPurchase] = useState(null);
+  const [actionType, setActionType] = useState("");
 
   const purchasesByStatus = {
     Valid: [],
@@ -36,39 +40,49 @@ export default function PurchasesGiftListComponent(props) {
     }
   });
 
-  function markAsUsed(purchaseId) {
-    axios
-      .put(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/purchases/${purchaseId}/use`
-      )
+  function handleActionConfirm() {
+    if (!selectedPurchase || !actionType) return;
+
+    const url =
+      actionType === "Used"
+        ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/purchases/${selectedPurchase._id}/use`
+        : actionType === "Valid"
+          ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/purchases/${selectedPurchase._id}/validate`
+          : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/purchases/${selectedPurchase._id}`;
+
+    const method = actionType === "Delete" ? "delete" : "put";
+
+    axios[method](url)
       .then((response) => {
-        restaurantContext.setRestaurantData(response.data.restaurant);
+        if (actionType !== "Delete") {
+          restaurantContext.setRestaurantData(response.data.restaurant);
+        } else {
+          console.log(`Carte cadeau supprimée : ${selectedPurchase._id}`);
+          // Actualiser la liste des cartes cadeaux si nécessaire
+        }
+        setIsModalOpen(false);
       })
       .catch((error) => {
         console.error(
           "Erreur lors de la mise à jour de la carte cadeau :",
           error
         );
+        setIsModalOpen(false);
       });
   }
 
-  function markAsValid(purchaseId) {
-    axios
-      .put(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/purchases/${purchaseId}/validate`
-      )
-      .then((response) => {
-        restaurantContext.setRestaurantData(response.data.restaurant);
-      })
-      .catch((error) => {
-        console.error(
-          "Erreur lors de la revalidation de la carte cadeau :",
-          error
-        );
-      });
+  function handleDeleteGiftCard(purchase) {
+    setSelectedPurchase(purchase);
+    setActionType("Delete");
+    setIsModalOpen(true);
   }
 
-  // Function to handle search input change
+  function handleActionClick(purchase, type) {
+    setSelectedPurchase(purchase);
+    setActionType(type);
+    setIsModalOpen(true);
+  }
+
   function handleSearchChange(event) {
     setSearchTerm(event.target.value);
   }
@@ -84,7 +98,7 @@ export default function PurchasesGiftListComponent(props) {
 
         <input
           type="text"
-          placeholder="Rechercher un code, un bénéfichaire, un email ..."
+          placeholder="Rechercher un code, un bénéficiaire, un email ..."
           value={searchTerm}
           onChange={handleSearchChange}
           className="p-2 border border-[#131E3690] rounded-lg midTablet:w-[350px]"
@@ -122,8 +136,20 @@ export default function PurchasesGiftListComponent(props) {
                   {filteredPurchases.map((purchase) => (
                     <li
                       key={purchase._id}
-                      className="bg-white p-4 rounded-lg drop-shadow-sm flex flex-col gap-4 midTablet:flex-row text-center midTablet:text-start justify-between items-center"
+                      className="relative bg-white p-4 rounded-lg drop-shadow-sm flex flex-col gap-4 midTablet:flex-row text-center midTablet:text-start justify-between item-start midTablet:items-end"
                     >
+                      <button
+                        className="group absolute bottom-4 mobile:top-4 right-4 px-2 py-2 rounded h-fit bg-white drop-shadow-md"
+                        onClick={() => handleDeleteGiftCard(purchase)}
+                      >
+                        <TrashSvg
+                          height={28}
+                          width={28}
+                          strokeColor="#FF7664"
+                          className="group-hover:rotate-12 transition-all duration-200"
+                        />
+                      </button>
+
                       <div className="flex flex-col gap-2">
                         <p>
                           {t("labels.amount")}: {purchase.value}€
@@ -151,13 +177,6 @@ export default function PurchasesGiftListComponent(props) {
                           )}
                         </p>
 
-                        {purchase.sender && (
-                          <p>
-                            {t("labels.sender")}: {purchase.sender}{" "}
-                            {purchase.sendEmail && `(${purchase.sendEmail})`}
-                          </p>
-                        )}
-
                         {status === "Valid" && (
                           <p>
                             {t("labels.valididy")}:{" "}
@@ -177,18 +196,19 @@ export default function PurchasesGiftListComponent(props) {
                         )}
                       </div>
 
-                      {status === "Valid" && (
+                      {(status === "Valid" || status === "Expired") && (
                         <button
-                          className="mt-2 px-4 py-2 bg-blue text-white rounded hover:bg-blue-600"
-                          onClick={() => markAsUsed(purchase._id)}
+                          className="mt-2 px-4 py-2 bg-blue text-white rounded hover:bg-opacity-50 transition-all duration-200 w-fit mobile:mx-auto midTablet:mx-0"
+                          onClick={() => handleActionClick(purchase, "Used")}
                         >
                           {t("buttons.usedCard")}
                         </button>
                       )}
+
                       {status === "Used" && (
                         <button
-                          className="mt-2 text-blue w-fit mx-auto midTablet:mx-0 italic opacity-50"
-                          onClick={() => markAsValid(purchase._id)}
+                          className="mt-2 px-4 py-2 bg-blue text-white rounded hover:bg-opacity-50 transition-all duration-200 w-fit mobile:mx-auto midTablet:mx-0"
+                          onClick={() => handleActionClick(purchase, "Valid")}
                         >
                           {t("buttons.revalidateCard")}
                         </button>
@@ -205,6 +225,45 @@ export default function PurchasesGiftListComponent(props) {
           );
         })}
       </div>
+
+      {isModalOpen && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-[100]">
+          <div className="bg-white mx-6 w-[500px] p-6 rounded-lg shadow-lg flex flex-col gap-6">
+            <p className="text-xl font-semibold mx-auto flex flex-col gap-4 text-center text-pretty">
+              {actionType === "Used"
+                ? t("labels.confirmUse.title")
+                : actionType === "Valid"
+                  ? t("labels.confirmRevalidate.title")
+                  : t("labels.confirmDelete.title")}
+              <span className="w-[200px] h-[1px] mx-auto bg-black" />
+            </p>
+
+            <p className="text-md mb-2 text-center  text-balance">
+              {actionType === "Used"
+                ? t("labels.confirmUse.text")
+                : actionType === "Valid"
+                  ? t("labels.confirmRevalidate.text")
+                  : t("labels.confirmDelete.text")}
+            </p>
+
+            <div className="flex justify-center gap-4">
+              <button
+                className="px-4 py-2 bg-blue text-white rounded hover:bg-green-400"
+                onClick={handleActionConfirm}
+              >
+                {t("buttons.confirm")}
+              </button>
+
+              <button
+                className="px-4 py-2 bg-red text-white rounded hover:bg-red-400"
+                onClick={() => setIsModalOpen(false)}
+              >
+                {t("buttons.cancel")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

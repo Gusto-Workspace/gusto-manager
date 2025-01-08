@@ -15,7 +15,7 @@ import SettingsComponent from "@/components/_shared/settings/settings.component"
 import DashboardComponent from "@/components/dashboard/dashboard.component";
 
 // SVG
-import { AnalyticsSvg } from "@/components/_shared/_svgs/analytics.data";
+import { AnalyticsSvg } from "@/components/_shared/_svgs/analytics.svg";
 
 export default function DashboardPage(props) {
   const { t } = useTranslation("");

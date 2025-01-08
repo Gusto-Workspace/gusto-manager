@@ -20,11 +20,23 @@
     "owner": "Bénéficiaire",
     "description": "Description",
     "code": "Code",
-    "orderedDay" : "Achetée le",
+    "orderedDay": "Achetée le",
     "valididy": "Valide jusqu'au",
-    "useDate" : "Utilisée le",
-    "sender" : "De la part de",
-    "emptyCard": "Aucune carte cadeau"
+    "useDate": "Utilisée le",
+    "sender": "De la part de",
+    "emptyCard": "Aucune carte cadeau",
+    "confirmUse": {
+      "title": "Confirmer que la carte est utilisée",
+      "text": "Une carte cadeau est marquée comme 'Utilisée' lorsque le bénéficiaire l'a consommée. Cependant, si nécessaire, il est possible de la repasser en 'Valide' ultérieurement"
+    },
+    "confirmRevalidate": {
+      "title": "Confirmer que la carte est valide",
+      "text": "Lorsque vous repassez une carte cadeau en 'Valide', celle-ci redevient utilisable par le bénéficiaire. Cette action permet de réactiver la carte pour un usage ultérieur"
+    },
+    "confirmDelete": {
+      "title": "Confirmer la suppression",
+      "text": "Êtes-vous sûr de vouloir supprimer cette carte cadeau ? Cette action est irréversible"
+    }
   },
   "buttons": {
     "add": "Ajouter",
@@ -37,7 +49,7 @@
     "confirm": "Confirmer",
     "delete": "Supprimer",
     "usedCard": "Carte cadeau utilisée",
-    "revalidateCard" : "Repasser en statut - Valide -",
+    "revalidateCard": "Repasser en statut Valide",
     "visible": "Visible",
     "noVisible": "Non visible",
     "yes": "Oui",

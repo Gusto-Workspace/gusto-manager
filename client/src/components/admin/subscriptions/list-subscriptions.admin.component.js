@@ -158,8 +158,8 @@ export default function ListSubscriptionsAdminComponent(props) {
                     {/* Affichage des factures */}
                     {showInvoices[subscription.id] &&
                       invoices[subscription.id] && (
-                        <div className="mt-2">
-                          <ul>
+                        <div className="mt-6">
+                          <ul className="flex flex-col gap-4">
                             {invoices[subscription.id].map((invoice) => {
                               return (
                                 <li
@@ -168,19 +168,9 @@ export default function ListSubscriptionsAdminComponent(props) {
                                 >
                                   <div>
                                     <div>
-                                      {t("subscriptions.list.period")} :{" "}
+                                      {t("subscriptions.list.date")} :{" "}
                                       {new Date(
-                                        invoice.period_start * 1000
-                                      ).toLocaleDateString()}{" "}
-                                      -{" "}
-                                      {new Date(
-                                        new Date(
-                                          invoice.period_start * 1000
-                                        ).setMonth(
-                                          new Date(
-                                            invoice.period_start * 1000
-                                          ).getMonth() + 1
-                                        )
+                                        invoice.created * 1000
                                       ).toLocaleDateString()}
                                     </div>
 
