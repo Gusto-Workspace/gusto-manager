@@ -96,16 +96,11 @@ export default function PurchasesGiftListComponent(props) {
           const filteredPurchases = purchases.filter((purchase) => {
             const term = searchTerm.toLowerCase();
             return (
-              (purchase.purchaseCode &&
-                purchase.purchaseCode.toLowerCase().includes(term)) ||
-              (purchase.beneficiaryFirstName &&
-                purchase.beneficiaryFirstName.toLowerCase().includes(term)) ||
-              (purchase.beneficiaryLastName &&
-                purchase.beneficiaryLastName.toLowerCase().includes(term)) ||
-              (purchase.sender &&
-                purchase.sender.toLowerCase().includes(term)) ||
-              (purchase.sendEmail &&
-                purchase.sendEmail.toLowerCase().includes(term))
+              purchase?.purchaseCode?.toLowerCase().includes(term) ||
+              purchase?.beneficiaryFirstName?.toLowerCase().includes(term) ||
+              purchase?.beneficiaryLastName?.toLowerCase().includes(term) ||
+              purchase?.sender?.toLowerCase().includes(term) ||
+              purchase?.sendEmail?.toLowerCase().includes(term)
             );
           });
 
@@ -173,12 +168,12 @@ export default function PurchasesGiftListComponent(props) {
                         )}
 
                         {status === "Used" && (
-                          <button
-                            className="mt-2 text-blue w-fit mx-auto midTablet:mx-0 italic opacity-50"
-                            onClick={() => markAsValid(purchase._id)}
-                          >
-                            {t("buttons.revalidateCard")}
-                          </button>
+                          <p>
+                            {t("labels.useDate")}:{" "}
+                            {new Date(purchase.useDate).toLocaleDateString(
+                              "fr-FR"
+                            )}
+                          </p>
                         )}
                       </div>
 
@@ -188,6 +183,14 @@ export default function PurchasesGiftListComponent(props) {
                           onClick={() => markAsUsed(purchase._id)}
                         >
                           {t("buttons.usedCard")}
+                        </button>
+                      )}
+                      {status === "Used" && (
+                        <button
+                          className="mt-2 text-blue w-fit mx-auto midTablet:mx-0 italic opacity-50"
+                          onClick={() => markAsValid(purchase._id)}
+                        >
+                          {t("buttons.revalidateCard")}
                         </button>
                       )}
                     </li>

@@ -1,9 +1,14 @@
 import { useState } from "react";
 
+// I18N
+import { useTranslation } from "next-i18next";
+
 // COMPONENTS
 import ExpendedDataPayoutDashboardComponent from "./expended-data-payout.dashboard.component";
 
 export default function PayoutsDashboardComponent(props) {
+  const { t } = useTranslation("transactions");
+
   // État local pour gérer les transactions étendues
   const [expandedTxIds, setExpandedTxIds] = useState([]);
 
@@ -35,31 +40,31 @@ export default function PayoutsDashboardComponent(props) {
               <div className="bg-white rounded-lg p-4 drop-shadow-sm flex justify-between items-center">
                 <div>
                   <p>
-                    <strong>Arrive au plus tard le : </strong>
+                    <strong>{t("payouts.details.arrival")} : </strong>
                     {new Date(payout.arrivalDate * 1000).toLocaleDateString()}
                   </p>
 
                   <p>
-                    <strong>Montant : </strong>
+                    <strong>{t("payouts.details.amount")} : </strong>
                     {payout.amount} {payout.currency.toUpperCase()}
                   </p>
 
                   <p>
-                    <strong>Statut : </strong>
+                    <strong>{t("payouts.details.status.title")} : </strong>
                     {(() => {
                       switch (payout.status) {
                         case "paid":
-                          return "Payé";
+                          return t("payouts.details.status.paid");
                         case "pending":
-                          return "En attente";
+                          return t("payouts.details.status.pending");
                         case "in_transit":
-                          return "En transit";
+                          return t("payouts.details.status.inTransit");
                         case "failed":
-                          return "Échoué";
+                          return t("payouts.details.status.failed");
                         case "canceled":
-                          return "Annulé";
+                          return t("payouts.details.status.canceled");
                         default:
-                          return "Statut inconnu";
+                          return t("payouts.details.status.unknown");
                       }
                     })()}
                   </p>
@@ -75,8 +80,8 @@ export default function PayoutsDashboardComponent(props) {
                     disabled={anyExpanded && !isExpanded}
                   >
                     {props.payoutDataLoading[payout.id]
-                      ? "Chargement..."
-                      : "Voir les transactions associées"}
+                      ? t("payouts.details.loading")
+                      : t("payouts.details.seeTransactions")}
                   </button>
                 ) : (
                   <button
@@ -89,7 +94,7 @@ export default function PayoutsDashboardComponent(props) {
                     }}
                     className="bg-blue text-white py-1 px-3 rounded-lg mt-2"
                   >
-                    Masquer les transactions
+                    {t("payouts.details.maskTransactions")}
                   </button>
                 )}
               </div>
@@ -110,7 +115,9 @@ export default function PayoutsDashboardComponent(props) {
           );
         })
       ) : (
-        <p>Aucun virement trouvé.</p>
+        <p className="bg-white p-6 rounded-lg drop-shadow-sm">
+          {t("payouts.empty")}
+        </p>
       )}
     </div>
   );

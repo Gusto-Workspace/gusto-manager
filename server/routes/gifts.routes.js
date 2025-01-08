@@ -162,7 +162,10 @@ router.put(
           "purchasesGiftCards._id": purchaseId,
         },
         {
-          $set: { "purchasesGiftCards.$.status": "Used" },
+          $set: {
+            "purchasesGiftCards.$.status": "Used",
+            "purchasesGiftCards.$.useDate": new Date(),
+          },
         },
         { new: true }
       )
@@ -236,9 +239,7 @@ router.put(
 
       // Réorganiser les catégories selon l'ordre donné
       restaurant.giftCards = orderedGiftCardIds.map((giftCardId) =>
-        restaurant.giftCards.find(
-          (cat) => cat._id.toString() === giftCardId
-        )
+        restaurant.giftCards.find((cat) => cat._id.toString() === giftCardId)
       );
 
       await restaurant.save();

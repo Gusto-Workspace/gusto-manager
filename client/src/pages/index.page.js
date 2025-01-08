@@ -95,7 +95,7 @@ export default function DashboardPage(props) {
 export async function getStaticProps({ locale }) {
   return {
     props: {
-      ...(await serverSideTranslations(locale, ["common", "index"])),
+      ...(await serverSideTranslations(locale, ["common", "index", "transactions"])),
     },
   };
 }

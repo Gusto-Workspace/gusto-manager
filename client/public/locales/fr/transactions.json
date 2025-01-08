@@ -1,0 +1,79 @@
+{
+  "select": {
+    "payouts": "Détails des virements",
+    "payments": "Détails des paiements"
+  },
+  "payouts": {
+    "information": {
+      "title": "Information",
+      "text": "Pour les virements mensuels, les paiements encaissés entre 7 jours avant la date prévue du virement et le jour même seront reportés sur le virement du mois suivant"
+    },
+    "details": {
+      "arrival": "Arrive au plus tard le",
+      "amount": "Montant",
+      "status": {
+        "title": "Statut",
+        "paid": "Payé",
+        "pending": "En attente",
+        "inTransit": "En transit",
+        "failed": "Échoué",
+        "canceled": "Annulé",
+        "unknown": "Statut inconnu"
+      },
+      "loading": "Chargement...",
+      "seeTransactions": "Voir les transactions associées",
+      "maskTransactions": "Masquer les transactions"
+    },
+    "expended": {
+      "title": "Transactions de ce virement",
+      "date": "Date",
+      "customer": "Client",
+      "grossAmount": "Montant payé",
+      "fees": "Frais Stripe",
+      "netAmount": "Montant net",
+      "type": {
+        "title": "Type",
+        "charge": "Paiement",
+        "refund": "Remboursement",
+        "unknow": "Type inconnu"
+      },
+      "buttons": {
+        "moreInfos": "Plus d'infos",
+        "lessInfos": "Moins d'infos",
+        "loading": "Chargement...",
+        "loadMore": "Charger plus"
+      }
+    },
+    "empty": "Aucun virement trouvé"
+  },
+  "payments": {
+    "date": "Date",
+    "customer": "Client",
+    "grossAmount": "Montant payé",
+    "fees": "Frais Stripe",
+    "netAmount": "Montant net",
+    "status": {
+      "title": "Statut",
+      "succeeded": "Réussi",
+      "pending": "En attente",
+      "canceled": "Annulé",
+      "unknown": "Statut inconnu"
+    },
+    "refunded": "Remboursé",
+    "refund": "Rembourser",
+    "refunding": "Remboursement...",
+    "loading": "Chargement...",
+    "loadMore": "Charger plus",
+    "empty": "Aucun paiement trouvé",
+    "modale": {
+      "title": "Remboursement d'un paiement",
+      "infoFirst": " Après l'émission d'un remboursement, le client reçoit généralement le remboursement dans un délai de 5 à 10 jours ouvrables",
+      "infoSecond": " À noter que certains remboursements, effectués peu de temps après le paiement initial, peuvent apparaître sous forme d'annulation. Dans ce cas, le paiement d'origine disparaît simplement du relevé bancaire du client, sans qu'un crédit distinct ne soit émis",
+      "buttons": {
+        "loading": "En cours...",
+        "confirm": "Confirmer",
+        "cancel": "Annuler"
+      }
+    }
+  }
+}

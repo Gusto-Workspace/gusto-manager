@@ -22,6 +22,7 @@
     "code": "Code",
     "orderedDay" : "Achetée le",
     "valididy": "Valide jusqu'au",
+    "useDate" : "Utilisée le",
     "sender" : "De la part de",
     "emptyCard": "Aucune carte cadeau"
   },

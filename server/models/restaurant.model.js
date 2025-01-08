@@ -131,6 +131,7 @@ const giftCardPurchaseSchema = new mongoose.Schema({
     enum: ["Valid", "Used", "Expired"],
     default: "Valid",
   },
+  useDate: { type: Date },
   beneficiaryFirstName: { type: String, required: true },
   beneficiaryLastName: { type: String, required: true },
   sender: { type: String },

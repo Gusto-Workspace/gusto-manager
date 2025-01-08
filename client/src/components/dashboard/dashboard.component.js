@@ -37,6 +37,7 @@ export default function DashboardComponent(props) {
     if (!props.dataLoading && props.restaurantData?.options?.gift_card) {
       fetchGiftCardSales();
       fetchGiftCardPayouts();
+      fetchMonthlySales();
     }
   }, [props.restaurantData, props.dataLoading]);
 
@@ -121,25 +122,29 @@ export default function DashboardComponent(props) {
   }
 
   // ---- Récupération des ventes mensuelles ----
-  useEffect(() => {
-    async function fetchMonthlySales() {
-      setMonthlyDataLoading(true);
-      try {
-        const response = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${props.restaurantData._id}/payments/monthly-sales`
-        );
-        setMonthlySales(response.data.monthlySales);
-      } catch (error) {
-        console.error("Erreur de fetch monthly-sales:", error);
-      } finally {
-        setMonthlyDataLoading(false);
-      }
+  async function fetchMonthlySales() {
+    setMonthlyDataLoading(true);
+    try {
+      const response = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${props.restaurantData._id}/payments/monthly-sales`
+      );
+      setMonthlySales(response.data.monthlySales);
+    } catch (error) {
+      console.error("Erreur de fetch monthly-sales:", error);
+    } finally {
+      setMonthlyDataLoading(false);
     }
+  }
 
-    if (!props.dataLoading && props.restaurantData?.options?.gift_card) {
-      fetchMonthlySales();
-    }
-  }, [props.restaurantData, props.dataLoading]);
+  // ---- Fonction appelée quand un paiement est remboursé avec succès ----
+  function handleRefundSuccess(paymentId) {
+    // On met à jour l'état local "payments" pour définir refunded = true
+    setPayments((prevPayments) =>
+      prevPayments.map((p) =>
+        p.id === paymentId ? { ...p, refunded: true } : p
+      )
+    );
+  }
 
   return (
     <section className="flex flex-col gap-6">
@@ -223,6 +228,8 @@ export default function DashboardComponent(props) {
           hasMorePayments={hasMorePayments}
           hasMorePayouts={hasMorePayouts}
           dataLoading={dataLoading}
+          handleRefundSuccess={handleRefundSuccess}
+          fetchMonthlySales={fetchMonthlySales}
         />
       )}
     </section>

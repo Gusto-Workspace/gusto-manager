@@ -1,0 +1,79 @@
+{
+  "select": {
+    "payouts": "Payout details",
+    "payments": "Payment details"
+  },
+  "payouts": {
+    "information": {
+      "title": "Information",
+      "text": "For monthly payouts, payments received between 7 days before the scheduled payout date and the same day will be deferred to the next month's payout."
+    },
+    "details": {
+      "arrival": "Arrives no later than",
+      "amount": "Amount",
+      "status": {
+        "title": "Status",
+        "paid": "Paid",
+        "pending": "Pending",
+        "inTransit": "In transit",
+        "failed": "Failed",
+        "canceled": "Canceled",
+        "unknown": "Unknown status"
+      },
+      "loading": "Loading...",
+      "seeTransactions": "See associated transactions",
+      "maskTransactions": "Hide transactions"
+    },
+    "expended": {
+      "title": "Transactions for this payout",
+      "date": "Date",
+      "customer": "Customer",
+      "grossAmount": "Amount paid",
+      "fees": "Stripe fees",
+      "netAmount": "Net amount",
+      "type": {
+        "title": "Type",
+        "charge": "Payment",
+        "refund": "Refund",
+        "unknow": "Unknown type"
+      },
+      "buttons": {
+        "moreInfos": "More info",
+        "lessInfos": "Less info",
+        "loading": "Loading...",
+        "loadMore": "Load more"
+      }
+    },
+    "empty": "No payouts found"
+  },
+  "payments": {
+    "date": "Date",
+    "customer": "Customer",
+    "grossAmount": "Amount paid",
+    "fees": "Stripe fees",
+    "netAmount": "Net amount",
+    "status": {
+      "title": "Status",
+      "succeeded": "Succeeded",
+      "pending": "Pending",
+      "canceled": "Canceled",
+      "unknown": "Unknown status"
+    },
+    "refunded": "Refunded",
+    "refund": "Refund",
+    "refunding": "Refunding...",
+    "loading": "Loading...",
+    "loadMore": "Load more",
+    "empty": "No payments found",
+    "modale": {
+      "title": "Payment refund",
+      "infoFirst": "After issuing a refund, the customer typically receives it within 5 to 10 business days.",
+      "infoSecond": "Note that some refunds issued shortly after the initial payment may appear as a void. In this case, the original payment simply disappears from the customer's bank statement without a separate credit being issued.",
+      "buttons": {
+        "loading": "Processing...",
+        "confirm": "Confirm",
+        "cancel": "Cancel"
+      }
+    }
+  }
+}

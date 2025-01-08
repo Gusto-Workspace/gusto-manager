@@ -3,11 +3,16 @@ import { useState } from "react";
 // AXIOS
 import axios from "axios";
 
+// I18N
+import { useTranslation } from "next-i18next";
+
 // COMPONENTS
 import PayoutsDashboardComponent from "./payouts.dashboard.component";
 import PaymentsDashboardComponent from "./payments.dashboard.component";
 
 export default function TransactionsDashboardComponent(props) {
+  const { t } = useTranslation("transactions");
+
   const [selectedOption, setSelectedOption] = useState("payouts");
   const [payoutTxMap, setPayoutTxMap] = useState({});
 
@@ -107,16 +112,16 @@ export default function TransactionsDashboardComponent(props) {
           onChange={handleOptionChange}
           className="border rounded-lg p-2 w-[250px]"
         >
-          <option value="payouts">Détails des Virements</option>
-          <option value="payments">Détails des Paiements</option>
+          <option value="payouts">{t("select.payouts")}</option>
+          <option value="payments">{t("select.payments")}</option>
         </select>
 
         {selectedOption === "payouts" && (
           <p className="italic">
-            <span className="underline font-semibold">INFORMATION</span> : Pour les virements
-            mensuels, les paiements encaissés entre 7 jours avant la date prévue
-            du virement et le jour même seront reportés sur le virement du mois
-            suivant
+            <span className="underline uppercase font-semibold">
+              {t("payouts.information.title")}
+            </span>{" "}
+            : {t("payouts.information.text")}
           </p>
         )}
       </div>
@@ -140,6 +145,9 @@ export default function TransactionsDashboardComponent(props) {
           hasMorePayments={props.hasMorePayments}
           onLoadMore={props.onLoadMore}
           dataLoading={props.dataLoading}
+          handleRefundSuccess={props.handleRefundSuccess}
+          restaurantId={props.restaurantId}
+          fetchMonthlySales={props.fetchMonthlySales}
         />
       )}
     </div>
