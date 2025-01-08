@@ -238,7 +238,7 @@ export default function PurchasesGiftListComponent(props) {
               <span className="w-[200px] h-[1px] mx-auto bg-black" />
             </p>
 
-            <p className="text-md mb-2 text-center  text-balance">
+            <p className="text-md mb-2 text-center text-balance">
               {actionType === "Used"
                 ? t("labels.confirmUse.text")
                 : actionType === "Valid"
