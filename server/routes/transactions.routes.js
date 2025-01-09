@@ -61,10 +61,9 @@ router.get("/owner/restaurants/:id/payments", async (req, res) => {
 
 // RECHERCHE DE PAIEMENTS PAR NOM/PRÉNOM
 router.get("/owner/restaurants/:id/payments/search", async (req, res) => {
-  const { id } = req.params; // ID du restaurant
-  const { query, limit = 100 } = req.query; // Nom/prénom recherché (partie de chaîne)
+  const { id } = req.params;
+  const { query, limit = 100 } = req.query;
 
-  // Vérification de la présence d'un 'query'
   if (!query) {
     return res.status(400).json({
       message: "Veuillez fournir un nom ou un prénom pour la recherche.",
@@ -85,10 +84,10 @@ router.get("/owner/restaurants/:id/payments/search", async (req, res) => {
     );
 
     // 2) Récupération de toutes les charges
-    //    (ici on n'expand pas `customer`, puisqu'on s'en fiche)
+
     const chargesList = await stripeInstance.charges.list({
       limit: Number(limit),
-      expand: ["data.balance_transaction"], // On garde balance_transaction pour net/frais
+      expand: ["data.balance_transaction"],
     });
 
     // 3) Filtrer uniquement sur billing_details.name (en minuscule)
@@ -105,7 +104,6 @@ router.get("/owner/restaurants/:id/payments/search", async (req, res) => {
       return {
         id: charge.id,
         date: charge.created,
-        // On n'utilise plus customer.name, on affiche directement la facturation
         customer: charge.billing_details?.name || "Non renseigné",
         grossAmount: (charge.amount / 100).toFixed(2),
         feeAmount: balanceTx ? (balanceTx.fee / 100).toFixed(2) : "0.00",
@@ -118,7 +116,7 @@ router.get("/owner/restaurants/:id/payments/search", async (req, res) => {
     // 5) Retour au client
     return res.status(200).json({
       charges,
-      has_more: false, // Pas de pagination (simplifié)
+      has_more: false,
       count: charges.length,
     });
   } catch (error) {
