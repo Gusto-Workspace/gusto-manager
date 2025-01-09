@@ -59,6 +59,14 @@
       "canceled": "Annulé",
       "unknown": "Statut inconnu"
     },
+    "filter": {
+      "placeholder": "Rechercher un client",
+      "button": {
+        "validate": "Valider",
+        "loading": "En cours...",
+        "resetFilter": "Réinitialiser"
+      }
+    },
     "refunded": "Remboursé",
     "refund": "Rembourser",
     "refunding": "Remboursement...",

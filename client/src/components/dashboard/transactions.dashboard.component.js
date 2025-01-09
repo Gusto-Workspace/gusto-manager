@@ -23,6 +23,15 @@ export default function TransactionsDashboardComponent(props) {
     setSelectedOption(event.target.value);
   }
 
+  function handleShearchClient(event) {
+    props.setClientName(event.target.value);
+  }
+
+  function handleResetFilter() {
+    props.onResetPayments();
+    props.setClientName("");
+  }
+
   // ---- Fonction pour aller chercher les transactions d'un payout ----
   async function fetchPayoutTransactions(payoutId) {
     setPayoutDataLoading((prev) => ({ ...prev, [payoutId]: true }));
@@ -124,6 +133,39 @@ export default function TransactionsDashboardComponent(props) {
             : {t("payouts.information.text")}
           </p>
         )}
+
+        {selectedOption === "payments" && (
+          <div className="flex gap-4">
+            <input
+              type="text"
+              placeholder={t("payments.filter.placeholder")}
+              value={props.clientName}
+              onChange={handleShearchClient}
+              className="p-2 border rounded-lg w-[350px]"
+            />
+
+            <div className="flex gap-4">
+              <button
+                onClick={() => props.onFetchPaymentsByClient(props.clientName)}
+                className="bg-blue text-white px-4 py-2 rounded-lg disabled:opacity-80"
+                disabled={props.filterLoading || !props.clientName}
+              >
+                {props.filterLoading
+                  ? t("payments.filter.button.loading")
+                  : t("payments.filter.button.validate")}
+              </button>
+
+              {props.isFiltered && (
+                <button
+                  onClick={handleResetFilter}
+                  className="bg-violet text-white px-4 py-2 rounded-lg hover:bg-opacity-80"
+                >
+                  {t("payments.filter.button.resetFilter")}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {selectedOption === "payouts" && (
@@ -144,10 +186,12 @@ export default function TransactionsDashboardComponent(props) {
           payments={props.payments}
           hasMorePayments={props.hasMorePayments}
           onLoadMore={props.onLoadMore}
+          filterLoading={props.filterLoading}
           dataLoading={props.dataLoading}
           handleRefundSuccess={props.handleRefundSuccess}
           restaurantId={props.restaurantId}
           fetchMonthlySales={props.fetchMonthlySales}
+          isFiltered={props.isFiltered}
         />
       )}
     </div>

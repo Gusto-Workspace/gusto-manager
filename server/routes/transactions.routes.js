@@ -7,7 +7,7 @@ const RestaurantModel = require("../models/restaurant.model");
 // CRYPTO
 const { decryptApiKey } = require("../services/encryption.service");
 
-// RECUPERER LES PAIEMENTS STRIPE
+// RECUPERER TOUS LES PAIEMENTS STRIPE (10 par 10)
 router.get("/owner/restaurants/:id/payments", async (req, res) => {
   const { id } = req.params;
   const { limit = 10, starting_after } = req.query;
@@ -55,6 +55,85 @@ router.get("/owner/restaurants/:id/payments", async (req, res) => {
     });
   } catch (error) {
     console.error("Erreur lors de la récupération des transactions :", error);
+    return res.status(500).json({ message: "Erreur interne du serveur" });
+  }
+});
+
+// RECHERCHE DE PAIEMENTS PAR NOM/PRÉNOM
+router.get("/owner/restaurants/:id/payments/search", async (req, res) => {
+  const { id } = req.params; // ID du restaurant
+  const { query, limit = 100 } = req.query; // Nom/prénom recherché (partie de chaîne)
+
+  // Vérification de la présence d'un 'query'
+  if (!query) {
+    return res.status(400).json({
+      message: "Veuillez fournir un nom ou un prénom pour la recherche.",
+    });
+  }
+
+  try {
+    // 1) Récupération du restaurant et de sa clé Stripe
+    const restaurant = await RestaurantModel.findById(id);
+    if (!restaurant || !restaurant.stripeSecretKey) {
+      return res
+        .status(404)
+        .json({ message: "Clé Stripe introuvable pour ce restaurant." });
+    }
+
+    const stripeInstance = require("stripe")(
+      decryptApiKey(restaurant.stripeSecretKey)
+    );
+
+    // 2) Récupération de toutes les charges
+    //    (ici on n'expand pas `customer`, puisqu'on s'en fiche)
+    const chargesList = await stripeInstance.charges.list({
+      limit: Number(limit),
+      expand: ["data.balance_transaction"], // On garde balance_transaction pour net/frais
+    });
+
+    // --- LOG : affichage des infos reçues
+    console.log(
+      `--- LOG : Charges reçues de Stripe (total: ${chargesList.data.length}) ---`
+    );
+    chargesList.data.forEach((charge, index) => {
+      console.log(`Charge n°${index + 1}:`);
+      console.log("  -> Charge ID:", charge.id);
+      console.log("  -> billing_details.name:", charge.billing_details?.name);
+    });
+    console.log("--- Fin des logs des charges ---");
+
+    // 3) Filtrer uniquement sur billing_details.name (en minuscule)
+    const lowerQuery = query.toLowerCase();
+    const filteredCharges = chargesList.data.filter((charge) => {
+      const billingName = (charge.billing_details?.name || "").toLowerCase();
+      return billingName.includes(lowerQuery);
+    });
+
+    // 4) Formatage des résultats
+    const charges = filteredCharges.map((charge) => {
+      const balanceTx = charge.balance_transaction;
+
+      return {
+        id: charge.id,
+        date: charge.created,
+        // On n'utilise plus customer.name, on affiche directement la facturation
+        customer: charge.billing_details?.name || "Non renseigné",
+        grossAmount: (charge.amount / 100).toFixed(2),
+        feeAmount: balanceTx ? (balanceTx.fee / 100).toFixed(2) : "0.00",
+        netAmount: balanceTx ? (balanceTx.net / 100).toFixed(2) : "0.00",
+        status: charge.status,
+        refunded: charge.refunded,
+      };
+    });
+
+    // 5) Retour au client
+    return res.status(200).json({
+      charges,
+      has_more: false, // Pas de pagination (simplifié)
+      count: charges.length,
+    });
+  } catch (error) {
+    console.error("Erreur lors de la recherche des paiements :", error);
     return res.status(500).json({ message: "Erreur interne du serveur" });
   }
 });
@@ -297,39 +376,40 @@ router.get(
 
 // Rembourser un paiement
 router.post("/owner/restaurants/:id/payments/refund", async (req, res) => {
-    const { id } = req.params; // restaurant ID
-    const { paymentId } = req.body; // ID du paiement (charge.id)
-  
-    try {
-      const restaurant = await RestaurantModel.findById(id);
-      if (!restaurant || !restaurant.stripeSecretKey) {
-        return res
-          .status(404)
-          .json({ message: "Clé Stripe introuvable pour ce restaurant." });
-      }
-  
-      const stripeInstance = require("stripe")(decryptApiKey(restaurant.stripeSecretKey));
-  
-      // On crée le remboursement via Stripe
-      const refund = await stripeInstance.refunds.create({
-        charge: paymentId,
-      });
-  
-      // Optionnel : vous pouvez renvoyer plus d'infos si besoin
-      return res.status(200).json({
-        success: true,
-        message: "Remboursement effectué avec succès",
-        refund,
-      });
-    } catch (error) {
-      console.error("Erreur lors du remboursement :", error);
-      return res.status(500).json({
-        success: false,
-        message: "Erreur interne lors du remboursement",
-        error: error?.message || error,
-      });
+  const { id } = req.params; // restaurant ID
+  const { paymentId } = req.body; // ID du paiement (charge.id)
+
+  try {
+    const restaurant = await RestaurantModel.findById(id);
+    if (!restaurant || !restaurant.stripeSecretKey) {
+      return res
+        .status(404)
+        .json({ message: "Clé Stripe introuvable pour ce restaurant." });
     }
-  });
-  
+
+    const stripeInstance = require("stripe")(
+      decryptApiKey(restaurant.stripeSecretKey)
+    );
+
+    // On crée le remboursement via Stripe
+    const refund = await stripeInstance.refunds.create({
+      charge: paymentId,
+    });
+
+    // Optionnel : vous pouvez renvoyer plus d'infos si besoin
+    return res.status(200).json({
+      success: true,
+      message: "Remboursement effectué avec succès",
+      refund,
+    });
+  } catch (error) {
+    console.error("Erreur lors du remboursement :", error);
+    return res.status(500).json({
+      success: false,
+      message: "Erreur interne lors du remboursement",
+      error: error?.message || error,
+    });
+  }
+});
 
 module.exports = router;

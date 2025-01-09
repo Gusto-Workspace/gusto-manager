@@ -59,6 +59,14 @@
       "canceled": "Canceled",
       "unknown": "Unknown status"
     },
+    "filter": {
+      "placeholder": "Search customer",
+      "button": {
+        "validate": "Validate",
+        "loading": "Loading...",
+        "resetFilter": "Reset"
+      }
+    },
     "refunded": "Refunded",
     "refund": "Refund",
     "refunding": "Refunding...",

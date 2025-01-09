@@ -122,7 +122,7 @@ export default function PaymentsDashboardComponent(props) {
             </div>
           ))}
 
-          {props.hasMorePayments && (
+          {props.hasMorePayments && !props.isFiltered && (
             <button
               className="bg-blue text-white py-2 px-4 rounded-lg w-fit self-center"
               onClick={() => props.onLoadMore("payments")}
@@ -130,13 +130,13 @@ export default function PaymentsDashboardComponent(props) {
             >
               {props.dataLoading
                 ? t("payments.loading")
-                : t("payments.loadingMore")}
+                : t("payments.loadMore")}
             </button>
           )}
         </>
       ) : (
         <p className="bg-white p-6 rounded-lg drop-shadow-sm">
-          {t("payments.empty")}
+          {props.dataLoading ? t("payments.loading") : t("payments.empty")}
         </p>
       )}
 

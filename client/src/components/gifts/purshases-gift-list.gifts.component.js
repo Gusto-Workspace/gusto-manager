@@ -48,7 +48,7 @@ export default function PurchasesGiftListComponent(props) {
         ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/purchases/${selectedPurchase._id}/use`
         : actionType === "Valid"
           ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/purchases/${selectedPurchase._id}/validate`
-          : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/purchases/${selectedPurchase._id}`;
+          : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/purchases/${selectedPurchase._id}/delete`;
 
     const method = actionType === "Delete" ? "delete" : "put";
 
@@ -57,8 +57,7 @@ export default function PurchasesGiftListComponent(props) {
         if (actionType !== "Delete") {
           restaurantContext.setRestaurantData(response.data.restaurant);
         } else {
-          console.log(`Carte cadeau supprimée : ${selectedPurchase._id}`);
-          // Actualiser la liste des cartes cadeaux si nécessaire
+          restaurantContext.setRestaurantData(response.data.restaurant);
         }
         setIsModalOpen(false);
       })

@@ -20,6 +20,9 @@ export default function DashboardComponent(props) {
   const [payments, setPayments] = useState([]);
   const [hasMorePayments, setHasMorePayments] = useState(false);
   const [lastChargeId, setLastChargeId] = useState(null);
+  const [isFiltered, setIsFiltered] = useState(false);
+  const [filterLoading, setFilterLoading] = useState(false);
+  const [clientName, setClientName] = useState("");
 
   // ---- States pour les PAYOUTS ----
   const [payouts, setPayouts] = useState([]);
@@ -77,6 +80,43 @@ export default function DashboardComponent(props) {
     } finally {
       setDataLoading(false);
     }
+  }
+
+  // ---- Requête pour les paiements (charges) d'un client spécifique ----
+  async function fetchPaymentsByClient(query) {
+    if (!query.trim()) {
+      return;
+    }
+
+    setFilterLoading(true);
+    try {
+      const response = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${props.restaurantData._id}/payments/search`,
+        {
+          params: {
+            query,
+            limit: 100,
+          },
+        }
+      );
+
+      setPayments(response.data.charges);
+      setIsFiltered(true);
+    } catch (error) {
+      console.error(
+        "Erreur lors de la recherche des paiements pour le client :",
+        error
+      );
+    } finally {
+      setFilterLoading(false);
+    }
+  }
+
+  // ---- Réinitialisation des paiements (retirer le filtre) ----
+  function resetPayments() {
+    setPayments([]); // Réinitialise les paiements avant de tout recharger
+    fetchGiftCardSales();
+    setIsFiltered(false); // Recharge tous les paiements
   }
 
   // ---- Requête pour les virements (payouts) ----
@@ -228,8 +268,14 @@ export default function DashboardComponent(props) {
           hasMorePayments={hasMorePayments}
           hasMorePayouts={hasMorePayouts}
           dataLoading={dataLoading}
+          filterLoading={filterLoading}
           handleRefundSuccess={handleRefundSuccess}
           fetchMonthlySales={fetchMonthlySales}
+          onFetchPaymentsByClient={fetchPaymentsByClient}
+          onResetPayments={resetPayments}
+          isFiltered={isFiltered}
+          clientName={clientName}
+          setClientName={setClientName}
         />
       )}
     </section>
