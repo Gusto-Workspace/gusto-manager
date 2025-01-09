@@ -52,18 +52,23 @@ echo "Suppression des fichiers Cloudinary de plus de 14 jours..."
 OLDER_THAN_DATE=$(date -d "-14 days" +%Y-%m-%dT%H:%M:%SZ)
 
 # Récupérer tous les fichiers du dossier sur Cloudinary
-FILES_TO_DELETE=$(curl -s -X GET \
+FILE_LIST=$(curl -s -X GET \
   "https://api.cloudinary.com/v1_1/$CLOUDINARY_CLOUD_NAME/resources/raw/folder/$CLOUDINARY_FOLDER" \
-  -u "$CLOUDINARY_API_KEY:$CLOUDINARY_API_SECRET" \
-  | jq -r ".resources[] | select(.created_at < \"$OLDER_THAN_DATE\") | .public_id")
+  -u "$CLOUDINARY_API_KEY:$CLOUDINARY_API_SECRET")
 
-# Supprimer chaque fichier listé
-for file in $FILES_TO_DELETE
+# Filtrer et supprimer les fichiers plus vieux que 14 jours
+echo "$FILE_LIST" | grep -o '"public_id":"[^"]*"' | sed 's/"public_id":"//' | sed 's/"//' | while read -r file
 do
-  echo "Suppression du fichier sur Cloudinary : $file"
-  curl -s -X DELETE \
-    "https://api.cloudinary.com/v1_1/$CLOUDINARY_CLOUD_NAME/resources/raw/$file" \
-    -u "$CLOUDINARY_API_KEY:$CLOUDINARY_API_SECRET"
+  # Récupérer la date de création du fichier
+  CREATED_AT=$(echo "$FILE_LIST" | grep -o "\"created_at\":\"[^\"]*\",\"public_id\":\"$file\"" | grep -o '"created_at":"[^"]*"' | sed 's/"created_at":"//' | sed 's/"//')
+
+  # Comparer avec la date limite
+  if [[ "$CREATED_AT" < "$OLDER_THAN_DATE" ]]; then
+    echo "Suppression du fichier sur Cloudinary : $file"
+    curl -s -X DELETE \
+      "https://api.cloudinary.com/v1_1/$CLOUDINARY_CLOUD_NAME/resources/raw/$file" \
+      -u "$CLOUDINARY_API_KEY:$CLOUDINARY_API_SECRET"
+  fi
 done
 
 echo "Nettoyage terminé."
