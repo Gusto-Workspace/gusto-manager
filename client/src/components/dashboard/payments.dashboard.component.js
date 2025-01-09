@@ -6,6 +6,9 @@ import axios from "axios";
 // I18N
 import { useTranslation } from "next-i18next";
 
+// COMPONENTS
+import SimpleSkeletonComponent from "../_shared/skeleton/simple-skeleton.component";
+
 export default function PaymentsDashboardComponent(props) {
   const { t } = useTranslation("transactions");
 
@@ -136,7 +139,11 @@ export default function PaymentsDashboardComponent(props) {
         </>
       ) : (
         <p className="bg-white p-6 rounded-lg drop-shadow-sm">
-          {props.dataLoading ? t("payments.loading") : t("payments.empty")}
+          {props.dataLoading ? (
+            <SimpleSkeletonComponent />
+          ) : (
+            t("payments.empty")
+          )}
         </p>
       )}
 

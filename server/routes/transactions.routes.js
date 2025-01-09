@@ -91,17 +91,6 @@ router.get("/owner/restaurants/:id/payments/search", async (req, res) => {
       expand: ["data.balance_transaction"], // On garde balance_transaction pour net/frais
     });
 
-    // --- LOG : affichage des infos reçues
-    console.log(
-      `--- LOG : Charges reçues de Stripe (total: ${chargesList.data.length}) ---`
-    );
-    chargesList.data.forEach((charge, index) => {
-      console.log(`Charge n°${index + 1}:`);
-      console.log("  -> Charge ID:", charge.id);
-      console.log("  -> billing_details.name:", charge.billing_details?.name);
-    });
-    console.log("--- Fin des logs des charges ---");
-
     // 3) Filtrer uniquement sur billing_details.name (en minuscule)
     const lowerQuery = query.toLowerCase();
     const filteredCharges = chargesList.data.filter((charge) => {

@@ -56,6 +56,7 @@
       "title": "Status",
       "succeeded": "Succeeded",
       "pending": "Pending",
+      "failed": "Failed",
       "canceled": "Canceled",
       "unknown": "Unknown status"
     },
