@@ -69,7 +69,9 @@ export default function TakeAwayPage(props) {
             {restaurantContext?.restaurantData?.options?.take_away ? (
               <p>Vente à emporter</p>
             ) : (
-              <NoAvailableComponent/>
+              <NoAvailableComponent
+                dataLoading={restaurantContext.dataLoading}
+              />
             )}
           </div>
         </div>

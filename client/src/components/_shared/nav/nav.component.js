@@ -158,7 +158,7 @@ export default function NavComponent() {
         }}
         className={`${
           menuOpen ? "translate-x-0" : "-translate-x-full"
-        } transition duration-200 ease-in-out custom-scrollbar tablet:translate-x-0 w-[270px] fixed bg-white h-screen overflow-y-auto flex flex-col py-6 px-4 gap-8 z-[90] tablet:z-10 text-darkBlue overscroll-contain`}
+        } transition duration-200 ease-in-out custom-scrollbar tablet:translate-x-0 w-[270px] fixed bg-white h-[100dvh] overflow-y-auto flex flex-col py-6 px-4 gap-8 z-[90] tablet:z-10 text-darkBlue overscroll-contain`}
       >
         <div className="z-10 opacity-40 h-[86px]">
           <h1 className="flex flex-col items-center gap-2 text-lg font-semibold">

@@ -20,7 +20,7 @@ export default function ExpendedDataPayoutDashboardComponent(props) {
 
           return (
             <div key={tx.id} className="bg-white bg-opacity-80 rounded-lg p-4">
-              <div className="flex justify-between items-center">
+              <div className="flex flex-col gap-4 midTablet:flex-row justify-between midTablet:items-center">
                 <div>
                   <p>
                     <strong>{t("payouts.expended.date")} :</strong>{" "}
