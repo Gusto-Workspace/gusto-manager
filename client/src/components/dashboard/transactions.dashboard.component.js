@@ -135,7 +135,7 @@ export default function TransactionsDashboardComponent(props) {
         )}
 
         {selectedOption === "payments" && (
-          <div className="flex gap-4">
+          <div className="flex flex-col midTablet:flex-row gap-4">
             <input
               type="text"
               placeholder={t("payments.filter.placeholder")}
