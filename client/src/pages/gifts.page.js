@@ -70,7 +70,9 @@ export default function GiftsPage(props) {
             {restaurantContext?.restaurantData?.options?.gift_card ? (
               <ListGiftsComponent />
             ) : (
-              <NoAvailableComponent />
+              <NoAvailableComponent
+                dataLoading={restaurantContext.dataLoading}
+              />
             )}
           </div>
         </div>

@@ -37,7 +37,7 @@ export default function PayoutsDashboardComponent(props) {
 
           return (
             <div key={payout.id} className={containerClasses}>
-              <div className="bg-white rounded-lg p-4 drop-shadow-sm flex justify-between items-center">
+              <div className="bg-white rounded-lg p-4 drop-shadow-sm flex flex-col gap-4 midTablet:flex-row justify-between midTablet:items-center">
                 <div>
                   <p>
                     <strong>{t("payouts.details.arrival")} : </strong>
@@ -74,7 +74,7 @@ export default function PayoutsDashboardComponent(props) {
                 {expandedData.length === 0 ? (
                   <button
                     onClick={() => props.fetchPayoutTransactions(payout.id)}
-                    className={`bg-blue text-white py-1 px-3 rounded-lg mt-2 ${
+                    className={`bg-blue text-white py-1 px-3 rounded-lg mt-2 w-fit mx-auto midTablet:mx-0 ${
                       anyExpanded && !isExpanded ? "opacity-50" : ""
                     }`}
                     disabled={anyExpanded && !isExpanded}

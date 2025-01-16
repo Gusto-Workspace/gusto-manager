@@ -14,7 +14,7 @@ export default function LastPayoutDashboardComponent(props) {
 
   return (
     <div className="bg-white p-6 rounded-lg drop-shadow-sm flex flex-col justify-between gap-6">
-      <div className="flex gap-8 justify-between">
+      <div className="flex flex-col midTablet:flex-row gap-8 justify-between">
         <div>
           <h3 className="w-full font-semibold text-lg text-pretty">
             {t("labels.totalSold")}
@@ -30,7 +30,7 @@ export default function LastPayoutDashboardComponent(props) {
         {props.dataLoading ? (
           <SimpleSkeletonComponent />
         ) : (
-          <p className="font-bold text-2xl whitespace-nowrap min-w-32 tablet:min-w-44 text-right">
+          <p className="font-bold text-2xl whitespace-nowrap min-w-32 tablet:min-w-44 text-center midTablet:text-right">
             {props?.payouts?.length > 0
               ? `${props?.payouts[0].amount} ${currencySymbol}`
               : "Aucun virement"}
@@ -46,7 +46,7 @@ export default function LastPayoutDashboardComponent(props) {
             window.scrollBy({ top: 500, behavior: "smooth" });
           }, [200]);
         }}
-        className="bg-blue text-white w-fit py-2 px-4 rounded-lg"
+        className="bg-blue text-white w-fit py-2 px-4 rounded-lg text-balance"
       >
         {props.showPaymentsDetails ? "Masquer" : "Afficher"} le détails des
         virements et paiements

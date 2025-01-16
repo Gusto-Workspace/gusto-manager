@@ -61,29 +61,34 @@ export default function PaymentsDashboardComponent(props) {
           {props.payments.map((payment, index) => (
             <div
               key={index}
-              className="bg-white drop-shadow-sm flex items-center justify-between p-4 rounded-lg"
+              className="bg-white drop-shadow-sm flex flex-col gap-4 midTablet:flex-row midTablet:items-center justify-between p-4 rounded-lg"
             >
               <div className="flex flex-col">
                 <p className="font-medium">
                   <strong>{t("payments.date")} :</strong>{" "}
                   {new Date(payment.date * 1000).toLocaleDateString()}
                 </p>
+
                 <p>
                   <strong>{t("payments.customer")} :</strong>{" "}
                   {payment.customer || "Non renseigné"}
                 </p>
+
                 <p>
                   <strong>{t("payments.grossAmount")} :</strong>{" "}
                   {payment.grossAmount} €
                 </p>
+
                 <p>
                   <strong>{t("payments.fees")} : </strong>
                   {payment.status !== "succeeded" ? "-" : payment.feeAmount} €
                 </p>
+
                 <p>
                   <strong>{t("payments.netAmount")} :</strong>{" "}
                   {payment.status !== "succeeded" ? "-" : payment.netAmount} €
                 </p>
+
                 <p>
                   <strong>{t("payments.status.title")} : </strong>
                   {payment.refunded
@@ -106,12 +111,12 @@ export default function PaymentsDashboardComponent(props) {
               </div>
 
               {payment.refunded ? (
-                <p className="bg-blue text-white py-1 px-3 rounded-lg opacity-35">
+                <p className="bg-blue text-white py-1 px-3 rounded-lg opacity-35 w-fit mx-auto midTablet:mx-0">
                   {t("payments.refunded")}
                 </p>
               ) : (
                 <button
-                  className={`bg-red text-white py-1 px-3 rounded-lg ${
+                  className={`bg-red text-white py-1 px-3 rounded-lg w-fit mx-auto midTablet:mx-0 ${
                     payment.status !== "succeeded" && "hidden"
                   }`}
                   onClick={() => handleRefundClick(payment)}
@@ -151,7 +156,7 @@ export default function PaymentsDashboardComponent(props) {
       {isModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-lg shadow-lg max-w-[550px] mx-6 flex flex-col gap-6">
-            <p className="text-xl font-semibold mx-auto flex flex-col gap-4">
+            <p className="text-xl font-semibold mx-auto flex flex-col gap-4 text-center">
               {t("payments.modale.title")}
               <span className="w-[200px] h-[1px] mx-auto bg-black" />
             </p>
@@ -160,9 +165,10 @@ export default function PaymentsDashboardComponent(props) {
               {t("payments.modale.infoFirst")}
             </p>
 
-            <p className="text-md mb-2 text-center">
+            <p className="text-md mb-2 text-center text-pretty">
               {t("payments.modale.infoSecond")}
             </p>
+
             <div className="flex justify-center gap-2">
               <button
                 onClick={handleConfirmRefund}
@@ -173,6 +179,7 @@ export default function PaymentsDashboardComponent(props) {
                   ? t("payments.modale.buttons.loading")
                   : t("payments.modale.buttons.confirm")}
               </button>
+              
               <button
                 onClick={handleCancelRefund}
                 className="bg-red text-white px-4 py-2 rounded-lg"

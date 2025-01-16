@@ -141,7 +141,7 @@ export default function TransactionsDashboardComponent(props) {
               placeholder={t("payments.filter.placeholder")}
               value={props.clientName}
               onChange={handleShearchClient}
-              className="p-2 border rounded-lg w-[350px]"
+              className="p-2 border rounded-lg midTablet:w-[350px]"
             />
 
             <div className="flex gap-4">
