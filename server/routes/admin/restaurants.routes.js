@@ -9,6 +9,40 @@ const authenticateToken = require("../../middleware/authentificate-token");
 const RestaurantModel = require("../../models/restaurant.model");
 const OwnerModel = require("../../models/owner.model");
 
+// CRYPTO
+const {
+  encryptApiKey,
+  decryptApiKey,
+} = require("../../services/encryption.service");
+
+// GET STRIPE KEY FOR A SPECIFIC RESTAURANT
+router.get("/admin/restaurants/:id/stripe-key", async (req, res) => {
+  const restaurantId = req.params.id;
+
+  try {
+    // Rechercher le restaurant par ID
+    const restaurant = await RestaurantModel.findById(restaurantId);
+
+    if (!restaurant) {
+      return res.status(404).json({ message: "Restaurant introuvable" });
+    }
+
+    // Vérifier si la clé existe
+    if (!restaurant.stripeSecretKey) {
+      return res.status(200).json({ stripeKey: null });
+    }
+
+    // Déchiffrer la clé Stripe
+    const decryptedKey = decryptApiKey(restaurant.stripeSecretKey);
+
+    // Retourner la clé déchiffrée
+    res.status(200).json({ stripeKey: decryptedKey });
+  } catch (error) {
+    console.error("Erreur lors de la récupération de la clé Stripe :", error);
+    res.status(500).json({ message: "Erreur interne du serveur" });
+  }
+});
+
 // GET ALL RESTAURANTS
 router.get("/admin/restaurants", authenticateToken, async (req, res) => {
   try {
@@ -26,7 +60,8 @@ router.get("/admin/restaurants", authenticateToken, async (req, res) => {
 
 // ADD RESTAURANT
 router.post("/admin/add-restaurant", async (req, res) => {
-  const { restaurantData, ownerData, existingOwnerId } = req.body;
+  const { restaurantData, ownerData, existingOwnerId, stripeSecretKey } =
+    req.body;
 
   try {
     let owner;
@@ -59,6 +94,20 @@ router.post("/admin/add-restaurant", async (req, res) => {
       await owner.save();
     }
 
+    let encryptedKey = null;
+
+    // Si une clé Stripe est fournie, validez et chiffrez-la
+    if (stripeSecretKey) {
+      try {
+        const stripeInstance = require("stripe")(stripeSecretKey);
+        await stripeInstance.balance.retrieve(); // Valide la clé Stripe
+        encryptedKey = encryptApiKey(stripeSecretKey); // Chiffrez la clé Stripe
+      } catch (error) {
+        return res
+          .status(400)
+          .json({ message: "Clé Stripe invalide. Veuillez vérifier." });
+      }
+    }
     // Créer le restaurant avec l'adresse sous forme d'objet
     const newRestaurant = new RestaurantModel({
       name: restaurantData.name,
@@ -71,8 +120,14 @@ router.post("/admin/add-restaurant", async (req, res) => {
       phone: restaurantData.phone,
       email: restaurantData.email,
       website: restaurantData.website,
+      stripeSecretKey: encryptedKey,
       owner_id: owner._id,
       opening_hours: restaurantData.opening_hours,
+      options: {
+        gift_card: restaurantData.options?.gift_card || false,
+        reservations: restaurantData.options?.reservations || false,
+        take_away: restaurantData.options?.take_away || false,
+      },
       menus: [],
       dishes: [],
       drinks: [],
@@ -100,7 +155,8 @@ router.post("/admin/add-restaurant", async (req, res) => {
 
 // UPDATE RESTAURANT
 router.put("/admin/restaurants/:id", async (req, res) => {
-  const { restaurantData, ownerData, existingOwnerId } = req.body;
+  const { restaurantData, ownerData, existingOwnerId, stripeSecretKey } =
+    req.body;
 
   try {
     const restaurant = await RestaurantModel.findById(req.params.id);
@@ -175,7 +231,7 @@ router.put("/admin/restaurants/:id", async (req, res) => {
       await newOwnerData.save();
     }
 
-    // Mise à jour des informations du restaurant, y compris l'adresse
+    // Mise à jour des informations du restaurant
     restaurant.name = restaurantData.name;
     restaurant.address = {
       line1: restaurantData.address.line1,
@@ -186,6 +242,29 @@ router.put("/admin/restaurants/:id", async (req, res) => {
     restaurant.phone = restaurantData.phone;
     restaurant.email = restaurantData.email;
     restaurant.website = restaurantData.website;
+    restaurant.options = {
+      gift_card: restaurantData.options?.gift_card || false,
+      reservations: restaurantData.options?.reservations || false,
+      take_away: restaurantData.options?.take_away || false,
+    };
+
+    // Gestion de la clé Stripe
+    if (stripeSecretKey === null || stripeSecretKey === "") {
+      // Supprime la clé Stripe si elle est vide ou null
+      restaurant.stripeSecretKey = null;
+    } else if (stripeSecretKey) {
+      try {
+        const stripeInstance = require("stripe")(stripeSecretKey);
+        await stripeInstance.balance.retrieve(); // Valide la clé Stripe
+
+        const encryptedKey = encryptApiKey(stripeSecretKey);
+        restaurant.stripeSecretKey = encryptedKey;
+      } catch (error) {
+        return res
+          .status(400)
+          .json({ message: "Clé Stripe invalide. Veuillez vérifier." });
+      }
+    }
 
     await restaurant.save();
 

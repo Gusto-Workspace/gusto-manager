@@ -88,11 +88,8 @@ export default function HoursRestaurantComponent(props) {
   }
 
   return (
-    <div
-       
-      className="bg-white p-6 pb-2 rounded-lg drop-shadow-sm w-full desktop:w-1/2 text-darkBlue h-fit"
-    >
-      <div className="flex justify-between">
+    <div className="bg-white p-6 pb-2 rounded-lg drop-shadow-sm w-full desktop:w-1/2 text-darkBlue h-fit">
+      <div className="flex gap-6 flex-wrap justify-between">
         <h1 className="font-bold text-lg">{t("hours.title")}</h1>
 
         <div className="flex gap-2">
@@ -123,42 +120,44 @@ export default function HoursRestaurantComponent(props) {
         </div>
       </div>
 
-      <hr className="opacity-20 mt-6 mb-4" />
+      <hr className="opacity-20 mt-6 mobile:mb-4" />
 
       <ul className="mt-0">
         {localHours.map((hour, i) => (
           <Fragment key={hour.day}>
-            <li className="flex justify-between items-center py-2 h-16">
+            <li className="flex flex-col gap-2 mobile:flex-row justify-between items-center py-6 mobile:py-2 mobile:h-16">
               <span>{t(hour.day)}</span>
 
               {props.dataLoading ? (
-                <DoubleSkeletonComonent />
+                <DoubleSkeletonComonent justify="justify-center mobile:justify-end"/>
               ) : editing ? (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="time"
-                    value={hour.open}
-                    onChange={(e) =>
-                      handleChange(hour.day, "open", e.target.value)
-                    }
-                    disabled={hour.isClosed}
-                    className={`border p-1 rounded-lg ${
-                      hour.isClosed ? "opacity-50" : ""
-                    }`}
-                  />
-                  <span>{t("hours.to")}</span>
+                <div className="flex flex-col mobile:flex-row items-center gap-4 mobile:gap-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="time"
+                      value={hour.open}
+                      onChange={(e) =>
+                        handleChange(hour.day, "open", e.target.value)
+                      }
+                      disabled={hour.isClosed}
+                      className={`border p-1 rounded-lg ${
+                        hour.isClosed ? "opacity-50" : ""
+                      }`}
+                    />
+                    <span>{t("hours.to")}</span>
 
-                  <input
-                    type="time"
-                    value={hour.close}
-                    onChange={(e) =>
-                      handleChange(hour.day, "close", e.target.value)
-                    }
-                    disabled={hour.isClosed}
-                    className={`border p-1 rounded-lg ${
-                      hour.isClosed ? "opacity-50" : ""
-                    }`}
-                  />
+                    <input
+                      type="time"
+                      value={hour.close}
+                      onChange={(e) =>
+                        handleChange(hour.day, "close", e.target.value)
+                      }
+                      disabled={hour.isClosed}
+                      className={`border p-1 rounded-lg ${
+                        hour.isClosed ? "opacity-50" : ""
+                      }`}
+                    />
+                  </div>
 
                   <label className="flex items-center gap-2">
                     <input

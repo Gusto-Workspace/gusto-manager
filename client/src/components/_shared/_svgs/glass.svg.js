@@ -6,6 +6,7 @@ export function GlassSvg(props) {
       height={props.height ?? 800}
       fill="none"
       viewBox="-2 0 19 19"
+      className={props.className ?? ""}
     >
       <path
         fill={props.fillColor ?? "#131E36"}

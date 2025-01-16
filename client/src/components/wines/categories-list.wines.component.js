@@ -75,9 +75,9 @@ export default function CategoriesListWinesComponent() {
 
   function handleCategoryClick(category) {
     const formattedName = category.name
-    .replace(/\//g, "-")
-    .replace(/\s+/g, "&") 
-    .toLowerCase();
+      .replace(/\//g, "-")
+      .replace(/\s+/g, "&")
+      .toLowerCase();
     router.push(`/wines/${formattedName}-${category._id}`);
   }
 
@@ -176,11 +176,16 @@ export default function CategoriesListWinesComponent() {
     <div className="flex flex-col gap-6">
       <hr className="opacity-20" />
 
-      <div className="flex justify-between">
-        <div className="flex gap-2 items-center">
-          <WineSvg width={30} height={30} fillColor="#131E3690" />
+      <div className="flex gap-4 flex-wrap justify-between">
+        <div className="flex gap-2 min-h-[40px] items-center">
+          <WineSvg
+            width={30}
+            height={30}
+            className="min-h-[30px] min-w-[30px]"
+            fillColor="#131E3690"
+          />
 
-          <h1 className="pl-2 text-2xl">{t("titles.main")}</h1>
+          <h1 className="pl-2 text-xl tablet:text-2xl">{t("titles.main")}</h1>
         </div>
 
         <button
@@ -196,10 +201,7 @@ export default function CategoriesListWinesComponent() {
       </div>
 
       {categories && (
-        <div
-           
-          className="flex flex-col gap-12"
-        >
+        <div className="flex flex-col gap-12">
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
@@ -208,7 +210,7 @@ export default function CategoriesListWinesComponent() {
             <SortableContext
               items={categories?.map((category) => category._id)}
             >
-              <div className="grid grid-cols-1 tablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-4 gap-6">
+              <div className="grid grid-cols-1 midTablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-4 gap-6">
                 {categories?.map((category, i) => (
                   <CardCategoryListComponent
                     key={category._id}
@@ -238,6 +240,7 @@ export default function CategoriesListWinesComponent() {
           handleSubmit={handleSubmit}
           register={register}
           errors={errors}
+          reset={reset}
           isSubmitting={isSubmitting}
         />
       )}

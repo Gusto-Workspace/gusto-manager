@@ -7,14 +7,16 @@
     "drinks": "Drinks",
     "wines": "Wines",
     "news": "News",
-    "giftCards": "Gift cards"
+    "giftCards": "Gift cards",
+    "reservations": "Online booking",
+    "takeAway": "Take away"
   },
   "settings": {
     "hello": "Hello",
     "restaurant": "Restaurant",
     "settings": "Settings",
     "help": "Help",
-    "subscription" : "Subscription",
+    "subscription": "Subscription",
     "about": "About"
   },
   "buttons": {

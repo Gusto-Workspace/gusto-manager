@@ -33,7 +33,8 @@ export default function NavAdminComponent() {
             <span>Manager</span>
           </div>
         </h1>
-      </div>{" "}
+      </div>
+
       <ul className="flex-1 flex flex-col gap-8">
         <li className="h-12 flex items-center">
           <Link
@@ -53,6 +54,7 @@ export default function NavAdminComponent() {
             {t("nav.restaurants")}
           </Link>
         </li>
+        
         <li className="h-12 flex items-center">
           <Link
             href="/admin/owners"
@@ -61,6 +63,7 @@ export default function NavAdminComponent() {
             {t("nav.owners")}
           </Link>
         </li>
+
         <li className="h-12 flex items-center">
           <Link
             href="/admin/subscriptions"

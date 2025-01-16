@@ -18,8 +18,8 @@ import { InvoiceSvg } from "@/components/_shared/_svgs/_index";
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
-import SubscriptionInfoComponent from "@/components/dashboard/subscription-info.dashboard.component";
-import InvoicesListComponent from "@/components/dashboard/invoices-list.dashboard.component";
+import SubscriptionInfoComponent from "@/components/subscription/subscription-info.dashboard.component";
+import InvoicesListComponent from "@/components/subscription/invoices-list.dashboard.component";
 
 export default function SubscriptionPage(props) {
   const { t } = useTranslation("");
@@ -97,7 +97,7 @@ export default function SubscriptionPage(props) {
         <div className="flex">
           <NavComponent />
 
-           <div className="ml-[250px] bg-lightGrey text-darkBlue flex-1 p-6 flex flex-col gap-6 min-h-screen">
+           <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 p-6 flex flex-col gap-6 min-h-screen">
             <SettingsComponent
               dataLoading={restaurantContext.dataLoading}
               setDataLoading={restaurantContext.setDataLoading}

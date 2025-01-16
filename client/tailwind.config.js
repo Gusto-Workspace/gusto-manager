@@ -16,6 +16,8 @@ module.exports = {
       ultraWild: "1472px",
       desktop: "1224px",
       tablet: "1024px",
+      midTablet: "768px",
+      mobile: "480px",
     },
     extend: {},
   },

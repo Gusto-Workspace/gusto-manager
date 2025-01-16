@@ -11,12 +11,15 @@ import { useTranslation } from "next-i18next";
 
 // COMPONENTS
 import FormInputComponent from "@/components/_shared/inputs/form-input.component";
+import { VisibleSvg } from "@/components/_shared/_svgs/visible.svg";
+import { NoVisibleSvg } from "@/components/_shared/_svgs/no-visible.svg";
 
 export default function AddRestaurantModal(props) {
   const { t } = useTranslation("admin");
 
   const [owners, setOwners] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [showStripeKey, setShowStripeKey] = useState(false);
 
   const {
     register,
@@ -43,7 +46,25 @@ export default function AddRestaurantModal(props) {
       }
     }
 
+    async function fetchStripeKey() {
+      if (props.restaurant) {
+        try {
+          const response = await axios.get(
+            `${process.env.NEXT_PUBLIC_API_URL}/admin/restaurants/${props.restaurant._id}/stripe-key`
+          );
+
+          setValue("stripeSecretKey", response.data.stripeKey || "");
+        } catch (error) {
+          console.error(
+            "Erreur lors de la récupération de la clé Stripe:",
+            error
+          );
+        }
+      }
+    }
+
     fetchOwners();
+    fetchStripeKey();
 
     if (props.restaurant) {
       reset({
@@ -58,6 +79,11 @@ export default function AddRestaurantModal(props) {
           phone: props.restaurant.phone,
           email: props.restaurant.email,
           website: props.restaurant.website,
+          options: {
+            gift_card: props.restaurant.options?.gift_card || false,
+            reservations: props.restaurant.options?.reservations || false,
+            take_away: props.restaurant.options?.take_away || false,
+          },
         },
       });
     } else {
@@ -68,6 +94,7 @@ export default function AddRestaurantModal(props) {
 
   async function onSubmit(data) {
     const restaurantData = data.restaurantData;
+    const stripeSecretKey = data.stripeSecretKey;
     let ownerData = null;
     let existingOwnerId = null;
 
@@ -84,6 +111,7 @@ export default function AddRestaurantModal(props) {
         restaurantData,
         ownerData,
         existingOwnerId,
+        stripeSecretKey,
       };
 
       let response;
@@ -105,7 +133,6 @@ export default function AddRestaurantModal(props) {
       props.closeModal();
     } catch (error) {
       console.error("Erreur lors de l'ajout/mise à jour du restaurant:", error);
-      alert("Erreur lors de l'ajout/mise à jour du restaurant.");
     }
   }
 
@@ -187,6 +214,64 @@ export default function AddRestaurantModal(props) {
             required={true}
             errors={errors}
           />
+
+          <h3>{t("restaurants.form.options.title")}</h3>
+
+          <div className="flex flex-col gap-2">
+            <label>
+              <input
+                className="mr-2"
+                type="checkbox"
+                {...register("restaurantData.options.gift_card")}
+              />
+              {t("restaurants.form.options.giftCard")}
+            </label>
+
+            <label>
+              <input
+                className="mr-2"
+                type="checkbox"
+                {...register("restaurantData.options.reservations")}
+              />
+              {t("restaurants.form.options.reservations")}
+            </label>
+
+            <label>
+              <input
+                className="mr-2"
+                type="checkbox"
+                {...register("restaurantData.options.take_away")}
+              />
+              {t("restaurants.form.options.takeAway")}
+            </label>
+          </div>
+
+          <h3>{t("restaurants.form.stripeSecretKey")}</h3>
+          <div className="flex items-center gap-4">
+            <FormInputComponent
+              name="stripeSecretKey"
+              placeholder={
+                watch("stripeSecretKey")
+                  ? "••••••••••••••••••••••••••••"
+                  : "Saisir la clé Stripe"
+              }
+              register={register}
+              errors={errors}
+              disabled={showStripeKey ? false : true}
+              type={showStripeKey ? "text" : "password"}
+            />
+            <button
+              type="button"
+              onClick={() => setShowStripeKey(!showStripeKey)}
+              className="text-blue"
+            >
+              {showStripeKey ? (
+                <VisibleSvg width={23} height={23} />
+              ) : (
+                <NoVisibleSvg width={23} height={23} />
+              )}
+            </button>
+          </div>
 
           <h3>{t("owner.form.infos")}</h3>
 

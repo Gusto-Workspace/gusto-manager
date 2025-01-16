@@ -121,8 +121,8 @@ export default function CustomMenuComponent(props) {
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-8">
-      <div className="flex gap-4">
+    <form onSubmit={handleSubmit(onSubmit)}>
+      <div className="flex flex-col tablet:flex-row gap-4">
         <div className="w-full flex flex-col gap-2">
           <div className="bg-white p-6 drop-shadow-sm rounded-lg flex flex-col gap-4">
             <div className="flex flex-col gap-1">
@@ -133,7 +133,7 @@ export default function CustomMenuComponent(props) {
               <input
                 type="text"
                 placeholder="-"
-                {...register("name")}
+                {...register("name", { required: true })}
                 className="p-2 border rounded-lg w-full"
                 disabled={!props.isEditing}
               />
@@ -196,7 +196,7 @@ export default function CustomMenuComponent(props) {
                     <h2 className="relative font-semibold uppercase text-center bg-white px-6 w-fit mx-auto z-20">
                       {categoryName}
                     </h2>
-                    
+
                     <hr className="bg-darkBlue absolute h-[1px] w-full top-1/2 -translate-y-1/2 z-10 opacity-50" />
                   </div>
 
@@ -238,7 +238,7 @@ export default function CustomMenuComponent(props) {
             )}
           </div>
 
-          <div className="flex gap-4 mx-auto pt-12">
+          <div className="hidden tablet:flex gap-4 mx-auto pt-8">
             {props.isEditing && (
               <button
                 type="submit"
@@ -268,6 +268,26 @@ export default function CustomMenuComponent(props) {
             />
           </div>
         )}
+
+        <div className="flex tablet:hidden gap-4 mx-auto pt-4">
+          {props.isEditing && (
+            <button
+              type="submit"
+              className="p-2 text-white rounded-lg bg-blue"
+              disabled={isLoading}
+            >
+              {isLoading ? t("buttons.loading") : t("buttons.save")}
+            </button>
+          )}
+
+          <button
+            type="button"
+            className="px-4 py-2 text-white bg-red rounded-lg"
+            onClick={() => router.back()}
+          >
+            {props.isEditing ? t("buttons.cancel") : t("buttons.return")}
+          </button>
+        </div>
       </div>
     </form>
   );

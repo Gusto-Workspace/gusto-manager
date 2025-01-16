@@ -49,7 +49,7 @@ export default function RestaurantPage(props) {
         <div className="flex">
           <NavComponent />
 
-           <div className="ml-[250px] bg-lightGrey text-darkBlue flex-1 p-6 flex flex-col gap-6 min-h-screen">
+           <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 p-6 flex flex-col gap-6 min-h-screen">
             <SettingsComponent
               dataLoading={restaurantContext.dataLoading}
               setDataLoading={restaurantContext.setDataLoading}
@@ -59,9 +59,11 @@ export default function RestaurantPage(props) {
             />
 
             <hr className="opacity-20" />
+
             <div className="flex gap-2 items-center">
               <RestaurantSvg width={30} height={30} fillColor="#131E3690" />
-              <h1 className="pl-2 py-1 text-2xl">{t("restaurant:title")}</h1>
+
+              <h1 className="pl-2 py-1 text-xl tablet:text-2xl">{t("restaurant:title")}</h1>
             </div>
 
             <div className="flex gap-6 flex-col desktop:flex-row">

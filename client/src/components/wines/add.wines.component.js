@@ -142,10 +142,15 @@ export default function AddWinesComponent(props) {
     <section className="flex flex-col gap-6">
       <hr className="opacity-20" />
 
-      <div className="flex gap-2 py-1 items-center">
-        <WineSvg width={30} height={30} fillColor="#131E3690" />
+      <div className="flex gap-2 min-h-[40px] items-center">
+        <WineSvg
+          width={30}
+          height={30}
+          className="min-h-[30px] min-w-[30px]"
+          fillColor="#131E3690"
+        />
 
-        <h1 className="pl-2 text-2xl flex items-center gap-2 flex-wrap">
+        <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2 flex-wrap">
           <span>{t("titles.main")}</span>
 
           {props.category && (
@@ -171,7 +176,7 @@ export default function AddWinesComponent(props) {
         onSubmit={handleSubmit(onSubmit)}
         className="bg-white p-6 rounded-lg drop-shadow-sm flex flex-col gap-6"
       >
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid tablet:grid-cols-2 gap-4">
           <div className="flex flex-col gap-1">
             <label className="block font-semibold">
               <span>{t("form.labels.appellation")}</span>
@@ -209,7 +214,10 @@ export default function AddWinesComponent(props) {
 
             <div className="flex flex-col gap-4">
               {fields.map((item, index) => (
-                <div key={item.id} className="flex gap-4 items-center">
+                <div
+                  key={item.id}
+                  className="flex flex-col midTablet:flex-row items-start gap-4 midTablet:items-center"
+                >
                   <input
                     type="number"
                     placeholder="Volume"

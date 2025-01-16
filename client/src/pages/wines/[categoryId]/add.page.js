@@ -58,7 +58,7 @@ export default function AddWinePage(props) {
         <div className="flex">
           <NavComponent />
 
-           <div className="ml-[250px] bg-lightGrey text-darkBlue flex-1 p-6 flex flex-col gap-6 min-h-screen">
+           <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 p-6 flex flex-col gap-6 min-h-screen">
             <SettingsComponent
               dataLoading={restaurantContext.dataLoading}
               setDataLoading={restaurantContext.setDataLoading}

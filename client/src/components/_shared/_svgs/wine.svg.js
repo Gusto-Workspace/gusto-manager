@@ -6,6 +6,7 @@ export function WineSvg(props) {
       height={props.height ?? 800}
       baseProfile="tiny"
       viewBox="-63 65 128 128"
+      className={props.className ?? ""}
     >
       <path
         stroke={props.strokeColor ?? "black"}

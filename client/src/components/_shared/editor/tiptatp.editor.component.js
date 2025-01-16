@@ -202,7 +202,7 @@ export default function TiptapEditor({ value = "", onChange }) {
   return (
     <div className="tiptap-editor">
       <MenuBar editor={editor} t={t} />
-      <EditorContent editor={editor} className="editor-content w-[650px]" />
+      <EditorContent editor={editor} className="editor-content tablet:w-[650px]" />
     </div>
   );
 }

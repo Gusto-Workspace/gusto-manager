@@ -5,6 +5,7 @@ export function DrinkSvg(props) {
       width={props.width ?? 800}
       height={props.height ?? 800}
       viewBox="0 0 297 297"
+      className={props.className ?? ""}
     >
       <path
         fill={props.fillColor ?? "#131E36"}

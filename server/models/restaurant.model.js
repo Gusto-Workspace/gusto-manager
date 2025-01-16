@@ -22,6 +22,16 @@ const openingHourSchema = new mongoose.Schema(
   { _id: false }
 );
 
+// Sous-schéma pour les options
+const optionsSchema = new mongoose.Schema(
+  {
+    gift_card: { type: Boolean, default: false },
+    reservations: { type: Boolean, default: false },
+    take_away: { type: Boolean, default: false },
+  },
+  { _id: false }
+);
+
 // Sous-schéma pour les plats
 const dishSchema = new mongoose.Schema({
   name: { type: String, required: true },
@@ -121,6 +131,7 @@ const giftCardPurchaseSchema = new mongoose.Schema({
     enum: ["Valid", "Used", "Expired"],
     default: "Valid",
   },
+  useDate: { type: Date },
   beneficiaryFirstName: { type: String, required: true },
   beneficiaryLastName: { type: String, required: true },
   sender: { type: String },
@@ -157,6 +168,7 @@ const restaurantSchema = new mongoose.Schema({
   phone: { type: String, required: true },
   email: { type: String, required: true },
   website: { type: String },
+  stripeSecretKey: { type: String },
   social_media: { type: socialMediaSchema, default: {} },
   owner_id: {
     type: mongoose.Schema.Types.ObjectId,
@@ -172,6 +184,7 @@ const restaurantSchema = new mongoose.Schema({
   menus: [{ type: mongoose.Schema.Types.ObjectId, ref: "Menu" }],
   giftCards: { type: [giftCardSchema], default: [] },
   purchasesGiftCards: { type: [giftCardPurchaseSchema], default: [] },
+  options: { type: optionsSchema, default: {} },
   created_at: { type: Date, default: Date.now },
 });
 

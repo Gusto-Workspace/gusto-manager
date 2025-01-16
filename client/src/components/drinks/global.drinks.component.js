@@ -10,9 +10,14 @@ export default function GlobalDrinksComponent(props) {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex gap-2 items-center">
-        <GlassSvg width={30} height={30} fillColor="#131E3690" />
+        <GlassSvg
+          width={30}
+          height={30}
+          className="min-h-[30px] min-w-[30px]"
+          fillColor="#131E3690"
+        />
 
-        <h1 className="pl-2 text-2xl">{t("titles.second")}</h1>
+        <h1 className="pl-2 text-xl tablet:text-2xl">{t("titles.second")}</h1>
       </div>
 
       <div className="bg-white rounded-lg drop-shadow-sm p-12 max-w-[1000px] mx-auto w-full flex flex-col gap-12">
@@ -39,14 +44,11 @@ export default function GlobalDrinksComponent(props) {
 
               {/* Affichage des boissons dans la catégorie principale */}
               {category.drinks.some((drink) => drink.showOnWebsite) && (
-                <div className="desktop:w-[95%] mx-auto grid grid-cols-1 tablet:grid-cols-1 desktop:grid-cols-2 gap-y-6 gap-x-16">
+                <div className="desktop:w-[95%] grid grid-cols-1 midTablet:grid-cols-2 gap-y-6 gap-x-16">
                   {category.drinks
                     .filter((drink) => drink.showOnWebsite)
                     .map((drink, j) => (
-                      <div
-                        key={j}
-                        className="flex  justify-between"
-                      >
+                      <div key={j} className="flex  justify-between">
                         <div className="flex flex-col">
                           <h3 className="text-md font-semibold">
                             {drink.name}
@@ -94,7 +96,7 @@ export default function GlobalDrinksComponent(props) {
                     </div>
 
                     {/* Affichage des boissons dans la sous-catégorie */}
-                    <div className="desktop:w-[95%] mx-auto grid grid-cols-1 tablet:grid-cols-1 desktop:grid-cols-2 gap-y-6 gap-x-16">
+                    <div className="desktop:w-[95%] grid grid-cols-1 midTablet:grid-cols-2 gap-y-6 gap-x-16">
                       {subCategory.drinks
                         .filter((drink) => drink.showOnWebsite)
                         .map((drink, l) => (

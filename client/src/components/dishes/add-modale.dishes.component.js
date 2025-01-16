@@ -1,8 +1,22 @@
+import { useEffect } from "react";
+
 // I18N
 import { useTranslation } from "next-i18next";
 
 export default function AddModaleDishesComponent(props) {
   const { t } = useTranslation("dishes");
+
+  useEffect(() => {
+    if (props.setIsModalOpen) {
+      document.body.classList.add("overflow-hidden");
+    } else {
+      document.body.classList.remove("overflow-hidden");
+    }
+
+    return () => {
+      document.body.classList.remove("overflow-hidden");
+    };
+  }, [props.setIsModalOpen]);
 
   return (
     <div className="fixed inset-0 flex items-center justify-center z-[100]">
@@ -15,7 +29,7 @@ export default function AddModaleDishesComponent(props) {
         className="fixed inset-0 bg-black bg-opacity-20"
       />
 
-      <div className="bg-white p-6 rounded-lg shadow-lg w-[400px] z-10">
+      <div className="bg-white p-6 rounded-lg shadow-lg mx-6 w-[400px] z-10">
         <h2 className="text-xl font-semibold mb-6 text-center">
           {props.isDeleting
             ? t("buttons.deleteCategory")

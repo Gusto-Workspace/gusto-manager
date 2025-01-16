@@ -33,11 +33,11 @@ export default function InvoicesListComponent(props) {
   return (
     <div className="flex flex-col gap-4">
       {invoices?.length > 0 ? (
-        <ul className="bg-white p-6 rounded-lg drop-shadow-sm min-h-[100px] flex items-center">
+        <ul className=" flex flex-col gap-4 items-center">
           {invoices.map((invoice) => (
             <li
               key={invoice.id}
-              className="flex justify-between items-center w-full"
+              className="bg-white p-6 rounded-lg drop-shadow-sm min-h-[100px] flex justify-between items-center w-full"
             >
               <div>
                 <p className="text-base font-medium">

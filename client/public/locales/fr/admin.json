@@ -19,6 +19,7 @@
       "email": "Email de contact",
       "phone": "Téléphone",
       "web": "Site Web",
+      "stripeSecretKey" : "Clé Stripe du restaurant (si nécessaire)",
       "owner": "Propriétaire",
       "contact": "Informations de contact",
       "address": {
@@ -27,6 +28,12 @@
         "zipCode": "Code postal",
         "city": "Ville",
         "country": "Pays"
+      },
+      "options": {
+        "title" : "Options",
+        "giftCard": "Cartes cadeaux",
+        "reservations": "Réservation en ligne",
+        "takeAway": "Ventes à emporter"
       },
       "buttons": {
         "add": "Ajouter",
@@ -84,7 +91,7 @@
       "automatic": "Passer en mode de paiement automatique",
       "showInvoices": "Afficher les factures",
       "hideInvoices": "Masquer les factures",
-      "period": "Période",
+      "date": "Date",
       "amount": "Montant",
       "status": "État"
     },
@@ -93,7 +100,7 @@
       "errors": {
         "select": "Veuillez sélectionner un client, un restaurant et un abonnement",
         "create": "Erreur lors de la création de l'abonnement",
-        "alreadyCreated" : "Un abonnement est déjà associé à ce restaurant"
+        "alreadyCreated": "Un abonnement est déjà associé à ce restaurant"
       },
       "owner": "Sélectionner un propriétaire",
       "restaurant": "Sélectionner un restaurant",

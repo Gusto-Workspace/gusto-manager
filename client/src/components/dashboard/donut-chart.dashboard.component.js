@@ -26,7 +26,7 @@ export default function DonutChartComponent({ data = [], IconComponent }) {
             startAngle={90}
             endAngle={-270}
             style={{ outline: "none" }}
-            animationDuration={1000}
+            animationDuration={0}
           >
             {data.map((entry, index) => (
               <Cell key={`cell-${index}`} fill={entry.fill} cursor="pointer" />

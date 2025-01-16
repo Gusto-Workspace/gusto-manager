@@ -42,7 +42,7 @@ export default function CategoriesInputFixedMenuComponent(props) {
             {...props.register(
               `combinations.${props?.combinationIndex}.categories.${j}.value`
             )}
-            className={`p-2 border rounded-lg ${
+            className={`p-2 w-full mobile:w-auto border rounded-lg ${
               props?.errorFields.some(
                 (error) =>
                   error.comboIndex === props?.combinationIndex &&

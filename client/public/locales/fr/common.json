@@ -7,7 +7,9 @@
     "drinks": "Les boissons",
     "wines": "Les vins",
     "news": "Les actualités",
-    "giftCards": "Cartes cadeaux"
+    "giftCards": "Cartes cadeaux",
+    "reservations": "Réservations en ligne",
+    "takeAway": "Ventes à emporter"
   },
   "settings": {
     "hello": "Bonjour",

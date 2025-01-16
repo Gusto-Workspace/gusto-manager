@@ -1,10 +1,22 @@
 import { useState, useContext, useEffect } from "react";
 import { useRouter } from "next/router";
+
+// I18N
 import { useTranslation } from "next-i18next";
+
+// AXIOS
 import axios from "axios";
+
+// CONTENXT
 import { GlobalContext } from "@/contexts/global.context";
+
+// SVG
 import { MenuSvg } from "../_shared/_svgs/_index";
+
+// COMPONENTS
 import CardListMenuComponent from "./card-list-menu.menus.component";
+
+// DND
 import {
   DndContext,
   closestCenter,
@@ -122,13 +134,14 @@ export default function ListMenusComponent(props) {
   }
 
   return (
-    <div   className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6">
       <hr className="opacity-20" />
 
-      <div className="flex justify-between">
-        <div className="flex gap-2 items-center">
+      <div className="flex flex-wrap gap-4 justify-between">
+        <div className="flex gap-2 items-center min-h-[40px]">
           <MenuSvg width={30} height={30} fillColor="#131E3690" />
-          <h1 className="pl-2 text-2xl">{t("titles.main")}</h1>
+
+          <h1 className="pl-2 text-xl tablet:text-2xl">{t("titles.main")}</h1>
         </div>
 
         <button
@@ -146,7 +159,7 @@ export default function ListMenusComponent(props) {
           onDragEnd={handleDragEnd}
         >
           <SortableContext items={menus?.map((menu) => menu._id)}>
-            <div className="grid grid-cols-1 tablet:grid-cols-2 desktop:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 midTablet:grid-cols-2 desktop:grid-cols-3 gap-6">
               {menus?.map((menu, i) => (
                 <CardListMenuComponent
                   key={menu._id}
@@ -167,9 +180,9 @@ export default function ListMenusComponent(props) {
             onClick={!isDeleting ? closeDeleteModal : undefined}
             className="fixed inset-0 bg-black bg-opacity-20"
           />
-          <div className="bg-white p-6 rounded-lg shadow-lg w-[400px] z-10">
+          <div className="bg-white p-6 rounded-lg shadow-lg mx-6 w-[400px] z-10">
             <h2 className="text-xl font-semibold mb-6 text-center">
-              {t("buttons.deleteNews")}
+              {t("buttons.deleteMenu")}
             </h2>
 
             <p className="mb-6 text-center">

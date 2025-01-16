@@ -6,6 +6,7 @@ export function GiftSvg(props) {
       height={props.height ?? 800}
       fill="none"
       viewBox="0 0 24 24"
+      className={props.className ?? ""}
     >
       <path
         fill={props.fillColor ?? "#131E36"}

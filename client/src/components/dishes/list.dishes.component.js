@@ -148,11 +148,11 @@ export default function ListDishesComponent(props) {
     <div className="flex flex-col gap-6">
       <hr className="opacity-20" />
 
-      <div className="flex justify-between">
-        <div className="flex gap-2 items-center">
+      <div className="flex gap-4 flex-wrap justify-between">
+        <div className="flex gap-2 items-center min-h-[40px]">
           <DishSvg width={30} height={30} fillColor="#131E3690" />
 
-          <h1 className="pl-2 text-2xl flex items-center gap-2">
+          <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2">
             <span
               className="cursor-pointer hover:underline"
               onClick={() => router.push(baseRoute)}
@@ -212,7 +212,7 @@ export default function ListDishesComponent(props) {
             onClick={closeDeleteModal}
             className="fixed inset-0 bg-black bg-opacity-20"
           />
-          <div className="bg-white p-6 rounded-lg shadow-lg w-[400px] z-10">
+          <div className="bg-white p-6 rounded-lg shadow-lg mx-6 w-[400px] z-10">
             <h2 className="text-xl font-semibold mb-6 text-center">
               {t("buttons.deleteDish")}
             </h2>

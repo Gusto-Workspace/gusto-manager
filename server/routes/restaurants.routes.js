@@ -10,6 +10,9 @@ const authenticateToken = require("../middleware/authentificate-token");
 // MODELS
 const RestaurantModel = require("../models/restaurant.model");
 
+// CRYPTO
+const { decryptApiKey } = require("../services/encryption.service");
+
 // Fonction pour mettre à jour le statut des cartes cadeaux expirées
 async function updateExpiredStatus(restaurantId) {
   const restaurant = await RestaurantModel.findById(restaurantId);

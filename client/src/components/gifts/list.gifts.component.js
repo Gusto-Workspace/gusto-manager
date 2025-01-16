@@ -130,30 +130,37 @@ export default function ListGiftsComponent(props) {
 
   function handleDragEnd(event) {
     const { active, over } = event;
-  
+
     if (!active || !over) {
       return;
     }
-  
+
     const allGiftCards = [...giftCardsValue, ...giftCardsDescription];
-  
-    const oldIndex = allGiftCards.findIndex((giftCard) => giftCard._id === active.id);
-    const newIndex = allGiftCards.findIndex((giftCard) => giftCard._id === over.id);
-  
+
+    const oldIndex = allGiftCards.findIndex(
+      (giftCard) => giftCard._id === active.id
+    );
+    const newIndex = allGiftCards.findIndex(
+      (giftCard) => giftCard._id === over.id
+    );
+
     if (oldIndex !== -1 && newIndex !== -1) {
       const newOrder = arrayMove(allGiftCards, oldIndex, newIndex);
-  
+
       // Met à jour les états des deux listes
-      const newGiftCardsValue = newOrder.filter((giftCard) => !giftCard.description);
-      const newGiftCardsDescription = newOrder.filter((giftCard) => giftCard.description);
-  
+      const newGiftCardsValue = newOrder.filter(
+        (giftCard) => !giftCard.description
+      );
+      const newGiftCardsDescription = newOrder.filter(
+        (giftCard) => giftCard.description
+      );
+
       setGiftCardsValue(newGiftCardsValue);
       setGiftCardsDescription(newGiftCardsDescription);
-  
+
       saveNewGiftCardsOrder(newOrder); // Envoyer l'ordre combiné au backend
     }
   }
-  
 
   function saveNewGiftCardsOrder(updatedGiftCards) {
     const orderedGiftCardIds = updatedGiftCards.map((giftCard) => giftCard._id);
@@ -175,9 +182,14 @@ export default function ListGiftsComponent(props) {
     <section className="flex flex-col gap-6">
       <hr className="opacity-20" />
 
-      <div className="flex justify-between">
-        <div className="flex gap-2 items-center">
-          <GiftSvg width={30} height={30} fillColor="#131E3690" />
+      <div className="flex gap-4 flex-wrap justify-between">
+        <div className="flex gap-2 items-center min-h-[40px]">
+          <GiftSvg
+            width={30}
+            height={30}
+            className="min-h-[30px] min-w-[30px]"
+            fillColor="#131E3690"
+          />
 
           <h1 className="pl-2 text-2xl">{t("titles.main")}</h1>
         </div>
@@ -197,10 +209,11 @@ export default function ListGiftsComponent(props) {
       {giftCardsValue && (
         <div className="">
           <div className="relative my-6">
-            <h2 className="relative flex gap-2 items-center font-semibold w-fit px-6 mx-auto text-center uppercase bg-lightGrey z-[4]">
+            <h2 className="relative flex gap-2 items-center font-semibold w-fit px-2 midTablet:px-6 mx-auto text-center uppercase bg-lightGrey z-[4]">
               {t("titles.amountCard")}
             </h2>
-            <hr className="bg-darkBlue absolute h-[1px] w-[550px] left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 z-[3]" />
+
+            <hr className="bg-darkBlue absolute h-[1px] w-full midTablet:w-[550px] left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 z-[3]" />
           </div>
 
           <DndContext
@@ -232,10 +245,10 @@ export default function ListGiftsComponent(props) {
       {giftCardsDescription && (
         <div className="mb-12">
           <div className="relative my-6">
-            <h2 className="relative flex gap-2 items-center font-semibold w-fit px-6 mx-auto text-center uppercase bg-lightGrey z-20">
+            <h2 className="relative flex gap-2 items-center font-semibold w-fit px-2 midTablet:px-6 mx-auto text-center uppercase bg-lightGrey z-20">
               {t("titles.menuCard")}
             </h2>
-            <hr className="bg-darkBlue absolute h-[1px] w-[550px] left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 z-10" />
+            <hr className="bg-darkBlue absolute h-[1px] w-full midTablet:w-[550px] left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 z-10" />
           </div>
 
           <DndContext
@@ -264,23 +277,6 @@ export default function ListGiftsComponent(props) {
         </div>
       )}
 
-      {/* <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragEnd={handleDragEnd}
-      >
-        <SortableContext items={giftCards?.map((giftCard) => giftCard._id)}>
-          <CardGiftsComponent
-            titleKey="titles.menuCard"
-            filterCondition={(giftCard) => giftCard.description}
-            handleEditClick={handleEditClick}
-            handleDeleteClick={handleDeleteClick}
-            handleVisibilityToggle={handleVisibilityToggle}
-            currencySymbol={currencySymbol}
-          />
-        </SortableContext>
-      </DndContext> */}
-
       <PurchasesGiftListComponent
         purchasesGiftCards={
           restaurantContext?.restaurantData?.purchasesGiftCards
@@ -290,7 +286,7 @@ export default function ListGiftsComponent(props) {
       {/* MODALES */}
 
       {isModalOpen && (
-        <div className="fixed inset-0 flex items-center justify-center z-[100]">
+        <div className="fixed inset-0 flex items-center mx-6 justify-center z-[100]">
           <div
             onClick={() => {
               setIsModalOpen(false);

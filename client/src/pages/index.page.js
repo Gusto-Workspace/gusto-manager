@@ -13,7 +13,9 @@ import { GlobalContext } from "@/contexts/global.context";
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import DashboardComponent from "@/components/dashboard/dashboard.component";
-import { AnalyticsSvg } from "@/components/_shared/_svgs/analytics.data";
+
+// SVG
+import { AnalyticsSvg } from "@/components/_shared/_svgs/analytics.svg";
 
 export default function DashboardPage(props) {
   const { t } = useTranslation("");
@@ -60,7 +62,7 @@ export default function DashboardPage(props) {
         <div className="flex">
           <NavComponent />
 
-           <div className="ml-[250px] bg-lightGrey text-darkBlue flex-1 p-6 flex flex-col gap-6 min-h-screen">
+          <div className="tablet:tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 p-6 flex flex-col gap-6 min-h-screen">
             <SettingsComponent
               dataLoading={restaurantContext.dataLoading}
               setDataLoading={restaurantContext.setDataLoading}
@@ -81,6 +83,7 @@ export default function DashboardPage(props) {
 
             <DashboardComponent
               restaurantData={restaurantContext.restaurantData}
+              dataLoading={restaurantContext.dataLoading}
             />
           </div>
         </div>
@@ -92,7 +95,7 @@ export default function DashboardPage(props) {
 export async function getStaticProps({ locale }) {
   return {
     props: {
-      ...(await serverSideTranslations(locale, ["common", "index"])),
+      ...(await serverSideTranslations(locale, ["common", "index", "transactions"])),
     },
   };
 }

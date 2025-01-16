@@ -9,17 +9,30 @@ import { useTranslation } from "next-i18next";
 // CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
 
+// STRIPE
+import { loadStripe } from "@stripe/stripe-js";
+import { Elements } from "@stripe/react-stripe-js";
+
+// COMPONENTS
+import SepaMandateForm from "./sepa-mandate-form.admin.component";
+
+const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLIC_KEY);
+
 export default function AddSubscriptionsAdminComponent() {
   const { t } = useTranslation("admin");
-
   const { adminContext } = useContext(GlobalContext);
+
   const [selectedOwner, setSelectedOwner] = useState(null);
   const [selectedRestaurant, setSelectedRestaurant] = useState("");
   const [selectedSubscription, setSelectedSubscription] = useState("");
+  const [restaurantData, setRestaurantData] = useState({});
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
-  const [restaurantData, setRestaurantData] = useState({});
+  const [clientSecret, setClientSecret] = useState(null);
+  const [paymentMethodId, setPaymentMethodId] = useState(null);
+  const [subscriptionCreated, setSubscriptionCreated] = useState(false);
 
+  // === Handlers de sélection ===
   function handleOwnerChange(e) {
     const ownerId = e.target.value;
     const owner = adminContext.ownersList.find((o) => o._id === ownerId);
@@ -27,6 +40,10 @@ export default function AddSubscriptionsAdminComponent() {
     setSelectedRestaurant("");
     setSelectedSubscription("");
     setRestaurantData({});
+    setMessage("");
+    setClientSecret(null);
+    setPaymentMethodId(null);
+    setSubscriptionCreated(false);
   }
 
   function handleRestaurantChange(e) {
@@ -40,46 +57,87 @@ export default function AddSubscriptionsAdminComponent() {
       phone: restaurant.phone,
       language: restaurant.language || "fr",
     });
+    setMessage("");
+    setClientSecret(null);
+    setPaymentMethodId(null);
+    setSubscriptionCreated(false);
   }
 
   function handleSubscriptionChange(e) {
     setSelectedSubscription(e.target.value);
+    setMessage("");
+    setClientSecret(null);
+    setPaymentMethodId(null);
+    setSubscriptionCreated(false);
   }
 
-  function createSubscription() {
+  // === Étape 1 : Créer le SetupIntent pour SEPA ===
+  async function createSetupIntent() {
     if (!selectedOwner || !selectedSubscription || !selectedRestaurant) {
       setMessage(t("subscriptions.add.errors.select"));
       return;
     }
-
     setLoading(true);
     setMessage("");
 
-    axios
-      .post(`${process.env.NEXT_PUBLIC_API_URL}/admin/create-subscription`, {
-        stripeCustomerId: selectedOwner.stripeCustomerId,
-        priceId: selectedSubscription,
-        billingAddress: restaurantData.address,
-        phone: restaurantData.phone,
-        language: restaurantData.language,
-        restaurantId: selectedRestaurant,
-        restaurantName: selectedOwner.restaurants.find(
-          (r) => r._id === selectedRestaurant
-        ).name,
-      })
-      .then((response) => {
-        setMessage(response.data.message);
-      })
-      .catch((error) => {
-        const errorMsg =
-          t(error.response?.data?.message) ||
-          t("subscriptions.add.errors.create");
-        setMessage(errorMsg);
-        console.error(t("subscriptions.add.errors.create"), error);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
+    try {
+      const res = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/admin/create-setup-intent`,
+        {
+          stripeCustomerId: selectedOwner.stripeCustomerId,
+        }
+      );
+      setClientSecret(res.data.clientSecret);
+    } catch (err) {
+      console.error(err);
+      setMessage("Erreur lors de la création du SetupIntent");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Callback quand le SetupIntent est confirmé => on récupère l'ID PaymentMethod
+  function handleSetupSuccess(pmId) {
+    setPaymentMethodId(pmId);
+  }
+
+  // === Étape 2 : Créer l'abonnement SEPA automatiquement ===
+  async function createSepaSubscription() {
+    if (!paymentMethodId) {
+      setMessage(
+        "Aucun Mandat SEPA confirmé. Veuillez d'abord confirmer le mandat."
+      );
+      return;
+    }
+    setLoading(true);
+    setMessage("");
+
+    try {
+      const response = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/admin/create-subscription-sepa`,
+        {
+          stripeCustomerId: selectedOwner.stripeCustomerId,
+          priceId: selectedSubscription,
+          paymentMethodId: paymentMethodId, // on envoie le PaymentMethod
+          billingAddress: restaurantData.address,
+          phone: restaurantData.phone,
+          language: restaurantData.language,
+          restaurantId: selectedRestaurant,
+          restaurantName: selectedOwner.restaurants.find(
+            (r) => r._id === selectedRestaurant
+          ).name,
+        }
+      );
+      setSubscriptionCreated(true);
+    } catch (error) {
+      const errorMsg =
+        t(error.response?.data?.message) ||
+        t("subscriptions.add.errors.create");
+      setMessage(errorMsg);
+      console.error(t("subscriptions.add.errors.create"), error);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -94,7 +152,7 @@ export default function AddSubscriptionsAdminComponent() {
         </label>
         <select
           id="ownerSelect"
-          className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+          className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm"
           value={selectedOwner ? selectedOwner._id : ""}
           onChange={handleOwnerChange}
         >
@@ -120,7 +178,7 @@ export default function AddSubscriptionsAdminComponent() {
           </label>
           <select
             id="restaurantSelect"
-            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm"
             value={selectedRestaurant}
             onChange={handleRestaurantChange}
           >
@@ -155,7 +213,6 @@ export default function AddSubscriptionsAdminComponent() {
             <option disabled value="">
               -
             </option>
-
             {adminContext?.subscriptionsList?.map((subscription) => (
               <option
                 key={subscription.id}
@@ -174,17 +231,52 @@ export default function AddSubscriptionsAdminComponent() {
         </div>
       )}
 
-      {/* Bouton pour créer l'abonnement */}
-      {selectedSubscription && (
+      {/* Bouton pour créer le SetupIntent (et donc afficher le mandat SEPA) */}
+      {selectedSubscription && !clientSecret && (
         <button
-          onClick={createSubscription}
+          onClick={createSetupIntent}
           disabled={loading}
-          className="mt-4 bg-blue text-white px-4 py-2 rounded disabled:opacity-50"
+          className="mt-4 bg-blue text-white px-4 py-2 rounded disabled:opacity-50 w-fit"
         >
-          {loading
-            ? t("subscriptions.add.buttons.loading")
-            : t("subscriptions.add.buttons.create")}
+          {loading ? "Chargement..." : "Créer un mandat SEPA"}
         </button>
+      )}
+
+      {/* Si on a un clientSecret, on affiche le composant Stripe pour saisir l'IBAN */}
+      {clientSecret && (
+        <div className="mt-4">
+          <p>
+            Vous pouvez maintenant saisir l’IBAN du client pour générer le
+            mandat SEPA :
+          </p>
+          <Elements stripe={stripePromise} options={{ clientSecret }}>
+            <SepaMandateForm
+              clientSecret={clientSecret}
+              handleSetupSuccess={handleSetupSuccess}
+              paymentMethodId={paymentMethodId}
+            />
+          </Elements>
+        </div>
+      )}
+
+      {/* Quand le mandat est confirmé, on a paymentMethodId => bouton pour créer l'abonnement */}
+      {paymentMethodId && (
+        <>
+          {!subscriptionCreated ? (
+            <button
+              onClick={createSepaSubscription}
+              disabled={loading}
+              className="mt-4 bg-green text-white px-4 py-2 rounded w-fit mx-auto disabled:opacity-50"
+            >
+              {loading ? "Création en cours..." : "Créer l'abonnement SEPA"}
+            </button>
+          ) : (
+            // Abonnement créé => on affiche ce message
+            <div className="mt-4 bg-green text-white px-4 py-2 rounded w-fit mx-auto">
+              Abonnement créé avec succès !
+            </div>
+          )}
+        </>
       )}
 
       {/* Message de confirmation ou d'erreur */}

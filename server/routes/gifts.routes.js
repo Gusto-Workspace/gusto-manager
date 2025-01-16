@@ -162,7 +162,10 @@ router.put(
           "purchasesGiftCards._id": purchaseId,
         },
         {
-          $set: { "purchasesGiftCards.$.status": "Used" },
+          $set: {
+            "purchasesGiftCards.$.status": "Used",
+            "purchasesGiftCards.$.useDate": new Date(),
+          },
         },
         { new: true }
       )
@@ -218,6 +221,38 @@ router.put(
   }
 );
 
+// DELETE PURCHASED GIFT CARD
+router.delete(
+  "/restaurants/:restaurantId/purchases/:purchaseId/delete",
+  async (req, res) => {
+    const { restaurantId, purchaseId } = req.params;
+
+    try {
+      // Supprime une carte cadeau achetée spécifique
+      const restaurant = await RestaurantModel.findOneAndUpdate(
+        { _id: restaurantId },
+        { $pull: { purchasesGiftCards: { _id: purchaseId } } },
+        { new: true }
+      )
+        .populate("owner_id", "firstname")
+        .populate("menus");
+
+      if (!restaurant) {
+        return res
+          .status(404)
+          .json({ error: "Restaurant or purchased gift card not found" });
+      }
+
+      res
+        .status(200)
+        .json({ message: "Purchased gift card deleted", restaurant });
+    } catch (error) {
+      console.error("Error deleting purchased gift card:", error);
+      res.status(500).json({ error: "Error deleting purchased gift card" });
+    }
+  }
+);
+
 // UPDATE GIFTCARDS ORDER
 router.put(
   "/restaurants/:restaurantId/gifts/giftCards-list/order",
@@ -236,9 +271,7 @@ router.put(
 
       // Réorganiser les catégories selon l'ordre donné
       restaurant.giftCards = orderedGiftCardIds.map((giftCardId) =>
-        restaurant.giftCards.find(
-          (cat) => cat._id.toString() === giftCardId
-        )
+        restaurant.giftCards.find((cat) => cat._id.toString() === giftCardId)
       );
 
       await restaurant.save();
