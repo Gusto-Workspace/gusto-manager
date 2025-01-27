@@ -25,11 +25,8 @@ export default function AddReservationComponent(props) {
     email: "",
   });
 
-  const [isClient, setIsClient] = useState(false);
+ 
 
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
 
   function generateTimeOptions() {
     const times = [];
@@ -128,7 +125,7 @@ export default function AddReservationComponent(props) {
             {t("form.date")}
           </label>
 
-          {isClient && (
+         
             <Calendar
               onChange={handleDateChange}
               value={reservationData.date}
@@ -136,7 +133,7 @@ export default function AddReservationComponent(props) {
               view="month"
               locale="fr-FR"
             />
-          )}
+          
         </div>
 
         {/* Sélection de l'heure */}
