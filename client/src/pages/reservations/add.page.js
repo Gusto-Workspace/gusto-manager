@@ -11,9 +11,9 @@ import { GlobalContext } from "@/contexts/global.context";
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
-import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
+import AddReservationComponent from "@/components/reservations/add.reservations.component";
 
-export default function ReservationsPage(props) {
+export default function AddReservationsPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
 
   let title;
@@ -28,8 +28,6 @@ export default function ReservationsPage(props) {
       title = "Gusto Manager";
       description = "";
   }
-
-  if (!restaurantContext.isAuth) return null;
 
   return (
     <>
@@ -57,7 +55,7 @@ export default function ReservationsPage(props) {
         <div className="flex">
           <NavComponent />
 
-          <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 p-6 flex flex-col gap-6 min-h-screen">
+           <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 p-6 flex flex-col gap-6 min-h-screen">
             <SettingsComponent
               dataLoading={restaurantContext.dataLoading}
               setDataLoading={restaurantContext.setDataLoading}
@@ -66,13 +64,7 @@ export default function ReservationsPage(props) {
               restaurantData={restaurantContext.restaurantData}
             />
 
-            {restaurantContext?.restaurantData?.options?.reservations ? (
-              <p>Réservations en ligne</p>
-            ) : (
-              <NoAvailableComponent
-                dataLoading={restaurantContext.dataLoading}
-              />
-            )}
+           <AddReservationComponent/>
           </div>
         </div>
       </div>
@@ -80,10 +72,32 @@ export default function ReservationsPage(props) {
   );
 }
 
-export async function getStaticProps({ locale }) {
-  return {
-    props: {
-      ...(await serverSideTranslations(locale, ["common", "reservations"])),
-    },
-  };
+export async function getServerSideProps({ query, locale }) {
+  const { reservationId } = query;
+
+  try {
+    let reservations = null;
+
+    if (reservationId) {
+      const response = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/reservations/${reservationId}`
+      );
+      reservations = response.data.reservations;
+    }
+
+    return {
+      props: {
+        reservations,
+        ...(await serverSideTranslations(locale, ["common", "reservations"])),
+      },
+    };
+  } catch (error) {
+    console.error("Error fetching reservations data:", error);
+    return {
+      props: {
+        reservations: null,
+        ...(await serverSideTranslations(locale, ["common", "reservations"])),
+      },
+    };
+  }
 }

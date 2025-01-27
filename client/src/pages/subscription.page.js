@@ -44,7 +44,7 @@ export default function SubscriptionPage(props) {
     const token = localStorage.getItem("token");
     setIsLoading(true);
     axios
-      .get(`${process.env.NEXT_PUBLIC_API_URL}/owner/restaurant-subscription`, {
+      .get(`${process.env.NEXT_PUBLIC_API_URL}/restaurant-subscription`, {
         params: { restaurantId },
         headers: {
           Authorization: `Bearer ${token}`,

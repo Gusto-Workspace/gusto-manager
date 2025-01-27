@@ -143,7 +143,7 @@ router.get("/restaurants/:id", async (req, res) => {
 
 // GET CURRENT SUBSCRIPTION FOR A RESTAURANT BY CUSTOMER ID
 router.get(
-  "/owner/restaurant-subscription",
+  "/restaurant-subscription",
   authenticateToken,
   async (req, res) => {
     const { restaurantId } = req.query;

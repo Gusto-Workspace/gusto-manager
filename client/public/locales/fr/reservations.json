@@ -1,0 +1,17 @@
+{
+  "titles": {
+    "main": "Les Réservations"
+  },
+  "buttons": {
+    "add": "Ajouter",
+    "edit": "Modifier",
+    "save": "Enregister",
+    "delete": "Supprimer",
+    "confirm": "Confirmer",
+    "validate": "Valider",
+    "yes": "Oui",
+    "no": "Non",
+    "cancel": "Annuler",
+    "loading": "En cours..."
+  }
+}
