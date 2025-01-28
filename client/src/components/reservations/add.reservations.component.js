@@ -29,9 +29,6 @@ export default function AddReservationComponent(props) {
   });
 
   const [availableTimes, setAvailableTimes] = useState([]);
-  const [formErrors, setFormErrors] = useState({
-    time: false,
-  });
 
   useEffect(() => {
     const selectedDay = reservationData.date.getDay();
@@ -48,11 +45,6 @@ export default function AddReservationComponent(props) {
     setReservationData((prevData) => ({
       ...prevData,
       time: "",
-    }));
-
-    setFormErrors((prevErrors) => ({
-      ...prevErrors,
-      time: false,
     }));
   }, [reservationData.date, props.restaurantData.opening_hours]);
 
@@ -80,13 +72,6 @@ export default function AddReservationComponent(props) {
       ...prevData,
       time,
     }));
-
-    if (time) {
-      setFormErrors((prevErrors) => ({
-        ...prevErrors,
-        time: false,
-      }));
-    }
   }
 
   function formatTimeDisplay(time) {
@@ -96,14 +81,6 @@ export default function AddReservationComponent(props) {
 
   function handleFormSubmit(e) {
     e.preventDefault();
-
-    if (!reservationData.time) {
-      setFormErrors((prevErrors) => ({
-        ...prevErrors,
-        time: true,
-      }));
-      return;
-    }
 
     const formattedDate = format(reservationData.date, "yyyy-MM-dd");
     const formattedTime = reservationData.time;
@@ -115,6 +92,7 @@ export default function AddReservationComponent(props) {
     };
 
     console.log("Données de la réservation :", reservation);
+    
     setReservationData({
       date: new Date(),
       time: "",
@@ -124,7 +102,6 @@ export default function AddReservationComponent(props) {
       commentary: "",
     });
 
-    // Optionnel : redirection après soumission réussie
     // router.push("/reservations/success");
   }
 
@@ -156,14 +133,13 @@ export default function AddReservationComponent(props) {
     router.push("/reservations");
   }
 
-  // Fonction pour désactiver les jours fermés
   function disableClosedDays({ date, view }) {
     if (view !== "month") {
       return false;
     }
 
-    const selectedDay = date.getDay(); // 0 (dimanche) à 6 (samedi)
-    const dayIndex = selectedDay === 0 ? 6 : selectedDay - 1; // Dimanche devient 6, lundi 0, etc.
+    const selectedDay = date.getDay();
+    const dayIndex = selectedDay === 0 ? 6 : selectedDay - 1;
     const dayHours = props.restaurantData.opening_hours[dayIndex];
 
     return dayHours.isClosed;
