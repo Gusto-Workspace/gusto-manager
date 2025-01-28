@@ -27,6 +27,10 @@ export default function ListReservationsComponent(props) {
     router.push(`/reservations/add`);
   }
 
+  function handleParametersClick() {
+    router.push(`/reservations/parameters`);
+  }
+
   function handleEditClick(reservation) {
     router.push(`/reservations/add?reservationId=${reservation._id}`);
   }
@@ -79,12 +83,21 @@ export default function ListReservationsComponent(props) {
           </h1>
         </div>
 
-        <button
-          onClick={handleAddClick}
-          className="bg-blue px-6 py-2 rounded-lg text-white cursor-pointer"
-        >
-          {t("buttons.add")}
-        </button>
+        <div className="flex gap-4">
+          <button
+            onClick={handleParametersClick}
+            className="bg-violet px-6 py-2 rounded-lg text-white cursor-pointer"
+          >
+            {t("buttons.parameters")}
+          </button>
+
+          <button
+            onClick={handleAddClick}
+            className="bg-blue px-6 py-2 rounded-lg text-white cursor-pointer"
+          >
+            {t("buttons.add")}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 midTablet:grid-cols-2 desktop:grid-cols-3 gap-6">

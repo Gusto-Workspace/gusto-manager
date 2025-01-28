@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/router";
 
 // DATE
 import { format } from "date-fns";
@@ -16,6 +17,7 @@ import { ReservationSvg } from "../_shared/_svgs/reservation.svg";
 
 export default function AddReservationComponent(props) {
   const { t } = useTranslation("reservations");
+  const router = useRouter();
 
   const [reservationData, setReservationData] = useState({
     date: new Date(),
@@ -23,20 +25,53 @@ export default function AddReservationComponent(props) {
     numberOfPeople: 1,
     name: "",
     email: "",
+    commentary: "",
   });
 
- 
+  const [availableTimes, setAvailableTimes] = useState([]);
+  const [formErrors, setFormErrors] = useState({
+    time: false,
+  });
 
+  useEffect(() => {
+    const selectedDay = reservationData.date.getDay();
+    const dayIndex = selectedDay === 0 ? 6 : selectedDay - 1;
+    const dayHours = props.restaurantData.opening_hours[dayIndex];
 
-  function generateTimeOptions() {
-    const times = [];
-    for (let hour = 0; hour < 24; hour++) {
-      for (let minutes = 0; minutes < 60; minutes += 30) {
-        const formattedHour = hour.toString().padStart(2, "0");
-        const formattedMinutes = minutes.toString().padStart(2, "0");
-        times.push(`${formattedHour}:${formattedMinutes}`);
-      }
+    if (dayHours.isClosed) {
+      setAvailableTimes([]);
+    } else {
+      const { open, close } = dayHours.hours[0];
+      setAvailableTimes(generateTimeOptions(open, close));
     }
+
+    setReservationData((prevData) => ({
+      ...prevData,
+      time: "",
+    }));
+
+    setFormErrors((prevErrors) => ({
+      ...prevErrors,
+      time: false,
+    }));
+  }, [reservationData.date, props.restaurantData.opening_hours]);
+
+  function generateTimeOptions(openTime, closeTime) {
+    const times = [];
+    const [openHour, openMinute] = openTime.split(":").map(Number);
+    const [closeHour, closeMinute] = closeTime.split(":").map(Number);
+
+    const start = openHour * 60 + openMinute;
+    const end = closeHour * 60 + closeMinute;
+
+    for (let minutes = start; minutes <= end - 30; minutes += 30) {
+      const hour = Math.floor(minutes / 60)
+        .toString()
+        .padStart(2, "0");
+      const minute = (minutes % 60).toString().padStart(2, "0");
+      times.push(`${hour}:${minute}`);
+    }
+
     return times;
   }
 
@@ -45,16 +80,31 @@ export default function AddReservationComponent(props) {
       ...prevData,
       time,
     }));
+
+    if (time) {
+      setFormErrors((prevErrors) => ({
+        ...prevErrors,
+        time: false,
+      }));
+    }
   }
 
   function formatTimeDisplay(time) {
     const [hour, minute] = time.split(":");
     return `${hour}h${minute}`;
   }
-  
 
   function handleFormSubmit(e) {
     e.preventDefault();
+
+    if (!reservationData.time) {
+      setFormErrors((prevErrors) => ({
+        ...prevErrors,
+        time: true,
+      }));
+      return;
+    }
+
     const formattedDate = format(reservationData.date, "yyyy-MM-dd");
     const formattedTime = reservationData.time;
 
@@ -71,7 +121,11 @@ export default function AddReservationComponent(props) {
       numberOfPeople: 1,
       name: "",
       email: "",
+      commentary: "",
     });
+
+    // Optionnel : redirection après soumission réussie
+    // router.push("/reservations/success");
   }
 
   function handleInputChange(e) {
@@ -96,7 +150,23 @@ export default function AddReservationComponent(props) {
       numberOfPeople: 1,
       name: "",
       email: "",
+      commentary: "",
     });
+
+    router.push("/reservations");
+  }
+
+  // Fonction pour désactiver les jours fermés
+  function disableClosedDays({ date, view }) {
+    if (view !== "month") {
+      return false;
+    }
+
+    const selectedDay = date.getDay(); // 0 (dimanche) à 6 (samedi)
+    const dayIndex = selectedDay === 0 ? 6 : selectedDay - 1; // Dimanche devient 6, lundi 0, etc.
+    const dayHours = props.restaurantData.opening_hours[dayIndex];
+
+    return dayHours.isClosed;
   }
 
   return (
@@ -125,15 +195,14 @@ export default function AddReservationComponent(props) {
             {t("form.date")}
           </label>
 
-         
-            <Calendar
-              onChange={handleDateChange}
-              value={reservationData.date}
-              minDate={new Date()}
-              view="month"
-              locale="fr-FR"
-            />
-          
+          <Calendar
+            onChange={handleDateChange}
+            value={reservationData.date}
+            minDate={new Date()}
+            view="month"
+            locale="fr-FR"
+            tileDisabled={disableClosedDays}
+          />
         </div>
 
         {/* Sélection de l'heure */}
@@ -142,23 +211,27 @@ export default function AddReservationComponent(props) {
             {t("form.time")}
           </label>
 
-          <div className="flex flex-wrap gap-2">
-            {generateTimeOptions().map((time) => (
-              <button
-                type="button"
-                key={time}
-                onClick={() => handleTimeSelect(time)}
-                className={`px-3 py-1 rounded-md border text-sm ${
-                  reservationData.time === time
-                    ? "bg-blue text-white border-blue"
-                    : "bg-white text-black border-gray-300 hover:bg-gray-100"
-                }`}
-                aria-pressed={reservationData.time === time}
-              >
-                {formatTimeDisplay(time)}
-              </button>
-            ))}
-          </div>
+          {availableTimes.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {availableTimes.map((time) => (
+                <button
+                  type="button"
+                  key={time}
+                  onClick={() => handleTimeSelect(time)}
+                  className={`px-3 py-1 rounded-md border text-sm ${
+                    reservationData.time === time
+                      ? "bg-blue text-white border-blue"
+                      : "bg-white text-black"
+                  }`}
+                  aria-pressed={reservationData.time === time}
+                >
+                  {formatTimeDisplay(time)}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="">{t("messages.closed")}</p>
+          )}
         </div>
 
         {/* Nombre de personnes */}
@@ -210,11 +283,29 @@ export default function AddReservationComponent(props) {
           />
         </div>
 
+        <div>
+          <label htmlFor="commentary" className="block text-sm font-medium">
+            {t("form.commentary")}
+          </label>
+          <textarea
+            id="commentary"
+            name="commentary"
+            value={reservationData.commentary}
+            onChange={handleInputChange}
+            className="mt-1 block w-full border border-gray-300 rounded-md p-2"
+          />
+        </div>
+
         {/* Boutons Valider et Annuler */}
         <div className="flex justify-start gap-4 mt-4">
           <button
             type="submit"
-            className="px-4 py-2 rounded-lg bg-blue text-white"
+            className={`px-4 py-2 rounded-lg bg-blue text-white ${
+              !reservationData.time
+                ? "opacity-50 cursor-not-allowed"
+                : "hover:bg-blue-600"
+            }`}
+            disabled={!reservationData.time}
           >
             {t("buttons.validate")}
           </button>
@@ -222,7 +313,7 @@ export default function AddReservationComponent(props) {
           <button
             type="button"
             onClick={handleFormCancel}
-            className="px-4 py-2 rounded-lg bg-red text-white"
+            className="px-4 py-2 rounded-lg bg-red text-white hover:bg-red-600"
           >
             {t("buttons.cancel")}
           </button>

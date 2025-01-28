@@ -4,6 +4,7 @@
   },
   "buttons": {
     "add": "Ajouter",
+    "parameters": "Paramètres",
     "edit": "Modifier",
     "save": "Enregister",
     "delete": "Supprimer",

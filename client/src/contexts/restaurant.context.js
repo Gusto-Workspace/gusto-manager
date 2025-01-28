@@ -11,7 +11,7 @@ export default function RestaurantContext() {
   const router = useRouter();
   const [restaurantData, setRestaurantData] = useState(null);
   const [restaurantsList, setRestaurantsList] = useState([]);
-  const [dataLoading, setDataLoading] = useState(false);
+  const [dataLoading, setDataLoading] = useState(true);
   const [closeEditing, setCloseEditing] = useState(false);
   const [isAuth, setIsAuth] = useState(false);
 
