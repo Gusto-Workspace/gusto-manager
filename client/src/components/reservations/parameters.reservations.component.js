@@ -30,6 +30,7 @@ export default function ParametersReservationComponent(props) {
   } = useForm({
     defaultValues: {
       sameHoursAsRestaurant: true,
+      reservationDuration: false,
       autoAccept: true,
       interval: "30",
       manageDisponibilities: false,
@@ -40,7 +41,6 @@ export default function ParametersReservationComponent(props) {
     },
   });
 
-  // Utilisation de useFieldArray pour gérer dynamiquement les tables
   const { fields, append, remove } = useFieldArray({
     control,
     name: "tables",
@@ -53,25 +53,18 @@ export default function ParametersReservationComponent(props) {
       sameHoursAsRestaurant: data.sameHoursAsRestaurant,
       autoAccept: data.autoAccept,
       interval: data.interval,
-      reservationTime: data.reservationTime,
-      reservationDuration: data.reservationDuration, // Ajouter la durée
-      selectedTable: data.selectedTable,
+      reservationDuration: data.reservationDuration,
       reservationHours: data.sameHoursAsRestaurant
-        ? restaurantContext.restaurantData?.openingHours
+        ? restaurantContext.restaurantData?.opening_hours
         : reservationHours,
       manageDisponibilities: data.manageDisponibilities,
-      tables: data.manageDisponibilities ? data.tables : null, // Inclure les tables dans les données du formulaire
-      reservationDuration: data.reservationDuration,
+      tables: data.manageDisponibilities ? data.tables : null,
       reservationDurationMinutes: data.reservationDuration
         ? data.reservationDurationMinutes
         : null,
     };
 
     console.log("Données de réservation :", formData);
-  }
-
-  function handleUpdateData(updatedRestaurant) {
-    restaurantContext.setRestaurantData(updatedRestaurant);
   }
 
   function handleBack() {
@@ -107,39 +100,36 @@ export default function ParametersReservationComponent(props) {
 
       <form
         onSubmit={handleSubmit(onSubmit)}
-        className="flex flex-col gap-6 mt-4"
+        className="flex flex-col gap-12 mt-4"
       >
-        {/* Checkbox pour indiquer si les horaires de réservation sont les mêmes que ceux du restaurant */}
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            id="sameHoursAsRestaurant"
-            {...register("sameHoursAsRestaurant")}
-          />
-          <label htmlFor="sameHoursAsRestaurant">
-            {t("labels.sameHoursAsRestaurant")}
-          </label>
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="sameHoursAsRestaurant"
+              {...register("sameHoursAsRestaurant")}
+            />
+            <label htmlFor="sameHoursAsRestaurant">
+              {t("labels.sameHoursAsRestaurant")}
+            </label>
+          </div>
+
+          {!sameHoursAsRestaurant && (
+            <HoursRestaurantComponent
+              restaurantId={restaurantContext.restaurantData?._id}
+              dataLoading={restaurantContext.dataLoading}
+              closeEditing={restaurantContext.closeEditing}
+              reservations={true}
+              onChange={onReservationHoursChange}
+            />
+          )}
         </div>
 
-        {/* Afficher HoursRestaurantComponent uniquement si la checkbox n'est pas cochée */}
-        {!sameHoursAsRestaurant && (
-          <HoursRestaurantComponent
-            restaurantId={restaurantContext.restaurantData?._id}
-            dataLoading={restaurantContext.dataLoading}
-            closeEditing={restaurantContext.closeEditing}
-            handleUpdateData={handleUpdateData}
-            reservations={true}
-            onChange={onReservationHoursChange}
-          />
-        )}
-
-        {/* Checkbox pour accepter automatiquement les réservations */}
         <div className="flex items-center gap-2">
           <input type="checkbox" id="autoAccept" {...register("autoAccept")} />
           <label htmlFor="autoAccept">{t("labels.autoAccept")}</label>
         </div>
 
-        {/* Sélection de l'intervalle entre les créneaux de réservation */}
         <div className="flex flex-col">
           <label htmlFor="interval" className="mb-2">
             {t("labels.interval")}
@@ -188,7 +178,7 @@ export default function ParametersReservationComponent(props) {
             </div>
           </div>
 
-          <p>
+          <p className="text-sm opacity-70">
             Si cette option est cochée, alors la réservation passera
             automatiquement en "Terminée" au bout du temps que vous avez choisi.
             Exemple, si la réservation est à 20h, que vous avez choisi une durée
@@ -200,7 +190,6 @@ export default function ParametersReservationComponent(props) {
           </p>
         </div>
 
-        {/* Section de gestion des tables */}
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
             <input
@@ -213,7 +202,7 @@ export default function ParametersReservationComponent(props) {
             </label>
           </div>
 
-          <p>
+          <p className="text-sm opacity-70">
             Cette option permet de gérer vos réservations en fonction des
             disponibilités des tables et des places. Exemple, si une réservation
             pour 4 personnes est demandée, cette option permet de vérifier
@@ -225,7 +214,7 @@ export default function ParametersReservationComponent(props) {
 
           {manageDisponibilities && (
             <div className="flex flex-col gap-4">
-              <p>
+              <p className="text-sm opacity-70">
                 Si la case "accepter automatiquement les réservations" est
                 cochée, une table sera automatiquement attribuée lors d'une
                 réservation. Si la case n'est pas cochée, alors vous aurez la
@@ -278,8 +267,8 @@ export default function ParametersReservationComponent(props) {
           )}
         </div>
 
-        {/* Boutons Valider et Retour */}
         <hr className="opacity-30" />
+
         <div className="flex justify-center gap-4">
           <button
             type="submit"

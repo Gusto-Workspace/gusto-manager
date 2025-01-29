@@ -2,6 +2,7 @@
   "title": "Restaurant Informations",
   "hours": {
     "title": "Opening hours",
+    "reservationTitle": "Define reservation times",
     "days": {
       "monday": "Monday",
       "tuesday": "Tuesday",

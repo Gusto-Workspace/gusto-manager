@@ -10,7 +10,7 @@
     "hour": "heure",
     "hoursTitle": "Horaires de Réservation",
     "sameHoursAsRestaurant": "Utiliser les mêmes horaires que le restaurant",
-    "manageDisponibilities": "Utiliser la gestion intelligente des plans de table"
+    "manageDisponibilities": "Utiliser la gestion intelligente des réservations"
   },
   "buttons": {
     "add": "Ajouter",
