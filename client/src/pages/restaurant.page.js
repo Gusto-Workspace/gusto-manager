@@ -9,12 +9,14 @@ import { useTranslation } from "next-i18next";
 // CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
 
+// SVG
+import { RestaurantSvg } from "@/components/_shared/_svgs/restaurant.svg";
+
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import HoursRestaurantComponent from "@/components/restaurant/hours.restaurant.component";
 import ContactRestaurantComponent from "@/components/restaurant/contact.restaurant.component";
-import { RestaurantSvg } from "@/components/_shared/_svgs/restaurant.svg";
 
 export default function RestaurantPage(props) {
   const { t } = useTranslation("");

@@ -92,7 +92,7 @@ export default function AddReservationComponent(props) {
     };
 
     console.log("Données de la réservation :", reservation);
-    
+
     setReservationData({
       date: new Date(),
       time: "",
@@ -268,7 +268,7 @@ export default function AddReservationComponent(props) {
             name="commentary"
             value={reservationData.commentary}
             onChange={handleInputChange}
-            className="mt-1 block w-full border border-gray-300 rounded-md p-2"
+            className="mt-1 block w-full border border-gray-300 rounded-md p-2 resize-none"
           />
         </div>
 

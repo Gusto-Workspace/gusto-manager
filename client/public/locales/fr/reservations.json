@@ -2,8 +2,19 @@
   "titles": {
     "main": "Les Réservations"
   },
+  "labels": {
+    "autoAccept": "Accepter automatiquement les réservations",
+    "reservationDuration": "Passer une réservation en « Terminée » automatiquement au bout de",
+    "interval": "Intervalle entre les créneaux de réservation",
+    "minutes": "minutes",
+    "hour": "heure",
+    "hoursTitle": "Horaires de Réservation",
+    "sameHoursAsRestaurant": "Utiliser les mêmes horaires que le restaurant",
+    "manageDisponibilities": "Utiliser la gestion intelligente des plans de table"
+  },
   "buttons": {
     "add": "Ajouter",
+    "addTable": "Ajouter une table",
     "parameters": "Paramètres",
     "edit": "Modifier",
     "save": "Enregister",
@@ -13,6 +24,7 @@
     "yes": "Oui",
     "no": "Non",
     "cancel": "Annuler",
+    "back": "Retour",
     "loading": "En cours..."
   }
 }

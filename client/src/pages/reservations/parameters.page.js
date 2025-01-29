@@ -84,7 +84,7 @@ export default function ParametersReservationsPage(props) {
 export async function getStaticProps({ locale }) {
   return {
     props: {
-      ...(await serverSideTranslations(locale, ["common", "reservations"])),
+      ...(await serverSideTranslations(locale, ["common", "reservations", "restaurant"])),
     },
   };
 }
