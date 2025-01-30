@@ -10,11 +10,21 @@ router.put("/owner/restaurants/:id/hours", async (req, res) => {
   const { openingHours } = req.body;
 
   try {
+    if (!Array.isArray(openingHours)) {
+      return res.status(400).json({ message: "Invalid openingHours format" });
+    }
+
+    // Formater les heures d'ouverture sans limiter à une seule plage
     const formattedOpeningHours = openingHours.map((hour) => {
       return {
         day: hour.day,
         isClosed: hour.isClosed,
-        hours: hour.isClosed ? [] : [{ open: hour.open, close: hour.close }],
+        hours: hour.isClosed
+          ? []
+          : hour.hours.map((h) => ({
+              open: h.open,
+              close: h.close,
+            })),
       };
     });
 
