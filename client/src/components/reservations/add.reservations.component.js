@@ -25,28 +25,46 @@ export default function AddReservationComponent(props) {
     numberOfPeople: 1,
     name: "",
     email: "",
+    phoneNumber: "",
     commentary: "",
   });
 
   const [availableTimes, setAvailableTimes] = useState([]);
 
   useEffect(() => {
-    const selectedDay = reservationData.date.getDay();
-    const dayIndex = selectedDay === 0 ? 6 : selectedDay - 1;
-    const dayHours = props.restaurantData.opening_hours[dayIndex];
+    if (props?.restaurantData?.reservations) {
+      const selectedDay = reservationData.date.getDay();
+      const dayIndex = selectedDay === 0 ? 6 : selectedDay - 1;
+      const dayHours = props.restaurantData.reservations.parameters
+        .same_hours_as_restaurant
+        ? props.restaurantData.opening_hours[dayIndex]
+        : props.restaurantData.reservations.parameters.reservation_hours[
+            dayIndex
+          ];
 
-    if (dayHours.isClosed) {
-      setAvailableTimes([]);
-    } else {
-      const { open, close } = dayHours.hours[0];
-      setAvailableTimes(generateTimeOptions(open, close));
+      if (dayHours.isClosed) {
+        setAvailableTimes([]);
+      } else {
+        if (Array.isArray(dayHours.hours) && dayHours.hours.length > 0) {
+          const allAvailableTimes = dayHours.hours.flatMap(({ open, close }) =>
+            generateTimeOptions(open, close)
+          );
+          setAvailableTimes(allAvailableTimes);
+        } else {
+          setAvailableTimes([]);
+        }
+      }
+
+      setReservationData((prevData) => ({
+        ...prevData,
+        time: "",
+      }));
     }
-
-    setReservationData((prevData) => ({
-      ...prevData,
-      time: "",
-    }));
-  }, [reservationData.date, props.restaurantData.opening_hours]);
+  }, [
+    reservationData.date,
+    props.restaurantData.opening_hours,
+    props.restaurantData.reservations.parameters.reservation_hours,
+  ]);
 
   function generateTimeOptions(openTime, closeTime) {
     const times = [];
@@ -56,7 +74,11 @@ export default function AddReservationComponent(props) {
     const start = openHour * 60 + openMinute;
     const end = closeHour * 60 + closeMinute;
 
-    for (let minutes = start; minutes <= end - 30; minutes += 30) {
+    for (
+      let minutes = start;
+      minutes <= end - props.restaurantData.reservations.parameters.interval;
+      minutes += props.restaurantData.reservations.parameters.interval
+    ) {
       const hour = Math.floor(minutes / 60)
         .toString()
         .padStart(2, "0");
@@ -99,10 +121,9 @@ export default function AddReservationComponent(props) {
       numberOfPeople: 1,
       name: "",
       email: "",
+      phoneNumber: "",
       commentary: "",
     });
-
-    // router.push("/reservations/success");
   }
 
   function handleInputChange(e) {
@@ -127,6 +148,7 @@ export default function AddReservationComponent(props) {
       numberOfPeople: 1,
       name: "",
       email: "",
+      phoneNumber: "",
       commentary: "",
     });
 
@@ -140,7 +162,10 @@ export default function AddReservationComponent(props) {
 
     const selectedDay = date.getDay();
     const dayIndex = selectedDay === 0 ? 6 : selectedDay - 1;
-    const dayHours = props.restaurantData.opening_hours[dayIndex];
+    const dayHours = props.restaurantData.reservations.parameters
+      .same_hours_as_restaurant
+      ? props.restaurantData.opening_hours[dayIndex]
+      : props.restaurantData.reservations.parameters.reservation_hours[dayIndex];
 
     return dayHours.isClosed;
   }
@@ -158,9 +183,17 @@ export default function AddReservationComponent(props) {
             fillColor="#131E3690"
           />
 
-          <h1 className="pl-2 text-xl tablet:text-2xl flex items-center flex-wrap">
-            {t("titles.main")} /{" "}
-            {props.reservations ? t("buttons.edit") : t("buttons.add")}
+          <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2 flex-wrap">
+            <span
+              className="cursor-pointer hover:underline"
+              onClick={() => router.push("/reservations")}
+            >
+              {t("titles.main")}
+            </span>
+
+            <span>/</span>
+
+            <span>{props.menu ? t("buttons.edit") : t("buttons.add")}</span>
           </h1>
         </div>
       </div>
@@ -259,6 +292,22 @@ export default function AddReservationComponent(props) {
           />
         </div>
 
+        {/* Phone Number */}
+        <div>
+          <label htmlFor="phoneNumber" className="block text-sm font-medium">
+            {t("form.phoneNumber")}
+          </label>
+          <input
+            type="phone"
+            id="phoneNumber"
+            name="phoneNumber"
+            value={reservationData.phoneNumber}
+            onChange={handleInputChange}
+            required
+            className="mt-1 block w-full border border-gray-300 rounded-md p-2"
+          />
+        </div>
+
         <div>
           <label htmlFor="commentary" className="block text-sm font-medium">
             {t("form.commentary")}
@@ -273,13 +322,11 @@ export default function AddReservationComponent(props) {
         </div>
 
         {/* Boutons Valider et Annuler */}
-        <div className="flex justify-start gap-4 mt-4">
+        <div className="flex justify-center gap-4 mt-4">
           <button
             type="submit"
-            className={`px-4 py-2 rounded-lg bg-blue text-white ${
-              !reservationData.time
-                ? "opacity-50 cursor-not-allowed"
-                : "hover:bg-blue-600"
+            className={`px-4 py-2 rounded-lg bg-blue text-white w-[150px] ${
+              !reservationData.time ? "opacity-50 cursor-not-allowed" : ""
             }`}
             disabled={!reservationData.time}
           >
@@ -289,7 +336,7 @@ export default function AddReservationComponent(props) {
           <button
             type="button"
             onClick={handleFormCancel}
-            className="px-4 py-2 rounded-lg bg-red text-white hover:bg-red-600"
+            className="px-4 py-2 rounded-lg bg-red text-white w-[150px]"
           >
             {t("buttons.cancel")}
           </button>

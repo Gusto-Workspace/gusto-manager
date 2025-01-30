@@ -169,7 +169,7 @@ export default function HoursRestaurantComponent(props) {
 
   return (
     <div
-      className={`bg-white p-6 pb-2 rounded-lg drop-shadow-sm w-full text-darkBlue h-fit`}
+      className={`bg-white p-6 pb-4 rounded-lg drop-shadow-sm w-full text-darkBlue h-fit`}
     >
       <div className="flex gap-6 flex-wrap justify-between">
         <h1 className="font-bold text-lg">

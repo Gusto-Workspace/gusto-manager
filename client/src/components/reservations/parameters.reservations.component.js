@@ -33,16 +33,16 @@ export default function ParametersReservationComponent(props) {
     formState: { errors },
   } = useForm({
     defaultValues: {
-      sameHoursAsRestaurant: true,
-      reservationDuration: false,
-      autoAccept: true,
+      same_hours_as_restaurant: true,
+      reservation_duration: false,
+      auto_accept: true,
       interval: "30",
-      manageDisponibilities: false,
+      manage_disponibilities: false,
       tables: [
         { name: "Table 1", seats: 4 },
         { name: "Table 2", seats: 2 },
       ],
-      reservationDurationMinutes: null,
+      reservation_duration_minutes: null,
     },
   });
 
@@ -52,7 +52,7 @@ export default function ParametersReservationComponent(props) {
   });
 
   const [reservationHours, setReservationHours] = useState([]);
-  const [isLoading, setIsLoading] = useState(true); // Ajout de l'état de chargement
+  const [isLoading, setIsLoading] = useState(true);
 
   // useEffect pour initialiser les valeurs du formulaire avec les données existantes
   useEffect(() => {
@@ -63,38 +63,38 @@ export default function ParametersReservationComponent(props) {
       const { parameters } = restaurantContext.restaurantData.reservations;
 
       reset({
-        sameHoursAsRestaurant: parameters.sameHoursAsRestaurant,
-        reservationDuration: parameters.reservationDuration,
-        autoAccept: parameters.autoAccept,
+        same_hours_as_restaurant: parameters.same_hours_as_restaurant,
+        reservation_duration: parameters.reservation_duration,
+        auto_accept: parameters.auto_accept,
         interval: parameters.interval,
-        manageDisponibilities: parameters.manageDisponibilities,
-        tables: parameters.manageDisponibilities
+        manage_disponibilities: parameters.manage_disponibilities,
+        tables: parameters.manage_disponibilities
           ? parameters.tables
           : [
               { name: "Table 1", seats: 4 },
               { name: "Table 2", seats: 2 },
             ],
-        reservationDurationMinutes: parameters.reservationDurationMinutes,
+        reservation_duration_minutes: parameters.reservation_duration_minutes,
       });
 
-      setReservationHours(parameters.reservationHours);
+      setReservationHours(parameters.reservation_hours);
       setIsLoading(false); // Données chargées, arrêter le chargement
     }
   }, [restaurantContext.restaurantData, reset]);
 
   async function onSubmit(data) {
     const formData = {
-      sameHoursAsRestaurant: data.sameHoursAsRestaurant,
-      autoAccept: data.autoAccept,
+      same_hours_as_restaurant: data.same_hours_as_restaurant,
+      auto_accept: data.auto_accept,
       interval: data.interval,
-      reservationDuration: data.reservationDuration,
-      reservationHours: data.sameHoursAsRestaurant
+      reservation_duration: data.reservation_duration,
+      reservation_hours: data.same_hours_as_restaurant
         ? restaurantContext.restaurantData?.opening_hours
         : reservationHours,
-      manageDisponibilities: data.manageDisponibilities,
-      tables: data.manageDisponibilities ? data.tables : null,
-      reservationDurationMinutes: data.reservationDuration
-        ? data.reservationDurationMinutes
+      manage_disponibilities: data.manage_disponibilities,
+      tables: data.manage_disponibilities ? data.tables : null,
+      reservation_duration_minutes: data.reservation_duration
+        ? data.reservation_duration_minutes
         : null,
     };
 
@@ -130,9 +130,9 @@ export default function ParametersReservationComponent(props) {
     setReservationHours(data.hours);
   }
 
-  const sameHoursAsRestaurant = watch("sameHoursAsRestaurant");
-  const manageDisponibilities = watch("manageDisponibilities");
-  const reservationDuration = watch("reservationDuration");
+  const same_hours_as_restaurant = watch("same_hours_as_restaurant");
+  const manage_disponibilities = watch("manage_disponibilities");
+  const reservation_duration = watch("reservation_duration");
 
   if (isLoading) {
     return (
@@ -155,8 +155,17 @@ export default function ParametersReservationComponent(props) {
             fillColor="#131E3690"
           />
 
-          <h1 className="pl-2 text-xl tablet:text-2xl flex items-center flex-wrap">
-            {t("titles.main")} / {t("buttons.parameters")}
+          <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2 flex-wrap">
+            <span
+              className="cursor-pointer hover:underline"
+              onClick={() => router.push("/reservations")}
+            >
+              {t("titles.main")}
+            </span>
+
+            <span>/</span>
+
+            <span>{t("buttons.parameters")}</span>
           </h1>
         </div>
       </div>
@@ -169,15 +178,15 @@ export default function ParametersReservationComponent(props) {
           <div className="flex items-center gap-2">
             <input
               type="checkbox"
-              id="sameHoursAsRestaurant"
-              {...register("sameHoursAsRestaurant")}
+              id="same_hours_as_restaurant"
+              {...register("same_hours_as_restaurant")}
             />
-            <label htmlFor="sameHoursAsRestaurant">
+            <label htmlFor="same_hours_as_restaurant">
               {t("labels.sameHoursAsRestaurant")}
             </label>
           </div>
 
-          {!sameHoursAsRestaurant && (
+          {!same_hours_as_restaurant && (
             <HoursRestaurantComponent
               restaurantId={props.restaurantData?._id}
               dataLoading={restaurantContext.dataLoading}
@@ -190,14 +199,16 @@ export default function ParametersReservationComponent(props) {
         </div>
 
         <div className="flex items-center gap-2">
-          <input type="checkbox" id="autoAccept" {...register("autoAccept")} />
-          <label htmlFor="autoAccept">{t("labels.autoAccept")}</label>
+          <input
+            type="checkbox"
+            id="auto_accept"
+            {...register("auto_accept")}
+          />
+          <label htmlFor="auto_accept">{t("labels.autoAccept")}</label>
         </div>
 
         <div className="flex gap-2 items-center">
-          <label htmlFor="interval">
-            {t("labels.interval")} :
-          </label>
+          <label htmlFor="interval">{t("labels.interval")} :</label>
 
           <select
             id="interval"
@@ -220,24 +231,24 @@ export default function ParametersReservationComponent(props) {
           <div className="flex items-center gap-2">
             <input
               type="checkbox"
-              id="reservationDuration"
-              {...register("reservationDuration")}
+              id="reservation_duration"
+              {...register("reservation_duration")}
             />
-            <label htmlFor="reservationDuration">
+            <label htmlFor="reservation_duration">
               {t("labels.reservationDuration")} :
             </label>
 
             <div className="flex items-center gap-1">
               <input
                 type="number"
-                id="reservationDurationMinutes"
-                {...register("reservationDurationMinutes", {
-                  required: reservationDuration,
+                id="reservation_duration_minutes"
+                {...register("reservation_duration_minutes", {
+                  required: reservation_duration,
                   min: 1,
                 })}
                 className="border p-1 rounded-lg w-20 text-center"
                 placeholder="-"
-                disabled={!reservationDuration}
+                disabled={!reservation_duration}
               />
               <span>{t("labels.minutes")}</span>
             </div>
@@ -259,10 +270,10 @@ export default function ParametersReservationComponent(props) {
           <div className="flex items-center gap-2">
             <input
               type="checkbox"
-              id="manageDisponibilities"
-              {...register("manageDisponibilities")}
+              id="manage_disponibilities"
+              {...register("manage_disponibilities")}
             />
-            <label htmlFor="manageDisponibilities">
+            <label htmlFor="manage_disponibilities">
               {t("labels.manageDisponibilities")}
             </label>
           </div>
@@ -277,7 +288,7 @@ export default function ParametersReservationComponent(props) {
             les créneaux seront marqués comme disponibles.
           </p>
 
-          {manageDisponibilities && (
+          {manage_disponibilities && (
             <div className="flex flex-col gap-12">
               <p className="text-sm opacity-70">
                 Si la case "accepter automatiquement les réservations" est
@@ -327,7 +338,7 @@ export default function ParametersReservationComponent(props) {
               <button
                 type="button"
                 onClick={() => append({ name: "", seats: 1 })}
-                className="bg-green text-white px-4 py-2 rounded-lg w-fit"
+                className="bg-green mx-auto text-white px-4 py-2 rounded-lg w-fit"
               >
                 {t("buttons.addTable")}
               </button>
