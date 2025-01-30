@@ -5,7 +5,7 @@ const router = express.Router();
 const RestaurantModel = require("../models/restaurant.model");
 
 // UPDATE RESTAURANT HOURS OPENING
-router.put("/owner/restaurants/:id/hours", async (req, res) => {
+router.put("/restaurants/:id/opening_hours", async (req, res) => {
   const restaurantId = req.params.id;
   const { openingHours } = req.body;
 

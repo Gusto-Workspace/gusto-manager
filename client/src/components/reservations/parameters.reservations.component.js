@@ -1,4 +1,4 @@
-import { useContext, useState } from "react";
+import { useContext, useState, useEffect } from "react";
 import { useRouter } from "next/router";
 
 // CONTEXT
@@ -16,6 +16,9 @@ import { useForm, useFieldArray } from "react-hook-form";
 // COMPONENTS
 import HoursRestaurantComponent from "../restaurant/hours.restaurant.component";
 
+// AXIOS
+import axios from "axios";
+
 export default function ParametersReservationComponent(props) {
   const { t } = useTranslation(["reservations", "restaurant"]);
   const { restaurantContext } = useContext(GlobalContext);
@@ -26,6 +29,7 @@ export default function ParametersReservationComponent(props) {
     handleSubmit,
     watch,
     control,
+    reset,
     formState: { errors },
   } = useForm({
     defaultValues: {
@@ -38,6 +42,7 @@ export default function ParametersReservationComponent(props) {
         { name: "Table 1", seats: 4 },
         { name: "Table 2", seats: 2 },
       ],
+      reservationDurationMinutes: null,
     },
   });
 
@@ -47,8 +52,37 @@ export default function ParametersReservationComponent(props) {
   });
 
   const [reservationHours, setReservationHours] = useState([]);
+  const [isLoading, setIsLoading] = useState(true); // Ajout de l'état de chargement
 
-  function onSubmit(data) {
+  // useEffect pour initialiser les valeurs du formulaire avec les données existantes
+  useEffect(() => {
+    if (
+      restaurantContext.restaurantData &&
+      restaurantContext.restaurantData.reservations
+    ) {
+      const { parameters } = restaurantContext.restaurantData.reservations;
+
+      reset({
+        sameHoursAsRestaurant: parameters.sameHoursAsRestaurant,
+        reservationDuration: parameters.reservationDuration,
+        autoAccept: parameters.autoAccept,
+        interval: parameters.interval,
+        manageDisponibilities: parameters.manageDisponibilities,
+        tables: parameters.manageDisponibilities
+          ? parameters.tables
+          : [
+              { name: "Table 1", seats: 4 },
+              { name: "Table 2", seats: 2 },
+            ],
+        reservationDurationMinutes: parameters.reservationDurationMinutes,
+      });
+
+      setReservationHours(parameters.reservationHours);
+      setIsLoading(false); // Données chargées, arrêter le chargement
+    }
+  }, [restaurantContext.restaurantData, reset]);
+
+  async function onSubmit(data) {
     const formData = {
       sameHoursAsRestaurant: data.sameHoursAsRestaurant,
       autoAccept: data.autoAccept,
@@ -64,7 +98,28 @@ export default function ParametersReservationComponent(props) {
         : null,
     };
 
-    console.log("Données de réservation :", formData);
+    try {
+      const token = localStorage.getItem("token");
+
+      const response = await axios.put(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${props.restaurantData._id}/reservations/parameters`,
+        { parameters: formData },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      props.setRestaurantData(response.data.restaurant);
+      router.push("/reservations");
+    } catch (error) {
+      console.error(
+        "Erreur lors de la mise à jour des paramètres de réservation :",
+        error
+      );
+      // Optionnel : Afficher une notification d'erreur à l'utilisateur
+    }
   }
 
   function handleBack() {
@@ -78,6 +133,14 @@ export default function ParametersReservationComponent(props) {
   const sameHoursAsRestaurant = watch("sameHoursAsRestaurant");
   const manageDisponibilities = watch("manageDisponibilities");
   const reservationDuration = watch("reservationDuration");
+
+  if (isLoading) {
+    return (
+      <section className="flex items-center justify-center flex-1">
+        <p className="italic">Chargement ...</p>
+      </section>
+    );
+  }
 
   return (
     <section className="flex flex-col gap-6">
@@ -116,10 +179,11 @@ export default function ParametersReservationComponent(props) {
 
           {!sameHoursAsRestaurant && (
             <HoursRestaurantComponent
-              restaurantId={restaurantContext.restaurantData?._id}
+              restaurantId={props.restaurantData?._id}
               dataLoading={restaurantContext.dataLoading}
               closeEditing={restaurantContext.closeEditing}
               reservations={true}
+              reservationHours={reservationHours}
               onChange={onReservationHoursChange}
             />
           )}
@@ -130,14 +194,15 @@ export default function ParametersReservationComponent(props) {
           <label htmlFor="autoAccept">{t("labels.autoAccept")}</label>
         </div>
 
-        <div className="flex flex-col">
-          <label htmlFor="interval" className="mb-2">
-            {t("labels.interval")}
+        <div className="flex gap-2 items-center">
+          <label htmlFor="interval">
+            {t("labels.interval")} :
           </label>
+
           <select
             id="interval"
             {...register("interval", { required: true })}
-            className="border p-2 rounded-lg w-[200px]"
+            className="border p-1 rounded-lg w-[200px]"
           >
             <option value="15">15 {t("labels.minutes")}</option>
             <option value="30">30 {t("labels.minutes")}</option>
@@ -170,7 +235,7 @@ export default function ParametersReservationComponent(props) {
                   required: reservationDuration,
                   min: 1,
                 })}
-                className="border p-1 rounded-lg w-24"
+                className="border p-1 rounded-lg w-20 text-center"
                 placeholder="-"
                 disabled={!reservationDuration}
               />
@@ -185,7 +250,7 @@ export default function ParametersReservationComponent(props) {
             de 120mn alors à 22h00 la réservation passera en "Terminée" et la
             table sera automatiquement disponible. Si l'option n'est pas cochée,
             alors vous devrez passer manuellement la réservation en "Terminée"
-            dans la liste des réservations une fois celle ci terminée pour
+            dans la liste des réservations une fois celle-ci terminée pour
             rendre la table disponible.
           </p>
         </div>
@@ -213,7 +278,7 @@ export default function ParametersReservationComponent(props) {
           </p>
 
           {manageDisponibilities && (
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-12">
               <p className="text-sm opacity-70">
                 Si la case "accepter automatiquement les réservations" est
                 cochée, une table sera automatiquement attribuée lors d'une
@@ -222,9 +287,12 @@ export default function ParametersReservationComponent(props) {
                 confirmation manuelle de la réservation.
               </p>
 
-              <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 desktop:grid-cols-2 gap-6">
                 {fields.map((field, index) => (
-                  <div key={field.id} className="flex gap-4 items-center">
+                  <div
+                    key={field.id}
+                    className="flex mx-auto gap-4 items-center"
+                  >
                     <input
                       type="text"
                       placeholder={t("labels.tableName")}

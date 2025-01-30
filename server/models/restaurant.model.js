@@ -8,7 +8,7 @@ const addressSchema = new mongoose.Schema({
 });
 
 // Sous-schéma pour les horaires d'ouverture
-const openingHourSchema = new mongoose.Schema(
+const openingHoursSchema = new mongoose.Schema(
   {
     day: { type: String, required: true },
     isClosed: { type: Boolean, default: false },
@@ -18,6 +18,35 @@ const openingHourSchema = new mongoose.Schema(
         close: { type: String },
       },
     ],
+  },
+  { _id: false }
+);
+
+// Sous-schéma pour les paramètres de réservation
+const reservationParametersSchema = new mongoose.Schema(
+  {
+    sameHoursAsRestaurant: { type: Boolean, default: true },
+    reservationDuration: { type: Boolean, default: false },
+    autoAccept: { type: Boolean, default: true },
+    interval: { type: String, enum: ["15", "30", "45", "60"], default: "30" },
+    manageDisponibilities: { type: Boolean, default: false },
+    tables: [
+      {
+        name: { type: String, required: true },
+        seats: { type: Number, required: true, min: 1 },
+      },
+    ],
+    reservationDurationMinutes: { type: Number, min: 1 },
+    reservationHours: { type: [openingHoursSchema], default: [] }, // Utilise le même schéma que openingHours
+  },
+  { _id: false }
+);
+
+// Sous-schéma pour les réservations
+const reservationsSchema = new mongoose.Schema(
+  {
+    parameters: { type: reservationParametersSchema, default: () => ({}) },
+    list: [{ type: mongoose.Schema.Types.ObjectId, ref: "Reservation" }],
   },
   { _id: false }
 );
@@ -175,7 +204,7 @@ const restaurantSchema = new mongoose.Schema({
     ref: "Owner",
     required: true,
   },
-  opening_hours: { type: [openingHourSchema], default: [] },
+  opening_hours: { type: [openingHoursSchema], default: [] },
   dish_categories: { type: [dishCategorySchema], default: [] },
   drink_categories: { type: [drinkCategorySchema], default: [] },
   wine_categories: { type: [wineCategorySchema], default: [] },
@@ -185,6 +214,7 @@ const restaurantSchema = new mongoose.Schema({
   giftCards: { type: [giftCardSchema], default: [] },
   purchasesGiftCards: { type: [giftCardPurchaseSchema], default: [] },
   options: { type: optionsSchema, default: {} },
+  reservations: { type: reservationsSchema, default: {} },
   created_at: { type: Date, default: Date.now },
 });
 

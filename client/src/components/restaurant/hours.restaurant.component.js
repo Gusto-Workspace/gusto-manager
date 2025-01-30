@@ -1,3 +1,5 @@
+// HoursRestaurantComponent.jsx
+
 import { Fragment, useEffect, useState } from "react";
 
 // I18N
@@ -145,7 +147,7 @@ export default function HoursRestaurantComponent(props) {
 
       axios
         .put(
-          `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${props.restaurantId}/hours`,
+          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${props.restaurantId}/opening_hours`,
           { openingHours: cleanedHours },
           {
             headers: {
@@ -183,7 +185,10 @@ export default function HoursRestaurantComponent(props) {
             </button>
           )}
 
-          <button onClick={editing ? handleSave : handleToggleEdit}>
+          <button
+            type="button"
+            onClick={editing ? handleSave : handleToggleEdit}
+          >
             {editing ? (
               <span className="text-white bg-blue px-4 py-2 rounded-lg">
                 {t("save")}

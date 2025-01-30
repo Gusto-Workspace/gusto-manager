@@ -68,7 +68,10 @@ export default function ParametersReservationsPage(props) {
             />
 
             {restaurantContext?.restaurantData?.options?.reservations ? (
-              <ParametersReservationComponent />
+              <ParametersReservationComponent
+                setRestaurantData={restaurantContext.setRestaurantData}
+                restaurantData={restaurantContext.restaurantData}
+              />
             ) : (
               <NoAvailableComponent
                 dataLoading={restaurantContext.dataLoading}
@@ -84,7 +87,11 @@ export default function ParametersReservationsPage(props) {
 export async function getStaticProps({ locale }) {
   return {
     props: {
-      ...(await serverSideTranslations(locale, ["common", "reservations", "restaurant"])),
+      ...(await serverSideTranslations(locale, [
+        "common",
+        "reservations",
+        "restaurant",
+      ])),
     },
   };
 }

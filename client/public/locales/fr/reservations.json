@@ -3,7 +3,7 @@
     "main": "Les Réservations"
   },
   "labels": {
-    "autoAccept": "Accepter automatiquement les réservations",
+    "autoAccept": "Accepter automatiquement les demandes de réservations",
     "reservationDuration": "Passer une réservation en « Terminée » automatiquement au bout de",
     "interval": "Intervalle entre les créneaux de réservation",
     "minutes": "minutes",
