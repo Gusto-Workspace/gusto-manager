@@ -68,7 +68,13 @@ export default function ReservationsPage(props) {
             />
 
             {restaurantContext?.restaurantData?.options?.reservations ? (
-            <ListReservationsComponent reservations={restaurantContext?.restaurantData?.reservations.list} />
+              <ListReservationsComponent
+                restaurantData={restaurantContext.restaurantData}
+                setRestaurantData={restaurantContext.setRestaurantData}
+                reservations={
+                  restaurantContext?.restaurantData?.reservations.list
+                }
+              />
             ) : (
               <NoAvailableComponent
                 dataLoading={restaurantContext.dataLoading}

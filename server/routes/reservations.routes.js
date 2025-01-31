@@ -94,29 +94,158 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
 });
 
 // UPDATE RESERVATION STATUS
-router.put("/reservations/:reservationId/status", async (req, res) => {
-  const reservationId = req.params.reservationId;
-  const { status } = req.body;
+router.put(
+  "/restaurants/:id/reservations/:reservationId/status",
+  authenticateToken,
+  async (req, res) => {
+    const reservationId = req.params.reservationId;
+    const restaurantId = req.params.id;
+    const { status } = req.body;
+
+    try {
+      const updatedReservation = await ReservationModel.findByIdAndUpdate(
+        reservationId,
+        { status },
+        { new: true }
+      );
+
+      if (!updatedReservation) {
+        return res.status(404).json({ message: "Reservation not found" });
+      }
+
+      const restaurant = await RestaurantModel.findById(restaurantId)
+        .populate("owner_id", "firstname")
+        .populate("menus")
+        .populate({
+          path: "reservations.list",
+          populate: { path: "table" },
+        });
+
+      if (!restaurant) {
+        return res.status(404).json({ message: "Restaurant not found" });
+      }
+
+      res.status(200).json({
+        restaurant,
+      });
+    } catch (error) {
+      console.error("Error updating reservation status:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  }
+);
+
+// GET A SINGLE RESERVATION
+router.get("/reservations/:reservationId", async (req, res) => {
+  const { reservationId } = req.params;
 
   try {
-    const updatedReservation = await ReservationModel.findByIdAndUpdate(
-      reservationId,
-      { status },
-      { new: true }
-    );
+    const reservation =
+      await ReservationModel.findById(reservationId).populate("table"); // Populate si vous avez des références comme "table"
 
-    if (!updatedReservation) {
+    if (!reservation) {
       return res.status(404).json({ message: "Reservation not found" });
     }
 
-    res.status(200).json({
-      message: "Reservation status updated successfully",
-      reservation: updatedReservation,
-    });
+    res.status(200).json({ reservation });
   } catch (error) {
-    console.error("Error updating reservation status:", error);
+    console.error("Error fetching reservation:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 });
+
+// UPDATE RESERVATION DETAILS
+router.put(
+  "/restaurants/:id/reservations/:reservationId",
+  authenticateToken,
+  async (req, res) => {
+    const { id: restaurantId, reservationId } = req.params;
+    const updateData = req.body;
+
+    try {
+      // Trouver et mettre à jour la réservation
+      const updatedReservation = await ReservationModel.findByIdAndUpdate(
+        reservationId,
+        updateData,
+        { new: true, runValidators: true }
+      ).populate("table"); // Populate si nécessaire
+
+      if (!updatedReservation) {
+        return res.status(404).json({ message: "Reservation not found" });
+      }
+
+      // Vérifier que le restaurant existe
+      const restaurant = await RestaurantModel.findById(restaurantId)
+        .populate("owner_id", "firstname")
+        .populate("menus")
+        .populate({
+          path: "reservations.list",
+          populate: { path: "table" },
+        });
+
+      if (!restaurant) {
+        return res.status(404).json({ message: "Restaurant not found" });
+      }
+
+      res.status(200).json({
+        restaurant,
+      });
+    } catch (error) {
+      console.error("Error updating reservation:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  }
+);
+
+// DELETE A RESERVATION
+router.delete(
+  "/restaurants/:id/reservations/:reservationId",
+  authenticateToken,
+  async (req, res) => {
+    const { id: restaurantId, reservationId } = req.params;
+
+    try {
+      const restaurant = await RestaurantModel.findById(restaurantId).populate({
+        path: "reservations.list",
+        populate: { path: "table" },
+      });
+
+      if (!restaurant) {
+        return res.status(404).json({ message: "Restaurant not found" });
+      }
+
+      const reservationIndex = restaurant.reservations.list.findIndex(
+        (resv) => resv._id.toString() === reservationId
+      );
+
+      if (reservationIndex === -1) {
+        return res
+          .status(404)
+          .json({ message: "Reservation not found in this restaurant" });
+      }
+
+      await ReservationModel.findByIdAndDelete(reservationId);
+
+      restaurant.reservations.list.splice(reservationIndex, 1);
+      await restaurant.save();
+
+      const updatedRestaurant = await RestaurantModel.findById(restaurantId)
+        .populate({
+          path: "reservations.list",
+          populate: { path: "table" },
+        })
+        .populate("owner_id", "firstname")
+        .populate("menus");
+
+      res.status(200).json({
+        message: "Reservation deleted successfully",
+        restaurant: updatedRestaurant,
+      });
+    } catch (error) {
+      console.error("Error deleting reservation:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  }
+);
 
 module.exports = router;

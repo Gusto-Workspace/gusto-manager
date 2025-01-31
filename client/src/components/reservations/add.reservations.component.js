@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext } from "react";
+import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/router";
 
@@ -23,6 +23,8 @@ export default function AddReservationComponent(props) {
 
   const router = useRouter();
 
+  const isEditing = !!props.reservation;
+
   const [reservationData, setReservationData] = useState({
     reservationDate: new Date(),
     reservationTime: "",
@@ -37,8 +39,29 @@ export default function AddReservationComponent(props) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // Pré-remplir le formulaire si on est en mode édition
   useEffect(() => {
-    if (props?.restaurantData?.reservations) {
+    if (props.reservation) {
+      setReservationData({
+        reservationDate: props.reservation.reservationDate
+          ? new Date(props.reservation.reservationDate)
+          : new Date(),
+        reservationTime: props.reservation.reservationTime || "",
+        numberOfGuests: props.reservation.numberOfGuests || 1,
+        customerName: props.reservation.customerName || "",
+        customerEmail: props.reservation.customerEmail || "",
+        customerPhone: props.reservation.customerPhone || "",
+        commentary: props.reservation.commentary || "",
+      });
+    }
+  }, [props.reservation]);
+
+  // Mettre à jour les heures disponibles lorsque la date change
+  useEffect(() => {
+    if (
+      props?.restaurantData?.reservations &&
+      reservationData.reservationDate
+    ) {
       const selectedDay = reservationData.reservationDate.getDay();
       const dayIndex = selectedDay === 0 ? 6 : selectedDay - 1;
       const parameters = props.restaurantData.reservations.parameters;
@@ -60,11 +83,6 @@ export default function AddReservationComponent(props) {
         }
       }
 
-      setReservationData((prevData) => ({
-        ...prevData,
-        reservationTime: "",
-      }));
-
       setIsLoading(false);
     }
   }, [
@@ -74,6 +92,7 @@ export default function AddReservationComponent(props) {
     props.restaurantData.reservations.parameters.interval,
   ]);
 
+  // Générer les options d'heures disponibles
   function generateTimeOptions(openTime, closeTime, interval) {
     const times = [];
     const [openHour, openMinute] = openTime.split(":").map(Number);
@@ -103,6 +122,7 @@ export default function AddReservationComponent(props) {
     return times;
   }
 
+  // Sélectionner une heure de réservation
   function handleTimeSelect(reservationTime) {
     setReservationData((prevData) => ({
       ...prevData,
@@ -110,18 +130,25 @@ export default function AddReservationComponent(props) {
     }));
   }
 
+  // Formater l'affichage de l'heure
   function formatTimeDisplay(reservationTime) {
     const [hour, minute] = reservationTime.split(":");
     return `${hour}h${minute}`;
   }
 
+  // Gérer la soumission du formulaire
   async function handleFormSubmit(e) {
     e.preventDefault();
+
+    if (!reservationData.reservationTime) {
+      setError(t("errors.selectTime"));
+      return;
+    }
 
     const formattedDate = format(reservationData.reservationDate, "yyyy-MM-dd");
     const formattedTime = reservationData.reservationTime;
 
-    const reservation = {
+    const reservationPayload = {
       reservationDate: formattedDate,
       reservationTime: formattedTime,
       numberOfGuests: reservationData.numberOfGuests,
@@ -129,45 +156,53 @@ export default function AddReservationComponent(props) {
       customerEmail: reservationData.customerEmail,
       customerPhone: reservationData.customerPhone,
       commentary: reservationData.commentary,
-      status: "Confirmed",
     };
 
     try {
       const token = localStorage.getItem("token");
 
-      const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${props.restaurantData._id}/reservations`,
-        reservation,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
+      let response;
+      if (isEditing) {
+        // Mettre à jour une réservation existante
+        response = await axios.put(
+          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${props.restaurantData._id}/reservations/${props.reservation._id}`,
+          reservationPayload,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+      } else {
+        // Créer une nouvelle réservation
+        response = await axios.post(
+          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${props.restaurantData._id}/reservations`,
+          { ...reservationPayload, status: "Confirmed" },
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+      }
 
-      // Réinitialiser le formulaire
-      setReservationData({
-        reservationDate: new Date(),
-        reservationTime: "",
-        numberOfGuests: 1,
-        customerName: "",
-        customerEmail: "",
-        customerPhone: "",
-        commentary: "",
-      });
-
+      // Mettre à jour les données du restaurant dans le contexte global
       props.setRestaurantData(response.data.restaurant);
 
+      // Rediriger vers la liste des réservations
       router.push("/reservations");
     } catch (error) {
-      console.error("Erreur lors de la création de la réservation :", error);
+      console.error("Erreur lors de la soumission de la réservation :", error);
       setError(
-        "Une erreur est survenue lors de la création de la réservation."
+        error.response?.data?.message ||
+          "Une erreur est survenue lors de la soumission de la réservation."
       );
     }
   }
 
+  // Gérer les changements dans les champs du formulaire
   function handleInputChange(e) {
     const { name, value } = e.target;
     setReservationData((prevData) => ({
@@ -176,27 +211,21 @@ export default function AddReservationComponent(props) {
     }));
   }
 
+  // Gérer le changement de date dans le calendrier
   function handleDateChange(selectedDate) {
     setReservationData((prevData) => ({
       ...prevData,
       reservationDate: selectedDate,
+      reservationTime: "",
     }));
   }
 
+  // Annuler le formulaire et rediriger
   function handleFormCancel() {
-    setReservationData({
-      reservationDate: new Date(),
-      reservationTime: "",
-      numberOfGuests: 1,
-      customerName: "",
-      customerEmail: "",
-      customerPhone: "",
-      commentary: "",
-    });
-
     router.push("/reservations");
   }
 
+  // Désactiver les jours fermés dans le calendrier
   function disableClosedDays({ date, view }) {
     if (view !== "month") {
       return false;
@@ -212,19 +241,11 @@ export default function AddReservationComponent(props) {
     return dayHours.isClosed;
   }
 
-  // Afficher un message d'erreur si nécessaire
+  // Afficher un message de chargement si nécessaire
   if (isLoading) {
     return (
       <section className="flex items-center justify-center flex-1">
-        <p className="italic">Chargement ...</p>
-      </section>
-    );
-  }
-
-  if (error) {
-    return (
-      <section className="flex flex-col items-center justify-center flex-1">
-        <p className="text-red text-xl">{error}</p>
+        <p className="italic">{t("messages.loading")}</p>
       </section>
     );
   }
@@ -252,7 +273,7 @@ export default function AddReservationComponent(props) {
 
             <span>/</span>
 
-            <span>{props.menu ? t("buttons.edit") : t("buttons.add")}</span>
+            <span>{isEditing ? t("buttons.edit") : t("buttons.add")}</span>
           </h1>
         </div>
       </div>
@@ -360,13 +381,13 @@ export default function AddReservationComponent(props) {
           />
         </div>
 
-        {/* Phone Number */}
+        {/* Numéro de Téléphone */}
         <div>
           <label htmlFor="customerPhone" className="block text-sm font-medium">
             {t("form.customerPhone")}
           </label>
           <input
-            type="phone"
+            type="tel"
             id="customerPhone"
             name="customerPhone"
             value={reservationData.customerPhone}
@@ -376,7 +397,7 @@ export default function AddReservationComponent(props) {
           />
         </div>
 
-        {/* Commentary */}
+        {/* Commentaire */}
         <div>
           <label htmlFor="commentary" className="block text-sm font-medium">
             {t("form.commentary")}
@@ -399,9 +420,13 @@ export default function AddReservationComponent(props) {
                 ? "opacity-50 cursor-not-allowed"
                 : ""
             }`}
-            disabled={!reservationData.reservationTime}
+            disabled={!reservationData.reservationTime || isLoading}
           >
-            {t("buttons.validate")}
+            {isLoading
+              ? t("buttons.loading")
+              : isEditing
+                ? t("buttons.update")
+                : t("buttons.validate")}
           </button>
 
           <button

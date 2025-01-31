@@ -12,6 +12,23 @@
     "sameHoursAsRestaurant": "Utiliser les mêmes horaires que le restaurant",
     "manageDisponibilities": "Utiliser la gestion intelligente des réservations"
   },
+  "list": {
+    "status": {
+      "pending": "En attente",
+      "confirmed": "Confirmées",
+      "late": "En retard",
+      "finished": "Terminées"
+    },
+    "card": {
+      "empty": "Aucune réservation",
+      "customerName": "Nom du client",
+      "numberOfGuests": "Nombre de personnes",
+      "reservationDate": "Date",
+      "reservationTime": "Heure",
+      "reservationTable": "Table",
+      "commentary": "Commentaire"
+    }
+  },
   "buttons": {
     "add": "Ajouter",
     "addTable": "Ajouter une table",
@@ -21,6 +38,8 @@
     "delete": "Supprimer",
     "confirm": "Confirmer",
     "validate": "Valider",
+    "update": "Mettre à jour",
+    "finish": "Terminée",
     "yes": "Oui",
     "no": "Non",
     "cancel": "Annuler",

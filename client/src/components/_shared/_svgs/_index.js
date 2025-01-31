@@ -45,3 +45,4 @@ export { GlassSvg } from "./glass.svg";
 export { ReservationSvg } from "./reservation.svg";
 export { TakeAwaySvg } from "./take-away.svg";
 export { TrashSvg } from "./trash.svg";
+export { CheckSvg } from "./check.svg";

@@ -73,6 +73,7 @@ export default function AddReservationsPage(props) {
                 dataLoading={restaurantContext.dataLoading}
                 restaurantData={restaurantContext.restaurantData}
                 setRestaurantData={restaurantContext.setRestaurantData}
+                reservation={props.reservation}
               />
             ) : (
               <NoAvailableComponent
@@ -90,18 +91,18 @@ export async function getServerSideProps({ query, locale }) {
   const { reservationId } = query;
 
   try {
-    let reservations = null;
+    let reservation = null;
 
     if (reservationId) {
       const response = await axios.get(
         `${process.env.NEXT_PUBLIC_API_URL}/reservations/${reservationId}`
       );
-      reservations = response.data.reservations;
+      reservation = response.data.reservation;
     }
 
     return {
       props: {
-        reservations,
+        reservation,
         ...(await serverSideTranslations(locale, ["common", "reservations"])),
       },
     };
@@ -109,7 +110,7 @@ export async function getServerSideProps({ query, locale }) {
     console.error("Error fetching reservations data:", error);
     return {
       props: {
-        reservations: null,
+        reservation: null,
         ...(await serverSideTranslations(locale, ["common", "reservations"])),
       },
     };
