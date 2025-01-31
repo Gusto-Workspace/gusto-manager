@@ -162,13 +162,16 @@ router.put(
     const { id: restaurantId, reservationId } = req.params;
     const updateData = req.body;
 
+    console.log(updateData);
+    
+
     try {
       // Trouver et mettre à jour la réservation
       const updatedReservation = await ReservationModel.findByIdAndUpdate(
         reservationId,
         updateData,
         { new: true, runValidators: true }
-      ).populate("table"); // Populate si nécessaire
+      ).populate("table");
 
       if (!updatedReservation) {
         return res.status(404).json({ message: "Reservation not found" });

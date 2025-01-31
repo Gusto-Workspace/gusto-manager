@@ -242,11 +242,6 @@ export default function AddReservationComponent(props) {
     }));
   }
 
-  // Annuler le formulaire et rediriger
-  function handleFormCancel() {
-    router.push("/reservations");
-  }
-
   // Désactiver les jours fermés dans le calendrier
   function disableClosedDays({ date, view }) {
     if (view !== "month") {
@@ -365,6 +360,7 @@ export default function AddReservationComponent(props) {
             name="numberOfGuests"
             min="1"
             value={reservationData.numberOfGuests}
+            onWheel={(e) => e.target.blur()}
             onChange={handleInputChange}
             required
             className="mt-1 block w-full border border-gray-300 rounded-md p-2"
@@ -453,7 +449,7 @@ export default function AddReservationComponent(props) {
 
           <button
             type="button"
-            onClick={handleFormCancel}
+            onClick={() => router.push("/reservations")}
             className="px-4 py-2 rounded-lg bg-red text-white w-[150px]"
           >
             {t("buttons.cancel")}
