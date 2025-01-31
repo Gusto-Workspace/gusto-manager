@@ -39,6 +39,16 @@ export default function AddReservationComponent(props) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // Fonction pour vérifier si une date est aujourd'hui
+  function isToday(date) {
+    const today = new Date();
+    return (
+      date.getDate() === today.getDate() &&
+      date.getMonth() === today.getMonth() &&
+      date.getFullYear() === today.getFullYear()
+    );
+  }
+
   // Pré-remplir le formulaire si on est en mode édition
   useEffect(() => {
     if (props.reservation) {
@@ -74,9 +84,23 @@ export default function AddReservationComponent(props) {
       } else {
         if (Array.isArray(dayHours.hours) && dayHours.hours.length > 0) {
           const interval = parameters.interval || 30;
-          const allAvailableTimes = dayHours.hours.flatMap(({ open, close }) =>
+          let allAvailableTimes = dayHours.hours.flatMap(({ open, close }) =>
             generateTimeOptions(open, close, interval)
           );
+
+          // Vérifier si la date sélectionnée est aujourd'hui
+          if (isToday(reservationData.reservationDate)) {
+            const now = new Date();
+            const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+            // Filtrer les créneaux horaires qui sont déjà passés
+            allAvailableTimes = allAvailableTimes.filter((time) => {
+              const [hour, minute] = time.split(":").map(Number);
+              const timeInMinutes = hour * 60 + minute;
+              return timeInMinutes > currentMinutes;
+            });
+          }
+
           setAvailableTimes(allAvailableTimes);
         } else {
           setAvailableTimes([]);
@@ -188,10 +212,8 @@ export default function AddReservationComponent(props) {
         );
       }
 
-      // Mettre à jour les données du restaurant dans le contexte global
       props.setRestaurantData(response.data.restaurant);
 
-      // Rediriger vers la liste des réservations
       router.push("/reservations");
     } catch (error) {
       console.error("Erreur lors de la soumission de la réservation :", error);

@@ -255,43 +255,47 @@ export default function ListReservationsComponent(props) {
                       <hr className="bg-darkBlue h-[1px] w-[90%] opacity-20 mx-auto" />
 
                       <div className="flex w-full justify-center">
-                        <div className="w-1/3 flex justify-center">
-                          <button
-                            className="flex flex-col items-center gap-1 p-2"
-                            onClick={() => handleFinishClick(reservation)}
-                          >
-                            <div className="bg-green bg-opacity-75 hover:bg-green p-[6px] rounded-full transition-colors duration-300">
-                              <CheckSvg
-                                width={15}
-                                height={15}
-                                strokeColor="white"
-                                fillColor="white"
-                              />
-                            </div>
-                            <p className="text-xs text-center">
-                              {t("buttons.finish")}
-                            </p>
-                          </button>
-                        </div>
-
-                        <div className="w-1/3 flex justify-center">
-                          <button
-                            className="flex flex-col items-center gap-1 p-2"
-                            onClick={() => handleEditClick(reservation)}
-                          >
-                            <div className="bg-blue bg-opacity-75 hover:bg-blue p-[6px] rounded-full transition-colors duration-300">
-                              <EditSvg
-                                width={15}
-                                height={15}
-                                strokeColor="white"
-                                fillColor="white"
-                              />
-                            </div>
-                            <p className="text-xs text-center">
-                              {t("buttons.edit")}
-                            </p>
-                          </button>
-                        </div>
+                        {reservation.status !== "Finished" && (
+                          <div className="w-1/3 flex justify-center">
+                            <button
+                              className="flex flex-col items-center gap-1 p-2"
+                              onClick={() => handleFinishClick(reservation)}
+                            >
+                              <div className="bg-green bg-opacity-75 hover:bg-green p-[6px] rounded-full transition-colors duration-300">
+                                <CheckSvg
+                                  width={15}
+                                  height={15}
+                                  strokeColor="white"
+                                  fillColor="white"
+                                />
+                              </div>
+                              <p className="text-xs text-center">
+                                {t("buttons.finish")}
+                              </p>
+                            </button>
+                          </div>
+                        )}
+                        
+                        {reservation.status !== "Finished" && (
+                          <div className="w-1/3 flex justify-center">
+                            <button
+                              className="flex flex-col items-center gap-1 p-2"
+                              onClick={() => handleEditClick(reservation)}
+                            >
+                              <div className="bg-blue bg-opacity-75 hover:bg-blue p-[6px] rounded-full transition-colors duration-300">
+                                <EditSvg
+                                  width={15}
+                                  height={15}
+                                  strokeColor="white"
+                                  fillColor="white"
+                                />
+                              </div>
+                              <p className="text-xs text-center">
+                                {t("buttons.edit")}
+                              </p>
+                            </button>
+                          </div>
+                        )}
 
                         <div className="w-1/3 flex justify-center">
                           <button
