@@ -1,5 +1,14 @@
 const mongoose = require("mongoose");
 
+// sous-schéma pour la table
+const tableSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true },
+    seats: { type: Number, required: true, min: 1 },
+  },
+  { _id: false }
+);
+
 const reservationSchema = new mongoose.Schema(
   {
     restaurant_id: {
@@ -12,13 +21,18 @@ const reservationSchema = new mongoose.Schema(
     customerPhone: { type: String },
     numberOfGuests: { type: Number, required: true, min: 1 },
     reservationDate: { type: Date, required: true },
-    specialRequests: { type: String },
+    reservationTime: { type: String, required: true },
+    table: {
+      type: tableSchema,
+      required: false,
+      default: null,
+    },
+    commentary: { type: String },
     status: {
       type: String,
-      enum: ["Pending", "Confirmed", "Cancelled", "Completed"],
+      enum: ["Pending", "Confirmed", "Late"],
       default: "Pending",
     },
-    created_at: { type: Date, default: Date.now },
   },
   { timestamps: true }
 );
