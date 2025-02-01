@@ -10,7 +10,15 @@
     "hour": "heure",
     "hoursTitle": "Horaires de Réservation",
     "sameHoursAsRestaurant": "Utiliser les mêmes horaires que le restaurant",
-    "manageDisponibilities": "Utiliser la gestion intelligente des réservations"
+    "manageDisponibilities": "Utiliser la gestion intelligente des réservations",
+    "deleteReservation": {
+      "title": "Supprimer la réservation",
+      "content": "Êtes-vous sûr de vouloir supprimer cette réservation ? Cette action est irréversible."
+    },
+    "finishedReservation": {
+      "title": "La réservation est terminée",
+      "content": "Les clients ont quitté la table et cette réservation est terminée ? Cette action est irréversible."
+    }
   },
   "list": {
     "status": {
@@ -22,6 +30,8 @@
     "card": {
       "empty": "Aucune réservation",
       "customerName": "Nom du client",
+      "customerEmail": "Email",
+      "customerPhone": "Téléphone",
       "numberOfGuests": "Nombre de personnes",
       "reservationDate": "Date",
       "reservationTime": "Heure",

@@ -151,22 +151,31 @@ export default function PurchasesGiftListComponent(props) {
 
                       <div className="flex flex-col gap-2">
                         <p>
-                          {t("labels.amount")}: {purchase.value}€
+                          {t("labels.amount")} : {purchase.value}€
                         </p>
 
                         {purchase.description && (
                           <p>
-                            {t("labels.description")}: {purchase.description}
+                            {t("labels.description")} : {purchase.description}
                           </p>
                         )}
 
                         <p>
-                          {t("labels.owner")}: {purchase.beneficiaryFirstName}{" "}
+                          {t("labels.owner")} : {purchase.beneficiaryFirstName}{" "}
                           {purchase.beneficiaryLastName}
                         </p>
 
                         <p>
-                          {t("labels.code")}: {purchase.purchaseCode}
+                          {t("labels.code")} : {purchase.purchaseCode}
+                        </p>
+
+                        <p>
+                          {t("labels.sender")} : {purchase.sender}{" "}
+                          {purchase.sendEmail && (
+                            <span className="text-sm opacity-30 italic">
+                              ({purchase.sendEmail})
+                            </span>
+                          )}
                         </p>
 
                         <p>
@@ -197,7 +206,7 @@ export default function PurchasesGiftListComponent(props) {
 
                       {(status === "Valid" || status === "Expired") && (
                         <button
-                          className="mt-2 px-4 py-2 bg-blue text-white rounded hover:bg-opacity-50 transition-all duration-200 w-fit mobile:mx-auto midTablet:mx-0"
+                          className="mt-2 whitespace-nowrap px-4 py-2 bg-blue text-white rounded hover:bg-opacity-50 transition-all duration-200 w-fit mobile:mx-auto midTablet:mx-0"
                           onClick={() => handleActionClick(purchase, "Used")}
                         >
                           {t("buttons.usedCard")}
@@ -226,8 +235,13 @@ export default function PurchasesGiftListComponent(props) {
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-[100]">
-          <div className="bg-white mx-6 w-[500px] p-6 rounded-lg shadow-lg flex flex-col gap-6">
+        <div className="fixed inset-0 flex items-center mx-6 justify-center z-[100]">
+          <div
+            onClick={() => setIsModalOpen(false)}
+            className="fixed inset-0 bg-black bg-opacity-20"
+          />
+
+          <div className="bg-white mx-6 w-[500px] p-6 rounded-lg shadow-lg flex flex-col gap-6 z-10">
             <p className="text-xl font-semibold mx-auto flex flex-col gap-4 text-center text-pretty">
               {actionType === "Used"
                 ? t("labels.confirmUse.title")

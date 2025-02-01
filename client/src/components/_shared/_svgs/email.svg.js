@@ -6,6 +6,7 @@ export function EmailSvg(props) {
       height={props.height ?? 800}
       viewBox="0 0 24 24"
       fill="none"
+      className={props.className ?? ""}
     >
      <path
       stroke={props.strokeColor ?? "black"}

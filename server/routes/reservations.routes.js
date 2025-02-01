@@ -162,9 +162,6 @@ router.put(
     const { id: restaurantId, reservationId } = req.params;
     const updateData = req.body;
 
-    console.log(updateData);
-    
-
     try {
       // Trouver et mettre à jour la réservation
       const updatedReservation = await ReservationModel.findByIdAndUpdate(
