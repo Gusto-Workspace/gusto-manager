@@ -30,7 +30,7 @@ const reservationSchema = new mongoose.Schema(
     commentary: { type: String },
     status: {
       type: String,
-      enum: ["Pending", "Confirmed", "Late", "Finished"],
+      enum: ["Pending", "Confirmed", "Active", "Late", "Finished"],
       default: "Pending",
     },
   },

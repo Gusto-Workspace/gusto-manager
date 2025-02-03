@@ -52,3 +52,5 @@ export { CalendarSvg } from "./calendar.svg";
 export { UserSvg } from "./user.svg";
 export { CommentarySvg } from "./commentary.svg";
 export { TableSvg } from "./table.svg";
+export { ActiveSvg } from "./active.svg";
+export { DoubleCheckSvg } from "./double-check.svg";

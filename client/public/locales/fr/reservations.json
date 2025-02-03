@@ -18,12 +18,21 @@
     "finishedReservation": {
       "title": "La réservation est terminée",
       "content": "Les clients ont quitté la table et cette réservation est terminée ? Cette action est irréversible."
+    },
+    "activeReservation": {
+      "title": "La réservation est en cours",
+      "content": "Les clients sont arrivés ? Cette action est irréversible."
+    },
+    "confirmReservation":{
+      "title" : "Confirmer la réservation",
+      "content" : "Vous allez confimez la réservation, cette action est irréversible."
     }
   },
   "list": {
     "status": {
       "pending": "En attente",
       "confirmed": "Confirmées",
+      "active": "En cours",
       "late": "En retard",
       "finished": "Terminées"
     },
@@ -50,6 +59,7 @@
     "validate": "Valider",
     "update": "Mettre à jour",
     "finish": "Terminée",
+    "active": "En cours",
     "yes": "Oui",
     "no": "Non",
     "cancel": "Annuler",
