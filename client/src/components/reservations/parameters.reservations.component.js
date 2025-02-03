@@ -28,6 +28,7 @@ export default function ParametersReservationComponent(props) {
     register,
     handleSubmit,
     watch,
+    setValue,
     control,
     reset,
     formState: { errors },
@@ -35,6 +36,7 @@ export default function ParametersReservationComponent(props) {
     defaultValues: {
       same_hours_as_restaurant: true,
       reservation_duration: false,
+      deletion_duration: false,
       auto_accept: true,
       interval: "30",
       manage_disponibilities: false,
@@ -43,6 +45,7 @@ export default function ParametersReservationComponent(props) {
         { name: "Table 2", seats: 2 },
       ],
       reservation_duration_minutes: null,
+      deletion_duration_minutes: 1440,
     },
   });
 
@@ -56,15 +59,13 @@ export default function ParametersReservationComponent(props) {
 
   // useEffect pour initialiser les valeurs du formulaire avec les données existantes
   useEffect(() => {
-    if (
-      restaurantContext.restaurantData &&
-      restaurantContext.restaurantData.reservations
-    ) {
+    if (restaurantContext?.restaurantData?.reservations) {
       const { parameters } = restaurantContext.restaurantData.reservations;
 
       reset({
         same_hours_as_restaurant: parameters.same_hours_as_restaurant,
         reservation_duration: parameters.reservation_duration,
+        deletion_duration: parameters.deletion_duration,
         auto_accept: parameters.auto_accept,
         interval: parameters.interval,
         manage_disponibilities: parameters.manage_disponibilities,
@@ -75,10 +76,11 @@ export default function ParametersReservationComponent(props) {
               { name: "Table 2", seats: 2 },
             ],
         reservation_duration_minutes: parameters.reservation_duration_minutes,
+        deletion_duration_minutes: parameters.deletion_duration_minutes ?? 1440,
       });
 
       setReservationHours(parameters.reservation_hours);
-      setIsLoading(false); // Données chargées, arrêter le chargement
+      setIsLoading(false);
     }
   }, [restaurantContext.restaurantData, reset]);
 
@@ -88,6 +90,7 @@ export default function ParametersReservationComponent(props) {
       auto_accept: data.auto_accept,
       interval: data.interval,
       reservation_duration: data.reservation_duration,
+      deletion_duration: data.deletion_duration,
       reservation_hours: data.same_hours_as_restaurant
         ? restaurantContext.restaurantData?.opening_hours
         : reservationHours,
@@ -96,6 +99,9 @@ export default function ParametersReservationComponent(props) {
       reservation_duration_minutes: data.reservation_duration
         ? data.reservation_duration_minutes
         : null,
+      deletion_duration_minutes: data.deletion_duration
+        ? data.deletion_duration_minutes
+        : 1440,
     };
 
     try {
@@ -118,7 +124,6 @@ export default function ParametersReservationComponent(props) {
         "Erreur lors de la mise à jour des paramètres de réservation :",
         error
       );
-      // Optionnel : Afficher une notification d'erreur à l'utilisateur
     }
   }
 
@@ -133,6 +138,7 @@ export default function ParametersReservationComponent(props) {
   const same_hours_as_restaurant = watch("same_hours_as_restaurant");
   const manage_disponibilities = watch("manage_disponibilities");
   const reservation_duration = watch("reservation_duration");
+  const deletion_duration = watch("deletion_duration");
 
   if (isLoading) {
     return (
@@ -198,13 +204,22 @@ export default function ParametersReservationComponent(props) {
           )}
         </div>
 
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            id="auto_accept"
-            {...register("auto_accept")}
-          />
-          <label htmlFor="auto_accept">{t("labels.autoAccept")}</label>
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="auto_accept"
+              {...register("auto_accept")}
+            />
+            <label htmlFor="auto_accept">{t("labels.autoAccept")}</label>
+          </div>
+
+          <p className="text-sm opacity-70">
+            Si cette option est cochée, alors une réservation effectuée depuis
+            votre site internet passera directement en état "Confirmée". Sinon,
+            vous devrez manuellement confirmer la réservation depuis la site des
+            réservations.
+          </p>
         </div>
 
         <div className="flex gap-2 items-center">
@@ -263,6 +278,49 @@ export default function ParametersReservationComponent(props) {
             alors vous devrez passer manuellement la réservation en "Terminée"
             dans la liste des réservations une fois celle-ci terminée pour
             rendre la table disponible.
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="deletion_duration"
+              {...register("deletion_duration", {
+                onChange: (e) => {
+                  if (!e.target.checked) {
+                    setValue("deletion_duration_minutes", 1440);
+                  }
+                },
+              })}
+            />
+            <label htmlFor="deletion_duration">
+              {t("labels.deletionDuration")} :
+            </label>
+
+            <select
+              id="deletion_duration_minutes"
+              {...register("deletion_duration_minutes", { required: true })}
+              className="border p-1 rounded-lg w-[200px]"
+              disabled={!deletion_duration}
+            >
+              <option value="0">{t("labels.now")}</option>
+              <option value="15">15 {t("labels.minutes")}</option>
+              <option value="30">30 {t("labels.minutes")}</option>
+              <option value="45">45 {t("labels.minutes")}</option>
+              <option value="60">1 {t("labels.hour")}</option>
+              <option value="120">2 {t("labels.hours")}</option>
+              <option value="360">6 {t("labels.hours")}</option>
+              <option value="720">12 {t("labels.hours")}</option>
+              <option value="1440">24 {t("labels.hours")}</option>
+            </select>
+          </div>
+
+          <p className="text-sm opacity-70">
+            Si cette option est cochée, une réservation "Terminée" sera
+            automatiquement supprimée au bout du temps choisi. Sinon, par
+            défaut, la réservation est suppprimée automatiquement au bout de 24
+            heures.
           </p>
         </div>
 

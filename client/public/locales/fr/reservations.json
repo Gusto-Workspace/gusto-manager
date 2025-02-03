@@ -3,11 +3,14 @@
     "main": "Réservations"
   },
   "labels": {
-    "autoAccept": "Accepter automatiquement les demandes de réservations",
-    "reservationDuration": "Passer une réservation en « Terminée » automatiquement au bout de",
+    "autoAccept": "Accepter automatiquement les demandes de réservations effectuées depuis votre site internet",
+    "reservationDuration": "Passer automatiquement une réservation en « Terminée » au bout de",
+    "deletionDuration": "Supprimer automatiquement une réservation « Terminée » au bout de",
     "interval": "Intervalle entre les créneaux de réservation",
     "minutes": "minutes",
     "hour": "heure",
+    "hours": "heures",
+    "now": "Immédiatement",
     "hoursTitle": "Horaires de Réservation",
     "sameHoursAsRestaurant": "Utiliser les mêmes horaires que le restaurant",
     "manageDisponibilities": "Utiliser la gestion intelligente des réservations",
@@ -23,19 +26,19 @@
       "title": "La réservation est en cours",
       "content": "Les clients sont arrivés ? Cette action est irréversible."
     },
-    "confirmReservation":{
-      "title" : "Confirmer la réservation",
-      "content" : "Vous allez confimez la réservation, cette action est irréversible."
+    "confirmReservation": {
+      "title": "Confirmer la réservation",
+      "content": "Vous allez confimez la réservation, cette action est irréversible."
     },
-    "add" :{
-      "date" : "Choisir une date",
-      "time" : "Choisir un créneau horaire",
-      "guests" : "Nombre de personnes",
-      "name" : "Nom du client",
-      "email" : "Email du client",
-      "phone" : "Téléphone du client",
-      "commentary" : "Ajouter un commentaire",
-      "close" : "Réservation impossible à la date séletionnée"
+    "add": {
+      "date": "Choisir une date",
+      "time": "Choisir un créneau horaire",
+      "guests": "Nombre de personnes",
+      "name": "Nom du client",
+      "email": "Email du client",
+      "phone": "Téléphone du client",
+      "commentary": "Ajouter un commentaire",
+      "close": "Réservation impossible à la date séletionnée"
     }
   },
   "list": {
