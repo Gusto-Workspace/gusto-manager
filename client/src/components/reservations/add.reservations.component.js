@@ -17,6 +17,13 @@ import { ReservationSvg } from "../_shared/_svgs/reservation.svg";
 
 // AXIOS
 import axios from "axios";
+import { CommunitySvg } from "../_shared/_svgs/community.svg";
+import { UserSvg } from "../_shared/_svgs/user.svg";
+import { EmailSvg } from "../_shared/_svgs/email.svg";
+import { PhoneSvg } from "../_shared/_svgs/phone.svg";
+import { CommentarySvg } from "../_shared/_svgs/commentary.svg";
+import { ClockSvg } from "../_shared/_svgs/clock.svg";
+import { CalendarSvg } from "../_shared/_svgs/calendar.svg";
 
 export default function AddReservationComponent(props) {
   const { t } = useTranslation("reservations");
@@ -295,138 +302,169 @@ export default function AddReservationComponent(props) {
         </div>
       </div>
 
-      <form onSubmit={handleFormSubmit} className="flex flex-col gap-4">
-        {/* Date de réservation */}
-        <div>
-          <label
-            htmlFor="reservationDate"
-            className="block text-sm font-medium mb-2"
-          >
-            {t("form.reservationDate")}
-          </label>
+      <form onSubmit={handleFormSubmit} className="flex flex-col gap-8">
+        <div className="grid grid-cols-1 midTablet:grid-cols-2 gap-8">
+          {/* Date de réservation */}
+          <div className="flex flex-col gap-4">
+            <label
+              htmlFor="reservationDate"
+              className="text-md font-medium flex gap-2"
+            >
+              <CalendarSvg width={20} height={20} className="opacity-50" />
+              {t("labels.add.date")}
+            </label>
 
-          <Calendar
-            onChange={handleDateChange}
-            value={reservationData.reservationDate}
-            minDate={new Date()}
-            view="month"
-            locale="fr-FR"
-            tileDisabled={disableClosedDays}
-          />
+            <Calendar
+              onChange={handleDateChange}
+              value={reservationData.reservationDate}
+              minDate={new Date()}
+              view="month"
+              locale="fr-FR"
+              tileDisabled={disableClosedDays}
+              className="drop-shadow-sm"
+            />
+          </div>
+
+          {/* Sélection de l'heure */}
+          <div className="flex flex-col gap-4">
+            <label
+              htmlFor="reservationTime"
+              className="text-md font-medium flex gap-2"
+            >
+              <ClockSvg width={20} height={20} className="opacity-50" />
+              {t("labels.add.time")}
+            </label>
+
+            {availableTimes.length > 0 ? (
+              <div className="flex flex-wrap gap-4">
+                {availableTimes.map((reservationTime) => (
+                  <button
+                    type="button"
+                    key={reservationTime}
+                    onClick={() => handleTimeSelect(reservationTime)}
+                    className={`px-3 py-1 transition-all duration-200 ease-in-out rounded-md drop-shadow-md text-sm ${
+                      reservationData.reservationTime === reservationTime
+                        ? "bg-blue text-white border-blue"
+                        : "bg-white text-black hover:bg-blue hover:bg-opacity-10"
+                    }`}
+                    aria-pressed={
+                      reservationData.reservationTime === reservationTime
+                    }
+                  >
+                    {formatTimeDisplay(reservationTime)}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="">{t("labels.add.close")}</p>
+            )}
+          </div>
         </div>
 
-        {/* Sélection de l'heure */}
-        <div>
-          <label
-            htmlFor="reservationTime"
-            className="block text-sm font-medium mb-2"
-          >
-            {t("form.reservationTime")}
-          </label>
+        <div className="grid grid-cols-1 midTablet:grid-cols-2 gap-8">
+          {/* Nombre de personnes */}
+          <div className="flex flex-col gap-4">
+            <label
+              htmlFor="numberOfGuests"
+              className="text-md font-medium flex gap-2"
+            >
+              <CommunitySvg width={20} height={20} className="opacity-50" />
+              {t("labels.add.guests")}
+            </label>
 
-          {availableTimes.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
-              {availableTimes.map((reservationTime) => (
-                <button
-                  type="button"
-                  key={reservationTime}
-                  onClick={() => handleTimeSelect(reservationTime)}
-                  className={`px-3 py-1 rounded-md border text-sm ${
-                    reservationData.reservationTime === reservationTime
-                      ? "bg-blue text-white border-blue"
-                      : "bg-white text-black"
-                  }`}
-                  aria-pressed={
-                    reservationData.reservationTime === reservationTime
-                  }
-                >
-                  {formatTimeDisplay(reservationTime)}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <p className="">{t("messages.closed")}</p>
-          )}
-        </div>
+            <input
+              type="number"
+              id="numberOfGuests"
+              name="numberOfGuests"
+              min="1"
+              value={reservationData.numberOfGuests}
+              onWheel={(e) => e.target.blur()}
+              onChange={handleInputChange}
+              required
+              className="block w-full border border-gray-300 rounded-md p-2"
+            />
+          </div>
 
-        {/* Nombre de personnes */}
-        <div>
-          <label htmlFor="numberOfGuests" className="block text-sm font-medium">
-            {t("form.numberOfGuests")}
-          </label>
-          <input
-            type="number"
-            id="numberOfGuests"
-            name="numberOfGuests"
-            min="1"
-            value={reservationData.numberOfGuests}
-            onWheel={(e) => e.target.blur()}
-            onChange={handleInputChange}
-            required
-            className="mt-1 block w-full border border-gray-300 rounded-md p-2"
-          />
-        </div>
+          {/* Nom */}
+          <div className="flex flex-col gap-4">
+            <label
+              htmlFor="customerName"
+              className="text-md font-medium flex gap-2"
+            >
+              <UserSvg width={20} height={20} className="opacity-50" />
+              {t("labels.add.name")}
+            </label>
 
-        {/* Nom */}
-        <div>
-          <label htmlFor="customerName" className="block text-sm font-medium">
-            {t("form.customerName")}
-          </label>
-          <input
-            type="text"
-            id="customerName"
-            name="customerName"
-            value={reservationData.customerName}
-            onChange={handleInputChange}
-            required
-            className="mt-1 block w-full border border-gray-300 rounded-md p-2"
-          />
-        </div>
+            <input
+              type="text"
+              id="customerName"
+              name="customerName"
+              value={reservationData.customerName}
+              onChange={handleInputChange}
+              required
+              className="block w-full border border-gray-300 rounded-md p-2"
+            />
+          </div>
 
-        {/* Email */}
-        <div>
-          <label htmlFor="customerEmail" className="block text-sm font-medium">
-            {t("form.customerEmail")}
-          </label>
-          <input
-            type="email"
-            id="customerEmail"
-            name="customerEmail"
-            value={reservationData.customerEmail}
-            onChange={handleInputChange}
-            required
-            className="mt-1 block w-full border border-gray-300 rounded-md p-2"
-          />
-        </div>
+          {/* Email */}
+          <div className="flex flex-col gap-4">
+            <label
+              htmlFor="customerEmail"
+              className="text-md font-medium flex gap-2"
+            >
+              <EmailSvg width={20} height={20} className="opacity-50" />
+              {t("labels.add.email")}
+            </label>
+            <input
+              type="email"
+              id="customerEmail"
+              name="customerEmail"
+              value={reservationData.customerEmail}
+              onChange={handleInputChange}
+              required
+              className="block w-full border border-gray-300 rounded-md p-2"
+            />
+          </div>
 
-        {/* Numéro de Téléphone */}
-        <div>
-          <label htmlFor="customerPhone" className="block text-sm font-medium">
-            {t("form.customerPhone")}
-          </label>
-          <input
-            type="tel"
-            id="customerPhone"
-            name="customerPhone"
-            value={reservationData.customerPhone}
-            onChange={handleInputChange}
-            required
-            className="mt-1 block w-full border border-gray-300 rounded-md p-2"
-          />
-        </div>
+          {/* Numéro de Téléphone */}
+          <div className="flex flex-col gap-4">
+            <label
+              htmlFor="customerPhone"
+              className="text-md font-medium flex gap-2"
+            >
+              <PhoneSvg width={20} height={20} className="opacity-50" />
+              {t("labels.add.phone")}
+            </label>
 
-        {/* Commentaire */}
-        <div>
-          <label htmlFor="commentary" className="block text-sm font-medium">
-            {t("form.commentary")}
-          </label>
-          <textarea
-            id="commentary"
-            name="commentary"
-            value={reservationData.commentary}
-            onChange={handleInputChange}
-            className="mt-1 block w-full border border-gray-300 rounded-md p-2 resize-none"
-          />
+            <input
+              type="tel"
+              id="customerPhone"
+              name="customerPhone"
+              value={reservationData.customerPhone}
+              onChange={handleInputChange}
+              required
+              className="block w-full border border-gray-300 rounded-md p-2"
+            />
+          </div>
+
+          {/* Commentaire */}
+          <div className="flex flex-col gap-4">
+            <label
+              htmlFor="commentary"
+              className="text-md font-medium flex gap-2"
+            >
+              <CommentarySvg width={20} height={20} className="opacity-50" />
+              {t("labels.add.commentary")}
+            </label>
+
+            <textarea
+              id="commentary"
+              name="commentary"
+              value={reservationData.commentary}
+              onChange={handleInputChange}
+              className="block w-full border border-gray-300 rounded-md p-2 resize-none"
+            />
+          </div>
         </div>
 
         {/* Boutons Valider et Annuler */}

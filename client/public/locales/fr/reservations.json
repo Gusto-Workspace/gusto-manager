@@ -26,6 +26,16 @@
     "confirmReservation":{
       "title" : "Confirmer la réservation",
       "content" : "Vous allez confimez la réservation, cette action est irréversible."
+    },
+    "add" :{
+      "date" : "Choisir une date",
+      "time" : "Choisir un créneau horaire",
+      "guests" : "Nombre de personnes",
+      "name" : "Nom du client",
+      "email" : "Email du client",
+      "phone" : "Téléphone du client",
+      "commentary" : "Ajouter un commentaire",
+      "close" : "Réservation impossible à la date séletionnée"
     }
   },
   "list": {
