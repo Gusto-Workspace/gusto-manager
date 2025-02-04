@@ -8,6 +8,7 @@
     "deletionDuration": "Supprimer automatiquement une réservation « Terminée » au bout de",
     "interval": "Intervalle entre les créneaux de réservation",
     "minutes": "minutes",
+    "minute": "minute",
     "hour": "heure",
     "hours": "heures",
     "now": "Immédiatement",

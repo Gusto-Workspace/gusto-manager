@@ -299,7 +299,7 @@ export default function ParametersReservationComponent(props) {
               className="border p-1 rounded-lg w-[200px]"
               disabled={!deletion_duration}
             >
-              <option value="1">1 {t("labels.minutes")}</option>
+              <option value="1">1 {t("labels.minute")}</option>
               <option value="15">15 {t("labels.minutes")}</option>
               <option value="30">30 {t("labels.minutes")}</option>
               <option value="45">45 {t("labels.minutes")}</option>
