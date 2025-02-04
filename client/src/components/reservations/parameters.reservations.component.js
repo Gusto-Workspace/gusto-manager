@@ -69,12 +69,7 @@ export default function ParametersReservationComponent(props) {
         auto_accept: parameters.auto_accept,
         interval: parameters.interval,
         manage_disponibilities: parameters.manage_disponibilities,
-        tables: parameters.manage_disponibilities
-          ? parameters.tables
-          : [
-              { name: "Table 1", seats: 4 },
-              { name: "Table 2", seats: 2 },
-            ],
+        tables: parameters.tables,
         reservation_duration_minutes: parameters.reservation_duration_minutes,
         deletion_duration_minutes: parameters.deletion_duration_minutes ?? 1440,
       });
@@ -95,7 +90,7 @@ export default function ParametersReservationComponent(props) {
         ? restaurantContext.restaurantData?.opening_hours
         : reservationHours,
       manage_disponibilities: data.manage_disponibilities,
-      tables: data.manage_disponibilities ? data.tables : null,
+      tables: data.tables,
       reservation_duration_minutes: data.reservation_duration
         ? data.reservation_duration_minutes
         : null,
@@ -304,7 +299,7 @@ export default function ParametersReservationComponent(props) {
               className="border p-1 rounded-lg w-[200px]"
               disabled={!deletion_duration}
             >
-              <option value="0">{t("labels.now")}</option>
+              <option value="1">1 {t("labels.minutes")}</option>
               <option value="15">15 {t("labels.minutes")}</option>
               <option value="30">30 {t("labels.minutes")}</option>
               <option value="45">45 {t("labels.minutes")}</option>

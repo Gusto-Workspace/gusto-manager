@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 
 // I18N
@@ -22,6 +22,8 @@ export default function ListReservationsComponent(props) {
   const [searchTerm, setSearchTerm] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState(null);
+  // Pour éviter de lancer plusieurs suppressions pour la même réservation
+  const [autoDeletingReservations, setAutoDeletingReservations] = useState([]);
 
   const statusList = ["Pending", "Confirmed", "Active", "Late", "Finished"];
 
@@ -48,7 +50,7 @@ export default function ListReservationsComponent(props) {
     }
   });
 
-  // Combiner la date et l'heure
+  // Fonction utilitaire pour combiner la date et l'heure d'une réservation
   const getReservationDateTime = (reservation) => {
     const date = new Date(reservation.reservationDate);
     const [hours, minutes] = reservation.reservationTime.split(":");
@@ -168,6 +170,69 @@ export default function ListReservationsComponent(props) {
   function handleSearchChange(event) {
     setSearchTerm(event.target.value);
   }
+
+  // -----------------------------
+  // Suppression automatique des réservations Finished après le délai défini
+  // -----------------------------
+  useEffect(() => {
+    // Récupère le délai de suppression (en minutes) depuis les paramètres
+    const deletionDurationMinutes =
+      props.restaurantData?.reservations?.parameters?.deletion_duration_minutes;
+    if (!deletionDurationMinutes) return;
+
+    const intervalId = setInterval(() => {
+      const now = new Date();
+      props.reservations.forEach((reservation) => {
+        if (
+          reservation.status === "Finished" &&
+          reservation.finishedAt // On s'assure que finishedAt est renseigné
+        ) {
+          const finishedAt = new Date(reservation.finishedAt);
+          // Calcul du moment où la réservation doit être supprimée
+          const deletionThreshold = new Date(
+            finishedAt.getTime() + deletionDurationMinutes * 60000
+          );
+          if (now >= deletionThreshold) {
+            autoDeleteReservation(reservation);
+          }
+        }
+      });
+    }, 60000); // Vérifie toutes les 60 secondes
+
+    return () => clearInterval(intervalId);
+  }, [props.reservations, props.restaurantData]);
+
+  // Fonction pour supprimer automatiquement une réservation
+  function autoDeleteReservation(reservation) {
+    // Empêche la suppression multiple de la même réservation
+    if (autoDeletingReservations.includes(reservation._id)) return;
+    setAutoDeletingReservations((prev) => [...prev, reservation._id]);
+
+    const token = localStorage.getItem("token");
+    axios
+      .delete(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${props.restaurantData?._id}/reservations/${reservation._id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      )
+      .then((response) => {
+        // Mise à jour des données du restaurant pour refléter la suppression
+        props.setRestaurantData(response.data.restaurant);
+      })
+      .catch((error) => {
+        console.error("Error auto-deleting reservation:", error);
+      })
+      .finally(() => {
+        setAutoDeletingReservations((prev) =>
+          prev.filter((id) => id !== reservation._id)
+        );
+      });
+  }
+  // -----------------------------
 
   return (
     <section className="flex flex-col gap-6">

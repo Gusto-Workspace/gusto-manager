@@ -33,6 +33,7 @@ const reservationSchema = new mongoose.Schema(
       enum: ["Pending", "Confirmed", "Active", "Late", "Finished"],
       default: "Pending",
     },
+    finishedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );
