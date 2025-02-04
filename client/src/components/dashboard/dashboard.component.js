@@ -42,14 +42,14 @@ export default function DashboardComponent(props) {
       fetchGiftCardPayouts();
       fetchMonthlySales();
     }
-  }, [props.restaurantData, props.dataLoading]);
+  }, [props.dataLoading]);
 
   useEffect(() => {
     setPayments([]);
     setLastChargeId(null);
     setPayouts([]);
     setLastPayoutId(null);
-  }, [props.restaurantData]);
+  }, [props.dataLoading]);
 
   // ---- Requête pour paiements (charges) ----
   async function fetchGiftCardSales(starting_after) {

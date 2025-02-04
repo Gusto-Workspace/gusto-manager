@@ -15,8 +15,10 @@ export default function RestaurantContext() {
   const [closeEditing, setCloseEditing] = useState(false);
   const [isAuth, setIsAuth] = useState(false);
 
+  const [autoDeletingReservations, setAutoDeletingReservations] = useState([]);
+
   function handleInvalidToken() {
-    setRestaurantsList([])
+    setRestaurantsList([]);
     localStorage.removeItem("token");
     router.push("/login");
   }
@@ -132,6 +134,68 @@ export default function RestaurantContext() {
           }
         });
     }
+  }
+
+  useEffect(() => {
+    if (!restaurantData) return;
+
+    const deletionDurationMinutes =
+      restaurantData?.reservations?.parameters?.deletion_duration_minutes;
+    if (!deletionDurationMinutes) return;
+
+    // Fonction de vérification des réservations expirées
+    const checkExpiredReservations = () => {
+      const now = new Date();
+      const reservations = restaurantData.reservations.list || [];
+      reservations.forEach((reservation) => {
+        if (reservation.status === "Finished" && reservation.finishedAt) {
+          const finishedAt = new Date(reservation.finishedAt);
+          const deletionThreshold = new Date(
+            finishedAt.getTime() + deletionDurationMinutes * 60000
+          );
+          if (now >= deletionThreshold) {
+            autoDeleteReservation(reservation);
+          }
+        }
+      });
+    };
+
+    // Exécute immédiatement la vérification
+    checkExpiredReservations();
+
+    // Puis planifie la vérification à intervalle (ici 30s)
+    const intervalId = setInterval(checkExpiredReservations, 30000);
+
+    return () => clearInterval(intervalId);
+  }, [restaurantData]);
+
+  function autoDeleteReservation(reservation) {
+    // Évite la suppression multiple pour une même réservation
+    if (autoDeletingReservations.includes(reservation._id)) return;
+    setAutoDeletingReservations((prev) => [...prev, reservation._id]);
+
+    const token = localStorage.getItem("token");
+    axios
+      .delete(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantData._id}/reservations/${reservation._id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      )
+      .then((response) => {
+        setRestaurantData(response.data.restaurant);
+      })
+      .catch((error) => {
+        console.error("Error auto-deleting reservation:", error);
+      })
+      .finally(() => {
+        setAutoDeletingReservations((prev) =>
+          prev.filter((id) => id !== reservation._id)
+        );
+      });
   }
 
   function logout() {
