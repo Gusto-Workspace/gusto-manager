@@ -260,7 +260,7 @@ export default function ParametersReservationComponent(props) {
                 placeholder="-"
                 disabled={!reservation_duration}
               />
-              <span>{t("labels.minutes")}</span>
+              <span>{t("labels.minute(s)")}</span>
             </div>
           </div>
 

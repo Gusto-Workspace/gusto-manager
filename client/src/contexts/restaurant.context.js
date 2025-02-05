@@ -16,6 +16,7 @@ export default function RestaurantContext() {
   const [isAuth, setIsAuth] = useState(false);
 
   const [autoDeletingReservations, setAutoDeletingReservations] = useState([]);
+  const [autoUpdatingReservations, setAutoUpdatingReservations] = useState([]);
 
   function handleInvalidToken() {
     setRestaurantsList([]);
@@ -136,6 +137,7 @@ export default function RestaurantContext() {
     }
   }
 
+  // VERIFICATION DES RESERVATIONS TERMINEES A SUPPRIMER
   useEffect(() => {
     if (!restaurantData) return;
 
@@ -143,7 +145,6 @@ export default function RestaurantContext() {
       restaurantData?.reservations?.parameters?.deletion_duration_minutes;
     if (!deletionDurationMinutes) return;
 
-    // Fonction de vérification des réservations expirées
     const checkExpiredReservations = () => {
       const now = new Date();
       const reservations = restaurantData.reservations.list || [];
@@ -160,17 +161,146 @@ export default function RestaurantContext() {
       });
     };
 
-    // Exécute immédiatement la vérification
     checkExpiredReservations();
 
-    // Puis planifie la vérification à intervalle (ici 30s)
     const intervalId = setInterval(checkExpiredReservations, 30000);
 
     return () => clearInterval(intervalId);
   }, [restaurantData]);
 
+  // VERIFICATION DES RESERVATIONS EN RETARD
+  useEffect(() => {
+    if (!restaurantData) return;
+
+    const checkLateReservations = () => {
+      const now = new Date();
+      const gracePeriod = 5 * 60000; // 5 minutes de marge
+      const reservations = restaurantData.reservations.list || [];
+      reservations.forEach((reservation) => {
+        if (reservation.status === "Confirmed") {
+          const reservationDate = new Date(reservation.reservationDate);
+          const [hours, minutes] = reservation.reservationTime.split(":");
+          reservationDate.setHours(
+            parseInt(hours, 10),
+            parseInt(minutes, 10),
+            0,
+            0
+          );
+
+          // On ajoute la marge de 5 minutes à la date de réservation
+          const reservationDateWithGrace = new Date(
+            reservationDate.getTime() + gracePeriod
+          );
+
+          if (now >= reservationDateWithGrace) {
+            autoUpdateToLate(reservation);
+          }
+        }
+      });
+    };
+
+    checkLateReservations();
+    const updateIntervalId = setInterval(checkLateReservations, 30000);
+    return () => clearInterval(updateIntervalId);
+  }, [restaurantData]);
+
+  // VERIFICATION DES RESERVATIONS EN COURS A PASSER EN FINISHED SI LE PARAMETER EST TRUE
+  useEffect(() => {
+    if (!restaurantData) return;
+
+    const reservationDurationEnabled =
+      restaurantData?.reservations?.parameters?.reservation_duration;
+    if (!reservationDurationEnabled) return;
+
+    const reservationDurationMinutes =
+      restaurantData?.reservations?.parameters?.reservation_duration_minutes;
+    if (!reservationDurationMinutes) return;
+
+    const checkAutoFinishReservations = () => {
+      const now = new Date();
+      const reservations = restaurantData.reservations.list || [];
+      reservations.forEach((reservation) => {
+        if (reservation.status === "Active") {
+          const reservationStart = new Date(reservation.reservationDate);
+          const [hours, minutes] = reservation.reservationTime.split(":");
+          reservationStart.setHours(
+            parseInt(hours, 10),
+            parseInt(minutes, 10),
+            0,
+            0
+          );
+
+          const finishThreshold = new Date(
+            reservationStart.getTime() + reservationDurationMinutes * 60000
+          );
+
+          if (now >= finishThreshold) {
+            autoUpdateToFinished(reservation);
+          }
+        }
+      });
+    };
+
+    checkAutoFinishReservations();
+    const intervalId = setInterval(checkAutoFinishReservations, 30000);
+    return () => clearInterval(intervalId);
+  }, [restaurantData]);
+
+  // FONCTION POUR CHANGER LE STATUS D'UNE RESERVATION A FINISHED
+  function autoUpdateToFinished(reservation) {
+    const token = localStorage.getItem("token");
+
+    axios
+      .put(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantData._id}/reservations/${reservation._id}/status`,
+        { status: "Finished" },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      )
+      .then((response) => {
+        setRestaurantData(response.data.restaurant);
+      })
+      .catch((error) => {
+        console.error("Error auto-updating reservation to Finished:", error);
+      });
+  }
+
+  // FONCTION POUR CHANGER LE STATUS D'UNE RESERVATION A "LATE"
+  function autoUpdateToLate(reservation) {
+    if (autoUpdatingReservations.includes(reservation._id)) return;
+    setAutoUpdatingReservations((prev) => [...prev, reservation._id]);
+
+    const token = localStorage.getItem("token");
+    axios
+      .put(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantData._id}/reservations/${reservation._id}/status`,
+        { status: "Late" },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      )
+      .then((response) => {
+        setRestaurantData(response.data.restaurant);
+      })
+      .catch((error) => {
+        console.error("Error auto-updating reservation to Late:", error);
+      })
+      .finally(() => {
+        setAutoUpdatingReservations((prev) =>
+          prev.filter((id) => id !== reservation._id)
+        );
+      });
+  }
+
+  // FONCTION POUR SUPPRIMER UNE RESERVATION TERMINEE
   function autoDeleteReservation(reservation) {
-    // Évite la suppression multiple pour une même réservation
     if (autoDeletingReservations.includes(reservation._id)) return;
     setAutoDeletingReservations((prev) => [...prev, reservation._id]);
 

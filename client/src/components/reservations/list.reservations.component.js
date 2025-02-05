@@ -9,6 +9,8 @@ import axios from "axios";
 
 // SVG
 import { ReservationSvg } from "../_shared/_svgs/_index";
+
+// COMPONENTS
 import ConfirmationModalReservationComponent from "./confirm-modal.reservations.component";
 import CardReservationComponent from "./card.reservations.component";
 
@@ -22,8 +24,6 @@ export default function ListReservationsComponent(props) {
   const [searchTerm, setSearchTerm] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState(null);
-  // Pour éviter de lancer plusieurs suppressions pour la même réservation
-  const [autoDeletingReservations, setAutoDeletingReservations] = useState([]);
 
   const statusList = ["Pending", "Confirmed", "Active", "Late", "Finished"];
 
