@@ -35,7 +35,7 @@ export default function AddReservationComponent(props) {
   const [reservationData, setReservationData] = useState({
     reservationDate: new Date(),
     reservationTime: "",
-    numberOfGuests: 1,
+    numberOfGuests: "",
     customerName: "",
     customerEmail: "",
     customerPhone: "",
@@ -76,51 +76,145 @@ export default function AddReservationComponent(props) {
   // Mettre à jour les heures disponibles lorsque la date change
   useEffect(() => {
     if (
-      props?.restaurantData?.reservations &&
-      reservationData.reservationDate
-    ) {
-      const selectedDay = reservationData.reservationDate.getDay();
-      const dayIndex = selectedDay === 0 ? 6 : selectedDay - 1;
-      const parameters = props.restaurantData.reservations.parameters;
-      const dayHours = parameters.same_hours_as_restaurant
-        ? props.restaurantData.opening_hours[dayIndex]
-        : parameters.reservation_hours[dayIndex];
+      !props?.restaurantData?.reservations ||
+      !reservationData.reservationDate
+    )
+      return;
 
-      if (dayHours.isClosed) {
-        setAvailableTimes([]);
-      } else {
-        if (Array.isArray(dayHours.hours) && dayHours.hours.length > 0) {
-          const interval = parameters.interval || 30;
-          let allAvailableTimes = dayHours.hours.flatMap(({ open, close }) =>
-            generateTimeOptions(open, close, interval)
-          );
+    const selectedDay = reservationData.reservationDate.getDay();
+    const dayIndex = selectedDay === 0 ? 6 : selectedDay - 1;
+    const parameters = props.restaurantData.reservations.parameters;
+    const dayHours = parameters.same_hours_as_restaurant
+      ? props.restaurantData.opening_hours[dayIndex]
+      : parameters.reservation_hours[dayIndex];
 
-          // Vérifier si la date sélectionnée est aujourd'hui
-          if (isToday(reservationData.reservationDate)) {
-            const now = new Date();
-            const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    if (dayHours.isClosed) {
+      setAvailableTimes([]);
+    } else {
+      if (Array.isArray(dayHours.hours) && dayHours.hours.length > 0) {
+        const interval = parameters.interval || 30;
+        let allAvailableTimes = dayHours.hours.flatMap(({ open, close }) =>
+          generateTimeOptions(open, close, interval)
+        );
 
-            // Filtrer les créneaux horaires qui sont déjà passés
-            allAvailableTimes = allAvailableTimes.filter((time) => {
-              const [hour, minute] = time.split(":").map(Number);
-              const timeInMinutes = hour * 60 + minute;
-              return timeInMinutes > currentMinutes;
-            });
-          }
-
-          setAvailableTimes(allAvailableTimes);
-        } else {
-          setAvailableTimes([]);
+        // Filtrer les créneaux déjà passés si la date sélectionnée est aujourd'hui
+        if (isToday(reservationData.reservationDate)) {
+          const now = new Date();
+          const currentMinutes = now.getHours() * 60 + now.getMinutes();
+          allAvailableTimes = allAvailableTimes.filter((time) => {
+            const [hour, minute] = time.split(":").map(Number);
+            const timeInMinutes = hour * 60 + minute;
+            return timeInMinutes > currentMinutes;
+          });
         }
-      }
 
-      setIsLoading(false);
+        // Si l'option manage_disponibilities est activée
+        if (parameters.manage_disponibilities) {
+          // Si le champ numberOfGuests est renseigné
+          if (reservationData.numberOfGuests) {
+            const numGuests = Number(reservationData.numberOfGuests);
+            // Calcul de la taille de table requise :
+            // Ex : pour 1, table de 2 ; pour 3, table de 4 ; pour 5, table de 6, etc.
+            const requiredTableSize =
+              numGuests % 2 === 0 ? numGuests : numGuests + 1;
+            const eligibleTables = parameters.tables.filter(
+              (table) => Number(table.seats) === requiredTableSize
+            );
+            const formattedSelectedDate = format(
+              reservationData.reservationDate,
+              "yyyy-MM-dd"
+            );
+
+            // Si la gestion de la durée est activée, on prend en compte la durée
+            if (parameters.reservation_duration) {
+              const duration = Number(parameters.reservation_duration_minutes);
+              allAvailableTimes = allAvailableTimes.filter((time) => {
+                // Convertir le créneau candidat en minutes depuis minuit
+                const [hour, minute] = time.split(":").map(Number);
+                const candidateMinutes = hour * 60 + minute;
+
+                const reservationsForSlot =
+                  props.restaurantData.reservations.list.filter(
+                    (reservation) => {
+                      const resDate = new Date(reservation.reservationDate);
+                      const formattedResDate = format(resDate, "yyyy-MM-dd");
+                      if (formattedResDate !== formattedSelectedDate)
+                        return false;
+                      if (
+                        !["Confirmed", "Late", "Active"].includes(
+                          reservation.status
+                        )
+                      )
+                        return false;
+                      // IMPORTANT : ne compter que les réservations ayant une table assignée
+                      // dont la capacité correspond exactement au requiredTableSize.
+                      if (
+                        !reservation.table ||
+                        Number(reservation.table.seats) !== requiredTableSize
+                      )
+                        return false;
+                      // Calculer le début de la réservation en minutes depuis minuit
+                      const [resHour, resMinute] = reservation.reservationTime
+                        .split(":")
+                        .map(Number);
+                      const reservationStart = resHour * 60 + resMinute;
+                      const reservationEnd = reservationStart + duration;
+                      // Le créneau candidat est considéré occupé s'il se situe dans [reservationStart, reservationEnd)
+                      return (
+                        candidateMinutes >= reservationStart &&
+                        candidateMinutes < reservationEnd
+                      );
+                    }
+                  );
+
+                return reservationsForSlot.length < eligibleTables.length;
+              });
+            } else {
+              // Cas sans gestion de durée : filtrage basé sur l'égalité du créneau
+              allAvailableTimes = allAvailableTimes.filter((time) => {
+                const reservationsForSlot =
+                  props.restaurantData.reservations.list.filter(
+                    (reservation) => {
+                      const resDate = new Date(reservation.reservationDate);
+                      const formattedResDate = format(resDate, "yyyy-MM-dd");
+                      if (formattedResDate !== formattedSelectedDate)
+                        return false;
+                      if (reservation.reservationTime !== time) return false;
+                      if (
+                        !["Confirmed", "Late", "Active"].includes(
+                          reservation.status
+                        )
+                      )
+                        return false;
+                      // Ne prendre en compte que les réservations dont la table correspond à requiredTableSize
+                      if (
+                        !reservation.table ||
+                        Number(reservation.table.seats) !== requiredTableSize
+                      )
+                        return false;
+                      return true;
+                    }
+                  );
+                return reservationsForSlot.length < eligibleTables.length;
+              });
+            }
+          }
+        }
+
+        setAvailableTimes(allAvailableTimes);
+      } else {
+        setAvailableTimes([]);
+      }
     }
+    setIsLoading(false);
   }, [
     reservationData.reservationDate,
+    reservationData.numberOfGuests,
     props.restaurantData.opening_hours,
     props.restaurantData.reservations.parameters.reservation_hours,
     props.restaurantData.reservations.parameters.interval,
+    props.restaurantData.reservations.parameters.manage_disponibilities,
+    props.restaurantData.reservations.parameters.reservation_duration,
   ]);
 
   // Générer les options d'heures disponibles
@@ -237,6 +331,7 @@ export default function AddReservationComponent(props) {
     setReservationData((prevData) => ({
       ...prevData,
       [name]: value,
+      ...(name === "numberOfGuests" ? { reservationTime: "" } : {}),
     }));
   }
 
@@ -303,6 +398,29 @@ export default function AddReservationComponent(props) {
       </div>
 
       <form onSubmit={handleFormSubmit} className="flex flex-col gap-8">
+        <div className="flex flex-col gap-4">
+          <label
+            htmlFor="numberOfGuests"
+            className="text-md font-medium flex gap-2"
+          >
+            <CommunitySvg width={20} height={20} className="opacity-50" />
+            {t("labels.add.guests")}
+          </label>
+
+          <div className="grid grid-cols-1 midTablet:grid-cols-2 gap-8">
+            <input
+              type="number"
+              id="numberOfGuests"
+              name="numberOfGuests"
+              value={reservationData.numberOfGuests}
+              onWheel={(e) => e.target.blur()}
+              onChange={handleInputChange}
+              required
+              className="block w-full border border-gray-300 rounded-md p-2"
+            />
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 midTablet:grid-cols-2 gap-8">
           {/* Date de réservation */}
           <div className="flex flex-col gap-4">
@@ -342,6 +460,7 @@ export default function AddReservationComponent(props) {
                     type="button"
                     key={reservationTime}
                     onClick={() => handleTimeSelect(reservationTime)}
+                    disabled={!reservationData.numberOfGuests} // Désactivé si le nombre de personnes n'est pas renseigné
                     className={`px-3 py-1 transition-all duration-200 ease-in-out rounded-md drop-shadow-md text-sm ${
                       reservationData.reservationTime === reservationTime
                         ? "bg-blue text-white border-blue"
@@ -363,27 +482,6 @@ export default function AddReservationComponent(props) {
 
         <div className="grid grid-cols-1 midTablet:grid-cols-2 gap-8">
           {/* Nombre de personnes */}
-          <div className="flex flex-col gap-4">
-            <label
-              htmlFor="numberOfGuests"
-              className="text-md font-medium flex gap-2"
-            >
-              <CommunitySvg width={20} height={20} className="opacity-50" />
-              {t("labels.add.guests")}
-            </label>
-
-            <input
-              type="number"
-              id="numberOfGuests"
-              name="numberOfGuests"
-              min="1"
-              value={reservationData.numberOfGuests}
-              onWheel={(e) => e.target.blur()}
-              onChange={handleInputChange}
-              required
-              className="block w-full border border-gray-300 rounded-md p-2"
-            />
-          </div>
 
           {/* Nom */}
           <div className="flex flex-col gap-4">

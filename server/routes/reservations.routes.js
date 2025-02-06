@@ -1,6 +1,9 @@
 const express = require("express");
 const router = express.Router();
 
+// DATE FNS
+const { format } = require("date-fns");
+
 // MIDDLEWARE
 const authenticateToken = require("../middleware/authentificate-token");
 
@@ -53,7 +56,7 @@ router.put(
 // CREATE A NEW RESERVATION
 router.post("/restaurants/:id/reservations", async (req, res) => {
   const restaurantId = req.params.id;
-  const reservationData = req.body;
+  const reservationData = req.body; // Contient notamment : reservationDate, reservationTime, numberOfGuests, etc.
 
   try {
     const restaurant = await RestaurantModel.findById(restaurantId)
@@ -66,6 +69,66 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
 
     if (!restaurant) {
       return res.status(404).json({ message: "Restaurant not found" });
+    }
+
+    const parameters = restaurant.reservations.parameters;
+
+    // Si l'option de gestion des disponibilités est activée,
+    // on vérifie qu'une table est toujours disponible pour ce créneau
+    if (parameters.manage_disponibilities) {
+      // Détermination du nombre de personnes et de la taille de table requise.
+      // Par exemple : pour 1 personne → table de 2, pour 3 → table de 4, pour 5 → table de 6, etc.
+      const numGuests = Number(reservationData.numberOfGuests);
+      const requiredTableSize = numGuests % 2 === 0 ? numGuests : numGuests + 1;
+
+      // Filtrer les tables définies dans les paramètres qui correspondent exactement à la taille requise.
+      const eligibleTables = parameters.tables.filter(
+        (table) => Number(table.seats) === requiredTableSize
+      );
+
+      // Format de la date pour la comparaison (ex: "2025-02-07")
+      const formattedDate = format(new Date(reservationData.reservationDate), "yyyy-MM-dd");
+
+      // On filtre les réservations existantes pour ce créneau
+      // en ne comptant que celles qui occupent une table de la taille requise.
+      const conflictingReservations = restaurant.reservations.list.filter((r) => {
+        const rDate = new Date(r.reservationDate);
+        const formattedRDate = format(rDate, "yyyy-MM-dd");
+        if (formattedRDate !== formattedDate) return false;
+        if (r.reservationTime !== reservationData.reservationTime) return false;
+        if (!["Confirmed", "Active", "Late"].includes(r.status)) return false;
+        // Ne prendre en compte que les réservations qui ont une table assignée
+        // et dont la capacité correspond exactement à la table recherchée.
+        if (!r.table || Number(r.table.seats) !== requiredTableSize) return false;
+        return true;
+      });
+
+      // S'il y a autant (ou plus) de réservations que de tables éligibles,
+      // alors aucune table n'est disponible pour ce créneau.
+      if (conflictingReservations.length >= eligibleTables.length) {
+        return res.status(409).json({
+          message: "La table a été réservée entre-temps. Veuillez réessayer.",
+        });
+      }
+
+      // Récupérer les noms des tables déjà réservées pour ce créneau
+      const reservedTableNames = conflictingReservations
+        .map((r) => r.table && r.table.name)
+        .filter(Boolean);
+
+      // Sélectionner une table parmi les éligibles qui n'est pas déjà réservée
+      const assignedTable = eligibleTables.find(
+        (table) => !reservedTableNames.includes(table.name)
+      );
+
+      if (assignedTable) {
+        // Assigner la table à la réservation
+        reservationData.table = assignedTable;
+      } else {
+        return res.status(409).json({
+          message: "La table a été réservée entre-temps. Veuillez réessayer.",
+        });
+      }
     }
 
     // Créer une nouvelle réservation

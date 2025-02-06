@@ -130,10 +130,19 @@ export default function ParametersReservationComponent(props) {
     setReservationHours(data.hours);
   }
 
+  
+
   const same_hours_as_restaurant = watch("same_hours_as_restaurant");
   const manage_disponibilities = watch("manage_disponibilities");
   const reservation_duration = watch("reservation_duration");
   const deletion_duration = watch("deletion_duration");
+
+  useEffect(() => {
+    // Si manage_disponibilities est activé, on force deletion_duration à true
+    if (manage_disponibilities) {
+      setValue("reservation_duration", true);
+    }
+  }, [manage_disponibilities, setValue]);
 
   if (isLoading) {
     return (
@@ -199,7 +208,7 @@ export default function ParametersReservationComponent(props) {
           )}
         </div>
 
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
             <input
               type="checkbox"
@@ -237,12 +246,13 @@ export default function ParametersReservationComponent(props) {
           )}
         </div>
 
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
             <input
               type="checkbox"
               id="reservation_duration"
               {...register("reservation_duration")}
+              disabled={manage_disponibilities}
             />
             <label htmlFor="reservation_duration">
               {t("labels.reservationDuration")} :
@@ -264,7 +274,7 @@ export default function ParametersReservationComponent(props) {
             </div>
           </div>
 
-          <p className="text-sm opacity-70">
+          <p className="text-sm opacity-70 flex flex-col gap-2">
             Si cette option est cochée, alors la réservation passera
             automatiquement en "Terminée" au bout du temps que vous avez choisi.
             Exemple, si la réservation est à 20h, que vous avez choisi une durée
@@ -273,10 +283,18 @@ export default function ParametersReservationComponent(props) {
             alors vous devrez passer manuellement la réservation en "Terminée"
             dans la liste des réservations une fois celle-ci terminée pour
             rendre la table disponible.
+            <span>
+              <i>
+                <u>Information</u>
+              </i>{" "}
+              : Si vous activez l'option "Utiliser la gestion intelligente des
+              réservations", cette option sera activée par défaut et permettra de gérer
+              les disponibilités des tables.
+            </span>
           </p>
         </div>
 
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
             <input
               type="checkbox"
