@@ -287,20 +287,26 @@ router.delete(
         return res.status(404).json({ message: "Restaurant not found" });
       }
 
-      const reservationIndex = restaurant.reservations.list.findIndex(
+      // Vérifier que la réservation existe dans le tableau
+      const reservationExists = restaurant.reservations.list.some(
         (resv) => resv._id.toString() === reservationId
       );
 
-      if (reservationIndex === -1) {
+      if (!reservationExists) {
         return res
           .status(404)
           .json({ message: "Reservation not found in this restaurant" });
       }
 
+      // Supprimer la réservation de la collection Reservations
       await ReservationModel.findByIdAndDelete(reservationId);
 
-      restaurant.reservations.list.splice(reservationIndex, 1);
-      await restaurant.save();
+      // Retirer l'ID de la réservation du tableau de réservations du restaurant de façon atomique
+      await RestaurantModel.findByIdAndUpdate(
+        restaurantId,
+        { $pull: { "reservations.list": reservationId } },
+        { new: true }
+      );
 
       const updatedRestaurant = await RestaurantModel.findById(restaurantId)
         .populate({
@@ -320,5 +326,6 @@ router.delete(
     }
   }
 );
+
 
 module.exports = router;
