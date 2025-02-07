@@ -109,6 +109,7 @@ export default function AddReservationComponent(props) {
         }
 
         // Si l'option manage_disponibilities est activée
+        // Si l'option manage_disponibilities est activée
         if (parameters.manage_disponibilities) {
           // Si le champ numberOfGuests est renseigné
           if (reservationData.numberOfGuests) {
@@ -129,10 +130,12 @@ export default function AddReservationComponent(props) {
             if (parameters.reservation_duration) {
               const duration = Number(parameters.reservation_duration_minutes);
               allAvailableTimes = allAvailableTimes.filter((time) => {
-                // Convertir le créneau candidat en minutes depuis minuit
+                // Conversion du créneau candidat en minutes depuis minuit
                 const [hour, minute] = time.split(":").map(Number);
                 const candidateMinutes = hour * 60 + minute;
+                const candidateEnd = candidateMinutes + duration;
 
+                // Filtrer les réservations existantes qui pourraient chevaucher le créneau candidat
                 const reservationsForSlot =
                   props.restaurantData.reservations.list.filter(
                     (reservation) => {
@@ -146,27 +149,29 @@ export default function AddReservationComponent(props) {
                         )
                       )
                         return false;
-                      // IMPORTANT : ne compter que les réservations ayant une table assignée
-                      // dont la capacité correspond exactement au requiredTableSize.
                       if (
                         !reservation.table ||
                         Number(reservation.table.seats) !== requiredTableSize
                       )
                         return false;
-                      // Calculer le début de la réservation en minutes depuis minuit
+                      // Calculer le début et la fin de la réservation en minutes depuis minuit
                       const [resHour, resMinute] = reservation.reservationTime
                         .split(":")
                         .map(Number);
                       const reservationStart = resHour * 60 + resMinute;
                       const reservationEnd = reservationStart + duration;
-                      // Le créneau candidat est considéré occupé s'il se situe dans [reservationStart, reservationEnd)
+                      // Vérification du chevauchement :
+                      // Le créneau candidat est en conflit si :
+                      // candidateMinutes < reservationEnd && candidateEnd > reservationStart
                       return (
-                        candidateMinutes >= reservationStart &&
-                        candidateMinutes < reservationEnd
+                        candidateMinutes < reservationEnd &&
+                        candidateEnd > reservationStart
                       );
                     }
                   );
 
+                // Le créneau candidat est valide s'il existe moins de réservations conflictuelles
+                // que le nombre total de tables éligibles.
                 return reservationsForSlot.length < eligibleTables.length;
               });
             } else {
