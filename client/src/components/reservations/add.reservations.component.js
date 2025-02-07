@@ -17,17 +17,20 @@ import { ReservationSvg } from "../_shared/_svgs/reservation.svg";
 
 // AXIOS
 import axios from "axios";
-import { CommunitySvg } from "../_shared/_svgs/community.svg";
-import { UserSvg } from "../_shared/_svgs/user.svg";
-import { EmailSvg } from "../_shared/_svgs/email.svg";
-import { PhoneSvg } from "../_shared/_svgs/phone.svg";
-import { CommentarySvg } from "../_shared/_svgs/commentary.svg";
-import { ClockSvg } from "../_shared/_svgs/clock.svg";
-import { CalendarSvg } from "../_shared/_svgs/calendar.svg";
+
+// SVG
+import {
+  CommunitySvg,
+  UserSvg,
+  EmailSvg,
+  PhoneSvg,
+  CommentarySvg,
+  ClockSvg,
+  CalendarSvg,
+} from "../_shared/_svgs/_index";
 
 export default function AddReservationComponent(props) {
   const { t } = useTranslation("reservations");
-
   const router = useRouter();
 
   const isEditing = !!props.reservation;
@@ -109,7 +112,6 @@ export default function AddReservationComponent(props) {
         }
 
         // Si l'option manage_disponibilities est activée
-        // Si l'option manage_disponibilities est activée
         if (parameters.manage_disponibilities) {
           // Si le champ numberOfGuests est renseigné
           if (reservationData.numberOfGuests) {
@@ -154,6 +156,12 @@ export default function AddReservationComponent(props) {
                         Number(reservation.table.seats) !== requiredTableSize
                       )
                         return false;
+                      // Exclure la réservation en cours de modification
+                      if (
+                        isEditing &&
+                        reservation._id === props.reservation._id
+                      )
+                        return false;
                       // Calculer le début et la fin de la réservation en minutes depuis minuit
                       const [resHour, resMinute] = reservation.reservationTime
                         .split(":")
@@ -191,10 +199,15 @@ export default function AddReservationComponent(props) {
                         )
                       )
                         return false;
-                      // Ne prendre en compte que les réservations dont la table correspond à requiredTableSize
                       if (
                         !reservation.table ||
                         Number(reservation.table.seats) !== requiredTableSize
+                      )
+                        return false;
+                      // Exclure la réservation en cours de modification
+                      if (
+                        isEditing &&
+                        reservation._id === props.reservation._id
                       )
                         return false;
                       return true;
@@ -319,7 +332,6 @@ export default function AddReservationComponent(props) {
       }
 
       props.setRestaurantData(response.data.restaurant);
-
       router.push("/reservations");
     } catch (error) {
       console.error("Erreur lors de la soumission de la réservation :", error);
@@ -486,8 +498,6 @@ export default function AddReservationComponent(props) {
         </div>
 
         <div className="grid grid-cols-1 midTablet:grid-cols-2 gap-8">
-          {/* Nombre de personnes */}
-
           {/* Nom */}
           <div className="flex flex-col gap-4">
             <label
