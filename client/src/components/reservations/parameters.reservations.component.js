@@ -130,17 +130,15 @@ export default function ParametersReservationComponent(props) {
     setReservationHours(data.hours);
   }
 
-  
-
   const same_hours_as_restaurant = watch("same_hours_as_restaurant");
   const manage_disponibilities = watch("manage_disponibilities");
   const reservation_duration = watch("reservation_duration");
   const deletion_duration = watch("deletion_duration");
 
   useEffect(() => {
-    // Si manage_disponibilities est activé, on force deletion_duration à true
     if (manage_disponibilities) {
       setValue("reservation_duration", true);
+      setValue("auto_accept", true);
     }
   }, [manage_disponibilities, setValue]);
 
@@ -214,15 +212,24 @@ export default function ParametersReservationComponent(props) {
               type="checkbox"
               id="auto_accept"
               {...register("auto_accept")}
+              disabled={manage_disponibilities}
             />
             <label htmlFor="auto_accept">{t("labels.autoAccept")}</label>
           </div>
 
-          <p className="text-sm opacity-70">
+          <p className="text-sm opacity-70 flex flex-col gap-2">
             Si cette option est cochée, alors une réservation effectuée depuis
             votre site internet passera directement en état "Confirmée". Sinon,
             vous devrez manuellement confirmer la réservation depuis la site des
             réservations.
+            <span>
+              <i>
+                <u>Information</u>
+              </i>{" "}
+              : Si vous activez l'option "Utiliser la gestion intelligente des
+              réservations", cette option sera activée par défaut et permettra
+              de gérer les disponibilités des tables.
+            </span>
           </p>
         </div>
 
@@ -288,8 +295,8 @@ export default function ParametersReservationComponent(props) {
                 <u>Information</u>
               </i>{" "}
               : Si vous activez l'option "Utiliser la gestion intelligente des
-              réservations", cette option sera activée par défaut et permettra de gérer
-              les disponibilités des tables.
+              réservations", cette option sera activée par défaut et permettra
+              de gérer les disponibilités des tables.
             </span>
           </p>
         </div>
