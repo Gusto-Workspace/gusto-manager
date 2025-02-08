@@ -1,47 +1,63 @@
-.react-calendar__navigation__label {
-  text-transform: capitalize;
-}
-
 .react-calendar {
   width: 100% !important;
   border-radius: 12px;
   padding: 5px;
   border: none !important;
-}
 
-.react-calendar__tile--now {
-  background: hsla(249, 59%, 57%, 0.2) !important;
-}
+  &__navigation {
+    &__label {
+      text-transform: capitalize;
+      pointer-events: none;
+      cursor: default;
 
-.react-calendar__tile--active {
-  background: hsla(220, 100%, 64%, 1) !important;
-}
+      &:hover {
+        background-color: white !important;
+      }
+    }
 
-.react-calendar__tile {
-  border-radius: 12px;
-}
+    button {
+      &:disabled {
+        opacity: 0;
+      }
+      &:enabled {
+        &:hover,
+        &:focus {
+          background-color: white !important;
+        }
+      }
+    }
+  }
 
-.react-calendar__navigation button:disabled {
-  opacity: 0;
-}
+  &__tile {
+    border-radius: 12px;
 
-.react-calendar__tile:enabled:not(.react-calendar__tile--active):hover {
-  background: hsla(220, 100%, 64%, 0.1) !important;
-}
+    &--now {
+      background: hsla(249, 59%, 57%, 0.2) !important;
+    }
 
-.react-calendar__navigation__label:hover {
-  background-color: white !important;
-}
+    &--active {
+      background: hsla(220, 100%, 64%, 1) !important;
+      color: white !important;
+    }
 
-.react-calendar__navigation__label {
-  pointer-events: none;
-  cursor: default;
-}
+    &:enabled:not(.react-calendar__tile--active):hover {
+      background: hsla(220, 100%, 64%, 0.1) !important;
+    }
+  }
 
-.react-calendar__navigation button:enabled:focus {
-  background-color: white !important;
-}
+  &__month-view {
+    &__days {
+      &__day--weekend {
+        color: inherit !important;
 
-.react-calendar__navigation button:enabled:hover {
-  background-color: white !important;
+        &:disabled {
+          color: #ababab !important;
+        }
+
+        &.react-calendar__tile--active {
+          color: white !important;
+        }
+      }
+    }
+  }
 }

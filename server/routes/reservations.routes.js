@@ -25,22 +25,27 @@ router.put(
         return res.status(400).json({ message: "Invalid parameters format" });
       }
 
-      // Mettre à jour les paramètres de réservation
-      const updatedRestaurant = await RestaurantModel.findByIdAndUpdate(
-        restaurantId,
-        { "reservations.parameters": parameters },
-        { new: true }
-      )
+      // Récupérer le document du restaurant
+      const restaurant = await RestaurantModel.findById(restaurantId);
+      if (!restaurant) {
+        return res.status(404).json({ message: "Restaurant not found" });
+      }
+
+      // Affecter les paramètres (les sous-documents de "tables" seront automatiquement castés
+      // en instances de tableSubSchema et recevront leur _id si non fourni)
+      restaurant.reservations.parameters = parameters;
+
+      // Sauvegarder le document pour que Mongoose applique les defaults et le casting
+      await restaurant.save();
+
+      // (Optionnel) Recharger et peupler le document pour la réponse
+      const updatedRestaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
         .populate("menus")
         .populate({
           path: "reservations.list",
           populate: { path: "table" },
         });
-
-      if (!updatedRestaurant) {
-        return res.status(404).json({ message: "Restaurant not found" });
-      }
 
       res.status(200).json({
         message: "Reservation parameters updated successfully",
@@ -56,7 +61,7 @@ router.put(
 // CREATE A NEW RESERVATION
 router.post("/restaurants/:id/reservations", async (req, res) => {
   const restaurantId = req.params.id;
-  const reservationData = req.body; // contient reservationDate, reservationTime, numberOfGuests, etc.
+  const reservationData = req.body;
 
   try {
     const restaurant = await RestaurantModel.findById(restaurantId)
@@ -75,77 +80,134 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
 
     if (parameters.manage_disponibilities) {
       // Détermination du nombre de personnes et de la taille de table requise.
-      // Exemple : pour 1 → table de 2 ; pour 3 → table de 4 ; pour 5 → table de 6, etc.
       const numGuests = Number(reservationData.numberOfGuests);
       const requiredTableSize = numGuests % 2 === 0 ? numGuests : numGuests + 1;
 
-      // Filtrer les tables qui correspondent exactement à la taille requise.
+      // Filtrer les tables éligibles (telles dont le nombre de places correspond)
       const eligibleTables = parameters.tables.filter(
         (table) => Number(table.seats) === requiredTableSize
       );
 
-      // Format de la date pour la comparaison (ex : "2025-02-07")
-      const formattedDate = format(new Date(reservationData.reservationDate), "yyyy-MM-dd");
+      // Format de la date pour la comparaison (ex : "2025-02-10")
+      const formattedDate = format(
+        new Date(reservationData.reservationDate),
+        "yyyy-MM-dd"
+      );
 
-      // Calculer le candidate interval (en minutes depuis minuit)
+      // Calcul de l'intervalle candidat en minutes depuis minuit.
       const candidateTime = reservationData.reservationTime;
-      const [candidateHour, candidateMinute] = candidateTime.split(":").map(Number);
+      const [candidateHour, candidateMinute] = candidateTime
+        .split(":")
+        .map(Number);
       const candidateStart = candidateHour * 60 + candidateMinute;
 
-      // Si la gestion de la durée est activée, définir la durée de réservation
+      // Si la gestion de la durée est activée, définir la durée de réservation.
       const duration = parameters.reservation_duration
         ? Number(parameters.reservation_duration_minutes)
         : 0;
       const candidateEnd = candidateStart + duration;
 
-      // Filtrer les réservations existantes pour ce créneau,
-      // en ne comptant que celles dont la table correspond au requiredTableSize.
-      const conflictingReservations = restaurant.reservations.list.filter((r) => {
-        const rDate = new Date(r.reservationDate);
-        const formattedRDate = format(rDate, "yyyy-MM-dd");
-        if (formattedRDate !== formattedDate) return false;
-        if (!["Confirmed", "Active", "Late"].includes(r.status)) return false;
-        if (!r.table || Number(r.table.seats) !== requiredTableSize) return false;
-
-        if (parameters.reservation_duration) {
-          // Vérifier le chevauchement des intervalles
-          const [rHour, rMinute] = r.reservationTime.split(":").map(Number);
-          const rStart = rHour * 60 + rMinute;
-          const rEnd = rStart + duration;
-          // Les intervalles se chevauchent si candidateStart < rEnd et candidateEnd > rStart
-          return candidateStart < rEnd && candidateEnd > rStart;
-        } else {
-          // Si la gestion de la durée n'est pas activée, on compare les horaires exacts
-          return r.reservationTime === candidateTime;
+      if (reservationData.table) {
+        // --- Le restaurateur a sélectionné une table via le select.
+        // Vérifier que la table fournie figure parmi les tables éligibles.
+        const providedTable = eligibleTables.find(
+          (table) => table._id.toString() === reservationData.table
+        );
+        if (!providedTable) {
+          return res.status(400).json({ message: "Table invalide." });
         }
-      });
-
-      if (conflictingReservations.length >= eligibleTables.length) {
-        return res.status(409).json({
-          message: "La table a été réservée entre-temps. Veuillez réessayer.",
-        });
-      }
-
-      // Récupérer les noms des tables déjà réservées pour ce créneau (selon la vérification ci-dessus)
-      const reservedTableNames = conflictingReservations
-        .map((r) => r.table && r.table.name)
-        .filter(Boolean);
-
-      // Sélectionner une table parmi les éligibles non réservée
-      const assignedTable = eligibleTables.find(
-        (table) => !reservedTableNames.includes(table.name)
-      );
-
-      if (assignedTable) {
-        reservationData.table = assignedTable;
+        // Vérifier la disponibilité de la table sélectionnée pour le créneau demandé.
+        const conflictingReservation = restaurant.reservations.list.find(
+          (r) => {
+            const rDate = new Date(r.reservationDate);
+            const formattedRDate = format(rDate, "yyyy-MM-dd");
+            if (formattedRDate !== formattedDate) return false;
+            if (!["Confirmed", "Active", "Late"].includes(r.status))
+              return false;
+            if (!r.table) return false;
+            // Comparaison des tables
+            if (r.table._id) {
+              if (r.table._id.toString() !== providedTable._id.toString())
+                return false;
+            } else {
+              if (r.table.name !== providedTable.name) return false;
+            }
+            if (parameters.reservation_duration) {
+              const [rHour, rMinute] = r.reservationTime.split(":").map(Number);
+              const rStart = rHour * 60 + rMinute;
+              const rEnd = rStart + duration;
+              return candidateStart < rEnd && candidateEnd > rStart;
+            } else {
+              return r.reservationTime === candidateTime;
+            }
+          }
+        );
+        if (conflictingReservation) {
+          return res.status(409).json({
+            message: "La table sélectionnée n'est plus disponible.",
+          });
+        }
+        // On utilise la table sélectionnée.
+        reservationData.table = providedTable;
       } else {
-        return res.status(409).json({
-          message: "La table a été réservée entre-temps. Veuillez réessayer.",
-        });
+        // --- Affectation automatique : aucune table n'a été fournie.
+        const conflictingReservations = restaurant.reservations.list.filter(
+          (r) => {
+            const rDate = new Date(r.reservationDate);
+            const formattedRDate = format(rDate, "yyyy-MM-dd");
+            if (formattedRDate !== formattedDate) return false;
+            if (!["Confirmed", "Active", "Late"].includes(r.status))
+              return false;
+            if (!r.table || Number(r.table.seats) !== requiredTableSize)
+              return false;
+            if (parameters.reservation_duration) {
+              const [rHour, rMinute] = r.reservationTime.split(":").map(Number);
+              const rStart = rHour * 60 + rMinute;
+              const rEnd = rStart + duration;
+              return candidateStart < rEnd && candidateEnd > rStart;
+            } else {
+              return r.reservationTime === candidateTime;
+            }
+          }
+        );
+
+        if (conflictingReservations.length >= eligibleTables.length) {
+          return res.status(409).json({
+            message: "La table a été réservée entre-temps. Veuillez réessayer.",
+          });
+        }
+
+        // Récupérer les identifiants des tables déjà réservées pour ce créneau.
+        const reservedTableIds = conflictingReservations
+          .map((r) => (r.table ? r.table._id.toString() : null))
+          .filter(Boolean);
+
+        // Sélectionner une table parmi les éligibles qui n'est pas déjà réservée.
+        const assignedTable = eligibleTables.find(
+          (table) => !reservedTableIds.includes(table._id.toString())
+        );
+
+        if (assignedTable) {
+          reservationData.table = assignedTable;
+        } else {
+          return res.status(409).json({
+            message: "La table a été réservée entre-temps. Veuillez réessayer.",
+          });
+        }
+      }
+    } else {
+      // Si manage_disponibilities est false, le restaurateur saisit manuellement le nom de la table.
+      // Ici, le champ n'est pas obligatoire.
+      if (reservationData.table) {
+        // S'il y a une valeur, la convertir en objet.
+        reservationData.table = { name: reservationData.table };
+      } else {
+        // Sinon, on autorise le champ à rester vide (null)
+        reservationData.table = null;
       }
     }
 
-    // Créer la réservation
+    // Créer la réservation.
     const newReservation = new ReservationModel({
       ...reservationData,
       restaurant_id: restaurantId,
@@ -153,7 +215,7 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
 
     const savedReservation = await newReservation.save();
 
-    // Ajouter l'ID de la réservation au restaurant
+    // Ajouter l'ID de la réservation à la liste du restaurant.
     restaurant.reservations.list.push(savedReservation._id);
     await restaurant.save();
 
@@ -248,6 +310,31 @@ router.put(
     const updateData = req.body;
 
     try {
+      // Si le champ table est une chaîne, on la transforme en objet
+      // selon la configuration de manage_disponibilities.
+      // On ajoute ici une vérification pour le cas d'une chaîne vide.
+      if (typeof updateData.table === "string") {
+        if (updateData.table.trim() === "") {
+          // Si la chaîne est vide, on assigne null.
+          updateData.table = null;
+        } else {
+          const restaurantDoc = await RestaurantModel.findById(restaurantId);
+          if (restaurantDoc?.reservations?.parameters?.manage_disponibilities) {
+            // Si l'option est true, on cherche la table dans les paramètres (par _id)
+            const tableDef = restaurantDoc.reservations.parameters.tables.find(
+              (t) => t._id.toString() === updateData.table
+            );
+            if (tableDef) {
+              updateData.table = tableDef;
+            }
+          } else {
+            // Si manage_disponibilities est false, on attend que l'input contienne le nom de la table
+            // On transforme alors la chaîne en un objet avec le nom seulement
+            updateData.table = { name: updateData.table };
+          }
+        }
+      }
+
       // Trouver et mettre à jour la réservation
       const updatedReservation = await ReservationModel.findByIdAndUpdate(
         reservationId,
@@ -259,7 +346,7 @@ router.put(
         return res.status(404).json({ message: "Reservation not found" });
       }
 
-      // Vérifier que le restaurant existe
+      // Vérifier que le restaurant existe et récupérer ses données actualisées
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
         .populate("menus")
@@ -272,15 +359,14 @@ router.put(
         return res.status(404).json({ message: "Restaurant not found" });
       }
 
-      res.status(200).json({
-        restaurant,
-      });
+      res.status(200).json({ restaurant });
     } catch (error) {
       console.error("Error updating reservation:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   }
 );
+
 
 // DELETE A RESERVATION
 router.delete(
@@ -338,6 +424,5 @@ router.delete(
     }
   }
 );
-
 
 module.exports = router;

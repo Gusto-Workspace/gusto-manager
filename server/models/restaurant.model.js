@@ -23,26 +23,23 @@ const openingHoursSchema = new mongoose.Schema(
 );
 
 // Sous-schéma pour les paramètres de réservation
-const reservationParametersSchema = new mongoose.Schema(
-  {
-    same_hours_as_restaurant: { type: Boolean, default: true },
-    reservation_duration: { type: Boolean, default: false },
-    deletion_duration: { type: Boolean, default: false },
-    auto_accept: { type: Boolean, default: true },
-    interval: { type: Number, default: 30 },
-    manage_disponibilities: { type: Boolean, default: false },
-    tables: [
-      {
-        name: { type: String, required: true },
-        seats: { type: Number, required: true, min: 1 },
-      },
-    ],
-    reservation_duration_minutes: { type: Number, min: 1 },
-    deletion_duration_minutes: { type: Number, min: 1, default: 1440 },
-    reservation_hours: { type: [openingHoursSchema], default: [] }, // Utilise le même schéma que openingHours
-  },
-  { _id: false }
-);
+const reservationParametersSchema = new mongoose.Schema({
+  same_hours_as_restaurant: { type: Boolean, default: true },
+  reservation_duration: { type: Boolean, default: false },
+  deletion_duration: { type: Boolean, default: false },
+  auto_accept: { type: Boolean, default: true },
+  interval: { type: Number, default: 30 },
+  manage_disponibilities: { type: Boolean, default: false },
+  tables: [
+    {
+      name: { type: String, required: true },
+      seats: { type: Number, min: 1 },
+    },
+  ],
+  reservation_duration_minutes: { type: Number, min: 1 },
+  deletion_duration_minutes: { type: Number, min: 1, default: 1440 },
+  reservation_hours: { type: [openingHoursSchema], default: [] },
+});
 
 // Sous-schéma pour les réservations
 const reservationsSchema = new mongoose.Schema(

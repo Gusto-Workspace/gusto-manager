@@ -27,6 +27,7 @@ import {
   CommentarySvg,
   ClockSvg,
   CalendarSvg,
+  TableSvg,
 } from "../_shared/_svgs/_index";
 
 export default function AddReservationComponent(props) {
@@ -43,9 +44,11 @@ export default function AddReservationComponent(props) {
     customerEmail: "",
     customerPhone: "",
     commentary: "",
+    table: isEditing ? "" : "auto",
   });
 
   const [availableTimes, setAvailableTimes] = useState([]);
+  const [availableTables, setAvailableTables] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -62,6 +65,31 @@ export default function AddReservationComponent(props) {
   // Pré-remplir le formulaire si on est en mode édition
   useEffect(() => {
     if (props.reservation) {
+      let tableValue = "";
+      const manageDisponibilities =
+        props.restaurantData?.reservations?.parameters?.manage_disponibilities;
+      if (manageDisponibilities) {
+        // Si manage_disponibilities est true, on cherche dans les tables paramétrées celle qui a le même nom
+        if (props?.reservation?.table?.name) {
+          if (
+            props.restaurantData?.reservations?.parameters &&
+            Array.isArray(props.restaurantData.reservations.parameters.tables)
+          ) {
+            const foundTable =
+              props.restaurantData.reservations.parameters.tables.find(
+                (t) => t.name === props.reservation.table.name
+              );
+            if (foundTable && foundTable._id) {
+              tableValue = foundTable._id.toString();
+            }
+          }
+        }
+      } else {
+        // Si manage_disponibilities est false, on affiche directement le nom de la table
+        if (props.reservation.table && props.reservation.table.name) {
+          tableValue = props.reservation.table.name;
+        }
+      }
       setReservationData({
         reservationDate: props.reservation.reservationDate
           ? new Date(props.reservation.reservationDate)
@@ -72,11 +100,12 @@ export default function AddReservationComponent(props) {
         customerEmail: props.reservation.customerEmail || "",
         customerPhone: props.reservation.customerPhone || "",
         commentary: props.reservation.commentary || "",
+        table: tableValue,
       });
     }
   }, [props.reservation]);
 
-  // Mettre à jour les heures disponibles lorsque la date change
+  // Calcul des heures disponibles (inchangé, avec gestion de la durée et exclusion de la réservation en cours)
   useEffect(() => {
     if (
       !props?.restaurantData?.reservations ||
@@ -113,31 +142,22 @@ export default function AddReservationComponent(props) {
 
         // Si l'option manage_disponibilities est activée
         if (parameters.manage_disponibilities) {
-          // Si le champ numberOfGuests est renseigné
           if (reservationData.numberOfGuests) {
             const numGuests = Number(reservationData.numberOfGuests);
-            // Calcul de la taille de table requise :
-            // Ex : pour 1, table de 2 ; pour 3, table de 4 ; pour 5, table de 6, etc.
             const requiredTableSize =
               numGuests % 2 === 0 ? numGuests : numGuests + 1;
-            const eligibleTables = parameters.tables.filter(
-              (table) => Number(table.seats) === requiredTableSize
-            );
             const formattedSelectedDate = format(
               reservationData.reservationDate,
               "yyyy-MM-dd"
             );
 
-            // Si la gestion de la durée est activée, on prend en compte la durée
             if (parameters.reservation_duration) {
               const duration = Number(parameters.reservation_duration_minutes);
               allAvailableTimes = allAvailableTimes.filter((time) => {
-                // Conversion du créneau candidat en minutes depuis minuit
                 const [hour, minute] = time.split(":").map(Number);
                 const candidateMinutes = hour * 60 + minute;
                 const candidateEnd = candidateMinutes + duration;
 
-                // Filtrer les réservations existantes qui pourraient chevaucher le créneau candidat
                 const reservationsForSlot =
                   props.restaurantData.reservations.list.filter(
                     (reservation) => {
@@ -162,28 +182,25 @@ export default function AddReservationComponent(props) {
                         reservation._id === props.reservation._id
                       )
                         return false;
-                      // Calculer le début et la fin de la réservation en minutes depuis minuit
                       const [resHour, resMinute] = reservation.reservationTime
                         .split(":")
                         .map(Number);
                       const reservationStart = resHour * 60 + resMinute;
                       const reservationEnd = reservationStart + duration;
-                      // Vérification du chevauchement :
-                      // Le créneau candidat est en conflit si :
-                      // candidateMinutes < reservationEnd && candidateEnd > reservationStart
                       return (
                         candidateMinutes < reservationEnd &&
                         candidateEnd > reservationStart
                       );
                     }
                   );
-
-                // Le créneau candidat est valide s'il existe moins de réservations conflictuelles
-                // que le nombre total de tables éligibles.
-                return reservationsForSlot.length < eligibleTables.length;
+                return (
+                  reservationsForSlot.length <
+                  parameters.tables.filter(
+                    (table) => Number(table.seats) === requiredTableSize
+                  ).length
+                );
               });
             } else {
-              // Cas sans gestion de durée : filtrage basé sur l'égalité du créneau
               allAvailableTimes = allAvailableTimes.filter((time) => {
                 const reservationsForSlot =
                   props.restaurantData.reservations.list.filter(
@@ -204,7 +221,6 @@ export default function AddReservationComponent(props) {
                         Number(reservation.table.seats) !== requiredTableSize
                       )
                         return false;
-                      // Exclure la réservation en cours de modification
                       if (
                         isEditing &&
                         reservation._id === props.reservation._id
@@ -213,7 +229,12 @@ export default function AddReservationComponent(props) {
                       return true;
                     }
                   );
-                return reservationsForSlot.length < eligibleTables.length;
+                return (
+                  reservationsForSlot.length <
+                  parameters.tables.filter(
+                    (table) => Number(table.seats) === requiredTableSize
+                  ).length
+                );
               });
             }
           }
@@ -233,6 +254,91 @@ export default function AddReservationComponent(props) {
     props.restaurantData.reservations.parameters.interval,
     props.restaurantData.reservations.parameters.manage_disponibilities,
     props.restaurantData.reservations.parameters.reservation_duration,
+  ]);
+
+  // Calcul des tables disponibles (uniquement si manage_disponibilities est activé)
+  useEffect(() => {
+    const parameters = props.restaurantData.reservations.parameters;
+    if (!parameters.manage_disponibilities) {
+      setAvailableTables([]);
+      return;
+    }
+    if (
+      !reservationData.numberOfGuests ||
+      !reservationData.reservationDate ||
+      !reservationData.reservationTime
+    ) {
+      setAvailableTables([]);
+      return;
+    }
+    const numGuests = Number(reservationData.numberOfGuests);
+    const requiredTableSize = numGuests % 2 === 0 ? numGuests : numGuests + 1;
+    // Récupérer les tables éligibles
+    const eligibleTables = parameters.tables.filter(
+      (table) => Number(table.seats) === requiredTableSize
+    );
+
+    let duration = 0;
+    if (parameters.reservation_duration) {
+      duration = Number(parameters.reservation_duration_minutes);
+    }
+
+    const formattedSelectedDate = format(
+      reservationData.reservationDate,
+      "yyyy-MM-dd"
+    );
+    const [selectedHour, selectedMinute] = reservationData.reservationTime
+      .split(":")
+      .map(Number);
+    const candidateStart = selectedHour * 60 + selectedMinute;
+    const candidateEnd = candidateStart + duration;
+
+    const available = eligibleTables.filter((table) => {
+      // Pour chaque table éligible, on vérifie qu'aucune réservation existante ne bloque ce créneau.
+      const overlappingReservation =
+        props.restaurantData.reservations.list.find((reservation) => {
+          const resDate = new Date(reservation.reservationDate);
+          const formattedResDate = format(resDate, "yyyy-MM-dd");
+          if (formattedResDate !== formattedSelectedDate) return false;
+          if (!reservation.table) return false;
+
+          // Comparaison des tables : si _id est présent, on compare par _id,
+          // sinon on compare par le nom
+          if (reservation.table._id) {
+            if (reservation.table._id.toString() !== table._id.toString())
+              return false;
+          } else {
+            if (reservation.table.name !== table.name) return false;
+          }
+
+          if (isEditing && reservation._id === props.reservation._id)
+            return false;
+
+          if (parameters.reservation_duration) {
+            const [resHour, resMinute] = reservation.reservationTime
+              .split(":")
+              .map(Number);
+            const reservationStart = resHour * 60 + resMinute;
+            const reservationEnd = reservationStart + duration;
+            return (
+              candidateStart < reservationEnd && candidateEnd > reservationStart
+            );
+          } else {
+            return (
+              reservation.reservationTime === reservationData.reservationTime
+            );
+          }
+        });
+      return !overlappingReservation;
+    });
+
+    setAvailableTables(available);
+  }, [
+    reservationData.reservationDate,
+    reservationData.reservationTime,
+    reservationData.numberOfGuests,
+    isEditing,
+    props.reservation,
   ]);
 
   // Générer les options d'heures disponibles
@@ -279,69 +385,6 @@ export default function AddReservationComponent(props) {
     return `${hour}h${minute}`;
   }
 
-  // Gérer la soumission du formulaire
-  async function handleFormSubmit(e) {
-    e.preventDefault();
-
-    if (!reservationData.reservationTime) {
-      setError(t("errors.selectTime"));
-      return;
-    }
-
-    const formattedDate = format(reservationData.reservationDate, "yyyy-MM-dd");
-    const formattedTime = reservationData.reservationTime;
-
-    const reservationPayload = {
-      reservationDate: formattedDate,
-      reservationTime: formattedTime,
-      numberOfGuests: reservationData.numberOfGuests,
-      customerName: reservationData.customerName,
-      customerEmail: reservationData.customerEmail,
-      customerPhone: reservationData.customerPhone,
-      commentary: reservationData.commentary,
-    };
-
-    try {
-      const token = localStorage.getItem("token");
-
-      let response;
-      if (isEditing) {
-        // Mettre à jour une réservation existante
-        response = await axios.put(
-          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${props.restaurantData._id}/reservations/${props.reservation._id}`,
-          reservationPayload,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-          }
-        );
-      } else {
-        // Créer une nouvelle réservation
-        response = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${props.restaurantData._id}/reservations`,
-          { ...reservationPayload, status: "Confirmed" },
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-          }
-        );
-      }
-
-      props.setRestaurantData(response.data.restaurant);
-      router.push("/reservations");
-    } catch (error) {
-      console.error("Erreur lors de la soumission de la réservation :", error);
-      setError(
-        error.response?.data?.message ||
-          "Une erreur est survenue lors de la soumission de la réservation."
-      );
-    }
-  }
-
   // Gérer les changements dans les champs du formulaire
   function handleInputChange(e) {
     const { name, value } = e.target;
@@ -377,7 +420,83 @@ export default function AddReservationComponent(props) {
     return dayHours.isClosed;
   }
 
-  // Afficher un message de chargement si nécessaire
+  // Gérer la soumission du formulaire
+  async function handleFormSubmit(e) {
+    e.preventDefault();
+
+    if (!reservationData.reservationTime) {
+      setError(t("errors.selectTime"));
+      return;
+    }
+
+    // Copie des données de réservation pour la transformation
+    const updatedData = { ...reservationData };
+
+    // Vérifier si en création (non editing) et que la valeur du champ table est "auto"
+    if (!isEditing && updatedData.table === "auto") {
+      if (
+        availableTables &&
+        availableTables.length > 0 &&
+        availableTables[0] &&
+        availableTables[0]._id
+      ) {
+        updatedData.table = availableTables[0]._id.toString();
+      } else {
+        updatedData.table = null;
+      }
+    }
+
+    const formattedDate = format(updatedData.reservationDate, "yyyy-MM-dd");
+    const formattedTime = updatedData.reservationTime;
+
+    const reservationPayload = {
+      reservationDate: formattedDate,
+      reservationTime: formattedTime,
+      numberOfGuests: updatedData.numberOfGuests,
+      customerName: updatedData.customerName,
+      customerEmail: updatedData.customerEmail,
+      customerPhone: updatedData.customerPhone,
+      commentary: updatedData.commentary,
+      table: updatedData.table,
+    };
+
+    try {
+      const token = localStorage.getItem("token");
+      let response;
+      if (isEditing) {
+        response = await axios.put(
+          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${props.restaurantData._id}/reservations/${props.reservation._id}`,
+          reservationPayload,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+      } else {
+        response = await axios.post(
+          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${props.restaurantData._id}/reservations`,
+          { ...reservationPayload, status: "Confirmed" },
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+      }
+      props.setRestaurantData(response.data.restaurant);
+      router.push("/reservations");
+    } catch (error) {
+      setError(
+        error.response?.data?.message ||
+          "Une erreur est survenue lors de la soumission de la réservation."
+      );
+    }
+  }
+
+  // Rendu du composant
   if (isLoading) {
     return (
       <section className="flex items-center justify-center flex-1">
@@ -406,15 +525,14 @@ export default function AddReservationComponent(props) {
             >
               {t("titles.main")}
             </span>
-
             <span>/</span>
-
             <span>{isEditing ? t("buttons.edit") : t("buttons.add")}</span>
           </h1>
         </div>
       </div>
 
       <form onSubmit={handleFormSubmit} className="flex flex-col gap-8">
+        {/* Nombre de personnes */}
         <div className="flex flex-col gap-4">
           <label
             htmlFor="numberOfGuests"
@@ -423,7 +541,6 @@ export default function AddReservationComponent(props) {
             <CommunitySvg width={20} height={20} className="opacity-50" />
             {t("labels.add.guests")}
           </label>
-
           <div className="grid grid-cols-1 midTablet:grid-cols-2 gap-8">
             <input
               type="number"
@@ -438,6 +555,7 @@ export default function AddReservationComponent(props) {
           </div>
         </div>
 
+        {/* Date et Heure */}
         <div className="grid grid-cols-1 midTablet:grid-cols-2 gap-8">
           {/* Date de réservation */}
           <div className="flex flex-col gap-4">
@@ -448,7 +566,6 @@ export default function AddReservationComponent(props) {
               <CalendarSvg width={20} height={20} className="opacity-50" />
               {t("labels.add.date")}
             </label>
-
             <Calendar
               onChange={handleDateChange}
               value={reservationData.reservationDate}
@@ -469,7 +586,6 @@ export default function AddReservationComponent(props) {
               <ClockSvg width={20} height={20} className="opacity-50" />
               {t("labels.add.time")}
             </label>
-
             {availableTimes.length > 0 ? (
               <div className="flex flex-wrap gap-4">
                 {availableTimes.map((reservationTime) => (
@@ -477,8 +593,8 @@ export default function AddReservationComponent(props) {
                     type="button"
                     key={reservationTime}
                     onClick={() => handleTimeSelect(reservationTime)}
-                    disabled={!reservationData.numberOfGuests} // Désactivé si le nombre de personnes n'est pas renseigné
-                    className={`px-3 py-1 transition-all duration-200 ease-in-out rounded-md drop-shadow-md text-sm ${
+                    disabled={!reservationData.numberOfGuests}
+                    className={`px-3 py-1 transition-all duration-200 ease-in-out rounded-md drop-shadow-md text-sm disabled:hover:bg-white disabled:opacity-40 ${
                       reservationData.reservationTime === reservationTime
                         ? "bg-blue text-white border-blue"
                         : "bg-white text-black hover:bg-blue hover:bg-opacity-10"
@@ -497,6 +613,7 @@ export default function AddReservationComponent(props) {
           </div>
         </div>
 
+        {/* Informations Client et Table */}
         <div className="grid grid-cols-1 midTablet:grid-cols-2 gap-8">
           {/* Nom */}
           <div className="flex flex-col gap-4">
@@ -507,7 +624,6 @@ export default function AddReservationComponent(props) {
               <UserSvg width={20} height={20} className="opacity-50" />
               {t("labels.add.name")}
             </label>
-
             <input
               type="text"
               id="customerName"
@@ -539,7 +655,7 @@ export default function AddReservationComponent(props) {
             />
           </div>
 
-          {/* Numéro de Téléphone */}
+          {/* Téléphone */}
           <div className="flex flex-col gap-4">
             <label
               htmlFor="customerPhone"
@@ -548,7 +664,6 @@ export default function AddReservationComponent(props) {
               <PhoneSvg width={20} height={20} className="opacity-50" />
               {t("labels.add.phone")}
             </label>
-
             <input
               type="tel"
               id="customerPhone"
@@ -560,7 +675,47 @@ export default function AddReservationComponent(props) {
             />
           </div>
 
-          {/* Commentaire */}
+          {/* Champ Table */}
+          <div className="flex flex-col gap-4">
+            <label htmlFor="table" className="text-md font-medium flex gap-2">
+              <TableSvg width={20} height={20} className="opacity-50" />
+              {t("labels.add.table")}
+            </label>
+            {props.restaurantData.reservations.parameters
+              .manage_disponibilities ? (
+              <select
+                id="table"
+                name="table"
+                value={reservationData.table}
+                onChange={handleInputChange}
+                required
+                className="block w-full border border-gray-300 rounded-md p-2"
+              >
+                {/* En création, on affiche une option "Automatique" dont la valeur est "auto" */}
+                {!isEditing && (
+                  <option value="auto">{t("labels.add.automatic")}</option>
+                )}
+                {availableTables.map((table) => (
+                  <option key={table._id} value={table._id}>
+                    {table.name ? table.name : `Table de ${table.seats} places`}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                id="table"
+                name="table"
+                value={reservationData.table}
+                onChange={handleInputChange}
+                className="block w-full border border-gray-300 rounded-md p-2"
+              />
+            )}
+          </div>
+        </div>
+
+        {/* Commentaire */}
+        <div className="grid grid-cols-1 midTablet:grid-cols-2 gap-8">
           <div className="flex flex-col gap-4">
             <label
               htmlFor="commentary"
@@ -569,7 +724,6 @@ export default function AddReservationComponent(props) {
               <CommentarySvg width={20} height={20} className="opacity-50" />
               {t("labels.add.commentary")}
             </label>
-
             <textarea
               id="commentary"
               name="commentary"
@@ -597,7 +751,6 @@ export default function AddReservationComponent(props) {
                 ? t("buttons.update")
                 : t("buttons.validate")}
           </button>
-
           <button
             type="button"
             onClick={() => router.push("/reservations")}

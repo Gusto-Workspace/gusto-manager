@@ -39,6 +39,9 @@
       "name": "Nom du client",
       "email": "Email du client",
       "phone": "Téléphone du client",
+      "table": "Attribuer une table",
+      "selectTable": "Sélectionner",
+      "automatic": "Automatique",
       "commentary": "Ajouter un commentaire",
       "close": "Réservation impossible à la date séletionnée"
     }
