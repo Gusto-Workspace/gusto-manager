@@ -44,7 +44,7 @@ export default function AddReservationComponent(props) {
     customerEmail: "",
     customerPhone: "",
     commentary: "",
-    table: isEditing ? "" : "auto",
+    table: "",
   });
 
   const [availableTimes, setAvailableTimes] = useState([]);
@@ -61,6 +61,20 @@ export default function AddReservationComponent(props) {
       date.getFullYear() === today.getFullYear()
     );
   }
+
+  useEffect(() => {
+    // Si nous sommes en mode création (pas en mode édition)
+    if (!props.reservation) {
+      const manageDisponibilities =
+        props.restaurantData?.reservations?.parameters?.manage_disponibilities;
+      // Si la gestion des disponibilités est activée, on initialise à "auto"
+      // Sinon, on laisse le champ vide.
+      setReservationData((prevData) => ({
+        ...prevData,
+        table: manageDisponibilities ? "auto" : "",
+      }));
+    }
+  }, [props.reservation]);
 
   // Pré-remplir le formulaire si on est en mode édition
   useEffect(() => {
