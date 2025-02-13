@@ -510,7 +510,7 @@ export default function AddReservationComponent(props) {
           ),
           reservationTime: reservationData.reservationTime,
           numberOfGuests: reservationData.numberOfGuests,
-          restaurantName: props.restaurantData.name || "Votre Restaurant",
+          restaurantName: props.restaurantData.name,
         });
       }
 
