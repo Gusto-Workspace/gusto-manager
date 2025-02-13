@@ -33,7 +33,7 @@ function sendTransactionalEmail(params) {
 
     // Utilisation de la même structure que dans le code fonctionnel
     sendSmtpEmail.sender = {
-      email: "baccialone.leo@gmail.com",
+      email: "no-reply@gusto-manager.com",
       name: "Gusto Manager",
     };
     sendSmtpEmail.to = params.to;

@@ -499,7 +499,21 @@ export default function AddReservationComponent(props) {
             },
           }
         );
+
+        // Envoyer l'email de confirmation après la création de la réservation
+        await axios.post("/api/confirm-reservation-email", {
+          customerName: reservationData.customerName,
+          customerEmail: reservationData.customerEmail,
+          reservationDate: format(
+            reservationData.reservationDate,
+            "dd/MM/yyyy"
+          ),
+          reservationTime: reservationData.reservationTime,
+          numberOfGuests: reservationData.numberOfGuests,
+          restaurantName: props.restaurantData.name || "Votre Restaurant",
+        });
       }
+
       props.setRestaurantData(response.data.restaurant);
       router.push("/reservations");
     } catch (error) {
