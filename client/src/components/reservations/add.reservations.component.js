@@ -51,6 +51,7 @@ export default function AddReservationComponent(props) {
   const [availableTables, setAvailableTables] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Fonction pour vérifier si une date est aujourd'hui
   function isToday(date) {
@@ -443,6 +444,8 @@ export default function AddReservationComponent(props) {
       return;
     }
 
+    setIsSubmitting(true);
+
     // Copie des données de réservation pour la transformation
     const updatedData = { ...reservationData };
 
@@ -521,6 +524,9 @@ export default function AddReservationComponent(props) {
         error.response?.data?.message ||
           "Une erreur est survenue lors de la soumission de la réservation."
       );
+    } finally {
+      // Désactiver le loader
+      setIsSubmitting(false);
     }
   }
 
@@ -771,9 +777,11 @@ export default function AddReservationComponent(props) {
                 ? "opacity-50 cursor-not-allowed"
                 : ""
             }`}
-            disabled={!reservationData.reservationTime || isLoading}
+            disabled={
+              !reservationData.reservationTime || isLoading || isSubmitting
+            }
           >
-            {isLoading
+            {isSubmitting
               ? t("buttons.loading")
               : isEditing
                 ? t("buttons.update")

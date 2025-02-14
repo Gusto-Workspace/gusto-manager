@@ -18,14 +18,9 @@ async function sendConfirmationEmail(params) {
   const emailContent = `
       <html>
         <body style="font-family: Arial, sans-serif; color: #333;">
-          <h2 style="color: #2E8B57;">Confirmation de réservation</h2>
           <p>Bonjour ${params.customerName},</p>
           <p>
-            Nous vous confirmons que votre réservation a bien été enregistrée pour le 
-            <strong>${params.reservationDate}</strong> à <strong>${params.reservationTime}</strong>.
-          </p>
-          <p>
-            La réservation est effectuée pour <strong>${params.numberOfGuests} personne${params.numberOfGuests > 1 ? "s" : ""}</strong>.
+            Nous vous confirmons que votre réservation pour <strong>${params.numberOfGuests} personne${params.numberOfGuests > 1 ? "s" : ""}</strong> a bien été enregistrée à la date du <strong>${params.reservationDate}</strong> à <strong>${params.reservationTime}</strong>.
           </p>
           <p>
             Nous vous remercions de votre confiance et nous nous réjouissons de vous accueillir prochainement au sein de <strong>${params.restaurantName}</strong>.

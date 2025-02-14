@@ -104,6 +104,31 @@ export default function ListReservationsComponent(props) {
       )
       .then((response) => {
         props.setRestaurantData(response.data.restaurant);
+
+        // Si le statut passe de "Pending" à "Confirmed", on déclenche l'envoi de l'email de confirmation
+        if (
+          newStatus === "Confirmed" &&
+          selectedReservation.status === "Pending"
+        ) {
+          axios
+            .post("/api/confirm-reservation-email", {
+              customerName: selectedReservation.customerName,
+              customerEmail: selectedReservation.customerEmail,
+              reservationDate: new Date(
+                selectedReservation.reservationDate
+              ).toLocaleDateString("fr-FR"),
+              reservationTime: selectedReservation.reservationTime,
+              numberOfGuests: selectedReservation.numberOfGuests,
+              restaurantName: props.restaurantData.name,
+            })
+            .catch((err) => {
+              console.error(
+                "Erreur lors de l'envoi de l'email de confirmation :",
+                err
+              );
+            });
+        }
+
         closeModal();
       })
       .catch((error) => {
