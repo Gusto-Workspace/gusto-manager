@@ -11,9 +11,10 @@ import { GlobalContext } from "@/contexts/global.context";
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
-import AddNewsComponent from "@/components/news/add.news.component";
+import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
+import ParametersReservationComponent from "@/components/reservations/parameters.reservations.component";
 
-export default function AddNewsPage(props) {
+export default function ParametersReservationsPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
 
   let title;
@@ -28,6 +29,8 @@ export default function AddNewsPage(props) {
       title = "Gusto Manager";
       description = "";
   }
+
+  if (!restaurantContext.isAuth) return null;
 
   return (
     <>
@@ -64,7 +67,16 @@ export default function AddNewsPage(props) {
               restaurantData={restaurantContext.restaurantData}
             />
 
-            <AddNewsComponent news={props.news} />
+            {restaurantContext?.restaurantData?.options?.reservations ? (
+              <ParametersReservationComponent
+                setRestaurantData={restaurantContext.setRestaurantData}
+                restaurantData={restaurantContext.restaurantData}
+              />
+            ) : (
+              <NoAvailableComponent
+                dataLoading={restaurantContext.dataLoading}
+              />
+            )}
           </div>
         </div>
       </div>
@@ -72,32 +84,14 @@ export default function AddNewsPage(props) {
   );
 }
 
-export async function getServerSideProps({ query, locale }) {
-  const { newsId } = query;
-
-  try {
-    let news = null;
-
-    if (newsId) {
-      const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/news/${newsId}`
-      );
-      news = response.data.news;
-    }
-
-    return {
-      props: {
-        news,
-        ...(await serverSideTranslations(locale, ["common", "news"])),
-      },
-    };
-  } catch (error) {
-    console.error("Error fetching news data:", error);
-    return {
-      props: {
-        news: null,
-        ...(await serverSideTranslations(locale, ["common", "news"])),
-      },
-    };
-  }
+export async function getStaticProps({ locale }) {
+  return {
+    props: {
+      ...(await serverSideTranslations(locale, [
+        "common",
+        "reservations",
+        "restaurant",
+      ])),
+    },
+  };
 }

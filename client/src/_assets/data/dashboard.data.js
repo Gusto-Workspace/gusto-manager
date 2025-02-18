@@ -6,6 +6,7 @@ import {
   WineSvg,
   NewsSvg,
   NotificationSvg,
+  ReservationSvg,
 } from "../../components/_shared/_svgs/_index";
 
 export const dashboardData = [
@@ -119,21 +120,33 @@ export const dashboardData = [
     },
   },
   {
-    title: "labels.notifications",
-    IconComponent: NotificationSvg,
-    emptyLabel: "labels.emptyNotification",
+    title: "labels.reservationsToday",
+    emptyLabel: "labels.emptyReservations",
+    noDonut: true, 
     getCounts: (restaurantData) => {
-      const total = restaurantData?.notifications?.length || 0;
-      const unread =
-        restaurantData?.notifications?.filter(
-          (notification) => !notification.read
-        ).length || 0;
-      const read = total - unread;
+      if (!restaurantData?.options?.reservations) {
+        return {
+          visible: 0,
+          hidden: 0,
+          total: 0,
+          emptyLabel: "labels.emptyReservations",
+        };
+      }
+
+      const todayDate = new Date().toISOString().split("T")[0];
+      const reservationsList = restaurantData?.reservations?.list || [];
+      const todayReservations = reservationsList.filter((reservation) => {
+        return (
+          reservation.reservationDate &&
+          reservation.reservationDate.split("T")[0] === todayDate
+        );
+      });
+      const total = todayReservations.length;
       return {
-        visible: unread,
-        hidden: read,
+        visible: total,
+        hidden: 0,
         total,
-        emptyLabel: "labels.emptyNotification",
+        emptyLabel: "labels.emptyReservations",
       };
     },
   },

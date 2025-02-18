@@ -110,7 +110,7 @@ export default function ContactRestaurantComponent(props) {
   }
 
   return (
-    <div className="bg-white p-6 pb-3 rounded-lg drop-shadow-sm w-full desktop:w-1/2 h-fit">
+    <div className="bg-white p-6 pb-3 rounded-lg drop-shadow-sm w-full h-fit">
       <div className="flex gap-6 flex-wrap justify-between">
         <h1 className="font-bold text-lg">{t("contact.title")}</h1>
 
@@ -129,10 +129,10 @@ export default function ContactRestaurantComponent(props) {
                 {t("save")}
               </span>
             ) : (
-              <div className="hover:opacity-100 opacity-20 p-[4px] rounded-full transition-opacity duration-300">
+              <div className="hover:opacity-100 opacity-20 rounded-full transition-opacity duration-300">
                 <EditSvg
-                  width={20}
-                  height={20}
+                  width={24}
+                  height={24}
                   strokeColor="#131E36"
                   fillColor="#131E36"
                 />
@@ -142,9 +142,9 @@ export default function ContactRestaurantComponent(props) {
         </div>
       </div>
 
-      <hr className="opacity-20 mt-6 mb-4" />
+      <hr className="opacity-20 my-6" />
 
-      <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-2">
+      <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-3">
         {contactData.map((item) => {
           const IconComponent = icons[item.icon];
           const isRequired = item.required;
@@ -162,7 +162,7 @@ export default function ContactRestaurantComponent(props) {
 
           return (
             <div
-              className={`flex ${editing ? "flex-col midTablet:flex-row mb-4" : "flex-row h-12 items-center"}  justify-between gap-2 midTablet:gap-12 `}
+              className={`flex ${editing ? "flex-col midTablet:flex-row h-12" : "flex-row h-12 items-center"}  justify-between gap-2 midTablet:gap-12 `}
               key={item.field}
             >
               <div className="flex items-center gap-3 midTablet:w-[150px]">
@@ -187,7 +187,7 @@ export default function ContactRestaurantComponent(props) {
                   {...register(item.field, {
                     required: isRequired ? t("error.required") : false,
                   })}
-                  className={`border p-1 rounded-lg w-full midTablet:w-1/2 ${
+                  className={`border p-1 px-4 text-end rounded-lg w-full midTablet:w-1/2 ${
                     errors[item.field] ? "border-red" : ""
                   }`}
                   placeholder={!isRequired ? t("emptyInput") : ""}

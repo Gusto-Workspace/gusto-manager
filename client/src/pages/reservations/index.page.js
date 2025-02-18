@@ -12,6 +12,7 @@ import { GlobalContext } from "@/contexts/global.context";
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
+import ListReservationsComponent from "@/components/reservations/list.reservations.component";
 
 export default function ReservationsPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
@@ -67,7 +68,13 @@ export default function ReservationsPage(props) {
             />
 
             {restaurantContext?.restaurantData?.options?.reservations ? (
-              <p>Réservations en ligne</p>
+              <ListReservationsComponent
+                restaurantData={restaurantContext.restaurantData}
+                setRestaurantData={restaurantContext.setRestaurantData}
+                reservations={
+                  restaurantContext?.restaurantData?.reservations.list
+                }
+              />
             ) : (
               <NoAvailableComponent
                 dataLoading={restaurantContext.dataLoading}

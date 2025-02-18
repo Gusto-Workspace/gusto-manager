@@ -8,12 +8,16 @@ import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 // CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
 
+// AXIOS
+import axios from "axios";
+
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
-import AddNewsComponent from "@/components/news/add.news.component";
+import AddReservationComponent from "@/components/reservations/add.reservations.component";
+import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
 
-export default function AddNewsPage(props) {
+export default function AddReservationsPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
 
   let title;
@@ -64,7 +68,18 @@ export default function AddNewsPage(props) {
               restaurantData={restaurantContext.restaurantData}
             />
 
-            <AddNewsComponent news={props.news} />
+            {restaurantContext?.restaurantData?.options?.reservations ? (
+              <AddReservationComponent
+                dataLoading={restaurantContext.dataLoading}
+                restaurantData={restaurantContext.restaurantData}
+                setRestaurantData={restaurantContext.setRestaurantData}
+                reservation={props.reservation}
+              />
+            ) : (
+              <NoAvailableComponent
+                dataLoading={restaurantContext.dataLoading}
+              />
+            )}
           </div>
         </div>
       </div>
@@ -73,30 +88,30 @@ export default function AddNewsPage(props) {
 }
 
 export async function getServerSideProps({ query, locale }) {
-  const { newsId } = query;
+  const { reservationId } = query;
 
   try {
-    let news = null;
+    let reservation = null;
 
-    if (newsId) {
+    if (reservationId) {
       const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/news/${newsId}`
+        `${process.env.NEXT_PUBLIC_API_URL}/reservations/${reservationId}`
       );
-      news = response.data.news;
+      reservation = response.data.reservation;
     }
 
     return {
       props: {
-        news,
-        ...(await serverSideTranslations(locale, ["common", "news"])),
+        reservation,
+        ...(await serverSideTranslations(locale, ["common", "reservations"])),
       },
     };
   } catch (error) {
-    console.error("Error fetching news data:", error);
+    console.error("Error fetching reservations data:", error);
     return {
       props: {
-        news: null,
-        ...(await serverSideTranslations(locale, ["common", "news"])),
+        reservation: null,
+        ...(await serverSideTranslations(locale, ["common", "reservations"])),
       },
     };
   }

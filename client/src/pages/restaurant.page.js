@@ -9,12 +9,14 @@ import { useTranslation } from "next-i18next";
 // CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
 
+// SVG
+import { RestaurantSvg } from "@/components/_shared/_svgs/restaurant.svg";
+
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import HoursRestaurantComponent from "@/components/restaurant/hours.restaurant.component";
 import ContactRestaurantComponent from "@/components/restaurant/contact.restaurant.component";
-import { RestaurantSvg } from "@/components/_shared/_svgs/restaurant.svg";
 
 export default function RestaurantPage(props) {
   const { t } = useTranslation("");
@@ -49,7 +51,7 @@ export default function RestaurantPage(props) {
         <div className="flex">
           <NavComponent />
 
-           <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 p-6 flex flex-col gap-6 min-h-screen">
+           <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 p-6 flex flex-col gap-6">
             <SettingsComponent
               dataLoading={restaurantContext.dataLoading}
               setDataLoading={restaurantContext.setDataLoading}
@@ -66,7 +68,7 @@ export default function RestaurantPage(props) {
               <h1 className="pl-2 py-1 text-xl tablet:text-2xl">{t("restaurant:title")}</h1>
             </div>
 
-            <div className="flex gap-6 flex-col desktop:flex-row">
+            <div className="flex flex-col gap-6">
               <ContactRestaurantComponent
                 restaurantData={restaurantContext.restaurantData}
                 restaurantId={restaurantContext.restaurantData?._id}

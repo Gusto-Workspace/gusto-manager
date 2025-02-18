@@ -16,10 +16,7 @@ export default function DataCardCompnent(props) {
         <p className="font-bold text-2xl">{props.count}</p>
       </div>
 
-      <DonutChartComponent
-        data={props.data}
-        IconComponent={props.IconComponent}
-      />
+       <props.ChartComponent data={props.data} IconComponent={props.IconComponent} />
     </div>
   );
 }

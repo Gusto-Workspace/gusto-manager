@@ -2,6 +2,7 @@
   "title": "Informations du Restaurant",
   "hours": {
     "title": "Horaires d'ouverture",
+    "reservationTitle": "Définir les horaires de réservation",
     "days": {
       "monday": "Lundi",
       "tuesday": "Mardi",

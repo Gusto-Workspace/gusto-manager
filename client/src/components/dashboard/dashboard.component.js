@@ -42,14 +42,14 @@ export default function DashboardComponent(props) {
       fetchGiftCardPayouts();
       fetchMonthlySales();
     }
-  }, [props.restaurantData, props.dataLoading]);
+  }, [props.dataLoading]);
 
   useEffect(() => {
     setPayments([]);
     setLastChargeId(null);
     setPayouts([]);
     setLastPayoutId(null);
-  }, [props.restaurantData]);
+  }, [props.dataLoading]);
 
   // ---- Requête pour paiements (charges) ----
   async function fetchGiftCardSales(starting_after) {
@@ -186,19 +186,35 @@ export default function DashboardComponent(props) {
     );
   }
 
+  const mainDashboardCards = dashboardData.filter((card) => {
+    if (card.title === "labels.reservationsToday") {
+      return props.restaurantData?.options?.reservations;
+    }
+    return true;
+  });
+
   return (
     <section className="flex flex-col gap-6">
       <div className="grid grid-cols-1 tablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-3 gap-6">
-        {dashboardData.map(
-          ({ title, IconComponent, getCounts, emptyLabel }) => {
+      {mainDashboardCards.map(
+          ({ title, IconComponent, getCounts, emptyLabel, noDonut }) => {
             const { visible, hidden, total } = getCounts(props.restaurantData);
-            const chartData =
-              total > 0
-                ? [
-                    { name: "labels.visible", value: visible, fill: "#e66430" },
-                    { name: "labels.masked", value: hidden, fill: "#eee" },
-                  ]
-                : [{ name: emptyLabel, value: 1, fill: "#E0E0E0" }];
+
+            // Si la carte ne doit pas afficher de donut, on prépare un chart vide
+            let chartData = [];
+            let ChartComp = DonutChartComponent;
+            if (noDonut) {
+              ChartComp = () => null;
+              chartData = [];
+            } else {
+              chartData =
+                total > 0
+                  ? [
+                      { name: "labels.visible", value: visible, fill: "#e66430" },
+                      { name: "labels.masked", value: hidden, fill: "#eee" },
+                    ]
+                  : [{ name: emptyLabel, value: 1, fill: "#E0E0E0" }];
+            }
 
             return (
               <DataCardCompnent
@@ -207,7 +223,7 @@ export default function DashboardComponent(props) {
                 count={total}
                 data={chartData}
                 IconComponent={IconComponent}
-                ChartComponent={DonutChartComponent}
+                ChartComponent={ChartComp}
               />
             );
           }

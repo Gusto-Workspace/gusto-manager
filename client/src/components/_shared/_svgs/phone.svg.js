@@ -6,6 +6,7 @@ export function PhoneSvg(props) {
       height={props.height ?? 800}
       viewBox="0 0 24 24"
       fill="none"
+      className={props.className ?? ""}
     >
       <path
         fill={props.fillColor ?? "black"}

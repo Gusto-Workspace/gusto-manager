@@ -158,7 +158,7 @@ export default function ListGiftsComponent(props) {
       setGiftCardsValue(newGiftCardsValue);
       setGiftCardsDescription(newGiftCardsDescription);
 
-      saveNewGiftCardsOrder(newOrder); // Envoyer l'ordre combiné au backend
+      saveNewGiftCardsOrder(newOrder);
     }
   }
 

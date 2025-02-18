@@ -1,7 +1,5 @@
 import { Fragment, useState, useContext, useRef, useEffect } from "react";
 import { useRouter } from "next/router";
-
-// I18N
 import { useTranslation } from "next-i18next";
 
 // SVG
@@ -27,7 +25,8 @@ export default function SettingsComponent() {
   const [showRestaurantList, setShowRestaurantList] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [notifications, setNotifications] = useState([]);
+  const [displayedCount, setDisplayedCount] = useState(null);
+
   const { restaurantContext } = useContext(GlobalContext);
 
   const userMenuRef = useRef(null);
@@ -52,24 +51,25 @@ export default function SettingsComponent() {
 
   useEffect(() => {
     function handleClickOutside(event) {
-      if (
-        userMenuRef.current &&
-        !userMenuRef.current.contains(event.target) &&
-        !userNameRef.current.contains(event.target)
-      ) {
-        setShowUserMenu(false);
-      }
-      if (
-        notificationsRef.current &&
-        !notificationsRef.current.contains(event.target) &&
-        !notificationsButtonRef.current.contains(event.target)
-      ) {
-        setShowNotifications(false);
+      if (showNotifications) {
+        if (
+          notificationsRef.current &&
+          !notificationsRef.current.contains(event.target) &&
+          !notificationsButtonRef.current.contains(event.target)
+        ) {
+          setShowNotifications(false);
+        }
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [showNotifications]);
+
+  useEffect(() => {
+    if (showNotifications) {
+      setDisplayedCount(restaurantContext.newReservationsCount);
+    }
+  }, [restaurantContext.newReservationsCount, showNotifications]);
 
   useEffect(() => {
     if (showRestaurantList) {
@@ -83,6 +83,23 @@ export default function SettingsComponent() {
     };
   }, [showRestaurantList]);
 
+  useEffect(() => {
+    const node = notificationsRef.current;
+    if (!node) return;
+
+    function handleTransitionEnd(e) {
+      if (e.propertyName === "max-height" && !showNotifications) {
+        restaurantContext.resetNewReservationsCount();
+        setDisplayedCount(0);
+      }
+    }
+
+    node.addEventListener("transitionend", handleTransitionEnd);
+    return () => {
+      node.removeEventListener("transitionend", handleTransitionEnd);
+    };
+  }, [showNotifications, restaurantContext]);
+
   return (
     <section className="flex flex-col-reverse tablet:flex-row min-h-16 gap-6 tablet:gap-12 justify-between items-center relative">
       {showRestaurantList && (
@@ -93,7 +110,13 @@ export default function SettingsComponent() {
       )}
 
       <div
-        className={`${showRestaurantList ? "z-[92]" : "z-50"}  relative min-h-[64px] w-full bg-white flex-1 px-6 items-center flex justify-between drop-shadow-sm rounded-lg ${restaurantContext.restaurantsList?.length > 1 && !isSubRoute ? "cursor-pointer" : ""}`}
+        className={`${
+          showRestaurantList ? "z-[92]" : "z-50"
+        } relative min-h-[64px] w-full bg-white flex-1 px-6 items-center flex justify-between drop-shadow-sm rounded-lg ${
+          restaurantContext.restaurantsList?.length > 1 && !isSubRoute
+            ? "cursor-pointer"
+            : ""
+        }`}
         onClick={() => {
           if (!isSubRoute && restaurantContext.restaurantsList?.length > 1) {
             setShowRestaurantList(!showRestaurantList);
@@ -152,13 +175,29 @@ export default function SettingsComponent() {
           </div>
 
           <div className="tablet:border-r pr-2 tablet:pr-8 relative">
-            <button
-              ref={notificationsButtonRef}
-              className="bg-blue p-3 rounded-lg bg-opacity-40"
-              onClick={() => setShowNotifications(!showNotifications)}
-            >
-              <NotificationSvg width={25} height={25} fillColor="#4583FF" />
-            </button>
+            <div className="relative">
+              <button
+                ref={notificationsButtonRef}
+                className="bg-blue p-3 rounded-lg bg-opacity-40"
+                onClick={() => {
+                  if (!showNotifications) {
+                    setDisplayedCount(restaurantContext.newReservationsCount);
+                    setShowNotifications(true);
+                  } else {
+                    setShowNotifications(false);
+                  }
+                }}
+              >
+                <NotificationSvg width={25} height={25} fillColor="#4583FF" />
+              </button>
+
+              {/* Badge de notification */}
+              {restaurantContext.newReservationsCount > 0 && (
+                <span className="absolute top-0 right-0 inline-flex items-center justify-center px-1 py-0.5 text-xs font-bold leading-none text-white transform translate-x-1/2 -translate-y-1/2 bg-red rounded-full">
+                  {restaurantContext.newReservationsCount}
+                </span>
+              )}
+            </div>
 
             <div
               ref={notificationsRef}
@@ -168,12 +207,13 @@ export default function SettingsComponent() {
               style={{ maxHeight: showNotifications ? "200px" : "0" }}
             >
               <ul className="flex flex-col p-4">
-                {notifications.length > 0 ? (
-                  notifications.map((notification, i) => (
-                    <li key={i} className="text-sm py-2">
-                      {notification}
-                    </li>
-                  ))
+                {displayedCount > 0 ? (
+                  <li className="text-sm">
+                    Vous avez {displayedCount}{" "}
+                    {displayedCount === 1
+                      ? "nouvelle réservation"
+                      : "nouvelles réservations"}
+                  </li>
                 ) : (
                   <li className="opacity-40 italic text-sm">
                     Aucune notification
@@ -215,9 +255,7 @@ export default function SettingsComponent() {
                 <SettingsSvg width={20} height={20} />
                 {t("settings.settings")}
               </li>
-
               <hr className="h-[1px] bg-darkBlue opacity-20 mx-4" />
-
               <li
                 className="cursor-pointer flex gap-4 items-center hover:bg-darkBlue hover:bg-opacity-10 px-4 py-2 my-2"
                 onClick={() => router.push("/subscription")}
@@ -225,9 +263,7 @@ export default function SettingsComponent() {
                 <InvoiceSvg width={20} height={20} />
                 {t("settings.subscription")}
               </li>
-
               <hr className="h-[1px] bg-darkBlue opacity-20 mx-4" />
-
               <li
                 className="cursor-pointer flex gap-4 items-center hover:bg-darkBlue hover:bg-opacity-10 px-4 py-2 my-2"
                 onClick={() => router.push("/help")}
@@ -235,9 +271,7 @@ export default function SettingsComponent() {
                 <HelpSvg width={20} height={20} />
                 {t("settings.help")}
               </li>
-
               <hr className="h-[1px] bg-darkBlue opacity-20 mx-4" />
-
               <li
                 className="cursor-pointer flex gap-4 items-center hover:bg-darkBlue hover:bg-opacity-10 px-4 py-2 my-2"
                 onClick={() => router.push("/about")}

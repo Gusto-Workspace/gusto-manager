@@ -1,0 +1,87 @@
+{
+  "titles": {
+    "main": "Réservations"
+  },
+  "labels": {
+    "autoAccept": "Accepter automatiquement les demandes de réservations effectuées depuis votre site internet",
+    "reservationDuration": "Passer automatiquement une réservation en « Terminée » au bout de",
+    "deletionDuration": "Supprimer automatiquement une réservation « Terminée » au bout de",
+    "interval": "Intervalle entre les créneaux de réservation",
+    "minutes": "minutes",
+    "minute": "minute",
+    "minute(s)": "minute(s)",
+    "hour": "heure",
+    "hours": "heures",
+    "now": "Immédiatement",
+    "hoursTitle": "Horaires de Réservation",
+    "sameHoursAsRestaurant": "Utiliser les mêmes horaires que le restaurant",
+    "manageDisponibilities": "Utiliser la gestion intelligente des réservations",
+    "deleteReservation": {
+      "title": "Supprimer la réservation",
+      "content": "Êtes-vous sûr de vouloir supprimer cette réservation ? Cette action est irréversible."
+    },
+    "finishedReservation": {
+      "title": "La réservation est terminée",
+      "content": "Les clients ont quitté la table et cette réservation est terminée ? Cette action est irréversible."
+    },
+    "activeReservation": {
+      "title": "La réservation est en cours",
+      "content": "Les clients sont arrivés ? Cette action est irréversible."
+    },
+    "confirmReservation": {
+      "title": "Confirmer la réservation",
+      "content": "Vous allez confirmer la réservation, cette action est irréversible."
+    },
+    "add": {
+      "date": "Choisir une date",
+      "time": "Choisir un créneau horaire",
+      "guests": "Nombre de personnes",
+      "name": "Nom du client",
+      "email": "Email du client",
+      "phone": "Téléphone du client",
+      "table": "Attribuer une table",
+      "selectTable": "Sélectionner",
+      "automatic": "Automatique",
+      "commentary": "Ajouter un commentaire",
+      "close": "Réservation impossible à la date séletionnée"
+    }
+  },
+  "list": {
+    "status": {
+      "pending": "En attente",
+      "confirmed": "Confirmées",
+      "active": "En cours",
+      "late": "En retard",
+      "finished": "Terminées"
+    },
+    "card": {
+      "empty": "Aucune réservation",
+      "customerName": "Nom du client",
+      "customerEmail": "Email",
+      "customerPhone": "Téléphone",
+      "numberOfGuests": "Nombre de personnes",
+      "reservationDate": "Date",
+      "reservationTime": "Heure",
+      "reservationTable": "Table",
+      "commentary": "Commentaire"
+    }
+  },
+  "buttons": {
+    "add": "Ajouter",
+    "addTable": "Ajouter une table",
+    "parameters": "Paramètres",
+    "edit": "Modifier",
+    "save": "Enregister",
+    "delete": "Supprimer",
+    "confirm": "Confirmer",
+    "validate": "Valider",
+    "update": "Mettre à jour",
+    "finish": "Terminée",
+    "active": "En cours",
+    "yes": "Oui",
+    "no": "Non",
+    "cancel": "Annuler",
+    "back": "Retour",
+    "loading": "En cours..."
+  }
+}

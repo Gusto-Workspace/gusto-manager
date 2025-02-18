@@ -33,7 +33,7 @@ function sendTransactionalEmail(params) {
     }
 
     sendSmtpEmail.sender = {
-      email: "baccialone.leo@gmail.com",
+      email: "no-reply@gusto-manager.com",
       name: "Formulaire Contact - Gusto Manager",
     };
 
