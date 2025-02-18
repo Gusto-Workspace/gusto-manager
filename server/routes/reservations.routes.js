@@ -425,4 +425,26 @@ router.delete(
   }
 );
 
+// Récupérer la liste des réservations d'un restaurant
+router.get("/restaurants/:id/reservations", authenticateToken, async (req, res) => {
+  const restaurantId = req.params.id;
+
+  try {
+    const restaurant = await RestaurantModel.findById(restaurantId)
+      .populate({
+        path: "reservations.list",
+        populate: { path: "table" },
+      });
+
+    if (!restaurant) {
+      return res.status(404).json({ message: "Restaurant not found" });
+    }
+
+    res.status(200).json({ reservations: restaurant.reservations.list });
+  } catch (error) {
+    console.error("Error fetching reservations:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
 module.exports = router;

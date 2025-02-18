@@ -93,7 +93,11 @@ router.get("/restaurants/:id", async (req, res) => {
 
     const restaurant = await RestaurantModel.findById(id)
       .populate("owner_id", "firstname")
-      .populate("menus");
+      .populate("menus")
+      .populate({
+        path: "reservations.list",
+        populate: { path: "table" },
+      });
 
     if (!restaurant) {
       return res.status(404).json({ message: "Restaurant not found" });

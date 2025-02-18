@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
 
 // AXIOS
@@ -17,6 +17,10 @@ export default function RestaurantContext() {
 
   const [autoDeletingReservations, setAutoDeletingReservations] = useState([]);
   const [autoUpdatingReservations, setAutoUpdatingReservations] = useState([]);
+
+  const [newReservationsCount, setNewReservationsCount] = useState(0);
+
+  const initialReservationsLoadedRef = useRef(false);
 
   function handleInvalidToken() {
     setRestaurantsList([]);
@@ -123,6 +127,8 @@ export default function RestaurantContext() {
           const { token: updatedToken } = response.data;
           localStorage.setItem("token", updatedToken);
           fetchRestaurantData(updatedToken, restaurantId);
+          setNewReservationsCount(0);
+          initialReservationsLoadedRef.current = false;
           setCloseEditing(false);
         })
         .catch((error) => {
@@ -328,6 +334,59 @@ export default function RestaurantContext() {
       });
   }
 
+  const resetNewReservationsCount = () => {
+    setNewReservationsCount(0);
+  };
+
+  // RECUPERATION DES RÉSERVATIONS TOUTES LES 30s AVEC DÉTECTION DES NOUVELLES RÉSERVATIONS
+  useEffect(() => {
+    if (!restaurantData?._id) return;
+
+    const fetchReservations = () => {
+      const token = localStorage.getItem("token");
+      axios
+        .get(
+          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantData._id}/reservations`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        )
+        .then((response) => {
+          setRestaurantData((prevData) => {
+            const previousList = prevData?.reservations?.list || [];
+            const fetchedReservations = response.data.reservations;
+            if (!initialReservationsLoadedRef.current) {
+              initialReservationsLoadedRef.current = true;
+            } else {
+              const previousIds = new Set(previousList.map((r) => r._id));
+              const newReservations = fetchedReservations.filter(
+                (r) => !previousIds.has(r._id)
+              );
+              if (newReservations.length > 0) {
+                setNewReservationsCount(
+                  (prevCount) => prevCount + newReservations.length
+                );
+              }
+            }
+            return {
+              ...prevData,
+              reservations: {
+                ...prevData.reservations,
+                list: fetchedReservations,
+              },
+            };
+          });
+        })
+        .catch((error) => {
+          console.error("Error fetching reservations:", error);
+        });
+    };
+
+    fetchReservations();
+    const intervalId = setInterval(fetchReservations, 30000);
+    return () => clearInterval(intervalId);
+  }, [restaurantData?._id]);
+
   function logout() {
     localStorage.removeItem("token");
     setRestaurantData(null);
@@ -358,5 +417,7 @@ export default function RestaurantContext() {
     closeEditing,
     isAuth,
     setIsAuth,
+    newReservationsCount,
+    resetNewReservationsCount,
   };
 }
