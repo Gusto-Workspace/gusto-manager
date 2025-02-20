@@ -193,7 +193,7 @@ export default function ContactRestaurantComponent(props) {
                   placeholder={!isRequired ? t("emptyInput") : ""}
                 />
               ) : (
-                <p className="text-right truncate max-w-[120px] mobile:max-w-[40%]">
+                <p className="text-right truncate max-w-[120px] mobile:min-w-[40%]">
                   {fieldValue || (
                     <span className="text-sm italic">{t("notUsed")}</span>
                   )}

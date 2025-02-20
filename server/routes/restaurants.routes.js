@@ -210,4 +210,25 @@ router.get("/restaurant-subscription", authenticateToken, async (req, res) => {
   }
 });
 
+// Route pour mettre à jour le lastNotificationCheck
+router.put("/restaurants/:id/notification-check", authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const updatedRestaurant = await RestaurantModel.findByIdAndUpdate(
+      id,
+      { lastNotificationCheck: new Date() },
+      { new: true }
+    );
+    if (!updatedRestaurant) {
+      return res.status(404).json({ message: "Restaurant not found" });
+    }
+    res.status(200).json({ restaurant: updatedRestaurant });
+  } catch (error) {
+    console.error("Error updating lastNotificationCheck:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+
+
 module.exports = router;

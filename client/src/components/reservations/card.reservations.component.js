@@ -29,48 +29,52 @@ export default function CardReservationComponent(props) {
       <div className="flex flex-col gap-2">
         <p className="flex gap-3">
           <UserSvg width={20} height={20} className="opacity-50" />
-     
+
           <span>{props.reservation.customerName}</span>
         </p>
-    
+
         <p className="flex gap-3">
           <PhoneSvg width={20} height={20} className="opacity-50" />
-    
+
           <span>{props.reservation.customerPhone}</span>
         </p>
-    
-       <p className="flex gap-3">
+
+        <p className="flex gap-3">
           <EmailSvg width={20} height={20} className="opacity-50" />
-     
-          <span>{props.reservation.customerEmail}</span>
+
+          <span>
+            {props.reservation.customerEmail || (
+              <span className="opacity-30">-</span>
+            )}
+          </span>
         </p>
-     
+
         <p className="flex gap-3">
           <CommunitySvg width={20} height={20} className="opacity-50" />
-      
+
           <span>{props.reservation.numberOfGuests} personnes</span>
         </p>
-      
+
         <p className="flex gap-3">
           <CalendarSvg width={21} height={21} className="opacity-50" />
-       
+
           <span>
             {new Date(props.reservation.reservationDate).toLocaleDateString(
               "fr-FR"
             )}
           </span>
         </p>
-      
+
         <p className="flex gap-3">
           <ClockSvg width={20} height={20} className="opacity-50" />
-        
+
           <span>{props.reservation.reservationTime.replace(":", "h")}</span>
         </p>
-       
+
         <p className="flex gap-3">
           <TableSvg width={20} height={23} className="opacity-50" />
-        
-         <span>
+
+          <span>
             {props.reservation.table?.name || (
               <span className="opacity-30">-</span>
             )}
@@ -171,11 +175,11 @@ export default function CardReservationComponent(props) {
                       fillColor="white"
                     />
                   </div>
-              
+
                   <p className="text-xs text-center">{t("buttons.active")}</p>
                 </button>
               </div>
-            
+
               {/* Bouton Edit pour Confirmed ou Late */}
               <div className="w-1/3 flex justify-center">
                 <button
@@ -190,11 +194,11 @@ export default function CardReservationComponent(props) {
                       fillColor="white"
                     />
                   </div>
-              
+
                   <p className="text-xs text-center">{t("buttons.edit")}</p>
                 </button>
               </div>
-            
+
               {/* Bouton Delete pour Confirmed ou Late */}
               <div className="w-1/3 flex justify-center">
                 <button
@@ -233,7 +237,7 @@ export default function CardReservationComponent(props) {
                       fillColor="white"
                     />
                   </div>
-            
+
                   <p className="text-xs text-center">{t("buttons.delete")}</p>
                 </button>
               </div>
@@ -255,7 +259,7 @@ export default function CardReservationComponent(props) {
                     fillColor="white"
                   />
                 </div>
-              
+
                 <p className="text-xs text-center">{t("buttons.finish")}</p>
               </button>
             </div>
