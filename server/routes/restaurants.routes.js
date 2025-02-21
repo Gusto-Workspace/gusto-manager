@@ -214,20 +214,17 @@ router.get("/restaurant-subscription", authenticateToken, async (req, res) => {
 router.put("/restaurants/:id/notification-check", authenticateToken, async (req, res) => {
   const { id } = req.params;
   try {
-    const updatedRestaurant = await RestaurantModel.findByIdAndUpdate(
-      id,
-      { lastNotificationCheck: new Date() },
-      { new: true }
+    await RestaurantModel.updateOne(
+      { _id: id },
+      { $set: { lastNotificationCheck: new Date() } }
     );
-    if (!updatedRestaurant) {
-      return res.status(404).json({ message: "Restaurant not found" });
-    }
-    res.status(200).json({ restaurant: updatedRestaurant });
+    res.status(200).json({ message: "Notification check updated successfully" });
   } catch (error) {
     console.error("Error updating lastNotificationCheck:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 });
+
 
 
 

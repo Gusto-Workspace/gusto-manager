@@ -25,6 +25,7 @@ export default function SettingsComponent() {
   const [showRestaurantList, setShowRestaurantList] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+
   const [displayedCount, setDisplayedCount] = useState(null);
 
   const { restaurantContext } = useContext(GlobalContext);
@@ -83,6 +84,7 @@ export default function SettingsComponent() {
     };
   }, [showRestaurantList]);
 
+  // Écoute de la fin de transition pour lancer la réinitialisation ET mettre à jour lastNotificationCheck
   useEffect(() => {
     const node = notificationsRef.current;
     if (!node) return;
@@ -91,13 +93,11 @@ export default function SettingsComponent() {
       if (e.propertyName === "max-height" && !showNotifications) {
         restaurantContext.resetNewReservationsCount();
         setDisplayedCount(0);
+        restaurantContext.updateLastNotificationCheck();
       }
     }
-
     node.addEventListener("transitionend", handleTransitionEnd);
-    return () => {
-      node.removeEventListener("transitionend", handleTransitionEnd);
-    };
+    return () => node.removeEventListener("transitionend", handleTransitionEnd);
   }, [showNotifications, restaurantContext]);
 
   return (
@@ -190,7 +190,6 @@ export default function SettingsComponent() {
               >
                 <NotificationSvg width={25} height={25} fillColor="#4583FF" />
               </button>
-
               {/* Badge de notification */}
               {restaurantContext.newReservationsCount > 0 && (
                 <span className="absolute top-0 right-0 inline-flex items-center justify-center px-1 py-0.5 text-xs font-bold leading-none text-white transform translate-x-1/2 -translate-y-1/2 bg-red rounded-full">
@@ -234,7 +233,6 @@ export default function SettingsComponent() {
                 {restaurantContext.restaurantData?.owner_id?.firstname}
               </span>
             </p>
-
             <div className="h-10 w-10 rounded-full bg-black bg-opacity-20 text-white text-xl flex items-center justify-center">
               {restaurantContext.restaurantData?.owner_id?.firstname?.charAt(0)}
             </div>
