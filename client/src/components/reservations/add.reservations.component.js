@@ -503,18 +503,20 @@ export default function AddReservationComponent(props) {
           }
         );
 
-        // Envoyer l'email de confirmation après la création de la réservation
-        await axios.post("/api/confirm-reservation-email", {
-          customerName: reservationData.customerName,
-          customerEmail: reservationData.customerEmail,
-          reservationDate: format(
-            reservationData.reservationDate,
-            "dd/MM/yyyy"
-          ),
-          reservationTime: reservationData.reservationTime,
-          numberOfGuests: reservationData.numberOfGuests,
-          restaurantName: props.restaurantData.name,
-        });
+        // Envoyer l'email de confirmation uniquement si un email est renseigné
+        if (reservationData.customerEmail) {
+          await axios.post("/api/confirm-reservation-email", {
+            customerName: reservationData.customerName,
+            customerEmail: reservationData.customerEmail,
+            reservationDate: format(
+              reservationData.reservationDate,
+              "dd/MM/yyyy"
+            ),
+            reservationTime: reservationData.reservationTime,
+            numberOfGuests: reservationData.numberOfGuests,
+            restaurantName: props.restaurantData.name,
+          });
+        }
       }
 
       props.setRestaurantData(response.data.restaurant);
@@ -673,10 +675,13 @@ export default function AddReservationComponent(props) {
           <div className="flex flex-col gap-4">
             <label
               htmlFor="customerEmail"
-              className="text-md font-medium flex gap-2"
+              className="text-md font-medium flex items-center gap-2"
             >
               <EmailSvg width={20} height={20} className="opacity-50" />
-              {t("labels.add.email")}
+              {t("labels.add.email")}{" "}
+              <span className="text-xs opacity-50 italic">
+                {t("labels.optional")}
+              </span>
             </label>
             <input
               type="email"
@@ -684,7 +689,6 @@ export default function AddReservationComponent(props) {
               name="customerEmail"
               value={reservationData.customerEmail}
               onChange={handleInputChange}
-              required
               className="block w-full border border-gray-300 rounded-md p-2"
             />
           </div>
@@ -693,7 +697,7 @@ export default function AddReservationComponent(props) {
           <div className="flex flex-col gap-4">
             <label
               htmlFor="customerPhone"
-              className="text-md font-medium flex gap-2"
+              className="text-md font-medium flex items-center gap-2"
             >
               <PhoneSvg width={20} height={20} className="opacity-50" />
               {t("labels.add.phone")}
@@ -711,7 +715,7 @@ export default function AddReservationComponent(props) {
 
           {/* Champ Table */}
           <div className="flex flex-col gap-4">
-            <label htmlFor="table" className="text-md font-medium flex gap-2">
+            <label htmlFor="table" className="text-md font-medium flex items-center gap-2">
               <TableSvg width={20} height={20} className="opacity-50" />
               {t("labels.add.table")}
             </label>

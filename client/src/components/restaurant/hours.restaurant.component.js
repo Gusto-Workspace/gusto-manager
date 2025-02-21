@@ -212,7 +212,7 @@ export default function HoursRestaurantComponent(props) {
       <ul className="mt-0 flex flex-col gap-4">
         {localHours.map((dayHour, dayIndex) => (
           <Fragment key={dayHour.day}>
-            <li className="flex flex-col gap-2 mobile:flex-row justify-between items-center py-6 mobile:py-2 mobile:h-auto">
+            <li className="flex flex-col gap-4 mobile:flex-row justify-between items-center py-6 mobile:py-2 mobile:h-auto">
               <span>{t(dayHour.day)}</span>
 
               <div className="w-full">
@@ -225,7 +225,7 @@ export default function HoursRestaurantComponent(props) {
                     }
                   />
                 ) : editing ? (
-                  <div className="flex items-center justify-end gap-2 desktop:gap-6 ">
+                  <div className="flex flex-col midTablet:flex-row items-center mobile:items-end justify-end gap-2 desktop:gap-6 ">
                     {dayHour.isClosed ? (
                       <div className="flex items-center gap-2">
                         <input
@@ -326,7 +326,7 @@ export default function HoursRestaurantComponent(props) {
                     </label>
                   </div>
                 ) : (
-                  <div className="flex flex-col gap-1">
+                  <div className="flex flex-col items-center mobile:items-end gap-1">
                     {dayHour.isClosed ? (
                       <span className="flex justify-end">
                         {t("hours.close")}

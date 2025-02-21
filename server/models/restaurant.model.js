@@ -214,6 +214,7 @@ const restaurantSchema = new mongoose.Schema({
   purchasesGiftCards: { type: [giftCardPurchaseSchema], default: [] },
   options: { type: optionsSchema, default: {} },
   reservations: { type: reservationsSchema, default: {} },
+  lastNotificationCheck: { type: Date, default: Date.now },
   created_at: { type: Date, default: Date.now },
 });
 

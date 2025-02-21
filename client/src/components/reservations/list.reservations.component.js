@@ -281,7 +281,7 @@ export default function ListReservationsComponent(props) {
                   ))}
                 </ul>
               ) : (
-                <div className="p-6 bg-white bg-opacity-70 drop-shadow-sm rounded-lg w-1/2 mx-auto text-center">
+                <div className="p-6 bg-white bg-opacity-70 drop-shadow-sm rounded-lg w-full mobile:w-1/2 mx-auto text-center">
                   <p className="italic">{t("list.card.empty")}</p>
                 </div>
               )}

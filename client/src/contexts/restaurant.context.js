@@ -30,18 +30,22 @@ export default function RestaurantContext() {
 
   function fetchRestaurantData(token, restaurantId) {
     setDataLoading(true);
-
     axios
       .get(
         `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${restaurantId}`,
         {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { Authorization: `Bearer ${token}` },
         }
       )
       .then((response) => {
-        setRestaurantData(response.data.restaurant);
+        const restaurant = response.data.restaurant;
+    
+        const lastCheck = restaurant.lastNotificationCheck;
+        const newCount = restaurant.reservations.list.filter(
+          (r) => new Date(r.createdAt) > new Date(lastCheck)
+        ).length;
+        setNewReservationsCount(newCount);
+        setRestaurantData(restaurant);
         setDataLoading(false);
       })
       .catch((error) => {
@@ -117,16 +121,13 @@ export default function RestaurantContext() {
         .post(
           `${process.env.NEXT_PUBLIC_API_URL}/owner/change-restaurant`,
           { restaurantId },
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
+          { headers: { Authorization: `Bearer ${token}` } }
         )
         .then((response) => {
           const { token: updatedToken } = response.data;
           localStorage.setItem("token", updatedToken);
           fetchRestaurantData(updatedToken, restaurantId);
+          // Lors du changement de restaurant, on réinitialise le compteur et on réinitialise le flag de premier chargement
           setNewReservationsCount(0);
           initialReservationsLoadedRef.current = false;
           setCloseEditing(false);
@@ -142,6 +143,27 @@ export default function RestaurantContext() {
         });
     }
   }
+
+  // Fonction pour mettre à jour le champ lastNotificationCheck dans la BDD
+  function updateLastNotificationCheck() {
+    if (!restaurantData?._id) return;
+    const token = localStorage.getItem("token");
+    axios
+      .put(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantData._id}/notification-check`,
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      )
+      .catch((error) => {
+        console.error("Error updating lastNotificationCheck:", error);
+      });
+  }
+  
 
   // VERIFICATION DES RESERVATIONS TERMINEES A SUPPRIMER
   useEffect(() => {
@@ -334,9 +356,9 @@ export default function RestaurantContext() {
       });
   }
 
-  const resetNewReservationsCount = () => {
+  function resetNewReservationsCount() {
     setNewReservationsCount(0);
-  };
+  }
 
   // RECUPERATION DES RÉSERVATIONS TOUTES LES 30s AVEC DÉTECTION DES NOUVELLES RÉSERVATIONS
   useEffect(() => {
@@ -412,6 +434,7 @@ export default function RestaurantContext() {
     handleRestaurantSelect,
     fetchRestaurantsList,
     fetchRestaurantData,
+    updateLastNotificationCheck,
     logout,
     setCloseEditing,
     closeEditing,
