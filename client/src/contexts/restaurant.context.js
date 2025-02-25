@@ -290,7 +290,14 @@ export default function RestaurantContext() {
         }
       )
       .then((response) => {
-        setRestaurantData(response.data.restaurant);
+        setRestaurantData((prevData) => ({
+          ...prevData,
+          reservations: {
+            ...prevData.reservations,
+            list: response.data.restaurant.reservations.list,
+          },
+        }));
+        
       })
       .catch((error) => {
         console.error("Error auto-updating reservation to Finished:", error);
@@ -315,7 +322,14 @@ export default function RestaurantContext() {
         }
       )
       .then((response) => {
-        setRestaurantData(response.data.restaurant);
+        setRestaurantData((prevData) => ({
+          ...prevData,
+          reservations: {
+            ...prevData.reservations,
+            list: response.data.restaurant.reservations.list,
+          },
+        }));
+        
       })
       .catch((error) => {
         console.error("Error auto-updating reservation to Late:", error);
@@ -344,7 +358,14 @@ export default function RestaurantContext() {
         }
       )
       .then((response) => {
-        setRestaurantData(response.data.restaurant);
+        setRestaurantData((prevData) => ({
+          ...prevData,
+          reservations: {
+            ...prevData.reservations,
+            list: response.data.restaurant.reservations.list,
+          },
+        }));
+        
       })
       .catch((error) => {
         console.error("Error auto-deleting reservation:", error);

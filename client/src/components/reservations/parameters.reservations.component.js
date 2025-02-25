@@ -77,7 +77,7 @@ export default function ParametersReservationComponent(props) {
       setReservationHours(parameters.reservation_hours);
       setIsLoading(false);
     }
-  }, [restaurantContext.restaurantData, reset]);
+  }, [restaurantContext.restaurantData?._id, reset]);
 
   async function onSubmit(data) {
     const formData = {
