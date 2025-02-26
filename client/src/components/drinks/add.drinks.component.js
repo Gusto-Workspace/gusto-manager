@@ -111,7 +111,6 @@ export default function AddDrinksComponent(props) {
       }
     } catch (error) {
       console.error("Error adding or editing drink:", error);
-    } finally {
       setIsLoading(false);
     }
   }
@@ -248,7 +247,7 @@ export default function AddDrinksComponent(props) {
         <div className="flex gap-4">
           <button
             type="submit"
-            className="bg-blue w-fit text-white px-4 py-2 rounded-lg"
+            className="bg-blue w-fit text-white px-4 py-2 rounded-lg disabled:opacity-70"
             disabled={isLoading}
           >
             {isLoading ? t("buttons.loading") : t("buttons.save")}
