@@ -19,8 +19,8 @@ import { SettingsSvg } from "@/components/_shared/_svgs/settings.svg";
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
-import GeneralFormSettingsComponent from "@/components/settings/general-form.settings.component";
-import PasswordFormSettingsComponent from "@/components/settings/password-form.settings.component";
+import GeneralFormSettingsComponent from "@/components/dashboard/settings/general-form.settings.component";
+import PasswordFormSettingsComponent from "@/components/dashboard/settings/password-form.settings.component";
 
 export default function SettingsPage(props) {
   const { t } = useTranslation("");

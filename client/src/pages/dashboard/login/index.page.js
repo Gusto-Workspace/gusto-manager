@@ -7,7 +7,7 @@ import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 
 // COMPONENTS
-import FormLoginComponent from "@/components/login/form.login.component";
+import FormLoginComponent from "@/components/dashboard/login/form.login.component";
 
 export default function LoginPage(props) {
   const router = useRouter();
@@ -16,7 +16,7 @@ export default function LoginPage(props) {
     const token = localStorage.getItem("token");
 
     if (token) {
-      router.push("/");
+      router.push("/dashboard");
     }
   }, [router]);
 

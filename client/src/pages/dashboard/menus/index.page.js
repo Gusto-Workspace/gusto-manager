@@ -11,7 +11,7 @@ import { GlobalContext } from "@/contexts/global.context";
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
-import ListMenusComponent from "@/components/menus/list.menus.component";
+import ListMenusComponent from "@/components/dashboard/menus/list.menus.component";
 
 export default function MenusPage(props) {
   const { restaurantContext } = useContext(GlobalContext);

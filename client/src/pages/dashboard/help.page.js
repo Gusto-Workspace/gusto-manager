@@ -15,7 +15,7 @@ import { HelpSvg } from "@/components/_shared/_svgs/_index";
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
-import ContactFormHelpComponent from "@/components/help/contact-form.help.component";
+import ContactFormHelpComponent from "@/components/dashboard/help/contact-form.help.component";
 
 export default function HelpPage(props) {
   const { t } = useTranslation("");

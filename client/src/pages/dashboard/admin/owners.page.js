@@ -9,9 +9,9 @@ import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import { GlobalContext } from "@/contexts/global.context";
 
 // COMPONENTS
-import NavAdminComponent from "@/components/admin/_shared/nav/nav.admin.component";
-import ListOwnersAdminComponent from "@/components/admin/owners/list-owners.admin.component";
-import AddOwnerModalComponent from "@/components/admin/owners/add-owner-modal.admin.component";
+import NavAdminComponent from "@/components/dashboard/admin/_shared/nav/nav.admin.component";
+import ListOwnersAdminComponent from "@/components/dashboard/admin/owners/list-owners.admin.component";
+import AddOwnerModalComponent from "@/components/dashboard/admin/owners/add-owner-modal.admin.component";
 
 export default function OwnersPage(props) {
   const { adminContext } = useContext(GlobalContext);

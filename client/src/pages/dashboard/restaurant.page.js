@@ -15,8 +15,8 @@ import { RestaurantSvg } from "@/components/_shared/_svgs/restaurant.svg";
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
-import HoursRestaurantComponent from "@/components/restaurant/hours.restaurant.component";
-import ContactRestaurantComponent from "@/components/restaurant/contact.restaurant.component";
+import HoursRestaurantComponent from "@/components/dashboard/restaurant/hours.restaurant.component";
+import ContactRestaurantComponent from "@/components/dashboard/restaurant/contact.restaurant.component";
 
 export default function RestaurantPage(props) {
   const { t } = useTranslation("");

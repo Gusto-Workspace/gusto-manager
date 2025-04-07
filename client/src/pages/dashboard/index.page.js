@@ -12,7 +12,7 @@ import { GlobalContext } from "@/contexts/global.context";
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
-import DashboardComponent from "@/components/dashboard/dashboard.component";
+import DashboardComponent from "@/components/dashboard/dashboard/dashboard.component";
 
 // SVG
 import { AnalyticsSvg } from "@/components/_shared/_svgs/analytics.svg";

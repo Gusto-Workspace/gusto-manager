@@ -39,7 +39,7 @@ export default function RestaurantContext() {
       )
       .then((response) => {
         const restaurant = response.data.restaurant;
-    
+
         const lastCheck = restaurant.lastNotificationCheck;
         const newCount = restaurant.reservations.list.filter(
           (r) => new Date(r.createdAt) > new Date(lastCheck)
@@ -163,7 +163,6 @@ export default function RestaurantContext() {
         console.error("Error updating lastNotificationCheck:", error);
       });
   }
-  
 
   // VERIFICATION DES RESERVATIONS TERMINEES A SUPPRIMER
   useEffect(() => {
@@ -297,7 +296,6 @@ export default function RestaurantContext() {
             list: response.data.restaurant.reservations.list,
           },
         }));
-        
       })
       .catch((error) => {
         console.error("Error auto-updating reservation to Finished:", error);
@@ -329,7 +327,6 @@ export default function RestaurantContext() {
             list: response.data.restaurant.reservations.list,
           },
         }));
-        
       })
       .catch((error) => {
         console.error("Error auto-updating reservation to Late:", error);
@@ -365,7 +362,6 @@ export default function RestaurantContext() {
             list: response.data.restaurant.reservations.list,
           },
         }));
-        
       })
       .catch((error) => {
         console.error("Error auto-deleting reservation:", error);
@@ -441,7 +437,7 @@ export default function RestaurantContext() {
   useEffect(() => {
     const { pathname } = router;
 
-    if (!pathname.includes("/dashboard/admin")) {
+    if (pathname !== "/" && !pathname.includes("/dashboard/admin")) {
       fetchRestaurantsList();
     }
   }, []);

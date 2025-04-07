@@ -14,7 +14,7 @@ import axios from "axios";
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
-import AddDrinksComponent from "@/components/drinks/add.drinks.component";
+import AddDrinksComponent from "@/components/dashboard/drinks/add.drinks.component";
 
 export default function AddDrinkPage(props) {
   const { restaurantContext } = useContext(GlobalContext);

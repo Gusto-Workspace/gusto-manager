@@ -7,7 +7,7 @@ import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 
 // COMPONENTS
-import FormAdminComponent from "@/components/admin/_shared/form/form.admin.component";
+import FormAdminComponent from "@/components/dashboard/admin/_shared/form/form.admin.component";
 
 export default function AdminLoginPage(props) {
   const router = useRouter();

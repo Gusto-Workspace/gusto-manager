@@ -18,8 +18,8 @@ import { InvoiceSvg } from "@/components/_shared/_svgs/_index";
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
-import SubscriptionInfoComponent from "@/components/subscription/subscription-info.dashboard.component";
-import InvoicesListComponent from "@/components/subscription/invoices-list.dashboard.component";
+import SubscriptionInfoComponent from "@/components/dashboard/subscription/subscription-info.dashboard.component";
+import InvoicesListComponent from "@/components/dashboard/subscription/invoices-list.dashboard.component";
 
 export default function SubscriptionPage(props) {
   const { t } = useTranslation("");

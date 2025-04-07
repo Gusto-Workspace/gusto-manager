@@ -11,7 +11,7 @@ import { GlobalContext } from "@/contexts/global.context";
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
-import AddNewsComponent from "@/components/news/add.news.component";
+import AddNewsComponent from "@/components/dashboard/news/add.news.component";
 
 export default function AddNewsPage(props) {
   const { restaurantContext } = useContext(GlobalContext);

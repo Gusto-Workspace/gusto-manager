@@ -7,7 +7,7 @@ import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 
 // COMPONENTS
-import FormForgotPasswordComponent from "@/components/login/form-forgot-password.login.component";
+import FormForgotPasswordComponent from "@/components/dashboard/login/form-forgot-password.login.component";
 
 export default function ForgotPasswordPage(props) {
   const router = useRouter();
@@ -16,7 +16,7 @@ export default function ForgotPasswordPage(props) {
     const token = localStorage.getItem("token");
 
     if (token) {
-      router.push("/");
+      router.push("/dashboard");
     }
   }, [router]);
 

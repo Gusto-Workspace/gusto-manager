@@ -12,7 +12,7 @@ import { GlobalContext } from "@/contexts/global.context";
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
-import ParametersReservationComponent from "@/components/reservations/parameters.reservations.component";
+import ParametersReservationComponent from "@/components/dashboard/reservations/parameters.reservations.component";
 
 export default function ParametersReservationsPage(props) {
   const { restaurantContext } = useContext(GlobalContext);

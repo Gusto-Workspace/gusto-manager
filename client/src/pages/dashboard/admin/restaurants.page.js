@@ -9,9 +9,9 @@ import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import { GlobalContext } from "@/contexts/global.context";
 
 // COMPONENTS
-import NavAdminComponent from "@/components/admin/_shared/nav/nav.admin.component";
-import ListRestaurantsAdminComponent from "@/components/admin/restaurants/list-restaurants.admin.component";
-import AddRestaurantModal from "@/components/admin/restaurants/add-restaurant-modal.admin.component";
+import NavAdminComponent from "@/components/dashboard/admin/_shared/nav/nav.admin.component";
+import ListRestaurantsAdminComponent from "@/components/dashboard/admin/restaurants/list-restaurants.admin.component";
+import AddRestaurantModal from "@/components/dashboard/admin/restaurants/add-restaurant-modal.admin.component";
 
 export default function RestaurantsPage(props) {
   const { adminContext } = useContext(GlobalContext);

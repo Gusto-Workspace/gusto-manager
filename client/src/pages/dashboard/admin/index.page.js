@@ -10,8 +10,8 @@ import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import axios from "axios";
 
 // COMPONENTS
-import NavAdminComponent from "@/components/admin/_shared/nav/nav.admin.component";
-import DashboardAdminComponent from "@/components/admin/dashboard/dashboard.admin.component";
+import NavAdminComponent from "@/components/dashboard/admin/_shared/nav/nav.admin.component";
+import DashboardAdminComponent from "@/components/dashboard/admin/dashboard/dashboard.admin.component";
 
 export default function AdminPage(props) {
   const router = useRouter();

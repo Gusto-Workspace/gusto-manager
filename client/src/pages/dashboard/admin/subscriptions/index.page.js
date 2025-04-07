@@ -9,8 +9,8 @@ import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import { GlobalContext } from "@/contexts/global.context";
 
 // COMPONENTS
-import NavAdminComponent from "@/components/admin/_shared/nav/nav.admin.component";
-import ListSubscriptionsAdminComponent from "@/components/admin/subscriptions/list-subscriptions.admin.component";
+import NavAdminComponent from "@/components/dashboard/admin/_shared/nav/nav.admin.component";
+import ListSubscriptionsAdminComponent from "@/components/dashboard/admin/subscriptions/list-subscriptions.admin.component";
 
 export default function SubscriptionsPage(props) {
   const { adminContext } = useContext(GlobalContext);

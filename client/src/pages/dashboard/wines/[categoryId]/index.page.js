@@ -12,7 +12,7 @@ import { GlobalContext } from "@/contexts/global.context";
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
-import ListWinesComponent from "@/components/wines/list.wines.component";
+import ListWinesComponent from "@/components/dashboard/wines/list.wines.component";
 
 export default function CategorieWinesPage(props) {
   const { restaurantContext } = useContext(GlobalContext);

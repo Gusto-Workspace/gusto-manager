@@ -11,7 +11,7 @@ import { GlobalContext } from "@/contexts/global.context";
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
-import AddMenusComponent from "@/components/menus/add.menus.component";
+import AddMenusComponent from "@/components/dashboard/menus/add.menus.component";
 import axios from "axios";
 
 export default function AddMenuPage(props) {

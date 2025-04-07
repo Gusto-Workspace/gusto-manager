@@ -14,7 +14,7 @@ import axios from "axios";
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
-import AddReservationComponent from "@/components/reservations/add.reservations.component";
+import AddReservationComponent from "@/components/dashboard/reservations/add.reservations.component";
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
 
 export default function AddReservationsPage(props) {
