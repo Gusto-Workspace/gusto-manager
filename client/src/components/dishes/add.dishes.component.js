@@ -89,7 +89,7 @@ export default function AddDishesComponent(props) {
 
       restaurantContext.setRestaurantData(response.data.restaurant);
 
-      router.push(`/dishes/${props.category._id}`);
+      router.push(`/dashboard/dishes/${props.category._id}`);
     } catch (error) {
       console.error("Error adding or editing dish:", error);
     } finally {

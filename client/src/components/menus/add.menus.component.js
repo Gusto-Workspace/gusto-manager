@@ -28,7 +28,7 @@ export default function AddMenusComponent(props) {
           <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2 flex-wrap">
             <span
               className="cursor-pointer hover:underline"
-              onClick={() => router.push("/menus")}
+              onClick={() => router.push("/dashboard/menus")}
             >
               {t("titles.main")}
             </span>

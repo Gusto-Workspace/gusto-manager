@@ -99,7 +99,7 @@ export default function AddDrinksComponent(props) {
           .toLowerCase();
 
         router.push(
-          `/drinks/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${props.subCategory._id}`
+          `/dashboard/drinks/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${props.subCategory._id}`
         );
       } else {
         const formattedName = props.category.name
@@ -107,7 +107,7 @@ export default function AddDrinksComponent(props) {
           .replace(/\s+/g, "&")
           .toLowerCase();
 
-        router.push(`/drinks/${formattedName}-${props.category._id}`);
+        router.push(`/dashboard/drinks/${formattedName}-${props.category._id}`);
       }
     } catch (error) {
       console.error("Error adding or editing drink:", error);

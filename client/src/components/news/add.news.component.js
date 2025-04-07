@@ -111,7 +111,7 @@ export default function AddNewsComponent(props) {
       });
 
       restaurantContext.setRestaurantData(response.data.restaurant);
-      router.push("/news");
+      router.push("/dashboard/news");
     } catch (error) {
       console.error("Error adding or editing news:", error);
       setIsLoading(false);

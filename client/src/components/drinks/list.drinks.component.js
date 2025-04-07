@@ -95,14 +95,16 @@ export default function ListDrinksComponent(props) {
         .toLowerCase();
 
       router.push(
-        `/drinks/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${props.subCategory._id}/add`
+        `/dashboard/drinks/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${props.subCategory._id}/add`
       );
     } else {
       const formattedName = props.category.name
         .replace(/\//g, "-")
         .replace(/\s+/g, "&")
         .toLowerCase();
-      router.push(`/drinks/${formattedName}-${props.category._id}/add`);
+      router.push(
+        `/dashboard/drinks/${formattedName}-${props.category._id}/add`
+      );
     }
   }
 
@@ -117,7 +119,7 @@ export default function ListDrinksComponent(props) {
         .replace(/\s+/g, "&")
         .toLowerCase();
       router.push(
-        `/drinks/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${props.subCategory._id}/add?drinkId=${drink._id}`
+        `/dashboard/drinks/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${props.subCategory._id}/add?drinkId=${drink._id}`
       );
     } else {
       const formattedCategoryName = props.category.name
@@ -125,7 +127,7 @@ export default function ListDrinksComponent(props) {
         .replace(/\s+/g, "&")
         .toLowerCase();
       router.push(
-        `/drinks/${formattedCategoryName}-${props.category._id}/add?drinkId=${drink._id}`
+        `/dashboard/drinks/${formattedCategoryName}-${props.category._id}/add?drinkId=${drink._id}`
       );
     }
   }
@@ -326,7 +328,7 @@ export default function ListDrinksComponent(props) {
       .toLowerCase();
 
     router.push(
-      `/drinks/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${subCategory._id}`
+      `/dashboard/drinks/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${subCategory._id}`
     );
   }
 
@@ -355,16 +357,16 @@ export default function ListDrinksComponent(props) {
   }
 
   // Chemins pour la navigation avec le formatage de nom et d'ID
-  const baseRoute = "/drinks";
+  const baseRoute = "/dashboard/drinks";
   const formattedCategoryRoute = props.category
-    ? `/drinks/${props.category.name
+    ? `/dashboard/drinks/${props.category.name
         .replace(/\//g, "-")
         .replace(/\s+/g, "&")
         .toLowerCase()}-${props.category._id}`
     : baseRoute;
 
   const formattedSubCategoryRoute = props.subCategory
-    ? `/drinks/${props.category.name
+    ? `/dashboard/drinks/${props.category.name
         .replace(/\//g, "-")
         .replace(/\s+/g, "&")
         .toLowerCase()}-${props.category._id}/${props.subCategory.name
@@ -439,7 +441,7 @@ export default function ListDrinksComponent(props) {
         </div>
       </div>
 
-      {subCategories && (
+      {subCategories?.length > 0 && (
         <div className="flex flex-col gap-12">
           <DndContext
             sensors={sensors}

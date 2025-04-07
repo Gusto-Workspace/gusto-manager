@@ -85,10 +85,10 @@ export default function NavComponent() {
   }, []);
 
   function isActive(itemHref) {
-    if (itemHref === "/") {
-      return router.pathname === "/";
+    if (itemHref === "/dashboard") {
+      return router.pathname === "/dashboard";
     }
-    return router.pathname.startsWith(itemHref) && router.pathname !== "/";
+    return router.pathname.startsWith(itemHref) && router.pathname !== "/dashboard";
   }
 
   function isOptionEnabled(itemHref) {
@@ -97,9 +97,9 @@ export default function NavComponent() {
     }
 
     const optionsMapping = {
-      "/gifts": restaurantContext?.restaurantData?.options?.gift_card,
-      "/reservations": restaurantContext?.restaurantData?.options?.reservations,
-      "/take-away": restaurantContext?.restaurantData?.options?.take_away,
+      "/dashboard/gifts": restaurantContext?.restaurantData?.options?.gift_card,
+      "/dashboard/reservations": restaurantContext?.restaurantData?.options?.reservations,
+      "/dashboard/take-away": restaurantContext?.restaurantData?.options?.take_away,
     };
 
     return optionsMapping[itemHref] ?? true;

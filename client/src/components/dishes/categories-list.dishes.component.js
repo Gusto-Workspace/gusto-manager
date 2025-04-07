@@ -80,7 +80,7 @@ export default function CategoriesListDishesComponent() {
       .replace(/\//g, "-")
       .replace(/\s+/g, "&")
       .toLowerCase();
-    router.push(`/dishes/${formattedName}-${category._id}`);
+    router.push(`/dashboard/dishes/${formattedName}-${category._id}`);
   }
 
   function handleDeleteClick(category) {

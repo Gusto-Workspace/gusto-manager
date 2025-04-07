@@ -28,11 +28,11 @@ export default function ListNewsComponent(props) {
   const [isDeleting, setIsDeleting] = useState(false);
 
   function handleAddClick() {
-    router.push(`/news/add`);
+    router.push(`/dashboard/news/add`);
   }
 
   function handleEditClick(news) {
-    router.push(`/news/add?newsId=${news._id}`);
+    router.push(`/dashboard/news/add?newsId=${news._id}`);
   }
 
   function handleDeleteClick(news) {

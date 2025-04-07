@@ -123,7 +123,7 @@ export default function FixedMenuComponent(props) {
     axios[method](apiUrl, formattedData)
       .then((response) => {
         restaurantContext.setRestaurantData(response.data.restaurant);
-        router.push("/menus");
+        router.push("/dashboard/menus");
       })
       .catch((error) => {
         console.error("Error saving menu:", error);

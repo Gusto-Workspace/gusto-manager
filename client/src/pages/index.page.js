@@ -59,34 +59,7 @@ export default function DashboardPage(props) {
       </Head>
 
       <div>
-        <div className="flex">
-          <NavComponent />
-
-          <div className="tablet:tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 p-6 flex flex-col gap-6 min-h-screen">
-            <SettingsComponent
-              dataLoading={restaurantContext.dataLoading}
-              setDataLoading={restaurantContext.setDataLoading}
-              closeEditing={restaurantContext.closeEditing}
-              setRestaurantData={restaurantContext.setRestaurantData}
-              restaurantData={restaurantContext.restaurantData}
-            />
-
-            <hr className="opacity-20" />
-
-            <div className="flex justify-between">
-              <div className="flex gap-2 items-center">
-                <AnalyticsSvg width={30} height={30} strokeColor="#131E3690" />
-
-                <h1 className="pl-2 text-2xl">{t("index:titles.main")}</h1>
-              </div>
-            </div>
-
-            <DashboardComponent
-              restaurantData={restaurantContext.restaurantData}
-              dataLoading={restaurantContext.dataLoading}
-            />
-          </div>
-        </div>
+       <h1>Hello Gusto !</h1>
       </div>
     </>
   );

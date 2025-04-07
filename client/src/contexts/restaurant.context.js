@@ -25,7 +25,7 @@ export default function RestaurantContext() {
   function handleInvalidToken() {
     setRestaurantsList([]);
     localStorage.removeItem("token");
-    router.push("/login");
+    router.push("/dashboard/login");
   }
 
   function fetchRestaurantData(token, restaurantId) {
@@ -435,13 +435,13 @@ export default function RestaurantContext() {
     setRestaurantData(null);
     setRestaurantsList([]);
     setIsAuth(false);
-    router.replace("/login");
+    router.replace("/dashboard/login");
   }
 
   useEffect(() => {
     const { pathname } = router;
 
-    if (!pathname.includes("/admin")) {
+    if (!pathname.includes("/dashboard/admin")) {
       fetchRestaurantsList();
     }
   }, []);

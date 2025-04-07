@@ -21,7 +21,7 @@ export default function AdminPage(props) {
     const token = localStorage.getItem("admin-token");
 
     if (!token) {
-      router.push("/admin/login");
+      router.push("/dashboard/admin/login");
     } else {
       axios
         .get(`${process.env.NEXT_PUBLIC_API_URL}/admin/dashboard`, {
@@ -35,7 +35,7 @@ export default function AdminPage(props) {
         .catch((error) => {
           if (error.response.status === 403) {
             localStorage.removeItem("admin-token");
-            router.push("/admin/login");
+            router.push("/dashboard/admin/login");
           }
         });
     }

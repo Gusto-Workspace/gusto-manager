@@ -36,7 +36,7 @@ export default function SettingsComponent() {
   const notificationsButtonRef = useRef(null);
 
   const isSubRoute =
-    router.pathname !== "/" && router.pathname.split("/").length > 2;
+    router.pathname !== "/dashboard" && router.pathname.split("/").length > 3;
 
   function handleFullScreenToggle() {
     if (!document.fullscreenElement) {
@@ -144,7 +144,7 @@ export default function SettingsComponent() {
                     <li
                       className="p-6 cursor-pointer"
                       onClick={() => {
-                        router.push("/");
+                        router.push("/dashboard");
                         setShowRestaurantList(false);
                         restaurantContext.handleRestaurantSelect(
                           restaurant._id
@@ -248,7 +248,7 @@ export default function SettingsComponent() {
             <ul className="flex flex-col">
               <li
                 className="cursor-pointer flex gap-4 items-center hover:bg-darkBlue hover:bg-opacity-10 px-4 py-2 my-2"
-                onClick={() => router.push("/settings")}
+                onClick={() => router.push("/dashboard/settings")}
               >
                 <SettingsSvg width={20} height={20} />
                 {t("settings.settings")}
@@ -256,7 +256,7 @@ export default function SettingsComponent() {
               <hr className="h-[1px] bg-darkBlue opacity-20 mx-4" />
               <li
                 className="cursor-pointer flex gap-4 items-center hover:bg-darkBlue hover:bg-opacity-10 px-4 py-2 my-2"
-                onClick={() => router.push("/subscription")}
+                onClick={() => router.push("/dashboard/subscription")}
               >
                 <InvoiceSvg width={20} height={20} />
                 {t("settings.subscription")}
@@ -264,7 +264,7 @@ export default function SettingsComponent() {
               <hr className="h-[1px] bg-darkBlue opacity-20 mx-4" />
               <li
                 className="cursor-pointer flex gap-4 items-center hover:bg-darkBlue hover:bg-opacity-10 px-4 py-2 my-2"
-                onClick={() => router.push("/help")}
+                onClick={() => router.push("/dashboard/help")}
               >
                 <HelpSvg width={20} height={20} />
                 {t("settings.help")}
@@ -272,7 +272,7 @@ export default function SettingsComponent() {
               <hr className="h-[1px] bg-darkBlue opacity-20 mx-4" />
               <li
                 className="cursor-pointer flex gap-4 items-center hover:bg-darkBlue hover:bg-opacity-10 px-4 py-2 my-2"
-                onClick={() => router.push("/about")}
+                onClick={() => router.push("/dashboard/about")}
               >
                 <AboutSvg width={18} height={18} />
                 {t("settings.about")}

@@ -39,7 +39,7 @@ export default function AddModaleDrinksComponent(props) {
               type="text"
               placeholder="-"
               defaultValue={props.editingCategory?.name || ""}
-              disabled={props.isDeleting || props.isSubmitting} // Désactive le champ pendant la soumission ou suppression
+              disabled={props.isDeleting || props.isSubmitting}
               {...props.register("name", { required: !props.isDeleting })}
               className={`border p-2 rounded-lg w-full ${
                 props.errors.name ? "border-red" : ""
@@ -51,10 +51,10 @@ export default function AddModaleDrinksComponent(props) {
             <button
               type="submit"
               className="px-4 py-2 rounded-lg bg-blue text-white flex items-center gap-2"
-              disabled={props.isSubmitting} // Désactive le bouton pendant la soumission
+              disabled={props.isSubmitting} 
             >
               {props.isSubmitting
-                ? t("buttons.loading") // Ajouter un loader ici (ex: spinner)
+                ? t("buttons.loading")
                 : props.isDeleting
                   ? t("buttons.confirm")
                   : t("buttons.save")}
@@ -64,14 +64,14 @@ export default function AddModaleDrinksComponent(props) {
               type="button"
               onClick={() => {
                 if (!props.isSubmitting) {
-                  // Empêche de fermer la modale pendant la soumission
+            
                   props.setIsModalOpen(false);
                   props.setEditingCategory(null);
                   props.setIsDeleting(false);
                 }
               }}
               className="px-4 py-2 rounded-lg text-white bg-red"
-              disabled={props.isSubmitting} // Désactive le bouton pendant la soumission
+              disabled={props.isSubmitting} 
             >
               {t("buttons.cancel")}
             </button>

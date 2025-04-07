@@ -38,7 +38,7 @@ export default function FormAdminComponent() {
         adminContext.fetchRestaurantsList();
         adminContext.fetchOwnersSubscriptionsList();
         adminContext.setIsAuth(true);
-        router.push("/admin");
+        router.push("/dashboard/admin");
       })
       .catch((error) => {
         if (error.response && error.response.data) {

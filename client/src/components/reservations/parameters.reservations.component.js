@@ -113,7 +113,7 @@ export default function ParametersReservationComponent(props) {
       );
 
       props.setRestaurantData(response.data.restaurant);
-      router.push("/reservations");
+      router.push("/dashboard/reservations");
     } catch (error) {
       console.error(
         "Erreur lors de la mise à jour des paramètres de réservation :",
@@ -123,7 +123,7 @@ export default function ParametersReservationComponent(props) {
   }
 
   function handleBack() {
-    router.push("/reservations");
+    router.push("/dashboard/reservations");
   }
 
   function onReservationHoursChange(data) {
@@ -166,7 +166,7 @@ export default function ParametersReservationComponent(props) {
           <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2 flex-wrap">
             <span
               className="cursor-pointer hover:underline"
-              onClick={() => router.push("/reservations")}
+              onClick={() => router.push("/dashboard/reservations")}
             >
               {t("titles.main")}
             </span>

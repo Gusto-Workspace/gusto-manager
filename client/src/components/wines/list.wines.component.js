@@ -96,14 +96,14 @@ export default function ListWinesComponent(props) {
         .toLowerCase();
 
       router.push(
-        `/wines/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${props.subCategory._id}/add`
+        `/dashboard/wines/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${props.subCategory._id}/add`
       );
     } else {
       const formattedName = props.category.name
         .replace(/\//g, "-")
         .replace(/\s+/g, "&")
         .toLowerCase();
-      router.push(`/wines/${formattedName}-${props.category._id}/add`);
+      router.push(`/dashboard/wines/${formattedName}-${props.category._id}/add`);
     }
   }
 
@@ -118,7 +118,7 @@ export default function ListWinesComponent(props) {
         .replace(/\s+/g, "&")
         .toLowerCase();
       router.push(
-        `/wines/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${props.subCategory._id}/add?wineId=${wine._id}`
+        `/dashboard/wines/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${props.subCategory._id}/add?wineId=${wine._id}`
       );
     } else {
       const formattedCategoryName = props.category.name
@@ -126,7 +126,7 @@ export default function ListWinesComponent(props) {
         .replace(/\s+/g, "&")
         .toLowerCase();
       router.push(
-        `/wines/${formattedCategoryName}-${props.category._id}/add?wineId=${wine._id}`
+        `/dashboard/wines/${formattedCategoryName}-${props.category._id}/add?wineId=${wine._id}`
       );
     }
   }
@@ -321,7 +321,7 @@ export default function ListWinesComponent(props) {
       .toLowerCase();
 
     router.push(
-      `/wines/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${subCategory._id}`
+      `/dashboard/wines/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${subCategory._id}`
     );
   }
 
@@ -350,16 +350,16 @@ export default function ListWinesComponent(props) {
   }
 
   // Chemins pour la navigation avec le formatage de nom et d'ID
-  const baseRoute = "/wines";
+  const baseRoute = "/dashboard/wines";
   const formattedCategoryRoute = props.category
-    ? `/wines/${props.category.name
+    ? `/dashboard/wines/${props.category.name
         .replace(/\//g, "-")
         .replace(/\s+/g, "&")
         .toLowerCase()}-${props.category._id}`
     : baseRoute;
 
   const formattedSubCategoryRoute = props.subCategory
-    ? `/wines/${props.category.name
+    ? `/dashboard/wines/${props.category.name
         .replace(/\//g, "-")
         .replace(/\s+/g, "&")
         .toLowerCase()}-${props.category._id}/${props.subCategory.name

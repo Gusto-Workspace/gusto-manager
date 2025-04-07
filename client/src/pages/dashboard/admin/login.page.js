@@ -16,7 +16,7 @@ export default function AdminLoginPage(props) {
     const token = localStorage.getItem("admin-token");
 
     if (token) {
-      router.push("/admin");
+      router.push("/dashboard/admin");
     }
   }, [router]);
 

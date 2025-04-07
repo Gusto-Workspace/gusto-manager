@@ -69,15 +69,15 @@ export default function ListReservationsComponent(props) {
   });
 
   function handleAddClick() {
-    router.push(`/reservations/add`);
+    router.push(`/dashboard/reservations/add`);
   }
 
   function handleParametersClick() {
-    router.push(`/reservations/parameters`);
+    router.push(`/dashboard/reservations/parameters`);
   }
 
   function handleEditClick(reservation) {
-    router.push(`/reservations/add?reservationId=${reservation._id}`);
+    router.push(`/dashboard/reservations/add?reservationId=${reservation._id}`);
   }
 
   function openModalForAction(reservation, action) {

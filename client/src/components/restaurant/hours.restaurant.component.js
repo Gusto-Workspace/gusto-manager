@@ -225,7 +225,7 @@ export default function HoursRestaurantComponent(props) {
                     }
                   />
                 ) : editing ? (
-                  <div className="flex flex-col midTablet:flex-row items-center mobile:items-end justify-end gap-2 desktop:gap-6 ">
+                  <div className="flex flex-col midTablet:flex-row items-center justify-end gap-2 desktop:gap-6 ">
                     {dayHour.isClosed ? (
                       <div className="flex items-center gap-2">
                         <input

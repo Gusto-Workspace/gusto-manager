@@ -78,7 +78,7 @@ export default function CategoriesListWinesComponent() {
       .replace(/\//g, "-")
       .replace(/\s+/g, "&")
       .toLowerCase();
-    router.push(`/wines/${formattedName}-${category._id}`);
+    router.push(`/dashboard/wines/${formattedName}-${category._id}`);
   }
 
   function handleDeleteClick(category) {

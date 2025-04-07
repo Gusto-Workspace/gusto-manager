@@ -119,7 +119,7 @@ export default function AddWinesComponent(props) {
           .toLowerCase();
 
         router.push(
-          `/wines/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${props.subCategory._id}`
+          `/dashboard/wines/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${props.subCategory._id}`
         );
       } else {
         const formattedName = props.category.name
@@ -127,7 +127,7 @@ export default function AddWinesComponent(props) {
           .replace(/\s+/g, "&")
           .toLowerCase();
 
-        router.push(`/wines/${formattedName}-${props.category._id}`);
+        router.push(`/dashboard/wines/${formattedName}-${props.category._id}`);
       }
 
       setLoading(false);

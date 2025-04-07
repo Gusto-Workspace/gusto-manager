@@ -80,7 +80,7 @@ export default function FormLoginComponent() {
 
       await restaurantContext.fetchRestaurantData(newToken, restaurantId);
       restaurantContext.setIsAuth(true);
-      router.push("/");
+      router.push("/dashboard");
     } catch (error) {
       console.error("Erreur lors de la sélection du restaurant:", error);
       setErrorMessage("errors.server");
@@ -141,7 +141,7 @@ export default function FormLoginComponent() {
 
             <button
               type="button"
-              onClick={() => router.push("/login/forgot-password")}
+              onClick={() => router.push("/dashboard/login/forgot-password")}
               className="text-left text-xs italic opacity-50 mt-1 pr-1"
             >
               {t("form.labels.forgotPassword")}

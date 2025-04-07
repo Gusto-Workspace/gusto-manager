@@ -12,7 +12,7 @@ export default function NavAdminComponent() {
   function handleLogout() {
     localStorage.removeItem("admin-token");
 
-    router.push("/admin/login");
+    router.push("/dashboard/admin/login");
   }
 
   return (
@@ -38,7 +38,7 @@ export default function NavAdminComponent() {
       <ul className="flex-1 flex flex-col gap-8">
         <li className="h-12 flex items-center">
           <Link
-            href="/admin"
+            href="/dashboard/admin"
             className={router.pathname === "/admin" ? "text-blue" : ""}
           >
             {t("nav.dashboard")}
@@ -46,9 +46,9 @@ export default function NavAdminComponent() {
         </li>
         <li className="h-12 flex items-center">
           <Link
-            href="/admin/restaurants"
+            href="/dashboard/admin/restaurants"
             className={
-              router.pathname === "/admin/restaurants" ? "text-blue" : ""
+              router.pathname === "/dashboard/admin/restaurants" ? "text-blue" : ""
             }
           >
             {t("nav.restaurants")}
@@ -57,8 +57,8 @@ export default function NavAdminComponent() {
         
         <li className="h-12 flex items-center">
           <Link
-            href="/admin/owners"
-            className={router.pathname === "/admin/owners" ? "text-blue" : ""}
+            href="/dashboard/admin/owners"
+            className={router.pathname === "/dashboard/admin/owners" ? "text-blue" : ""}
           >
             {t("nav.owners")}
           </Link>
@@ -66,9 +66,9 @@ export default function NavAdminComponent() {
 
         <li className="h-12 flex items-center">
           <Link
-            href="/admin/subscriptions"
+            href="/dashboard/admin/subscriptions"
             className={
-              router.pathname === "/admin/subscriptions" ? "text-blue" : ""
+              router.pathname === "/dashboard/admin/subscriptions" ? "text-blue" : ""
             }
           >
             {t("nav.subscriptions")}

@@ -520,7 +520,7 @@ export default function AddReservationComponent(props) {
       }
 
       props.setRestaurantData(response.data.restaurant);
-      router.push("/reservations");
+      router.push("/dashboard/reservations");
     } catch (error) {
       setError(
         error.response?.data?.message ||
@@ -557,7 +557,7 @@ export default function AddReservationComponent(props) {
           <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2 flex-wrap">
             <span
               className="cursor-pointer hover:underline"
-              onClick={() => router.push("/reservations")}
+              onClick={() => router.push("/dashboard/reservations")}
             >
               {t("titles.main")}
             </span>
@@ -793,7 +793,7 @@ export default function AddReservationComponent(props) {
           </button>
           <button
             type="button"
-            onClick={() => router.push("/reservations")}
+            onClick={() => router.push("/dashboard/reservations")}
             className="px-4 py-2 rounded-lg bg-red text-white w-[150px]"
           >
             {t("buttons.cancel")}

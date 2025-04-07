@@ -45,11 +45,11 @@ export default function ListMenusComponent(props) {
   }, [restaurantContext?.restaurantData?.menus]);
 
   function handleAddClick() {
-    router.push(`/menus/add`);
+    router.push(`/dashboard/menus/add`);
   }
 
   function handleCategoryClick(menu) {
-    router.push(`/menus/add?menuId=${menu._id}`);
+    router.push(`/dashboard/menus/add?menuId=${menu._id}`);
   }
 
   function handleDeleteClick(menu) {

@@ -19,7 +19,7 @@ export default function ListSubscriptionsAdminComponent(props) {
   const [showInvoices, setShowInvoices] = useState({});
 
   function handleAddClick() {
-    router.push(`/admin/subscriptions/add`);
+    router.push(`/dashboard/admin/subscriptions/add`);
   }
 
   function fetchInvoices(subscriptionId) {
