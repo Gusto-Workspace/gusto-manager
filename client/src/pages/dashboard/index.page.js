@@ -1,4 +1,4 @@
-import { useContext } from "react";
+import { useContext, useEffect, useState } from "react";
 import Head from "next/head";
 
 // I18N
@@ -33,6 +33,7 @@ export default function DashboardPage(props) {
       title = "Gusto Manager";
       description = "";
   }
+
 
   if (!restaurantContext.isAuth) return null;
 
@@ -95,7 +96,11 @@ export default function DashboardPage(props) {
 export async function getStaticProps({ locale }) {
   return {
     props: {
-      ...(await serverSideTranslations(locale, ["common", "index", "transactions"])),
+      ...(await serverSideTranslations(locale, [
+        "common",
+        "index",
+        "transactions",
+      ])),
     },
   };
 }

@@ -1,8 +1,14 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useContext } from "react";
 import { Menu, X } from "lucide-react";
-import Link from "next/link";
+import { useRouter } from "next/router";
+
+// CONTEXT
+import { GlobalContext } from "@/contexts/global.context";
 
 export default function NavbarLanding() {
+  const { restaurantContext } = useContext(GlobalContext);
+
+  const router = useRouter();
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -56,12 +62,18 @@ export default function NavbarLanding() {
           >
             Pour qui
           </a>
-          <Link
-            href="/dashboard"
-            className="bg-orange hover:bg-orange/90 text-white py-2 px-4 rounded-xl"
+
+          <button
+            onClick={() => {
+              const token = localStorage.getItem("token");
+              token
+                ? router.push("/dashboard")
+                : router.push("/dashboard/login");
+            }}
+            className="bg-orange hover:bg-orange/90 text-white py-2 px-4 rounded-xl cursor-pointer"
           >
             Accéder à mon espace
-          </Link>
+          </button>
         </div>
 
         <button
@@ -101,8 +113,16 @@ export default function NavbarLanding() {
             >
               Pour qui
             </a>
-            <button className="bg-orange hover:bg-orange/90 text-white mt-2">
-              Essai gratuit
+            <button
+              onClick={() => {
+                const token = localStorage.getItem("token");
+                token
+                  ? router.push("/dashboard")
+                  : router.push("/dashboard/login");
+              }}
+              className="bg-orange hover:bg-orange/90 text-white mt-2"
+            >
+              Accéder à mon espace
             </button>
           </div>
         </div>

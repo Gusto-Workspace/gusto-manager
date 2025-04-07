@@ -66,7 +66,7 @@ export default function FormForgotPasswordComponent() {
           `${process.env.NEXT_PUBLIC_API_URL}/owner/reset-password`,
           { email, code, newPassword }
         );
-        router.push("/login");
+        router.push("/dashboard/login");
       } catch (error) {
         setErrorMessage(t("form.errors.reset"));
       } finally {

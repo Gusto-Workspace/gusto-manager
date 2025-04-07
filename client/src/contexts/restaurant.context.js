@@ -21,6 +21,8 @@ export default function RestaurantContext() {
   const [newReservationsCount, setNewReservationsCount] = useState(0);
 
   const initialReservationsLoadedRef = useRef(false);
+  const hasFetchedDashboardDataRef = useRef(false);
+
 
   function handleInvalidToken() {
     setRestaurantsList([]);
@@ -435,12 +437,26 @@ export default function RestaurantContext() {
   }
 
   useEffect(() => {
-    const { pathname } = router;
+    const handleRouteChangeComplete = (url) => {
+      if (url.startsWith("/dashboard") && !hasFetchedDashboardDataRef.current) {
+        fetchRestaurantsList();
+        hasFetchedDashboardDataRef.current = true;
+      }
+    };
 
-    if (pathname !== "/" && !pathname.includes("/dashboard/admin")) {
+    router.events.on("routeChangeComplete", handleRouteChangeComplete);
+    return () => {
+      router.events.off("routeChangeComplete", handleRouteChangeComplete);
+    };
+  }, [router.events]);
+
+  // Au montage initial, si l'URL courante est déjà /dashboard, lance le fetch
+  useEffect(() => {
+    if (router.pathname.startsWith("/dashboard") && !hasFetchedDashboardDataRef.current) {
       fetchRestaurantsList();
+      hasFetchedDashboardDataRef.current = true;
     }
-  }, []);
+  }, [router.pathname]);
 
   return {
     restaurantData,
