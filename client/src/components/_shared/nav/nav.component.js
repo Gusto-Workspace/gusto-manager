@@ -160,17 +160,21 @@ export default function NavComponent() {
           menuOpen ? "translate-x-0" : "-translate-x-full"
         } transition duration-200 ease-in-out custom-scrollbar tablet:translate-x-0 w-[270px] fixed bg-white h-[100dvh] overflow-y-auto flex flex-col py-6 px-4 gap-8 z-[90] tablet:z-10 text-darkBlue overscroll-contain`}
       >
-        <div className="z-10 opacity-40 h-[86px]">
+        <div className="z-10 h-[86px] flex items-center justify-start">
           <h1 className="flex flex-col items-center gap-2 text-lg font-semibold">
+            <div className="flex gap-4 items-center">
             <img
-              src="/img/logo.webp"
+              src="/img/logo.png"
               draggable={false}
               alt="logo"
-              className="max-w-[50px]"
+              className="max-w-[55px]"
             />
-            <div className="flex gap-1">
-              <span>Gusto</span>
-              <span>Manager</span>
+            <img
+              src="/img/logo-2.png"
+              draggable={false}
+              alt="logo"
+              className="max-w-[90px] opacity-80"
+            />
             </div>
           </h1>
         </div>

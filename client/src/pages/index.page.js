@@ -53,6 +53,15 @@ export default function DashboardPage(props) {
       description = "";
   }
 
+  async function handleScrollToSection(id) {
+    requestAnimationFrame(() => {
+      const section = document.querySelector(id);
+      if (section) {
+        section.scrollIntoView({ behavior: "smooth" });
+      }
+    });
+  }
+
   return (
     <>
       <Head>
@@ -91,7 +100,7 @@ export default function DashboardPage(props) {
             <div className="absolute inset-0 bg-darkBlue/50"></div>
           </div>
 
-          <div className="container mx-auto px-4 tablet:px-6 relative z-10 text-white">
+          <div className="container flex items-center justify-center text-center mx-auto px-4 tablet:px-6 relative z-10 text-white">
             <div className="max-w-3xl animate-stagger">
               <h1 className="text-4xl tablet:text-5xl desktop:text-6xl font-bold mb-6">
                 Gusto Manager
@@ -103,29 +112,25 @@ export default function DashboardPage(props) {
                 Simplifiez vos opérations quotidiennes grâce à une plateforme
                 intuitive qui centralise la gestion de votre restaurant.
               </p>
-              <div className="flex flex-col mobile:flex-row gap-4">
-                <button className="bg-orange hover:bg-orange/90 text-white px-8 py-3 text-lg hover-scale">
-                  Démarrer l'essai gratuit
-                </button>
-                <button
-                  variant="outline"
-                  className="border-white text-white hover:bg-white hover:text-darkBlue px-8 py-3 text-lg"
-                >
+              <div className="flex flex-col items-center justify-center mobile:flex-row gap-4">
+                <button className="rounded-lg bg-orange hover:bg-orange/90 text-white px-8 py-3 text-lg hover-scale">
                   Découvrir les modules
                 </button>
               </div>
             </div>
           </div>
 
-          <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 animate-bounce">
-            <a
-              href="#plateforme"
-              className="text-white flex flex-col items-center"
-            >
-              <span className="mb-2">Découvrir</span>
-              <ChevronRight className="rotate-90" />
-            </a>
-          </div>
+          <button
+            onClick={() => handleScrollToSection("#plateforme")}
+            className="absolute bottom-8 left-1/2 transform -translate-x-1/2"
+          >
+            <div className="animate-bounce">
+              <p className="text-white flex flex-col items-center">
+                <span className="mb-2">Découvrir</span>
+                <ChevronRight className="rotate-90" />
+              </p>
+            </div>
+          </button>
         </section>
 
         {/* Plateforme section */}
@@ -447,7 +452,7 @@ export default function DashboardPage(props) {
         </section>
 
         {/* Fonctionnalités section */}
-        <section className="py-16 tablet:py-24 bg-white" id="fonctionnalites">
+        <section className="pb-16 tablet:pb-24 bg-white" id="fonctionnalites">
           <div className="container mx-auto px-4 tablet:px-6">
             <div className="text-center max-w-3xl mx-auto mb-16">
               <h2 className="text-3xl tablet:text-4xl font-bold text-darkBlue mb-6">
@@ -490,7 +495,7 @@ export default function DashboardPage(props) {
               <FeatureItemLandingComponent
                 icon={<BadgeCheck />}
                 title="Sans Compétences Techniques"
-                description="Aucune compétence technique requise pour utiliser et configurer la plateforme."
+                description="Aucune compétence technique requise pour utiliser la plateforme."
               />
             </div>
           </div>
@@ -515,7 +520,7 @@ export default function DashboardPage(props) {
               <div className="w-20 h-1 bg-orange mx-auto my-6 rounded-full"></div>
             </div>
 
-            <div className="grid grid-cols-1 tablet:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 tablet:grid-cols-3 gap-8 items-start">
               <ModuleCardLandingComponent
                 title="Module Core – Gestion de Restaurant & Contenu"
                 icon={<LayoutDashboard />}
@@ -547,9 +552,8 @@ export default function DashboardPage(props) {
                 icon={<GiftIcon />}
                 description="Vendez des cartes cadeaux personnalisées directement depuis votre site web."
                 features={[
-                  "Deux formats: valeur monétaire ou expérience",
                   "Code unique généré automatiquement",
-                  "Paiements en ligne via Stripe",
+                  "Paiements en ligne",
                   "Suivi du statut de chaque carte cadeau",
                   "Marquage facile des cartes comme utilisées ou expirées",
                   "Possibilité de remboursement directement depuis la plateforme",
@@ -559,11 +563,11 @@ export default function DashboardPage(props) {
 
             <div className="mt-16 text-center">
               <p className="text-lg text-gray-600 mb-8 max-w-2xl mx-auto">
-                Modules additionnels à venir : Fidélité Client, Marketing
-                Direct, et Analyse Avancée des Données. Contactez-nous pour en
+                Modules additionnels à venir : PMS, Vente à emporter, Marketing
+                Direct, Analyse Avancée des Données etc. Contactez-nous pour en
                 savoir plus !
               </p>
-              <button className="bg-orange hover:bg-orange/90 text-white px-8 py-3 text-lg hover-scale">
+              <button className="bg-orange hover:bg-orange/90 text-white px-8 py-3 text-lg hover-scale rounded-lg">
                 Demander une démonstration personnalisée
               </button>
             </div>

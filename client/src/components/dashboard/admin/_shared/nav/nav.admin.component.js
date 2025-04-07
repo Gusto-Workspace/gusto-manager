@@ -20,17 +20,21 @@ export default function NavAdminComponent() {
       style={{ boxShadow: "3px 0 5px rgba(0, 0, 0, 0.05)" }}
       className="w-[250px] fixed bg-white h-screen overflow-y-auto flex flex-col py-6 px-4 gap-8 z-10 text-darkBlue"
     >
-      <div className=" z-10 opacity-40 h-[86px]">
+      <div className=" z-10 opacity-40 h-[86px] flex items-center justify-start">
         <h1 className="flex flex-col items-center gap-2 text-lg font-semibold">
-          <img
-            src="/img/logo.webp"
-            draggable={false}
-            alt="logo"
-            className="max-w-[50px]"
-          />
-          <div className="flex gap-1">
-            <span>Gusto</span>
-            <span>Manager</span>
+          <div className="flex gap-4 items-center">
+            <img
+              src="/img/logo.png"
+              draggable={false}
+              alt="logo"
+              className="max-w-[75px]"
+            />
+            <img
+              src="/img/logo-2.png"
+              draggable={false}
+              alt="logo"
+              className="max-w-[100px]"
+            />
           </div>
         </h1>
       </div>
@@ -48,17 +52,21 @@ export default function NavAdminComponent() {
           <Link
             href="/dashboard/admin/restaurants"
             className={
-              router.pathname === "/dashboard/admin/restaurants" ? "text-blue" : ""
+              router.pathname === "/dashboard/admin/restaurants"
+                ? "text-blue"
+                : ""
             }
           >
             {t("nav.restaurants")}
           </Link>
         </li>
-        
+
         <li className="h-12 flex items-center">
           <Link
             href="/dashboard/admin/owners"
-            className={router.pathname === "/dashboard/admin/owners" ? "text-blue" : ""}
+            className={
+              router.pathname === "/dashboard/admin/owners" ? "text-blue" : ""
+            }
           >
             {t("nav.owners")}
           </Link>
@@ -68,7 +76,9 @@ export default function NavAdminComponent() {
           <Link
             href="/dashboard/admin/subscriptions"
             className={
-              router.pathname === "/dashboard/admin/subscriptions" ? "text-blue" : ""
+              router.pathname === "/dashboard/admin/subscriptions"
+                ? "text-blue"
+                : ""
             }
           >
             {t("nav.subscriptions")}

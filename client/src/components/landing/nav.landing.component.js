@@ -39,26 +39,26 @@ export default function NavbarLanding() {
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${isScrolled ? "bg-white shadow-md py-3" : "bg-transparent py-5"}`}
     >
       <div className="container mx-auto px-4 md:px-6 flex justify-between items-center">
-        <div className="text-2xl md:text-3xl font-display text-darkBlue font-bold">
-          Gusto<span className="text-orange">Manager</span>
+        <div className="text-2xl md:text-3xl font-display text-darkBlue font-bold flex gap-2">
+          <span className={`${isScrolled ? "text-darkBlue" : "text-white"}`}>Gusto</span><span className="text-orange">Manager</span>
         </div>
 
-        <div className="hidden desktop:flex items-center gap-8">
+        <div className="hidden tablet:flex items-center gap-8">
           <a
             onClick={() => handleScrollToSection("#fonctionnalites")}
-            className="cursor-pointer text-darkBlue hover:text-orange transition-colors"
+            className={`cursor-pointer ${isScrolled ? "text-darkBlue" : "text-white"} hover:text-orange transition-colors`}
           >
             Fonctionnalités
           </a>
           <a
             onClick={() => handleScrollToSection("#modules")}
-            className="cursor-pointer text-darkBlue hover:text-orange transition-colors"
+            className={`cursor-pointer ${isScrolled ? "text-darkBlue" : "text-white"} hover:text-orange transition-colors`}
           >
             Modules
           </a>
           <a
             onClick={() => handleScrollToSection("#pourqui")}
-            className="cursor-pointer text-darkBlue hover:text-orange transition-colors"
+            className={`cursor-pointer ${isScrolled ? "text-darkBlue" : "text-white"} hover:text-orange transition-colors`}
           >
             Pour qui
           </a>
@@ -70,14 +70,14 @@ export default function NavbarLanding() {
                 ? router.push("/dashboard")
                 : router.push("/dashboard/login");
             }}
-            className="bg-orange hover:bg-orange/90 text-white py-2 px-4 rounded-xl cursor-pointer"
+            className="bg-orange hover:bg-orange/90 text-white py-2 px-4 rounded-lg cursor-pointer"
           >
             Accéder à mon espace
           </button>
         </div>
 
         <button
-          className="mobile:hidden text-darkBlue"
+          className="tablet:hidden text-darkBlue"
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
         >
           {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
@@ -86,7 +86,7 @@ export default function NavbarLanding() {
 
       {/* Mobile menu */}
       {isMobileMenuOpen && (
-        <div className="md:hidden fixed top-16 left-0 right-0 bg-white shadow-md p-4 animate-fade-in">
+        <div className="tablet:hidden fixed top-16 left-0 right-0 bg-white shadow-md p-4 animate-fade-in">
           <div className="flex flex-col gap-4">
             <a
               className="text-darkBlue cursor-pointer hover:text-orange py-2 border-b border-gray-100"
