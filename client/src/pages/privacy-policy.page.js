@@ -21,11 +21,13 @@ export default function PrivacyPolicyPage(props) {
   switch (i18n.language) {
     case "en":
       title = "Gusto Manager";
-      description = "Simplifiez vos opérations quotidiennes grâce à une plateforme intuitive qui centralise la gestion de votre restaurant.";
+      description =
+        "Simplifiez vos opérations quotidiennes grâce à une plateforme intuitive qui centralise la gestion de votre restaurant.";
       break;
     default:
       title = "Gusto Manager";
-      description = "Simplifiez vos opérations quotidiennes grâce à une plateforme intuitive qui centralise la gestion de votre restaurant.";
+      description =
+        "Simplifiez vos opérations quotidiennes grâce à une plateforme intuitive qui centralise la gestion de votre restaurant.";
   }
 
   return (
@@ -50,7 +52,7 @@ export default function PrivacyPolicyPage(props) {
       <div className="min-h-screen">
         <NavbarLanding />
         <div
-          className="bg-darkBlue py-36 px-32 text-white"
+          className="bg-darkBlue py-36 px-[10%] text-white"
           dangerouslySetInnerHTML={{ __html: t("about:policy") }}
         />
         <FooterLandingComponent />
@@ -65,6 +67,7 @@ export async function getStaticProps({ locale }) {
       ...(await serverSideTranslations(locale, [
         "common",
         "index",
+        "about",
         "transactions",
       ])),
     },

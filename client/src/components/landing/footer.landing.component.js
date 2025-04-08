@@ -1,4 +1,7 @@
+import { useRouter } from "next/router";
+
 export default function FooterLandingComponent() {
+  const router = useRouter()
   function wait(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }

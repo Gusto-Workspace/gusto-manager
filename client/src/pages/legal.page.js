@@ -51,7 +51,7 @@ export default function LegalPage(props) {
         <NavbarLanding />
 
         <div
-          className="bg-darkBlue py-36 px-32 text-white"
+          className="bg-darkBlue py-36 px-[10%] text-white"
           dangerouslySetInnerHTML={{ __html: t("about:legal") }}
         />
 
@@ -66,6 +66,7 @@ export async function getStaticProps({ locale }) {
     props: {
       ...(await serverSideTranslations(locale, [
         "common",
+        "about",
         "index",
         "transactions",
       ])),
