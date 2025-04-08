@@ -15,7 +15,7 @@ export default function HeroSectionLandingComponent() {
   }
 
   return (
-    <section className="relative h-screen flex items-center">
+    <section className="relative h-[100dvh] flex items-center">
       <div>
         <div className="absolute inset-0 bg-darkBlue"></div>
 
