@@ -76,8 +76,8 @@ export default function FormForgotPasswordComponent() {
   }
 
   return (
-    <section className="relative bg-white flex flex-col gap-6 rounded-lg p-12 drop-shadow-sm w-[500px]">
-      <div className="flex flex-col gap-2 items-center">
+    <section className="relative bg-white/15 backdrop-blur-sm flex flex-col gap-6 rounded-lg p-12 drop-shadow-sm w-[500px]">
+      <div className="flex flex-col gap-2 items-center text-white">
         <h1 className="text-4xl font-semibold">
           {step === "email"
             ? t("titles.second")
@@ -92,22 +92,25 @@ export default function FormForgotPasswordComponent() {
               ? t("descriptions.code")
               : t("descriptions.password")}
         </h2>
+
+        <div className="w-20 h-1 bg-orange mx-auto mt-2 rounded-full"></div>
+
       </div>
 
       <form
         onSubmit={handleSubmit(onSubmit)}
-        className="w-full flex flex-col gap-4 mt-auto"
+        className="w-full flex flex-col gap-4 mt-auto text-white"
       >
         {step === "email" && (
           <div
             className={`flex gap-2 pl-2 items-center border w-full rounded-lg ${errors.email ? "border-red" : ""}`}
           >
-            <EmailSvg width={22} height={22} />
+            <EmailSvg width={22} height={22} strokeColor="white" />
             <input
               id="email"
               type="email"
               placeholder={t("form.labels.email")}
-              className="py-2 w-full rounded-r-lg border-l pl-2"
+              className="py-2 w-full rounded-r-lg border-l pl-2 text-darkBlue"
               {...register("email", { required: "Email is required" })}
             />
           </div>
@@ -120,7 +123,7 @@ export default function FormForgotPasswordComponent() {
             placeholder="Code de vérification"
             value={code}
             onChange={(e) => setCode(e.target.value)}
-            className="border rounded-lg p-2 w-full"
+            className="border rounded-lg p-2 w-full text-darkBlue"
           />
         )}
 
@@ -133,7 +136,7 @@ export default function FormForgotPasswordComponent() {
                 placeholder="Nouveau mot de passe"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                className="border rounded-lg p-2 w-full pr-8"
+                className="border rounded-lg p-2 w-full pr-8 text-darkBlue"
               />
               <button
                 type="button"
@@ -155,7 +158,7 @@ export default function FormForgotPasswordComponent() {
                 placeholder="Confirmer le nouveau mot de passe"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="border rounded-lg p-2 w-full pr-8"
+                className="border rounded-lg p-2 w-full pr-8 text-darkBlue"
               />
               <button
                 type="button"
@@ -180,7 +183,7 @@ export default function FormForgotPasswordComponent() {
 
         <button
           type="submit"
-          className="bg-black mx-auto text-white rounded-lg py-2 px-12 hover:bg-opacity-70 transition-all duration-300 w-fit"
+          className="bg-orange mx-auto text-white rounded-lg py-2 px-12 hover:bg-opacity-70 transition-all duration-300 w-fit"
           disabled={loading}
         >
           {loading

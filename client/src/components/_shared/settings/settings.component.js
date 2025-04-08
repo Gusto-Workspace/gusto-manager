@@ -269,14 +269,7 @@ export default function SettingsComponent() {
                 <HelpSvg width={20} height={20} />
                 {t("settings.help")}
               </li>
-              <hr className="h-[1px] bg-darkBlue opacity-20 mx-4" />
-              <li
-                className="cursor-pointer flex gap-4 items-center hover:bg-darkBlue hover:bg-opacity-10 px-4 py-2 my-2"
-                onClick={() => router.push("/dashboard/about")}
-              >
-                <AboutSvg width={18} height={18} />
-                {t("settings.about")}
-              </li>
+              
             </ul>
           </div>
         </div>

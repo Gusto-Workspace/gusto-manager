@@ -1,47 +1,20 @@
+import { useContext } from "react";
 import Head from "next/head";
 
 // I18N
 import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
+import { useTranslation } from "next-i18next";
+
+// CONTEXT
+import { GlobalContext } from "@/contexts/global.context";
 
 // COMPONENTS
 import NavbarLanding from "@/components/landing/nav.landing.component";
-import FeatureItemLandingComponent from "@/components/landing/feature-item.landing.component";
-import ModuleCardLandingComponent from "@/components/landing/module-card.landing.component";
-import CallToActionLandingComponent from "@/components/landing/call-to-action.landing.component";
 import FooterLandingComponent from "@/components/landing/footer.landing.component";
-import FloatingElementsLandingComponent from "@/components/landing/floating-elements.landing.component";
 
-import {
-  LayoutDashboard,
-  CalendarRange,
-  GiftIcon,
-  Clock,
-  PanelLeft,
-  Smartphone,
-  Settings,
-  BadgeCheck,
-  ChevronRight,
-  Users,
-  Rocket,
-  LineChart,
-  Coffee,
-  ThumbsUp,
-  CheckCircle2,
-  XCircle,
-  Zap,
-  BarChart3,
-  Heart,
-} from "lucide-react";
-import HeroSectionLandingComponent from "@/components/landing/hero-section.landing.component";
-import PlateformLandingComponent from "@/components/landing/plateform.landing.component";
-import AdvantagesLandingComponent from "@/components/landing/advantages.landing.component";
-import HelpingLandingComponent from "@/components/landing/helping.landing.component";
-import FunctionalitiesLandingComponent from "@/components/landing/functionalities.landing.component";
-import PluginsLandingComponent from "@/components/landing/plugins.landing.component";
-import ForWhoLandingComponent from "@/components/landing/for-who.landing.component";
-
-export default function HomePage(props) {
+export default function PrivacyPolicyPage(props) {
+  const { t } = useTranslation("");
   let title;
   let description;
 
@@ -76,23 +49,10 @@ export default function HomePage(props) {
 
       <div className="min-h-screen">
         <NavbarLanding />
-
-        <HeroSectionLandingComponent />
-
-        <PlateformLandingComponent />
-
-        <AdvantagesLandingComponent />
-
-        <HelpingLandingComponent />
-
-        <FunctionalitiesLandingComponent />
-
-        <PluginsLandingComponent />
-
-        <ForWhoLandingComponent />
-
-        <CallToActionLandingComponent />
-
+        <div
+          className="bg-darkBlue py-36 px-32 text-white"
+          dangerouslySetInnerHTML={{ __html: t("about:policy") }}
+        />
         <FooterLandingComponent />
       </div>
     </>

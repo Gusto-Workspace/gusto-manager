@@ -1,4 +1,6 @@
-import React, { useState } from "react";
+import { useState } from "react";
+
+// ICONS
 import { ChevronDown, ChevronUp } from "lucide-react";
 
 export default function ModuleCardLandingComponent({
@@ -14,7 +16,7 @@ export default function ModuleCardLandingComponent({
       <div className="p-6 pb-0">
         <div className="text-orange text-3xl mb-4">{icon}</div>
         <h3 className="text-xl font-bold text-darkBlue mb-2">{title}</h3>
-        <p className="text-gray-600 mb-4">{description}</p>
+        <p className="text-darkBlue mb-4">{description}</p>
 
         <button
           onClick={() => setIsExpanded((prev) => !prev)}

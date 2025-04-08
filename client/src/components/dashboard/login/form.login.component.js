@@ -89,27 +89,32 @@ export default function FormLoginComponent() {
   }
 
   return (
-    <section className="relative h-[380px] bg-white flex flex-col rounded-lg p-12 drop-shadow-sm w-[500px]">
+    <section className="relative h[380px] bg-white/15 backdrop-blur-sm flex flex-col rounded-lg p-12 drop-shadow-sm w-[500px]">
       <div className="flex flex-col gap-2 items-center">
-        <h1 className="text-4xl font-semibold">{t("titles.main")}</h1>
+        <h1 className="text-4xl font-semibold text-white">{t("titles.main")}</h1>
 
-        <h2>{t("descriptions.main")}</h2>
+        <h2 className="text-white">{t("descriptions.main")}</h2>
+
+        <div className="w-20 h-1 bg-orange mx-auto mt-2 mb-6 rounded-full"></div>
+
       </div>
+
+      
 
       {restaurantContext?.restaurantsList?.length === 0 ? (
         <form
           onSubmit={handleSubmit(onSubmit)}
-          className="w-full flex flex-col gap-4 mt-auto"
+          className="w-full flex flex-col gap-4 mt-auto text-white"
         >
           <div
             className={`flex gap-2 pl-2 items-center border w-full rounded-lg  ${errors.email ? "border-red" : ""}`}
           >
-            <EmailSvg width={22} height={22} />
+            <EmailSvg width={22} height={22} strokeColor="white" />
             <input
               id="email"
               type="email"
               placeholder={t("form.labels.email")}
-              className="py-2 w-full rounded-r-lg  border-l pl-2"
+              className="py-2 w-full rounded-r-lg  border-l pl-2 text-darkBlue"
               {...register("email", { required: true })}
             />
           </div>
@@ -118,12 +123,12 @@ export default function FormLoginComponent() {
             <div
               className={`flex gap-2 pl-2 items-center border w-full rounded-lg ${errors.password ? "border-red" : ""}`}
             >
-              <PasswordSvg width={22} height={22} />
+              <PasswordSvg width={22} height={22} strokeColor="white" />
               <input
                 id="password"
                 type={showPassword ? "text" : "password"}
                 placeholder={t("form.labels.password")}
-                className="py-2 w-full rounded-r-lg border-l pl-2 pr-8"
+                className="py-2 w-full rounded-r-lg border-l pl-2 pr-8 text-darkBlue"
                 {...register("password", { required: true })}
               />
               <button
@@ -142,7 +147,7 @@ export default function FormLoginComponent() {
             <button
               type="button"
               onClick={() => router.push("/dashboard/login/forgot-password")}
-              className="text-left text-xs italic opacity-50 mt-1 pr-1"
+              className="text-left text-xs italic opacity-70 mt-3 pr-1"
             >
               {t("form.labels.forgotPassword")}
             </button>
@@ -156,16 +161,16 @@ export default function FormLoginComponent() {
 
           <button
             type="submit"
-            className="bg-black mx-auto text-white rounded-lg py-2 px-12 hover:bg-opacity-70 transition-all duration-300 w-fit"
+            className="bg-orange mx-auto text-white rounded-lg py-2 px-12 hover:bg-opacity-70 transition-all duration-300 w-fit"
             disabled={loading}
           >
             {loading ? t("buttons.loading") : t("buttons.login")}
           </button>
         </form>
       ) : (
-        <div className="w-full flex flex-col justify-between flex-1">
-          <div className="my-auto">
-            <h2 className="font-semibold mb-1">
+        <div className="w-full flex flex-col gap-4 justify-between flex-1">
+          <div className="my-auto flex flex-col gap-2">
+            <h2 className="font-semibold text-white mx-auto">
               {t("form.labels.selectRestaurant")}
             </h2>
 
@@ -190,7 +195,7 @@ export default function FormLoginComponent() {
           </div>
 
           <button
-            className={`bg-black mx-auto text-white rounded-lg py-2 px-12  transition-all duration-300 w-fit ${
+            className={`bg-orange mx-auto text-white rounded-lg py-2 px-12  transition-all duration-300 w-fit ${
               !selectedRestaurant ? "opacity-50 cursor-not-allowed" : ""
             }`}
             onClick={() =>

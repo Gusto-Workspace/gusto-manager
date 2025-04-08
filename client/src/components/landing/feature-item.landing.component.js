@@ -7,7 +7,7 @@ export default function FeatureItemLandingComponent({ icon, title, description }
       <h3 className="font-bold text-lg text-darkBlue mb-2 group-hover:text-orange transition-colors duration-300">
         {title}
       </h3>
-      <p className="text-gray-600">{description}</p>
+      <p className="text-darkBlue text-pretty">{description}</p>
     </div>
   );
 }
