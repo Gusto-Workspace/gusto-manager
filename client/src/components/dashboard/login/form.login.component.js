@@ -93,7 +93,7 @@ export default function FormLoginComponent() {
       <div className="flex flex-col gap-2 items-center">
         <h1 className="text-4xl font-semibold text-white">{t("titles.main")}</h1>
 
-        <h2 className="text-white">{t("descriptions.main")}</h2>
+        <h2 className="text-white text-center">{t("descriptions.main")}</h2>
 
         <div className="w-20 h-1 bg-orange mx-auto mt-2 mb-6 rounded-full"></div>
 
