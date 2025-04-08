@@ -132,7 +132,7 @@ export default function NavbarLanding() {
           <div className="text-2xl font-display font-bold absolute top-5 left-1/2 -translate-x-1/2">
             <span className="text-darkBlue">Gusto Manager</span>
           </div>
-          {["#plateforme", "#avantages", "#fonctionnalites", "#modules"].map(
+          {["#plateforme", "#avantages", "#fonctionnalités", "#modules"].map(
             (id, i) => (
               <a
                 key={i}
