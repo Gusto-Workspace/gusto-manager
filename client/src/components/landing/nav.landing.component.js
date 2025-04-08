@@ -137,9 +137,7 @@ export default function NavbarLanding() {
               <a
                 key={i}
                 onClick={() => handleScrollToSection(id)}
-                className={`cursor-pointer ${
-                  isScrolled ? "text-darkBlue" : "text-white"
-                } hover:text-orange transition-colors`}
+                className="cursor-pointer text-darkBlue hover:text-orange transition-colors"
               >
                 {id.replace("#", "").charAt(0).toUpperCase() + id.slice(2)}
               </a>
@@ -148,6 +146,7 @@ export default function NavbarLanding() {
           <button
             onClick={() => {
               const token = localStorage.getItem("token");
+              setIsMobileMenuOpen(false);
               token
                 ? router.push("/dashboard")
                 : router.push("/dashboard/login");
