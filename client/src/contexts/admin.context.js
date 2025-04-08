@@ -27,7 +27,7 @@ export default function AdminContext() {
     const token = localStorage.getItem("admin-token");
 
     if (!token) {
-      router.push("/admin/login");
+      router.push("/dashboard/admin/login");
     } else {
       try {
         const decodedToken = jwtDecode(token);
@@ -54,12 +54,12 @@ export default function AdminContext() {
             );
             setOwnersLoading(false);
             localStorage.removeItem("token");
-            router.push("/login");
+            router.push("/dashboard/login");
           });
       } catch (error) {
         setOwnersLoading(false);
         localStorage.removeItem("token");
-        router.push("/admin/login");
+        router.push("/dashboard/admin/login");
       }
     }
   }
@@ -81,7 +81,7 @@ export default function AdminContext() {
     const token = localStorage.getItem("admin-token");
 
     if (!token) {
-      router.push("/admin/login");
+      router.push("/dashboard/admin/login");
     } else {
       axios
         .get(`${process.env.NEXT_PUBLIC_API_URL}/admin/restaurants`, {
@@ -96,7 +96,7 @@ export default function AdminContext() {
         .catch((error) => {
           if (error.response && error.response.status === 403) {
             localStorage.removeItem("admin-token");
-            router.push("/admin/login");
+            router.push("/dashboard/admin/login");
           } else {
             console.error(
               "Erreur lors de la récupération des restaurants:",
@@ -112,7 +112,7 @@ export default function AdminContext() {
     const token = localStorage.getItem("admin-token");
 
     if (!token) {
-      router.push("/admin/login");
+      router.push("/dashboard/admin/login");
     } else {
       axios
         .get(`${process.env.NEXT_PUBLIC_API_URL}/admin/all-subscriptions`, {
@@ -127,7 +127,7 @@ export default function AdminContext() {
         .catch((error) => {
           if (error.response && error.response.status === 403) {
             localStorage.removeItem("admin-token");
-            router.push("/admin/login");
+            router.push("/dashboard/admin/login");
           } else {
             console.error(
               "Erreur lors de la récupération des abonnements des propriétaires:",
@@ -145,13 +145,13 @@ export default function AdminContext() {
     setSubscriptionsList([]);
     setRestaurantsList([]);
     setIsAuth(false);
-    router.replace("/admin/login");
+    router.replace("/dashboard/admin/login");
   }
 
   useEffect(() => {
     const { pathname } = router;
 
-    if (pathname.includes("/admin")) {
+    if (pathname.includes("/dashboard/admin")) {
       fetchOwnersList();
       fetchSubscriptionsList();
       fetchRestaurantsList();

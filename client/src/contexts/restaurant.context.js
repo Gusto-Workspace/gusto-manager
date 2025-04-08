@@ -21,11 +21,13 @@ export default function RestaurantContext() {
   const [newReservationsCount, setNewReservationsCount] = useState(0);
 
   const initialReservationsLoadedRef = useRef(false);
+  const hasFetchedDashboardDataRef = useRef(false);
+
 
   function handleInvalidToken() {
     setRestaurantsList([]);
     localStorage.removeItem("token");
-    router.push("/login");
+    router.push("/dashboard/login");
   }
 
   function fetchRestaurantData(token, restaurantId) {
@@ -39,7 +41,7 @@ export default function RestaurantContext() {
       )
       .then((response) => {
         const restaurant = response.data.restaurant;
-    
+
         const lastCheck = restaurant.lastNotificationCheck;
         const newCount = restaurant.reservations.list.filter(
           (r) => new Date(r.createdAt) > new Date(lastCheck)
@@ -163,7 +165,6 @@ export default function RestaurantContext() {
         console.error("Error updating lastNotificationCheck:", error);
       });
   }
-  
 
   // VERIFICATION DES RESERVATIONS TERMINEES A SUPPRIMER
   useEffect(() => {
@@ -297,7 +298,6 @@ export default function RestaurantContext() {
             list: response.data.restaurant.reservations.list,
           },
         }));
-        
       })
       .catch((error) => {
         console.error("Error auto-updating reservation to Finished:", error);
@@ -329,7 +329,6 @@ export default function RestaurantContext() {
             list: response.data.restaurant.reservations.list,
           },
         }));
-        
       })
       .catch((error) => {
         console.error("Error auto-updating reservation to Late:", error);
@@ -365,7 +364,6 @@ export default function RestaurantContext() {
             list: response.data.restaurant.reservations.list,
           },
         }));
-        
       })
       .catch((error) => {
         console.error("Error auto-deleting reservation:", error);
@@ -435,16 +433,30 @@ export default function RestaurantContext() {
     setRestaurantData(null);
     setRestaurantsList([]);
     setIsAuth(false);
-    router.replace("/login");
+    router.replace("/dashboard/login");
   }
 
   useEffect(() => {
-    const { pathname } = router;
+    const handleRouteChangeComplete = (url) => {
+      if (url.startsWith("/dashboard") && !hasFetchedDashboardDataRef.current) {
+        fetchRestaurantsList();
+        hasFetchedDashboardDataRef.current = true;
+      }
+    };
 
-    if (!pathname.includes("/admin")) {
+    router.events.on("routeChangeComplete", handleRouteChangeComplete);
+    return () => {
+      router.events.off("routeChangeComplete", handleRouteChangeComplete);
+    };
+  }, [router.events]);
+
+  // Au montage initial, si l'URL courante est déjà /dashboard, lance le fetch
+  useEffect(() => {
+    if (router.pathname.startsWith("/dashboard") && !hasFetchedDashboardDataRef.current) {
       fetchRestaurantsList();
+      hasFetchedDashboardDataRef.current = true;
     }
-  }, []);
+  }, [router.pathname]);
 
   return {
     restaurantData,
