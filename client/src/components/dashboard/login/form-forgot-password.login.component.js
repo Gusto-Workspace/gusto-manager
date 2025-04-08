@@ -77,8 +77,8 @@ export default function FormForgotPasswordComponent() {
 
   return (
     <section className="relative bg-white/15 backdrop-blur-sm flex flex-col gap-6 rounded-lg p-12 drop-shadow-sm w-[500px]">
-      <div className="flex flex-col gap-2 items-center text-white">
-        <h1 className="text-4xl font-semibold">
+      <div className="flex flex-col text-center gap-2 items-center text-white">
+        <h1 className="text-3xl midTablet:text-4xl font-semibold">
           {step === "email"
             ? t("titles.second")
             : step === "code"
