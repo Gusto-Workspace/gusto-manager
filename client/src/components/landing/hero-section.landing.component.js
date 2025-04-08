@@ -20,7 +20,7 @@ export default function HeroSectionLandingComponent() {
         <div className="absolute inset-0 bg-darkBlue"></div>
 
         {/* Les éléments flottants avec delay global */}
-        <div className="delay-[0.8s] hidden midTablet:block">
+        <div className="delay-[0.8s] opacity-30 midTablet:opacity-100">
           <FloatingElementsLandingComponent />
         </div>
 
@@ -64,7 +64,7 @@ export default function HeroSectionLandingComponent() {
           </p>
           <div className="flex flex-col items-center justify-center mobile:flex-row gap-4">
             <button className="rounded-lg bg-orange hover:bg-orange/90 text-white px-8 py-3 text-lg hover-scale">
-              Découvrir les modules
+              Demander une démo
             </button>
           </div>
         </div>
