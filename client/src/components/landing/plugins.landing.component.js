@@ -31,7 +31,7 @@ export default function PluginsLandingComponent() {
             description="Le module de base offrant un contrôle total sur les éléments essentiels de votre restaurant."
             features={[
               "Mise à jour des informations commerciales",
-              "Gestion illimitée des menus et boissons",
+              "Gestion illimitée de votre carte, des menus et des boissons",
               "Ajout, suppression ou modification des plats",
               "Publication de nouvelles ou promotions",
               "Interface intuitive multi-appareils",

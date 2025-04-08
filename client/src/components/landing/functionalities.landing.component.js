@@ -36,7 +36,7 @@ export default function FunctionalitiesLandingComponent() {
           <FeatureItemLandingComponent
             icon={<PanelLeft />}
             title="Gestion de Menus"
-            description="Gestion illimitée des menus et cartes de boissons avec des catégories structurées."
+            description="Gestion illimitée de votre carte, des menus et cartes de boissons avec des catégories structurées."
           />
           <FeatureItemLandingComponent
             icon={<Settings />}
