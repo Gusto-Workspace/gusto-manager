@@ -40,7 +40,7 @@ export default function NavbarLanding() {
     >
       <div className="container mx-auto px-4 md:px-6 flex justify-between items-center">
         <div className="text-2xl md:text-3xl font-display text-darkBlue font-bold flex gap-2">
-          <span className={`${isScrolled ? "text-darkBlue" : "text-white"}`}>Gusto</span><span className="text-orange">Manager</span>
+          <span className={`${isScrolled ? "text-darkBlue" : "text-white"}`}>Gusto Manager</span>
         </div>
 
         <div className="hidden tablet:flex items-center gap-8">

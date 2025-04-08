@@ -38,6 +38,7 @@ import FeatureItemLandingComponent from "@/components/landing/feature-item.landi
 import ModuleCardLandingComponent from "@/components/landing/module-card.landing.component";
 import CallToActionLandingComponent from "@/components/landing/call-to-action.landing.component";
 import FooterLandingComponent from "@/components/landing/footer.landing.component";
+import FloatingElementsLandingComponent from "@/components/landing/floating-elements.landing.component";
 
 export default function DashboardPage(props) {
   let title;
@@ -90,22 +91,36 @@ export default function DashboardPage(props) {
         {/* Hero section */}
         <section className="relative h-screen flex items-center">
           <div
-            className="absolute inset-0 bg-cover bg-center z-0"
-            style={{
-              backgroundImage:
-                'url("https://images.unsplash.com/photo-1414235077428-338989a2e8c0?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80")',
-              backgroundAttachment: "fixed",
-            }}
+            // className="absolute inset-0 bg-cover bg-center z-0"
+            // style={{
+            //   backgroundImage:
+            //     'url("https://images.unsplash.com/photo-1414235077428-338989a2e8c0?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80")',
+            //   backgroundAttachment: "fixed",
+            // }}
           >
-            <div className="absolute inset-0 bg-darkBlue/50"></div>
+            <div className="absolute inset-0 bg-darkBlue"></div>
+            <FloatingElementsLandingComponent/>
+            <img
+              src="/img/hero-1.webp"
+              draggable={false}
+              alt="logo"
+              className="max-w-[175px] absolute left-[5%] top-[20%] -rotate-6"
+            />
+
+<img
+              src="/img/hero-2.webp"
+              draggable={false}
+              alt="logo"
+              className="max-w-[275px] absolute right-[5%] bottom-[10%]"
+            />
           </div>
 
           <div className="container flex items-center justify-center text-center mx-auto px-4 tablet:px-6 relative z-10 text-white">
             <div className="max-w-3xl animate-stagger">
-              <h1 className="text-4xl tablet:text-5xl desktop:text-6xl font-bold mb-6">
+              <h1 className="text-4xl tablet:text-5xl desktop:text-6xl font-bold mb-6 uppercase">
                 Gusto Manager
               </h1>
-              <p className="text-2xl tablet:text-3xl mb-6">
+              <p className="text-2xl tablet:text-3xl mb-6 text-pretty">
                 La solution modulaire de gestion digitale pour les restaurants
               </p>
               <p className="text-lg mb-8">
@@ -137,7 +152,7 @@ export default function DashboardPage(props) {
         <section className="py-16 tablet:py-24 bg-white" id="plateforme">
           <div className="container mx-auto px-4 tablet:px-6">
             <div className="text-center max-w-3xl mx-auto mb-16">
-              <h2 className="text-3xl tablet:text-4xl font-bold text-darkBlue mb-6">
+              <h2 className="text-3xl tablet:text-4xl font-bold text-darkBlue mb-6 text-pretty">
                 Une Plateforme qui Simplifie la Vie des Restaurateurs
               </h2>
               <p className="text-lg text-gray-600 mb-8">
@@ -262,7 +277,7 @@ export default function DashboardPage(props) {
         </section>
 
         {/* Comment Gusto Manager transforme-t-il votre quotidien ? (Redesigned) */}
-        <section className="py-16 tablet:py-24 bg-white" id="transformation">
+        <section className="pt-16 tablet:pt-24 bg-white" id="transformation">
           <div className="container mx-auto px-4 tablet:px-6">
             <div className="text-center max-w-3xl mx-auto mb-12">
               <h2 className="text-3xl tablet:text-4xl font-bold text-darkBlue mb-4">
@@ -452,7 +467,7 @@ export default function DashboardPage(props) {
         </section>
 
         {/* Fonctionnalités section */}
-        <section className="pb-16 tablet:pb-24 bg-white" id="fonctionnalites">
+        <section className="py-16 tablet:py-24 bg-white" id="fonctionnalites">
           <div className="container mx-auto px-4 tablet:px-6">
             <div className="text-center max-w-3xl mx-auto mb-16">
               <h2 className="text-3xl tablet:text-4xl font-bold text-darkBlue mb-6">
