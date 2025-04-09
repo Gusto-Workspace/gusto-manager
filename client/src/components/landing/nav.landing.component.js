@@ -61,7 +61,7 @@ export default function NavbarLanding(props) {
         isScrolled ? "bg-white shadow-md py-3" : "bg-transparent py-5"
       }`}
     >
-      <div className="container mx-auto px-4 md:px-6 flex justify-between items-center">
+      <div className="container mx-auto px-4 tablet:px-6 flex justify-between items-center">
         <div className="text-2xl md:text-3xl font-display font-bold flex gap-2">
           <a href="/" className={isScrolled || props.isContact ? "text-darkBlue" : "text-white"}>
             Gusto Manager

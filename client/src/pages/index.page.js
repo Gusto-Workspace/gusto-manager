@@ -49,7 +49,7 @@ export default function HomePage(props) {
         </>
       </Head>
 
-      <div className="min-h-screen">
+      <div className="min-h-screen text-pretty">
         <NavbarLanding />
 
         <HeroSectionLandingComponent />

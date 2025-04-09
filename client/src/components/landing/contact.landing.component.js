@@ -40,8 +40,8 @@ export default function ContactLandingComponent() {
   }
 
   return (
-    <div className="mx-auto px-[10%] py-32 flex gap-6 items-center">
-      <div className="w-1/2 container mx-auto px-4 md:px-6">
+    <div className="mx-auto text-pretty px-[10%] py-32 flex flex-col tablet:flex-row gap-6 items-center">
+      <div className="w-full tablet:w-1/2 container mx-auto px-4 md:px-6">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-5 pt-8">
             <h2 className="text-3xl tablet:text-4xl font-bold text-darkBlue mb-4">
@@ -95,7 +95,7 @@ export default function ContactLandingComponent() {
         </div>
       </div>
 
-      <div className="w-1/2 bg-white rounded-xl shadow-md border border-darkBlue/5 hover:border-orange/50 p-12 transition-all duration-300 h-fit">
+      <div className="w-full tablet:w-1/2 bg-white rounded-xl shadow-md border border-darkBlue/5 hover:border-orange/50 p-12 transition-all duration-300 h-fit">
         {/* Formulaire */}
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
           {/* Champ Prénom */}
