@@ -6,7 +6,7 @@ import { Menu, X } from "lucide-react";
 // ROUTER
 import { useRouter } from "next/router";
 
-export default function NavbarLanding() {
+export default function NavbarLanding(props) {
   const router = useRouter();
 
   const [isScrolled, setIsScrolled] = useState(false);
@@ -61,9 +61,9 @@ export default function NavbarLanding() {
         isScrolled ? "bg-white shadow-md py-3" : "bg-transparent py-5"
       }`}
     >
-      <div className="container mx-auto px-4 md:px-6 flex justify-between items-center">
+      <div className="container mx-auto px-4 tablet:px-6 flex justify-between items-center">
         <div className="text-2xl md:text-3xl font-display font-bold flex gap-2">
-          <a href="/" className={isScrolled ? "text-darkBlue" : "text-white"}>
+          <a href="/" className={isScrolled || props.isContact ? "text-darkBlue" : "text-white"}>
             Gusto Manager
           </a>
         </div>
@@ -75,7 +75,7 @@ export default function NavbarLanding() {
                 key={i}
                 onClick={() => handleScrollToSection(id)}
                 className={`cursor-pointer ${
-                  isScrolled ? "text-darkBlue" : "text-white"
+                  isScrolled || props.isContact ? "text-darkBlue" : "text-white"
                 } hover:text-orange transition-colors`}
               >
                 {id.replace("#", "").charAt(0).toUpperCase() + id.slice(2)}{" "}
@@ -97,7 +97,7 @@ export default function NavbarLanding() {
 
         <button
           className={`tablet:hidden ${
-            isScrolled ? "text-darkBlue" : "text-white"
+            isScrolled || props.isContact ? "text-darkBlue" : "text-white"
           }`}
           onClick={() => setIsMobileMenuOpen(true)}
         >

@@ -6,33 +6,8 @@ import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 
 // COMPONENTS
 import NavbarLanding from "@/components/landing/nav.landing.component";
-import FeatureItemLandingComponent from "@/components/landing/feature-item.landing.component";
-import ModuleCardLandingComponent from "@/components/landing/module-card.landing.component";
 import CallToActionLandingComponent from "@/components/landing/call-to-action.landing.component";
 import FooterLandingComponent from "@/components/landing/footer.landing.component";
-import FloatingElementsLandingComponent from "@/components/landing/floating-elements.landing.component";
-
-import {
-  LayoutDashboard,
-  CalendarRange,
-  GiftIcon,
-  Clock,
-  PanelLeft,
-  Smartphone,
-  Settings,
-  BadgeCheck,
-  ChevronRight,
-  Users,
-  Rocket,
-  LineChart,
-  Coffee,
-  ThumbsUp,
-  CheckCircle2,
-  XCircle,
-  Zap,
-  BarChart3,
-  Heart,
-} from "lucide-react";
 import HeroSectionLandingComponent from "@/components/landing/hero-section.landing.component";
 import PlateformLandingComponent from "@/components/landing/plateform.landing.component";
 import AdvantagesLandingComponent from "@/components/landing/advantages.landing.component";
@@ -74,7 +49,7 @@ export default function HomePage(props) {
         </>
       </Head>
 
-      <div className="min-h-screen">
+      <div className="min-h-screen text-pretty">
         <NavbarLanding />
 
         <HeroSectionLandingComponent />

@@ -64,7 +64,7 @@ export default function HeroSectionLandingComponent() {
           </p>
           <div className="flex flex-col items-center justify-center mobile:flex-row gap-4">
             <a
-              href={`mailto:contact@gusto-manager.com?subject=Demande%20de%20démo%20Gusto%20Manager&body=Bonjour%2C%0A%0AMerci%20de%20renseigner%20ci-dessous%20vos%20informations%20:%0A%0ANom%20:%20_____________________%0APrénom%20:%20_____________________%0ARestaurant%20:%20_____________________%0ATéléphone%20:%20_____________________%0A%0AMerci%20et%20à%20très%20bientôt%20!`}
+              href="/contact"
               className="rounded-lg bg-orange hover:bg-orange/90 text-white px-8 py-3 text-lg hover-scale"
             >
               Demander une démo
