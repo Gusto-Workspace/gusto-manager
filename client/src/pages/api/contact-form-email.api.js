@@ -47,14 +47,12 @@ async function sendTransactionalEmail(params) {
 
     // AWAIT ici !
     const response = await apiInstance.sendTransacEmail(sendSmtpEmail);
-    console.log("Email envoyé avec Brevo :", response);
     return response;
   } catch (err) {
     console.error("Erreur lors de l'envoi de l'email via Brevo :", err);
     throw err;
   }
 }
-
 
 export default async function handler(req, res) {
   if (req.method === "POST") {
@@ -87,4 +85,3 @@ export default async function handler(req, res) {
     return res.status(405).json({ message: "Méthode non autorisée" });
   }
 }
-
