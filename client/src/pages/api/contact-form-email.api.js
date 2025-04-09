@@ -13,7 +13,7 @@ function instantiateClient() {
   }
 }
 
-function sendTransactionalEmail(params) {
+async function sendTransactionalEmail(params) {
   try {
     instantiateClient();
 
@@ -45,13 +45,18 @@ function sendTransactionalEmail(params) {
     sendSmtpEmail.to = params.to;
     sendSmtpEmail.subject = params.subject;
 
-    apiInstance.sendTransacEmail(sendSmtpEmail);
+    // AWAIT ici !
+    const response = await apiInstance.sendTransacEmail(sendSmtpEmail);
+    console.log("Email envoyé avec Brevo :", response);
+    return response;
   } catch (err) {
-    throw new Error(err);
+    console.error("Erreur lors de l'envoi de l'email via Brevo :", err);
+    throw err;
   }
 }
 
-export default function handler(req, res) {
+
+export default async function handler(req, res) {
   if (req.method === "POST") {
     try {
       const data = req.body;
@@ -66,12 +71,14 @@ export default function handler(req, res) {
         message: data.message,
       };
 
-      sendTransactionalEmail(paramsEmail);
+      // ATTENDRE l’envoi
+      await sendTransactionalEmail(paramsEmail);
 
       return res
         .status(200)
         .json({ status: 200, message: "Email envoyé avec succès" });
     } catch (err) {
+      console.error("Erreur dans l'API contact-form-email :", err);
       return res
         .status(500)
         .json({ status: 500, message: "Erreur lors de l'envoi de l'email" });
@@ -80,3 +87,4 @@ export default function handler(req, res) {
     return res.status(405).json({ message: "Méthode non autorisée" });
   }
 }
+
