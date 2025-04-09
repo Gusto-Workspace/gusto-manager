@@ -4,7 +4,7 @@ export default function ForWhoLandingComponent() {
       <div className="container mx-auto px-4 tablet:px-6">
         <div className="text-center max-w-3xl mx-auto mb-16">
           <h2 className="text-3xl tablet:text-4xl font-bold text-darkBlue mb-6">
-            Une Solution pour Tous les Types de Restaurants
+            Une solution pour tous les types de restaurants
           </h2>
           <p className="text-lg text-darkBlue">
             Que vous soyez un restaurant indépendant, une chaîne de restaurants

@@ -17,7 +17,7 @@ export default function FunctionalitiesLandingComponent() {
       <div className="container mx-auto px-4 tablet:px-6">
         <div className="text-center max-w-3xl mx-auto mb-16">
           <h2 className="text-3xl tablet:text-4xl font-bold text-darkBlue mb-6">
-            Des Fonctionnalités Conçues pour les Restaurants
+            Des fonctionnalités conçues pour les restaurants
           </h2>
           <p className="text-lg text-darkBlue">
             Chaque restaurant a des besoins différents. C'est pourquoi Gusto

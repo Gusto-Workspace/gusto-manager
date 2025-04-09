@@ -7,7 +7,7 @@ export default function PlateformLandingComponent() {
       <div className="container mx-auto px-4 tablet:px-6">
         <div className="text-center max-w-3xl mx-auto mb-16">
           <h2 className="text-3xl tablet:text-4xl font-bold text-darkBlue mb-6 text-pretty">
-            Une Plateforme qui Simplifie la Vie des Restaurateurs
+            Une plateforme qui simplifie la vie des restaurateurs
           </h2>
           <p className="text-lg text-darkBlue mb-8">
             Dans le secteur de la restauration, chaque minute compte. Gusto
