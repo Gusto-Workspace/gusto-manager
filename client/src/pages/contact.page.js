@@ -6,28 +6,23 @@ import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 
 // COMPONENTS
 import NavbarLanding from "@/components/landing/nav.landing.component";
-import CallToActionLandingComponent from "@/components/landing/call-to-action.landing.component";
 import FooterLandingComponent from "@/components/landing/footer.landing.component";
-import HeroSectionLandingComponent from "@/components/landing/hero-section.landing.component";
-import PlateformLandingComponent from "@/components/landing/plateform.landing.component";
-import AdvantagesLandingComponent from "@/components/landing/advantages.landing.component";
-import HelpingLandingComponent from "@/components/landing/helping.landing.component";
-import FunctionalitiesLandingComponent from "@/components/landing/functionalities.landing.component";
-import PluginsLandingComponent from "@/components/landing/plugins.landing.component";
-import ForWhoLandingComponent from "@/components/landing/for-who.landing.component";
+import ContactLandingComponent from "@/components/landing/contact.landing.component";
 
-export default function HomePage(props) {
+export default function ContactPage(props) {
   let title;
   let description;
 
   switch (i18n.language) {
     case "en":
       title = "Gusto Manager";
-      description = "Simplifiez vos opérations quotidiennes grâce à une plateforme intuitive qui centralise la gestion de votre restaurant.";
+      description =
+        "Simplifiez vos opérations quotidiennes grâce à une plateforme intuitive qui centralise la gestion de votre restaurant.";
       break;
     default:
       title = "Gusto Manager";
-      description = "Simplifiez vos opérations quotidiennes grâce à une plateforme intuitive qui centralise la gestion de votre restaurant.";
+      description =
+        "Simplifiez vos opérations quotidiennes grâce à une plateforme intuitive qui centralise la gestion de votre restaurant.";
   }
 
   return (
@@ -50,23 +45,9 @@ export default function HomePage(props) {
       </Head>
 
       <div className="min-h-screen">
-        <NavbarLanding />
+        <NavbarLanding isContact={true} />
 
-        <HeroSectionLandingComponent />
-
-        <PlateformLandingComponent />
-
-        <AdvantagesLandingComponent />
-
-        <HelpingLandingComponent />
-
-        <FunctionalitiesLandingComponent />
-
-        <PluginsLandingComponent />
-
-        <ForWhoLandingComponent />
-
-        <CallToActionLandingComponent />
+        <ContactLandingComponent />
 
         <FooterLandingComponent />
       </div>

@@ -72,7 +72,7 @@ export default function PluginsLandingComponent() {
             savoir plus !
           </p>
           <a
-            href={`mailto:contact@gusto-manager.com?subject=Demande%20de%20démo%20Gusto%20Manager&body=Bonjour%2C%0A%0AMerci%20de%20renseigner%20ci-dessous%20vos%20informations%20:%0A%0ANom%20:%20_____________________%0APrénom%20:%20_____________________%0ARestaurant%20:%20_____________________%0ATéléphone%20:%20_____________________%0A%0AMerci%20et%20à%20très%20bientôt%20!`}
+            href="/contact"
             className="bg-orange hover:bg-orange/90 text-white px-8 py-3 text-lg rounded-lg cursor-pointer"
           >
             Demander une démo
