@@ -15,7 +15,11 @@ export default function CardEmployeesComponent(props) {
     <div className="relative bg-white rounded-lg drop-shadow-sm px-6 pt-12 pb-2 flex flex-col items-center gap-2 h-fit z-[4]">
       <div className="absolute flex items-center justify-center -top-6 left-1/2 -translate-x-1/2 border border-darkBlue/5 w-14 h-14 rounded-full bg-lightGrey overflow-hidden">
         {props.employee.profilePicture ? (
-          <img src={props.employee.profilePicture.url} />
+          <img
+            src={props.employee.profilePicture.url}
+            className="w-full h-full object-cover"
+            alt="profile"
+          />
         ) : (
           <AvatarSvg width={30} fillColor="#131E3690" />
         )}

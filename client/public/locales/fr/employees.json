@@ -6,6 +6,26 @@
     "addEmployee": "Ajouter un employé",
     "confirm": "Confirmer",
     "save": "Enregistrer",
-    "cancel": "Annuler"
+    "cancel": "Annuler",
+    "loading": "En cours ..."
+  },
+  "modale": {
+    "titles": {
+      "deleteEmployee": "Supprimer un employé"
+    },
+    "description": {
+      "deleteEmployee": "Êtes-vous sûr de vouloir supprimer"
+    },
+    "labels": {
+      "lastname": "Nom",
+      "firstname": "Prénom",
+      "email": "Email",
+      "post": "Poste",
+      "dateOnPost": "Date de prise de poste",
+      "profilePicture": "Photo de profil"
+    },
+    "errors": {
+      "required": "Ce champs est requis"
+    }
   }
 }

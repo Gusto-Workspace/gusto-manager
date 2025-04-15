@@ -132,13 +132,13 @@ router.delete(
       );
       await restaurant.save();
 
-      // Re-popule le champ employees pour renvoyer des données détaillées
-      await restaurant.populate("employees");
+      // Re-chargement du restaurant avec la population complète
+      const updatedRestaurant = await RestaurantModel.findById(restaurantId)
+        .populate("owner_id", "firstname")
+        .populate("menus")
+        .populate("employees");
 
-      res.status(200).json({
-        message: "Employee deleted successfully",
-        restaurant,
-      });
+      res.status(201).json({ restaurant: updatedRestaurant });
     } catch (error) {
       console.error("Error deleting employee:", error);
       res.status(500).json({ message: "Internal server error" });
