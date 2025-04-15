@@ -1,0 +1,78 @@
+const mongoose = require("mongoose");
+const bcrypt = require("bcryptjs");
+
+// Sous-schéma pour les options
+const optionsSchema = new mongoose.Schema(
+  {
+    restaurant: { type: Boolean, default: false },
+    dishes: { type: Boolean, default: false },
+    menus: { type: Boolean, default: false },
+    drinks: { type: Boolean, default: false },
+    wines: { type: Boolean, default: false },
+    news: { type: Boolean, default: false },
+    gift_card: { type: Boolean, default: false },
+    reservations: { type: Boolean, default: false },
+    take_away: { type: Boolean, default: false },
+  },
+  { _id: false }
+);
+
+const employeeSchema = new mongoose.Schema({
+  firstname: { type: String, required: true },
+  lastname: { type: String, required: true },
+  email: { type: String }, // À utiliser si nécessaire
+  password: { type: String }, // À utiliser si nécessaire
+  phoneNumber: { type: String },
+  // Un employé est associé à UN seul restaurant :
+  restaurant: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Restaurant",
+    required: true,
+  },
+  // Nouveaux champs pour la gestion spécifique de l'employé :
+  post: { type: String },
+  dateOnPost: { type: Date },
+  profilePicture: {
+    url: String,
+    public_id: String,
+  },
+  options: { type: optionsSchema, default: {} },
+  created_at: { type: Date, default: Date.now },
+  resetCode: String,
+  resetCodeExpires: Date,
+});
+
+// Index pour des recherches optimisées
+employeeSchema.index({ email: 1 });
+employeeSchema.index({ restaurant: 1 });
+employeeSchema.index({ firstname: 1, lastname: 1 });
+
+// Hachage du mot de passe avant sauvegarde
+employeeSchema.pre("save", async function (next) {
+  if (!this.isModified("password")) return next();
+
+  try {
+    if (this.password) {
+      const salt = await bcrypt.genSalt(13);
+      this.password = await bcrypt.hash(this.password, salt);
+    }
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Méthode de comparaison de mot de passe
+employeeSchema.methods.comparePassword = async function (
+  enteredPassword,
+  userPassword
+) {
+  try {
+    return await bcrypt.compare(enteredPassword, userPassword);
+  } catch (err) {
+    return { err };
+  }
+};
+
+const EmployeeModel = mongoose.model("Employees", employeeSchema);
+module.exports = EmployeeModel;

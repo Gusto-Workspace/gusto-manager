@@ -54,3 +54,5 @@ export { CommentarySvg } from "./commentary.svg";
 export { TableSvg } from "./table.svg";
 export { ActiveSvg } from "./active.svg";
 export { DoubleCheckSvg } from "./double-check.svg";
+export { EmployeesSvg } from "./employees.svg";
+export { AvatarSvg } from "./avatar.svg";

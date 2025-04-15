@@ -1,0 +1,11 @@
+{
+  "titles": {
+    "main": "Gestion du personnel"
+  },
+  "buttons": {
+    "addEmployee": "Ajouter un employé",
+    "confirm": "Confirmer",
+    "save": "Enregistrer",
+    "cancel": "Annuler"
+  }
+}
