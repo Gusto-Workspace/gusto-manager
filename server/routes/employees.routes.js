@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-
+const SibApiV3Sdk = require("sib-api-v3-sdk");
 const cloudinary = require("cloudinary").v2;
 const multer = require("multer");
 const streamifier = require("streamifier");
@@ -37,6 +37,58 @@ const uploadFromBuffer = (buffer, folder) => {
   });
 };
 
+function instantiateClient() {
+  try {
+    const defaultClient = SibApiV3Sdk.ApiClient.instance;
+    const apiKey = defaultClient.authentications["api-key"];
+    apiKey.apiKey = process.env.BREVO_API_KEY;
+    return defaultClient;
+  } catch (err) {
+    console.error("Erreur d'instanciation du client Brevo:", err);
+    throw err;
+  }
+}
+
+function sendTransactionalEmail(params) {
+  try {
+    instantiateClient();
+
+    const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
+    const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
+
+    sendSmtpEmail.sender = {
+      email: "no-reply@gusto-manager.com",
+      name: "Gusto Manager",
+    };
+    sendSmtpEmail.to = params.to;
+    sendSmtpEmail.subject = params.subject;
+    sendSmtpEmail.htmlContent = params.htmlContent;
+
+    return apiInstance.sendTransacEmail(sendSmtpEmail);
+  } catch (err) {
+    console.error("Erreur lors de l'envoi de l'email :", err);
+    throw err;
+  }
+}
+
+// Générateur de mot de passe 8 caractères
+function generatePassword() {
+  const upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const digits = "0123456789";
+  const specials = "!@#$%^&*()_+-=[]{}|;:,.<>?";
+  const all = upper + upper.toLowerCase() + digits + specials;
+
+  let pw = [
+    upper[Math.floor(Math.random() * upper.length)],
+    digits[Math.floor(Math.random() * digits.length)],
+    specials[Math.floor(Math.random() * specials.length)],
+  ];
+  while (pw.length < 8) {
+    pw.push(all[Math.floor(Math.random() * all.length)]);
+  }
+  return pw.sort(() => 0.5 - Math.random()).join("");
+}
+
 // ADD EMPLOYEE
 router.post(
   "/restaurants/:id/employees",
@@ -45,10 +97,7 @@ router.post(
     const restaurantId = req.params.id;
 
     // Vérification que le restaurant existe
-    const restaurant = await RestaurantModel.findById(restaurantId)
-      .populate("owner_id", "firstname")
-      .populate("menus")
-      .populate("employees");
+    const restaurant = await RestaurantModel.findById(restaurantId);
     if (!restaurant) {
       return res.status(404).json({ message: "Restaurant not found" });
     }
@@ -71,10 +120,12 @@ router.post(
       }
 
       // Création du nouvel employé
+      const temporaryPassword = generatePassword();
       const newEmployee = new EmployeeModel({
         lastname: lastName,
         firstname: firstName,
         email: email,
+        password: temporaryPassword,
         restaurant: restaurantId,
         post: post,
         dateOnPost: dateOnPost ? new Date(dateOnPost) : undefined,
@@ -86,6 +137,34 @@ router.post(
       // Ajout de l'ID de l'employé dans le restaurant
       restaurant.employees.push(newEmployee._id);
       await restaurant.save();
+
+      // ——— Envoi du mail de création ———
+      const emailParams = {
+        to: [
+          {
+            email: newEmployee.email,
+            name: newEmployee.firstname,
+          },
+        ],
+        subject: "Votre accès employé Gusto Manager",
+        htmlContent: `
+              <p>Bonjour ${newEmployee.firstname},</p>
+              <p>Votre compte employé a été créé avec succès.</p>
+              <p>Connectez-vous ici : 
+                <a href="https://gusto-manager.com/dashboard/login">
+                  https://gusto-manager.com/dashboard/login
+                </a>
+              </p>
+              <p><strong>Identifiant :</strong> ${newEmployee.email}<br/>
+                 <strong>Mot de passe temporaire :</strong> ${temporaryPassword}
+              </p>
+              <p>Merci de modifier votre mot de passe lors de votre première connexion.</p>
+              <p>— L’équipe Gusto Manager</p>
+            `,
+      };
+      sendTransactionalEmail(emailParams)
+        .then(() => console.log("Mail création employé envoyé"))
+        .catch((err) => console.error("Erreur mail création employé :", err));
 
       // Re-popule le champ employees directement sur l'objet restaurant
       await restaurant.populate("employees");
@@ -145,7 +224,5 @@ router.delete(
     }
   }
 );
-
-module.exports = router;
 
 module.exports = router;
