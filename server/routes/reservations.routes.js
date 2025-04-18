@@ -211,6 +211,7 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
     const newReservation = new ReservationModel({
       ...reservationData,
       restaurant_id: restaurantId,
+      manual: true,
     });
 
     const savedReservation = await newReservation.save();

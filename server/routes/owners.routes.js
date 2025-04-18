@@ -31,7 +31,6 @@ function sendTransactionalEmail(params) {
     const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
     let sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
 
-    // Utilisation de la même structure que dans le code fonctionnel
     sendSmtpEmail.sender = {
       email: "no-reply@gusto-manager.com",
       name: "Gusto Manager",

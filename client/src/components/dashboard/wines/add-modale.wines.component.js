@@ -64,7 +64,6 @@ export default function AddModaleWinesComponent(props) {
               type="button"
               onClick={() => {
                 if (!props.isSubmitting) {
-                  // Empêche de fermer la modale pendant la soumission
                   props.setIsModalOpen(false);
                   props.setEditingCategory(null);
                   props.reset();
@@ -72,13 +71,29 @@ export default function AddModaleWinesComponent(props) {
                 }
               }}
               className="px-4 py-2 rounded-lg text-white bg-red"
-              disabled={props.isSubmitting} // Désactive le bouton pendant la soumission
+              disabled={props.isSubmitting}
             >
               {t("buttons.cancel")}
             </button>
           </div>
         </form>
       </div>
+
+      {props.catAlreadyExist && (
+        <div className="fixed inset-0 flex items-center bg-black bg-opacity-20 justify-center z-[101]">
+          <div className="absolute bg-white h-[150px] w-[250px] z-[102] flex flex-col gap-4 items-center justify-center p-6 text-center rounded-xl">
+            <p>{t("labels.catAlreadyExist")}</p>
+
+            <button
+              type="button"
+              onClick={() => props.setCatAlreadyExist(false)}
+              className="bg-blue px-4 py-1 text-white rounded"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

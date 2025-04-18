@@ -23,7 +23,6 @@ export default function RestaurantContext() {
   const initialReservationsLoadedRef = useRef(false);
   const hasFetchedDashboardDataRef = useRef(false);
 
-
   function handleInvalidToken() {
     setRestaurantsList([]);
     localStorage.removeItem("token");
@@ -44,7 +43,7 @@ export default function RestaurantContext() {
 
         const lastCheck = restaurant.lastNotificationCheck;
         const newCount = restaurant.reservations.list.filter(
-          (r) => new Date(r.createdAt) > new Date(lastCheck)
+          (r) => !r.manual && new Date(r.createdAt) > new Date(lastCheck)
         ).length;
         setNewReservationsCount(newCount);
         setRestaurantData(restaurant);
@@ -401,7 +400,7 @@ export default function RestaurantContext() {
             } else {
               const previousIds = new Set(previousList.map((r) => r._id));
               const newReservations = fetchedReservations.filter(
-                (r) => !previousIds.has(r._id)
+                (r) => !r.manual && !previousIds.has(r._id)
               );
               if (newReservations.length > 0) {
                 setNewReservationsCount(
@@ -452,7 +451,10 @@ export default function RestaurantContext() {
 
   // Au montage initial, si l'URL courante est déjà /dashboard, lance le fetch
   useEffect(() => {
-    if (router.pathname.startsWith("/dashboard") && !hasFetchedDashboardDataRef.current) {
+    if (
+      router.pathname.startsWith("/dashboard") &&
+      !hasFetchedDashboardDataRef.current
+    ) {
       fetchRestaurantsList();
       hasFetchedDashboardDataRef.current = true;
     }
