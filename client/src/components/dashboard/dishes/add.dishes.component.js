@@ -92,7 +92,6 @@ export default function AddDishesComponent(props) {
       router.push(`/dashboard/dishes/${props.category._id}`);
     } catch (error) {
       console.error("Error adding or editing dish:", error);
-    } finally {
       setIsLoading(false);
     }
   }
