@@ -88,7 +88,9 @@ export default function NavComponent() {
     if (itemHref === "/dashboard") {
       return router.pathname === "/dashboard";
     }
-    return router.pathname.startsWith(itemHref) && router.pathname !== "/dashboard";
+    return (
+      router.pathname.startsWith(itemHref) && router.pathname !== "/dashboard"
+    );
   }
 
   function isOptionEnabled(itemHref) {
@@ -97,9 +99,17 @@ export default function NavComponent() {
     }
 
     const optionsMapping = {
+      "/dashboard/dishes": restaurantContext?.restaurantData?.options?.dishes,
+      "/dashboard/menus": restaurantContext?.restaurantData?.options?.menus,
+      "/dashboard/drinks": restaurantContext?.restaurantData?.options?.drinks,
+      "/dashboard/wines": restaurantContext?.restaurantData?.options?.wines,
+      "/dashboard/news": restaurantContext?.restaurantData?.options?.news,
+
       "/dashboard/gifts": restaurantContext?.restaurantData?.options?.gift_card,
-      "/dashboard/reservations": restaurantContext?.restaurantData?.options?.reservations,
-      "/dashboard/take-away": restaurantContext?.restaurantData?.options?.take_away,
+      "/dashboard/reservations":
+        restaurantContext?.restaurantData?.options?.reservations,
+      "/dashboard/take-away":
+        restaurantContext?.restaurantData?.options?.take_away,
     };
 
     return optionsMapping[itemHref] ?? true;
@@ -163,18 +173,18 @@ export default function NavComponent() {
         <div className="z-10 h-[86px] flex items-center justify-center">
           <h1 className="flex flex-col items-center gap-2 text-lg font-semibold">
             <div className="flex gap-4 items-center">
-            {/* <img
+              {/* <img
               src="/img/logo.png"
               draggable={false}
               alt="logo"
               className="max-w-[55px]"
             /> */}
-            <img
-              src="/img/logo-2.png"
-              draggable={false}
-              alt="logo"
-              className="max-w-[100px] opacity-50"
-            />
+              <img
+                src="/img/logo-2.png"
+                draggable={false}
+                alt="logo"
+                className="max-w-[100px] opacity-50"
+              />
             </div>
           </h1>
         </div>

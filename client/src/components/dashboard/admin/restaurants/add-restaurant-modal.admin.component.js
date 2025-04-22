@@ -80,9 +80,15 @@ export default function AddRestaurantModal(props) {
           email: props.restaurant.email,
           website: props.restaurant.website,
           options: {
-            gift_card: props.restaurant.options?.gift_card || false,
-            reservations: props.restaurant.options?.reservations || false,
-            take_away: props.restaurant.options?.take_away || false,
+            dishes: props.restaurant.options?.dishes ?? true,
+            menus: props.restaurant.options?.menus ?? true,
+            drinks: props.restaurant.options?.drinks ?? true,
+            wines: props.restaurant.options?.wines ?? true,
+            news: props.restaurant.options?.news ?? true,
+
+            gift_card: props.restaurant.options?.gift_card ?? false,
+            reservations: props.restaurant.options?.reservations ?? false,
+            take_away: props.restaurant.options?.take_away ?? false,
           },
         },
       });
@@ -218,6 +224,48 @@ export default function AddRestaurantModal(props) {
           <h3>{t("restaurants.form.options.title")}</h3>
 
           <div className="flex flex-col gap-2">
+          <label>
+              <input
+                className="mr-2"
+                type="checkbox"
+                {...register("restaurantData.options.dishes")}
+              />
+             La carte
+            </label>
+            <label>
+              <input
+                className="mr-2"
+                type="checkbox"
+                {...register("restaurantData.options.menus")}
+              />
+              Les menus
+            </label>
+            <label>
+              <input
+                className="mr-2"
+                type="checkbox"
+                {...register("restaurantData.options.drinks")}
+              />
+              Les boissons
+            </label>
+            <label>
+              <input
+                className="mr-2"
+                type="checkbox"
+                {...register("restaurantData.options.wines")}
+              />
+              Les vins
+            </label>
+            <label>
+              <input
+                className="mr-2"
+                type="checkbox"
+                {...register("restaurantData.options.news")}
+              />
+              Les actualités
+            </label>
+
+
             <label>
               <input
                 className="mr-2"
