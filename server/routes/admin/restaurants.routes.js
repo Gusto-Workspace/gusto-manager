@@ -124,9 +124,14 @@ router.post("/admin/add-restaurant", async (req, res) => {
       owner_id: owner._id,
       opening_hours: restaurantData.opening_hours,
       options: {
-        gift_card: restaurantData.options?.gift_card || false,
-        reservations: restaurantData.options?.reservations || false,
-        take_away: restaurantData.options?.take_away || false,
+        dishes: restaurantData.options?.dishes ?? true,
+        menus: restaurantData.options?.menus ?? true,
+        drinks: restaurantData.options?.drinks ?? true,
+        wines: restaurantData.options?.wines ?? true,
+        news: restaurantData.options?.news ?? true,
+        gift_card: restaurantData.options?.gift_card ?? false,
+        reservations: restaurantData.options?.reservations ?? false,
+        take_away: restaurantData.options?.take_away ?? false,
       },
       menus: [],
       dishes: [],
@@ -243,9 +248,14 @@ router.put("/admin/restaurants/:id", async (req, res) => {
     restaurant.email = restaurantData.email;
     restaurant.website = restaurantData.website;
     restaurant.options = {
-      gift_card: restaurantData.options?.gift_card || false,
-      reservations: restaurantData.options?.reservations || false,
-      take_away: restaurantData.options?.take_away || false,
+      dishes: restaurantData.options?.dishes ?? true,
+      menus: restaurantData.options?.menus ?? true,
+      drinks: restaurantData.options?.drinks ?? true,
+      wines: restaurantData.options?.wines ?? true,
+      news: restaurantData.options?.news ?? true,
+      gift_card: restaurantData.options?.gift_card ?? false,
+      reservations: restaurantData.options?.reservations ?? false,
+      take_away: restaurantData.options?.take_away ?? false,
     };
 
     // Gestion de la clé Stripe

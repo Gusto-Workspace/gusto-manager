@@ -56,6 +56,11 @@ const optionsSchema = new mongoose.Schema(
     gift_card: { type: Boolean, default: false },
     reservations: { type: Boolean, default: false },
     take_away: { type: Boolean, default: false },
+    menus: { type: Boolean, default: true },
+    drinks: { type: Boolean, default: true },
+    dishes: { type: Boolean, default: true },
+    wines: { type: Boolean, default: true },
+    news: { type: Boolean, default: true },
   },
   { _id: false }
 );
