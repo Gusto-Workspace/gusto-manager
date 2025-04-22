@@ -437,7 +437,11 @@ export default function RestaurantContext() {
 
   useEffect(() => {
     const handleRouteChangeComplete = (url) => {
-      if (url.startsWith("/dashboard") && !hasFetchedDashboardDataRef.current) {
+      if (
+        url.startsWith("/dashboard") &&
+        !url.startsWith("/dashboard/admin") &&
+        !hasFetchedDashboardDataRef.current
+      ) {
         fetchRestaurantsList();
         hasFetchedDashboardDataRef.current = true;
       }
@@ -451,8 +455,11 @@ export default function RestaurantContext() {
 
   // Au montage initial, si l'URL courante est déjà /dashboard, lance le fetch
   useEffect(() => {
+    const path = router.pathname;
+
     if (
-      router.pathname.startsWith("/dashboard") &&
+      path.startsWith("/dashboard") &&
+      !path.startsWith("/dashboard/admin") &&
       !hasFetchedDashboardDataRef.current
     ) {
       fetchRestaurantsList();
