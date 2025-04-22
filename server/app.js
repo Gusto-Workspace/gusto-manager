@@ -27,7 +27,7 @@ app.use(
     origin: [
       "https://www.gusto-manager.com", // Client
       "https://www.lacoquille-concarneau.fr", // Client La coquille
-      "https://kopi-nona.vercel.app", // Client Kopi Nona
+      "https://demonstration-kopi-nona-gusto-manager.vercel.app", // Client Kopi Nona
       "https://gusto-manager.onrender.com", // Server
     ],
     methods: ["GET", "POST", "PUT", "DELETE"],
