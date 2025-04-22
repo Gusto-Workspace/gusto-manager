@@ -23,7 +23,6 @@ export default function RestaurantContext() {
   const initialReservationsLoadedRef = useRef(false);
   const hasFetchedDashboardDataRef = useRef(false);
 
-
   function handleInvalidToken() {
     setRestaurantsList([]);
     localStorage.removeItem("token");
