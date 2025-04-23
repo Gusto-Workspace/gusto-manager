@@ -1,3 +1,5 @@
+import { useRouter } from 'next/router'
+
 // I18N
 import { useTranslation } from "next-i18next";
 
@@ -10,6 +12,7 @@ import {
 
 export default function CardEmployeesComponent(props) {
   const { t } = useTranslation("employees");
+  const router = useRouter()
 
   return (
     <div className="relative bg-white rounded-lg drop-shadow-sm px-6 pt-12 pb-2 flex flex-col items-center gap-2 h-fit z-[4]">
@@ -36,7 +39,7 @@ export default function CardEmployeesComponent(props) {
       <div className="flex w-full justify-center">
         <div className="w-1/2 flex justify-center">
           <button
-            onClick={() => console.log("click")}
+            onClick={() => router.push(`/dashboard/employees/${props.employee._id}`)}
             className="flex flex-col items-center gap-1 p-2"
           >
             <div className="hover:bg-[#634FD2] bg-[#634FD299] p-[6px] rounded-full transition-colors duration-300">

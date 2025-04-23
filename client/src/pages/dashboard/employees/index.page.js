@@ -9,9 +9,6 @@ import { useTranslation } from "next-i18next";
 // CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
 
-// SVG
-import { EmployeesSvg } from "@/components/_shared/_svgs/employees.svg";
-
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";

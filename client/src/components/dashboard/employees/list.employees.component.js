@@ -1,10 +1,22 @@
 import { useRouter } from "next/router";
 import { useState, useContext } from "react";
+
+// REACT HOOK FORM
 import { useForm } from "react-hook-form";
+
+// AXIOS
 import axios from "axios";
+
+// CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
+
+// I18N
 import { useTranslation } from "next-i18next";
+
+// SVG
 import { EmployeesSvg, WarningSvg } from "../../_shared/_svgs/_index";
+
+// COMPONENTS
 import CardEmployeesComponent from "./card.employees.component";
 
 export default function ListEmployeesComponent(props) {
@@ -271,6 +283,30 @@ export default function ListEmployeesComponent(props) {
                       )}
                     </div>
                   </div>
+
+                  {/* Input pour le téléphone */}
+                  <div className="flex flex-col relative">
+                    <label htmlFor="email" className="mb-1">
+                      {t("modale.labels.phone")}
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        id="phone"
+                        type="phone"
+                        placeholder="Téléphone"
+                        {...register("phone", { required: true })}
+                        className="w-full p-2 border border-darkBlue/50 rounded-lg"
+                      />
+                      {errors.email && isSubmitted && (
+                        <WarningSvg
+                          fillColor="#FF7664"
+                          width={22}
+                          height={22}
+                        />
+                      )}
+                    </div>
+                  </div>
+
                   {/* Input pour le poste */}
                   <div className="flex flex-col relative">
                     <label htmlFor="post" className="mb-1">

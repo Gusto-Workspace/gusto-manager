@@ -20,6 +20,7 @@
       "lastname": "Nom",
       "firstname": "Prénom",
       "email": "Email",
+      "phone": "Téléphone",
       "post": "Poste",
       "dateOnPost": "Date de prise de poste",
       "profilePicture": "Photo de profil"

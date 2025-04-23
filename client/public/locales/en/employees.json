@@ -1,5 +1,32 @@
 {
   "titles": {
-    "main": "Employees"
+    "main": "Staff Management"
+  },
+  "buttons": {
+    "addEmployee": "Add Employee",
+    "confirm": "Confirm",
+    "save": "Save",
+    "cancel": "Cancel",
+    "loading": "Loading..."
+  },
+  "modale": {
+    "titles": {
+      "deleteEmployee": "Delete Employee"
+    },
+    "description": {
+      "deleteEmployee": "Are you sure you want to delete"
+    },
+    "labels": {
+      "lastname": "Last Name",
+      "firstname": "First Name",
+      "email": "Email",
+      "phone": "Phone",
+      "post": "Position",
+      "dateOnPost": "Start Date",
+      "profilePicture": "Profile Picture"
+    },
+    "errors": {
+      "required": "This field is required"
+    }
   }
 }

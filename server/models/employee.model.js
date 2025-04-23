@@ -4,6 +4,7 @@ const bcrypt = require("bcryptjs");
 // Sous-schéma pour les options
 const optionsSchema = new mongoose.Schema(
   {
+    dashboard: { type: Boolean, default: false },
     restaurant: { type: Boolean, default: false },
     dishes: { type: Boolean, default: false },
     menus: { type: Boolean, default: false },
@@ -13,6 +14,7 @@ const optionsSchema = new mongoose.Schema(
     gift_card: { type: Boolean, default: false },
     reservations: { type: Boolean, default: false },
     take_away: { type: Boolean, default: false },
+    employees: { type: Boolean, default: false },
   },
   { _id: false }
 );
@@ -22,7 +24,7 @@ const employeeSchema = new mongoose.Schema({
   lastname: { type: String, required: true },
   email: { type: String }, // À utiliser si nécessaire
   password: { type: String }, // À utiliser si nécessaire
-  phoneNumber: { type: String },
+  phoneNumber: { type: String, required: true },
   // Un employé est associé à UN seul restaurant :
   restaurant: {
     type: mongoose.Schema.Types.ObjectId,

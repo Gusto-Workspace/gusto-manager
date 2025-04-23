@@ -103,7 +103,7 @@ router.post(
     }
 
     // Récupération des champs envoyés depuis le formulaire
-    const { lastName, firstName, email, post, dateOnPost } = req.body;
+    const { lastName, firstName, email, phone, post, dateOnPost } = req.body;
 
     try {
       // Gestion de l'upload de l'image de profil
@@ -125,6 +125,7 @@ router.post(
         lastname: lastName,
         firstname: firstName,
         email: email,
+        phone: phone,
         password: temporaryPassword,
         restaurant: restaurantId,
         post: post,
