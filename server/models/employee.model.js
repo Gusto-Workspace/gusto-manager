@@ -24,7 +24,7 @@ const employeeSchema = new mongoose.Schema({
   lastname: { type: String, required: true },
   email: { type: String }, // À utiliser si nécessaire
   password: { type: String }, // À utiliser si nécessaire
-  phoneNumber: { type: String, required: true },
+  phone: { type: String, required: true },
   // Un employé est associé à UN seul restaurant :
   restaurant: {
     type: mongoose.Schema.Types.ObjectId,

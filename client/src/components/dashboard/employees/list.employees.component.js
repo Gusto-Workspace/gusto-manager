@@ -81,6 +81,7 @@ export default function ListEmployeesComponent(props) {
     formData.append("email", data.email);
     formData.append("post", data.post);
     formData.append("dateOnPost", data.dateOnPost);
+    formData.append("phone", data.phone);
 
     if (data.profilePicture && data.profilePicture[0]) {
       formData.append("profilePicture", data.profilePicture[0]);

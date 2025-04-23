@@ -178,6 +178,60 @@ router.post(
   }
 );
 
+// UPDATE EMPLOYEE (détails généraux & options)
+router.patch(
+  "/restaurants/:restaurantId/employees/:employeeId",
+  upload.single("profilePicture"),
+  async (req, res) => {
+    try {
+      const { restaurantId, employeeId } = req.params;
+      const { firstname, lastname, email, phone, post, dateOnPost, options } =
+        req.body;
+
+      const employee = await EmployeeModel.findById(employeeId);
+      if (!employee || employee.restaurant.toString() !== restaurantId) {
+        return res.status(404).json({ message: "Employee not found" });
+      }
+
+      // 1) Supprimer l'ancienne image si on en reçoit une nouvelle
+      if (req.file) {
+        if (employee.profilePicture?.public_id) {
+          await cloudinary.uploader.destroy(employee.profilePicture.public_id);
+        }
+        const result = await uploadFromBuffer(
+          req.file.buffer,
+          `Gusto_Workspace/restaurants/${restaurantId}/employees`
+        );
+        employee.profilePicture = {
+          url: result.secure_url,
+          public_id: result.public_id,
+        };
+      }
+
+      // 2) Champs classiques
+      if (firstname !== undefined) employee.firstname = firstname;
+      if (lastname !== undefined) employee.lastname = lastname;
+      if (email !== undefined) employee.email = email;
+      if (phone !== undefined) employee.phone = phone;
+      if (post !== undefined) employee.post = post;
+      if (dateOnPost !== undefined) employee.dateOnPost = new Date(dateOnPost);
+      if (options !== undefined) employee.options = options;
+
+      await employee.save();
+
+      const updatedRestaurant = await RestaurantModel.findById(restaurantId)
+        .populate("owner_id", "firstname")
+        .populate("menus")
+        .populate("employees");
+
+      res.status(200).json({ restaurant: updatedRestaurant });
+    } catch (error) {
+      console.error("Error updating employee:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  }
+);
+
 // DELETE EMPLOYEE
 router.delete(
   "/restaurants/:restaurantId/employees/:employeeId",
