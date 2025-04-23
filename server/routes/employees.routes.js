@@ -103,7 +103,17 @@ router.post(
     }
 
     // Récupération des champs envoyés depuis le formulaire
-    const { lastName, firstName, email, phone, post, dateOnPost } = req.body;
+    const {
+      lastName,
+      firstName,
+      email,
+      secuNumber,
+      adress,
+      emergencyContact,
+      phone,
+      post,
+      dateOnPost,
+    } = req.body;
 
     try {
       // Gestion de l'upload de l'image de profil
@@ -126,6 +136,9 @@ router.post(
         firstname: firstName,
         email: email,
         phone: phone,
+        secuNumber: secuNumber,
+        adress: adress,
+        emergencyContact: emergencyContact,
         password: temporaryPassword,
         restaurant: restaurantId,
         post: post,
@@ -185,8 +198,18 @@ router.patch(
   async (req, res) => {
     try {
       const { restaurantId, employeeId } = req.params;
-      const { firstname, lastname, email, phone, post, dateOnPost, options } =
-        req.body;
+      const {
+        firstname,
+        lastname,
+        email,
+        phone,
+        secuNumber,
+        adress,
+        emergencyContact,
+        post,
+        dateOnPost,
+        options,
+      } = req.body;
 
       const employee = await EmployeeModel.findById(employeeId);
       if (!employee || employee.restaurant.toString() !== restaurantId) {
@@ -213,6 +236,10 @@ router.patch(
       if (lastname !== undefined) employee.lastname = lastname;
       if (email !== undefined) employee.email = email;
       if (phone !== undefined) employee.phone = phone;
+      if (secuNumber !== undefined) employee.secuNumber = secuNumber;
+      if (adress !== undefined) employee.adress = adress;
+      if (emergencyContact !== undefined)
+        employee.emergencyContact = emergencyContact;
       if (post !== undefined) employee.post = post;
       if (dateOnPost !== undefined) employee.dateOnPost = new Date(dateOnPost);
       if (options !== undefined) employee.options = options;

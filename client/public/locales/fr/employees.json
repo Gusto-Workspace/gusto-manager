@@ -23,7 +23,10 @@
       "phone": "Téléphone",
       "post": "Poste",
       "dateOnPost": "Date de prise de poste",
-      "profilePicture": "Photo de profil"
+      "profilePicture": "Photo de profil",
+      "secuNumber": "Numéro de sécurité sociale",
+      "adress": "Adresse",
+      "emergencyContact": "Contact d'urgence"
     },
     "errors": {
       "required": "Ce champs est requis"
