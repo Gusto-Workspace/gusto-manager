@@ -25,8 +25,9 @@
       "dateOnPost": "Date de prise de poste",
       "profilePicture": "Photo de profil",
       "secuNumber": "Numéro de sécurité sociale",
-      "adress": "Adresse",
-      "emergencyContact": "Contact d'urgence"
+      "address": "Adresse",
+      "emergencyContact": "Contact d'urgence",
+      "documents": "Documents"
     },
     "errors": {
       "required": "Ce champs est requis"

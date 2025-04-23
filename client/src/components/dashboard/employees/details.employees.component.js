@@ -1,21 +1,11 @@
 import { useRouter } from "next/router";
 import { useContext, useState, useEffect, useRef } from "react";
-
-// AXIOS
 import axios from "axios";
-
-// REACT HOOK FORM
 import { useForm } from "react-hook-form";
-
-// CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
-
-// SVG
 import { AvatarSvg } from "@/components/_shared/_svgs/avatar.svg";
 import { EmployeesSvg } from "@/components/_shared/_svgs/employees.svg";
 import { EditSvg } from "@/components/_shared/_svgs/edit.svg";
-
-// I18N
 import { useTranslation } from "next-i18next";
 
 export default function DetailsEmployeesComponent({ employeeId }) {
@@ -27,12 +17,17 @@ export default function DetailsEmployeesComponent({ employeeId }) {
   const [employee, setEmployee] = useState(null);
   const [profileFile, setProfileFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
+
+  // documents
   const [docs, setDocs] = useState([]);
+  const [isUploadingDocs, setIsUploadingDocs] = useState(false);
+  const [isDeletingDocId, setIsDeletingDocId] = useState(null);
+
   const [isEditing, setIsEditing] = useState(false);
   const [isSavingDetails, setIsSavingDetails] = useState(false);
   const [optionsSaved, setOptionsSaved] = useState(false);
 
-  // Formulaire détails + photo
+  // form détails
   const {
     register: regDetails,
     handleSubmit: handleDetailsSubmit,
@@ -40,7 +35,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     formState: { isDirty: detailsDirty },
   } = useForm({ mode: "onChange" });
 
-  // Formulaire options
+  // form options
   const {
     register: regOptions,
     handleSubmit: handleOptionsSubmit,
@@ -64,20 +59,18 @@ export default function DetailsEmployeesComponent({ employeeId }) {
   };
 
   const restaurantId = restaurantContext.restaurantData?._id;
-  const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}`;
+  const baseUrl = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}`;
 
-  // Charger l'employé et initialiser les formulaires
+  // load employee + init forms
   useEffect(() => {
-    if (!restaurantContext.restaurantData) return;
-    const found = restaurantContext.restaurantData.employees.find(
-      (e) => e._id === employeeId
-    );
+    const data = restaurantContext.restaurantData;
+    if (!data) return;
+    const found = data.employees.find((e) => e._id === employeeId);
     if (!found) {
       router.replace("/dashboard/employees");
       return;
     }
     setEmployee(found);
-
     resetDetails({
       firstname: found.firstname,
       lastname: found.lastname,
@@ -86,14 +79,14 @@ export default function DetailsEmployeesComponent({ employeeId }) {
       email: found.email,
       phone: found.phone,
       secuNumber: found.secuNumber,
-      adress: found.adress,
+      address: found.address,
       emergencyContact: found.emergencyContact,
     });
     resetOptions({ options: found.options });
-
     setPreviewUrl(found.profilePicture?.url || null);
     setProfileFile(null);
     setOptionsSaved(false);
+    setDocs([]);
   }, [
     restaurantContext.restaurantData,
     employeeId,
@@ -102,7 +95,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     router,
   ]);
 
-  // Réinitialise le badge "Sauvegardé" si on modifie de nouveau
+  // reset options badge
   useEffect(() => {
     if (
       optionsSaved &&
@@ -113,7 +106,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     }
   }, [watchOptions, optionsSaved, employee]);
 
-  // Sélection locale de la nouvelle photo
+  /** Photo sélectionnée */
   const handleFileSelect = (e) => {
     const f = e.target.files[0];
     if (!f) return;
@@ -121,8 +114,8 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     setPreviewUrl(URL.createObjectURL(f));
   };
 
-  // Sauvegarde détails + photo
-  async function onSaveDetails(data) {
+  /** Save détails + photo */
+  const onSaveDetails = async (data) => {
     setIsSavingDetails(true);
     try {
       const fd = new FormData();
@@ -130,41 +123,74 @@ export default function DetailsEmployeesComponent({ employeeId }) {
         ([k, v]) => v !== undefined && fd.append(k, v)
       );
       if (profileFile) fd.append("profilePicture", profileFile);
-
-      const { data: res } = await axios.patch(apiUrl, fd, {
+      const { data: res } = await axios.patch(baseUrl, fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       restaurantContext.setRestaurantData(res.restaurant);
-      const upd = res.restaurant.employees.find((e) => e._id === employeeId);
-      setEmployee(upd);
+      setEmployee(res.restaurant.employees.find((e) => e._id === employeeId));
       setIsEditing(false);
     } catch (err) {
       console.error("Erreur update détails :", err);
     } finally {
       setIsSavingDetails(false);
     }
-  }
+  };
 
-  // Sauvegarde options
-  async function onSaveOptions(data) {
+  /** Save options */
+  const onSaveOptions = async (formData) => {
     try {
       await handleOptionsSubmit(async (d) => {
-        const { data: res } = await axios.patch(apiUrl, { options: d.options });
+        const { data: res } = await axios.patch(baseUrl, {
+          options: d.options,
+        });
         restaurantContext.setRestaurantData(res.restaurant);
-        const upd = res.restaurant.employees.find((e) => e._id === employeeId);
-        setEmployee(upd);
+        setEmployee(res.restaurant.employees.find((e) => e._id === employeeId));
         setOptionsSaved(true);
-      })(data);
+      })(formData);
     } catch (err) {
       console.error("Erreur update options :", err);
     }
-  }
+  };
 
-  // Gestion des documents (console.log)
+  /** Sélection docs locales */
   const onDocsChange = (e) => {
-    const files = Array.from(e.target.files);
-    setDocs(files);
-    console.log("Documents sélectionnés :", files);
+    setDocs(Array.from(e.target.files));
+  };
+
+  /** Upload docs */
+  const onSaveDocs = async () => {
+    if (!docs.length) return;
+    setIsUploadingDocs(true);
+    try {
+      const fd = new FormData();
+      docs.forEach((f) => fd.append("documents", f));
+      const { data: res } = await axios.post(`${baseUrl}/documents`, fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      restaurantContext.setRestaurantData(res.restaurant);
+      setEmployee(res.restaurant.employees.find((e) => e._id === employeeId));
+      setDocs([]);
+    } catch (err) {
+      console.error("Erreur upload documents :", err);
+    } finally {
+      setIsUploadingDocs(false);
+    }
+  };
+
+  /** Supprimer un document existant */
+  const onDeleteDoc = async (public_id) => {
+    setIsDeletingDocId(public_id);
+    try {
+      const { data: res } = await axios.delete(
+        `${baseUrl}/documents/${public_id}`
+      );
+      restaurantContext.setRestaurantData(res.restaurant);
+      setEmployee(res.restaurant.employees.find((e) => e._id === employeeId));
+    } catch (err) {
+      console.error("Erreur suppression document :", err);
+    } finally {
+      setIsDeletingDocId(null);
+    }
   };
 
   if (!employee) return null;
@@ -184,7 +210,9 @@ export default function DetailsEmployeesComponent({ employeeId }) {
             {t("employees:titles.main")}
           </span>
           <span>/</span>
-          <span>{employee.firstname} {employee.lastname}</span>
+          <span>
+            {employee.firstname} {employee.lastname}
+          </span>
         </h1>
       </div>
 
@@ -192,14 +220,19 @@ export default function DetailsEmployeesComponent({ employeeId }) {
       <section className="bg-white p-6 rounded-lg shadow flex justify-between items-start relative">
         {!isEditing && (
           <button
+            className="absolute right-0 top-0 p-2"
             onClick={(e) => {
               e.stopPropagation();
               setIsEditing(true);
             }}
-            className="absolute right-0 top-0 p-2"
           >
             <div className="hover:opacity-100 opacity-20 p-[6px] rounded-full transition-opacity">
-              <EditSvg width={20} height={20} strokeColor="#131E36" fillColor="#131E36" />
+              <EditSvg
+                width={20}
+                height={20}
+                strokeColor="#131E36"
+                fillColor="#131E36"
+              />
             </div>
           </button>
         )}
@@ -209,7 +242,6 @@ export default function DetailsEmployeesComponent({ employeeId }) {
           className="flex justify-between items-start w-full gap-6"
         >
           <div className="flex flex-col gap-4 w-2/3">
-            {/* Nom & Prénom */}
             {isEditing ? (
               <div className="flex gap-2 mb-4">
                 <input
@@ -229,85 +261,59 @@ export default function DetailsEmployeesComponent({ employeeId }) {
               </h2>
             )}
 
-            {/* Champs classiques + nouveaux */}
-            <p>
-              <strong>Poste :</strong>{" "}
-              {isEditing ? (
-                <input
-                  {...regDetails("post")}
-                  disabled={isSavingDetails}
-                  className="p-2 border border-darkBlue/50 rounded-lg w-2/3"
-                />
-              ) : employee.post}
-            </p>
-            <p>
-              <strong>Depuis le :</strong>{" "}
-              {isEditing ? (
-                <input
-                  type="date"
-                  {...regDetails("dateOnPost")}
-                  disabled={isSavingDetails}
-                  className="p-2 border border-darkBlue/50 rounded-lg w-2/3"
-                />
-              ) : new Date(employee.dateOnPost).toLocaleDateString("fr-FR")}
-            </p>
-            <p>
-              <strong>Email :</strong>{" "}
-              {isEditing ? (
-                <input
-                  type="email"
-                  {...regDetails("email")}
-                  disabled={isSavingDetails}
-                  className="p-2 border border-darkBlue/50 rounded-lg w-2/3"
-                />
-              ) : employee.email}
-            </p>
-            <p>
-              <strong>Téléphone :</strong>{" "}
-              {isEditing ? (
-                <input
-                  {...regDetails("phone")}
-                  disabled={isSavingDetails}
-                  className="p-2 border border-darkBlue/50 rounded-lg w-2/3"
-                />
-              ) : employee.phone}
-            </p>
-            <p>
-              <strong>N° Sécu. Sociale :</strong>{" "}
-              {isEditing ? (
-                <input
-                  {...regDetails("secuNumber", { required: true })}
-                  disabled={isSavingDetails}
-                  className="p-2 border border-darkBlue/50 rounded-lg w-2/3"
-                />
-              ) : employee.secuNumber}
-            </p>
-            <p>
-              <strong>Adresse :</strong>{" "}
-              {isEditing ? (
-                <input
-                  {...regDetails("adress", { required: true })}
-                  disabled={isSavingDetails}
-                  className="p-2 border border-darkBlue/50 rounded-lg w-2/3"
-                />
-              ) : employee.adress}
-            </p>
-            <p>
-              <strong>Contact urgence :</strong>{" "}
-              {isEditing ? (
-                <input
-                  {...regDetails("emergencyContact", { required: true })}
-                  disabled={isSavingDetails}
-                  className="p-2 border border-darkBlue/50 rounded-lg w-2/3"
-                />
-              ) : employee.emergencyContact}
-            </p>
+            {[
+              ["post", t("modale.labels.post"), employee.post],
+              [
+                "dateOnPost",
+                t("modale.labels.dateOnPost"),
+                new Date(employee.dateOnPost).toLocaleDateString("fr-FR"),
+              ],
+              ["email", t("modale.labels.email"), employee.email],
+              ["phone", t("modale.labels.phone"), employee.phone],
+              [
+                "secuNumber",
+                t("modale.labels.secuNumber"),
+                employee.secuNumber,
+              ],
+              ["address", t("modale.labels.address"), employee.address],
+              [
+                "emergencyContact",
+                t("modale.labels.emergencyContact"),
+                employee.emergencyContact,
+              ],
+            ].map(([field, label, value]) => {
+              const isRequired = ![
+                "secuNumber",
+                "address",
+                "emergencyContact",
+              ].includes(field);
+              return (
+                <p key={field}>
+                  <strong>{label} :</strong>{" "}
+                  {isEditing ? (
+                    <input
+                      type={field === "dateOnPost" ? "date" : "text"}
+                      {...regDetails(field, { required: isRequired })}
+                      disabled={isSavingDetails}
+                      className="p-2 border border-darkBlue/50 rounded-lg"
+                      defaultValue={value}
+                    />
+                  ) : (
+                    value
+                  )}
+                </p>
+              );
+            })}
           </div>
 
-          {/* Photo de profil */}
+          {/* Photo */}
           <div className="relative w-44 h-44 flex-shrink-0 rounded-full overflow-hidden border border-darkBlue/20">
             {previewUrl ? (
-              <img src={previewUrl} alt="aperçu" className="w-full h-full object-cover" />
+              <img
+                src={previewUrl}
+                alt="aperçu"
+                className="w-full h-full object-cover"
+              />
             ) : (
               <div className="flex items-center justify-center w-full h-full bg-lightGrey">
                 <AvatarSvg width={40} height={40} fillColor="#131E3690" />
@@ -318,7 +324,12 @@ export default function DetailsEmployeesComponent({ employeeId }) {
                 className="absolute inset-0 bg-black bg-opacity-30 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer"
                 onClick={() => fileInputRef.current.click()}
               >
-                <EditSvg width={24} height={24} strokeColor="#fff" fillColor="#fff" />
+                <EditSvg
+                  width={24}
+                  height={24}
+                  strokeColor="#fff"
+                  fillColor="#fff"
+                />
               </div>
             )}
             <input
@@ -332,7 +343,6 @@ export default function DetailsEmployeesComponent({ employeeId }) {
           </div>
         </form>
 
-        {/* Boutons Annuler / Enregistrer */}
         {isEditing && (
           <div className="absolute bottom-4 right-4 flex gap-4">
             <button
@@ -347,7 +357,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
                   email: employee.email,
                   phone: employee.phone,
                   secuNumber: employee.secuNumber,
-                  adress: employee.adress,
+                  address: employee.address,
                   emergencyContact: employee.emergencyContact,
                 });
                 setProfileFile(null);
@@ -370,7 +380,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
         )}
       </section>
 
-      {/* Formulaire des droits */}
+      {/* Rights */}
       <form
         onSubmit={handleOptionsSubmit(onSaveOptions)}
         className="bg-white p-6 rounded-lg shadow"
@@ -401,16 +411,67 @@ export default function DetailsEmployeesComponent({ employeeId }) {
         ) : null}
       </form>
 
-      {/* Zone documents */}
+      {/* Documents */}
       <section className="bg-white p-6 rounded-lg shadow">
-        <h3 className="text-xl mb-4">Documents</h3>
-        <input type="file" multiple onChange={onDocsChange} className="mb-4" />
+        <h3 className="text-xl mb-4">{t("modale.labels.documents")}</h3>
+
+        <input
+          type="file"
+          multiple
+          accept=".pdf,image/*"
+          onChange={onDocsChange}
+          disabled={isUploadingDocs}
+          className="mb-4"
+        />
+
         {docs.length > 0 && (
-          <ul className="list-disc pl-5">
+          <ul className="list-disc pl-5 mb-4">
             {docs.map((f, i) => (
               <li key={i}>{f.name}</li>
             ))}
           </ul>
+        )}
+
+        <button
+          onClick={onSaveDocs}
+          disabled={isUploadingDocs || docs.length === 0}
+          className="px-4 py-2 bg-blue text-white rounded-lg disabled:opacity-40"
+        >
+          {isUploadingDocs ? t("buttons.loading") : t("buttons.save")}
+        </button>
+
+        {employee.documents?.length > 0 && (
+          <div className="mt-6">
+            <h4 className="font-semibold mb-2">
+              {t("modale.uploadedDocuments")}
+            </h4>
+            <ul className="list-disc pl-5 space-y-1">
+              {employee.documents.map((doc) => (
+                <li
+                  key={doc.public_id}
+                  className="flex items-center justify-between"
+                >
+                  <a
+                    href={doc.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline"
+                  >
+                    {doc.filename}
+                  </a>
+                  <button
+                    onClick={() => onDeleteDoc(doc.public_id)}
+                    disabled={isDeletingDocId === doc.public_id}
+                    className="ml-4 text-red-600 hover:underline disabled:opacity-40"
+                  >
+                    {isDeletingDocId === doc.public_id
+                      ? t("modale.deleting")
+                      : t("modale.delete")}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </section>
     </section>

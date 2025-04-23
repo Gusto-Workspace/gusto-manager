@@ -19,6 +19,15 @@ const optionsSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const documentSchema = new mongoose.Schema(
+  {
+    url: { type: String, required: true },
+    public_id: { type: String, required: true },
+    filename: { type: String, required: true },
+  },
+  { _id: false }
+);
+
 const employeeSchema = new mongoose.Schema({
   firstname: { type: String, required: true },
   lastname: { type: String, required: true },
@@ -39,9 +48,10 @@ const employeeSchema = new mongoose.Schema({
     public_id: String,
   },
   secuNumber: { type: String },
-  adress: { type: String },
+  address: { type: String },
   emergencyContact: { type: String },
   options: { type: optionsSchema, default: {} },
+  documents: { type: [documentSchema], default: [] },
   created_at: { type: Date, default: Date.now },
   resetCode: String,
   resetCodeExpires: Date,

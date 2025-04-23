@@ -29,7 +29,7 @@ export default function AddEmployeesComponent() {
     formData.append("post", data.post);
     formData.append("dateOnPost", data.dateOnPost);
     formData.append("secuNumber", data.secuNumber);
-    formData.append("adress", data.adress);
+    formData.append("address", data.address);
     formData.append("emergencyContact", data.emergencyContact);
     if (data.profilePicture?.[0]) {
       formData.append("profilePicture", data.profilePicture[0]);
@@ -189,7 +189,7 @@ export default function AddEmployeesComponent() {
             <input
               id="secuNumber"
               type="text"
-              {...register("secuNumber", { required: true })}
+              {...register("secuNumber")}
               className="w-full p-2 border border-darkBlue/50 rounded-lg"
             />
             {errors.secuNumber && isSubmitted && (
@@ -200,16 +200,16 @@ export default function AddEmployeesComponent() {
 
         {/* Rue */}
         <div className="flex flex-col">
-          <label htmlFor="adress" className="mb-1">
-            {t("modale.labels.adress")}
+          <label htmlFor="address" className="mb-1">
+            {t("modale.labels.address")}
           </label>
           <input
-            id="adress"
+            id="address"
             type="text"
-            {...register("adress", { required: true })}
+            {...register("address")}
             className="w-full p-2 border border-darkBlue/50 rounded-lg"
           />
-          {errors.adress && isSubmitted && (
+          {errors.address && isSubmitted && (
             <WarningSvg fillColor="#FF7664" width={22} height={22} />
           )}
         </div>
@@ -222,7 +222,7 @@ export default function AddEmployeesComponent() {
           <input
             id="emergencyContact"
             type="text"
-            {...register("emergencyContact", { required: true })}
+            {...register("emergencyContact")}
             className="w-full p-2 border border-darkBlue/50 rounded-lg"
           />
           {errors.emergencyContact && isSubmitted && (

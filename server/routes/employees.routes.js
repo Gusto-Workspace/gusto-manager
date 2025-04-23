@@ -108,7 +108,7 @@ router.post(
       firstName,
       email,
       secuNumber,
-      adress,
+      address,
       emergencyContact,
       phone,
       post,
@@ -137,7 +137,7 @@ router.post(
         email: email,
         phone: phone,
         secuNumber: secuNumber,
-        adress: adress,
+        address: address,
         emergencyContact: emergencyContact,
         password: temporaryPassword,
         restaurant: restaurantId,
@@ -181,9 +181,12 @@ router.post(
         .catch((err) => console.error("Erreur mail création employé :", err));
 
       // Re-popule le champ employees directement sur l'objet restaurant
-      await restaurant.populate("employees");
+      const updatedRestaurant = await RestaurantModel.findById(restaurantId)
+      .populate("owner_id", "firstname")
+      .populate("menus")
+      .populate("employees");
 
-      res.status(201).json({ restaurant });
+      res.status(201).json({ restaurant : updatedRestaurant });
     } catch (error) {
       console.error("Error creating employee:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -204,7 +207,7 @@ router.patch(
         email,
         phone,
         secuNumber,
-        adress,
+        address,
         emergencyContact,
         post,
         dateOnPost,
@@ -237,7 +240,7 @@ router.patch(
       if (email !== undefined) employee.email = email;
       if (phone !== undefined) employee.phone = phone;
       if (secuNumber !== undefined) employee.secuNumber = secuNumber;
-      if (adress !== undefined) employee.adress = adress;
+      if (address !== undefined) employee.address = address;
       if (emergencyContact !== undefined)
         employee.emergencyContact = emergencyContact;
       if (post !== undefined) employee.post = post;
@@ -255,6 +258,85 @@ router.patch(
     } catch (error) {
       console.error("Error updating employee:", error);
       res.status(500).json({ message: "Internal server error" });
+    }
+  }
+);
+
+// UPLOAD DOCUMENTS
+router.post(
+  "/restaurants/:restaurantId/employees/:employeeId/documents",
+  upload.array("documents"),
+  async (req, res) => {
+    try {
+      const { restaurantId, employeeId } = req.params;
+      const employee = await EmployeeModel.findById(employeeId);
+      if (!employee || employee.restaurant.toString() !== restaurantId) {
+        return res.status(404).json({ message: "Employee not found" });
+      }
+
+      // uplaod chaque fichier
+      for (const file of req.files) {
+        const result = await new Promise((resolve, reject) => {
+          const stream = cloudinary.uploader.upload_stream(
+            {
+              folder: `Gusto_Workspace/restaurants/${restaurantId}/employees/docs`,
+              resource_type: "auto",
+            },
+            (err, res) => (err ? reject(err) : resolve(res))
+          );
+          streamifier.createReadStream(file.buffer).pipe(stream);
+        });
+        employee.documents.push({
+          url: result.secure_url,
+          public_id: result.public_id,
+          filename: file.originalname,
+        });
+      }
+      await employee.save();
+
+      // renvoyer le restaurant mis à jour
+      const updatedRestaurant = await RestaurantModel.findById(restaurantId)
+        .populate("owner_id", "firstname")
+        .populate("menus")
+        .populate("employees");
+      res.json({ restaurant: updatedRestaurant });
+    } catch (err) {
+      console.error("Error uploading documents:", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  }
+);
+
+// DELETE DOCUMENT
+router.delete(
+  "/restaurants/:restaurantId/employees/:employeeId/documents/:public_id(*)",
+  async (req, res) => {
+    const { restaurantId, employeeId, public_id } = req.params;
+
+    try {
+      const employee = await EmployeeModel.findById(employeeId);
+      if (!employee || employee.restaurant.toString() !== restaurantId) {
+        return res.status(404).json({ message: "Employee not found" });
+      }
+
+      await cloudinary.uploader.destroy(public_id);
+
+      employee.documents = employee.documents.filter(
+        (doc) => doc.public_id !== public_id
+      );
+
+      await employee.save();
+
+      const updatedRestaurant = await RestaurantModel.findById(restaurantId)
+        .populate("owner_id", "firstname")
+        .populate("menus")
+        .populate("employees");
+
+      return res.json({ restaurant: updatedRestaurant });
+    } catch (err) {
+      return res
+        .status(500)
+        .json({ message: "Internal server error", error: err.message });
     }
   }
 );
