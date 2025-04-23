@@ -33,7 +33,7 @@ router.put("/restaurants/:id/opening_hours", async (req, res) => {
       { opening_hours: formattedOpeningHours },
       { new: true }
     )
-      .populate("owner_id", "firstname")
+      .populate("owner_id", "firstname").populate("employees")
       .populate("menus");
 
     if (!restaurant) {

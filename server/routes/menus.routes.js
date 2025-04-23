@@ -35,7 +35,7 @@ router.post("/restaurants/:restaurantId/add-menus", async (req, res) => {
 
     // Récupérez le restaurant peuplé avec les menus après la mise à jour
     const updatedRestaurant = await RestaurantModel.findById(restaurantId)
-      .populate("owner_id", "firstname")
+      .populate("owner_id", "firstname").populate("employees")
       .populate("menus");
 
     res.status(201).json({
@@ -145,7 +145,7 @@ router.delete("/restaurants/:restaurantId/menus/:menuId", async (req, res) => {
       { $pull: { menus: menuId } },
       { new: true }
     )
-      .populate("owner_id", "firstname")
+      .populate("owner_id", "firstname").populate("employees")
       .populate("menus");
 
     if (!restaurant) {
@@ -171,7 +171,7 @@ router.put("/restaurants/:restaurantId/menus/order", async (req, res) => {
 
   try {
     const restaurant = await RestaurantModel.findById(restaurantId)
-      .populate("owner_id", "firstname")
+      .populate("owner_id", "firstname").populate("employees")
       .populate("menus");
 
     if (!restaurant) {

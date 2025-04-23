@@ -100,7 +100,7 @@ router.get("/news/:newsId", async (req, res) => {
     const restaurant = await RestaurantModel.findOne({
       "news._id": newsId,
     })
-      .populate("owner_id", "firstname")
+      .populate("owner_id", "firstname").populate("employees")
       .populate("menus");
 
     // Vérifier si le restaurant existe
@@ -236,7 +236,7 @@ router.delete("/restaurants/:id/news/:newsId", async (req, res) => {
 
     // Renvoyer le restaurant mis à jour
     const updatedRestaurant = await RestaurantModel.findById(restaurantId)
-      .populate("owner_id", "firstname")
+      .populate("owner_id", "firstname").populate("employees")
       .populate("menus");
 
     res.status(200).json({

@@ -146,7 +146,7 @@ router.get("/owner/get-data", authenticateToken, async (req, res) => {
     }
 
     const restaurant = await RestaurantModel.findById(req.user.restaurantId)
-      .populate("owner_id", "firstname")
+      .populate("owner_id", "firstname").populate("employees")
       .populate("menus");
 
     res.status(200).json({ owner, restaurant });

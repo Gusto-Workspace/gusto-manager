@@ -20,6 +20,7 @@ router.post(
       // Vérifier si le restaurant existe
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
+        .populate("employees")
         .populate("menus");
 
       if (!restaurant) {
@@ -68,6 +69,7 @@ router.put(
     try {
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
+        .populate("employees")
         .populate("menus");
 
       if (!restaurant) {
@@ -113,6 +115,7 @@ router.delete(
         { new: true }
       )
         .populate("owner_id", "firstname")
+        .populate("employees")
         .populate("menus");
 
       if (!restaurant) {
@@ -147,6 +150,7 @@ router.post("/restaurants/:restaurantId/drinks", async (req, res) => {
     // Vérifier si le restaurant existe
     const restaurant = await RestaurantModel.findById(restaurantId)
       .populate("owner_id", "firstname")
+      .populate("employees")
       .populate("menus");
 
     if (!restaurant) {
@@ -187,6 +191,7 @@ router.put("/restaurants/:restaurantId/drinks/:drinkId", async (req, res) => {
     // Vérifier si le restaurant existe
     const restaurant = await RestaurantModel.findById(restaurantId)
       .populate("owner_id", "firstname")
+      .populate("employees")
       .populate("menus");
 
     if (!restaurant) {
@@ -312,6 +317,7 @@ router.delete(
     try {
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
+        .populate("employees")
         .populate("menus");
 
       if (!restaurant) {
@@ -382,6 +388,7 @@ router.put(
     try {
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
+        .populate("employees")
         .populate("menus");
 
       if (!restaurant) {
@@ -420,6 +427,7 @@ router.put(
     try {
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
+        .populate("employees")
         .populate("menus");
 
       if (!restaurant) {
@@ -463,6 +471,7 @@ router.put(
     try {
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
+        .populate("employees")
         .populate("menus");
 
       if (!restaurant) {
@@ -514,6 +523,7 @@ router.post(
     try {
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
+        .populate("employees")
         .populate("menus");
 
       if (!restaurant) {
@@ -553,6 +563,7 @@ router.put(
     try {
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
+        .populate("employees")
         .populate("menus");
 
       if (!restaurant) {
@@ -595,6 +606,7 @@ router.delete(
     try {
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
+        .populate("employees")
         .populate("menus");
 
       if (!restaurant) {
@@ -641,6 +653,7 @@ router.post(
     try {
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
+        .populate("employees")
         .populate("menus");
 
       if (!restaurant) {
@@ -684,6 +697,7 @@ router.put(
     try {
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
+        .populate("employees")
         .populate("menus");
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found." });
@@ -732,6 +746,7 @@ router.put(
       // Vérifier si le restaurant existe
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
+        .populate("employees")
         .populate("menus");
 
       if (!restaurant) {

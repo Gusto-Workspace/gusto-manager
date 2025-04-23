@@ -16,6 +16,7 @@ router.post("/restaurants/:restaurantId/wines/categories", async (req, res) => {
   try {
     const restaurant = await RestaurantModel.findById(restaurantId)
       .populate("owner_id", "firstname")
+      .populate("employees")
       .populate("menus");
 
     if (!restaurant) {
@@ -137,6 +138,7 @@ router.post("/restaurants/:restaurantId/wines", async (req, res) => {
     // Vérifier si le restaurant existe
     const restaurant = await RestaurantModel.findById(restaurantId)
       .populate("owner_id", "firstname")
+      .populate("employees")
       .populate("menus");
 
     if (!restaurant) {
@@ -200,6 +202,7 @@ router.put("/restaurants/:restaurantId/wines/:wineId", async (req, res) => {
     // Vérifier si le restaurant existe
     const restaurant = await RestaurantModel.findById(restaurantId)
       .populate("owner_id", "firstname")
+      .populate("employees")
       .populate("menus");
 
     if (!restaurant) {
@@ -330,6 +333,7 @@ router.delete("/restaurants/:restaurantId/wines/:wineId", async (req, res) => {
   try {
     const restaurant = await RestaurantModel.findById(restaurantId)
       .populate("owner_id", "firstname")
+      .populate("employees")
       .populate("menus");
 
     if (!restaurant) {
