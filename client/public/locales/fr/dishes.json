@@ -22,7 +22,8 @@
     }
   },
   "labels": {
-    "numberOfDishes": "Nombre de plats"
+    "numberOfDishes": "Nombre de plats",
+    "catAlreadyExist" : "Catégorie déjà existante, merci de saisir un autre nom"
   },
   "buttons": {
     "add": "Ajouter",

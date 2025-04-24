@@ -20,6 +20,7 @@ router.post(
       // Vérifier si le restaurant existe
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
+        .populate("employees")
         .populate("menus");
 
       if (!restaurant) {
@@ -69,6 +70,7 @@ router.put(
     try {
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
+        .populate("employees")
         .populate("menus");
 
       if (!restaurant) {
@@ -115,6 +117,7 @@ router.delete(
         { new: true }
       )
         .populate("owner_id", "firstname")
+        .populate("employees")
         .populate("menus");
 
       if (!restaurant) {
@@ -149,6 +152,7 @@ router.post("/restaurants/:restaurantId/dishes", async (req, res) => {
     // Vérifier si le restaurant existe
     const restaurant = await RestaurantModel.findById(restaurantId)
       .populate("owner_id", "firstname")
+      .populate("employees")
       .populate("menus");
 
     if (!restaurant) {
@@ -229,6 +233,7 @@ router.put("/restaurants/:restaurantId/dishes/:dishId", async (req, res) => {
     // Vérifier si le restaurant existe
     const restaurant = await RestaurantModel.findById(restaurantId)
       .populate("owner_id", "firstname")
+      .populate("employees")
       .populate("menus");
 
     if (!restaurant) {
@@ -277,6 +282,7 @@ router.delete("/restaurants/:restaurantId/dishes/:dishId", async (req, res) => {
   try {
     const restaurant = await RestaurantModel.findById(restaurantId)
       .populate("owner_id", "firstname")
+      .populate("employees")
       .populate("menus");
 
     if (!restaurant) {
@@ -322,6 +328,7 @@ router.put(
     try {
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
+        .populate("employees")
         .populate("menus");
 
       if (!restaurant) {
@@ -360,6 +367,7 @@ router.put(
     try {
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
+        .populate("employees")
         .populate("menus");
 
       if (!restaurant) {

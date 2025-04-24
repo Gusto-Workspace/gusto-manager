@@ -213,6 +213,7 @@ export default function ListReservationsComponent(props) {
               {t("titles.main")}
             </h1>
           </div>
+          
           <div className="relative midTablet:w-[350px]">
             <input
               type="text"

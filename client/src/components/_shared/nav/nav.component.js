@@ -104,7 +104,8 @@ export default function NavComponent() {
       "/dashboard/drinks": restaurantContext?.restaurantData?.options?.drinks,
       "/dashboard/wines": restaurantContext?.restaurantData?.options?.wines,
       "/dashboard/news": restaurantContext?.restaurantData?.options?.news,
-
+      "/dashboard/employees":
+        restaurantContext?.restaurantData?.options?.employees,
       "/dashboard/gifts": restaurantContext?.restaurantData?.options?.gift_card,
       "/dashboard/reservations":
         restaurantContext?.restaurantData?.options?.reservations,

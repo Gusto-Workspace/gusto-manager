@@ -120,7 +120,7 @@ export default function AddReservationComponent(props) {
     }
   }, [props.reservation]);
 
-  // Calcul des heures disponibles (inchangé, avec gestion de la durée et exclusion de la réservation en cours)
+  // Calcul des heures disponibles (avec gestion de la durée et exclusion de la réservation en cours)
   useEffect(() => {
     if (
       !props?.restaurantData?.reservations ||

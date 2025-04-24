@@ -43,6 +43,7 @@ export default function CategoriesListWinesComponent() {
   const [categories, setCategories] = useState(
     restaurantContext?.restaurantData?.wine_categories
   );
+  const [catAlreadyExist, setCatAlreadyExist] = useState(false);
 
   // Détecte les capteurs pour le drag-and-drop (souris et tactile)
   const mouseSensor = useSensor(MouseSensor);
@@ -96,7 +97,10 @@ export default function CategoriesListWinesComponent() {
         { visible: updatedVisibility }
       )
       .then((response) => {
-        restaurantContext.setRestaurantData(response.data.restaurant);
+        restaurantContext.setRestaurantData((prev) => ({
+          ...prev,
+          wine_categories: response.data.restaurant.wine_categories,
+        }));
       })
       .catch((error) => {
         console.error("Error updating category visibility:", error);
@@ -113,7 +117,10 @@ export default function CategoriesListWinesComponent() {
 
     axios[method](apiUrl, isDeleting ? {} : data)
       .then((response) => {
-        restaurantContext.setRestaurantData(response.data.restaurant);
+        restaurantContext.setRestaurantData((prev) => ({
+          ...prev,
+          wine_categories: response.data.restaurant.wine_categories,
+        }));
         setIsModalOpen(false);
         reset();
         setEditingCategory(null);
@@ -121,6 +128,15 @@ export default function CategoriesListWinesComponent() {
       })
       .catch((error) => {
         console.error("Error modifying, adding or deleting category:", error);
+        const errMsg = error?.response?.data?.message;
+        if (errMsg === "Category already exists.") {
+          setCatAlreadyExist(true);
+        } else {
+          alert(
+            "Une erreur inattendue est survenue, merci de réessayer ultérieurement. " +
+              "Si le problème persiste, veuillez contacter votre interlocuteur Gusto Manager."
+          );
+        }
       })
       .finally(() => {
         setIsSubmitting(false);
@@ -165,7 +181,10 @@ export default function CategoriesListWinesComponent() {
         { orderedCategoryIds }
       )
       .then((response) => {
-        restaurantContext.setRestaurantData(response.data.restaurant);
+        restaurantContext.setRestaurantData((prev) => ({
+          ...prev,
+          wine_categories: response.data.restaurant.wine_categories,
+        }));
       })
       .catch((error) => {
         console.error("Error saving category order:", error);
@@ -242,6 +261,8 @@ export default function CategoriesListWinesComponent() {
           errors={errors}
           reset={reset}
           isSubmitting={isSubmitting}
+          catAlreadyExist={catAlreadyExist}
+          setCatAlreadyExist={setCatAlreadyExist}
         />
       )}
     </div>

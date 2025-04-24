@@ -1,8 +1,3 @@
-import { useContext } from "react";
-
-// CONTEXT
-import { GlobalContext } from "@/contexts/global.context";
-
 // I18N
 import { useTranslation } from "next-i18next";
 
@@ -97,7 +92,9 @@ export default function CardGiftsComponent(props) {
               />
             </div>
             <p className="text-xs text-center">
-              {props.giftCard.visible ? t("buttons.visible") : t("buttons.noVisible")}
+              {props.giftCard.visible
+                ? t("buttons.visible")
+                : t("buttons.noVisible")}
             </p>
           </button>
         </div>

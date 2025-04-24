@@ -34,6 +34,7 @@ router.put("/restaurants/:id/opening_hours", async (req, res) => {
       { new: true }
     )
       .populate("owner_id", "firstname")
+      .populate("employees")
       .populate("menus");
 
     if (!restaurant) {

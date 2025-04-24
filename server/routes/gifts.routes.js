@@ -30,6 +30,7 @@ router.post("/restaurants/:id/gifts", async (req, res) => {
       { new: true }
     )
       .populate("owner_id", "firstname")
+      .populate("employees")
       .populate("menus");
 
     res.status(200).json({ restaurant });
@@ -58,6 +59,7 @@ router.put("/restaurants/:id/gifts/:giftId", async (req, res) => {
       { new: true }
     )
       .populate("owner_id", "firstname")
+      .populate("employees")
       .populate("menus");
 
     if (!restaurant) {
@@ -85,6 +87,7 @@ router.delete("/restaurants/:id/gifts/:giftId", async (req, res) => {
       { new: true }
     )
       .populate("owner_id", "firstname")
+      .populate("employees")
       .populate("menus");
 
     if (!restaurant) {
@@ -112,6 +115,7 @@ router.post("/restaurants/:id/gifts/:giftId/purchase", async (req, res) => {
       _id: restaurantId,
     })
       .populate("owner_id", "firstname")
+      .populate("employees")
       .populate("menus");
 
     const gift = restaurant.giftCards.id(giftId);
@@ -170,6 +174,7 @@ router.put(
         { new: true }
       )
         .populate("owner_id", "firstname")
+        .populate("employees")
         .populate("menus");
 
       if (!restaurant) {
@@ -205,6 +210,7 @@ router.put(
         { new: true }
       )
         .populate("owner_id", "firstname")
+        .populate("employees")
         .populate("menus");
 
       if (!restaurant) {
@@ -235,6 +241,7 @@ router.delete(
         { new: true }
       )
         .populate("owner_id", "firstname")
+        .populate("employees")
         .populate("menus");
 
       if (!restaurant) {
@@ -263,6 +270,7 @@ router.put(
     try {
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
+        .populate("employees")
         .populate("menus");
 
       if (!restaurant) {

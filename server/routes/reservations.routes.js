@@ -42,6 +42,7 @@ router.put(
       const updatedRestaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
         .populate("menus")
+        .populate("employees")
         .populate({
           path: "reservations.list",
           populate: { path: "table" },
@@ -67,6 +68,7 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
     const restaurant = await RestaurantModel.findById(restaurantId)
       .populate("owner_id", "firstname")
       .populate("menus")
+      .populate("employees")
       .populate({
         path: "reservations.list",
         populate: { path: "table" },
@@ -211,6 +213,7 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
     const newReservation = new ReservationModel({
       ...reservationData,
       restaurant_id: restaurantId,
+      manual: true,
     });
 
     const savedReservation = await newReservation.save();
@@ -222,6 +225,7 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
     const updatedRestaurant = await RestaurantModel.findById(restaurantId)
       .populate("owner_id", "firstname")
       .populate("menus")
+      .populate("employees")
       .populate({
         path: "reservations.list",
         populate: { path: "table" },
@@ -263,6 +267,7 @@ router.put(
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
         .populate("menus")
+        .populate("employees")
         .populate({
           path: "reservations.list",
           populate: { path: "table" },
@@ -350,6 +355,7 @@ router.put(
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
         .populate("menus")
+        .populate("employees")
         .populate({
           path: "reservations.list",
           populate: { path: "table" },
@@ -411,6 +417,7 @@ router.delete(
           path: "reservations.list",
           populate: { path: "table" },
         })
+        .populate("employees")
         .populate("owner_id", "firstname")
         .populate("menus");
 
