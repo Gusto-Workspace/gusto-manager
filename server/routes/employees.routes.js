@@ -274,13 +274,13 @@ router.post(
         return res.status(404).json({ message: "Employee not found" });
       }
 
-      // uplaod chaque fichier
+      // upload each file as raw
       for (const file of req.files) {
         const result = await new Promise((resolve, reject) => {
           const stream = cloudinary.uploader.upload_stream(
             {
               folder: `Gusto_Workspace/restaurants/${restaurantId}/employees/docs`,
-              resource_type: "auto",
+              resource_type: "raw",    // ← ici on force RAW
             },
             (err, res) => (err ? reject(err) : resolve(res))
           );
@@ -306,6 +306,7 @@ router.post(
     }
   }
 );
+
 
 // DELETE DOCUMENT
 router.delete(

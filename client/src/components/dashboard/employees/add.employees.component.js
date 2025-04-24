@@ -1,10 +1,20 @@
 import { useState, useContext } from "react";
-import { useForm } from "react-hook-form";
-import axios from "axios";
-import { GlobalContext } from "@/contexts/global.context";
-import { useTranslation } from "next-i18next";
-import { EmployeesSvg, WarningSvg } from "../../_shared/_svgs/_index";
 import { useRouter } from "next/router";
+
+// REACT HOOK FORM
+import { useForm } from "react-hook-form";
+
+// AXIOS
+import axios from "axios";
+
+// CONTEXT
+import { GlobalContext } from "@/contexts/global.context";
+
+// I18N
+import { useTranslation } from "next-i18next";
+
+// SVG
+import { EmployeesSvg, WarningSvg } from "../../_shared/_svgs/_index";
 
 export default function AddEmployeesComponent() {
   const { t } = useTranslation("employees");
@@ -42,7 +52,7 @@ export default function AddEmployeesComponent() {
       });
       restaurantContext.setRestaurantData(res.data.restaurant);
       reset();
-      router.replace('/dashboard/employees')
+      router.replace("/dashboard/employees");
     } catch (err) {
       console.error("Error creating employee:", err);
     } finally {
@@ -255,7 +265,7 @@ export default function AddEmployeesComponent() {
           >
             {isLoading ? t("buttons.loading") : t("buttons.save")}
           </button>
-          
+
           <button
             type="button"
             onClick={() => router.replace("/dashboard/employees")}
