@@ -9,17 +9,21 @@
     "cancel": "Annuler",
     "loading": "En cours ...",
     "delete": "Supprimer",
-    "view": "Voir",
-    "addDocument": "Ajouter un document"
+    "download": "Télécharger",
+    "addDocument": "Ajouter un document",
+    "remove": "Retirer",
+    "understood": "Compris"
   },
   "modale": {
     "titles": {
       "deleteEmployee": "Supprimer un employé",
-      "deleteDocument": "Supprimer un document"
+      "deleteDocument": "Supprimer un document",
+      "duplicateDocument": "Document(s) déjà présent(s)"
     },
     "description": {
       "deleteEmployee": "Êtes-vous sûr de vouloir supprimer",
-      "deleteDocument": "Êtes-vous sûr de vouloir supprimer"
+      "deleteDocument": "Êtes-vous sûr de vouloir supprimer",
+      "duplicateDocument": "Un document sélectionné a déjà été ajouté précedemment. Il a été retiré de la liste des documents à ajouter"
     }
   },
   "labels": {

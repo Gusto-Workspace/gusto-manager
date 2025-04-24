@@ -4,6 +4,8 @@ const SibApiV3Sdk = require("sib-api-v3-sdk");
 const cloudinary = require("cloudinary").v2;
 const multer = require("multer");
 const streamifier = require("streamifier");
+const axios = require("axios");
+const path = require("path");
 
 // MODELS
 const EmployeeModel = require("../models/employee.model");
@@ -182,11 +184,11 @@ router.post(
 
       // Re-popule le champ employees directement sur l'objet restaurant
       const updatedRestaurant = await RestaurantModel.findById(restaurantId)
-      .populate("owner_id", "firstname")
-      .populate("menus")
-      .populate("employees");
+        .populate("owner_id", "firstname")
+        .populate("menus")
+        .populate("employees");
 
-      res.status(201).json({ restaurant : updatedRestaurant });
+      res.status(201).json({ restaurant: updatedRestaurant });
     } catch (error) {
       console.error("Error creating employee:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -262,7 +264,7 @@ router.patch(
   }
 );
 
-// UPLOAD DOCUMENTS
+// ——— UPLOAD DOCUMENTS ———
 router.post(
   "/restaurants/:restaurantId/employees/:employeeId/documents",
   upload.array("documents"),
@@ -274,31 +276,41 @@ router.post(
         return res.status(404).json({ message: "Employee not found" });
       }
 
-      // upload each file as raw
       for (const file of req.files) {
+        // extraire base name et extension
+        const ext = path.extname(file.originalname); // ex: ".pdf"
+        const basename = path.basename(file.originalname, ext); // ex: "Mon CV"
+        // nettoyer le basename pour un public_id safe (espaces → "_", caractères spéciaux…)
+        const safeName = basename
+          .replace(/\s+/g, "_")
+          .replace(/[^a-zA-Z0-9_\-]/g, "");
+        const publicId = `Gusto_Workspace/restaurants/${restaurantId}/employees/docs/${safeName}`;
+
         const result = await new Promise((resolve, reject) => {
           const stream = cloudinary.uploader.upload_stream(
             {
-              folder: `Gusto_Workspace/restaurants/${restaurantId}/employees/docs`,
-              resource_type: "raw",    // ← ici on force RAW
+              public_id: publicId,
+              resource_type: "raw",
             },
-            (err, res) => (err ? reject(err) : resolve(res))
+            (err, r) => (err ? reject(err) : resolve(r))
           );
           streamifier.createReadStream(file.buffer).pipe(stream);
         });
+
         employee.documents.push({
-          url: result.secure_url,
+          url: result.secure_url, // contiendra désormais .../docs/Mon_CV.pdf
           public_id: result.public_id,
-          filename: file.originalname,
+          filename: file.originalname, // on garde le vrai nom pour l’affichage
         });
       }
+
       await employee.save();
 
       // renvoyer le restaurant mis à jour
-      const updatedRestaurant = await RestaurantModel.findById(restaurantId)
-        .populate("owner_id", "firstname")
-        .populate("menus")
+      const updatedRestaurant = await require("../models/restaurant.model")
+        .findById(restaurantId)
         .populate("employees");
+
       res.json({ restaurant: updatedRestaurant });
     } catch (err) {
       console.error("Error uploading documents:", err);
@@ -307,6 +319,40 @@ router.post(
   }
 );
 
+// ——— DOWNLOAD DOCUMENTS ———
+router.get(
+  "/restaurants/:restaurantId/employees/:employeeId/documents/:public_id(*)/download",
+  async (req, res) => {
+    try {
+      const { restaurantId, employeeId, public_id } = req.params;
+      const emp = await EmployeeModel.findById(employeeId);
+      if (!emp || emp.restaurant.toString() !== restaurantId) {
+        return res.status(404).json({ message: "Employee not found" });
+      }
+
+      const doc = emp.documents.find((d) => d.public_id === public_id);
+      if (!doc) {
+        return res.status(404).json({ message: "Document not found" });
+      }
+
+      // Streaming depuis Cloudinary
+      const response = await axios.get(doc.url, { responseType: "stream" });
+
+      // Propager le type mime
+      res.setHeader("Content-Type", response.headers["content-type"]);
+      // Forcer le téléchargement avec le vrai nom
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${doc.filename}"`
+      );
+
+      response.data.pipe(res);
+    } catch (err) {
+      console.error("Error in download route:", err);
+      res.status(500).json({ message: "Server error" });
+    }
+  }
+);
 
 // DELETE DOCUMENT
 router.delete(
@@ -320,7 +366,9 @@ router.delete(
         return res.status(404).json({ message: "Employee not found" });
       }
 
-      await cloudinary.uploader.destroy(public_id);
+      await cloudinary.uploader.destroy(public_id, {
+        resource_type: "raw",
+      });
 
       employee.documents = employee.documents.filter(
         (doc) => doc.public_id !== public_id

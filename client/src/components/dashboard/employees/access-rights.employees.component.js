@@ -10,7 +10,7 @@ export default function AccessRightsEmployeesComponent(props) {
     >
       <h3 className="text-xl mb-4">{t("labels.assignRights")}</h3>
     
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 mobile:grid-cols-2 gap-4">
         {Object.keys(props?.employee.options).map((key) => (
           <label key={key} className="flex items-center gap-2">
             <input

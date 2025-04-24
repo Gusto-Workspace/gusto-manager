@@ -10,7 +10,7 @@ export default function DataEmployeesComponent(props){
     const { t } = useTranslation("employees");
 
     return(
-        <section className="bg-white p-6 rounded-lg shadow flex justify-between items-start relative">
+        <section className="bg-white p-6 rounded-lg shadow flex flex-col midTablet:flex-row justify-between items-start relative">
        
         {!props?.isEditing && (
           <button
@@ -33,9 +33,9 @@ export default function DataEmployeesComponent(props){
 
         <form
           onSubmit={props?.handleDetailsSubmit(props?.onSaveDetails)}
-          className="flex justify-between items-start w-full gap-6"
+          className="flex flex-col-reverse midTablet:flex-row justify-between items-start w-full gap-6"
         >
-          <div className="flex flex-col gap-4 w-2/3">
+          <div className="flex flex-col gap-4 w-full midTablet:w-2/3">
             {props?.isEditing ? (
               <div className="flex gap-2 mb-4">
                 <input
@@ -51,7 +51,7 @@ export default function DataEmployeesComponent(props){
                 />
               </div>
             ) : (
-              <h2 className="text-2xl font-semibold mb-4">
+              <h2 className="text-2xl font-semibold mb-4 text-center midTablet:text-start">
                 {props?.employee.firstname} {props?.employee.lastname}
               </h2>
             )}
@@ -79,7 +79,7 @@ export default function DataEmployeesComponent(props){
                 "emergencyContact",
               ].includes(field);
               return (
-                <p key={field}>
+                <p className="flex flex-col midTablet:block" key={field}>
                   <strong>{label} :</strong>{" "}
                 
                   {props?.isEditing ? (
@@ -99,7 +99,7 @@ export default function DataEmployeesComponent(props){
           </div>
 
           {/* Photo */}
-          <div className="relative w-44 h-44 flex-shrink-0 rounded-full overflow-hidden border border-darkBlue/20">
+          <div className="relative w-44 h-44 flex-shrink-0 mx-auto midTablet:mx-0 rounded-full overflow-hidden border border-darkBlue/20">
             {props?.previewUrl ? (
               <img
                 src={props?.previewUrl}
@@ -138,7 +138,7 @@ export default function DataEmployeesComponent(props){
         </form>
 
         {props?.isEditing && (
-          <div className="absolute bottom-4 right-4 flex gap-4">
+          <div className="mt-6 midTablet:mt-0 midTablet:absolute bottom-4 right-4 flex gap-4">
             <button
               type="button"
               disabled={props?.isSavingDetails}

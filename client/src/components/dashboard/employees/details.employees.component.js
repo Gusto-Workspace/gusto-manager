@@ -34,6 +34,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
 
   // documents
   const [docs, setDocs] = useState([]);
+  const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
   const [isUploadingDocs, setIsUploadingDocs] = useState(false);
   const [isDeletingDocId, setIsDeletingDocId] = useState(null);
   const [docToDelete, setDocToDelete] = useState(null);
@@ -102,13 +103,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     setProfileFile(null);
     setOptionsSaved(false);
     setDocs([]);
-  }, [
-    restaurantContext.restaurantData,
-    employeeId,
-    resetDetails,
-    resetOptions,
-    router,
-  ]);
+  }, [employeeId, resetDetails, resetOptions, router]);
 
   // Réinitialise le badge "Sauvegardé" si on modifie les options
   useEffect(() => {
@@ -169,7 +164,27 @@ export default function DetailsEmployeesComponent({ employeeId }) {
 
   // Sélection documents locaux
   function onDocsChange(e) {
-    setDocs(Array.from(e.target.files));
+    const selectedFiles = Array.from(e.target.files);
+    // 1. Ne pas réajouter un fichier déjà en attente d'upload
+    const existingNames = new Set(docs.map((f) => f.name));
+    // 2. Ne pas ajouter non plus un fichier déjà présent sur l'employé
+    const uploadedNames = new Set(
+      employee.documents?.map((d) => d.filename) || []
+    );
+
+    // Garde uniquement les fichiers UNIQUES
+    const uniqueFiles = selectedFiles.filter(
+      (f) => !existingNames.has(f.name) && !uploadedNames.has(f.name)
+    );
+
+    if (uniqueFiles.length < selectedFiles.length) {
+      // Avertissement : certains fichiers étaient en double
+      // Tu peux remplacer alert() par ton propre toast/UI
+      setDuplicateModalOpen(true);
+    }
+
+    // On ajoute les nouveaux fichiers uniques au state
+    setDocs((prev) => [...prev, ...uniqueFiles]);
   }
 
   // Upload documents
@@ -228,8 +243,11 @@ export default function DetailsEmployeesComponent({ employeeId }) {
 
       {/* Fil d’Ariane */}
       <div className="flex gap-2 items-center min-h-[40px]">
-        <EmployeesSvg width={30} height={30} fillColor="#131E3690" />
-        <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2">
+        <div>
+          <EmployeesSvg width={30} height={30} fillColor="#131E3690" />
+        </div>
+
+        <h1 className="pl-2 text-xl flex-wrap tablet:text-2xl flex items-center gap-2">
           <span
             className="cursor-pointer hover:underline"
             onClick={() => router.push("/dashboard/employees")}
@@ -286,7 +304,16 @@ export default function DetailsEmployeesComponent({ employeeId }) {
         confirmDeleteDoc={confirmDeleteDoc}
         isDeletingDocId={isDeletingDocId}
         removeSelectedDoc={removeSelectedDoc}
+        baseUrl={baseUrl}
       />
+
+      {/* Modal doublon */}
+      {duplicateModalOpen && (
+        <ModaleEmployeesComponent
+          type="duplicate"
+          onCloseDuplicate={() => setDuplicateModalOpen(false)}
+        />
+      )}
 
       {/* Modale de confirmation de suppression de document */}
       {docToDelete && (
