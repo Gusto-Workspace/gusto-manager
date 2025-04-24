@@ -7,6 +7,8 @@ import { AvatarSvg } from "@/components/_shared/_svgs/avatar.svg";
 import { EmployeesSvg } from "@/components/_shared/_svgs/employees.svg";
 import { EditSvg } from "@/components/_shared/_svgs/edit.svg";
 import { useTranslation } from "next-i18next";
+import { VisibleSvg } from "@/components/_shared/_svgs/visible.svg";
+import { DeleteSvg } from "@/components/_shared/_svgs/delete.svg";
 
 export default function DetailsEmployeesComponent({ employeeId }) {
   const { t } = useTranslation("employees");
@@ -441,38 +443,67 @@ export default function DetailsEmployeesComponent({ employeeId }) {
         </button>
 
         {employee.documents?.length > 0 && (
-          <div className="mt-6">
-            <h4 className="font-semibold mb-2">
-              {t("modale.uploadedDocuments")}
-            </h4>
-            <ul className="list-disc pl-5 space-y-1">
-              {employee.documents.map((doc) => (
-                <li
-                  key={doc.public_id}
-                  className="flex items-center justify-between"
+  <div className="mt-6">
+    <h4 className="font-semibold mb-2">
+      {t("modale.labels.uploadedDocuments")}
+    </h4>
+    <ul className="grid grid-cols-4 gap-6">
+      {employee.documents.map((doc) => (
+        <li
+          key={doc.public_id}
+          className="flex flex-col gap-4 items-center p-4 bg-white rounded-lg shadow-lg"
+        >
+          <p>{doc.filename}</p>
+
+          <div className="flex w-full justify-between">
+            {/* Bouton Voir */}
+            <div className="w-1/2 flex flex-col items-center">
+              <a href={doc.url} target="_blank" rel="noopener noreferrer">
+                <button
+                  type="button"
+                  className="inline-flex items-center justify-center
+                             bg-[#4ead7a99] hover:bg-[#4ead7a]
+                             p-2 rounded-full transition-colors duration-300"
                 >
-                  <a
-                    href={doc.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:underline"
-                  >
-                    {doc.filename}
-                  </a>
-                  <button
-                    onClick={() => onDeleteDoc(doc.public_id)}
-                    disabled={isDeletingDocId === doc.public_id}
-                    className="ml-4 text-red-600 hover:underline disabled:opacity-40"
-                  >
-                    {isDeletingDocId === doc.public_id
-                      ? t("modale.deleting")
-                      : t("modale.delete")}
-                  </button>
-                </li>
-              ))}
-            </ul>
+                  <VisibleSvg
+                    width={15}
+                    height={15}
+                    strokeColor="white"
+                    fillColor="white"
+                  />
+                </button>
+              </a>
+              <p className="text-xs text-center mt-1">Voir</p>
+            </div>
+
+            {/* Bouton Supprimer */}
+            <div className="w-1/2 flex flex-col items-center">
+              <button
+                onClick={() => onDeleteDoc(doc.public_id)}
+                disabled={isDeletingDocId === doc.public_id}
+                className="inline-flex items-center justify-center
+                           bg-[#FF766499] hover:bg-[#FF7664]
+                           p-2 rounded-full transition-colors duration-300
+                           disabled:opacity-40"
+              >
+                <DeleteSvg
+                  width={15}
+                  height={15}
+                  strokeColor="white"
+                  fillColor="white"
+                />
+              </button>
+              <p className="text-xs text-center mt-1">
+                {t("buttons.delete")}
+              </p>
+            </div>
           </div>
-        )}
+        </li>
+      ))}
+    </ul>
+  </div>
+)}
+
       </section>
     </section>
   );

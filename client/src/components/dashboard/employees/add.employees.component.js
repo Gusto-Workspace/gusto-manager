@@ -255,6 +255,7 @@ export default function AddEmployeesComponent() {
           >
             {isLoading ? t("buttons.loading") : t("buttons.save")}
           </button>
+          
           <button
             type="button"
             onClick={() => router.replace("/dashboard/employees")}
