@@ -131,6 +131,7 @@ router.post("/admin/add-restaurant", async (req, res) => {
         news: restaurantData.options?.news ?? true,
         gift_card: restaurantData.options?.gift_card ?? false,
         reservations: restaurantData.options?.reservations ?? false,
+        employees: restaurantData.options?.employees ?? false,
         take_away: restaurantData.options?.take_away ?? false,
       },
       menus: [],
@@ -255,6 +256,7 @@ router.put("/admin/restaurants/:id", async (req, res) => {
       news: restaurantData.options?.news ?? true,
       gift_card: restaurantData.options?.gift_card ?? false,
       reservations: restaurantData.options?.reservations ?? false,
+      employees: restaurantData.options?.employees ?? false,
       take_away: restaurantData.options?.take_away ?? false,
     };
 
