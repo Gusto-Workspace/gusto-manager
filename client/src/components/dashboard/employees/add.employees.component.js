@@ -85,7 +85,7 @@ export default function AddEmployeesComponent() {
         {/* Nom */}
         <div className="flex flex-col">
           <label htmlFor="lastName" className="mb-1">
-            {t("modale.labels.lastname")}
+            {t("labels.lastname")}
           </label>
           <div className="flex items-center gap-2">
             <input
@@ -103,7 +103,7 @@ export default function AddEmployeesComponent() {
         {/* Prénom */}
         <div className="flex flex-col">
           <label htmlFor="firstName" className="mb-1">
-            {t("modale.labels.firstname")}
+            {t("labels.firstname")}
           </label>
           <div className="flex items-center gap-2">
             <input
@@ -121,7 +121,7 @@ export default function AddEmployeesComponent() {
         {/* Email */}
         <div className="flex flex-col">
           <label htmlFor="email" className="mb-1">
-            {t("modale.labels.email")}
+            {t("labels.email")}
           </label>
           <div className="flex items-center gap-2">
             <input
@@ -139,7 +139,7 @@ export default function AddEmployeesComponent() {
         {/* Téléphone */}
         <div className="flex flex-col">
           <label htmlFor="phone" className="mb-1">
-            {t("modale.labels.phone")}
+            {t("labels.phone")}
           </label>
           <div className="flex items-center gap-2">
             <input
@@ -157,7 +157,7 @@ export default function AddEmployeesComponent() {
         {/* Poste */}
         <div className="flex flex-col">
           <label htmlFor="post" className="mb-1">
-            {t("modale.labels.post")}
+            {t("labels.post")}
           </label>
           <div className="flex items-center gap-2">
             <input
@@ -175,7 +175,7 @@ export default function AddEmployeesComponent() {
         {/* Date de prise de poste */}
         <div className="flex flex-col">
           <label htmlFor="dateOnPost" className="mb-1">
-            {t("modale.labels.dateOnPost")}
+            {t("labels.dateOnPost")}
           </label>
           <div className="flex items-center gap-2">
             <input
@@ -193,7 +193,7 @@ export default function AddEmployeesComponent() {
         {/* Numéro de SS */}
         <div className="flex flex-col">
           <label htmlFor="secuNumber" className="mb-1">
-            {t("modale.labels.secuNumber")}
+            {t("labels.secuNumber")}
           </label>
           <div className="flex items-center gap-2">
             <input
@@ -211,7 +211,7 @@ export default function AddEmployeesComponent() {
         {/* Rue */}
         <div className="flex flex-col">
           <label htmlFor="address" className="mb-1">
-            {t("modale.labels.address")}
+            {t("labels.address")}
           </label>
           <input
             id="address"
@@ -227,7 +227,7 @@ export default function AddEmployeesComponent() {
         {/* Contact urgence */}
         <div className="flex flex-col">
           <label htmlFor="emergencyContact" className="mb-1">
-            {t("modale.labels.emergencyContact")}
+            {t("labels.emergencyContact")}
           </label>
           <input
             id="emergencyContact"
@@ -243,7 +243,7 @@ export default function AddEmployeesComponent() {
         {/* Photo de profil */}
         <div className="flex flex-col">
           <label htmlFor="profilePicture" className="mb-1">
-            {t("modale.labels.profilePicture")}
+            {t("labels.profilePicture")}
           </label>
           <input
             id="profilePicture"
