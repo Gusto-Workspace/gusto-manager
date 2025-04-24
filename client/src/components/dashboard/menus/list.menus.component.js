@@ -71,7 +71,10 @@ export default function ListMenusComponent(props) {
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/menus/${selectedMenu._id}`
       )
       .then((response) => {
-        restaurantContext.setRestaurantData(response.data.restaurant);
+        restaurantContext.setRestaurantData((prev) => ({
+          ...prev,
+          menus: response.data.restaurant.menus,
+        }));
         closeDeleteModal();
       })
       .catch((error) => {
@@ -91,7 +94,10 @@ export default function ListMenusComponent(props) {
         { visible: updatedVisibility }
       )
       .then((response) => {
-        restaurantContext.setRestaurantData(response.data.restaurant);
+        restaurantContext.setRestaurantData((prev) => ({
+          ...prev,
+          menus: response.data.restaurant.menus,
+        }));
       })
       .catch((error) => {
         console.error("Error updating menu visibility:", error);
@@ -126,7 +132,10 @@ export default function ListMenusComponent(props) {
         { orderedMenuIds }
       )
       .then((response) => {
-        restaurantContext.setRestaurantData(response.data.restaurant);
+        restaurantContext.setRestaurantData((prev) => ({
+          ...prev,
+          menus: response.data.restaurant.menus,
+        }));
       })
       .catch((error) => {
         console.error("Error saving menu order:", error);

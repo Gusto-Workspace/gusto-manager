@@ -30,7 +30,7 @@ app.use(
       "https://demonstration-kopi-nona-gusto-manager.vercel.app", // Client Kopi Nona
       "https://gusto-manager.onrender.com", // Server
     ],
-    methods: ["GET", "POST", "PUT", "DELETE"],
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     credentials: true,
     allowedHeaders: [
       "Origin",
@@ -72,6 +72,7 @@ const ownersRoutes = require("./routes/owners.routes");
 const menusRoutes = require("./routes/menus.routes");
 const transactionsRoutes = require("./routes/transactions.routes");
 const reservationsRoutes = require("./routes/reservations.routes");
+const employeesRoutes = require("./routes/employees.routes");
 
 app.use(apiRoutes, restaurantsRoutes);
 app.use(apiRoutes, hoursRoutes);
@@ -85,6 +86,7 @@ app.use(apiRoutes, ownersRoutes);
 app.use(apiRoutes, menusRoutes);
 app.use(apiRoutes, transactionsRoutes);
 app.use(apiRoutes, reservationsRoutes);
+app.use(apiRoutes, employeesRoutes);
 
 // ÉCOUTE DU PORT
 server.listen(PORT, () => {

@@ -61,6 +61,7 @@ const optionsSchema = new mongoose.Schema(
     dishes: { type: Boolean, default: true },
     wines: { type: Boolean, default: true },
     news: { type: Boolean, default: true },
+    employees: { type: Boolean, default: false },
   },
   { _id: false }
 );
@@ -220,6 +221,7 @@ const restaurantSchema = new mongoose.Schema({
   options: { type: optionsSchema, default: {} },
   reservations: { type: reservationsSchema, default: {} },
   lastNotificationCheck: { type: Date, default: Date.now },
+  employees :[{ type: mongoose.Schema.Types.ObjectId, ref: "Employees" }],
   created_at: { type: Date, default: Date.now },
 });
 

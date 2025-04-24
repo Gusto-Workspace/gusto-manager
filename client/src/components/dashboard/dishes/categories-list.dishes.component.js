@@ -39,9 +39,11 @@ export default function CategoriesListDishesComponent() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [categories, setCategories] = useState(
     restaurantContext?.restaurantData?.dish_categories
   );
+  const [catAlreadyExist, setCatAlreadyExist] = useState(false);
 
   // Détecte les capteurs pour le drag-and-drop (souris et tactile)
   const mouseSensor = useSensor(MouseSensor);
@@ -98,7 +100,10 @@ export default function CategoriesListDishesComponent() {
         { visible: updatedVisibility }
       )
       .then((response) => {
-        restaurantContext.setRestaurantData(response.data.restaurant);
+        restaurantContext.setRestaurantData((prev) => ({
+          ...prev,
+          dish_categories: response.data.restaurant.dish_categories,
+        }));
       })
       .catch((error) => {
         console.error("Error updating category visibility:", error);
@@ -106,6 +111,7 @@ export default function CategoriesListDishesComponent() {
   }
 
   function onSubmit(data) {
+    setIsSubmitting(true);
     const apiUrl = editingCategory
       ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes/categories/${editingCategory._id}`
       : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes/categories`;
@@ -114,7 +120,10 @@ export default function CategoriesListDishesComponent() {
 
     axios[method](apiUrl, isDeleting ? {} : data)
       .then((response) => {
-        restaurantContext.setRestaurantData(response.data.restaurant);
+        restaurantContext.setRestaurantData((prev) => ({
+          ...prev,
+          dish_categories: response.data.restaurant.dish_categories,
+        }));
         setIsModalOpen(false);
         reset();
         setEditingCategory(null);
@@ -122,6 +131,19 @@ export default function CategoriesListDishesComponent() {
       })
       .catch((error) => {
         console.error("Error modifying, adding or deleting category:", error);
+
+        const errMsg = error?.response?.data?.message;
+        if (errMsg === "Category already exists.") {
+          setCatAlreadyExist(true);
+        } else {
+          alert(
+            "Une erreur inattendue est survenue, merci de réessayer ultérieurement. " +
+              "Si le problème persiste, veuillez contacter votre interlocuteur Gusto Manager."
+          );
+        }
+      })
+      .finally(() => {
+        setIsSubmitting(false);
       });
   }
 
@@ -163,7 +185,10 @@ export default function CategoriesListDishesComponent() {
         { orderedCategoryIds }
       )
       .then((response) => {
-        restaurantContext.setRestaurantData(response.data.restaurant);
+        restaurantContext.setRestaurantData((prev) => ({
+          ...prev,
+          dish_categories: response.data.restaurant.dish_categories,
+        }));
       })
       .catch((error) => {
         console.error("Error saving category order:", error);
@@ -233,6 +258,10 @@ export default function CategoriesListDishesComponent() {
           handleSubmit={handleSubmit}
           register={register}
           errors={errors}
+          isSubmitting={isSubmitting}
+          reset={reset}
+          catAlreadyExist={catAlreadyExist}
+          setCatAlreadyExist={setCatAlreadyExist}
         />
       )}
     </div>

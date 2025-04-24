@@ -43,7 +43,7 @@ export default function RestaurantContext() {
 
         const lastCheck = restaurant.lastNotificationCheck;
         const newCount = restaurant.reservations.list.filter(
-          (r) => new Date(r.createdAt) > new Date(lastCheck)
+          (r) => !r.manual && new Date(r.createdAt) > new Date(lastCheck)
         ).length;
         setNewReservationsCount(newCount);
         setRestaurantData(restaurant);
@@ -400,7 +400,7 @@ export default function RestaurantContext() {
             } else {
               const previousIds = new Set(previousList.map((r) => r._id));
               const newReservations = fetchedReservations.filter(
-                (r) => !previousIds.has(r._id)
+                (r) => !r.manual && !previousIds.has(r._id)
               );
               if (newReservations.length > 0) {
                 setNewReservationsCount(

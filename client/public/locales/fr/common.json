@@ -9,7 +9,8 @@
     "news": "Les actualités",
     "giftCards": "Cartes cadeaux",
     "reservations": "Réservations",
-    "takeAway": "Ventes à emporter"
+    "takeAway": "Ventes à emporter",
+    "employees" : "Gestion du personnel"
   },
   "settings": {
     "hello": "Bonjour",

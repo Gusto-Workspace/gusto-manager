@@ -12,6 +12,7 @@ export default function AddModaleDrinksComponent(props) {
             props.setIsModalOpen(false);
             props.setEditingCategory(null);
             props.setIsDeleting(false);
+            props.reset();
           }
         }}
         className="fixed inset-0 bg-black bg-opacity-20"
@@ -51,7 +52,7 @@ export default function AddModaleDrinksComponent(props) {
             <button
               type="submit"
               className="px-4 py-2 rounded-lg bg-blue text-white flex items-center gap-2"
-              disabled={props.isSubmitting} 
+              disabled={props.isSubmitting}
             >
               {props.isSubmitting
                 ? t("buttons.loading")
@@ -64,20 +65,36 @@ export default function AddModaleDrinksComponent(props) {
               type="button"
               onClick={() => {
                 if (!props.isSubmitting) {
-            
                   props.setIsModalOpen(false);
                   props.setEditingCategory(null);
                   props.setIsDeleting(false);
+                  props.reset()
                 }
               }}
               className="px-4 py-2 rounded-lg text-white bg-red"
-              disabled={props.isSubmitting} 
+              disabled={props.isSubmitting}
             >
               {t("buttons.cancel")}
             </button>
           </div>
         </form>
       </div>
+
+      {props.catAlreadyExist && (
+        <div className="fixed inset-0 flex items-center bg-black bg-opacity-20 justify-center z-[101]">
+          <div className="absolute bg-white h-[150px] w-[250px] z-[102] flex flex-col gap-4 items-center justify-center p-6 text-center rounded-xl">
+            <p>{t("labels.catAlreadyExist")}</p>
+
+            <button
+              type="button"
+              onClick={() => props.setCatAlreadyExist(false)}
+              className="bg-blue px-4 py-1 text-white rounded"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

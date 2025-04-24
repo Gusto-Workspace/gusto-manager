@@ -348,7 +348,7 @@ export default function ListGiftsComponent(props) {
                 </div>
               </div>
 
-              <div className="flex gap-4">
+              <div className="flex gap-4 mx-auto">
                 <button
                   type="submit"
                   className="px-4 py-2 rounded-lg bg-blue text-white"

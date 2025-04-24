@@ -9,7 +9,8 @@
     "news": "News",
     "giftCards": "Gift cards",
     "reservations": "Booking",
-    "takeAway": "Take away"
+    "takeAway": "Take away",
+    "employees" : "Employees"
   },
   "settings": {
     "hello": "Hello",

@@ -22,7 +22,8 @@
     }
   },
   "labels": {
-    "numberOfWines": "Nombre de bouteilles"
+    "numberOfWines": "Nombre de bouteilles",
+    "catAlreadyExist": "Catégorie déjà existante, merci de saisir un autre nom"
   },
   "buttons": {
     "add": "Ajouter",

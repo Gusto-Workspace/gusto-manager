@@ -19,7 +19,8 @@
     }
   },
   "labels": {
-    "numberOfDishes": "Nombre de boissons"
+    "numberOfDishes": "Nombre de boissons",
+    "catAlreadyExist" : "Catégorie déjà existante, merci de saisir un autre nom"
   },
   "buttons": {
     "add": "Ajouter",
