@@ -540,7 +540,7 @@ export default function ListDrinksComponent(props) {
           onSubmit={onSubmit}
           handleSubmit={handleSubmit}
           register={register}
-           reset={reset}
+          reset={reset}
           errors={errors}
           isSubmitting={isSubmitting}
         />

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useContext } from "react";
 
 // DATA
 import { dashboardData } from "@/_assets/data/dashboard.data";
@@ -15,7 +15,14 @@ import MonthlyGiftCardSalesChart from "./monthly-gift-card-sales-chart.dashboard
 import TransactionsDashboardComponent from "./transactions.dashboard.component";
 import LastPayoutDashboardComponent from "./last-payout.dashboard.component";
 
+// CONTEXT
+import { GlobalContext } from "@/contexts/global.context";
+
 export default function DashboardComponent(props) {
+  const { restaurantContext } = useContext(GlobalContext);
+
+  console.log(restaurantContext.restaurantData);
+
   // ---- States pour les PAIEMENTS ----
   const [payments, setPayments] = useState([]);
   const [hasMorePayments, setHasMorePayments] = useState(false);
@@ -186,17 +193,19 @@ export default function DashboardComponent(props) {
     );
   }
 
-  const mainDashboardCards = dashboardData.filter((card) => {
-    if (card.title === "labels.reservationsToday") {
-      return props.restaurantData?.options?.reservations;
-    }
-    return true;
-  });
+  // Récupère l’objet options (tu peux aussi l’extraire de restaurantContext si tu préfères)
+  const opts = props.restaurantData?.options || {};
+
+  // Ne garde que les cartes qui n’ont pas d’optionKey (toujours visibles)
+  // ou celles dont options[optionKey] est à true
+  const mainDashboardCards = dashboardData.filter(
+    (card) => !card.optionKey || opts[card.optionKey] === true
+  );
 
   return (
     <section className="flex flex-col gap-6">
       <div className="grid grid-cols-1 tablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-3 gap-6">
-      {mainDashboardCards.map(
+        {mainDashboardCards.map(
           ({ title, IconComponent, getCounts, emptyLabel, noDonut }) => {
             const { visible, hidden, total } = getCounts(props.restaurantData);
 
@@ -210,7 +219,11 @@ export default function DashboardComponent(props) {
               chartData =
                 total > 0
                   ? [
-                      { name: "labels.visible", value: visible, fill: "#e66430" },
+                      {
+                        name: "labels.visible",
+                        value: visible,
+                        fill: "#e66430",
+                      },
                       { name: "labels.masked", value: hidden, fill: "#eee" },
                     ]
                   : [{ name: emptyLabel, value: 1, fill: "#E0E0E0" }];
