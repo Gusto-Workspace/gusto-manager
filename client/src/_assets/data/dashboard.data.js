@@ -12,6 +12,7 @@ import {
 export const dashboardData = [
   {
     title: "labels.totalMenu",
+    optionKey: "menus",
     IconComponent: MenuSvg,
     emptyLabel: "labels.emptyMenu",
     getCounts: (restaurantData) => {
@@ -24,6 +25,7 @@ export const dashboardData = [
   },
   {
     title: "labels.totalDishes",
+    optionKey: "dishes",
     IconComponent: DishSvg,
     emptyLabel: "labels.emptyDish",
     getCounts: (restaurantData) => {
@@ -42,6 +44,7 @@ export const dashboardData = [
   },
   {
     title: "labels.totalDrinks",
+    optionKey: "drinks",
     IconComponent: DrinkSvg,
     emptyLabel: "labels.emptyDrink",
     getCounts: (restaurantData) => {
@@ -77,6 +80,7 @@ export const dashboardData = [
   },
   {
     title: "labels.totalWines",
+    optionKey: "wines",
     IconComponent: WineSvg,
     emptyLabel: "labels.emptyWine",
     getCounts: (restaurantData) => {
@@ -109,6 +113,7 @@ export const dashboardData = [
   },
   {
     title: "labels.totalNews",
+    optionKey: "news",
     IconComponent: NewsSvg,
     emptyLabel: "labels.emptyNew",
     getCounts: (restaurantData) => {
@@ -121,8 +126,9 @@ export const dashboardData = [
   },
   {
     title: "labels.reservationsToday",
+    optionKey: "reservations",
     emptyLabel: "labels.emptyReservations",
-    noDonut: true, 
+    noDonut: true,
     getCounts: (restaurantData) => {
       if (!restaurantData?.options?.reservations) {
         return {
