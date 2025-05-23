@@ -14,8 +14,13 @@ import StatusDonutChartComponent from "./status-donut-chart.dashboard.component"
 import MonthlyGiftCardSalesChart from "./monthly-gift-card-sales-chart.dashboard.component";
 import TransactionsDashboardComponent from "./transactions.dashboard.component";
 import LastPayoutDashboardComponent from "./last-payout.dashboard.component";
+import MonthlyCounterVisits from "./montly-counter-visits.component";
 
 export default function DashboardComponent(props) {
+  //  ---- States pour les VISITES ----
+  const [monthlyVisits, setMonthlyVisits] = useState([]);
+  const [visitsLoading, setVisitsLoading] = useState(true);
+
   // ---- States pour les PAIEMENTS ----
   const [payments, setPayments] = useState([]);
   const [hasMorePayments, setHasMorePayments] = useState(false);
@@ -41,6 +46,12 @@ export default function DashboardComponent(props) {
       fetchGiftCardSales();
       fetchGiftCardPayouts();
       fetchMonthlySales();
+    }
+  }, [props.dataLoading]);
+
+  useEffect(() => {
+    if (!props.dataLoading) {
+      fetchMonthlyVisits();
     }
   }, [props.dataLoading]);
 
@@ -176,6 +187,25 @@ export default function DashboardComponent(props) {
     }
   }
 
+  // ---- Récupération des visites mensuelles ----
+
+  async function fetchMonthlyVisits() {
+    setVisitsLoading(true);
+    try {
+      const response = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${props.restaurantData._id}/visits/monthly`,
+        {
+          params: { months: 6 },
+        }
+      );
+      setMonthlyVisits(response.data.data);
+    } catch (error) {
+      console.error("Erreur de fetch monthly-visits :", error);
+    } finally {
+      setVisitsLoading(false);
+    }
+  }
+
   // ---- Fonction appelée quand un paiement est remboursé avec succès ----
   function handleRefundSuccess(paymentId) {
     // On met à jour l'état local "payments" pour définir refunded = true
@@ -235,6 +265,14 @@ export default function DashboardComponent(props) {
           }
         )}
       </div>
+
+      {/* {!props.dataLoading && (
+        <MonthlyCounterVisits
+          data={monthlyVisits}
+          loading={visitsLoading}
+          title="Visites par mois de votre site internet"
+        />
+      )} */}
 
       {props.restaurantData?.options?.gift_card && (
         <div className="flex flex-col desktop:flex-row gap-6">
