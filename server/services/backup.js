@@ -69,6 +69,7 @@ async function runBackup() {
   });
   const uploadResp = await cloudinary.uploader.upload(archivePath, {
     resource_type: "raw",
+    type: "upload",
     folder: "Gusto_Workspace/backups",
     public_id: `backup-${ts}`,
   });
@@ -79,6 +80,7 @@ async function runBackup() {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const listResp = await cloudinary.api.resources({
       resource_type: "raw",
+      type: "upload",
       prefix: "Gusto_Workspace/backups/",
       max_results: 500,
     });
@@ -87,6 +89,7 @@ async function runBackup() {
       if (created < sevenDaysAgo) {
         await cloudinary.api.delete_resources([res.public_id], {
           resource_type: "raw",
+          type: "upload",
         });
         console.log(`✔ Deleted old backup`);
       }
@@ -104,7 +107,7 @@ async function runBackup() {
 
 // Cron programmé dès l’import du module
 cron.schedule(
-  "0 */4 * * *", // à 00h, 04h, 08h, 12h, 16h, 20h
+  "0 */4 * * *", // à 00 h, 04 h, 08 h, 12 h, 16 h, 20 h
   () => runBackup().catch((err) => console.error("Backup échoué ❌", err)),
   { timezone: "Europe/Paris" }
 );

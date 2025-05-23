@@ -9,6 +9,7 @@ const authenticateToken = require("../middleware/authentificate-token");
 
 // MODELS
 const RestaurantModel = require("../models/restaurant.model");
+const VisitCounterModel = require("../models/visit-counter.model");
 
 // Fonction pour mettre à jour le statut des cartes cadeaux expirées
 async function updateExpiredStatus(restaurantId) {
@@ -231,5 +232,65 @@ router.put(
     }
   }
 );
+
+// COUNT ANALYTICS VISITS FROM WEBSITE
+router.post("/restaurants/:id/visits", async (req, res) => {
+  const restaurantId = req.params.id;
+  const now = new Date();
+  const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+  try {
+    await VisitCounterModel.updateOne(
+      { restaurant: restaurantId, period },
+      { $inc: { count: 1 } },
+      { upsert: true }
+    );
+
+    return res.status(201).json({ ok: true });
+  } catch (err) {
+    console.error("Erreur log visite :", err);
+    return res.status(500).json({ error: "Impossible de loguer la visite" });
+  }
+});
+
+// Récupère les N derniers mois de visites pour un restaurant
+router.get("/restaurants/:id/visits/monthly", async (req, res) => {
+  const restaurantId = req.params.id;
+  // tu peux passer ?months=6 pour changer la période
+  const months = parseInt(req.query.months, 10) || 6;
+
+  // Générer la liste des périodes attendues ["2025-01", "2025-02", …]
+  const periods = [];
+  const now = new Date();
+  for (let i = months - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    periods.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  }
+
+  try {
+    // On récupère tous les compteurs existants pour ces périodes
+    const docs = await VisitCounterModel.find({
+      restaurant: restaurantId,
+      period: { $in: periods }
+    }).lean();
+
+    // On mappe pour construire le tableau final
+    const map = docs.reduce((acc, doc) => {
+      acc[doc.period] = doc.count;
+      return acc;
+    }, {});
+
+    const data = periods.map(label => ({
+      label,
+      visits: map[label] || 0
+    }));
+
+    return res.status(200).json({ data });
+  } catch (err) {
+    console.error("Erreur fetching monthly visits:", err);
+    return res.status(500).json({ error: "Impossible de récupérer les visites mensuelles" });
+  }
+});
+
 
 module.exports = router;
