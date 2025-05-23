@@ -13,6 +13,9 @@ import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import AddNewsComponent from "@/components/dashboard/news/add.news.component";
 
+// AXIOS
+import axios from "axios";
+
 export default function AddNewsPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
 

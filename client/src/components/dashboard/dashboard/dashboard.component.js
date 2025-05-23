@@ -1,4 +1,4 @@
-import { useEffect, useState, useContext } from "react";
+import { useEffect, useState } from "react";
 
 // DATA
 import { dashboardData } from "@/_assets/data/dashboard.data";
@@ -15,14 +15,7 @@ import MonthlyGiftCardSalesChart from "./monthly-gift-card-sales-chart.dashboard
 import TransactionsDashboardComponent from "./transactions.dashboard.component";
 import LastPayoutDashboardComponent from "./last-payout.dashboard.component";
 
-// CONTEXT
-import { GlobalContext } from "@/contexts/global.context";
-
 export default function DashboardComponent(props) {
-  const { restaurantContext } = useContext(GlobalContext);
-
-  console.log(restaurantContext.restaurantData);
-
   // ---- States pour les PAIEMENTS ----
   const [payments, setPayments] = useState([]);
   const [hasMorePayments, setHasMorePayments] = useState(false);
