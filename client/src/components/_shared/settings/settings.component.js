@@ -100,6 +100,22 @@ export default function SettingsComponent() {
     return () => node.removeEventListener("transitionend", handleTransitionEnd);
   }, [showNotifications, restaurantContext]);
 
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (
+        showUserMenu &&
+        userMenuRef.current &&
+        !userMenuRef.current.contains(event.target) &&
+        userNameRef.current &&
+        !userNameRef.current.contains(event.target)
+      ) {
+        setShowUserMenu(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showUserMenu]);
+
   return (
     <section className="flex flex-col-reverse tablet:flex-row min-h-16 gap-6 tablet:gap-12 justify-between items-center relative">
       {showRestaurantList && (
@@ -269,7 +285,6 @@ export default function SettingsComponent() {
                 <HelpSvg width={20} height={20} />
                 {t("settings.help")}
               </li>
-              
             </ul>
           </div>
         </div>
