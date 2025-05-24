@@ -17,7 +17,9 @@ const cloudinary = require("cloudinary").v2;
  * - nettoyage local
  */
 async function runBackup() {
-  console.log(`[${new Date().toLocaleString()}] Démarrage du backup…`);
+  console.log(
+    `[${new Date().toLocaleString("fr-FR", { timeZone: "Europe/Paris" })}] Démarrage du backup…`
+  );
 
   // 1) Connexion Mongo
   const uri = process.env.CONNECTION_STRING;
@@ -25,19 +27,28 @@ async function runBackup() {
   await client.connect();
   const db = client.db();
 
-  // 2) Préparation du dossier temporaire
+  // 2) Préparation du timestamp en heure de Paris
   const now = new Date();
-  const dd = String(now.getDate()).padStart(2, "0");
-  const MM = String(now.getMonth() + 1).padStart(2, "0");
-  const yyyy = now.getFullYear();
-  const HH = String(now.getHours()).padStart(2, "0");
-  const mm = String(now.getMinutes()).padStart(2, "0");
-  const ts = `${dd}-${MM}-${yyyy}-${HH}h${mm}`; // ex. "22-05-2025-12h03"
+  const parisDateTime = now.toLocaleString("fr-FR", {
+    timeZone: "Europe/Paris",
+    hour12: false,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  // ex. "23/05/2025 20:00"
+  const [datePart, timePart] = parisDateTime.split(" ");
+  const [dd, MM, yyyy] = datePart.split("/");
+  const [HH, mm] = timePart.split(":");
+  const ts = `${dd}-${MM}-${yyyy}-${HH}h${mm}`; // ex. "23-05-2025-20h00"
 
+  // 3) Préparation du dossier temporaire
   const baseDir = `/tmp/backups/${ts}`;
   fs.mkdirSync(baseDir, { recursive: true });
 
-  // 3) Export JSON
+  // 4) Export JSON
   const collections = [
     "admins",
     "menus",
@@ -56,12 +67,12 @@ async function runBackup() {
   }
   await client.close();
 
-  // 4) Création de l’archive
+  // 5) Création de l’archive
   const archivePath = `/tmp/backup-${ts}.tar.gz`;
   await tar.c({ gzip: true, file: archivePath, cwd: "/tmp/backups" }, [ts]);
   console.log(`✔ Archive created: ${archivePath}`);
 
-  // 5) Upload Cloudinary
+  // 6) Upload sur Cloudinary
   cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
     api_key: process.env.CLOUDINARY_API_KEY,
@@ -73,9 +84,9 @@ async function runBackup() {
     folder: "Gusto_Workspace/backups",
     public_id: `backup-${ts}`,
   });
-  console.log(`✔ Upload Cloudinary`);
+  console.log(`✔ Upload Cloudinary: ${uploadResp.secure_url}`);
 
-  // 6) Purge des sauvegardes Cloudinary > 7 jours
+  // 7) Purge des backups > 7 jours
   try {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const listResp = await cloudinary.api.resources({
@@ -91,23 +102,23 @@ async function runBackup() {
           resource_type: "raw",
           type: "upload",
         });
-        console.log(`✔ Deleted old backup`);
+        console.log(`✔ Deleted old backup: ${res.public_id}`);
       }
     }
   } catch (err) {
     console.error("❌ Erreur lors de la purge des anciens backups :", err);
   }
 
-  // 7) Nettoyage local
+  // 8) Nettoyage local
   fs.rmSync(baseDir, { recursive: true, force: true });
   fs.unlinkSync(archivePath);
   console.log("✔ Local cleanup done");
   console.log("Backup terminé ✅");
 }
 
-// Cron programmé dès l’import du module
+// Cron programmé dès l’import du module, toutes les 4 h en heure de Paris
 cron.schedule(
-  "0 */4 * * *", // à 00 h, 04 h, 08 h, 12 h, 16 h, 20 h
+  "0 */4 * * *", // à 00h, 04h, 08h, 12h, 16h, 20h
   () => runBackup().catch((err) => console.error("Backup échoué ❌", err)),
   { timezone: "Europe/Paris" }
 );
