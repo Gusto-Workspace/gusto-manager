@@ -56,6 +56,7 @@ async function runBackup() {
     "restaurants",
     "employees",
     "reservations",
+    "visitcounters",
   ];
   for (const name of collections) {
     const docs = await db.collection(name).find().toArray();
@@ -78,13 +79,13 @@ async function runBackup() {
     api_key: process.env.CLOUDINARY_API_KEY,
     api_secret: process.env.CLOUDINARY_API_SECRET,
   });
-  const uploadResp = await cloudinary.uploader.upload(archivePath, {
+  await cloudinary.uploader.upload(archivePath, {
     resource_type: "raw",
     type: "upload",
     folder: "Gusto_Workspace/backups",
     public_id: `backup-${ts}`,
   });
-  console.log(`✔ Upload Cloudinary: ${uploadResp.secure_url}`);
+  console.log(`✔ Upload Cloudinary`);
 
   // 7) Purge des backups > 7 jours
   try {
@@ -102,7 +103,7 @@ async function runBackup() {
           resource_type: "raw",
           type: "upload",
         });
-        console.log(`✔ Deleted old backup: ${res.public_id}`);
+        console.log(`✔ Deleted old backup`);
       }
     }
   } catch (err) {
