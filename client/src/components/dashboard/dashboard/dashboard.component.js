@@ -270,7 +270,7 @@ export default function DashboardComponent(props) {
         <MonthlyCounterVisits
           data={monthlyVisits}
           loading={visitsLoading}
-          title="Visites par mois de votre site internet"
+          title="Visites mensuelles de votre site internet"
         />
       )}
 
