@@ -31,7 +31,7 @@ function VisitsTooltip({ active, payload, label }) {
 export default function MonthlyCounterVisits({
   data = [],
   loading = false,
-  title = "Visites mensuelles",
+  title,
   height = 500,
 }) {
   return (
