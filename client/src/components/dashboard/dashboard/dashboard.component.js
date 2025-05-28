@@ -266,13 +266,13 @@ export default function DashboardComponent(props) {
         )}
       </div>
 
-      {/* {!props.dataLoading && (
+      {!props.dataLoading && (
         <MonthlyCounterVisits
           data={monthlyVisits}
           loading={visitsLoading}
           title="Visites par mois de votre site internet"
         />
-      )} */}
+      )}
 
       {props.restaurantData?.options?.gift_card && (
         <div className="flex flex-col desktop:flex-row gap-6">
