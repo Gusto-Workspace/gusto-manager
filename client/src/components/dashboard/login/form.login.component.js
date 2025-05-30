@@ -85,7 +85,6 @@ export default function FormLoginComponent() {
     }
   }
 
-  // 2) handleRestaurantSelect
   async function handleRestaurantSelect(role, restaurantId, token) {
     setLoading(true);
     setErrorMessage("");

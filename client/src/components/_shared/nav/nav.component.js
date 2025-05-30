@@ -22,6 +22,7 @@ import { navItemsData } from "@/_assets/data/_index.data";
 import * as icons from "@/components/_shared/_svgs/_index";
 
 const HREF_TO_OPTION_KEY = {
+  "/dashboard/documents": "documents",
   "/dashboard": "dashboard",
   "/dashboard/restaurant": "restaurant",
   "/dashboard/dishes": "dishes",
@@ -78,10 +79,7 @@ export default function NavComponent() {
   function handleLinkClick(e, href) {
     e.preventDefault();
     setMenuOpen(false);
-
-    timeoutRef.current = setTimeout(() => {
-      router.push(href);
-    }, 200);
+    timeoutRef.current = setTimeout(() => router.push(href), 200);
   }
 
   function isActive(itemHref) {
@@ -93,24 +91,29 @@ export default function NavComponent() {
     );
   }
 
+  // Détermine si une route est activée selon rôle + options
   const isOptionEnabled = useCallback(
     (itemHref) => {
       if (restaurantContext.dataLoading) return false;
       const role = restaurantContext.userConnected?.role;
-      const optionKey = HREF_TO_OPTION_KEY[itemHref];
 
+      // Documents : uniquement pour les employés
+      if (itemHref === "/dashboard/documents") {
+        return role === "employee";
+      }
+
+      const optionKey = HREF_TO_OPTION_KEY[itemHref];
       if (role === "owner") {
-        // Pour les owners, Dashboard et Restaurant sont toujours visibles
+        // Dashboard et Restaurant toujours visibles
         if (itemHref === "/dashboard" || itemHref === "/dashboard/restaurant") {
           return true;
         }
-        // Pour le reste, on se base sur les options du restaurant
+        // sinon selon les options du restaurant
         const opts = restaurantContext.restaurantData?.options || {};
         return optionKey ? !!opts[optionKey] : true;
       } else {
-        // Pour les employés, on filtre selon leurs options
+        // pour les employés, selon leurs propres options
         const opts = restaurantContext.userConnected?.options || {};
-        // si pas de clé mappée, on affiche par défaut
         return optionKey ? !!opts[optionKey] : true;
       }
     },
@@ -122,19 +125,24 @@ export default function NavComponent() {
   );
 
   const sortedNavItems = useMemo(() => {
+    const role = restaurantContext.userConnected?.role;
+    // on mappe chaque item avec son flag enabled
     let items = navItemsData.map((item) => ({
       ...item,
       enabled: isOptionEnabled(item.href),
     }));
 
-    // For employees, remove disabled items entirely
-    if (restaurantContext.userConnected?.role !== "owner") {
+    if (role === "owner") {
+      // pour les owners : on retire _uniquement_ "documents"
+      items = items.filter((item) => item.href !== "/dashboard/documents");
+    } else {
+      // pour les employés : on ne garde que les routes activées
       items = items.filter((item) => item.enabled);
     }
 
-    // Always show enabled items first
+    // toujours afficher en premier les enabled
     return items.sort((a, b) => (b.enabled === true) - (a.enabled === true));
-  }, [navItemsData, isOptionEnabled, restaurantContext.userConnected]);
+  }, [navItemsData, isOptionEnabled, restaurantContext.userConnected?.role]);
 
   return (
     <div>
@@ -146,13 +154,11 @@ export default function NavComponent() {
       />
 
       <button
-        className={`fixed left-6 top-6 ${
-          menuOpen ? "z-[91]" : "z-[91]"
-        } tablet:hidden desktop:hidden bg-white w-[49px] h-[49px] flex items-center justify-center drop-shadow-sm rounded-lg transition-transform duration-200 ease-in-out`}
+        className="fixed left-6 top-6 z-[91] tablet:hidden desktop:hidden bg-white w-[49px] h-[49px] flex items-center justify-center drop-shadow-sm rounded-lg transition-transform duration-200 ease-in-out"
         style={{
           transform: menuOpen ? `translateX(${translateX}px)` : "translateX(0)",
         }}
-        onClick={() => setMenuOpen(!menuOpen)}
+        onClick={() => setMenuOpen((o) => !o)}
       >
         <div>
           <div
@@ -177,29 +183,23 @@ export default function NavComponent() {
 
       <nav
         ref={navRef}
-        style={{
-          boxShadow: "3px 0 5px rgba(0, 0, 0, 0.05)",
-        }}
+        style={{ boxShadow: "3px 0 5px rgba(0,0,0,0.05)" }}
         className={`${
           menuOpen ? "translate-x-0" : "-translate-x-full"
         } transition duration-200 ease-in-out custom-scrollbar tablet:translate-x-0 w-[270px] fixed bg-white h-[100dvh] overflow-y-auto flex flex-col py-6 px-4 gap-8 z-[90] tablet:z-10 text-darkBlue overscroll-contain`}
       >
         <div className="z-10 h-[86px] flex items-center justify-center">
-          <h1 className="flex flex-col items-center gap-2 text-lg font-semibold">
-            <div className="flex gap-4 items-center">
-              <img
-                src="/img/logo-2.png"
-                draggable={false}
-                alt="logo"
-                className="max-w-[100px] opacity-50"
-              />
-            </div>
-          </h1>
+          <img
+            src="/img/logo-2.png"
+            draggable={false}
+            alt="logo"
+            className="max-w-[100px] opacity-50"
+          />
         </div>
 
         <ul className="flex-1 flex flex-col gap-6">
           {sortedNavItems.map((item) => {
-            const IconComponent = icons[item.icon];
+            const Icon = icons[item.icon];
             const active = isActive(item.href);
 
             return (
@@ -215,17 +215,15 @@ export default function NavComponent() {
                     onClick={(e) => handleLinkClick(e, item.href)}
                     className="h-12 flex gap-2 items-center w-full"
                   >
-                    {IconComponent && (
+                    {Icon && (
                       <div
-                        className={`${
-                          active ? "bg-blue" : ""
-                        } p-[8px] rounded-full`}
+                        className={`${active ? "bg-blue" : ""} p-[8px] rounded-full`}
                       >
-                        <IconComponent
+                        <Icon
                           width={23}
                           height={23}
-                          fillColor={`${active ? "white" : "#131E3699"}`}
-                          strokeColor={`${active ? "white" : "#131E3699"}`}
+                          fillColor={active ? "white" : "#131E3699"}
+                          strokeColor={active ? "white" : "#131E3699"}
                         />
                       </div>
                     )}
@@ -233,9 +231,9 @@ export default function NavComponent() {
                   </Link>
                 ) : (
                   <div className="h-12 flex gap-2 items-center w-full">
-                    {IconComponent && (
-                      <div className={`p-[8px] rounded-full opacity-50`}>
-                        <IconComponent
+                    {Icon && (
+                      <div className="p-[8px] rounded-full opacity-50">
+                        <Icon
                           width={23}
                           height={23}
                           fillColor="#131E3699"

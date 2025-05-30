@@ -10,7 +10,8 @@
     "giftCards": "Gift cards",
     "reservations": "Booking",
     "takeAway": "Take away",
-    "employees" : "Employees"
+    "employees": "Employees",
+    "documents": "Your documents"
   },
   "settings": {
     "hello": "Hello",

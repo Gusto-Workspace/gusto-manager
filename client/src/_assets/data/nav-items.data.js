@@ -1,4 +1,10 @@
 export const navItemsData = [
+  {
+    href: "/dashboard/documents",
+    label: "nav.documents",
+    icon: "DocumentSvg",
+  },
+
   { href: "/dashboard", label: "nav.dashboard", icon: "AnalyticsSvg" },
   {
     href: "/dashboard/restaurant",

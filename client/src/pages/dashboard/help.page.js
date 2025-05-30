@@ -62,7 +62,7 @@ export default function HelpPage(props) {
         <div className="flex">
           <NavComponent />
 
-           <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 p-6 flex flex-col gap-6 min-h-screen">
+          <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 p-6 flex flex-col gap-6 min-h-screen">
             <SettingsComponent
               dataLoading={restaurantContext.dataLoading}
               setDataLoading={restaurantContext.setDataLoading}
@@ -77,7 +77,9 @@ export default function HelpPage(props) {
               <div className="flex gap-2 items-center">
                 <HelpSvg width={30} height={30} fillColor="#131E3690" />
 
-                <h1 className="pl-2 text-2xl">{t("help:titles.main")}</h1>
+                <h1 className="pl-2 py-1 text-xl tablet:text-2xl">
+                  {t("help:titles.main")}
+                </h1>
               </div>
             </div>
 

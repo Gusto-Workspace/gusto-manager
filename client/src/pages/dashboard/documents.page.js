@@ -10,7 +10,7 @@ import { useTranslation } from "next-i18next";
 import { GlobalContext } from "@/contexts/global.context";
 
 // SVG
-import { HelpSvg } from "@/components/_shared/_svgs/_index";
+import { DocumentSvg } from "@/components/_shared/_svgs/_index";
 
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
@@ -62,7 +62,7 @@ export default function DocumentPage(props) {
         <div className="flex">
           <NavComponent />
 
-           <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 p-6 flex flex-col gap-6 min-h-screen">
+          <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 p-6 flex flex-col gap-6 min-h-screen">
             <SettingsComponent
               dataLoading={restaurantContext.dataLoading}
               setDataLoading={restaurantContext.setDataLoading}
@@ -75,13 +75,15 @@ export default function DocumentPage(props) {
 
             <div className="flex justify-between">
               <div className="flex gap-2 items-center">
-                <HelpSvg width={30} height={30} fillColor="#131E3690" />
+                <DocumentSvg width={30} height={30} fillColor="#131E3690" />
 
-                <h1 className="pl-2 text-2xl">{t("help:titles.main")}</h1>
+                <h1 className="pl-2 py-1 text-xl tablet:text-2xl">
+                  {t("documents:titles.main")}
+                </h1>
               </div>
             </div>
 
-            <ContactFormHelpComponent />
+            {/* <ContactFormHelpComponent /> */}
           </div>
         </div>
       </div>
@@ -92,7 +94,7 @@ export default function DocumentPage(props) {
 export async function getStaticProps({ locale }) {
   return {
     props: {
-      ...(await serverSideTranslations(locale, ["common", "help"])),
+      ...(await serverSideTranslations(locale, ["common", "documents"])),
     },
   };
 }
