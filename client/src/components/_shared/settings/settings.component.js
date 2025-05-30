@@ -246,11 +246,11 @@ export default function SettingsComponent() {
             <p>
               {t("settings.hello")},{" "}
               <span className="font-bold ml-1">
-                {restaurantContext.restaurantData?.owner_id?.firstname}
+                {restaurantContext?.userConnected?.firstname}
               </span>
             </p>
             <div className="h-10 w-10 rounded-full bg-black bg-opacity-20 text-white text-xl flex items-center justify-center">
-              {restaurantContext.restaurantData?.owner_id?.firstname?.charAt(0)}
+              {restaurantContext?.userConnected?.firstname?.charAt(0)}
             </div>
           </div>
 
@@ -269,14 +269,18 @@ export default function SettingsComponent() {
                 <SettingsSvg width={20} height={20} />
                 {t("settings.settings")}
               </li>
-              <hr className="h-[1px] bg-darkBlue opacity-20 mx-4" />
-              <li
-                className="cursor-pointer flex gap-4 items-center hover:bg-darkBlue hover:bg-opacity-10 px-4 py-2 my-2"
-                onClick={() => router.push("/dashboard/subscription")}
-              >
-                <InvoiceSvg width={20} height={20} />
-                {t("settings.subscription")}
-              </li>
+              {restaurantContext?.userConnected?.role === "owner" && (
+                <>
+                  <hr className="h-[1px] bg-darkBlue opacity-20 mx-4" />
+                  <li
+                    className="cursor-pointer flex gap-4 items-center hover:bg-darkBlue hover:bg-opacity-10 px-4 py-2 my-2"
+                    onClick={() => router.push("/dashboard/subscription")}
+                  >
+                    <InvoiceSvg width={20} height={20} />
+                    {t("settings.subscription")}
+                  </li>
+                </>
+              )}
               <hr className="h-[1px] bg-darkBlue opacity-20 mx-4" />
               <li
                 className="cursor-pointer flex gap-4 items-center hover:bg-darkBlue hover:bg-opacity-10 px-4 py-2 my-2"

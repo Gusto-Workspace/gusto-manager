@@ -1,4 +1,11 @@
-import { useContext, useState, useEffect, useRef } from "react";
+import {
+  useContext,
+  useState,
+  useEffect,
+  useRef,
+  useMemo,
+  useCallback,
+} from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
 
@@ -8,11 +15,25 @@ import { useTranslation } from "next-i18next";
 // CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
 
-// DATA
+// NAV ITEMS DATA
 import { navItemsData } from "@/_assets/data/_index.data";
 
 // ICONS
 import * as icons from "@/components/_shared/_svgs/_index";
+
+const HREF_TO_OPTION_KEY = {
+  "/dashboard": "dashboard",
+  "/dashboard/restaurant": "restaurant",
+  "/dashboard/dishes": "dishes",
+  "/dashboard/menus": "menus",
+  "/dashboard/drinks": "drinks",
+  "/dashboard/wines": "wines",
+  "/dashboard/news": "news",
+  "/dashboard/employees": "employees",
+  "/dashboard/gifts": "gift_card",
+  "/dashboard/reservations": "reservations",
+  "/dashboard/take-away": "take_away",
+};
 
 export default function NavComponent() {
   const { t } = useTranslation("common");
@@ -25,47 +46,34 @@ export default function NavComponent() {
   const navRef = useRef(null);
   const timeoutRef = useRef(null);
 
-  function calculateTranslateX() {
-    if (typeof window !== "undefined") {
-      const windowWidth = window.innerWidth;
-      const margin = 24;
-      const buttonWidth = 49;
-
-      const translation = windowWidth - 2 * margin - buttonWidth;
-      setTranslateX(translation);
-    }
-  }
+  const calculateTranslateX = useCallback(() => {
+    const windowWidth = window.innerWidth;
+    const margin = 24;
+    const buttonWidth = 49;
+    setTranslateX(windowWidth - 2 * margin - buttonWidth);
+  }, []);
 
   useEffect(() => {
     if (menuOpen) {
       calculateTranslateX();
       window.addEventListener("resize", calculateTranslateX);
+      document.body.classList.add("overflow-hidden");
+      navRef.current?.scrollTo(0, 0);
     } else {
       setTranslateX(0);
+      document.body.classList.remove("overflow-hidden");
     }
-
     return () => {
       window.removeEventListener("resize", calculateTranslateX);
+      document.body.classList.remove("overflow-hidden");
     };
-  }, [menuOpen]);
+  }, [menuOpen, calculateTranslateX]);
 
   useEffect(() => {
-    if (menuOpen) {
-      document.body.classList.add("overflow-hidden");
-    } else {
-      document.body.classList.remove("overflow-hidden");
-    }
-
     return () => {
-      document.body.classList.remove("overflow-hidden");
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
-  }, [menuOpen]);
-
-  useEffect(() => {
-    if (menuOpen && navRef.current) {
-      navRef.current.scrollTop = 0;
-    }
-  }, [menuOpen]);
+  }, []);
 
   function handleLinkClick(e, href) {
     e.preventDefault();
@@ -76,14 +84,6 @@ export default function NavComponent() {
     }, 200);
   }
 
-  useEffect(() => {
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-    };
-  }, []);
-
   function isActive(itemHref) {
     if (itemHref === "/dashboard") {
       return router.pathname === "/dashboard";
@@ -93,35 +93,48 @@ export default function NavComponent() {
     );
   }
 
-  function isOptionEnabled(itemHref) {
-    if (restaurantContext.dataLoading) {
-      return false;
-    }
+  const isOptionEnabled = useCallback(
+    (itemHref) => {
+      if (restaurantContext.dataLoading) return false;
+      const role = restaurantContext.userConnected?.role;
+      const optionKey = HREF_TO_OPTION_KEY[itemHref];
 
-    const optionsMapping = {
-      "/dashboard/dishes": restaurantContext?.restaurantData?.options?.dishes,
-      "/dashboard/menus": restaurantContext?.restaurantData?.options?.menus,
-      "/dashboard/drinks": restaurantContext?.restaurantData?.options?.drinks,
-      "/dashboard/wines": restaurantContext?.restaurantData?.options?.wines,
-      "/dashboard/news": restaurantContext?.restaurantData?.options?.news,
-      "/dashboard/employees":
-        restaurantContext?.restaurantData?.options?.employees,
-      "/dashboard/gifts": restaurantContext?.restaurantData?.options?.gift_card,
-      "/dashboard/reservations":
-        restaurantContext?.restaurantData?.options?.reservations,
-      "/dashboard/take-away":
-        restaurantContext?.restaurantData?.options?.take_away,
-    };
+      if (role === "owner") {
+        // Pour les owners, Dashboard et Restaurant sont toujours visibles
+        if (itemHref === "/dashboard" || itemHref === "/dashboard/restaurant") {
+          return true;
+        }
+        // Pour le reste, on se base sur les options du restaurant
+        const opts = restaurantContext.restaurantData?.options || {};
+        return optionKey ? !!opts[optionKey] : true;
+      } else {
+        // Pour les employés, on filtre selon leurs options
+        const opts = restaurantContext.userConnected?.options || {};
+        // si pas de clé mappée, on affiche par défaut
+        return optionKey ? !!opts[optionKey] : true;
+      }
+    },
+    [
+      restaurantContext.dataLoading,
+      restaurantContext.userConnected,
+      restaurantContext.restaurantData,
+    ]
+  );
 
-    return optionsMapping[itemHref] ?? true;
-  }
-
-  const sortedNavItems = navItemsData
-    .map((item) => ({
+  const sortedNavItems = useMemo(() => {
+    let items = navItemsData.map((item) => ({
       ...item,
       enabled: isOptionEnabled(item.href),
-    }))
-    .sort((a, b) => b.enabled - a.enabled);
+    }));
+
+    // For employees, remove disabled items entirely
+    if (restaurantContext.userConnected?.role !== "owner") {
+      items = items.filter((item) => item.enabled);
+    }
+
+    // Always show enabled items first
+    return items.sort((a, b) => (b.enabled === true) - (a.enabled === true));
+  }, [navItemsData, isOptionEnabled, restaurantContext.userConnected]);
 
   return (
     <div>
@@ -174,12 +187,6 @@ export default function NavComponent() {
         <div className="z-10 h-[86px] flex items-center justify-center">
           <h1 className="flex flex-col items-center gap-2 text-lg font-semibold">
             <div className="flex gap-4 items-center">
-              {/* <img
-              src="/img/logo.png"
-              draggable={false}
-              alt="logo"
-              className="max-w-[55px]"
-            /> */}
               <img
                 src="/img/logo-2.png"
                 draggable={false}

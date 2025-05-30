@@ -6,7 +6,7 @@ const jwt = require("jsonwebtoken");
 // MODELS
 const AdminModel = require("../models/admin.model");
 const OwnerModel = require("../models/owner.model");
-
+const EmployeeModel = require("../models/employee.model");
 
 // JWT
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -35,7 +35,7 @@ router.post("/admin/login", async (req, res) => {
 });
 
 // CONNEXION USER
-router.post("/owner/login", async (req, res) => {
+router.post("/user/login", async (req, res) => {
   const { email, password } = req.body;
 
   try {
@@ -43,52 +43,64 @@ router.post("/owner/login", async (req, res) => {
       "restaurants",
       "name _id"
     );
-    if (!owner) {
+    if (owner) {
+      const isMatch = await bcrypt.compare(password, owner.password);
+      if (!isMatch) {
+        return res.status(401).json({ message: "errors.incorrect" });
+      }
+      const token = jwt.sign(
+        {
+          id: owner._id,
+          firstname: owner.firstname,
+          role: "owner",
+          stripeCustomerId: owner.stripeCustomerId,
+        },
+        JWT_SECRET
+      );
+      return res.json({ token, owner });
+    }
+
+    const employee = await EmployeeModel.findOne({ email }).populate(
+      "restaurant",
+      "name _id"
+    );
+
+    if (!employee) {
       return res.status(401).json({ message: "errors.incorrect" });
     }
 
-    const isMatch = await bcrypt.compare(password, owner.password);
+    const isMatch = await bcrypt.compare(password, employee.password);
     if (!isMatch) {
       return res.status(401).json({ message: "errors.incorrect" });
     }
-
     const token = jwt.sign(
       {
-        id: owner._id,
-        role: "owner",
-        stripeCustomerId: owner.stripeCustomerId,
+        id: employee._id,
+        firstname: employee.firstname,
+        role: "employee",
+        options: employee.options,
       },
-      JWT_SECRET
+      JWT_SECRET,
+      { expiresIn: "12h" }
     );
-
-    res.json({ token, owner });
+    return res.json({ token, employee });
   } catch (err) {
     res.status(500).json({ message: "errors.server" });
   }
 });
 
-// Generate a new token after selecting a restaurant
-router.post("/owner/select-restaurant", async (req, res) => {
+// OWNER RESTAURANT SELECTION
+router.post("/user/select-restaurant", async (req, res) => {
   const { token, restaurantId } = req.body;
 
   try {
-    // Decode the existing token to get owner info
     const decoded = jwt.verify(token, JWT_SECRET);
-
-    // Create a new token with the restaurant ID included
-    const newToken = jwt.sign(
-      {
-        id: decoded.id,
-        role: "owner",
-        stripeCustomerId: decoded.stripeCustomerId,
-        restaurantId,
-      },
-      JWT_SECRET
-    );
-
-    res.json({ token: newToken });
-  } catch (error) {
-    res.status(500).json({ message: "Server error" });
+    const newPayload = { ...decoded, restaurantId };
+    const newToken = jwt.sign(newPayload, JWT_SECRET);
+    return res.json({ token: newToken });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Server error" });
   }
 });
 

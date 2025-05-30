@@ -154,8 +154,12 @@ export default function DetailsEmployeesComponent({ employeeId }) {
           options: d.options,
         });
         restaurantContext.setRestaurantData(res.restaurant);
-        setEmployee(res.restaurant.employees.find((e) => e._id === employeeId));
+        const updated = res.restaurant.employees.find(
+          (e) => e._id === employeeId
+        );
+        setEmployee(updated);
         setOptionsSaved(true);
+        resetOptions({ options: updated.options });
       })(formData);
     } catch (err) {
       console.error("Erreur update options :", err);

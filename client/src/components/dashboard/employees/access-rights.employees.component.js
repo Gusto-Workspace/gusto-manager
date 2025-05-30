@@ -9,7 +9,7 @@ export default function AccessRightsEmployeesComponent(props) {
       className="bg-white p-6 rounded-lg shadow"
     >
       <h3 className="text-xl mb-4">{t("labels.assignRights")}</h3>
-    
+
       <div className="grid grid-cols-1 mobile:grid-cols-2 gap-4">
         {Object.keys(props?.employee.options).map((key) => (
           <label key={key} className="flex items-center gap-2">
@@ -26,10 +26,8 @@ export default function AccessRightsEmployeesComponent(props) {
           </label>
         ))}
       </div>
-      
-      {props?.optionsSaved ? (
-        <span className="text-green-600">Sauvegardé</span>
-      ) : props?.optionsDirty ? (
+
+      {props?.optionsDirty && (
         <button
           type="submit"
           disabled={
@@ -39,7 +37,7 @@ export default function AccessRightsEmployeesComponent(props) {
         >
           {props?.isSavingOptions ? t("buttons.loading") : t("buttons.save")}
         </button>
-      ) : null}
+      )}
     </form>
   );
 }

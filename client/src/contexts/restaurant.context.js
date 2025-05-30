@@ -10,6 +10,7 @@ import { jwtDecode } from "jwt-decode";
 export default function RestaurantContext() {
   const router = useRouter();
   const [restaurantData, setRestaurantData] = useState(null);
+  const [userConnected, setUserConnected] = useState(null);
   const [restaurantsList, setRestaurantsList] = useState([]);
   const [dataLoading, setDataLoading] = useState(true);
   const [closeEditing, setCloseEditing] = useState(false);
@@ -467,9 +468,26 @@ export default function RestaurantContext() {
     }
   }, [router.pathname]);
 
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    try {
+      const decoded = jwtDecode(token);
+      if (decoded) {
+        setUserConnected(decoded);
+        setIsAuth(true);
+      }
+    } catch (err) {
+      console.error("Token invalide :", err);
+      handleInvalidToken();
+    }
+  }, [router.pathname]);
+
   return {
     restaurantData,
     setRestaurantData,
+    userConnected,
     restaurantsList,
     dataLoading,
     setRestaurantsList,
