@@ -33,6 +33,7 @@ export default function FormLoginComponent() {
   const [errorMessage, setErrorMessage] = useState("");
   const [selectedRestaurant, setSelectedRestaurant] = useState("");
   const [tempToken, setTempToken] = useState(null);
+  const [tempRole, setTempRole] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
 
   const { restaurantContext } = useContext(GlobalContext);
@@ -46,27 +47,36 @@ export default function FormLoginComponent() {
         `${process.env.NEXT_PUBLIC_API_URL}/user/login`,
         data
       );
-
       const { token, owner, employee } = response.data;
 
+      // On stocke token + rôle temporairement
       setTempToken(token);
-
       if (owner) {
-        // Vérifier le nombre de restaurants du propriétaire
+        // Propriétaire
+        setTempRole("owner");
         if (owner.restaurants.length > 1) {
           restaurantContext.setRestaurantsList(owner.restaurants);
           restaurantContext.setIsAuth(true);
         } else {
-          // Si le propriétaire n'a qu'un restaurant, regénérer le token avec l'ID du restaurant
-          handleRestaurantSelect(owner.restaurants[0]._id, token);
+          // 1 resto → on redirige tout de suite
+          await handleRestaurantSelect(
+            "owner",
+            owner.restaurants[0]._id,
+            token
+          );
         }
       } else {
-        // Sinon il s'agit d'un employé
-        handleRestaurantSelect(employee.restaurant._id, token);
+        // Employé
+        setTempRole("employee");
+        await handleRestaurantSelect(
+          "employee",
+          employee.restaurant._id,
+          token
+        );
       }
     } catch (error) {
-      if (error.response && error.response.data) {
-        setErrorMessage(error.response.data.message || "Login failed");
+      if (error.response?.data?.message) {
+        setErrorMessage(error.response.data.message);
       } else {
         setErrorMessage("errors.server");
       }
@@ -75,23 +85,31 @@ export default function FormLoginComponent() {
     }
   }
 
-  async function handleRestaurantSelect(restaurantId, token) {
+  // 2) handleRestaurantSelect
+  async function handleRestaurantSelect(role, restaurantId, token) {
+    setLoading(true);
+    setErrorMessage("");
+
     try {
-      setLoading(true);
-      const response = await axios.post(
+      const { data } = await axios.post(
         `${process.env.NEXT_PUBLIC_API_URL}/user/select-restaurant`,
         { token, restaurantId }
       );
-
-      const newToken = response.data.token;
-
+      const newToken = data.token;
       localStorage.setItem("token", newToken);
 
+      // Recharge le contexte
       await restaurantContext.fetchRestaurantData(newToken, restaurantId);
       restaurantContext.setIsAuth(true);
-      router.push("/dashboard");
+
+      // Redirige en fonction du rôle passé
+      if (role === "employee") {
+        router.push("/dashboard/documents");
+      } else {
+        router.push("/dashboard");
+      }
     } catch (error) {
-      console.error("Erreur lors de la sélection du restaurant:", error);
+      console.error("Erreur lors de la sélection du restaurant :", error);
       setErrorMessage("errors.server");
       setLoading(false);
     }
@@ -207,7 +225,7 @@ export default function FormLoginComponent() {
               !selectedRestaurant ? "opacity-50 cursor-not-allowed" : ""
             }`}
             onClick={() =>
-              handleRestaurantSelect(selectedRestaurant, tempToken)
+              handleRestaurantSelect(tempRole, selectedRestaurant, tempToken)
             }
             disabled={!selectedRestaurant}
           >
