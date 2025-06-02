@@ -240,11 +240,22 @@ router.post("/restaurants/:id/visits", async (req, res) => {
   const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
   try {
-    await VisitCounterModel.updateOne(
-      { restaurant: restaurantId, period },
-      { $inc: { count: 1 } },
-      { upsert: true }
+    // 1) On essaye d'incrémenter dans le sous-doc "periods" existant
+    const updateResult = await VisitCounterModel.updateOne(
+      { restaurant: restaurantId, "periods.period": period },
+      { $inc: { "periods.$.count": 1 } }
     );
+
+    if (updateResult.nModified === 0) {
+      await VisitCounterModel.updateOne(
+        { restaurant: restaurantId },
+        {
+          $setOnInsert: { restaurant: restaurantId },
+          $push: { periods: { period, count: 1 } },
+        },
+        { upsert: true }
+      );
+    }
 
     return res.status(201).json({ ok: true });
   } catch (err) {
@@ -256,41 +267,44 @@ router.post("/restaurants/:id/visits", async (req, res) => {
 // Récupère les N derniers mois de visites pour un restaurant
 router.get("/restaurants/:id/visits/monthly", async (req, res) => {
   const restaurantId = req.params.id;
-  // tu peux passer ?months=6 pour changer la période
   const months = parseInt(req.query.months, 10) || 6;
 
-  // Générer la liste des périodes attendues ["2025-01", "2025-02", …]
+  // 1) Construire la liste des labels attendus, ex. ["2025-01","2025-02",...]
   const periods = [];
   const now = new Date();
   for (let i = months - 1; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    periods.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+    periods.push(
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+    );
   }
 
   try {
-    // On récupère tous les compteurs existants pour ces périodes
-    const docs = await VisitCounterModel.find({
+    // 2) Récupérer le document unique pour ce restaurant
+    const doc = await VisitCounterModel.findOne({
       restaurant: restaurantId,
-      period: { $in: periods }
     }).lean();
+    // Si aucun document, on renvoie un tableau de zéros
+    const mapCounts = {};
+    if (doc && Array.isArray(doc.periods)) {
+      doc.periods.forEach(({ period, count }) => {
+        mapCounts[period] = count;
+      });
+    }
 
-    // On mappe pour construire le tableau final
-    const map = docs.reduce((acc, doc) => {
-      acc[doc.period] = doc.count;
-      return acc;
-    }, {});
-
-    const data = periods.map(label => ({
+    // 3) Composer le tableau final dans l'ordre des periods
+    const data = periods.map((label) => ({
       label,
-      visits: map[label] || 0
+      visits: mapCounts[label] || 0,
     }));
 
     return res.status(200).json({ data });
   } catch (err) {
     console.error("Erreur fetching monthly visits:", err);
-    return res.status(500).json({ error: "Impossible de récupérer les visites mensuelles" });
+    return res
+      .status(500)
+      .json({ error: "Impossible de récupérer les visites mensuelles" });
   }
 });
-
 
 module.exports = router;

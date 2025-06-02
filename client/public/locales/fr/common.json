@@ -10,7 +10,8 @@
     "giftCards": "Cartes cadeaux",
     "reservations": "Réservations",
     "takeAway": "Ventes à emporter",
-    "employees" : "Gestion du personnel"
+    "employees" : "Gestion du personnel",
+    "documents" : "Vos documents"
   },
   "settings": {
     "hello": "Bonjour",

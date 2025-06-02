@@ -221,7 +221,7 @@ const restaurantSchema = new mongoose.Schema({
   options: { type: optionsSchema, default: {} },
   reservations: { type: reservationsSchema, default: {} },
   lastNotificationCheck: { type: Date, default: Date.now },
-  employees :[{ type: mongoose.Schema.Types.ObjectId, ref: "Employees" }],
+  employees :[{ type: mongoose.Schema.Types.ObjectId, ref: "Employee" }],
   created_at: { type: Date, default: Date.now },
 });
 

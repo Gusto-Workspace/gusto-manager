@@ -278,19 +278,20 @@ router.post(
 
       for (const file of req.files) {
         // extraire base name et extension
-        const ext = path.extname(file.originalname); // ex: ".pdf"
-        const basename = path.basename(file.originalname, ext); // ex: "Mon CV"
-        // nettoyer le basename pour un public_id safe (espaces → "_", caractères spéciaux…)
+        const ext = path.extname(file.originalname);
+        const basename = path.basename(file.originalname, ext);
         const safeName = basename
           .replace(/\s+/g, "_")
           .replace(/[^a-zA-Z0-9_\-]/g, "");
-        const publicId = `Gusto_Workspace/restaurants/${restaurantId}/employees/docs/${safeName}`;
+        const folder = `Gusto_Workspace/restaurants/${restaurantId}/employees/docs`;
 
         const result = await new Promise((resolve, reject) => {
           const stream = cloudinary.uploader.upload_stream(
             {
-              public_id: publicId,
               resource_type: "raw",
+              folder,
+              public_id: safeName,
+              overwrite: true,
             },
             (err, r) => (err ? reject(err) : resolve(r))
           );
@@ -298,9 +299,9 @@ router.post(
         });
 
         employee.documents.push({
-          url: result.secure_url, // contiendra désormais .../docs/Mon_CV.pdf
+          url: result.secure_url,
           public_id: result.public_id,
-          filename: file.originalname, // on garde le vrai nom pour l’affichage
+          filename: file.originalname,
         });
       }
 
@@ -410,8 +411,26 @@ router.delete(
         return res.status(404).json({ message: "Employee not found" });
       }
 
+      // 3) Supprimer tous les documents Cloudinary (raw) de l'employé
+      if (employee.documents && employee.documents.length > 0) {
+        for (const doc of employee.documents) {
+          if (doc.public_id) {
+            try {
+              await cloudinary.uploader.destroy(doc.public_id, {
+                resource_type: "raw",
+              });
+            } catch (err) {
+              console.warn(
+                `Erreur lors de la suppression du document ${doc.public_id}:`,
+                err
+              );
+            }
+          }
+        }
+      }
+
       // Optionnel : supprimer l'image associée sur Cloudinary s'il y en a une
-      if (employee.profilePicture && employee.profilePicture.public_id) {
+      if (employee.profilePicture?.public_id) {
         await cloudinary.uploader.destroy(employee.profilePicture.public_id);
       }
 
@@ -419,10 +438,10 @@ router.delete(
       await EmployeeModel.findByIdAndDelete(employeeId);
 
       // Retirer l'ID de l'employé du tableau du restaurant
-      restaurant.employees = restaurant.employees.filter(
-        (empId) => empId.toString() !== employeeId
+      await RestaurantModel.updateOne(
+        { _id: restaurantId },
+        { $pull: { employees: employeeId } }
       );
-      await restaurant.save();
 
       // Re-chargement du restaurant avec la population complète
       const updatedRestaurant = await RestaurantModel.findById(restaurantId)
@@ -430,7 +449,13 @@ router.delete(
         .populate("menus")
         .populate("employees");
 
-      res.status(201).json({ restaurant: updatedRestaurant });
+      if (!updatedRestaurant) {
+        return res
+          .status(404)
+          .json({ message: "Restaurant not found after update" });
+      }
+
+      res.status(200).json({ restaurant: updatedRestaurant });
     } catch (error) {
       console.error("Error deleting employee:", error);
       res.status(500).json({ message: "Internal server error" });

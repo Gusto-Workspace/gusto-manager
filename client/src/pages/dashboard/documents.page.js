@@ -10,14 +10,14 @@ import { useTranslation } from "next-i18next";
 import { GlobalContext } from "@/contexts/global.context";
 
 // SVG
-import { HelpSvg } from "@/components/_shared/_svgs/_index";
+import { DocumentSvg } from "@/components/_shared/_svgs/_index";
 
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import ContactFormHelpComponent from "@/components/dashboard/help/contact-form.help.component";
 
-export default function HelpPage(props) {
+export default function DocumentPage(props) {
   const { t } = useTranslation("");
   const { restaurantContext } = useContext(GlobalContext);
 
@@ -75,15 +75,15 @@ export default function HelpPage(props) {
 
             <div className="flex justify-between">
               <div className="flex gap-2 items-center">
-                <HelpSvg width={30} height={30} fillColor="#131E3690" />
+                <DocumentSvg width={30} height={30} fillColor="#131E3690" />
 
                 <h1 className="pl-2 py-1 text-xl tablet:text-2xl">
-                  {t("help:titles.main")}
+                  {t("documents:titles.main")}
                 </h1>
               </div>
             </div>
 
-            <ContactFormHelpComponent />
+            {/* <ContactFormHelpComponent /> */}
           </div>
         </div>
       </div>
@@ -94,7 +94,7 @@ export default function HelpPage(props) {
 export async function getStaticProps({ locale }) {
   return {
     props: {
-      ...(await serverSideTranslations(locale, ["common", "help"])),
+      ...(await serverSideTranslations(locale, ["common", "documents"])),
     },
   };
 }

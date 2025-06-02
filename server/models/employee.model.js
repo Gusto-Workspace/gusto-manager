@@ -89,5 +89,5 @@ employeeSchema.methods.comparePassword = async function (
   }
 };
 
-const EmployeeModel = mongoose.model("Employees", employeeSchema);
+const EmployeeModel = mongoose.model("Employee", employeeSchema);
 module.exports = EmployeeModel;
