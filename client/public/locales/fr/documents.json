@@ -1,6 +1,9 @@
 {
   "titles": {
     "main": "Mon emploi du temps",
-    "second" : "Mes documents"
+    "second": "Mes documents"
+  },
+  "buttons": {
+    "download": "Télécharger"
   }
 }

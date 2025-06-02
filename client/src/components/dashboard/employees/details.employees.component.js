@@ -314,7 +314,6 @@ export default function DetailsEmployeesComponent({ employeeId }) {
         isDeletingDocId={isDeletingDocId}
         removeSelectedDoc={removeSelectedDoc}
         onDocTitleChange={onDocTitleChange}
-        baseUrl={baseUrl}
       />
 
       {/* Modal doublon */}

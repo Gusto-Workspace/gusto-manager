@@ -1,6 +1,9 @@
 {
   "titles": {
     "main": "My schedule",
-    "second" : "My documents"
+    "second": "My documents"
+  },
+  "buttons": {
+    "download": "Download"
   }
 }

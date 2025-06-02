@@ -75,9 +75,13 @@ export default function MySpacePage(props) {
 
             <hr className="opacity-20" />
 
-            <PlanningMySpaceComponent />
+            <PlanningMySpaceComponent
+              employeeId={restaurantContext?.userConnected.id}
+            />
 
-            <DocumentsMySpaceComponent />
+            <DocumentsMySpaceComponent
+              employeeId={restaurantContext?.userConnected.id}
+            />
           </div>
         </div>
       </div>

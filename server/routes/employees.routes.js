@@ -345,12 +345,12 @@ router.post(
 
 // ——— DOWNLOAD DOCUMENTS ———
 router.get(
-  "/restaurants/:restaurantId/employees/:employeeId/documents/:public_id(*)/download",
+  "/employees/:employeeId/documents/:public_id(*)/download",
   async (req, res) => {
     try {
-      const { restaurantId, employeeId, public_id } = req.params;
+      const { employeeId, public_id } = req.params;
       const emp = await EmployeeModel.findById(employeeId);
-      if (!emp || emp.restaurant.toString() !== restaurantId) {
+      if (!emp) {
         return res.status(404).json({ message: "Employee not found" });
       }
 
@@ -485,5 +485,31 @@ router.delete(
     }
   }
 );
+
+// GET EMPLOYEE DOCUMENTS 
+router.get("/employees/:employeeId/documents", async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+
+    console.log();
+    
+
+    // 1. Récupérer l’employé directement
+    const employee = await EmployeeModel.findById(employeeId).lean();
+    if (!employee) {
+      return res.status(404).json({ message: "Employee not found" });
+    }
+
+    
+
+    // 2. Renvoyer la liste de ses documents
+    return res.json({ documents: employee.documents });
+  } catch (err) {
+    console.error("Error fetching employee documents:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+
 
 module.exports = router;

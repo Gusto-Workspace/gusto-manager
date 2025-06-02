@@ -112,7 +112,7 @@ export default function DocumentsEmployeeComponent(props) {
                 <div className="flex w-full justify-between">
                   <div className="w-1/2 flex flex-col items-center">
                     <a
-                      href={`${props.baseUrl}/documents/${encodeURIComponent(
+                      href={`${process.env.NEXT_PUBLIC_API_URL}/employees/${props.employee._id}/documents/${encodeURIComponent(
                         doc.public_id
                       )}/download`}
                       className="inline-flex items-center justify-center bg-[#4ead7a99] hover:bg-[#4ead7a] p-2 rounded-full transition-colors duration-300"
