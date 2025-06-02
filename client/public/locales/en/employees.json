@@ -4,33 +4,45 @@
   },
   "buttons": {
     "addEmployee": "Add Employee",
+    "planning": "Manage Schedule",
     "confirm": "Confirm",
     "save": "Save",
     "cancel": "Cancel",
-    "loading": "Loading..."
+    "loading": "Loading...",
+    "delete": "Delete",
+    "download": "Download",
+    "addDocument": "Add Document",
+    "remove": "Remove",
+    "understood": "Understood"
   },
   "modale": {
     "titles": {
-      "deleteEmployee": "Delete Employee"
+      "deleteEmployee": "Delete Employee",
+      "deleteDocument": "Delete Document",
+      "duplicateDocument": "Document(s) Already Present"
     },
     "description": {
-      "deleteEmployee": "Are you sure you want to delete"
-    },
-    "labels": {
-      "lastname": "Last Name",
-      "firstname": "First Name",
-      "email": "Email",
-      "phone": "Phone",
-      "post": "Position",
-      "dateOnPost": "Start Date",
-      "profilePicture": "Profile Picture",
-      "secuNumber": "Social Security Number",
-      "address": "Address",
-      "emergencyContact": "Emergency Contact",
-      "documents": "Documents"
-    },
-    "errors": {
-      "required": "This field is required"
+      "deleteEmployee": "Are you sure you want to delete",
+      "deleteDocument": "Are you sure you want to delete",
+      "duplicateDocument": "A selected document has already been added previously. It has been removed from the list of documents to add."
     }
+  },
+  "labels": {
+    "lastname": "Last Name",
+    "firstname": "First Name",
+    "email": "Email",
+    "phone": "Phone",
+    "post": "Position",
+    "dateOnPost": "Start Date",
+    "profilePicture": "Profile Picture",
+    "secuNumber": "Social Security Number",
+    "address": "Address",
+    "emergencyContact": "Emergency Contact",
+    "documents": "Documents",
+    "uploadedDocuments": "Uploaded Documents",
+    "assignRights": "Access Rights"
+  },
+  "errors": {
+    "required": "This field is required"
   }
 }

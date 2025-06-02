@@ -4,6 +4,7 @@
   },
   "buttons": {
     "addEmployee": "Ajouter un employé",
+    "planning" : "Gérer le planning",
     "confirm": "Confirmer",
     "save": "Enregistrer",
     "cancel": "Annuler",

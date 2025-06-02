@@ -24,6 +24,7 @@ const documentSchema = new mongoose.Schema(
     url: { type: String, required: true },
     public_id: { type: String, required: true },
     filename: { type: String, required: true },
+    title: { type: String, required: true},
   },
   { _id: false }
 );

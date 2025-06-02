@@ -271,51 +271,74 @@ router.post(
   async (req, res) => {
     try {
       const { restaurantId, employeeId } = req.params;
+
+      // 1. Vérifier que l’employé existe et appartient bien au restaurant
       const employee = await EmployeeModel.findById(employeeId);
       if (!employee || employee.restaurant.toString() !== restaurantId) {
         return res.status(404).json({ message: "Employee not found" });
       }
 
-      for (const file of req.files) {
-        // extraire base name et extension
+      // 2. Extraire les titres envoyés dans le même FormData
+      //    Si un seul titre, multer/Express mettra req.body.titles sous forme de string
+      let titles = [];
+      if (req.body.titles) {
+        titles = Array.isArray(req.body.titles)
+          ? req.body.titles
+          : [req.body.titles];
+      }
+
+      // 3. Pour chaque fichier reçu, récupérer le titre correspondant (ou chaîne vide)
+      for (let i = 0; i < req.files.length; i++) {
+        const file = req.files[i];
+        const title = titles[i] || "";
+
+        // Calculer un nom "safe" pour Cloudinary
         const ext = path.extname(file.originalname);
         const basename = path.basename(file.originalname, ext);
         const safeName = basename
           .replace(/\s+/g, "_")
           .replace(/[^a-zA-Z0-9_\-]/g, "");
+
+        // Dossier Cloudinary : restaurants/<restaurantId>/employees/docs
         const folder = `Gusto_Workspace/restaurants/${restaurantId}/employees/docs`;
 
+        // 4. Upload vers Cloudinary en mode "raw"
         const result = await new Promise((resolve, reject) => {
-          const stream = cloudinary.uploader.upload_stream(
+          const uploadStream = cloudinary.uploader.upload_stream(
             {
               resource_type: "raw",
               folder,
               public_id: safeName,
               overwrite: true,
             },
-            (err, r) => (err ? reject(err) : resolve(r))
+            (err, r) => {
+              if (err) return reject(err);
+              resolve(r);
+            }
           );
-          streamifier.createReadStream(file.buffer).pipe(stream);
+          streamifier.createReadStream(file.buffer).pipe(uploadStream);
         });
 
+        // 5. Ajouter l’entrée au tableau `documents` de l’employé
         employee.documents.push({
           url: result.secure_url,
           public_id: result.public_id,
           filename: file.originalname,
+          title: title,
         });
       }
 
+      // 6. Sauvegarder l’employé mis à jour
       await employee.save();
 
-      // renvoyer le restaurant mis à jour
-      const updatedRestaurant = await require("../models/restaurant.model")
-        .findById(restaurantId)
-        .populate("employees");
+      // 7. Renvoyer le restaurant complet mis à jour (avec populate pour les employés)
+      const updatedRestaurant =
+        await RestaurantModel.findById(restaurantId).populate("employees");
 
-      res.json({ restaurant: updatedRestaurant });
+      return res.json({ restaurant: updatedRestaurant });
     } catch (err) {
       console.error("Error uploading documents:", err);
-      res.status(500).json({ message: "Internal server error" });
+      return res.status(500).json({ message: "Internal server error" });
     }
   }
 );

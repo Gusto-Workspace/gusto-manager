@@ -61,6 +61,7 @@ export default function ListEmployeesComponent() {
               {t("employees:titles.main")}
             </h1>
           </div>
+
           <div className="relative midTablet:w-[350px]">
             <input
               type="text"
@@ -80,12 +81,21 @@ export default function ListEmployeesComponent() {
           </div>
         </div>
 
-        <button
-          onClick={() => router.push("/dashboard/employees/add")}
-          className="bg-blue px-6 py-2 rounded-lg text-white h-fit"
-        >
-          {t("buttons.addEmployee")}
-        </button>
+        <div className="flex flex-wrap gap-4">
+          <button
+            onClick={() => router.push("/dashboard/employees/planning")}
+            className="bg-blue px-6 py-2 rounded-lg text-white h-fit"
+          >
+            {t("buttons.planning")}
+          </button>
+
+          <button
+            onClick={() => router.push("/dashboard/employees/add")}
+            className="bg-blue px-6 py-2 rounded-lg text-white h-fit"
+          >
+            {t("buttons.addEmployee")}
+          </button>
+        </div>
       </div>
 
       {/* Grille des employés */}

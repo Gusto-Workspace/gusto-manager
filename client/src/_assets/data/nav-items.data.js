@@ -1,8 +1,8 @@
 export const navItemsData = [
   {
-    href: "/dashboard/documents",
-    label: "nav.documents",
-    icon: "DocumentSvg",
+    href: "/dashboard/my-space",
+    label: "nav.mySpace",
+    icon: "EmployeeSvg",
   },
 
   { href: "/dashboard", label: "nav.dashboard", icon: "AnalyticsSvg" },
