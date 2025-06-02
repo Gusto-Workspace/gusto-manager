@@ -35,7 +35,7 @@ export default function MonthlyCounterVisits({
   height = 500,
 }) {
   return (
-    <div className="bg-white rounded-lg drop-shadow-sm flex flex-col py-6 px-6 h-full justify-between">
+    <div className="bg-white rounded-lg drop-shadow-sm flex flex-col py-6 pr-6 h-full justify-between">
       <h2 className="text-xl font-semibold text-center mb-4">{title}</h2>
 
       <div

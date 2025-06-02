@@ -195,7 +195,7 @@ export default function DashboardComponent(props) {
       const response = await axios.get(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${props.restaurantData._id}/visits/monthly`,
         {
-          params: { months: 6 },
+          params: { months: 13 },
         }
       );
       setMonthlyVisits(response.data.data);
