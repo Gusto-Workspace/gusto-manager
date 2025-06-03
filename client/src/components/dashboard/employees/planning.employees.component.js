@@ -24,8 +24,8 @@ export default function PlanningEmployeesComponent() {
   const { restaurantContext } = useContext(GlobalContext);
   const router = useRouter();
 
-  // 1. Liste des employés (depuis le context)
-  const employees =
+  // 1) Liste initiale des employés (depuis le contexte)
+  const allEmployees =
     restaurantContext.restaurantData?.employees.map((e) => ({
       _id: e._id,
       firstname: e.firstname,
@@ -35,46 +35,71 @@ export default function PlanningEmployeesComponent() {
       profilePicture: e.profilePicture,
     })) || [];
 
-  // 2. Exemples de shifts statiques (à remplacer plus tard par un appel API)
+  // 1a) State pour le terme de recherche
+  const [searchTerm, setSearchTerm] = useState("");
+
+  // 1b) Fonction pour normaliser et supprimer les accents
+  const normalize = (str) =>
+    str
+      .normalize("NFD") // décompose les caractères accentués
+      .replace(/[\u0300-\u036f]/g, "") // supprime les diacritiques
+      .toLowerCase()
+      .trim();
+
+  // 1c) Filtrer les employés en fonction du searchTerm (sans tenir compte des accents)
+  const employees = useMemo(() => {
+    if (!searchTerm.trim()) return allEmployees;
+
+    const normalizedSearch = normalize(searchTerm);
+
+    return allEmployees.filter((e) => {
+      // Concaténer prénom + nom, puis normaliser
+      const fullName = `${e.firstname} ${e.lastname}`;
+      const normalizedName = normalize(fullName);
+      return normalizedName.includes(normalizedSearch);
+    });
+  }, [allEmployees, searchTerm]);
+
+  // 2) Exemples de shifts statiques (à remplacer plus tard par un appel API)
   const rawEvents = [
     {
       id: 1,
       title: "Alice : Shift matinal",
       start: new Date(2025, 5, 3, 8, 0),
       end: new Date(2025, 5, 3, 12, 0),
-      resourceId: employees[0]?._id,
+      resourceId: allEmployees[0]?._id,
     },
     {
       id: 2,
       title: "Bertrand : Service midi",
       start: new Date(2025, 5, 3, 11, 0),
       end: new Date(2025, 5, 3, 15, 0),
-      resourceId: employees[1]?._id,
+      resourceId: allEmployees[1]?._id,
     },
     {
       id: 3,
       title: "Caroline : Soirée",
       start: new Date(2025, 5, 3, 11, 0),
       end: new Date(2025, 5, 3, 21, 0),
-      resourceId: employees[2]?._id,
+      resourceId: allEmployees[2]?._id,
     },
   ];
 
-  // 3. Configuration date-fns pour React Big Calendar (locale FR uniquement) :contentReference[oaicite:3]{index=3}
+  // 3) Configuration date-fns pour React Big Calendar (locale FR uniquement)
   const locales = { fr: frLocale };
   const localizer = dateFnsLocalizer({
     format,
     parse,
-    startOfWeek: (date) => startOfWeek(date, { locale: frLocale }), // début de semaine = lundi :contentReference[oaicite:4]{index=4}
+    startOfWeek: (date) => startOfWeek(date, { locale: frLocale }), // début de semaine = lundi
     getDay,
-    locales, // injection de frLocale :contentReference[oaicite:5]{index=5}
+    locales, // injection de frLocale
   });
 
-  // 4. États pour la liste d’événements et l’employé sélectionné
+  // 4) States pour la liste d’événements et l’employé sélectionné
   const [events, setEvents] = useState(rawEvents);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(null);
 
-  // 5. Palette de couleurs pour chaque employé
+  // 5) Palette de couleurs pour chaque employé
   const colorPalette = [
     "#4ead7a",
     "#634FD2",
@@ -87,13 +112,13 @@ export default function PlanningEmployeesComponent() {
   ];
   const employeeColorMap = useMemo(() => {
     const map = {};
-    employees.forEach((e, idx) => {
+    allEmployees.forEach((e, idx) => {
       map[e._id] = colorPalette[idx % colorPalette.length];
     });
     return map;
-  }, [employees]);
+  }, [allEmployees]);
 
-  // 6. Filtrage des événements selon l’employé sélectionné (ou tous sinon)
+  // 6) Filtrage des événements selon l’employé sélectionné (ou tous sinon)
   const visibleEvents = useMemo(
     () =>
       selectedEmployeeId
@@ -102,7 +127,7 @@ export default function PlanningEmployeesComponent() {
     [events, selectedEmployeeId]
   );
 
-  // 7. Création d’un shift (clic-glisse sur le calendrier) :contentReference[oaicite:6]{index=6}
+  // 7) Création d’un shift (clic-glisse sur le calendrier)
   function handleSelectSlot({ start, end, resourceId }) {
     // Si aucun employé n’est sélectionné, resourceId est undefined → on empêche la création
     const ownerId = selectedEmployeeId || resourceId;
@@ -115,7 +140,7 @@ export default function PlanningEmployeesComponent() {
     const title = window.prompt(promptText);
     if (!title) return;
 
-    const employeeName = employees.find((e) => e._id === ownerId)?.name;
+    const employeeName = allEmployees.find((e) => e._id === ownerId)?.name;
     const newEvent = {
       id: Math.random(),
       title: `${employeeName} : ${title}`,
@@ -126,7 +151,7 @@ export default function PlanningEmployeesComponent() {
     setEvents((prev) => [...prev, newEvent]);
   }
 
-  // 8. Suppression d’un shift (clic sur l’événement) :contentReference[oaicite:7]{index=7}
+  // 8) Suppression d’un shift (clic sur l’événement)
   function handleSelectEvent(event) {
     const confirmText = t(
       "planning:prompts.deleteShift",
@@ -165,7 +190,26 @@ export default function PlanningEmployeesComponent() {
         </div>
       </div>
 
-      {/* ─── Liste d’employés en « cartes » ─────────────────────────────────────── */}
+      {/* ─── Barre de recherche ───────────────────────────────────────────────── */}
+      <div className="relative midTablet:w-[350px]">
+        <input
+          type="text"
+          placeholder="Rechercher un employé"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-full p-2 pr-10 border border-[#131E3690] rounded-lg"
+        />
+        {searchTerm && (
+          <button
+            onClick={() => setSearchTerm("")}
+            className="absolute right-4 top-1/2 transform -translate-y-1/2 w-4 h-4 bg-black bg-opacity-30 text-white rounded-full flex items-center justify-center"
+          >
+            &times;
+          </button>
+        )}
+      </div>
+
+      {/* ─── Liste d’employés filtrée en « cartes » ──────────────────────────── */}
       <div className="overflow-x-auto">
         <ul className="flex gap-4 py-4">
           {employees.map((emp) => (
@@ -189,10 +233,11 @@ export default function PlanningEmployeesComponent() {
         </ul>
       </div>
 
+      {/* ─── Calendrier React Big Calendar ─────────────────────────────────── */}
       <div className="h-[75vh]">
         <Calendar
-          localizer={localizer}
-          culture="fr"
+          localizer={localizer} // date-fns localizer (frLocale)
+          culture="fr" // culture française
           events={visibleEvents}
           defaultView={Views.WEEK}
           views={[Views.WEEK, Views.DAY, Views.MONTH]}
@@ -204,7 +249,7 @@ export default function PlanningEmployeesComponent() {
               ? [
                   {
                     resourceId: selectedEmployeeId,
-                    resourceTitle: employees.find(
+                    resourceTitle: allEmployees.find(
                       (e) => e._id === selectedEmployeeId
                     )?.name,
                   },
@@ -250,7 +295,7 @@ export default function PlanningEmployeesComponent() {
                 { locale: frLocale }
               )}`,
 
-            dayHeaderFormat: (date, culture, localizer) =>
+            dayHeaderFormat: (date) =>
               format(date, "EEEE dd MMMM", { locale: frLocale }),
           }}
         />
@@ -258,4 +303,3 @@ export default function PlanningEmployeesComponent() {
     </section>
   );
 }
-
