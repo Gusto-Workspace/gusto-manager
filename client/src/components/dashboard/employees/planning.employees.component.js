@@ -168,8 +168,8 @@ export default function PlanningEmployeesComponent() {
   }
 
   return (
-    <section className="flex flex-col gap-6 p-4">
-      <hr className="opacity-20" />
+    <section className="flex flex-col gap-4">
+    
 
       {/* ─── En-tête ───────────────────────────────────────────────────────────── */}
       <div className="flex justify-between flex-wrap gap-4">
@@ -224,7 +224,7 @@ export default function PlanningEmployeesComponent() {
                   selectedEmployeeId === emp._id
                     ? "border-2 border-blue"
                     : "border-2 border-lightGrey"
-                } rounded-lg transition-colors p-2`}
+                } rounded-lg transition-colors py-4`}
               >
                 <CardEmployeesComponent employee={emp} planning={true} />
               </div>

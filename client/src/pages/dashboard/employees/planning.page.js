@@ -53,6 +53,8 @@ export default function PlanningEmployeePage(props) {
               restaurantData={restaurantContext.restaurantData}
             />
 
+              <hr className="opacity-20" />
+
             {restaurantContext?.restaurantData?.options?.employees ? (
               <PlanningEmployeesComponent />
             ) : (
