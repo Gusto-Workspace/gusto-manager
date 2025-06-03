@@ -59,3 +59,4 @@ export { AvatarSvg } from "./avatar.svg";
 export { WarningSvg } from "./warning.svg";
 export { DocumentSvg } from "./document.svg";
 export { EmployeeSvg } from "./employee.svg";
+export { DownloadSvg } from "./download.svg";

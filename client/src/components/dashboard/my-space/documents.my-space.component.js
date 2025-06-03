@@ -7,7 +7,7 @@ import axios from "axios";
 import { useTranslation } from "next-i18next";
 
 // SVG
-import { DocumentSvg, VisibleSvg } from "@/components/_shared/_svgs/_index";
+import { DocumentSvg, DownloadSvg } from "@/components/_shared/_svgs/_index";
 
 export default function DocumentsMySpaceComponent(props) {
 
@@ -68,14 +68,13 @@ export default function DocumentsMySpaceComponent(props) {
                     )}/download`}
                     className="inline-flex items-center justify-center bg-[#4ead7a99] hover:bg-[#4ead7a] p-2 rounded-full transition-colors duration-300"
                   >
-                    <VisibleSvg
+                    <DownloadSvg
                       width={15}
                       height={15}
                       strokeColor="white"
                       fillColor="white"
                     />
                   </a>
-                  <p className="text-xs mt-1">{t("buttons.download")}</p>
                 </div>
               </div>
             </li>

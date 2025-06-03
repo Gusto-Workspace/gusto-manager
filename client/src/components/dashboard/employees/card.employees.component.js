@@ -1,4 +1,4 @@
-import { useRouter } from 'next/router'
+import { useRouter } from "next/router";
 
 // I18N
 import { useTranslation } from "next-i18next";
@@ -12,7 +12,7 @@ import {
 
 export default function CardEmployeesComponent(props) {
   const { t } = useTranslation("employees");
-  const router = useRouter()
+  const router = useRouter();
 
   return (
     <div className="relative bg-white rounded-lg drop-shadow-sm px-6 pt-12 pb-2 flex flex-col items-center gap-2 h-fit z-[4]">
@@ -33,47 +33,52 @@ export default function CardEmployeesComponent(props) {
       </h3>
 
       <h4 className="text-sm opacity-70">{props.employee.post}</h4>
+      {!props.planning && (
+        <>
+          <hr className="bg-darkBlue h-[1px] w-[90%] opacity-20 mx-auto" />
 
-      <hr className="bg-darkBlue h-[1px] w-[90%] opacity-20 mx-auto" />
-
-      <div className="flex w-full justify-center">
-        <div className="w-1/2 flex justify-center">
-          <button
-            onClick={() => router.push(`/dashboard/employees/${props.employee._id}`)}
-            className="flex flex-col items-center gap-1 p-2"
-          >
-            <div className="hover:bg-[#634FD2] bg-[#634FD299] p-[6px] rounded-full transition-colors duration-300">
-              <RightArrowSvg
-                width={15}
-                height={15}
-                strokeColor="white"
-                fillColor="white"
-              />
+          <div className="flex w-full justify-center">
+            <div className="w-1/2 flex justify-center">
+              <button
+                onClick={() =>
+                  router.push(`/dashboard/employees/${props.employee._id}`)
+                }
+                className="flex flex-col items-center gap-1 p-2"
+              >
+                <div className="hover:bg-[#634FD2] bg-[#634FD299] p-[6px] rounded-full transition-colors duration-300">
+                  <RightArrowSvg
+                    width={15}
+                    height={15}
+                    strokeColor="white"
+                    fillColor="white"
+                  />
+                </div>
+                <p className="text-xs text-center">Voir</p>
+              </button>
             </div>
-            <p className="text-xs text-center">Voir</p>
-          </button>
-        </div>
 
-        <div className="w-1/2 flex justify-center">
-          <button
-            onClick={(e) => {
-              props.handleDeleteClick(props.employee);
-              e.stopPropagation();
-            }}
-            className="flex flex-col items-center gap-1 p-2"
-          >
-            <div className="hover:bg-[#FF7664] bg-[#FF766499] p-[6px] rounded-full transition-colors duration-300">
-              <DeleteSvg
-                width={15}
-                height={15}
-                strokeColor="white"
-                fillColor="white"
-              />
+            <div className="w-1/2 flex justify-center">
+              <button
+                onClick={(e) => {
+                  props.handleDeleteClick(props.employee);
+                  e.stopPropagation();
+                }}
+                className="flex flex-col items-center gap-1 p-2"
+              >
+                <div className="hover:bg-[#FF7664] bg-[#FF766499] p-[6px] rounded-full transition-colors duration-300">
+                  <DeleteSvg
+                    width={15}
+                    height={15}
+                    strokeColor="white"
+                    fillColor="white"
+                  />
+                </div>
+                <p className="text-xs text-center">Supprimer</p>
+              </button>
             </div>
-            <p className="text-xs text-center">Supprimer</p>
-          </button>
-        </div>
-      </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

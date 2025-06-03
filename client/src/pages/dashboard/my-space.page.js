@@ -18,6 +18,7 @@ import SettingsComponent from "@/components/_shared/settings/settings.component"
 import ContactFormHelpComponent from "@/components/dashboard/help/contact-form.help.component";
 import DocumentsMySpaceComponent from "@/components/dashboard/my-space/documents.my-space.component";
 import PlanningMySpaceComponent from "@/components/dashboard/my-space/planning.my-space.component";
+import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
 
 export default function MySpacePage(props) {
   const { t } = useTranslation("");
@@ -75,13 +76,21 @@ export default function MySpacePage(props) {
 
             <hr className="opacity-20" />
 
-            <PlanningMySpaceComponent
-              employeeId={restaurantContext?.userConnected.id}
-            />
+            {restaurantContext?.userConnected?.role === "employee" ? (
+              <>
+                <PlanningMySpaceComponent
+                  employeeId={restaurantContext?.userConnected?.id}
+                />
 
-            <DocumentsMySpaceComponent
-              employeeId={restaurantContext?.userConnected.id}
-            />
+                <DocumentsMySpaceComponent
+                  employeeId={restaurantContext?.userConnected?.id}
+                />
+              </>
+            ) : (
+              <NoAvailableComponent
+                dataLoading={restaurantContext.dataLoading}
+              />
+            )}
           </div>
         </div>
       </div>

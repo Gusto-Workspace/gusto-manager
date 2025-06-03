@@ -103,7 +103,7 @@ export default function FormLoginComponent() {
 
       // Redirige en fonction du rôle passé
       if (role === "employee") {
-        router.push("/dashboard/documents");
+        router.push("/dashboard/my-space");
       } else {
         router.push("/dashboard");
       }
