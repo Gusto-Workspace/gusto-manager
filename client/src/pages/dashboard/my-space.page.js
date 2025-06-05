@@ -9,13 +9,9 @@ import { useTranslation } from "next-i18next";
 // CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
 
-// SVG
-import { CalendarSvg, DocumentSvg } from "@/components/_shared/_svgs/_index";
-
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
-import ContactFormHelpComponent from "@/components/dashboard/help/contact-form.help.component";
 import DocumentsMySpaceComponent from "@/components/dashboard/my-space/documents.my-space.component";
 import PlanningMySpaceComponent from "@/components/dashboard/my-space/planning.my-space.component";
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";

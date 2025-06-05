@@ -1,4 +1,4 @@
-import { useState, useMemo, useContext } from "react";
+import { useState, useMemo, useContext, useEffect } from "react";
 import { useRouter } from "next/router";
 
 // React Big Calendar
@@ -18,22 +18,28 @@ import { EmployeesSvg } from "../../_shared/_svgs/_index";
 
 // Component pour afficher une carte d’employé
 import CardEmployeesComponent from "./card.employees.component";
+import axios from "axios";
 
 export default function PlanningEmployeesComponent() {
   const { t } = useTranslation("employees");
   const { restaurantContext } = useContext(GlobalContext);
   const router = useRouter();
+ 
 
   // 1) Liste initiale des employés (depuis le contexte)
-  const allEmployees =
-    restaurantContext.restaurantData?.employees.map((e) => ({
-      _id: e._id,
-      firstname: e.firstname,
-      lastname: e.lastname,
-      name: `${e.firstname} ${e.lastname}`,
-      post: e.post,
-      profilePicture: e.profilePicture,
-    })) || [];
+  const allEmployees = useMemo(() => {
+    return (
+      restaurantContext.restaurantData?.employees.map((e) => ({
+        _id: e._id,
+        firstname: e.firstname,
+        lastname: e.lastname,
+        name: `${e.firstname} ${e.lastname}`,
+        post: e.post,
+        profilePicture: e.profilePicture,
+        shifts: e.shifts || [],
+      })) || []
+    );
+  }, [restaurantContext.restaurantData]); 
 
   // 1a) State pour le terme de recherche
   const [searchTerm, setSearchTerm] = useState("");
@@ -60,30 +66,18 @@ export default function PlanningEmployeesComponent() {
     });
   }, [allEmployees, searchTerm]);
 
-  // 2) Exemples de shifts statiques (à remplacer plus tard par un appel API)
-  const rawEvents = [
-    {
-      id: 1,
-      title: "Alice : Shift matinal",
-      start: new Date(2025, 5, 3, 8, 0),
-      end: new Date(2025, 5, 3, 12, 0),
-      resourceId: allEmployees[0]?._id,
-    },
-    {
-      id: 2,
-      title: "Bertrand : Service midi",
-      start: new Date(2025, 5, 3, 11, 0),
-      end: new Date(2025, 5, 3, 15, 0),
-      resourceId: allEmployees[1]?._id,
-    },
-    {
-      id: 3,
-      title: "Caroline : Soirée",
-      start: new Date(2025, 5, 3, 11, 0),
-      end: new Date(2025, 5, 3, 21, 0),
-      resourceId: allEmployees[2]?._id,
-    },
-  ];
+  useEffect(() => {
+    const newRaw = allEmployees.flatMap((emp) =>
+      emp.shifts.map((s, idx) => ({
+        id: `${emp._id}-${idx}`,
+        title: `${emp.name} : ${s.title}`,
+        start: new Date(s.start),
+        end: new Date(s.end),
+        resourceId: emp._id,
+      }))
+    );
+    setEvents(newRaw);
+  }, [allEmployees]);
 
   // 3) Configuration date-fns pour React Big Calendar (locale FR uniquement)
   const locales = { fr: frLocale };
@@ -96,7 +90,7 @@ export default function PlanningEmployeesComponent() {
   });
 
   // 4) States pour la liste d’événements et l’employé sélectionné
-  const [events, setEvents] = useState(rawEvents);
+  const [events, setEvents] = useState([]);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(null);
 
   // 5) Palette de couleurs pour chaque employé
@@ -128,28 +122,61 @@ export default function PlanningEmployeesComponent() {
   );
 
   // 7) Création d’un shift (clic-glisse sur le calendrier)
-  function handleSelectSlot({ start, end, resourceId }) {
-    // Si aucun employé n’est sélectionné, resourceId est undefined → on empêche la création
-    const ownerId = selectedEmployeeId || resourceId;
-    if (!ownerId) return;
+  async function handleSelectSlot({ start, end, resourceId }) {
+  // 1) déterminer l’employé cible
+  const ownerId = selectedEmployeeId || resourceId;
+  if (!ownerId) return;
 
-    const promptText = t(
-      "planning:prompts.newShift",
-      "Nom du shift (ex : “Matin”) ?"
+  // 2) demander le titre au user
+  const promptText = t(
+    "planning:prompts.newShift",
+    "Nom du shift (ex : “Matin”) ?"
+  );
+  const title = window.prompt(promptText);
+  if (!title) return;
+
+  // 3) composer le payload
+  // on envoie des dates en ISO pour être sûr
+  const shiftPayload = {
+    title,
+    start: start.toISOString(),
+    end: end.toISOString(),
+  };
+
+  try {
+    // 4) appeler l’API pour créer le shift en base
+    const response = await axios.post(
+      `${process.env.NEXT_PUBLIC_API_URL}/employees/${ownerId}/shifts`,
+      shiftPayload
     );
-    const title = window.prompt(promptText);
-    if (!title) return;
+    // 5) la route renvoie { shifts: [...] } mis à jour
+    const updatedShifts = response.data.shifts;
 
-    const employeeName = allEmployees.find((e) => e._id === ownerId)?.name;
-    const newEvent = {
-      id: Math.random(),
-      title: `${employeeName} : ${title}`,
-      start,
-      end,
+    // 6) transformer ces shifts en “events” React Big Calendar
+    const updatedEvents = updatedShifts.map((s, idx) => ({
+      id: `${ownerId}-${idx}`,
+      title: `${allEmployees.find((e) => e._id === ownerId)?.name} : ${s.title}`,
+      start: new Date(s.start),
+      end: new Date(s.end),
       resourceId: ownerId,
-    };
-    setEvents((prev) => [...prev, newEvent]);
+    }));
+
+    // 7) Si vous souhaitez garder les shifts des autres employés,
+    //    vous pouvez filtrer `events` pour ne garder que ceux qui ne viennent pas de ownerId, puis concaténer :
+    const otherEvents = events.filter((ev) => ev.resourceId !== ownerId);
+    setEvents([...otherEvents, ...updatedEvents]);
+    //   → ou bien remplacer complètement : setEvents(allEventsFromAllEmployees) 
+    //   après un re-fetch global, selon votre logique.
+
+  } catch (err) {
+    console.error("Erreur lors de l’ajout du shift :", err);
+    // Vous pouvez afficher un toast ou un alert pour informer l’utilisateur
+    window.alert(
+      "Impossible d’ajouter le shift pour le moment. Veuillez réessayer."
+    );
   }
+}
+
 
   // 8) Suppression d’un shift (clic sur l’événement)
   function handleSelectEvent(event) {
@@ -169,8 +196,6 @@ export default function PlanningEmployeesComponent() {
 
   return (
     <section className="flex flex-col gap-4">
-    
-
       {/* ─── En-tête ───────────────────────────────────────────────────────────── */}
       <div className="flex justify-between flex-wrap gap-4">
         <div className="flex flex-col gap-4">

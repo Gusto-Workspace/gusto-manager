@@ -510,6 +510,121 @@ router.get("/employees/:employeeId/documents", async (req, res) => {
   }
 });
 
+// 1) Récupérer TOUS les shifts d’un employé
+router.get("/employees/:employeeId/shifts", async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    const employee = await EmployeeModel.findById(employeeId).lean();
+    if (!employee) {
+      return res.status(404).json({ message: "Employé non trouvé" });
+    }
+    // Renvoyer la liste complète de ses shifts
+    return res.json({ shifts: employee.shifts });
+  } catch (err) {
+    console.error("Erreur fetch shifts:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// 2) Ajouter un nouveau shift à un employé
+router.post("/employees/:employeeId/shifts", async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    const { title, start, end } = req.body;
+
+    // Valider les champs requis
+    if (!title || !start || !end) {
+      return res
+        .status(400)
+        .json({ message: "title, start et end sont requis" });
+    }
+
+    const employee = await EmployeeModel.findById(employeeId);
+    if (!employee) {
+      return res.status(404).json({ message: "Employé non trouvé" });
+    }
+
+    // Ajouter le shift dans employee.shifts
+    employee.shifts.push({
+      title,
+      start: new Date(start),
+      end: new Date(end),
+    });
+    await employee.save();
+
+    // Renvoyer la liste mise à jour
+    return res.status(201).json({ shifts: employee.shifts });
+  } catch (err) {
+    console.error("Erreur ajout shift:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// 3) Mettre à jour un shift existant (par index)
+router.put("/employees/:employeeId/shifts/:idx", async (req, res) => {
+  try {
+    const { employeeId, idx } = req.params;
+    const { title, start, end } = req.body;
+    const index = parseInt(idx, 10);
+
+    const employee = await EmployeeModel.findById(employeeId);
+    if (!employee) {
+      return res.status(404).json({ message: "Employé non trouvé" });
+    }
+
+    // Vérifier que l’index existe dans employee.shifts
+    if (
+      isNaN(index) ||
+      index < 0 ||
+      index >= (employee.shifts ? employee.shifts.length : 0)
+    ) {
+      return res.status(400).json({ message: "Index de shift invalide" });
+    }
+
+    // Mettre à jour seulement les champs présents
+    if (title !== undefined) employee.shifts[index].title = title;
+    if (start !== undefined)
+      employee.shifts[index].start = new Date(start);
+    if (end !== undefined) employee.shifts[index].end = new Date(end);
+
+    await employee.save();
+
+    return res.status(200).json({ shifts: employee.shifts });
+  } catch (err) {
+    console.error("Erreur mise à jour shift:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// 4) Supprimer un shift (par index)
+router.delete("/employees/:employeeId/shifts/:idx", async (req, res) => {
+  try {
+    const { employeeId, idx } = req.params;
+    const index = parseInt(idx, 10);
+
+    const employee = await EmployeeModel.findById(employeeId);
+    if (!employee) {
+      return res.status(404).json({ message: "Employé non trouvé" });
+    }
+
+    if (
+      isNaN(index) ||
+      index < 0 ||
+      index >= (employee.shifts ? employee.shifts.length : 0)
+    ) {
+      return res.status(400).json({ message: "Index de shift invalide" });
+    }
+
+    // Supprimer le shift à cette position
+    employee.shifts.splice(index, 1);
+    await employee.save();
+
+    return res.status(200).json({ shifts: employee.shifts });
+  } catch (err) {
+    console.error("Erreur suppression shift:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
 
 
 module.exports = router;
