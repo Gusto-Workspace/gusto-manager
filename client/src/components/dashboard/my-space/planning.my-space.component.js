@@ -50,7 +50,6 @@ export default function PlanningMySpaceComponent({ employeeId }) {
         setEvents(fetchedEvents);
       } catch (err) {
         console.error("Erreur fetch shifts :", err);
-        // Message utilisateur facultatif
       }
     }
 
