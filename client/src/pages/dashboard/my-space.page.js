@@ -74,13 +74,15 @@ export default function MySpacePage(props) {
 
             {restaurantContext?.userConnected?.role === "employee" ? (
               <>
+               <DocumentsMySpaceComponent
+                  employeeId={restaurantContext?.userConnected?.id}
+                />
+                
                 <PlanningMySpaceComponent
                   employeeId={restaurantContext?.userConnected?.id}
                 />
 
-                <DocumentsMySpaceComponent
-                  employeeId={restaurantContext?.userConnected?.id}
-                />
+               
               </>
             ) : (
               <NoAvailableComponent

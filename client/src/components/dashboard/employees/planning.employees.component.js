@@ -16,17 +16,30 @@ import { useTranslation } from "next-i18next";
 // SVG
 import { EmployeesSvg } from "../../_shared/_svgs/_index";
 
-// Component pour afficher une carte d’employé
+// COMPONENTS
 import CardEmployeesComponent from "./card.employees.component";
+
+// AXIOS
 import axios from "axios";
 
 export default function PlanningEmployeesComponent() {
   const { t } = useTranslation("employees");
   const { restaurantContext } = useContext(GlobalContext);
   const router = useRouter();
- 
 
-  // 1) Liste initiale des employés (depuis le contexte)
+  const [events, setEvents] = useState([]);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const locales = { fr: frLocale };
+  const localizer = dateFnsLocalizer({
+    format,
+    parse,
+    startOfWeek: (date) => startOfWeek(date, { locale: frLocale }), // début de semaine = lundi
+    getDay,
+    locales,
+  });
+
   const allEmployees = useMemo(() => {
     return (
       restaurantContext.restaurantData?.employees.map((e) => ({
@@ -39,20 +52,15 @@ export default function PlanningEmployeesComponent() {
         shifts: e.shifts || [],
       })) || []
     );
-  }, [restaurantContext.restaurantData]); 
+  }, [restaurantContext.restaurantData?.employees]);
 
-  // 1a) State pour le terme de recherche
-  const [searchTerm, setSearchTerm] = useState("");
-
-  // 1b) Fonction pour normaliser et supprimer les accents
   const normalize = (str) =>
     str
-      .normalize("NFD") // décompose les caractères accentués
-      .replace(/[\u0300-\u036f]/g, "") // supprime les diacritiques
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
       .toLowerCase()
       .trim();
 
-  // 1c) Filtrer les employés en fonction du searchTerm (sans tenir compte des accents)
   const employees = useMemo(() => {
     if (!searchTerm.trim()) return allEmployees;
 
@@ -79,31 +87,25 @@ export default function PlanningEmployeesComponent() {
     setEvents(newRaw);
   }, [allEmployees]);
 
-  // 3) Configuration date-fns pour React Big Calendar (locale FR uniquement)
-  const locales = { fr: frLocale };
-  const localizer = dateFnsLocalizer({
-    format,
-    parse,
-    startOfWeek: (date) => startOfWeek(date, { locale: frLocale }), // début de semaine = lundi
-    getDay,
-    locales, // injection de frLocale
-  });
-
-  // 4) States pour la liste d’événements et l’employé sélectionné
-  const [events, setEvents] = useState([]);
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState(null);
-
-  // 5) Palette de couleurs pour chaque employé
   const colorPalette = [
-    "#4ead7a",
-    "#634FD2",
-    "#FF7664",
-    "#F5A623",
-    "#50E3C2",
-    "#B8E986",
-    "#F8E71C",
-    "#BD10E0",
+    "#4E79A7", // bleu foncé
+    "#F28E2B", // orange
+    "#E15759", // rouge
+    "#76B7B2", // turquoise
+    "#59A14F", // vert
+    "#EDC948", // jaune
+    "#B07AA1", // violet
+    "#FF9DA7", // rose pâle
+    "#9C755F", // brun clair
+    "#BAB0AC", // gris
+    "#2F4B7C", // indigo
+    "#FF6361", // corail
+    "#58508D", // violet foncé
+    "#FFA600", // or
+    "#003F5C", // bleu nuit
+    "#00A9E0", // ciel
   ];
+
   const employeeColorMap = useMemo(() => {
     const map = {};
     allEmployees.forEach((e, idx) => {
@@ -112,7 +114,6 @@ export default function PlanningEmployeesComponent() {
     return map;
   }, [allEmployees]);
 
-  // 6) Filtrage des événements selon l’employé sélectionné (ou tous sinon)
   const visibleEvents = useMemo(
     () =>
       selectedEmployeeId
@@ -121,64 +122,48 @@ export default function PlanningEmployeesComponent() {
     [events, selectedEmployeeId]
   );
 
-  // 7) Création d’un shift (clic-glisse sur le calendrier)
   async function handleSelectSlot({ start, end, resourceId }) {
-  // 1) déterminer l’employé cible
-  const ownerId = selectedEmployeeId || resourceId;
-  if (!ownerId) return;
+    const ownerId = selectedEmployeeId || resourceId;
+    if (!ownerId) return;
 
-  // 2) demander le titre au user
-  const promptText = t(
-    "planning:prompts.newShift",
-    "Nom du shift (ex : “Matin”) ?"
-  );
-  const title = window.prompt(promptText);
-  if (!title) return;
-
-  // 3) composer le payload
-  // on envoie des dates en ISO pour être sûr
-  const shiftPayload = {
-    title,
-    start: start.toISOString(),
-    end: end.toISOString(),
-  };
-
-  try {
-    // 4) appeler l’API pour créer le shift en base
-    const response = await axios.post(
-      `${process.env.NEXT_PUBLIC_API_URL}/employees/${ownerId}/shifts`,
-      shiftPayload
+    const promptText = t(
+      "planning:prompts.newShift",
+      "Nom du shift (ex : “Matin”) ?"
     );
-    // 5) la route renvoie { shifts: [...] } mis à jour
-    const updatedShifts = response.data.shifts;
+    const title = window.prompt(promptText);
+    if (!title) return;
 
-    // 6) transformer ces shifts en “events” React Big Calendar
-    const updatedEvents = updatedShifts.map((s, idx) => ({
-      id: `${ownerId}-${idx}`,
-      title: `${allEmployees.find((e) => e._id === ownerId)?.name} : ${s.title}`,
-      start: new Date(s.start),
-      end: new Date(s.end),
-      resourceId: ownerId,
-    }));
+    const shiftPayload = {
+      title,
+      start: start.toISOString(),
+      end: end.toISOString(),
+    };
 
-    // 7) Si vous souhaitez garder les shifts des autres employés,
-    //    vous pouvez filtrer `events` pour ne garder que ceux qui ne viennent pas de ownerId, puis concaténer :
-    const otherEvents = events.filter((ev) => ev.resourceId !== ownerId);
-    setEvents([...otherEvents, ...updatedEvents]);
-    //   → ou bien remplacer complètement : setEvents(allEventsFromAllEmployees) 
-    //   après un re-fetch global, selon votre logique.
+    try {
+      const response = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/employees/${ownerId}/shifts`,
+        shiftPayload
+      );
+      const updatedShifts = response.data.shifts;
 
-  } catch (err) {
-    console.error("Erreur lors de l’ajout du shift :", err);
-    // Vous pouvez afficher un toast ou un alert pour informer l’utilisateur
-    window.alert(
-      "Impossible d’ajouter le shift pour le moment. Veuillez réessayer."
-    );
+      const updatedEvents = updatedShifts.map((s, idx) => ({
+        id: `${ownerId}-${idx}`,
+        title: `${allEmployees.find((e) => e._id === ownerId)?.name} : ${s.title}`,
+        start: new Date(s.start),
+        end: new Date(s.end),
+        resourceId: ownerId,
+      }));
+
+      const otherEvents = events.filter((ev) => ev.resourceId !== ownerId);
+      setEvents([...otherEvents, ...updatedEvents]);
+    } catch (err) {
+      console.error("Erreur lors de l’ajout du shift :", err);
+      window.alert(
+        "Impossible d’ajouter le shift pour le moment. Veuillez réessayer."
+      );
+    }
   }
-}
 
-
-  // 8) Suppression d’un shift (clic sur l’événement)
   function handleSelectEvent(event) {
     const confirmText = t(
       "planning:prompts.deleteShift",
@@ -261,8 +246,8 @@ export default function PlanningEmployeesComponent() {
       {/* ─── Calendrier React Big Calendar ─────────────────────────────────── */}
       <div className="h-[75vh]">
         <Calendar
-          localizer={localizer} // date-fns localizer (frLocale)
-          culture="fr" // culture française
+          localizer={localizer}
+          culture="fr"
           events={visibleEvents}
           defaultView={Views.WEEK}
           views={[Views.WEEK, Views.DAY, Views.MONTH]}
@@ -290,7 +275,11 @@ export default function PlanningEmployeesComponent() {
           eventPropGetter={(event) => {
             if (selectedEmployeeId) {
               return {
-                style: { backgroundColor: "#4ead7a", borderRadius: "4px" },
+                style: {
+                  backgroundColor:
+                    employeeColorMap[event.resourceId] || "#4ead7a",
+                  borderRadius: "4px",
+                },
               };
             }
             const color = employeeColorMap[event.resourceId] || "#4ead7a";

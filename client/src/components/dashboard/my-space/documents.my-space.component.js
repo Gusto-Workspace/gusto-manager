@@ -10,9 +10,6 @@ import { useTranslation } from "next-i18next";
 import { DocumentSvg, DownloadSvg } from "@/components/_shared/_svgs/_index";
 
 export default function DocumentsMySpaceComponent(props) {
-
-    console.log(props.employeeId);
-    
   const [docs, setDocs] = useState([]);
   const { t } = useTranslation("documents");
 
@@ -31,9 +28,6 @@ export default function DocumentsMySpaceComponent(props) {
       fetchDocs();
     }
   }, [props?.employeeId]);
-
-  console.log(docs);
-  
 
   const truncate = (name) =>
     name.length > 30 ? `${name.slice(0, 27)}…` : name;

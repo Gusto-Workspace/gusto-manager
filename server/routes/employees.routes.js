@@ -486,21 +486,18 @@ router.delete(
   }
 );
 
-// GET EMPLOYEE DOCUMENTS 
+// GET EMPLOYEE DOCUMENTS
 router.get("/employees/:employeeId/documents", async (req, res) => {
   try {
     const { employeeId } = req.params;
 
     console.log();
-    
 
     // 1. Récupérer l’employé directement
     const employee = await EmployeeModel.findById(employeeId).lean();
     if (!employee) {
       return res.status(404).json({ message: "Employee not found" });
     }
-
-    
 
     // 2. Renvoyer la liste de ses documents
     return res.json({ documents: employee.documents });
@@ -510,7 +507,7 @@ router.get("/employees/:employeeId/documents", async (req, res) => {
   }
 });
 
-// 1) Récupérer TOUS les shifts d’un employé
+// 1) GET EMPLOYEE SHIFT
 router.get("/employees/:employeeId/shifts", async (req, res) => {
   try {
     const { employeeId } = req.params;
@@ -518,7 +515,6 @@ router.get("/employees/:employeeId/shifts", async (req, res) => {
     if (!employee) {
       return res.status(404).json({ message: "Employé non trouvé" });
     }
-    // Renvoyer la liste complète de ses shifts
     return res.json({ shifts: employee.shifts });
   } catch (err) {
     console.error("Erreur fetch shifts:", err);
@@ -526,13 +522,12 @@ router.get("/employees/:employeeId/shifts", async (req, res) => {
   }
 });
 
-// 2) Ajouter un nouveau shift à un employé
+// POST EMPLOYEE SHIFT
 router.post("/employees/:employeeId/shifts", async (req, res) => {
   try {
     const { employeeId } = req.params;
     const { title, start, end } = req.body;
 
-    // Valider les champs requis
     if (!title || !start || !end) {
       return res
         .status(400)
@@ -544,7 +539,6 @@ router.post("/employees/:employeeId/shifts", async (req, res) => {
       return res.status(404).json({ message: "Employé non trouvé" });
     }
 
-    // Ajouter le shift dans employee.shifts
     employee.shifts.push({
       title,
       start: new Date(start),
@@ -552,7 +546,6 @@ router.post("/employees/:employeeId/shifts", async (req, res) => {
     });
     await employee.save();
 
-    // Renvoyer la liste mise à jour
     return res.status(201).json({ shifts: employee.shifts });
   } catch (err) {
     console.error("Erreur ajout shift:", err);
@@ -560,7 +553,7 @@ router.post("/employees/:employeeId/shifts", async (req, res) => {
   }
 });
 
-// 3) Mettre à jour un shift existant (par index)
+// PUT EMPLOYEE SHIFT
 router.put("/employees/:employeeId/shifts/:idx", async (req, res) => {
   try {
     const { employeeId, idx } = req.params;
@@ -572,7 +565,6 @@ router.put("/employees/:employeeId/shifts/:idx", async (req, res) => {
       return res.status(404).json({ message: "Employé non trouvé" });
     }
 
-    // Vérifier que l’index existe dans employee.shifts
     if (
       isNaN(index) ||
       index < 0 ||
@@ -581,10 +573,8 @@ router.put("/employees/:employeeId/shifts/:idx", async (req, res) => {
       return res.status(400).json({ message: "Index de shift invalide" });
     }
 
-    // Mettre à jour seulement les champs présents
     if (title !== undefined) employee.shifts[index].title = title;
-    if (start !== undefined)
-      employee.shifts[index].start = new Date(start);
+    if (start !== undefined) employee.shifts[index].start = new Date(start);
     if (end !== undefined) employee.shifts[index].end = new Date(end);
 
     await employee.save();
@@ -596,7 +586,7 @@ router.put("/employees/:employeeId/shifts/:idx", async (req, res) => {
   }
 });
 
-// 4) Supprimer un shift (par index)
+// 4) DELETE EMPLOYEE SHIFT
 router.delete("/employees/:employeeId/shifts/:idx", async (req, res) => {
   try {
     const { employeeId, idx } = req.params;
@@ -615,7 +605,6 @@ router.delete("/employees/:employeeId/shifts/:idx", async (req, res) => {
       return res.status(400).json({ message: "Index de shift invalide" });
     }
 
-    // Supprimer le shift à cette position
     employee.shifts.splice(index, 1);
     await employee.save();
 
@@ -625,6 +614,5 @@ router.delete("/employees/:employeeId/shifts/:idx", async (req, res) => {
     return res.status(500).json({ message: "Internal server error" });
   }
 });
-
 
 module.exports = router;
