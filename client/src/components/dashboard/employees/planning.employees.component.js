@@ -1,4 +1,4 @@
-import { useState, useMemo, useContext, useEffect } from "react";
+import { useState, useMemo, useContext, useEffect, useRef } from "react";
 import { useRouter } from "next/router";
 
 import { Calendar, dateFnsLocalizer, Views } from "react-big-calendar";
@@ -46,6 +46,8 @@ export default function PlanningEmployeesComponent() {
     shiftIndex: null,
   });
 
+  const calendarContainerRef = useRef(null);
+
   // date‐fns localizer (FR)
   const locales = { fr: frLocale };
   const localizer = dateFnsLocalizer({
@@ -55,6 +57,22 @@ export default function PlanningEmployeesComponent() {
     getDay,
     locales,
   });
+
+  useEffect(() => {
+    // on attend que le DOM interne de react-big-calendar soit rendu
+
+    if (calendarContainerRef.current) {
+      // on cherche la première div qui a la classe "rbc-time-view"
+      const timeViewDiv =
+        calendarContainerRef.current.querySelector(".rbc-time-view");
+      if (
+        timeViewDiv &&
+        !timeViewDiv.classList.contains("rbc-time-view-resources")
+      ) {
+        timeViewDiv.classList.add("rbc-time-view-resources");
+      }
+    }
+  }, [selectedEmployeeId]);
 
   // ─── Chargement des employés depuis le contexte ─────────────────────────────
   const allEmployees = useMemo(
@@ -333,7 +351,10 @@ export default function PlanningEmployeesComponent() {
   }
 
   return (
-    <section className="flex flex-col gap-4 p-4">
+    <section
+      className="flex flex-col gap-4 p-4 min-w-0"
+      ref={calendarContainerRef}
+    >
       {/* ─── En-tête ───────────────────────────────────────────────────────────── */}
       <div className="flex justify-between flex-wrap gap-4">
         <div className="flex flex-col gap-4">
@@ -400,7 +421,7 @@ export default function PlanningEmployeesComponent() {
       </div>
 
       {/* ─── Calendrier Drag & Drop ───────────────────────────────────────────── */}
-      <div className="h-[75vh]">
+      <div className="h-[75vh] min-w-0 overflow-x-auto">
         <DnDCalendar
           showMultiDayTimes={true}
           localizer={localizer}
@@ -425,7 +446,7 @@ export default function PlanningEmployeesComponent() {
           }
           resourceIdAccessor="resourceId"
           resourceTitleAccessor="resourceTitle"
-          style={{ height: "100%" }}
+          style={{ height: "100%", width: "100%" }}
           /** ─── Ici on se contente de selectable + onSelectSlot ────────────────── **/
           selectable="ignoreEvents"
           onSelectSlot={handleSelectSlot}

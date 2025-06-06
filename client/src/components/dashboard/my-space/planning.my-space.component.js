@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/router";
 
 // React Big Calendar
@@ -31,6 +31,8 @@ export default function PlanningMySpaceComponent({ employeeId }) {
     locales,
   });
 
+  const calendarContainerRef = useRef(null);
+
   // 2) Récupérer les shifts de l’employé au montage
   useEffect(() => {
     if (!employeeId) return;
@@ -56,8 +58,27 @@ export default function PlanningMySpaceComponent({ employeeId }) {
     fetchShifts();
   }, [employeeId]);
 
+  useEffect(() => {
+    // on attend que le DOM interne de react-big-calendar soit rendu
+
+    if (calendarContainerRef.current) {
+      // on cherche la première div qui a la classe "rbc-time-view"
+      const timeViewDiv =
+        calendarContainerRef.current.querySelector(".rbc-time-view");
+      if (
+        timeViewDiv &&
+        !timeViewDiv.classList.contains("rbc-time-view-resources")
+      ) {
+        timeViewDiv.classList.add("rbc-time-view-resources");
+      }
+    }
+  }, [employeeId]);
+
   return (
-    <section className="flex flex-col gap-6 p-4">
+    <section
+      className="flex flex-col gap-6 p-4 min-w-0"
+      ref={calendarContainerRef}
+    >
       {/* ─── En-tête ───────────────────────────────────────────────────────────── */}
       <div className="flex justify-between items-center">
         <div className="flex gap-2 items-center">
@@ -74,7 +95,7 @@ export default function PlanningMySpaceComponent({ employeeId }) {
       </div>
 
       {/* ─── Calendrier React Big Calendar ─────────────────────────────────── */}
-      <div className="h-[75vh]">
+      <div className="h-[75vh] min-w-0 overflow-x-auto">
         <Calendar
           showMultiDayTimes={true}
           localizer={localizer} // date-fns localizer (frLocale)
@@ -85,7 +106,7 @@ export default function PlanningMySpaceComponent({ employeeId }) {
           step={30}
           timeslots={2}
           defaultDate={new Date()}
-          style={{ height: "100%" }}
+          style={{ height: "100%", width: "100%" }}
           messages={{
             today: "Aujourd’hui",
             previous: "Précédent",
