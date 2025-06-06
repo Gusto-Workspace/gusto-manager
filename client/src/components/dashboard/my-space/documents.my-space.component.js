@@ -44,7 +44,7 @@ export default function DocumentsMySpaceComponent(props) {
       </div>
 
       <div>
-        <ul className="grid grid-cols-1 mobile:grid-cols-2 midTablet:grid-cols-3 tablet:grid-cols-4 gap-4">
+        <ul className="grid grid-cols-1 mobile:grid-cols-2 midTablet:grid-cols-4 tablet:grid-cols-4 desktop:grid-cols-5 gap-4">
           {docs.map((doc, i) => (
             <li
               key={i}

@@ -67,7 +67,7 @@ export default function SubscriptionPage(props) {
     if (restaurantContext.isAuth && restaurantContext.restaurantData) {
       fetchSubscriptionData(restaurantContext.restaurantData._id);
     }
-  }, [restaurantContext.restaurantData]);
+  }, [restaurantContext.restaurantData._id]);
 
   if (!restaurantContext.isAuth) return null;
 

@@ -23,8 +23,8 @@
   overflow: hidden !important;
 }
 
-.rbc-time-view{
-    border-bottom: 0!important;
+.rbc-time-view {
+  border-bottom: 0 !important;
 }
 
 .rbc-allday-cell {
@@ -37,33 +37,42 @@
 
 .rbc-btn-group {
   background: transparent !important;
-  display: flex!important; 
-  gap: 0.5rem; 
-  padding: 0; 
-  border: none; 
+  display: flex !important;
+  gap: 0.5rem;
+  padding: 0;
+  border: none;
 }
 
 .rbc-toolbar button {
   background-color: #4583ff !important;
   color: white !important;
-  border: none; 
+  border: none;
   border-radius: 0.5rem !important;
-  padding: 0.5rem 1rem; 
+  padding: 0.5rem 1rem;
   cursor: pointer;
   transition: background-color 0.2s;
 }
-.rbc-toolbar{
-    margin-bottom: 32px!important;
+.rbc-toolbar {
+  margin-bottom: 32px !important;
 }
 
 .rbc-toolbar button:hover {
-  background-color: #3a6ed1 !important; 
+  background-color: #3a6ed1 !important;
 }
 
 .rbc-toolbar .rbc-btn-group-wrapper {
-  padding: 0.25rem; 
+  padding: 0.25rem;
 }
 
 .rbc-toolbar button.rbc-active {
   background-color: #3a6ed1 !important;
+}
+
+.rbc-addons-dnd-resize-ns-anchor,
+.rbc-addons-dnd-resize-ew-anchor {
+  display: none !important;
+}
+
+.rbc-event {
+  cursor: default !important;
 }

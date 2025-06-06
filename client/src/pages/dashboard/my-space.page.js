@@ -87,6 +87,7 @@ export default function MySpacePage(props) {
             ) : (
               <NoAvailableComponent
                 dataLoading={restaurantContext.dataLoading}
+                mySpace={true}
               />
             )}
           </div>
