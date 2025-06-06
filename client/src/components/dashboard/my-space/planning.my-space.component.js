@@ -76,7 +76,7 @@ export default function PlanningMySpaceComponent({ employeeId }) {
       {/* ─── Calendrier React Big Calendar ─────────────────────────────────── */}
       <div className="h-[75vh]">
         <Calendar
-        showMultiDayTimes={true}
+          showMultiDayTimes={true}
           localizer={localizer} // date-fns localizer (frLocale)
           culture="fr" // culture française
           events={events}
@@ -104,21 +104,21 @@ export default function PlanningMySpaceComponent({ employeeId }) {
             dayRangeHeaderFormat: ({ start, end }) =>
               `${format(start, "dd MMM", { locale: frLocale })} – ${format(
                 end,
-                "dd MMM",
+                "dd MMM yyyy",
                 { locale: frLocale }
               )}`,
             dayHeaderFormat: (date) =>
-              format(date, "EEEE dd MMMM", { locale: frLocale }),
+              format(date, "EEEE dd MMMM yyyy", { locale: frLocale }),
             eventTimeRangeFormat: ({ start, end }) =>
-                          `${format(start, "HH:mm", { locale: frLocale })} – ${format(
-                            end,
-                            "HH:mm",
-                            { locale: frLocale }
-                          )}`,
-                        eventTimeRangeStartFormat: ({ start }) =>
-                          format(start, "HH:mm", { locale: frLocale }),
-                        eventTimeRangeEndFormat: ({ end }) =>
-                          format(end, "HH:mm", { locale: frLocale }),
+              `${format(start, "HH:mm", { locale: frLocale })} – ${format(
+                end,
+                "HH:mm",
+                { locale: frLocale }
+              )}`,
+            eventTimeRangeStartFormat: ({ start }) =>
+              format(start, "HH:mm", { locale: frLocale }),
+            eventTimeRangeEndFormat: ({ end }) =>
+              format(end, "HH:mm", { locale: frLocale }),
           }}
         />
       </div>
