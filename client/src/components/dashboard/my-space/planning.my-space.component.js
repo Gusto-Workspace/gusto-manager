@@ -171,7 +171,9 @@ export default function PlanningMySpaceComponent({ employeeId }) {
       <div>{event.title}</div>
     ) : (
       <div className="flex flex-col gap-1">
-        <span className="text-sm">{format(event.start, "HH:mm")} – {format(event.end, "HH:mm")}</span>
+        <span className="text-sm">
+          {format(event.start, "HH:mm")} – {format(event.end, "HH:mm")}
+        </span>
         <span>{event.title}</span>
       </div>
     );
@@ -329,7 +331,7 @@ export default function PlanningMySpaceComponent({ employeeId }) {
               event.end - event.start >= 1000 * 60 * 60 * 24;
             return {
               className: isCompressedLeave ? "hide-label" : "",
-              style: { opacity: event.title === "Congés" ? 0.5 : 1 },
+             
             };
           }}
         />

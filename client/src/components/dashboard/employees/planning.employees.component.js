@@ -12,7 +12,8 @@ import {
   addDays,
   setHours,
   setMinutes,
-} from "date-fns";import frLocale from "date-fns/locale/fr";
+} from "date-fns";
+import frLocale from "date-fns/locale/fr";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import "react-big-calendar/lib/addons/dragAndDrop/styles.css";
 
@@ -114,8 +115,8 @@ export default function PlanningEmployeesComponent() {
   }, [allEmployees, searchTerm]);
 
   // ─── À chaque changement de “allEmployees”, on reconstruit “events” ──────────
- useEffect(() => {
-    const newEvents = allEmployees.flatMap(emp =>
+  useEffect(() => {
+    const newEvents = allEmployees.flatMap((emp) =>
       emp.shifts.flatMap((s, idx) => {
         const startDate = new Date(s.start);
         const endDate = new Date(s.end);
@@ -384,8 +385,10 @@ export default function PlanningEmployeesComponent() {
     });
   }
 
-    const CustomEvent = ({ event }) => {
-    const isCompressedLeave = event.title.endsWith(": Congés") && (event.end - event.start === 1000 * 60 * 60);
+  const CustomEvent = ({ event }) => {
+    const isCompressedLeave =
+      event.title.endsWith(": Congés") &&
+      event.end - event.start === 1000 * 60 * 60;
     if (isCompressedLeave) {
       return <div>{event.title}</div>;
     }
@@ -488,8 +491,14 @@ export default function PlanningEmployeesComponent() {
           defaultDate={new Date()}
           resources={
             selectedEmployeeId
-              ? [{ resourceId: selectedEmployeeId, resourceTitle:
-                  allEmployees.find(e => e._id === selectedEmployeeId)?.name }]
+              ? [
+                  {
+                    resourceId: selectedEmployeeId,
+                    resourceTitle: allEmployees.find(
+                      (e) => e._id === selectedEmployeeId
+                    )?.name,
+                  },
+                ]
               : undefined
           }
           resourceIdAccessor="resourceId"
@@ -498,25 +507,38 @@ export default function PlanningEmployeesComponent() {
           onSelectSlot={handleSelectSlot}
           onEventDrop={handleEventDrop}
           onSelectEvent={handleSelectEvent}
-          eventPropGetter={event => {
+          eventPropGetter={(event) => {
             const shiftTitle = event.title.split(" : ")[1];
-            const isCompressedLeave = shiftTitle === "Congés" && (event.end - event.start === 1000 * 60 * 60);
+            const isCompressedLeave =
+              shiftTitle === "Congés" &&
+              event.end - event.start === 1000 * 60 * 60;
             return {
               className: isCompressedLeave ? "hide-label" : "",
               style: {
                 backgroundColor: employeeColorMap[event.resourceId],
                 borderRadius: "4px",
-                opacity: shiftTitle === "Congés" ? 0.5 : 1,
               },
             };
           }}
-          messages={{ today: "Aujourd’hui", previous: "<", next: ">", month: "Mois", week: "Semaine", day: "Jour", date: "Date", time: "Heure" }}
+          messages={{
+            today: "Aujourd’hui",
+            previous: "<",
+            next: ">",
+            month: "Mois",
+            week: "Semaine",
+            day: "Jour",
+            date: "Date",
+            time: "Heure",
+          }}
           formats={{
-            timeGutterFormat: date => format(date, "HH:mm", { locale: frLocale }),
-            weekdayFormat: date => format(date, "EEE dd/MM", { locale: frLocale }),
+            timeGutterFormat: (date) =>
+              format(date, "HH:mm", { locale: frLocale }),
+            weekdayFormat: (date) =>
+              format(date, "EEE dd/MM", { locale: frLocale }),
             dayRangeHeaderFormat: ({ start, end }) =>
               `${format(start, "dd MMM", { locale: frLocale })} – ${format(end, "dd MMM yyyy", { locale: frLocale })}`,
-            dayHeaderFormat: date => format(date, "EEEE dd MMMM yyyy", { locale: frLocale }),
+            dayHeaderFormat: (date) =>
+              format(date, "EEEE dd MMMM yyyy", { locale: frLocale }),
             eventTimeRangeFormat: ({ start, end }) =>
               `${format(start, "HH:mm", { locale: frLocale })} – ${format(end, "HH:mm", { locale: frLocale })}`,
           }}
