@@ -2,7 +2,16 @@ import { useState, useEffect, useRef } from "react";
 
 // REACT BIG CALENDAR
 import { Calendar, dateFnsLocalizer, Views } from "react-big-calendar";
-import { format, parse, startOfWeek, getDay } from "date-fns";
+import {
+  format,
+  parse,
+  startOfWeek,
+  getDay,
+  differenceInCalendarDays,
+  addDays,
+  setHours,
+  setMinutes,
+} from "date-fns";
 import frLocale from "date-fns/locale/fr";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 
@@ -27,7 +36,7 @@ export default function PlanningMySpaceComponent({ employeeId }) {
     type: "full",
   });
 
-  // date‐fns FR
+  // date-fns FR
   const locales = { fr: frLocale };
   const localizer = dateFnsLocalizer({
     format,
@@ -39,13 +48,9 @@ export default function PlanningMySpaceComponent({ employeeId }) {
 
   const calendarRef = useRef(null);
 
+  // Empêche le scroll quand la modale est ouverte
   useEffect(() => {
-    if (leaveModalOpen) {
-      document.body.classList.add("overflow-hidden");
-    } else {
-      document.body.classList.remove("overflow-hidden");
-    }
-
+    document.body.classList.toggle("overflow-hidden", leaveModalOpen);
     return () => {
       document.body.classList.remove("overflow-hidden");
     };
@@ -59,13 +64,42 @@ export default function PlanningMySpaceComponent({ employeeId }) {
         const { data } = await axios.get(
           `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/shifts`
         );
+
         setEvents(
-          data.shifts.map((s, i) => ({
-            id: `${employeeId}-${i}`,
-            title: s.title,
-            start: new Date(s.start),
-            end: new Date(s.end),
-          }))
+          data.shifts.flatMap((s, i) => {
+            const startDate = new Date(s.start);
+            const endDate = new Date(s.end);
+            const durationMs = endDate - startDate;
+            const daysCount = differenceInCalendarDays(endDate, startDate) + 1;
+
+            // Critère pour congés compressés : durée ≥ 24h (multi-jours ou journée complète)
+            if (s.title === "Congés" && durationMs >= 1000 * 60 * 60 * 24) {
+              // on génère 1 petit event par jour
+              return Array.from({ length: daysCount }).map((_, idx) => {
+                const day = addDays(startDate, idx);
+                const start = setMinutes(setHours(day, 0), 0); // 00:00
+                const end = setMinutes(setHours(day, 1), 0); // 01:00
+                return {
+                  id: `${employeeId}-leave-${i}-${idx}`,
+                  title: "Congés",
+                  start,
+                  end,
+                  allDay: false,
+                };
+              });
+            }
+
+            // Sinon, on affiche l'intégralité du shift (même demi-journée ou <24h)
+            return [
+              {
+                id: `${employeeId}-shift-${i}`,
+                title: s.title,
+                start: startDate,
+                end: endDate,
+                allDay: false,
+              },
+            ];
+          })
         );
       } catch (err) {
         console.error("Erreur fetch shifts :", err);
@@ -73,7 +107,7 @@ export default function PlanningMySpaceComponent({ employeeId }) {
     })();
   }, [employeeId]);
 
-  // ─── Hack CSS react-big-calendar ───────────────────────────────────────────
+  // Hack CSS react-big-calendar pour time-view
   useEffect(() => {
     if (calendarRef.current) {
       const v = calendarRef.current.querySelector(".rbc-time-view");
@@ -83,14 +117,13 @@ export default function PlanningMySpaceComponent({ employeeId }) {
     }
   }, [employeeId]);
 
-  // ─── Ouvre la modale et initialise dates ─────────────────────────────────
+  // ─── Modale de demande de congé ────────────────────────────────────────────
   function openLeaveModal() {
     const today = new Date().toISOString().slice(0, 10);
     setLeaveModalData({ startDate: today, endDate: today, type: "full" });
     setLeaveModalOpen(true);
   }
 
-  // ─── Envoi de la demande ───────────────────────────────────────────────────
   async function submitLeave() {
     const { startDate, endDate, type } = leaveModalData;
     let start, end;
@@ -98,17 +131,16 @@ export default function PlanningMySpaceComponent({ employeeId }) {
     if (startDate === endDate && type !== "full") {
       // même jour & demie-journée
       if (type === "morning") {
-        start = new Date(startDate + "T00:00:00");
-        end = new Date(startDate + "T12:00:00");
+        start = new Date(`${startDate}T00:00:00`);
+        end = new Date(`${startDate}T12:00:00`);
       } else {
-        // afternoon
-        start = new Date(startDate + "T12:00:00");
-        end = new Date(startDate + "T23:59:59");
+        start = new Date(`${startDate}T12:00:00`);
+        end = new Date(`${startDate}T23:59:59`);
       }
     } else {
       // journée(s) complète(s)
-      start = new Date(startDate + "T00:00:00");
-      end = new Date(endDate + "T23:59:59");
+      start = new Date(`${startDate}T00:00:00`);
+      end = new Date(`${endDate}T23:59:59`);
     }
 
     if (end <= start) {
@@ -133,6 +165,17 @@ export default function PlanningMySpaceComponent({ employeeId }) {
     }
   }
 
+  // ─── CustomEvent pour masquer l’heure des congés compressés ────────────────
+  const CustomEvent = ({ event }) =>
+    event.title === "Congés" && event.end - event.start === 1000 * 60 * 60 ? (
+      <div>{event.title}</div>
+    ) : (
+      <div className="flex flex-col gap-1">
+        <span className="text-sm">{format(event.start, "HH:mm")} – {format(event.end, "HH:mm")}</span>
+        <span>{event.title}</span>
+      </div>
+    );
+
   return (
     <section className="flex flex-col gap-6 p-4 min-w-0" ref={calendarRef}>
       {/* En-tête */}
@@ -154,7 +197,7 @@ export default function PlanningMySpaceComponent({ employeeId }) {
         </button>
       </div>
 
-      {/* Modale de demande de congé */}
+      {/* Modale */}
       {leaveModalOpen && (
         <div className="fixed inset-0 flex items-center justify-center z-[100]">
           <div
@@ -165,7 +208,6 @@ export default function PlanningMySpaceComponent({ employeeId }) {
             <h2 className="text-xl font-semibold mb-4 text-center">
               {t("leaveModal.title", "Demande de congé")}
             </h2>
-
             <div className="space-y-4 mb-6">
               <label className="block">
                 {t("leaveModal.startDate", "Date de début")} :
@@ -177,16 +219,13 @@ export default function PlanningMySpaceComponent({ employeeId }) {
                     setLeaveModalData((d) => ({
                       ...d,
                       startDate: e.target.value,
-                      // si on change start après end, réajuste end
                       endDate:
                         e.target.value > d.endDate ? e.target.value : d.endDate,
-                      // si on reste sur même journée, conserve type sinon reset
                       type: e.target.value === d.endDate ? d.type : "full",
                     }))
                   }
                 />
               </label>
-
               <label className="block">
                 {t("leaveModal.endDate", "Date de fin")} :
                 <input
@@ -198,14 +237,11 @@ export default function PlanningMySpaceComponent({ employeeId }) {
                     setLeaveModalData((d) => ({
                       ...d,
                       endDate: e.target.value,
-                      // conserve type si même jour, sinon full-day
                       type: d.startDate === e.target.value ? d.type : "full",
                     }))
                   }
                 />
               </label>
-
-              {/* choix demi-journée si même date */}
               {leaveModalData.startDate === leaveModalData.endDate && (
                 <div className="flex gap-4">
                   {["full", "morning", "afternoon"].map((opt) => (
@@ -231,7 +267,6 @@ export default function PlanningMySpaceComponent({ employeeId }) {
                 </div>
               )}
             </div>
-
             <div className="flex justify-center gap-4">
               <button
                 onClick={submitLeave}
@@ -253,6 +288,7 @@ export default function PlanningMySpaceComponent({ employeeId }) {
       {/* Calendrier */}
       <div className="h-[75vh] min-w-0 overflow-x-auto">
         <Calendar
+          components={{ event: CustomEvent }}
           showMultiDayTimes
           localizer={localizer}
           culture="fr"
@@ -286,22 +322,16 @@ export default function PlanningMySpaceComponent({ employeeId }) {
               )}`,
             dayHeaderFormat: (date) =>
               format(date, "EEEE dd MMMM yyyy", { locale: frLocale }),
-            eventTimeRangeFormat: ({ start, end }) =>
-              `${format(start, "HH:mm", { locale: frLocale })} – ${format(
-                end,
-                "HH:mm",
-                { locale: frLocale }
-              )}`,
-            eventTimeRangeStartFormat: ({ start }) =>
-              format(start, "HH:mm", { locale: frLocale }),
-            eventTimeRangeEndFormat: ({ end }) =>
-              format(end, "HH:mm", { locale: frLocale }),
           }}
-          eventPropGetter={(event) => ({
-            style: {
-              opacity: event.title === "Congés" ? 0.5 : 1,
-            },
-          })}
+          eventPropGetter={(event) => {
+            const isCompressedLeave =
+              event.title === "Congés" &&
+              event.end - event.start >= 1000 * 60 * 60 * 24;
+            return {
+              className: isCompressedLeave ? "hide-label" : "",
+              style: { opacity: event.title === "Congés" ? 0.5 : 1 },
+            };
+          }}
         />
       </div>
     </section>

@@ -3,8 +3,16 @@ import { useRouter } from "next/router";
 
 import { Calendar, dateFnsLocalizer, Views } from "react-big-calendar";
 import withDragAndDrop from "react-big-calendar/lib/addons/dragAndDrop";
-import { format, parse, startOfWeek, getDay } from "date-fns";
-import frLocale from "date-fns/locale/fr";
+import {
+  format,
+  parse,
+  startOfWeek,
+  getDay,
+  differenceInCalendarDays,
+  addDays,
+  setHours,
+  setMinutes,
+} from "date-fns";import frLocale from "date-fns/locale/fr";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import "react-big-calendar/lib/addons/dragAndDrop/styles.css";
 
@@ -106,17 +114,43 @@ export default function PlanningEmployeesComponent() {
   }, [allEmployees, searchTerm]);
 
   // ─── À chaque changement de “allEmployees”, on reconstruit “events” ──────────
-  useEffect(() => {
-    const newRaw = allEmployees.flatMap((emp) =>
-      emp.shifts.map((s, idx) => ({
-        id: `${emp._id}-${idx}`,
-        title: `${emp.name} : ${s.title}`,
-        start: new Date(s.start),
-        end: new Date(s.end),
-        resourceId: emp._id,
-      }))
+ useEffect(() => {
+    const newEvents = allEmployees.flatMap(emp =>
+      emp.shifts.flatMap((s, idx) => {
+        const startDate = new Date(s.start);
+        const endDate = new Date(s.end);
+        const durationMs = endDate - startDate;
+        const daysCount = differenceInCalendarDays(endDate, startDate) + 1;
+
+        // compressé si congés ≥ 24h
+        if (s.title === "Congés" && durationMs >= 1000 * 60 * 60 * 24) {
+          return Array.from({ length: daysCount }).map((_, dayIdx) => {
+            const day = addDays(startDate, dayIdx);
+            const start = setMinutes(setHours(day, 0), 0);
+            const end = setMinutes(setHours(day, 1), 0);
+            return {
+              id: `${emp._id}-leave-${idx}-${dayIdx}`,
+              title: `${emp.name} : Congés`,
+              start,
+              end,
+              resourceId: emp._id,
+            };
+          });
+        }
+
+        // sinon on prend le shift complet
+        return [
+          {
+            id: `${emp._id}-${idx}`,
+            title: `${emp.name} : ${s.title}`,
+            start: startDate,
+            end: endDate,
+            resourceId: emp._id,
+          },
+        ];
+      })
     );
-    setEvents(newRaw);
+    setEvents(newEvents);
   }, [allEmployees]);
 
   // ─── Palette de couleurs ────────────────────────────────────────────────────
@@ -350,6 +384,21 @@ export default function PlanningEmployeesComponent() {
     });
   }
 
+    const CustomEvent = ({ event }) => {
+    const isCompressedLeave = event.title.endsWith(": Congés") && (event.end - event.start === 1000 * 60 * 60);
+    if (isCompressedLeave) {
+      return <div>{event.title}</div>;
+    }
+    return (
+      <div className="flex flex-col gap-1">
+        <span className="text-sm">
+          {format(event.start, "HH:mm")} – {format(event.end, "HH:mm")}
+        </span>
+        <span>{event.title}</span>
+      </div>
+    );
+  };
+
   return (
     <section className="flex flex-col gap-4 min-w-0" ref={calendarContainerRef}>
       {/* ─── En-tête ───────────────────────────────────────────────────────────── */}
@@ -427,7 +476,8 @@ export default function PlanningEmployeesComponent() {
       {/* ─── Calendrier Drag & Drop ───────────────────────────────────────────── */}
       <div className="h-[75vh] min-w-0 overflow-x-auto">
         <DnDCalendar
-          showMultiDayTimes={true}
+          components={{ event: CustomEvent }}
+          showMultiDayTimes
           localizer={localizer}
           culture="fr"
           events={visibleEvents}
@@ -438,69 +488,37 @@ export default function PlanningEmployeesComponent() {
           defaultDate={new Date()}
           resources={
             selectedEmployeeId
-              ? [
-                  {
-                    resourceId: selectedEmployeeId,
-                    resourceTitle: allEmployees.find(
-                      (e) => e._id === selectedEmployeeId
-                    )?.name,
-                  },
-                ]
+              ? [{ resourceId: selectedEmployeeId, resourceTitle:
+                  allEmployees.find(e => e._id === selectedEmployeeId)?.name }]
               : undefined
           }
           resourceIdAccessor="resourceId"
           resourceTitleAccessor="resourceTitle"
-          style={{ height: "100%", width: "100%" }}
-          /** ─── Ici on se contente de selectable + onSelectSlot ────────────────── **/
           selectable="ignoreEvents"
           onSelectSlot={handleSelectSlot}
-          /** On conserve le drag&drop sur desktop, et le click sur événement pour supprimer **/
           onEventDrop={handleEventDrop}
           onSelectEvent={handleSelectEvent}
-          eventPropGetter={(event) => {
-            const baseColor = employeeColorMap[event.resourceId] || "#4ead7a";
+          eventPropGetter={event => {
             const shiftTitle = event.title.split(" : ")[1];
+            const isCompressedLeave = shiftTitle === "Congés" && (event.end - event.start === 1000 * 60 * 60);
             return {
+              className: isCompressedLeave ? "hide-label" : "",
               style: {
-                backgroundColor: baseColor,
+                backgroundColor: employeeColorMap[event.resourceId],
                 borderRadius: "4px",
                 opacity: shiftTitle === "Congés" ? 0.5 : 1,
               },
             };
           }}
-          messages={{
-            today: "Aujourd’hui",
-            previous: "<",
-            next: ">",
-            month: "Mois",
-            week: "Semaine",
-            day: "Jour",
-            date: "Date",
-            time: "Heure",
-          }}
+          messages={{ today: "Aujourd’hui", previous: "<", next: ">", month: "Mois", week: "Semaine", day: "Jour", date: "Date", time: "Heure" }}
           formats={{
-            timeGutterFormat: (date) =>
-              format(date, "HH:mm", { locale: frLocale }),
-            weekdayFormat: (date) =>
-              format(date, "EEE dd/MM", { locale: frLocale }),
+            timeGutterFormat: date => format(date, "HH:mm", { locale: frLocale }),
+            weekdayFormat: date => format(date, "EEE dd/MM", { locale: frLocale }),
             dayRangeHeaderFormat: ({ start, end }) =>
-              `${format(start, "dd MMM", { locale: frLocale })} – ${format(
-                end,
-                "dd MMM yyyy",
-                { locale: frLocale }
-              )}`,
-            dayHeaderFormat: (date) =>
-              format(date, "EEEE dd MMMM yyyy", { locale: frLocale }),
+              `${format(start, "dd MMM", { locale: frLocale })} – ${format(end, "dd MMM yyyy", { locale: frLocale })}`,
+            dayHeaderFormat: date => format(date, "EEEE dd MMMM yyyy", { locale: frLocale }),
             eventTimeRangeFormat: ({ start, end }) =>
-              `${format(start, "HH:mm", { locale: frLocale })} – ${format(
-                end,
-                "HH:mm",
-                { locale: frLocale }
-              )}`,
-            eventTimeRangeStartFormat: ({ start }) =>
-              format(start, "HH:mm", { locale: frLocale }),
-            eventTimeRangeEndFormat: ({ end }) =>
-              format(end, "HH:mm", { locale: frLocale }),
+              `${format(start, "HH:mm", { locale: frLocale })} – ${format(end, "HH:mm", { locale: frLocale })}`,
           }}
         />
       </div>

@@ -10,6 +10,9 @@
   right: 0px !important;
 }
 
+.rbc-event-label {
+  display: none !important;
+}
 .rbc-time-view-resources .rbc-time-gutter,
 .rbc-time-view-resources .rbc-time-header-gutter {
   border-right: 0 !important;
@@ -33,6 +36,11 @@
 
 .rbc-time-content {
   border-top: 0 !important;
+}
+
+.rbc-event-content {
+  padding: 0.5rem 0;
+  text-align: center;
 }
 
 .rbc-btn-group {
