@@ -39,6 +39,18 @@ export default function PlanningMySpaceComponent({ employeeId }) {
 
   const calendarRef = useRef(null);
 
+  useEffect(() => {
+    if (leaveModalOpen) {
+      document.body.classList.add("overflow-hidden");
+    } else {
+      document.body.classList.remove("overflow-hidden");
+    }
+
+    return () => {
+      document.body.classList.remove("overflow-hidden");
+    };
+  }, [leaveModalOpen]);
+
   // ─── Chargement des shifts ─────────────────────────────────────────────────
   useEffect(() => {
     if (!employeeId) return;
@@ -81,15 +93,24 @@ export default function PlanningMySpaceComponent({ employeeId }) {
   // ─── Envoi de la demande ───────────────────────────────────────────────────
   async function submitLeave() {
     const { startDate, endDate, type } = leaveModalData;
-    const start = new Date(startDate + "T00:00:00");
-    let end;
+    let start, end;
+
     if (startDate === endDate && type !== "full") {
-      end = new Date(
-        startDate + (type === "morning" ? "T12:00:00" : "T23:59:59")
-      );
+      // même jour & demie-journée
+      if (type === "morning") {
+        start = new Date(startDate + "T00:00:00");
+        end = new Date(startDate + "T12:00:00");
+      } else {
+        // afternoon
+        start = new Date(startDate + "T12:00:00");
+        end = new Date(startDate + "T23:59:59");
+      }
     } else {
+      // journée(s) complète(s)
+      start = new Date(startDate + "T00:00:00");
       end = new Date(endDate + "T23:59:59");
     }
+
     if (end <= start) {
       return window.alert(
         t(
@@ -98,6 +119,7 @@ export default function PlanningMySpaceComponent({ employeeId }) {
         )
       );
     }
+
     try {
       await axios.post(
         `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/leave-requests`,
@@ -114,7 +136,7 @@ export default function PlanningMySpaceComponent({ employeeId }) {
   return (
     <section className="flex flex-col gap-6 p-4 min-w-0" ref={calendarRef}>
       {/* En-tête */}
-      <div className="flex justify-between items-center">
+      <div className="flex gap-4 flex-wrap justify-between">
         <div className="flex gap-2 items-center">
           <CalendarSvg
             width={30}
@@ -243,8 +265,8 @@ export default function PlanningMySpaceComponent({ employeeId }) {
           style={{ height: "100%", width: "100%" }}
           messages={{
             today: "Aujourd’hui",
-            previous: "Précédent",
-            next: "Suivant",
+            previous: "<",
+            next: ">",
             month: "Mois",
             week: "Semaine",
             day: "Jour",
@@ -275,6 +297,11 @@ export default function PlanningMySpaceComponent({ employeeId }) {
             eventTimeRangeEndFormat: ({ end }) =>
               format(end, "HH:mm", { locale: frLocale }),
           }}
+          eventPropGetter={(event) => ({
+            style: {
+              opacity: event.title === "Congés" ? 0.5 : 1,
+            },
+          })}
         />
       </div>
     </section>

@@ -370,13 +370,12 @@ export default function PlanningEmployeesComponent() {
           </div>
         </div>
 
-         <button
+        <button
           onClick={() => router.push("/dashboard/employees/planning/days-off")}
           className="bg-violet px-6 py-2 rounded-lg text-white cursor-pointer hover:opacity-80 transition-all ease-in-out"
         >
           {t("titles.daysOff")}
         </button>
-
       </div>
 
       {/* ─── Barre de recherche ───────────────────────────────────────────────── */}
@@ -459,8 +458,15 @@ export default function PlanningEmployeesComponent() {
           onEventDrop={handleEventDrop}
           onSelectEvent={handleSelectEvent}
           eventPropGetter={(event) => {
-            const color = employeeColorMap[event.resourceId] || "#4ead7a";
-            return { style: { backgroundColor: color, borderRadius: "4px" } };
+            const baseColor = employeeColorMap[event.resourceId] || "#4ead7a";
+            const shiftTitle = event.title.split(" : ")[1];
+            return {
+              style: {
+                backgroundColor: baseColor,
+                borderRadius: "4px",
+                opacity: shiftTitle === "Congés" ? 0.5 : 1,
+              },
+            };
           }}
           messages={{
             today: "Aujourd’hui",

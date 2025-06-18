@@ -1,5 +1,5 @@
 import { useRouter } from "next/router";
-import { useState, useContext } from "react";
+import { useState, useContext, useMemo } from "react";
 import axios from "axios";
 import { GlobalContext } from "@/contexts/global.context";
 import { useTranslation } from "next-i18next";
@@ -16,16 +16,30 @@ export default function ListEmployeesComponent() {
   const [isLoadingDelete, setIsLoadingDelete] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
 
-  // Recherche
+  // accent-insensitive normalize
+  const normalize = (str) =>
+    str
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+
+  // filtered employees
+  const filtered = useMemo(() => {
+    if (!searchTerm.trim()) return restaurantContext.restaurantData.employees;
+    const norm = normalize(searchTerm);
+    return restaurantContext.restaurantData.employees.filter((e) =>
+      normalize(`${e.firstname} ${e.lastname}`).includes(norm)
+    );
+  }, [restaurantContext.restaurantData.employees, searchTerm]);
+
   const handleSearchChange = (e) => setSearchTerm(e.target.value);
 
-  // Préparation de la suppression
   const handleDeleteClick = (emp) => {
     setSelectedEmployee(emp);
     setIsDeleting(true);
   };
 
-  // Confirmation de suppression
   const confirmDelete = async () => {
     if (!selectedEmployee) return;
     setIsLoadingDelete(true);
@@ -42,17 +56,11 @@ export default function ListEmployeesComponent() {
     }
   };
 
-  // Filtrer la liste en front
-  const filtered = restaurantContext.restaurantData.employees.filter((e) => {
-    const name = `${e.firstname} ${e.lastname}`.toLowerCase();
-    return name.includes(searchTerm.trim().toLowerCase());
-  });
-
   return (
     <section className="flex flex-col gap-6">
       <hr className="opacity-20" />
 
-      {/* Barre de recherche + bouton d'ajout */}
+      {/* Barre de recherche + boutons */}
       <div className="flex justify-between flex-wrap gap-4">
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-2 min-h-[40px]">
@@ -65,7 +73,10 @@ export default function ListEmployeesComponent() {
           <div className="relative midTablet:w-[350px]">
             <input
               type="text"
-              placeholder="Rechercher un employé"
+              placeholder={t(
+                "placeholders.searchEmployee",
+                "Rechercher un employé"
+              )}
               value={searchTerm}
               onChange={handleSearchChange}
               className="w-full p-2 pr-10 border border-[#131E3690] rounded-lg"
@@ -98,7 +109,7 @@ export default function ListEmployeesComponent() {
         </div>
       </div>
 
-      {/* Grille des employés */}
+      {/* Grille d’employés */}
       <div className="my-6 grid grid-cols-1 tablet:grid-cols-3 desktop:grid-cols-4 ultraWild:grid-cols-5 gap-6">
         {filtered.map((emp) => (
           <CardEmployeesComponent

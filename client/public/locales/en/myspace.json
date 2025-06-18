@@ -11,7 +11,7 @@
   "daysOff": {
     "status": {
       "pending": "Pending",
-      "confirmed": "Confirmed",
+      "approved": "Confirmed",
       "rejected": "Rejected"
     }
   }

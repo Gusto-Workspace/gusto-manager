@@ -665,14 +665,29 @@ router.put("/employees/:employeeId/leave-requests/:reqId", async (req, res) => {
     if (!["pending", "approved", "rejected"].includes(status)) {
       return res.status(400).json({ message: "status invalide" });
     }
+
     const emp = await EmployeeModel.findById(employeeId);
     if (!emp) return res.status(404).json({ message: "Employee not found" });
 
     const lr = emp.leaveRequests.id(reqId);
     if (!lr) return res.status(404).json({ message: "Request not found" });
 
+    // 1) On met à jour le statut
     lr.status = status;
+
+    // 2) Si on approuve, on crée un shift “Congés” pour la même plage
+    if (status === "approved") {
+      emp.shifts.push({
+        title: "Congés",
+        start: lr.start,
+        end: lr.end,
+      });
+    }
+
+    // 3) On sauvegarde l’employé (modification du leaveRequest + eventuel shift)
     await emp.save();
+
+    // 4) On renvoie la demande mise à jour
     return res.json(lr);
   } catch (err) {
     console.error("Erreur update leaveRequest:", err);
@@ -680,4 +695,34 @@ router.put("/employees/:employeeId/leave-requests/:reqId", async (req, res) => {
   }
 });
 
+// 4) Supprimer une demande de congé
+router.delete(
+  "/employees/:employeeId/leave-requests/:reqId",
+  async (req, res) => {
+    try {
+      const { employeeId, reqId } = req.params;
+      const emp = await EmployeeModel.findById(employeeId);
+      if (!emp) {
+        return res.status(404).json({ message: "Employee not found" });
+      }
+
+      // Supprime la sous-doc leaveRequest dont l'_id est reqId
+      emp.leaveRequests.pull(reqId);
+
+      // Si la demande existe toujours après pull, on considère qu'elle n'était pas trouvée
+      if (emp.leaveRequests.id(reqId)) {
+        return res.status(404).json({ message: "Request not found" });
+      }
+
+      // Sauvegarde les changements
+      await emp.save();
+
+      // Renvoie la liste mise à jour des demandes de congé
+      return res.json(emp.leaveRequests);
+    } catch (err) {
+      console.error("Erreur delete leaveRequest:", err);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  }
+);
 module.exports = router;

@@ -54,7 +54,7 @@ const leaveRequestSchema = new mongoose.Schema(
       default: "full",
     },
   },
-  { _id: false }
+  { _id: true }
 );
 
 const employeeSchema = new mongoose.Schema({
