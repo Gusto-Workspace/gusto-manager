@@ -1,0 +1,18 @@
+{
+  "titles": {
+    "main": "Mon emploi du temps",
+    "second": "Mes documents",
+    "third": "Mes demandes de congés"
+  },
+  "buttons": {
+    "download": "Télécharger",
+    "ask": "Demander un congé"
+  },
+  "daysOff": {
+    "status": {
+      "pending": "En attente",
+      "confirmed": "Confirmée",
+      "rejected": "Rejetée"
+    }
+  }
+}

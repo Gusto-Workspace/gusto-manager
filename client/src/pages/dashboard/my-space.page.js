@@ -15,6 +15,7 @@ import SettingsComponent from "@/components/_shared/settings/settings.component"
 import DocumentsMySpaceComponent from "@/components/dashboard/my-space/documents.my-space.component";
 import PlanningMySpaceComponent from "@/components/dashboard/my-space/planning.my-space.component";
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
+import DaysOffMySpaceComponent from "@/components/dashboard/my-space/days-off.my-space.component";
 
 export default function MySpacePage(props) {
   const { t } = useTranslation("");
@@ -74,15 +75,17 @@ export default function MySpacePage(props) {
 
             {restaurantContext?.userConnected?.role === "employee" ? (
               <>
-               <DocumentsMySpaceComponent
+                <DocumentsMySpaceComponent
                   employeeId={restaurantContext?.userConnected?.id}
                 />
-                
+
                 <PlanningMySpaceComponent
                   employeeId={restaurantContext?.userConnected?.id}
                 />
 
-               
+                <DaysOffMySpaceComponent
+                  employeeId={restaurantContext?.userConnected?.id}
+                />
               </>
             ) : (
               <NoAvailableComponent
@@ -100,7 +103,7 @@ export default function MySpacePage(props) {
 export async function getStaticProps({ locale }) {
   return {
     props: {
-      ...(await serverSideTranslations(locale, ["common", "documents"])),
+      ...(await serverSideTranslations(locale, ["common", "myspace"])),
     },
   };
 }

@@ -1,6 +1,8 @@
 {
   "titles": {
-    "main": "Staff Management"
+    "main": "Staff Management",
+    "planning": "Planning",
+    "daysOff": "Days Off"
   },
   "buttons": {
     "addEmployee": "Add Employee",

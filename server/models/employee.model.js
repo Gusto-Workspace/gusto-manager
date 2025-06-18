@@ -38,6 +38,25 @@ const shiftSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const leaveRequestSchema = new mongoose.Schema(
+  {
+    start: { type: Date, required: true },
+    end: { type: Date, required: true },
+    requestedAt: { type: Date, default: Date.now },
+    status: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+    },
+    type: {
+      type: String,
+      enum: ["full", "morning", "afternoon"],
+      default: "full",
+    },
+  },
+  { _id: false }
+);
+
 const employeeSchema = new mongoose.Schema({
   firstname: { type: String, required: true },
   lastname: { type: String, required: true },
@@ -61,6 +80,7 @@ const employeeSchema = new mongoose.Schema({
   options: { type: optionsSchema, default: {} },
   documents: { type: [documentSchema], default: [] },
   shifts: { type: [shiftSchema], default: [] },
+  leaveRequests: { type: [leaveRequestSchema], default: [] },
   created_at: { type: Date, default: Date.now },
   resetCode: String,
   resetCodeExpires: Date,

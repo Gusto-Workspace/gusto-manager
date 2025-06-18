@@ -1,6 +1,8 @@
 {
   "titles": {
-    "main": "Gestion du personnel"
+    "main": "Gestion du personnel",
+    "planning" : "Planning",
+    "daysOff" : "Demandes de congés"
   },
   "buttons": {
     "addEmployee": "Ajouter un employé",

@@ -351,10 +351,7 @@ export default function PlanningEmployeesComponent() {
   }
 
   return (
-    <section
-      className="flex flex-col gap-4 p-4 min-w-0"
-      ref={calendarContainerRef}
-    >
+    <section className="flex flex-col gap-4 min-w-0" ref={calendarContainerRef}>
       {/* ─── En-tête ───────────────────────────────────────────────────────────── */}
       <div className="flex justify-between flex-wrap gap-4">
         <div className="flex flex-col gap-4">
@@ -365,13 +362,21 @@ export default function PlanningEmployeesComponent() {
                 className="cursor-pointer hover:underline"
                 onClick={() => router.push("/dashboard/employees")}
               >
-                {t("employees:titles.main", "Gestion des employés")}
+                {t("titles.main")}
               </span>
               <span>/</span>
-              <span>{t("planning:titles.planning", "Planning")}</span>
+              <span>{t("titles.planning")}</span>
             </h1>
           </div>
         </div>
+
+         <button
+          onClick={() => router.push("/dashboard/employees/planning/days-off")}
+          className="bg-violet px-6 py-2 rounded-lg text-white cursor-pointer hover:opacity-80 transition-all ease-in-out"
+        >
+          {t("titles.daysOff")}
+        </button>
+
       </div>
 
       {/* ─── Barre de recherche ───────────────────────────────────────────────── */}

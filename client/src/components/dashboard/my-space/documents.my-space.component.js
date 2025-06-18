@@ -11,7 +11,7 @@ import { DocumentSvg, DownloadSvg } from "@/components/_shared/_svgs/_index";
 
 export default function DocumentsMySpaceComponent(props) {
   const [docs, setDocs] = useState([]);
-  const { t } = useTranslation("documents");
+  const { t } = useTranslation("myspace");
 
   useEffect(() => {
     async function fetchDocs() {

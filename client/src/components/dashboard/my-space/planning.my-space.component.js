@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/router";
 
-// React Big Calendar
+// REACT BIG CALENDAR
 import { Calendar, dateFnsLocalizer, Views } from "react-big-calendar";
 import { format, parse, startOfWeek, getDay } from "date-fns";
 import frLocale from "date-fns/locale/fr";
@@ -17,69 +16,104 @@ import axios from "axios";
 import { CalendarSvg } from "@/components/_shared/_svgs/calendar.svg";
 
 export default function PlanningMySpaceComponent({ employeeId }) {
-  const { t } = useTranslation("reservations");
-  const router = useRouter();
+  const { t } = useTranslation("myspace");
 
-  // 1) States pour les shifts récupérés et la localizer FR
+  // ─── États ────────────────────────────────────────────────────────────────
   const [events, setEvents] = useState([]);
+  const [leaveModalOpen, setLeaveModalOpen] = useState(false);
+  const [leaveModalData, setLeaveModalData] = useState({
+    startDate: new Date().toISOString().slice(0, 10),
+    endDate: new Date().toISOString().slice(0, 10),
+    type: "full",
+  });
+
+  // date‐fns FR
   const locales = { fr: frLocale };
   const localizer = dateFnsLocalizer({
     format,
     parse,
-    startOfWeek: (date) => startOfWeek(date, { locale: frLocale }), // début de semaine = lundi
+    startOfWeek: (d) => startOfWeek(d, { locale: frLocale }),
     getDay,
     locales,
   });
 
-  const calendarContainerRef = useRef(null);
+  const calendarRef = useRef(null);
 
-  // 2) Récupérer les shifts de l’employé au montage
+  // ─── Chargement des shifts ─────────────────────────────────────────────────
   useEffect(() => {
     if (!employeeId) return;
-
-    async function fetchShifts() {
+    (async () => {
       try {
         const { data } = await axios.get(
           `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/shifts`
         );
-        // Transformer en “events” pour React Big Calendar
-        const fetchedEvents = data.shifts.map((s, idx) => ({
-          id: `${employeeId}-${idx}`,
-          title: s.title,
-          start: new Date(s.start),
-          end: new Date(s.end),
-        }));
-        setEvents(fetchedEvents);
+        setEvents(
+          data.shifts.map((s, i) => ({
+            id: `${employeeId}-${i}`,
+            title: s.title,
+            start: new Date(s.start),
+            end: new Date(s.end),
+          }))
+        );
       } catch (err) {
         console.error("Erreur fetch shifts :", err);
       }
-    }
-
-    fetchShifts();
+    })();
   }, [employeeId]);
 
+  // ─── Hack CSS react-big-calendar ───────────────────────────────────────────
   useEffect(() => {
-    // on attend que le DOM interne de react-big-calendar soit rendu
-
-    if (calendarContainerRef.current) {
-      // on cherche la première div qui a la classe "rbc-time-view"
-      const timeViewDiv =
-        calendarContainerRef.current.querySelector(".rbc-time-view");
-      if (
-        timeViewDiv &&
-        !timeViewDiv.classList.contains("rbc-time-view-resources")
-      ) {
-        timeViewDiv.classList.add("rbc-time-view-resources");
+    if (calendarRef.current) {
+      const v = calendarRef.current.querySelector(".rbc-time-view");
+      if (v && !v.classList.contains("rbc-time-view-resources")) {
+        v.classList.add("rbc-time-view-resources");
       }
     }
   }, [employeeId]);
 
+  // ─── Ouvre la modale et initialise dates ─────────────────────────────────
+  function openLeaveModal() {
+    const today = new Date().toISOString().slice(0, 10);
+    setLeaveModalData({ startDate: today, endDate: today, type: "full" });
+    setLeaveModalOpen(true);
+  }
+
+  // ─── Envoi de la demande ───────────────────────────────────────────────────
+  async function submitLeave() {
+    const { startDate, endDate, type } = leaveModalData;
+    const start = new Date(startDate + "T00:00:00");
+    let end;
+    if (startDate === endDate && type !== "full") {
+      end = new Date(
+        startDate + (type === "morning" ? "T12:00:00" : "T23:59:59")
+      );
+    } else {
+      end = new Date(endDate + "T23:59:59");
+    }
+    if (end <= start) {
+      return window.alert(
+        t(
+          "leaveModal.errorDates",
+          "La date de fin doit être après la date de début"
+        )
+      );
+    }
+    try {
+      await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/leave-requests`,
+        { start: start.toISOString(), end: end.toISOString(), type }
+      );
+      window.dispatchEvent(new Event("leaveRequestAdded"));
+      setLeaveModalOpen(false);
+    } catch (err) {
+      console.error(err);
+      window.alert(t("leaveModal.errorSubmit", "Erreur lors de la demande"));
+    }
+  }
+
   return (
-    <section
-      className="flex flex-col gap-6 p-4 min-w-0"
-      ref={calendarContainerRef}
-    >
-      {/* ─── En-tête ───────────────────────────────────────────────────────────── */}
+    <section className="flex flex-col gap-6 p-4 min-w-0" ref={calendarRef}>
+      {/* En-tête */}
       <div className="flex justify-between items-center">
         <div className="flex gap-2 items-center">
           <CalendarSvg
@@ -88,23 +122,123 @@ export default function PlanningMySpaceComponent({ employeeId }) {
             fillColor="#131E3690"
             strokeColor="#131E3690"
           />
-          <h1 className="pl-2 py-1 text-xl tablet:text-2xl">
-            {t("documents:titles.main")}
-          </h1>
+          <h1 className="pl-2 text-xl tablet:text-2xl">{t("titles.main")}</h1>
         </div>
+        <button
+          onClick={openLeaveModal}
+          className="bg-violet px-6 py-2 rounded-lg text-white hover:opacity-80 transition"
+        >
+          {t("buttons.ask")}
+        </button>
       </div>
 
-      {/* ─── Calendrier React Big Calendar ─────────────────────────────────── */}
+      {/* Modale de demande de congé */}
+      {leaveModalOpen && (
+        <div className="fixed inset-0 flex items-center justify-center z-[100]">
+          <div
+            className="absolute inset-0 bg-black bg-opacity-40"
+            onClick={() => setLeaveModalOpen(false)}
+          />
+          <div className="bg-white p-6 rounded-lg shadow-lg z-10 w-[400px]">
+            <h2 className="text-xl font-semibold mb-4 text-center">
+              {t("leaveModal.title", "Demande de congé")}
+            </h2>
+
+            <div className="space-y-4 mb-6">
+              <label className="block">
+                {t("leaveModal.startDate", "Date de début")} :
+                <input
+                  type="date"
+                  className="w-full p-2 border rounded"
+                  value={leaveModalData.startDate}
+                  onChange={(e) =>
+                    setLeaveModalData((d) => ({
+                      ...d,
+                      startDate: e.target.value,
+                      // si on change start après end, réajuste end
+                      endDate:
+                        e.target.value > d.endDate ? e.target.value : d.endDate,
+                      // si on reste sur même journée, conserve type sinon reset
+                      type: e.target.value === d.endDate ? d.type : "full",
+                    }))
+                  }
+                />
+              </label>
+
+              <label className="block">
+                {t("leaveModal.endDate", "Date de fin")} :
+                <input
+                  type="date"
+                  className="w-full p-2 border rounded"
+                  value={leaveModalData.endDate}
+                  min={leaveModalData.startDate}
+                  onChange={(e) =>
+                    setLeaveModalData((d) => ({
+                      ...d,
+                      endDate: e.target.value,
+                      // conserve type si même jour, sinon full-day
+                      type: d.startDate === e.target.value ? d.type : "full",
+                    }))
+                  }
+                />
+              </label>
+
+              {/* choix demi-journée si même date */}
+              {leaveModalData.startDate === leaveModalData.endDate && (
+                <div className="flex gap-4">
+                  {["full", "morning", "afternoon"].map((opt) => (
+                    <label key={opt} className="flex items-center gap-1">
+                      <input
+                        type="radio"
+                        name="leaveType"
+                        value={opt}
+                        checked={leaveModalData.type === opt}
+                        onChange={() =>
+                          setLeaveModalData((d) => ({ ...d, type: opt }))
+                        }
+                      />
+                      {
+                        {
+                          full: t("leaveModal.full", "Journée"),
+                          morning: t("leaveModal.morning", "Matin"),
+                          afternoon: t("leaveModal.afternoon", "Après-midi"),
+                        }[opt]
+                      }
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-center gap-4">
+              <button
+                onClick={submitLeave}
+                className="px-4 py-2 bg-blue text-white rounded-lg"
+              >
+                {t("buttons.submit", "Envoyer")}
+              </button>
+              <button
+                onClick={() => setLeaveModalOpen(false)}
+                className="px-4 py-2 bg-red text-white rounded-lg"
+              >
+                {t("buttons.cancel", "Annuler")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Calendrier */}
       <div className="h-[75vh] min-w-0 overflow-x-auto">
         <Calendar
-          showMultiDayTimes={true}
-          localizer={localizer} // date-fns localizer (frLocale)
-          culture="fr" // culture française
+          showMultiDayTimes
+          localizer={localizer}
+          culture="fr"
           events={events}
           defaultView={Views.WEEK}
           views={[Views.WEEK, Views.DAY, Views.MONTH]}
-          step={30}
-          timeslots={2}
+          step={60}
+          timeslots={1}
           defaultDate={new Date()}
           style={{ height: "100%", width: "100%" }}
           messages={{

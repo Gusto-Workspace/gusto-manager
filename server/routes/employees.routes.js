@@ -615,4 +615,69 @@ router.delete("/employees/:employeeId/shifts/:idx", async (req, res) => {
   }
 });
 
+// ——— DEMANDES DE CONGÉS ———
+
+// 1) Créer une nouvelle demande de congé pour un employé
+router.post("/employees/:employeeId/leave-requests", async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    const { start, end, type } = req.body;
+    if (!start || !end) {
+      return res.status(400).json({ message: "start et end sont requis" });
+    }
+    const emp = await EmployeeModel.findById(employeeId);
+    if (!emp) return res.status(404).json({ message: "Employee not found" });
+
+    // on pousse la nouvelle demande
+    emp.leaveRequests.push({
+      start: new Date(start),
+      end: new Date(end),
+      type: ["full", "morning", "afternoon"].includes(type) ? type : "full",
+    });
+    await emp.save();
+
+    // on renvoie la liste à jour
+    return res.status(201).json(emp.leaveRequests);
+  } catch (err) {
+    console.error("Erreur création leaveRequest:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// 2) Lister toutes les demandes de congé d’un employé
+router.get("/employees/:employeeId/leave-requests", async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    const emp = await EmployeeModel.findById(employeeId).lean();
+    if (!emp) return res.status(404).json({ message: "Employee not found" });
+    return res.json(emp.leaveRequests);
+  } catch (err) {
+    console.error("Erreur list leaveRequests:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// 3) Mettre à jour le statut d’une demande (approved | rejected)
+router.put("/employees/:employeeId/leave-requests/:reqId", async (req, res) => {
+  try {
+    const { employeeId, reqId } = req.params;
+    const { status } = req.body;
+    if (!["pending", "approved", "rejected"].includes(status)) {
+      return res.status(400).json({ message: "status invalide" });
+    }
+    const emp = await EmployeeModel.findById(employeeId);
+    if (!emp) return res.status(404).json({ message: "Employee not found" });
+
+    const lr = emp.leaveRequests.id(reqId);
+    if (!lr) return res.status(404).json({ message: "Request not found" });
+
+    lr.status = status;
+    await emp.save();
+    return res.json(lr);
+  } catch (err) {
+    console.error("Erreur update leaveRequest:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
 module.exports = router;
