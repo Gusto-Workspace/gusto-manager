@@ -184,7 +184,7 @@ export default function PlanningMySpaceComponent({ employeeId }) {
             className="absolute inset-0 bg-black bg-opacity-40"
             onClick={() => setLeaveModalOpen(false)}
           />
-          <div className="bg-white p-6 rounded-lg shadow-lg z-10 w-[400px]">
+          <div className="bg-white p-6 rounded-lg shadow-lg z-10 w-[400px] mx-4">
             <h2 className="text-xl font-semibold mb-4 text-center">
               {t("leaveModal.title", "Demande de congé")}
             </h2>

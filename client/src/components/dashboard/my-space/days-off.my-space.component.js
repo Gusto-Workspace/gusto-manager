@@ -87,7 +87,7 @@ export default function DaysOffMySpaceComponent({ employeeId }) {
             {t("daysOff.noRequests", "Aucune demande pour le moment")}
           </p>
         ) : (
-          <ul className="space-y-4">
+          <ul className="space-y-8">
             {requests.map((req) => {
               const start = new Date(req.start);
               const end = new Date(req.end);
@@ -104,7 +104,7 @@ export default function DaysOffMySpaceComponent({ employeeId }) {
               }
 
               return (
-                <li key={req._id} className="flex justify-between items-center">
+                <li key={req._id} className="flex midTablet:flex-row flex-col justify-between items-center">
                   <div className="space-y-1">
                     <div>
                       <strong>
@@ -123,10 +123,11 @@ export default function DaysOffMySpaceComponent({ employeeId }) {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-4">
+                  <div className="flex midTablet:flex-row flex-col items-center midtablet:gap-4 gap-2">
                     <span className="px-2 py-1 bg-gray-100 rounded">
                       {labelDays}
                     </span>
+                    <div className="flex gap-4 items-center">
                     <span
                       className={`capitalize px-2 py-1 rounded ${
                         req.status === "pending"
@@ -149,12 +150,13 @@ export default function DaysOffMySpaceComponent({ employeeId }) {
                           });
                           setConfirmOpen(true);
                         }}
-                        className="text-red rounded-full border border-red w-6 h-6 flex items-center justify-center hover:scale-105" 
+                        className="text-red rounded-full border border-red min-w-6 h-6 flex items-center justify-center hover:scale-105" 
                         title={t("daysOff.cancel", "Annuler")}
                       >
                         &times;
                       </button>
                     )}
+                    </div>
                   </div>
                 </li>
               );

@@ -35,7 +35,7 @@ export default function PlanningEmployeesComponent() {
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [view, setView] = useState(Views.WEEK);
-  
+
   // Modale d’ajout
   const [modalOpen, setModalOpen] = useState(false);
   const [modalData, setModalData] = useState({
@@ -174,22 +174,6 @@ export default function PlanningEmployeesComponent() {
         : events,
     [events, selectedEmployeeId]
   );
-
-  //   useEffect(() => {
-  //   // on attend que le DOM interne de react-big-calendar soit rendu
-
-  //   if (calendarContainerRef.current) {
-  //     // on cherche la première div qui a la classe "rbc-time-view"
-  //     const timeViewDiv =
-  //       calendarContainerRef.current.querySelector(".rbc-time-view");
-  //     if (
-  //       timeViewDiv &&
-  //       !timeViewDiv.classList.contains("rbc-time-view-resources")
-  //     ) {
-  //       timeViewDiv.classList.add("rbc-time-view-resources");
-  //     }
-  //   }
-  // }, [selectedEmployeeId]);
 
   useEffect(() => {
     const container = calendarContainerRef.current;
