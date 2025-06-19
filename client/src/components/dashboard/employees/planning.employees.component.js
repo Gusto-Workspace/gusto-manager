@@ -34,7 +34,8 @@ export default function PlanningEmployeesComponent() {
   const [events, setEvents] = useState([]);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
-
+  const [view, setView] = useState(Views.WEEK);
+  
   // Modale d’ajout
   const [modalOpen, setModalOpen] = useState(false);
   const [modalData, setModalData] = useState({
@@ -66,22 +67,6 @@ export default function PlanningEmployeesComponent() {
     getDay,
     locales,
   });
-
-  useEffect(() => {
-    // on attend que le DOM interne de react-big-calendar soit rendu
-
-    if (calendarContainerRef.current) {
-      // on cherche la première div qui a la classe "rbc-time-view"
-      const timeViewDiv =
-        calendarContainerRef.current.querySelector(".rbc-time-view");
-      if (
-        timeViewDiv &&
-        !timeViewDiv.classList.contains("rbc-time-view-resources")
-      ) {
-        timeViewDiv.classList.add("rbc-time-view-resources");
-      }
-    }
-  }, [selectedEmployeeId]);
 
   // ─── Chargement des employés depuis le contexte ─────────────────────────────
   const allEmployees = useMemo(
@@ -189,6 +174,33 @@ export default function PlanningEmployeesComponent() {
         : events,
     [events, selectedEmployeeId]
   );
+
+  //   useEffect(() => {
+  //   // on attend que le DOM interne de react-big-calendar soit rendu
+
+  //   if (calendarContainerRef.current) {
+  //     // on cherche la première div qui a la classe "rbc-time-view"
+  //     const timeViewDiv =
+  //       calendarContainerRef.current.querySelector(".rbc-time-view");
+  //     if (
+  //       timeViewDiv &&
+  //       !timeViewDiv.classList.contains("rbc-time-view-resources")
+  //     ) {
+  //       timeViewDiv.classList.add("rbc-time-view-resources");
+  //     }
+  //   }
+  // }, [selectedEmployeeId]);
+
+  useEffect(() => {
+    const container = calendarContainerRef.current;
+    if (!container) return;
+    setTimeout(() => {
+      const tv = container.querySelector(".rbc-time-view");
+      if (tv && !tv.classList.contains("rbc-time-view-resources")) {
+        tv.classList.add("rbc-time-view-resources");
+      }
+    }, 0);
+  }, [selectedEmployeeId, events, view]); // <-- on ré-applique à chaque vue
 
   // ─── Sélection d’un créneau (clic ou tap, dès que l’on relâche) ───────────────
   function handleSelectSlot(slotInfo) {
@@ -479,6 +491,8 @@ export default function PlanningEmployeesComponent() {
       {/* ─── Calendrier Drag & Drop ───────────────────────────────────────────── */}
       <div className="h-[75vh] min-w-0 overflow-x-auto">
         <DnDCalendar
+          view={view}
+          onView={(v) => setView(v)}
           components={{ event: CustomEvent }}
           showMultiDayTimes
           localizer={localizer}

@@ -26,6 +26,13 @@
   overflow: hidden !important;
 }
 
+@media (max-width: 768px) {
+  .rbc-time-view,
+  .rbc-month-view {
+    margin-top: 150px;
+  }
+}
+
 .rbc-time-view {
   border-bottom: 0 !important;
 }
@@ -60,8 +67,12 @@
   cursor: pointer;
   transition: background-color 0.2s;
 }
-.rbc-toolbar {
-  margin-bottom: 32px !important;
+@media (max-width: 768px) {
+  .rbc-toolbar {
+    position: absolute;
+    left: 50%;
+    translate: -50%;
+  }
 }
 
 .rbc-toolbar-label {

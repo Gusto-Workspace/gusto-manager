@@ -9,8 +9,6 @@ import {
   getDay,
   differenceInCalendarDays,
   addDays,
-  setHours,
-  setMinutes,
 } from "date-fns";
 import frLocale from "date-fns/locale/fr";
 import "react-big-calendar/lib/css/react-big-calendar.css";
@@ -26,8 +24,6 @@ import { CalendarSvg } from "@/components/_shared/_svgs/calendar.svg";
 
 export default function PlanningMySpaceComponent({ employeeId }) {
   const { t } = useTranslation("myspace");
-
-  // ─── États ────────────────────────────────────────────────────────────────
   const [events, setEvents] = useState([]);
   const [leaveModalOpen, setLeaveModalOpen] = useState(false);
   const [leaveModalData, setLeaveModalData] = useState({
@@ -35,6 +31,8 @@ export default function PlanningMySpaceComponent({ employeeId }) {
     endDate: new Date().toISOString().slice(0, 10),
     type: "full",
   });
+  const [currentView, setCurrentView] = useState(Views.WEEK);
+  const [tooltipInfo, setTooltipInfo] = useState(null);
 
   // date-fns FR
   const locales = { fr: frLocale };
@@ -48,15 +46,13 @@ export default function PlanningMySpaceComponent({ employeeId }) {
 
   const calendarRef = useRef(null);
 
-  // Empêche le scroll quand la modale est ouverte
+  // bloque le scroll du body quand la modale est ouverte
   useEffect(() => {
-    document.body.classList.toggle("overflow-hidden", leaveModalOpen);
-    return () => {
-      document.body.classList.remove("overflow-hidden");
-    };
-  }, [leaveModalOpen]);
+    document.body.classList.toggle("overflow-hidden", leaveModalOpen || tooltipInfo);
+    return () => document.body.classList.remove("overflow-hidden");
+  }, [leaveModalOpen, tooltipInfo]);
 
-  // ─── Chargement des shifts ─────────────────────────────────────────────────
+  // chargement des shifts
   useEffect(() => {
     if (!employeeId) return;
     (async () => {
@@ -64,32 +60,24 @@ export default function PlanningMySpaceComponent({ employeeId }) {
         const { data } = await axios.get(
           `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/shifts`
         );
-
         setEvents(
           data.shifts.flatMap((s, i) => {
             const startDate = new Date(s.start);
             const endDate = new Date(s.end);
             const durationMs = endDate - startDate;
-            const daysCount = differenceInCalendarDays(endDate, startDate) + 1;
-
-            // Critère pour congés compressés : durée ≥ 24h (multi-jours ou journée complète)
+            // Congés : full-day events spanning entire period
             if (s.title === "Congés" && durationMs >= 1000 * 60 * 60 * 24) {
-              // on génère 1 petit event par jour
-              return Array.from({ length: daysCount }).map((_, idx) => {
-                const day = addDays(startDate, idx);
-                const start = setMinutes(setHours(day, 0), 0); // 00:00
-                const end = setMinutes(setHours(day, 1), 0); // 01:00
-                return {
-                  id: `${employeeId}-leave-${i}-${idx}`,
-                  title: "Congés",
-                  start,
-                  end,
+              return [
+                {
+                  id: `${employeeId}-leave-${i}`,
+                  title: s.title,
+                  start: startDate,
+                  end: endDate,
                   allDay: false,
-                };
-              });
+                },
+              ];
             }
-
-            // Sinon, on affiche l'intégralité du shift (même demi-journée ou <24h)
+            // Shifts normaux
             return [
               {
                 id: `${employeeId}-shift-${i}`,
@@ -107,17 +95,19 @@ export default function PlanningMySpaceComponent({ employeeId }) {
     })();
   }, [employeeId]);
 
-  // Hack CSS react-big-calendar pour time-view
-  useEffect(() => {
-    if (calendarRef.current) {
-      const v = calendarRef.current.querySelector(".rbc-time-view");
-      if (v && !v.classList.contains("rbc-time-view-resources")) {
-        v.classList.add("rbc-time-view-resources");
-      }
-    }
-  }, [employeeId]);
+  // CustomEvent pour masquer l’heure des events compressés
+  const CustomEvent = ({ event }) => {
+    const start = format(event.start, "HH:mm");
+    const end = format(event.end, "HH:mm");
+    const tooltip = `${event.title}${!event.allDay ? ` : ${start} – ${end}` : ""}`;
+    return (
+      <div className="px-2" title={tooltip}>
+        {event.title}
+      </div>
+    );
+  };
 
-  // ─── Modale de demande de congé ────────────────────────────────────────────
+  // modale
   function openLeaveModal() {
     const today = new Date().toISOString().slice(0, 10);
     setLeaveModalData({ startDate: today, endDate: today, type: "full" });
@@ -129,7 +119,6 @@ export default function PlanningMySpaceComponent({ employeeId }) {
     let start, end;
 
     if (startDate === endDate && type !== "full") {
-      // même jour & demie-journée
       if (type === "morning") {
         start = new Date(`${startDate}T00:00:00`);
         end = new Date(`${startDate}T12:00:00`);
@@ -138,7 +127,6 @@ export default function PlanningMySpaceComponent({ employeeId }) {
         end = new Date(`${startDate}T23:59:59`);
       }
     } else {
-      // journée(s) complète(s)
       start = new Date(`${startDate}T00:00:00`);
       end = new Date(`${endDate}T23:59:59`);
     }
@@ -165,23 +153,13 @@ export default function PlanningMySpaceComponent({ employeeId }) {
     }
   }
 
-  // ─── CustomEvent pour masquer l’heure des congés compressés ────────────────
-  const CustomEvent = ({ event }) =>
-    event.title === "Congés" && event.end - event.start === 1000 * 60 * 60 ? (
-      <div>{event.title}</div>
-    ) : (
-      <div className="flex flex-col gap-1">
-        <span className="text-sm">
-          {format(event.start, "HH:mm")} – {format(event.end, "HH:mm")}
-        </span>
-        <span>{event.title}</span>
-      </div>
-    );
+  // largeur minimale pour scroll (7 jours * 100px)
+  const minTableWidth = currentView === Views.DAY ? "auto" : `${7 * 100}px`;
 
   return (
-    <section className="flex flex-col gap-6 p-4 min-w-0" ref={calendarRef}>
+    <section className="flex flex-col gap-6 min-w-0" ref={calendarRef}>
       {/* En-tête */}
-      <div className="flex gap-4 flex-wrap justify-between">
+      <div className="flex gap-4 flex-wrap justify-between items-center">
         <div className="flex gap-2 items-center">
           <CalendarSvg
             width={30}
@@ -189,11 +167,11 @@ export default function PlanningMySpaceComponent({ employeeId }) {
             fillColor="#131E3690"
             strokeColor="#131E3690"
           />
-          <h1 className="pl-2 text-xl tablet:text-2xl">{t("titles.main")}</h1>
+          <h1 className="text-lg sm:text-xl md:text-2xl">{t("titles.main")}</h1>
         </div>
         <button
           onClick={openLeaveModal}
-          className="bg-violet px-6 py-2 rounded-lg text-white hover:opacity-80 transition"
+          className="bg-violet px-4 py-2 rounded-lg text-white hover:opacity-80 transition text-sm sm:text-base"
         >
           {t("buttons.ask")}
         </button>
@@ -287,55 +265,92 @@ export default function PlanningMySpaceComponent({ employeeId }) {
         </div>
       )}
 
-      {/* Calendrier */}
-      <div className="h-[75vh] min-w-0 overflow-x-auto">
-        <Calendar
-          components={{ event: CustomEvent }}
-          showMultiDayTimes
-          localizer={localizer}
-          culture="fr"
-          events={events}
-          defaultView={Views.WEEK}
-          views={[Views.WEEK, Views.DAY, Views.MONTH]}
-          step={60}
-          timeslots={1}
-          defaultDate={new Date()}
-          style={{ height: "100%", width: "100%" }}
-          messages={{
-            today: "Aujourd’hui",
-            previous: "<",
-            next: ">",
-            month: "Mois",
-            week: "Semaine",
-            day: "Jour",
-            date: "Date",
-            time: "Heure",
-          }}
-          formats={{
-            timeGutterFormat: (date) =>
-              format(date, "HH:mm", { locale: frLocale }),
-            weekdayFormat: (date) =>
-              format(date, "EEE dd/MM", { locale: frLocale }),
-            dayRangeHeaderFormat: ({ start, end }) =>
-              `${format(start, "dd MMM", { locale: frLocale })} – ${format(
-                end,
-                "dd MMM yyyy",
-                { locale: frLocale }
-              )}`,
-            dayHeaderFormat: (date) =>
-              format(date, "EEEE dd MMMM yyyy", { locale: frLocale }),
-          }}
-          eventPropGetter={(event) => {
-            const isCompressedLeave =
-              event.title === "Congés" &&
-              event.end - event.start >= 1000 * 60 * 60 * 24;
-            return {
-              className: isCompressedLeave ? "hide-label" : "",
-             
-            };
-          }}
-        />
+      {/* Calendrier responsive */}
+      <div className="overflow-x-auto">
+        <div style={{ minWidth: minTableWidth }} className="h-[75vh]">
+          <Calendar
+            components={{ event: CustomEvent }}
+            localizer={localizer}
+            culture="fr"
+            events={events}
+            view={currentView}
+            onView={setCurrentView}
+            views={[Views.MONTH, Views.WEEK, Views.DAY]}
+            step={60}
+            timeslots={1}
+            defaultDate={new Date()}
+            showMultiDayTimes
+            style={{ height: "100%", width: "100%" }}
+            toolbar
+            onSelectEvent={(event, e) => {
+              const start = format(event.start, "HH:mm");
+              const end = format(event.end, "HH:mm");
+              const { clientX: x, clientY: y } = e;
+              setTooltipInfo({
+                event,
+                x,
+                y,
+                text: `${event.title} : ${start} – ${end}`,
+              });
+            }}
+            messages={{
+              today: "Aujourd’hui",
+              previous: "<",
+              next: ">",
+              month: "Mois",
+              week: "Semaine",
+              day: "Jour",
+            }}
+            formats={{
+              timeGutterFormat: (date) =>
+                format(date, "HH:mm", { locale: frLocale }),
+              weekdayFormat: (date) =>
+                format(date, "EEE dd/MM", { locale: frLocale }),
+              dayRangeHeaderFormat: ({ start, end }) =>
+                `${format(start, "dd MMM", {
+                  locale: frLocale,
+                })} – ${format(end, "dd MMM yyyy", {
+                  locale: frLocale,
+                })}`,
+              dayHeaderFormat: (date) =>
+                format(date, "EEEE dd MMMM yyyy", { locale: frLocale }),
+            }}
+            eventPropGetter={(event) => {
+              const isLeave = event.title === "Congés";
+              return {
+                style: {
+                  backgroundColor: isLeave ? "#FFD19C" : "#5779A3",
+                  border: `2px solid ${isLeave ? "#FDBA74" : "#335982"}`,
+                  outline: "none",
+                },
+              };
+            }}
+          />
+        </div>
       </div>
+
+      {tooltipInfo && (
+        <div className="fixed inset-0 flex items-center justify-center z-[110]">
+          <div
+            className="absolute inset-0 bg-black bg-opacity-40"
+            onClick={() => setTooltipInfo(null)}
+          />
+          <div className="bg-white p-6 rounded-lg shadow-lg z-10 w-full max-w-sm mx-4">
+            
+
+            <p className="text-center">{tooltipInfo.text}</p>
+
+            <div className="flex justify-center mt-6">
+              <button
+                className="px-4 py-2 bg-blue text-white rounded-lg"
+                onClick={() => setTooltipInfo(null)}
+              >
+                {t("buttons.close", "Fermer")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
