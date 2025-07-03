@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 // SVG
-import { DeleteSvg } from "@/components/_shared/_svgs/delete.svg";
-import { VisibleSvg } from "@/components/_shared/_svgs/visible.svg";
+import { DeleteSvg, DownloadSvg } from "@/components/_shared/_svgs/_index";
+
 // I18N
 import { useTranslation } from "next-i18next";
 
@@ -55,21 +55,31 @@ export default function DocumentsEmployeeComponent(props) {
         </button>
       </div>
 
-      {/* Liste des fichiers en attente d’upload */}
+      {/* Liste des fichiers en attente d’upload avec champ titre */}
       {props.docs.length > 0 && (
-        <ul className="list-disc pl-5 mb-6 mt-2">
-          {props.docs.map((f, i) => (
-            <li key={i} className="flex items-center gap-2 text-sm">
-              <span>{truncate(f.name)}</span>
-              {!props.isUploadingDocs && (
-                <button
-                  type="button"
-                  onClick={() => props.removeSelectedDoc(i)}
-                  className="ml-2 text-red hover:underline"
-                >
-                  ({t("buttons.remove")})
-                </button>
-              )}
+        <ul className="list-disc pl-5 mb-6 mt-2 space-y-2">
+          {props.docs.map((d, i) => (
+            <li key={i} className="flex flex-col gap-2 text-sm">
+              <div className="flex items-center gap-2">
+                <span>{truncate(d.file.name)}</span>
+                {!props.isUploadingDocs && (
+                  <button
+                    type="button"
+                    onClick={() => props.removeSelectedDoc(i)}
+                    className="ml-2 text-red hover:underline"
+                  >
+                    ({t("buttons.remove")})
+                  </button>
+                )}
+              </div>
+              <input
+                type="text"
+                placeholder={t("placeholders.documentTitle")}
+                value={d.title}
+                onChange={(e) => props.onDocTitleChange(i, e.target.value)}
+                className="border px-2 py-1 rounded w-full"
+                disabled={props.isUploadingDocs}
+              />
             </li>
           ))}
         </ul>
@@ -89,31 +99,31 @@ export default function DocumentsEmployeeComponent(props) {
       {/* Documents déjà uploadés */}
       {props?.employee.documents?.length > 0 && (
         <div>
-         
-          <ul className="grid grid-cols-1 mobile:grid-cols-2 midTablet:grid-cols-3 tablet:grid-cols-4 gap-6 mt-6">
+          <ul className="grid grid-cols-1 mobile:grid-cols-2 midTablet:grid-cols-3 tablet:grid-cols-4 gap-4 mt-6">
             {props.employee.documents.map((doc, i) => (
               <li
                 key={i}
                 className="flex flex-col gap-4 items-center justify-between text-center p-4 bg-white rounded-lg shadow-lg"
               >
-                <p className="text-sm">{truncate(doc.filename)}</p>
+                <p className="text-sm">
+                  <strong>{doc.title || truncate(doc.filename)}</strong>
+                </p>
 
                 <div className="flex w-full justify-between">
                   <div className="w-1/2 flex flex-col items-center">
                     <a
-                      href={`${props.baseUrl}/documents/${encodeURIComponent(
+                      href={`${process.env.NEXT_PUBLIC_API_URL}/employees/${props.employee._id}/documents/${encodeURIComponent(
                         doc.public_id
                       )}/download`}
                       className="inline-flex items-center justify-center bg-[#4ead7a99] hover:bg-[#4ead7a] p-2 rounded-full transition-colors duration-300"
                     >
-                      <VisibleSvg
+                      <DownloadSvg
                         width={15}
                         height={15}
                         strokeColor="white"
                         fillColor="white"
                       />
                     </a>
-                    <p className="text-xs mt-1">{t("buttons.download")}</p>
                   </div>
 
                   <div className="w-1/2 flex flex-col items-center">
@@ -132,7 +142,6 @@ export default function DocumentsEmployeeComponent(props) {
                         fillColor="white"
                       />
                     </button>
-                    <p className="text-xs mt-1">{t("buttons.delete")}</p>
                   </div>
                 </div>
               </li>

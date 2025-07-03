@@ -1,22 +1,11 @@
 import { useRouter } from "next/router";
 import { useContext, useState, useEffect, useRef } from "react";
-
-// AXIOS
 import axios from "axios";
-
-// REACT HOOK FORM
 import { useForm } from "react-hook-form";
-
-// CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
-
-// SVG
 import { EmployeesSvg } from "@/components/_shared/_svgs/employees.svg";
-
-// IA8N
 import { useTranslation } from "next-i18next";
 
-// COMPONENTS
 import ModaleEmployeesComponent from "./modale.employees.component";
 import DocumentsEmployeeComponent from "./documents.employees.component";
 import AccessRightsEmployeesComponent from "./access-rights.employees.component";
@@ -33,6 +22,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
   const [previewUrl, setPreviewUrl] = useState(null);
 
   // documents
+
   const [docs, setDocs] = useState([]);
   const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
   const [isUploadingDocs, setIsUploadingDocs] = useState(false);
@@ -87,6 +77,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
       return;
     }
     setEmployee(found);
+
     resetDetails({
       firstname: found.firstname,
       lastname: found.lastname,
@@ -99,24 +90,29 @@ export default function DetailsEmployeesComponent({ employeeId }) {
       emergencyContact: found.emergencyContact,
     });
     resetOptions({ options: found.options });
+
     setPreviewUrl(found.profilePicture?.url || null);
     setProfileFile(null);
     setOptionsSaved(false);
+
+    // On réinitialise docs à chaque nouvel employé
     setDocs([]);
-  }, [employeeId, resetDetails, resetOptions, router]);
+  }, [
+    employeeId,
+    resetDetails,
+    resetOptions,
+    router,
+    restaurantContext.restaurantData,
+  ]);
 
-  // Réinitialise le badge "Sauvegardé" si on modifie les options
+  // Réinitialise le champ fileInput si docs est vide
   useEffect(() => {
-    if (
-      optionsSaved &&
-      JSON.stringify(watchOptions("options")) !==
-        JSON.stringify(employee.options)
-    ) {
-      setOptionsSaved(false);
+    if (docs.length === 0 && fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
-  }, [watchOptions, optionsSaved, employee]);
+  }, [docs]);
 
-  // Sélection locale de la photo
+  // Sélection locale de la photo (inchangé)
   function handleFileSelect(e) {
     const f = e.target.files[0];
     if (!f) return;
@@ -124,7 +120,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     setPreviewUrl(URL.createObjectURL(f));
   }
 
-  // Sauvegarde détails + photo
+  // Sauvegarde détails + photo (inchangé)
   async function onSaveDetails(data) {
     setIsSavingDetails(true);
     try {
@@ -146,7 +142,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     }
   }
 
-  // Sauvegarde options
+  // Sauvegarde options (inchangé)
   async function onSaveOptions(formData) {
     try {
       await handleOptionsSubmit(async (d) => {
@@ -170,7 +166,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
   function onDocsChange(e) {
     const selectedFiles = Array.from(e.target.files);
     // 1. Ne pas réajouter un fichier déjà en attente d'upload
-    const existingNames = new Set(docs.map((f) => f.name));
+    const existingNames = new Set(docs.map((d) => d.file.name));
     // 2. Ne pas ajouter non plus un fichier déjà présent sur l'employé
     const uploadedNames = new Set(
       employee.documents?.map((d) => d.filename) || []
@@ -183,27 +179,37 @@ export default function DetailsEmployeesComponent({ employeeId }) {
 
     if (uniqueFiles.length < selectedFiles.length) {
       // Avertissement : certains fichiers étaient en double
-      // Tu peux remplacer alert() par ton propre toast/UI
       setDuplicateModalOpen(true);
     }
 
-    // On ajoute les nouveaux fichiers uniques au state
-    setDocs((prev) => [...prev, ...uniqueFiles]);
+    // On ajoute les nouveaux fichiers (file + titre vide)
+    const newDocs = uniqueFiles.map((f) => ({ file: f, title: "" }));
+    setDocs((prev) => [...prev, ...newDocs]);
   }
 
-  // Upload documents
+  // Met à jour le titre pour le doc à l’index donné
+  function onDocTitleChange(index, newTitle) {
+    setDocs((prev) =>
+      prev.map((d, i) => (i === index ? { ...d, title: newTitle } : d))
+    );
+  }
+
+  // Upload documents + titres
   async function onSaveDocs() {
     if (!docs.length) return;
     setIsUploadingDocs(true);
     try {
       const fd = new FormData();
-      docs.forEach((f) => fd.append("documents", f));
+      docs.forEach((d) => {
+        fd.append("documents", d.file);
+        fd.append("titles", d.title);
+      });
       const { data: res } = await axios.post(`${baseUrl}/documents`, fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       restaurantContext.setRestaurantData(res.restaurant);
       setEmployee(res.restaurant.employees.find((e) => e._id === employeeId));
-      setDocs([]);
+      setDocs([]); // on vide la sélection après l’upload
     } catch (err) {
       console.error("Erreur upload documents :", err);
     } finally {
@@ -221,7 +227,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     setDocToDelete(doc);
   }
 
-  // Supprime après confirmation
+  // Supprime après confirmation (inchangé)
   async function onDeleteDoc() {
     const { public_id } = docToDelete;
     setIsDeletingDocId(public_id);
@@ -250,7 +256,6 @@ export default function DetailsEmployeesComponent({ employeeId }) {
         <div>
           <EmployeesSvg width={30} height={30} fillColor="#131E3690" />
         </div>
-
         <h1 className="pl-2 text-xl flex-wrap tablet:text-2xl flex items-center gap-2">
           <span
             className="cursor-pointer hover:underline"
@@ -308,7 +313,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
         confirmDeleteDoc={confirmDeleteDoc}
         isDeletingDocId={isDeletingDocId}
         removeSelectedDoc={removeSelectedDoc}
-        baseUrl={baseUrl}
+        onDocTitleChange={onDocTitleChange}
       />
 
       {/* Modal doublon */}

@@ -271,63 +271,86 @@ router.post(
   async (req, res) => {
     try {
       const { restaurantId, employeeId } = req.params;
+
+      // 1. Vérifier que l’employé existe et appartient bien au restaurant
       const employee = await EmployeeModel.findById(employeeId);
       if (!employee || employee.restaurant.toString() !== restaurantId) {
         return res.status(404).json({ message: "Employee not found" });
       }
 
-      for (const file of req.files) {
-        // extraire base name et extension
+      // 2. Extraire les titres envoyés dans le même FormData
+      //    Si un seul titre, multer/Express mettra req.body.titles sous forme de string
+      let titles = [];
+      if (req.body.titles) {
+        titles = Array.isArray(req.body.titles)
+          ? req.body.titles
+          : [req.body.titles];
+      }
+
+      // 3. Pour chaque fichier reçu, récupérer le titre correspondant (ou chaîne vide)
+      for (let i = 0; i < req.files.length; i++) {
+        const file = req.files[i];
+        const title = titles[i] || "";
+
+        // Calculer un nom "safe" pour Cloudinary
         const ext = path.extname(file.originalname);
         const basename = path.basename(file.originalname, ext);
         const safeName = basename
           .replace(/\s+/g, "_")
           .replace(/[^a-zA-Z0-9_\-]/g, "");
+
+        // Dossier Cloudinary : restaurants/<restaurantId>/employees/docs
         const folder = `Gusto_Workspace/restaurants/${restaurantId}/employees/docs`;
 
+        // 4. Upload vers Cloudinary en mode "raw"
         const result = await new Promise((resolve, reject) => {
-          const stream = cloudinary.uploader.upload_stream(
+          const uploadStream = cloudinary.uploader.upload_stream(
             {
               resource_type: "raw",
               folder,
               public_id: safeName,
               overwrite: true,
             },
-            (err, r) => (err ? reject(err) : resolve(r))
+            (err, r) => {
+              if (err) return reject(err);
+              resolve(r);
+            }
           );
-          streamifier.createReadStream(file.buffer).pipe(stream);
+          streamifier.createReadStream(file.buffer).pipe(uploadStream);
         });
 
+        // 5. Ajouter l’entrée au tableau `documents` de l’employé
         employee.documents.push({
           url: result.secure_url,
           public_id: result.public_id,
           filename: file.originalname,
+          title: title,
         });
       }
 
+      // 6. Sauvegarder l’employé mis à jour
       await employee.save();
 
-      // renvoyer le restaurant mis à jour
-      const updatedRestaurant = await require("../models/restaurant.model")
-        .findById(restaurantId)
-        .populate("employees");
+      // 7. Renvoyer le restaurant complet mis à jour (avec populate pour les employés)
+      const updatedRestaurant =
+        await RestaurantModel.findById(restaurantId).populate("employees");
 
-      res.json({ restaurant: updatedRestaurant });
+      return res.json({ restaurant: updatedRestaurant });
     } catch (err) {
       console.error("Error uploading documents:", err);
-      res.status(500).json({ message: "Internal server error" });
+      return res.status(500).json({ message: "Internal server error" });
     }
   }
 );
 
 // ——— DOWNLOAD DOCUMENTS ———
 router.get(
-  "/restaurants/:restaurantId/employees/:employeeId/documents/:public_id(*)/download",
+  "/employees/:employeeId/documents/:public_id(*)/download",
   async (req, res) => {
     try {
-      const { restaurantId, employeeId, public_id } = req.params;
+      const { employeeId, public_id } = req.params;
       const emp = await EmployeeModel.findById(employeeId);
-      if (!emp || emp.restaurant.toString() !== restaurantId) {
+      if (!emp) {
         return res.status(404).json({ message: "Employee not found" });
       }
 
@@ -463,4 +486,243 @@ router.delete(
   }
 );
 
+// GET EMPLOYEE DOCUMENTS
+router.get("/employees/:employeeId/documents", async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+
+    console.log();
+
+    // 1. Récupérer l’employé directement
+    const employee = await EmployeeModel.findById(employeeId).lean();
+    if (!employee) {
+      return res.status(404).json({ message: "Employee not found" });
+    }
+
+    // 2. Renvoyer la liste de ses documents
+    return res.json({ documents: employee.documents });
+  } catch (err) {
+    console.error("Error fetching employee documents:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// 1) GET EMPLOYEE SHIFT
+router.get("/employees/:employeeId/shifts", async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    const employee = await EmployeeModel.findById(employeeId).lean();
+    if (!employee) {
+      return res.status(404).json({ message: "Employé non trouvé" });
+    }
+    return res.json({ shifts: employee.shifts });
+  } catch (err) {
+    console.error("Erreur fetch shifts:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// POST EMPLOYEE SHIFT
+router.post("/employees/:employeeId/shifts", async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    const { title, start, end } = req.body;
+
+    if (!title || !start || !end) {
+      return res
+        .status(400)
+        .json({ message: "title, start et end sont requis" });
+    }
+
+    const employee = await EmployeeModel.findById(employeeId);
+    if (!employee) {
+      return res.status(404).json({ message: "Employé non trouvé" });
+    }
+
+    employee.shifts.push({
+      title,
+      start: new Date(start),
+      end: new Date(end),
+    });
+    await employee.save();
+
+    return res.status(201).json({ shifts: employee.shifts });
+  } catch (err) {
+    console.error("Erreur ajout shift:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// PUT EMPLOYEE SHIFT
+router.put("/employees/:employeeId/shifts/:idx", async (req, res) => {
+  try {
+    const { employeeId, idx } = req.params;
+    const { title, start, end } = req.body;
+    const index = parseInt(idx, 10);
+
+    const employee = await EmployeeModel.findById(employeeId);
+    if (!employee) {
+      return res.status(404).json({ message: "Employé non trouvé" });
+    }
+
+    if (
+      isNaN(index) ||
+      index < 0 ||
+      index >= (employee.shifts ? employee.shifts.length : 0)
+    ) {
+      return res.status(400).json({ message: "Index de shift invalide" });
+    }
+
+    if (title !== undefined) employee.shifts[index].title = title;
+    if (start !== undefined) employee.shifts[index].start = new Date(start);
+    if (end !== undefined) employee.shifts[index].end = new Date(end);
+
+    await employee.save();
+
+    return res.status(200).json({ shifts: employee.shifts });
+  } catch (err) {
+    console.error("Erreur mise à jour shift:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// 4) DELETE EMPLOYEE SHIFT
+router.delete("/employees/:employeeId/shifts/:idx", async (req, res) => {
+  try {
+    const { employeeId, idx } = req.params;
+    const index = parseInt(idx, 10);
+
+    const employee = await EmployeeModel.findById(employeeId);
+    if (!employee) {
+      return res.status(404).json({ message: "Employé non trouvé" });
+    }
+
+    if (
+      isNaN(index) ||
+      index < 0 ||
+      index >= (employee.shifts ? employee.shifts.length : 0)
+    ) {
+      return res.status(400).json({ message: "Index de shift invalide" });
+    }
+
+    employee.shifts.splice(index, 1);
+    await employee.save();
+
+    return res.status(200).json({ shifts: employee.shifts });
+  } catch (err) {
+    console.error("Erreur suppression shift:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// ——— DEMANDES DE CONGÉS ———
+
+// 1) Créer une nouvelle demande de congé pour un employé
+router.post("/employees/:employeeId/leave-requests", async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    const { start, end, type } = req.body;
+    if (!start || !end) {
+      return res.status(400).json({ message: "start et end sont requis" });
+    }
+    const emp = await EmployeeModel.findById(employeeId);
+    if (!emp) return res.status(404).json({ message: "Employee not found" });
+
+    // on pousse la nouvelle demande
+    emp.leaveRequests.push({
+      start: new Date(start),
+      end: new Date(end),
+      type: ["full", "morning", "afternoon"].includes(type) ? type : "full",
+    });
+    await emp.save();
+
+    // on renvoie la liste à jour
+    return res.status(201).json(emp.leaveRequests);
+  } catch (err) {
+    console.error("Erreur création leaveRequest:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// 2) Lister toutes les demandes de congé d’un employé
+router.get("/employees/:employeeId/leave-requests", async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    const emp = await EmployeeModel.findById(employeeId).lean();
+    if (!emp) return res.status(404).json({ message: "Employee not found" });
+    return res.json(emp.leaveRequests);
+  } catch (err) {
+    console.error("Erreur list leaveRequests:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// 3) Mettre à jour le statut d’une demande (approved | rejected)
+router.put("/employees/:employeeId/leave-requests/:reqId", async (req, res) => {
+  try {
+    const { employeeId, reqId } = req.params;
+    const { status } = req.body;
+    if (!["pending", "approved", "rejected"].includes(status)) {
+      return res.status(400).json({ message: "status invalide" });
+    }
+
+    const emp = await EmployeeModel.findById(employeeId);
+    if (!emp) return res.status(404).json({ message: "Employee not found" });
+
+    const lr = emp.leaveRequests.id(reqId);
+    if (!lr) return res.status(404).json({ message: "Request not found" });
+
+    // 1) On met à jour le statut
+    lr.status = status;
+
+    // 2) Si on approuve, on crée un shift “Congés” pour la même plage
+    if (status === "approved") {
+      emp.shifts.push({
+        title: "Congés",
+        start: lr.start,
+        end: lr.end,
+      });
+    }
+
+    // 3) On sauvegarde l’employé (modification du leaveRequest + eventuel shift)
+    await emp.save();
+
+    // 4) On renvoie la demande mise à jour
+    return res.json(lr);
+  } catch (err) {
+    console.error("Erreur update leaveRequest:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// 4) Supprimer une demande de congé
+router.delete(
+  "/employees/:employeeId/leave-requests/:reqId",
+  async (req, res) => {
+    try {
+      const { employeeId, reqId } = req.params;
+      const emp = await EmployeeModel.findById(employeeId);
+      if (!emp) {
+        return res.status(404).json({ message: "Employee not found" });
+      }
+
+      // Supprime la sous-doc leaveRequest dont l'_id est reqId
+      emp.leaveRequests.pull(reqId);
+
+      // Si la demande existe toujours après pull, on considère qu'elle n'était pas trouvée
+      if (emp.leaveRequests.id(reqId)) {
+        return res.status(404).json({ message: "Request not found" });
+      }
+
+      // Sauvegarde les changements
+      await emp.save();
+
+      // Renvoie la liste mise à jour des demandes de congé
+      return res.json(emp.leaveRequests);
+    } catch (err) {
+      console.error("Erreur delete leaveRequest:", err);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  }
+);
 module.exports = router;

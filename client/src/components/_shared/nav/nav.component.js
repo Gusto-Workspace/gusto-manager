@@ -22,7 +22,7 @@ import { navItemsData } from "@/_assets/data/_index.data";
 import * as icons from "@/components/_shared/_svgs/_index";
 
 const HREF_TO_OPTION_KEY = {
-  "/dashboard/documents": "documents",
+  "/dashboard/my-space": "my-space",
   "/dashboard": "dashboard",
   "/dashboard/restaurant": "restaurant",
   "/dashboard/dishes": "dishes",
@@ -97,8 +97,8 @@ export default function NavComponent() {
       if (restaurantContext.dataLoading) return false;
       const role = restaurantContext.userConnected?.role;
 
-      // Documents : uniquement pour les employés
-      if (itemHref === "/dashboard/documents") {
+      // my-space : uniquement pour les employés
+      if (itemHref === "/dashboard/my-space") {
         return role === "employee";
       }
 
@@ -133,8 +133,8 @@ export default function NavComponent() {
     }));
 
     if (role === "owner") {
-      // pour les owners : on retire _uniquement_ "documents"
-      items = items.filter((item) => item.href !== "/dashboard/documents");
+      // pour les owners : on retire _uniquement_ "my-space"
+      items = items.filter((item) => item.href !== "/dashboard/my-space");
     } else {
       // pour les employés : on ne garde que les routes activées
       items = items.filter((item) => item.enabled);

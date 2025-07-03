@@ -1,8 +1,8 @@
 export const navItemsData = [
   {
-    href: "/dashboard/documents",
-    label: "nav.documents",
-    icon: "DocumentSvg",
+    href: "/dashboard/my-space",
+    label: "nav.mySpace",
+    icon: "EmployeeSvg",
   },
 
   { href: "/dashboard", label: "nav.dashboard", icon: "AnalyticsSvg" },
@@ -27,5 +27,5 @@ export const navItemsData = [
     label: "nav.employees",
     icon: "EmployeesSvg",
   },
-  { href: "/dashboard/take-away", label: "nav.takeAway", icon: "TakeAwaySvg" },
+  // { href: "/dashboard/take-away", label: "nav.takeAway", icon: "TakeAwaySvg" },
 ];

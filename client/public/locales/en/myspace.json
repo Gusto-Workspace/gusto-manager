@@ -1,0 +1,18 @@
+{
+  "titles": {
+    "main": "My schedule",
+    "second": "My documents",
+    "third": "My days off"
+  },
+  "buttons": {
+    "download": "Download",
+    "ask": "Request a day off"
+  },
+  "daysOff": {
+    "status": {
+      "pending": "Pending",
+      "approved": "Confirmed",
+      "rejected": "Rejected"
+    }
+  }
+}

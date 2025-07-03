@@ -24,23 +24,50 @@ const documentSchema = new mongoose.Schema(
     url: { type: String, required: true },
     public_id: { type: String, required: true },
     filename: { type: String, required: true },
+    title: { type: String, required: true },
   },
   { _id: false }
+);
+
+const shiftSchema = new mongoose.Schema(
+  {
+    title: { type: String, required: true },
+    start: { type: Date, required: true },
+    end: { type: Date, required: true },
+  },
+  { _id: false }
+);
+
+const leaveRequestSchema = new mongoose.Schema(
+  {
+    start: { type: Date, required: true },
+    end: { type: Date, required: true },
+    requestedAt: { type: Date, default: Date.now },
+    status: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+    },
+    type: {
+      type: String,
+      enum: ["full", "morning", "afternoon"],
+      default: "full",
+    },
+  },
+  { _id: true }
 );
 
 const employeeSchema = new mongoose.Schema({
   firstname: { type: String, required: true },
   lastname: { type: String, required: true },
-  email: { type: String }, // À utiliser si nécessaire
-  password: { type: String }, // À utiliser si nécessaire
+  email: { type: String },
+  password: { type: String },
   phone: { type: String, required: true },
-  // Un employé est associé à UN seul restaurant :
   restaurant: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Restaurant",
     required: true,
   },
-  // Nouveaux champs pour la gestion spécifique de l'employé :
   post: { type: String },
   dateOnPost: { type: Date },
   profilePicture: {
@@ -52,6 +79,8 @@ const employeeSchema = new mongoose.Schema({
   emergencyContact: { type: String },
   options: { type: optionsSchema, default: {} },
   documents: { type: [documentSchema], default: [] },
+  shifts: { type: [shiftSchema], default: [] },
+  leaveRequests: { type: [leaveRequestSchema], default: [] },
   created_at: { type: Date, default: Date.now },
   resetCode: String,
   resetCodeExpires: Date,
