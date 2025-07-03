@@ -237,6 +237,7 @@ router.put(
 router.post("/restaurants/:id/visits", async (req, res) => {
   const restaurantId = req.params.id;
   const now = new Date();
+  // Format YYYY-MM, ex. "2025-07"
   const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
   try {
@@ -246,11 +247,14 @@ router.post("/restaurants/:id/visits", async (req, res) => {
       { $inc: { "periods.$.count": 1 } }
     );
 
-    if (updateResult.nModified === 0) {
+    // Si aucun count n'a été modifié, c'est qu'il n'y a pas encore de document pour ce mois
+    if (updateResult.modifiedCount === 0) {
       await VisitCounterModel.updateOne(
         { restaurant: restaurantId },
         {
+          // Si le document restaurant n'existe pas encore, on le crée → upsert
           $setOnInsert: { restaurant: restaurantId },
+          // On pousse la nouvelle période avec count = 1
           $push: { periods: { period, count: 1 } },
         },
         { upsert: true }
@@ -260,7 +264,7 @@ router.post("/restaurants/:id/visits", async (req, res) => {
     return res.status(201).json({ ok: true });
   } catch (err) {
     console.error("Erreur log visite :", err);
-    return res.status(500).json({ error: "Impossible de loguer la visite" });
+    return res.status(500).json({ error: "Impossible de logger la visite" });
   }
 });
 
