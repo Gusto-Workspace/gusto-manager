@@ -30,7 +30,7 @@ app.use(
       "https://www.lacoquille-concarneau.fr", // Client La coquille
       "https://demonstration-kopi-nona-gusto-manager.vercel.app", // Client Kopi Nona
       "https://www.embrunslorient.fr", // Client Embruns
-      "https://www.bourrasquekerroch.fr/", // Client Bourrasque
+      "https://www.bourrasquekerroch.fr", // Client Bourrasque
       "https://gusto-manager.onrender.com", // Server
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
