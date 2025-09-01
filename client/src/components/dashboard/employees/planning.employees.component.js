@@ -367,58 +367,65 @@ export default function PlanningEmployeesComponent() {
           (e) => e._id === employeeId
         );
 
-        if (emp?.leaveRequests?.length) {
-          const startTs = new Date(start).getTime();
-          const endTs = new Date(end).getTime();
+        const norm = (d) => {
+          const x = new Date(d);
+          x.setSeconds(0, 0);
+          return x.getTime();
+        };
+        const startTs = norm(start);
+        const endTs = norm(end);
 
-          const matchingReq = emp.leaveRequests.find((r) => {
-            return (
-              new Date(r.start).getTime() === startTs &&
-              new Date(r.end).getTime() === endTs &&
-              r.status !== "cancelled"
-            );
-          });
+        // Annule TOUTES les leaveRequests non "cancelled" sur la même plage
+        const toCancel = (emp?.leaveRequests || []).filter(
+          (r) =>
+            norm(r.start) === startTs &&
+            norm(r.end) === endTs &&
+            r.status !== "cancelled"
+        );
 
-          if (matchingReq?._id) {
-            // Annuler la demande => le backend retire aussi le shift "Congés"
-            await axios.put(
-              `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/leave-requests/${matchingReq._id}`,
-              { status: "cancelled" }
-            );
+        if (toCancel.length > 0) {
+          await Promise.all(
+            toCancel.map((r) =>
+              axios.put(
+                `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/leave-requests/${r._id}`,
+                { status: "cancelled" }
+              )
+            )
+          );
 
-            // Maj du contexte: statut de la demande
-            const updatedRestaurantLR = { ...restaurantContext.restaurantData };
-            updatedRestaurantLR.employees = updatedRestaurantLR.employees.map(
-              (e) =>
-                e._id === employeeId
-                  ? {
-                      ...e,
-                      leaveRequests: e.leaveRequests.map((req) =>
-                        req._id === matchingReq._id
-                          ? { ...req, status: "cancelled" }
-                          : req
-                      ),
-                    }
-                  : e
-            );
-            restaurantContext.setRestaurantData(updatedRestaurantLR);
-          }
+          // Met à jour le contexte pour toutes les demandes annulées
+          const updatedRestaurantLR = { ...restaurantContext.restaurantData };
+          updatedRestaurantLR.employees = updatedRestaurantLR.employees.map(
+            (e) => {
+              if (e._id !== employeeId) return e;
+              return {
+                ...e,
+                leaveRequests: (e.leaveRequests || []).map((req) =>
+                  norm(req.start) === startTs && norm(req.end) === endTs
+                    ? { ...req, status: "cancelled" }
+                    : req
+                ),
+              };
+            }
+          );
+          restaurantContext.setRestaurantData(updatedRestaurantLR);
         }
 
-        const startTs = new Date(start).getTime();
-        const endTs = new Date(end).getTime();
+        // Nettoie les shifts "Congés" de cette plage côté contexte (sécurité visuelle locale)
         const updatedRestaurant = { ...restaurantContext.restaurantData };
-        updatedRestaurant.employees = updatedRestaurant.employees.map((emp) => {
-          if (emp._id !== employeeId) return emp;
-          const newShifts = (emp.shifts || []).filter(
-            (s, i) =>
-              !(
-                s.title === "Congés" &&
-                new Date(s.start).getTime() === startTs &&
-                new Date(s.end).getTime() === endTs
-              )
-          );
-          return { ...emp, shifts: newShifts };
+        updatedRestaurant.employees = updatedRestaurant.employees.map((e) => {
+          if (e._id !== employeeId) return e;
+          return {
+            ...e,
+            shifts: (e.shifts || []).filter(
+              (s) =>
+                !(
+                  s.title === "Congés" &&
+                  norm(s.start) === startTs &&
+                  norm(s.end) === endTs
+                )
+            ),
+          };
         });
         restaurantContext.setRestaurantData(updatedRestaurant);
       } else {
@@ -773,11 +780,46 @@ export default function PlanningEmployeesComponent() {
                 {t("planning:labels.deleteShift", "Supprimer ce shift")} :{" "}
                 {deleteModalData?.title}
               </span>
+
               <strong>
-                {format(deleteModalData.start, "EEEE dd MMM yyyy HH:mm", {
-                  locale: frLocale,
-                })}{" "}
-                – {format(deleteModalData.end, "HH:mm", { locale: frLocale })}
+                {(() => {
+                  const sameDay =
+                    deleteModalData.start.toDateString() ===
+                    deleteModalData.end.toDateString();
+
+                  const isFullDay =
+                    deleteModalData.start.getHours() === 0 &&
+                    deleteModalData.start.getMinutes() === 0 &&
+                    deleteModalData.end.getHours() === 23 &&
+                    deleteModalData.end.getMinutes() >= 59;
+
+                  if (sameDay && isFullDay) {
+                    // 👉 Journée complète sur un seul jour
+                    return format(deleteModalData.start, "EEEE dd MMM yyyy", {
+                      locale: frLocale,
+                    });
+                  } else if (!sameDay) {
+                    // 👉 Plusieurs jours
+                    return `${format(
+                      deleteModalData.start,
+                      "EEEE dd MMM yyyy",
+                      {
+                        locale: frLocale,
+                      }
+                    )} – ${format(deleteModalData.end, "EEEE dd MMM yyyy", {
+                      locale: frLocale,
+                    })}`;
+                  } else {
+                    // 👉 Même jour mais avec heures
+                    return `${format(
+                      deleteModalData.start,
+                      "EEEE dd MMM yyyy HH:mm",
+                      {
+                        locale: frLocale,
+                      }
+                    )} – ${format(deleteModalData.end, "HH:mm", { locale: frLocale })}`;
+                  }
+                })()}
               </strong>
             </p>
             <div className="flex justify-center gap-4">

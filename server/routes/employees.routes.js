@@ -657,7 +657,7 @@ router.get("/employees/:employeeId/leave-requests", async (req, res) => {
   }
 });
 
-// 3) Mettre à jour le statut d’une demande (approved | rejected)
+// 3) Mettre à jour le statut d’une demande (approved | rejected | cancelled)
 router.put("/employees/:employeeId/leave-requests/:reqId", async (req, res) => {
   try {
     const { employeeId, reqId } = req.params;
@@ -672,43 +672,63 @@ router.put("/employees/:employeeId/leave-requests/:reqId", async (req, res) => {
     const lr = emp.leaveRequests.id(reqId);
     if (!lr) return res.status(404).json({ message: "Request not found" });
 
-    // 1) On met à jour le statut
+    // Normalisation "tolérante"
+    const norm = (d) => {
+      const x = new Date(d);
+      x.setSeconds(0, 0);
+      return x.getTime();
+    };
+    const targetStart = norm(lr.start);
+    const targetEnd   = norm(lr.end);
+
+    // 1) Met à jour le statut de la requête ciblée
     lr.status = status;
 
-    // 2) Si on approuve, on crée un shift “Congés” pour la même plage
     if (status === "approved") {
-      emp.shifts.push({
-        title: "Congés",
-        start: lr.start,
-        end: lr.end,
-      });
-    }
-
-    // Si on annule, on retire le shift “Congés” correspondant s’il existe
-    if (status === "cancelled") {
-      const targetStart = +new Date(lr.start);
-      const targetEnd = +new Date(lr.end);
-      const idx = emp.shifts.findIndex(
+      // Evite les doublons de shifts
+      const alreadyExists = emp.shifts.some(
         (s) =>
           s.title === "Congés" &&
-          +new Date(s.start) === targetStart &&
-          +new Date(s.end) === targetEnd
+          norm(s.start) === targetStart &&
+          norm(s.end) === targetEnd
       );
-      if (idx !== -1) {
-        emp.shifts.splice(idx, 1);
+      if (!alreadyExists) {
+        emp.shifts.push({
+          title: "Congés",
+          start: lr.start,
+          end: lr.end,
+        });
       }
     }
 
-    // 3) On sauvegarde l’employé (modification du leaveRequest + eventuel shift)
-    await emp.save();
+    if (status === "cancelled") {
+      // Annule TOUTES les leaveRequests de la même plage
+      emp.leaveRequests.forEach((r) => {
+        if (norm(r.start) === targetStart && norm(r.end) === targetEnd) {
+          r.status = "cancelled";
+        }
+      });
 
-    // 4) On renvoie la demande mise à jour
+      // Supprime TOUS les shifts congés identiques (pas juste le premier)
+      emp.shifts = emp.shifts.filter(
+        (s) =>
+          !(
+            s.title === "Congés" &&
+            norm(s.start) === targetStart &&
+            norm(s.end) === targetEnd
+          )
+      );
+    }
+
+    await emp.save();
+    // Renvoyer la demande mise à jour (et côté client tu peux re-fetch si besoin)
     return res.json(lr);
   } catch (err) {
     console.error("Erreur update leaveRequest:", err);
     return res.status(500).json({ message: "Internal server error" });
   }
 });
+
 
 // 4) Supprimer une demande de congé
 router.delete(
@@ -740,4 +760,5 @@ router.delete(
     }
   }
 );
+
 module.exports = router;
