@@ -33,6 +33,7 @@ export default function PlanningMySpaceComponent({ employeeId }) {
   });
   const [currentView, setCurrentView] = useState(Views.WEEK);
   const [tooltipInfo, setTooltipInfo] = useState(null);
+  const [alreadyExisting, setAlreadyExisting] = useState(false);
 
   // date-fns FR
   const locales = { fr: frLocale };
@@ -48,7 +49,10 @@ export default function PlanningMySpaceComponent({ employeeId }) {
 
   // bloque le scroll du body quand la modale est ouverte
   useEffect(() => {
-    document.body.classList.toggle("overflow-hidden", leaveModalOpen || tooltipInfo);
+    document.body.classList.toggle(
+      "overflow-hidden",
+      leaveModalOpen || tooltipInfo
+    );
     return () => document.body.classList.remove("overflow-hidden");
   }, [leaveModalOpen, tooltipInfo]);
 
@@ -116,22 +120,27 @@ export default function PlanningMySpaceComponent({ employeeId }) {
 
   async function submitLeave() {
     const { startDate, endDate, type } = leaveModalData;
-    let start, end;
 
-    if (startDate === endDate && type !== "full") {
-      if (type === "morning") {
-        start = new Date(`${startDate}T00:00:00`);
-        end = new Date(`${startDate}T12:00:00`);
-      } else {
-        start = new Date(`${startDate}T12:00:00`);
-        end = new Date(`${startDate}T23:59:59`);
+    // 1) Construire le même interval que celui posté au backend
+    const candidate = { ...buildInterval({ startDate, endDate, type }), type };
+
+    // 2) Récupérer les demandes existantes et bloquer si duplicata strict
+    try {
+      const { data: existing } = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/leave-requests`
+      );
+
+      if (hasExactDuplicate(existing, candidate)) {
+        setAlreadyExisting(true);
+        return;
       }
-    } else {
-      start = new Date(`${startDate}T00:00:00`);
-      end = new Date(`${endDate}T23:59:59`);
+    } catch (e) {
+      // en cas d'échec du GET, on peut décider de bloquer par prudence ou laisser passer
+      console.error("Erreur lecture demandes existantes :", e);
     }
 
-    if (end <= start) {
+    // 3) Contrôle de cohérence local (fin après début)
+    if (new Date(candidate.end) <= new Date(candidate.start)) {
       return window.alert(
         t(
           "leaveModal.errorDates",
@@ -140,10 +149,11 @@ export default function PlanningMySpaceComponent({ employeeId }) {
       );
     }
 
+    // 4) Envoi de la demande
     try {
       await axios.post(
         `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/leave-requests`,
-        { start: start.toISOString(), end: end.toISOString(), type }
+        { start: candidate.start, end: candidate.end, type }
       );
       window.dispatchEvent(new Event("leaveRequestAdded"));
       setLeaveModalOpen(false);
@@ -151,6 +161,49 @@ export default function PlanningMySpaceComponent({ employeeId }) {
       console.error(err);
       window.alert(t("leaveModal.errorSubmit", "Erreur lors de la demande"));
     }
+  }
+
+  // ——— Helpers pour comparer exactement deux demandes ———
+  function buildInterval({ startDate, endDate, type }) {
+    // Reproduit EXACTEMENT ce que tu envoies au backend
+    if (startDate === endDate && type !== "full") {
+      if (type === "morning") {
+        return {
+          start: new Date(`${startDate}T00:00:00`).toISOString(),
+          end: new Date(`${startDate}T12:00:00`).toISOString(),
+        };
+      }
+      // afternoon
+      return {
+        start: new Date(`${startDate}T12:00:00`).toISOString(),
+        end: new Date(`${startDate}T23:59:59`).toISOString(),
+      };
+    }
+    return {
+      start: new Date(`${startDate}T00:00:00`).toISOString(),
+      end: new Date(`${endDate}T23:59:59`).toISOString(),
+    };
+  }
+
+  function sameRequest(a, b) {
+    const aType = a.type || "full";
+    const bType = b.type || "full";
+    return a.start === b.start && a.end === b.end && aType === bType;
+  }
+
+  function hasExactDuplicate(existing, candidate) {
+    return (existing || []).some(
+      (r) =>
+        (r.status === "pending" || r.status === "approved") &&
+        sameRequest(
+          {
+            start: new Date(r.start).toISOString(),
+            end: new Date(r.end).toISOString(),
+            type: r.type,
+          },
+          candidate
+        )
+    );
   }
 
   // largeur minimale pour scroll (7 jours * 100px)
@@ -182,13 +235,16 @@ export default function PlanningMySpaceComponent({ employeeId }) {
         <div className="fixed inset-0 flex items-center justify-center z-[100]">
           <div
             className="absolute inset-0 bg-black bg-opacity-40"
-            onClick={() => setLeaveModalOpen(false)}
+            onClick={() => {
+              setLeaveModalOpen(false), setAlreadyExisting(false);
+            }}
           />
-          <div className="bg-white p-6 rounded-lg shadow-lg z-10 w-[400px] mx-4">
+          <div className="bg-white p-6 rounded-lg shadow-lg z-10 w-[400px] mx-4 relative">
             <h2 className="text-xl font-semibold mb-4 text-center">
               {t("leaveModal.title", "Demande de congé")}
             </h2>
-            <div className="space-y-4 mb-6">
+
+            <div className="space-y-4 mb-4">
               <label className="block">
                 {t("leaveModal.startDate", "Date de début")} :
                 <input
@@ -247,7 +303,7 @@ export default function PlanningMySpaceComponent({ employeeId }) {
                 </div>
               )}
             </div>
-            <div className="flex justify-center gap-4">
+            <div className="flex justify-center gap-4 mb-2">
               <button
                 onClick={submitLeave}
                 className="px-4 py-2 bg-blue text-white rounded-lg"
@@ -255,12 +311,20 @@ export default function PlanningMySpaceComponent({ employeeId }) {
                 {t("buttons.submit", "Envoyer")}
               </button>
               <button
-                onClick={() => setLeaveModalOpen(false)}
+                onClick={() => {
+                  setLeaveModalOpen(false), setAlreadyExisting(false);
+                }}
                 className="px-4 py-2 bg-red text-white rounded-lg"
               >
                 {t("buttons.cancel", "Annuler")}
               </button>
             </div>
+
+            {alreadyExisting && (
+              <p className="text-sm text-red italic absolute bottom-1 left-1/2 -translate-x-1/2 text-nowrap">
+                Une demande est déjà existante pour cette date
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -336,8 +400,6 @@ export default function PlanningMySpaceComponent({ employeeId }) {
             onClick={() => setTooltipInfo(null)}
           />
           <div className="bg-white p-6 rounded-lg shadow-lg z-10 w-full max-w-sm mx-4">
-            
-
             <p className="text-center">{tooltipInfo.text}</p>
 
             <div className="flex justify-center mt-6">

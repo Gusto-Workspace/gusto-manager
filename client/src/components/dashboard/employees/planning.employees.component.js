@@ -354,107 +354,105 @@ export default function PlanningEmployeesComponent() {
     setDeleteModalOpen(true);
   }
 
-// ─── Confirmer suppression ───────────────────────────────────────────────────
-async function handleConfirmDelete() {
-  const { employeeId, shiftIndex, eventId, start, end, title } = deleteModalData;
-  const isLeave = title === "Congés";
+  // ─── Confirmer suppression ───────────────────────────────────────────────────
+  async function handleConfirmDelete() {
+    const { employeeId, shiftIndex, eventId, start, end, title } =
+      deleteModalData;
+    const isLeave = title === "Congés";
 
-  try {
-    // 1) Si c'est un congé : on annule la demande associée (ce qui supprime aussi le shift côté backend)
-    if (isLeave) {
-      const emp = restaurantContext.restaurantData?.employees?.find(
-        (e) => e._id === employeeId
-      );
+    try {
+      // 1) Si c'est un congé : on annule la demande associée (ce qui supprime aussi le shift côté backend)
+      if (isLeave) {
+        const emp = restaurantContext.restaurantData?.employees?.find(
+          (e) => e._id === employeeId
+        );
 
-      if (emp?.leaveRequests?.length) {
+        if (emp?.leaveRequests?.length) {
+          const startTs = new Date(start).getTime();
+          const endTs = new Date(end).getTime();
+
+          const matchingReq = emp.leaveRequests.find((r) => {
+            return (
+              new Date(r.start).getTime() === startTs &&
+              new Date(r.end).getTime() === endTs &&
+              r.status !== "cancelled"
+            );
+          });
+
+          if (matchingReq?._id) {
+            // Annuler la demande => le backend retire aussi le shift "Congés"
+            await axios.put(
+              `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/leave-requests/${matchingReq._id}`,
+              { status: "cancelled" }
+            );
+
+            // Maj du contexte: statut de la demande
+            const updatedRestaurantLR = { ...restaurantContext.restaurantData };
+            updatedRestaurantLR.employees = updatedRestaurantLR.employees.map(
+              (e) =>
+                e._id === employeeId
+                  ? {
+                      ...e,
+                      leaveRequests: e.leaveRequests.map((req) =>
+                        req._id === matchingReq._id
+                          ? { ...req, status: "cancelled" }
+                          : req
+                      ),
+                    }
+                  : e
+            );
+            restaurantContext.setRestaurantData(updatedRestaurantLR);
+          }
+        }
+
         const startTs = new Date(start).getTime();
         const endTs = new Date(end).getTime();
-
-        const matchingReq = emp.leaveRequests.find((r) => {
-          return (
-            new Date(r.start).getTime() === startTs &&
-            new Date(r.end).getTime() === endTs &&
-            r.status !== "cancelled"
+        const updatedRestaurant = { ...restaurantContext.restaurantData };
+        updatedRestaurant.employees = updatedRestaurant.employees.map((emp) => {
+          if (emp._id !== employeeId) return emp;
+          const newShifts = (emp.shifts || []).filter(
+            (s, i) =>
+              !(
+                s.title === "Congés" &&
+                new Date(s.start).getTime() === startTs &&
+                new Date(s.end).getTime() === endTs
+              )
           );
+          return { ...emp, shifts: newShifts };
         });
+        restaurantContext.setRestaurantData(updatedRestaurant);
+      } else {
+        // 2) Shift normal : on supprime via l'API comme avant
+        await axios.delete(
+          `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/shifts/${shiftIndex}`
+        );
 
-        if (matchingReq?._id) {
-          // Annuler la demande => le backend retire aussi le shift "Congés"
-          await axios.put(
-            `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/leave-requests/${matchingReq._id}`,
-            { status: "cancelled" }
-          );
-
-          // Maj du contexte: statut de la demande
-          const updatedRestaurantLR = { ...restaurantContext.restaurantData };
-          updatedRestaurantLR.employees = updatedRestaurantLR.employees.map((e) =>
-            e._id === employeeId
-              ? {
-                  ...e,
-                  leaveRequests: e.leaveRequests.map((req) =>
-                    req._id === matchingReq._id
-                      ? { ...req, status: "cancelled" }
-                      : req
-                  ),
-                }
-              : e
-          );
-          restaurantContext.setRestaurantData(updatedRestaurantLR);
-        }
+        // Mettre à jour le contexte (côté shifts)
+        const updatedRestaurant = { ...restaurantContext.restaurantData };
+        updatedRestaurant.employees = updatedRestaurant.employees.map((emp) => {
+          if (emp._id === employeeId) {
+            const newShifts = emp.shifts.filter((_, i) => i !== shiftIndex);
+            return { ...emp, shifts: newShifts };
+          }
+          return emp;
+        });
+        restaurantContext.setRestaurantData(updatedRestaurant);
       }
 
-      // Ne PAS appeler le DELETE du shift ici (il est déjà supprimé par le backend)
-      // On retire localement le shift "Congés" correspondant (par start/end/title)
-      const startTs = new Date(start).getTime();
-      const endTs = new Date(end).getTime();
-      const updatedRestaurant = { ...restaurantContext.restaurantData };
-      updatedRestaurant.employees = updatedRestaurant.employees.map((emp) => {
-        if (emp._id !== employeeId) return emp;
-        const newShifts = (emp.shifts || []).filter(
-          (s, i) =>
-            !(
-              s.title === "Congés" &&
-              new Date(s.start).getTime() === startTs &&
-              new Date(s.end).getTime() === endTs
-            )
-        );
-        return { ...emp, shifts: newShifts };
-      });
-      restaurantContext.setRestaurantData(updatedRestaurant);
-    } else {
-      // 2) Shift normal : on supprime via l'API comme avant
-      await axios.delete(
-        `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/shifts/${shiftIndex}`
+      // 3) Retirer l'event du calendrier
+      setEvents((prev) => prev.filter((ev) => ev.id !== eventId));
+    } catch (err) {
+      console.error("Erreur suppression shift / annulation congé :", err);
+      window.alert(
+        t(
+          "planning:errors.deleteFailed",
+          "Impossible de supprimer le shift / annuler le congé"
+        )
       );
-
-      // Mettre à jour le contexte (côté shifts)
-      const updatedRestaurant = { ...restaurantContext.restaurantData };
-      updatedRestaurant.employees = updatedRestaurant.employees.map((emp) => {
-        if (emp._id === employeeId) {
-          const newShifts = emp.shifts.filter((_, i) => i !== shiftIndex);
-          return { ...emp, shifts: newShifts };
-        }
-        return emp;
-      });
-      restaurantContext.setRestaurantData(updatedRestaurant);
     }
 
-    // 3) Retirer l'event du calendrier
-    setEvents((prev) => prev.filter((ev) => ev.id !== eventId));
-  } catch (err) {
-    console.error("Erreur suppression shift / annulation congé :", err);
-    window.alert(
-      t(
-        "planning:errors.deleteFailed",
-        "Impossible de supprimer le shift / annuler le congé"
-      )
-    );
+    setDeleteModalOpen(false);
   }
-
-  setDeleteModalOpen(false);
-}
-
-
 
   function handleCancelDelete() {
     setDeleteModalOpen(false);
