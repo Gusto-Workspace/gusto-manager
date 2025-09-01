@@ -662,7 +662,7 @@ router.put("/employees/:employeeId/leave-requests/:reqId", async (req, res) => {
   try {
     const { employeeId, reqId } = req.params;
     const { status } = req.body;
-    if (!["pending", "approved", "rejected"].includes(status)) {
+    if (!["pending", "approved", "rejected", "cancelled"].includes(status)) {
       return res.status(400).json({ message: "status invalide" });
     }
 
@@ -682,6 +682,21 @@ router.put("/employees/:employeeId/leave-requests/:reqId", async (req, res) => {
         start: lr.start,
         end: lr.end,
       });
+    }
+
+    // Si on annule, on retire le shift “Congés” correspondant s’il existe
+    if (status === "cancelled") {
+      const targetStart = +new Date(lr.start);
+      const targetEnd = +new Date(lr.end);
+      const idx = emp.shifts.findIndex(
+        (s) =>
+          s.title === "Congés" &&
+          +new Date(s.start) === targetStart &&
+          +new Date(s.end) === targetEnd
+      );
+      if (idx !== -1) {
+        emp.shifts.splice(idx, 1);
+      }
     }
 
     // 3) On sauvegarde l’employé (modification du leaveRequest + eventuel shift)

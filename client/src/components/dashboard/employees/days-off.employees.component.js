@@ -52,7 +52,7 @@ export default function DaysOffEmployeesComponent() {
         if (acc[req.status]) acc[req.status].push(req);
         return acc;
       },
-      { pending: [], approved: [], rejected: [] }
+      { pending: [], approved: [], rejected: [], cancelled: [] }
     );
   }, [requests]);
 
@@ -61,12 +61,15 @@ export default function DaysOffEmployeesComponent() {
     const start = new Date(req.start);
     const end = new Date(req.end);
     const span = differenceInCalendarDays(end, start);
+
     if (span === 0 && req.type !== "full") {
       return req.type === "morning"
         ? t("daysOff.halfMorning", "½ journée matin")
         : t("daysOff.halfAfternoon", "½ journée après-midi");
     }
-    return `${span + 1} jour(s)`;
+
+    const totalDays = span + 1;
+    return `${totalDays} ${totalDays > 1 ? "jours" : "jour"}`;
   }
 
   // 7) Mise à jour instantanée du statut
@@ -92,6 +95,7 @@ export default function DaysOffEmployeesComponent() {
     pending: t("daysOff.labels.pending", "En attente"),
     approved: t("daysOff.labels.approved", "Confirmées"),
     rejected: t("daysOff.labels.rejected", "Rejetées"),
+    cancelled: t("daysOff.labels.rejected", "Annulées"),
   };
 
   return (
@@ -100,7 +104,12 @@ export default function DaysOffEmployeesComponent() {
       <div className="flex justify-between flex-wrap gap-4">
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-2 min-h-[40px]">
-            <EmployeesSvg width={30} height={30} fillColor="#131E3690" />
+            <EmployeesSvg
+              width={30}
+              height={30}
+              fillColor="#131E3690"
+              className="min-w-[30px]"
+            />
             <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2 flex-wrap">
               <span
                 className="cursor-pointer hover:underline"
@@ -143,7 +152,7 @@ export default function DaysOffEmployeesComponent() {
       </div>
 
       {/* ─── Sections par statut ────────────────────────────────────────────── */}
-      {["pending", "approved", "rejected"].map((status) => (
+      {["pending", "approved", "rejected", "cancelled"].map((status) => (
         <div key={status}>
           <div className="relative mb-4">
             <h2 className="relative flex items-center justify-center gap-2 w-fit px-6 mx-auto text-center text-lg font-semibold uppercase bg-lightGrey z-20">

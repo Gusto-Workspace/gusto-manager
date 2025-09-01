@@ -12,7 +12,8 @@
     "status": {
       "pending": "En attente",
       "approved": "Confirmée",
-      "rejected": "Rejetée"
+      "rejected": "Rejetée",
+      "cancelled" : "Annulée"
     }
   }
 }

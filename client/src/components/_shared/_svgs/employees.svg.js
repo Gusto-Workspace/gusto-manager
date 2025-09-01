@@ -5,6 +5,7 @@ export function EmployeesSvg(props) {
     width={props.width ?? 800}
     height={props.height ?? 800}
     viewBox="0 0 36 36"
+    className={props.className ?? ""}
   >
     <g data-name="Layer 3">
       <ellipse fill={props.fillColor ?? "black"} cx={18} cy={11.28} rx={4.76} ry={4.7} />
