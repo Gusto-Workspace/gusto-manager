@@ -524,95 +524,56 @@ router.get("/employees/:employeeId/shifts", async (req, res) => {
 
 // POST EMPLOYEE SHIFT
 router.post("/employees/:employeeId/shifts", async (req, res) => {
-  try {
-    const { employeeId } = req.params;
-    const { title, start, end } = req.body;
+  const { employeeId } = req.params;
+  const { title, start, end, leaveRequestId = null } = req.body;
 
-    if (!title || !start || !end) {
-      return res
-        .status(400)
-        .json({ message: "title, start et end sont requis" });
-    }
+  const emp = await EmployeeModel.findById(employeeId);
+  if (!emp) return res.status(404).json({ message: "Employé non trouvé" });
 
-    const employee = await EmployeeModel.findById(employeeId);
-    if (!employee) {
-      return res.status(404).json({ message: "Employé non trouvé" });
-    }
+  emp.shifts.push({
+    title,
+    start: new Date(start),
+    end: new Date(end),
+    leaveRequestId: leaveRequestId || null,
+  });
 
-    employee.shifts.push({
-      title,
-      start: new Date(start),
-      end: new Date(end),
-    });
-    await employee.save();
-
-    return res.status(201).json({ shifts: employee.shifts });
-  } catch (err) {
-    console.error("Erreur ajout shift:", err);
-    return res.status(500).json({ message: "Internal server error" });
-  }
+  await emp.save();
+  const created = emp.shifts[emp.shifts.length - 1]; // dernier push
+  return res.status(201).json({ shift: created, shifts: emp.shifts });
 });
 
 // PUT EMPLOYEE SHIFT
-router.put("/employees/:employeeId/shifts/:idx", async (req, res) => {
-  try {
-    const { employeeId, idx } = req.params;
-    const { title, start, end } = req.body;
-    const index = parseInt(idx, 10);
+router.put("/employees/:employeeId/shifts/:shiftId", async (req, res) => {
+  const { employeeId, shiftId } = req.params;
+  const { title, start, end } = req.body;
 
-    const employee = await EmployeeModel.findById(employeeId);
-    if (!employee) {
-      return res.status(404).json({ message: "Employé non trouvé" });
-    }
+  const emp = await EmployeeModel.findById(employeeId);
+  if (!emp) return res.status(404).json({ message: "Employé non trouvé" });
 
-    if (
-      isNaN(index) ||
-      index < 0 ||
-      index >= (employee.shifts ? employee.shifts.length : 0)
-    ) {
-      return res.status(400).json({ message: "Index de shift invalide" });
-    }
+  const shift = emp.shifts.id(shiftId);
+  if (!shift) return res.status(404).json({ message: "Shift non trouvé" });
 
-    if (title !== undefined) employee.shifts[index].title = title;
-    if (start !== undefined) employee.shifts[index].start = new Date(start);
-    if (end !== undefined) employee.shifts[index].end = new Date(end);
+  if (title !== undefined) shift.title = title;
+  if (start !== undefined) shift.start = new Date(start);
+  if (end !== undefined) shift.end = new Date(end);
 
-    await employee.save();
-
-    return res.status(200).json({ shifts: employee.shifts });
-  } catch (err) {
-    console.error("Erreur mise à jour shift:", err);
-    return res.status(500).json({ message: "Internal server error" });
-  }
+  await emp.save();
+  return res.json({ shift, shifts: emp.shifts });
 });
 
 // 4) DELETE EMPLOYEE SHIFT
-router.delete("/employees/:employeeId/shifts/:idx", async (req, res) => {
-  try {
-    const { employeeId, idx } = req.params;
-    const index = parseInt(idx, 10);
+router.delete("/employees/:employeeId/shifts/:shiftId", async (req, res) => {
+  const { employeeId, shiftId } = req.params;
 
-    const employee = await EmployeeModel.findById(employeeId);
-    if (!employee) {
-      return res.status(404).json({ message: "Employé non trouvé" });
-    }
+  const emp = await EmployeeModel.findById(employeeId);
+  if (!emp) return res.status(404).json({ message: "Employé non trouvé" });
 
-    if (
-      isNaN(index) ||
-      index < 0 ||
-      index >= (employee.shifts ? employee.shifts.length : 0)
-    ) {
-      return res.status(400).json({ message: "Index de shift invalide" });
-    }
+  const shift = emp.shifts.id(shiftId);
+  if (!shift) return res.status(404).json({ message: "Shift non trouvé" });
 
-    employee.shifts.splice(index, 1);
-    await employee.save();
-
-    return res.status(200).json({ shifts: employee.shifts });
-  } catch (err) {
-    console.error("Erreur suppression shift:", err);
-    return res.status(500).json({ message: "Internal server error" });
-  }
+  shift.deleteOne(); // supprime le sous-doc
+  await emp.save();
+  return res.json({ shifts: emp.shifts });
 });
 
 // ——— DEMANDES DE CONGÉS ———
@@ -659,12 +620,51 @@ router.get("/employees/:employeeId/leave-requests", async (req, res) => {
 
 // 3) Mettre à jour le statut d’une demande (approved | rejected | cancelled)
 router.put("/employees/:employeeId/leave-requests/:reqId", async (req, res) => {
-  try {
-    const { employeeId, reqId } = req.params;
-    const { status } = req.body;
-    if (!["pending", "approved", "rejected", "cancelled"].includes(status)) {
-      return res.status(400).json({ message: "status invalide" });
+  const { employeeId, reqId } = req.params;
+  const { status } = req.body;
+  if (!["pending", "approved", "rejected", "cancelled"].includes(status)) {
+    return res.status(400).json({ message: "status invalide" });
+  }
+
+  const emp = await EmployeeModel.findById(employeeId);
+  if (!emp) return res.status(404).json({ message: "Employee not found" });
+
+  const lr = emp.leaveRequests.id(reqId);
+  if (!lr) return res.status(404).json({ message: "Request not found" });
+
+  lr.status = status;
+
+  if (status === "approved") {
+    // évite doublon de shift relié à CETTE LR
+    const already = emp.shifts.some(
+      (s) => String(s.leaveRequestId) === String(lr._id)
+    );
+    if (!already) {
+      emp.shifts.push({
+        title: "Congés",
+        start: lr.start,
+        end: lr.end,
+        leaveRequestId: lr._id,
+      });
     }
+  }
+
+  if (status === "cancelled") {
+    // supprime UNIQUEMENT les shifts liés par leaveRequestId
+    emp.shifts = emp.shifts.filter(
+      (s) => String(s.leaveRequestId) !== String(lr._id)
+    );
+  }
+
+  await emp.save();
+  return res.json(lr);
+});
+
+// 4) Supprimer une demande de congé
+router.delete(
+  "/employees/:employeeId/leave-requests/:reqId",
+  async (req, res) => {
+    const { employeeId, reqId } = req.params;
 
     const emp = await EmployeeModel.findById(employeeId);
     if (!emp) return res.status(404).json({ message: "Employee not found" });
@@ -672,92 +672,15 @@ router.put("/employees/:employeeId/leave-requests/:reqId", async (req, res) => {
     const lr = emp.leaveRequests.id(reqId);
     if (!lr) return res.status(404).json({ message: "Request not found" });
 
-    // Normalisation "tolérante"
-    const norm = (d) => {
-      const x = new Date(d);
-      x.setSeconds(0, 0);
-      return x.getTime();
-    };
-    const targetStart = norm(lr.start);
-    const targetEnd   = norm(lr.end);
+    // supprime les shifts liés par ID
+    emp.shifts = emp.shifts.filter(
+      (s) => String(s.leaveRequestId) !== String(reqId)
+    );
 
-    // 1) Met à jour le statut de la requête ciblée
-    lr.status = status;
-
-    if (status === "approved") {
-      // Evite les doublons de shifts
-      const alreadyExists = emp.shifts.some(
-        (s) =>
-          s.title === "Congés" &&
-          norm(s.start) === targetStart &&
-          norm(s.end) === targetEnd
-      );
-      if (!alreadyExists) {
-        emp.shifts.push({
-          title: "Congés",
-          start: lr.start,
-          end: lr.end,
-        });
-      }
-    }
-
-    if (status === "cancelled") {
-      // Annule TOUTES les leaveRequests de la même plage
-      emp.leaveRequests.forEach((r) => {
-        if (norm(r.start) === targetStart && norm(r.end) === targetEnd) {
-          r.status = "cancelled";
-        }
-      });
-
-      // Supprime TOUS les shifts congés identiques (pas juste le premier)
-      emp.shifts = emp.shifts.filter(
-        (s) =>
-          !(
-            s.title === "Congés" &&
-            norm(s.start) === targetStart &&
-            norm(s.end) === targetEnd
-          )
-      );
-    }
-
+    lr.deleteOne();
     await emp.save();
-    // Renvoyer la demande mise à jour (et côté client tu peux re-fetch si besoin)
-    return res.json(lr);
-  } catch (err) {
-    console.error("Erreur update leaveRequest:", err);
-    return res.status(500).json({ message: "Internal server error" });
-  }
-});
 
-
-// 4) Supprimer une demande de congé
-router.delete(
-  "/employees/:employeeId/leave-requests/:reqId",
-  async (req, res) => {
-    try {
-      const { employeeId, reqId } = req.params;
-      const emp = await EmployeeModel.findById(employeeId);
-      if (!emp) {
-        return res.status(404).json({ message: "Employee not found" });
-      }
-
-      // Supprime la sous-doc leaveRequest dont l'_id est reqId
-      emp.leaveRequests.pull(reqId);
-
-      // Si la demande existe toujours après pull, on considère qu'elle n'était pas trouvée
-      if (emp.leaveRequests.id(reqId)) {
-        return res.status(404).json({ message: "Request not found" });
-      }
-
-      // Sauvegarde les changements
-      await emp.save();
-
-      // Renvoie la liste mise à jour des demandes de congé
-      return res.json(emp.leaveRequests);
-    } catch (err) {
-      console.error("Erreur delete leaveRequest:", err);
-      return res.status(500).json({ message: "Internal server error" });
-    }
+    return res.json(emp.leaveRequests);
   }
 );
 

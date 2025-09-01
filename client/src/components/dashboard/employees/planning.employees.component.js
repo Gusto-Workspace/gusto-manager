@@ -113,37 +113,22 @@ export default function PlanningEmployeesComponent() {
   }, [allEmployees, modalEmployeeQuery]);
 
   // ─── Recompose les events à partir des shifts ──────────────────────────────
+  // Quand tu reconstruis les events à partir des shifts :
   useEffect(() => {
     const newEvents = allEmployees.flatMap((emp) =>
-      emp.shifts.flatMap((s, idx) => {
+      (emp.shifts || []).map((s) => {
         const startDate = new Date(s.start);
         const endDate = new Date(s.end);
-        const durationMs = endDate - startDate;
-
-        // Congés multi-jours : un seul event couvrant toute la période
-        if (s.title === "Congés" && durationMs >= 1000 * 60 * 60 * 24) {
-          return [
-            {
-              id: `${emp._id}-leave-${idx}`,
-              title: `${shortName(emp)} - Congés`,
-              start: startDate,
-              end: endDate,
-              resourceId: emp._id,
-              allDay: false,
-            },
-          ];
-        }
-
-        // Shifts normaux
-        return [
-          {
-            id: `${emp._id}-${idx}`,
-            title: `${shortName(emp)} - ${s.title}`,
-            start: startDate,
-            end: endDate,
-            resourceId: emp._id,
-          },
-        ];
+        const isLeave = s.title === "Congés";
+        return {
+          id: String(s._id || `${emp._id}-${startDate.getTime()}`), // fallback si migration pas faite
+          title: `${shortName(emp)} - ${s.title}`,
+          start: startDate,
+          end: endDate,
+          resourceId: emp._id,
+          leaveRequestId: s.leaveRequestId || null,
+          isLeave,
+        };
       })
     );
     setEvents(newEvents);
@@ -225,36 +210,31 @@ export default function PlanningEmployeesComponent() {
     }
 
     try {
-      const payload = {
-        title,
-        start: start.toISOString(),
-        end: end.toISOString(),
-      };
       const response = await axios.post(
         `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/shifts`,
-        payload
+        { title, start: start.toISOString(), end: end.toISOString() }
       );
-      const updatedShifts = response.data.shifts;
 
-      const employee = allEmployees.find((e) => e._id === employeeId);
-      const updatedEvents = updatedShifts.map((s, idx) => ({
-        id: `${employeeId}-${idx}`,
-        title: `${shortName(employee)} - ${s.title}`,
-        start: new Date(s.start),
-        end: new Date(s.end),
-        resourceId: employeeId,
-      }));
-
-      // Mettre à jour le contexte
+      const updatedShifts = response.data.shifts; // contient des _id
       const updatedRestaurant = { ...restaurantContext.restaurantData };
       updatedRestaurant.employees = updatedRestaurant.employees.map((emp) =>
         emp._id === employeeId ? { ...emp, shifts: updatedShifts } : emp
       );
       restaurantContext.setRestaurantData(updatedRestaurant);
 
-      // Mettre à jour les events locaux
-      const otherEvents = events.filter((ev) => ev.resourceId !== employeeId);
-      setEvents([...otherEvents, ...updatedEvents]);
+      // rebuild events (ils auront les vrais _id)
+      const employee = allEmployees.find((e) => e._id === employeeId) || {};
+      const updatedEvents = updatedShifts.map((s) => ({
+        id: String(s._id),
+        title: `${shortName(employee)} - ${s.title}`,
+        start: new Date(s.start),
+        end: new Date(s.end),
+        resourceId: employeeId,
+        leaveRequestId: s.leaveRequestId || null,
+        isLeave: s.title === "Congés",
+      }));
+      const other = events.filter((ev) => ev.resourceId !== employeeId);
+      setEvents([...other, ...updatedEvents]);
     } catch (err) {
       console.error("Erreur ajout shift :", err);
       window.alert(
@@ -272,64 +252,37 @@ export default function PlanningEmployeesComponent() {
 
   // ─── Drag & Drop : mise à jour du shift ───────────────────────────────────
   async function handleEventDrop({ event, start, end }) {
-    // Empêcher le DnD des congés
-    if (event.title.split(" - ")[1] === "Congés") return;
+    if (event.isLeave) return; // pas de DnD sur congés
 
-    const [employeeId, idxStr] = event.id.split("-");
-    const index = parseInt(idxStr, 10);
+    const employeeId = event.resourceId;
+    const shiftId = event.id;
 
     // Optimiste
-    const movedEvents = events.map((ev) =>
-      ev.id === event.id
-        ? { ...ev, start: new Date(start), end: new Date(end) }
-        : ev
+    setEvents((evts) =>
+      evts.map((ev) => (ev.id === shiftId ? { ...ev, start, end } : ev))
     );
-    setEvents(movedEvents);
 
     try {
       const response = await axios.put(
-        `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/shifts/${index}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/shifts/${shiftId}`,
         {
           title: event.title.split(" - ")[1],
           start: start.toISOString(),
           end: end.toISOString(),
         }
       );
-      const updatedShifts = response.data.shifts;
 
-      // Contexte
+      // Mets à jour le contexte (employé courant)
+      const updatedShifts = response.data.shifts;
       const updatedRestaurant = { ...restaurantContext.restaurantData };
       updatedRestaurant.employees = updatedRestaurant.employees.map((emp) =>
         emp._id === employeeId ? { ...emp, shifts: updatedShifts } : emp
       );
       restaurantContext.setRestaurantData(updatedRestaurant);
-
-      // Recharger events
-      const reloadedEvents = allEmployees.flatMap((emp) =>
-        emp._id === employeeId
-          ? updatedShifts.map((s, idx) => ({
-              id: `${employeeId}-${idx}`,
-              title: `${shortName(emp)} - ${s.title}`,
-              start: new Date(s.start),
-              end: new Date(s.end),
-              resourceId: employeeId,
-            }))
-          : emp.shifts.map((s, idx) => ({
-              id: `${emp._id}-${idx}`,
-              title: `${shortName(emp)} - ${s.title}`,
-              start: new Date(s.start),
-              end: new Date(s.end),
-              resourceId: emp._id,
-            }))
-      );
-      setEvents(reloadedEvents);
     } catch (err) {
       console.error("Erreur maj shift par drag:", err);
       // rollback
-      const rollbackEvents = events.map((ev) =>
-        ev.id === event.id ? event : ev
-      );
-      setEvents(rollbackEvents);
+      setEvents((evts) => evts.map((ev) => (ev.id === shiftId ? event : ev)));
       window.alert(
         t("planning:errors.updateFailed", "Impossible de déplacer le shift")
       );
@@ -338,116 +291,78 @@ export default function PlanningEmployeesComponent() {
 
   // ─── Clic = modale suppression ─────────────────────────────────────────────
   function handleSelectEvent(event) {
-    const parts = event.id.split("-");
-    const employeeId = parts[0];
-    const index =
-      parts[1] === "leave" ? parseInt(parts[2], 10) : parseInt(parts[1], 10);
-
     setDeleteModalData({
       eventId: event.id,
-      employeeId,
+      employeeId: event.resourceId,
       title: event.title.split(" - ")[1],
       start: event.start,
       end: event.end,
-      shiftIndex: index,
+
+      leaveRequestId: event.leaveRequestId || null,
+      isLeave: !!event.isLeave,
     });
     setDeleteModalOpen(true);
   }
 
   // ─── Confirmer suppression ───────────────────────────────────────────────────
   async function handleConfirmDelete() {
-    const { employeeId, shiftIndex, eventId, start, end, title } =
-      deleteModalData;
-    const isLeave = title === "Congés";
+    const {
+      employeeId,
+      eventId: shiftId,
+      title,
+      leaveRequestId,
+      isLeave,
+    } = deleteModalData;
 
     try {
-      // 1) Si c'est un congé : on annule la demande associée (ce qui supprime aussi le shift côté backend)
-      if (isLeave) {
-        const emp = restaurantContext.restaurantData?.employees?.find(
-          (e) => e._id === employeeId
+      if (isLeave && leaveRequestId) {
+        // Annuler la LR par ID (le backend supprime le shift lié)
+        await axios.put(
+          `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/leave-requests/${leaveRequestId}`,
+          { status: "cancelled" }
         );
 
-        const norm = (d) => {
-          const x = new Date(d);
-          x.setSeconds(0, 0);
-          return x.getTime();
-        };
-        const startTs = norm(start);
-        const endTs = norm(end);
-
-        // Annule TOUTES les leaveRequests non "cancelled" sur la même plage
-        const toCancel = (emp?.leaveRequests || []).filter(
-          (r) =>
-            norm(r.start) === startTs &&
-            norm(r.end) === endTs &&
-            r.status !== "cancelled"
+        // MAJ contexte: LR -> cancelled, et purge les shifts dont leaveRequestId = lrId
+        const updated = { ...restaurantContext.restaurantData };
+        updated.employees = updated.employees.map((e) => {
+          if (e._id !== employeeId) return e;
+          return {
+            ...e,
+            leaveRequests: (e.leaveRequests || []).map((r) =>
+              String(r._id) === String(leaveRequestId)
+                ? { ...r, status: "cancelled" }
+                : r
+            ),
+            shifts: (e.shifts || []).filter(
+              (s) => String(s.leaveRequestId) !== String(leaveRequestId)
+            ),
+          };
+        });
+        restaurantContext.setRestaurantData(updated);
+      } else {
+        // Shift normal -> suppression par shiftId
+        await axios.delete(
+          `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/shifts/${shiftId}`
         );
 
-        if (toCancel.length > 0) {
-          await Promise.all(
-            toCancel.map((r) =>
-              axios.put(
-                `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/leave-requests/${r._id}`,
-                { status: "cancelled" }
-              )
-            )
-          );
-
-          // Met à jour le contexte pour toutes les demandes annulées
-          const updatedRestaurantLR = { ...restaurantContext.restaurantData };
-          updatedRestaurantLR.employees = updatedRestaurantLR.employees.map(
-            (e) => {
-              if (e._id !== employeeId) return e;
-              return {
-                ...e,
-                leaveRequests: (e.leaveRequests || []).map((req) =>
-                  norm(req.start) === startTs && norm(req.end) === endTs
-                    ? { ...req, status: "cancelled" }
-                    : req
-                ),
-              };
-            }
-          );
-          restaurantContext.setRestaurantData(updatedRestaurantLR);
-        }
-
-        // Nettoie les shifts "Congés" de cette plage côté contexte (sécurité visuelle locale)
-        const updatedRestaurant = { ...restaurantContext.restaurantData };
-        updatedRestaurant.employees = updatedRestaurant.employees.map((e) => {
+        // MAJ contexte (en retirant le shift par _id)
+        const updated = { ...restaurantContext.restaurantData };
+        updated.employees = updated.employees.map((e) => {
           if (e._id !== employeeId) return e;
           return {
             ...e,
             shifts: (e.shifts || []).filter(
-              (s) =>
-                !(
-                  s.title === "Congés" &&
-                  norm(s.start) === startTs &&
-                  norm(s.end) === endTs
-                )
+              (s) => String(s._id) !== String(shiftId)
             ),
           };
         });
-        restaurantContext.setRestaurantData(updatedRestaurant);
-      } else {
-        // 2) Shift normal : on supprime via l'API comme avant
-        await axios.delete(
-          `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/shifts/${shiftIndex}`
-        );
-
-        // Mettre à jour le contexte (côté shifts)
-        const updatedRestaurant = { ...restaurantContext.restaurantData };
-        updatedRestaurant.employees = updatedRestaurant.employees.map((emp) => {
-          if (emp._id === employeeId) {
-            const newShifts = emp.shifts.filter((_, i) => i !== shiftIndex);
-            return { ...emp, shifts: newShifts };
-          }
-          return emp;
-        });
-        restaurantContext.setRestaurantData(updatedRestaurant);
+        restaurantContext.setRestaurantData(updated);
       }
 
-      // 3) Retirer l'event du calendrier
-      setEvents((prev) => prev.filter((ev) => ev.id !== eventId));
+      // Retirer l'event du calendrier
+      setEvents((prev) =>
+        prev.filter((ev) => String(ev.id) !== String(shiftId))
+      );
     } catch (err) {
       console.error("Erreur suppression shift / annulation congé :", err);
       window.alert(
