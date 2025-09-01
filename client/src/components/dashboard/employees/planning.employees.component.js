@@ -1,16 +1,9 @@
-import { useState, useMemo, useContext, useEffect, useRef } from "react";
+import { useState, useMemo, useContext, useEffect } from "react";
 import { useRouter } from "next/router";
 
 import { Calendar, dateFnsLocalizer, Views } from "react-big-calendar";
 import withDragAndDrop from "react-big-calendar/lib/addons/dragAndDrop";
-import {
-  format,
-  parse,
-  startOfWeek,
-  getDay,
-  differenceInCalendarDays,
-  addDays,
-} from "date-fns";
+import { format, parse, startOfWeek, getDay } from "date-fns";
 import frLocale from "date-fns/locale/fr";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import "react-big-calendar/lib/addons/dragAndDrop/styles.css";
@@ -57,10 +50,9 @@ export default function PlanningEmployeesComponent() {
     title: "",
     start: null,
     end: null,
-    shiftIndex: null,
+    leaveRequestId: null,
+    isLeave: false,
   });
-
-  const calendarContainerRef = useRef(null);
 
   // date‐fns localizer (FR)
   const locales = { fr: frLocale };
@@ -121,7 +113,7 @@ export default function PlanningEmployeesComponent() {
         const endDate = new Date(s.end);
         const isLeave = s.title === "Congés";
         return {
-          id: String(s._id || `${emp._id}-${startDate.getTime()}`), // fallback si migration pas faite
+          id: String(s._id),
           title: `${shortName(emp)} - ${s.title}`,
           start: startDate,
           end: endDate,
@@ -384,14 +376,14 @@ export default function PlanningEmployeesComponent() {
       title: "",
       start: null,
       end: null,
-      shiftIndex: null,
+      leaveRequestId: null,
+      isLeave: false,
     });
   }
 
   const CustomEvent = ({ event }) => {
     const isCompressedLeave =
-      event.title.endsWith("- Congés") &&
-      event.end - event.start === 1000 * 60 * 60;
+      event.isLeave && event.end - event.start === 1000 * 60 * 60;
     if (isCompressedLeave) return <div>{event.title}</div>;
     return (
       <div className="flex flex-col gap-1">
@@ -404,7 +396,7 @@ export default function PlanningEmployeesComponent() {
   const minTableWidth = view === Views.DAY ? "auto" : `${7 * 100}px`;
 
   return (
-    <section className="flex flex-col gap-4 min-w-0" ref={calendarContainerRef}>
+    <section className="flex flex-col gap-4 min-w-0">
       {/* ─── En-tête ───────────────────────────────────────────────────────────── */}
       <div className="flex justify-between flex-wrap gap-4">
         <div className="flex flex-col gap-4">
@@ -421,21 +413,11 @@ export default function PlanningEmployeesComponent() {
               <span>{t("titles.planning")}</span>
             </h1>
           </div>
-          {selectedEmployeeId && (
-            <div className="text-sm opacity-70">
-              {t("planning:selected", "Employé affiché")} :{" "}
-              <strong>
-                {shortName(
-                  allEmployees.find((e) => e._id === selectedEmployeeId)
-                )}
-              </strong>
-            </div>
-          )}
         </div>
 
         <button
           onClick={() => router.push("/dashboard/employees/planning/days-off")}
-          className="bg-violet px-6 py-2 rounded-lg text-white cursor-pointer hover:opacity-80 transition-all ease-in-out"
+          className="bg-violet h-fit px-6 py-2 rounded-lg text-white cursor-pointer hover:opacity-80 transition-all ease-in-out"
         >
           {t("titles.daysOff")}
         </button>
@@ -507,12 +489,9 @@ export default function PlanningEmployeesComponent() {
             onSelectSlot={handleSelectSlot}
             onEventDrop={handleEventDrop}
             onSelectEvent={handleSelectEvent}
-            draggableAccessor={(event) =>
-              event.title.split(" - ")[1] !== "Congés"
-            }
+            draggableAccessor={(event) => !event.isLeave}
             eventPropGetter={(event) => {
-              const shiftTitle = event.title.split(" - ")[1];
-              const isLeave = shiftTitle === "Congés";
+              const isLeave = event.isLeave;
               return {
                 className: "",
                 style: {
