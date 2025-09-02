@@ -75,15 +75,35 @@ export default function DaysOffEmployeesComponent() {
   // 7) Mise à jour instantanée du statut
   async function updateStatus(empId, reqId, status) {
     try {
-      await axios.put(
+      const { data } = await axios.put(
         `${process.env.NEXT_PUBLIC_API_URL}/employees/${empId}/leave-requests/${reqId}`,
         { status }
       );
+
+      // 1) Mettre à jour la liste aplanie locale (UI de cette page)
       setRequests((rs) =>
         rs.map((r) =>
           r._id === reqId && r.employee._id === empId ? { ...r, status } : r
         )
       );
+
+      // 2) Mettre à jour le contexte global (très important pour la page Planning)
+      restaurantContext.setRestaurantData((prev) => ({
+        ...prev,
+        employees: (prev?.employees || []).map((e) =>
+          e._id === empId
+            ? {
+                ...e,
+                // on met à jour le status de la LR ciblée
+                leaveRequests: (e.leaveRequests || []).map((lr) =>
+                  String(lr._id) === String(reqId) ? { ...lr, status } : lr
+                ),
+                // et on remplace les shifts par ceux renvoyés par l’API
+                shifts: data.shifts || [],
+              }
+            : e
+        ),
+      }));
     } catch (err) {
       console.error("Erreur update leave request:", err);
       window.alert(t("daysOff.errorUpdate", "Impossible de mettre à jour"));
@@ -95,7 +115,7 @@ export default function DaysOffEmployeesComponent() {
     pending: t("daysOff.labels.pending", "En attente"),
     approved: t("daysOff.labels.approved", "Confirmées"),
     rejected: t("daysOff.labels.rejected", "Rejetées"),
-    cancelled: t("daysOff.labels.rejected", "Annulées"),
+    cancelled: t("daysOff.labels.cancelled", "Annulées"),
   };
 
   return (

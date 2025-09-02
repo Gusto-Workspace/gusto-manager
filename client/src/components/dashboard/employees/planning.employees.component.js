@@ -585,7 +585,7 @@ export default function PlanningEmployeesComponent() {
                       {modalEmployeeOptions.map((emp) => (
                         <li
                           key={emp._id}
-                          className={`px-3 py-[6px] cursor-pointer hover:bg-gray-100 ${
+                          className={`px-3 py-[6px] cursor-pointer hover:bg-lightGrey ${
                             modalData.employeeId === emp._id
                               ? "bg-gray-100"
                               : ""

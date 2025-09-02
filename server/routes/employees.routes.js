@@ -657,7 +657,10 @@ router.put("/employees/:employeeId/leave-requests/:reqId", async (req, res) => {
   }
 
   await emp.save();
-  return res.json(lr);
+  return res.json({
+    leaveRequest: lr,
+    shifts: emp.shifts,
+  });
 });
 
 // 4) Supprimer une demande de congé
@@ -680,7 +683,10 @@ router.delete(
     lr.deleteOne();
     await emp.save();
 
-    return res.json(emp.leaveRequests);
+    return res.json({
+      leaveRequests: emp.leaveRequests,
+      shifts: emp.shifts,
+    });
   }
 );
 
