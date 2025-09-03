@@ -88,7 +88,7 @@ export default function RestaurantContext() {
       try {
         const payload = JSON.parse(evt.data);
         if (payload.type === "leave_request_created") {
-          // incrémente le compteur (spécifique + global si tu en veux un)
+          // 1) incrémente le compteur
           setNewLeaveRequestsCount((c) => {
             const next = c + 1;
             const rid = restaurantData?._id;
@@ -99,10 +99,26 @@ export default function RestaurantContext() {
             return next;
           });
 
-          // (optionnel) tu peux aussi push une entrée dans un tableau notifications[]
-          // setNotifications(ns => [{ type:'leave', ...payload }, ...ns])
+          // 2) *** mettre à jour la liste locale des demandes ***
+          setRestaurantData((prev) => {
+            if (!prev) return prev;
+            const empId = String(payload.employeeId);
+            const lr = payload.leaveRequest;
+
+            return {
+              ...prev,
+              employees: (prev.employees || []).map((e) => {
+                if (String(e._id) !== empId) return e;
+                const existing = e.leaveRequests || [];
+                const already = existing.some(
+                  (r) => String(r._id) === String(lr._id)
+                );
+                if (already) return e;
+                return { ...e, leaveRequests: [...existing, lr] };
+              }),
+            };
+          });
         }
-        // d’autres types d’events si tu veux (réservations, etc.)
       } catch (e) {
         console.warn("Bad SSE payload", e);
       }

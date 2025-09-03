@@ -220,7 +220,7 @@ export default function SettingsComponent() {
 
               <div
                 ref={notificationsRef}
-                className={`absolute -left-[100px] tablet:right-0 top-full mt-4 bg-white shadow-lg rounded-lg w-64 z-[60] tablet:z-10 transition-all duration-300 overflow-hidden ${
+                className={`absolute -left-[100px] tablet:right-0 top-full mt-4 bg-white shadow-lg rounded-lg w-72 z-[60] tablet:z-10 transition-all duration-300 overflow-hidden ${
                   showNotifications ? "max-h-[200px]" : "max-h-0"
                 }`}
                 style={{ maxHeight: showNotifications ? "200px" : "0" }}

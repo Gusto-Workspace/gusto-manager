@@ -36,12 +36,19 @@ export default function DaysOffEmployeesComponent() {
   // 4) Aplatir leurs demandes
   const [requests, setRequests] = useState([]);
   useEffect(() => {
-    const all = employees.flatMap((emp) =>
-      (emp.leaveRequests || []).map((req) => ({
-        ...req,
-        employee: emp,
-      }))
-    );
+    const objectIdToDate = (oid) =>
+      new Date(parseInt(String(oid).substring(0, 8), 16) * 1000);
+    const createdTs = (r) =>
+      (r.createdAt ? new Date(r.createdAt) : objectIdToDate(r._id)).getTime();
+
+    const all = employees
+      .flatMap((emp) =>
+        (emp.leaveRequests || []).map((req) => ({
+          ...req,
+          employee: emp,
+        }))
+      )
+      .sort((a, b) => createdTs(b) - createdTs(a)); // plus récent d'abord
     setRequests(all);
   }, [employees]);
 
@@ -216,9 +223,16 @@ export default function DaysOffEmployeesComponent() {
                       </div>
                       <div className="text-sm text-gray-600">
                         {t("daysOff.requestedAt", "Demandé le")}{" "}
-                        {format(new Date(req.requestedAt), "dd/MM/yyyy HH:mm", {
-                          locale: frLocale,
-                        })}
+                        {format(
+                          req.createdAt
+                            ? new Date(req.createdAt)
+                            : new Date(
+                                parseInt(String(req._id).substring(0, 8), 16) *
+                                  1000
+                              ),
+                          "dd/MM/yyyy HH:mm",
+                          { locale: frLocale }
+                        )}
                       </div>
                     </div>
 

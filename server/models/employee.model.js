@@ -40,21 +40,21 @@ const leaveRequestSchema = new mongoose.Schema(
   {
     start: { type: Date, required: true },
     end: { type: Date, required: true },
-    requestedAt: { type: Date, default: Date.now },
-    status: {
-      type: String,
-      enum: ["pending", "approved", "rejected", "cancelled"],
-      default: "pending",
-    },
     type: {
       type: String,
       enum: ["full", "morning", "afternoon"],
       default: "full",
     },
-    createdAt: { type: Date, default: new Date() },
-    status: { type: String, default: "pending" },
+    status: {
+      type: String,
+      enum: ["pending", "approved", "rejected", "cancelled"],
+      default: "pending",
+    },
   },
-  { _id: true }
+  {
+    _id: true,
+    timestamps: { createdAt: "createdAt", updatedAt: false },
+  }
 );
 
 const employeeSchema = new mongoose.Schema({
