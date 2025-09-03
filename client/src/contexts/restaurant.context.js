@@ -20,9 +20,103 @@ export default function RestaurantContext() {
   const [autoUpdatingReservations, setAutoUpdatingReservations] = useState([]);
 
   const [newReservationsCount, setNewReservationsCount] = useState(0);
+  const [newLeaveRequestsCount, setNewLeaveRequestsCount] = useState(0);
 
   const initialReservationsLoadedRef = useRef(false);
   const hasFetchedDashboardDataRef = useRef(false);
+
+  const sseRef = useRef(null);
+
+  const NOTIF_KEY = (rid) => `gm:notifs:${rid}`;
+
+  function readNotifCounts(rid) {
+    try {
+      const raw = localStorage.getItem(NOTIF_KEY(rid));
+      if (!raw) return { leave: 0, res: 0 };
+      const obj = JSON.parse(raw);
+      return {
+        leave: Number(obj.leave) || 0,
+        res: Number(obj.res) || 0,
+      };
+    } catch {
+      return { leave: 0, res: 0 };
+    }
+  }
+
+  function writeNotifCounts(rid, counts) {
+    try {
+      localStorage.setItem(NOTIF_KEY(rid), JSON.stringify(counts));
+    } catch {}
+  }
+
+  function clearNotifCounts(rid) {
+    try {
+      localStorage.removeItem(NOTIF_KEY(rid));
+    } catch {}
+  }
+
+  useEffect(() => {
+    const restaurantId = restaurantData?._id;
+    if (!restaurantId) return;
+
+    if (userConnected?.role !== "owner") {
+      // s'assure qu'aucune SSE n'est ouverte et pas de compteur pour employé
+      if (sseRef.current) {
+        sseRef.current.close();
+        sseRef.current = null;
+      }
+      setNewLeaveRequestsCount(0);
+      setNewReservationsCount(0);
+      return;
+    }
+
+    const persisted = readNotifCounts(restaurantId);
+    setNewLeaveRequestsCount(persisted.leave);
+    setNewReservationsCount(persisted.res);
+
+    // ferme une ancienne connexion si on change de resto
+    if (sseRef.current) {
+      sseRef.current.close();
+      sseRef.current = null;
+    }
+
+    const url = `${process.env.NEXT_PUBLIC_API_URL}/events/${restaurantId}`;
+    const es = new EventSource(url, { withCredentials: false });
+    sseRef.current = es;
+
+    es.onmessage = (evt) => {
+      try {
+        const payload = JSON.parse(evt.data);
+        if (payload.type === "leave_request_created") {
+          // incrémente le compteur (spécifique + global si tu en veux un)
+          setNewLeaveRequestsCount((c) => {
+            const next = c + 1;
+            const rid = restaurantData?._id;
+            if (rid) {
+              const counts = readNotifCounts(rid);
+              writeNotifCounts(rid, { ...counts, leave: next });
+            }
+            return next;
+          });
+
+          // (optionnel) tu peux aussi push une entrée dans un tableau notifications[]
+          // setNotifications(ns => [{ type:'leave', ...payload }, ...ns])
+        }
+        // d’autres types d’events si tu veux (réservations, etc.)
+      } catch (e) {
+        console.warn("Bad SSE payload", e);
+      }
+    };
+
+    es.onerror = () => {
+      // le navigateur va réessayer automatiquement; rien à faire
+    };
+
+    return () => {
+      es.close();
+      sseRef.current = null;
+    };
+  }, [restaurantData?._id, userConnected?.role]);
 
   function handleInvalidToken() {
     setRestaurantsList([]);
@@ -39,21 +133,56 @@ export default function RestaurantContext() {
           headers: { Authorization: `Bearer ${token}` },
         }
       )
-      .then((response) => {
+      .then(async (response) => {
         const restaurant = response.data.restaurant;
+        const rid = String(restaurant._id);
 
-        const lastCheck = restaurant.lastNotificationCheck;
-        const newCount = restaurant.reservations.list.filter(
-          (r) => !r.manual && new Date(r.createdAt) > new Date(lastCheck)
-        ).length;
-        setNewReservationsCount(newCount);
+        let role = null;
+        try {
+          role = jwtDecode(token)?.role || null;
+        } catch {}
+
+        if (role === "owner") {
+          const lastCheck = restaurant.lastNotificationCheck;
+
+          // Réservations depuis lastCheck
+          const newCount = restaurant.reservations.list.filter(
+            (r) => !r.manual && new Date(r.createdAt) > new Date(lastCheck)
+          ).length;
+          setNewReservationsCount(newCount);
+          writeNotifCounts(rid, { ...readNotifCounts(rid), res: newCount });
+
+          // Backfill congés ratés pendant la déconnexion
+          try {
+            const { data } = await axios.get(
+              `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${rid}/leave-requests/unread-count`,
+              {
+                params: { since: lastCheck },
+                headers: { Authorization: `Bearer ${token}` },
+              }
+            );
+            const unreadLeaves = data?.unreadLeaveRequests || 0;
+            setNewLeaveRequestsCount(unreadLeaves);
+            writeNotifCounts(rid, {
+              ...readNotifCounts(rid),
+              leave: unreadLeaves,
+            });
+          } catch (e) {
+            console.warn("Failed to fetch unread leave-requests count", e);
+          }
+        } else {
+          // Employé : pas de compteurs ni persistance
+          setNewReservationsCount(0);
+          setNewLeaveRequestsCount(0);
+          writeNotifCounts(rid, { leave: 0, res: 0 });
+        }
+
         setRestaurantData(restaurant);
         setDataLoading(false);
       })
       .catch((error) => {
-        if (error.response?.status === 403) {
-          handleInvalidToken();
-        } else {
+        if (error.response?.status === 403) handleInvalidToken();
+        else {
           console.error(
             "Erreur lors de la récupération des données du restaurant:",
             error
@@ -129,8 +258,6 @@ export default function RestaurantContext() {
           const { token: updatedToken } = response.data;
           localStorage.setItem("token", updatedToken);
           fetchRestaurantData(updatedToken, restaurantId);
-          // Lors du changement de restaurant, on réinitialise le compteur et on réinitialise le flag de premier chargement
-          setNewReservationsCount(0);
           initialReservationsLoadedRef.current = false;
           setCloseEditing(false);
         })
@@ -148,6 +275,7 @@ export default function RestaurantContext() {
 
   // Fonction pour mettre à jour le champ lastNotificationCheck dans la BDD
   function updateLastNotificationCheck() {
+    if (userConnected?.role !== "owner") return;
     if (!restaurantData?._id) return;
     const token = localStorage.getItem("token");
     axios
@@ -375,13 +503,27 @@ export default function RestaurantContext() {
       });
   }
 
-  function resetNewReservationsCount() {
+  const resetNewReservationsCount = () => {
     setNewReservationsCount(0);
-  }
+    const rid = restaurantData?._id;
+    if (rid) {
+      const counts = readNotifCounts(rid);
+      writeNotifCounts(rid, { ...counts, res: 0 });
+    }
+  };
+
+  const resetNewLeaveRequestsCount = () => {
+    setNewLeaveRequestsCount(0);
+    const rid = restaurantData?._id;
+    if (rid) {
+      const counts = readNotifCounts(rid);
+      writeNotifCounts(rid, { ...counts, leave: 0 });
+    }
+  };
 
   // RECUPERATION DES RÉSERVATIONS TOUTES LES 30s AVEC DÉTECTION DES NOUVELLES RÉSERVATIONS
   useEffect(() => {
-    if (!restaurantData?._id) return;
+    if (!restaurantData?._id || userConnected?.role !== "owner") return;
 
     const fetchReservations = () => {
       const token = localStorage.getItem("token");
@@ -404,9 +546,15 @@ export default function RestaurantContext() {
                 (r) => !r.manual && !previousIds.has(r._id)
               );
               if (newReservations.length > 0) {
-                setNewReservationsCount(
-                  (prevCount) => prevCount + newReservations.length
-                );
+                setNewReservationsCount((prevCount) => {
+                  const next = prevCount + newReservations.length;
+                  const rid = restaurantData?._id;
+                  if (rid) {
+                    const counts = readNotifCounts(rid);
+                    writeNotifCounts(rid, { ...counts, res: next });
+                  }
+                  return next;
+                });
               }
             }
             return {
@@ -426,10 +574,21 @@ export default function RestaurantContext() {
     fetchReservations();
     const intervalId = setInterval(fetchReservations, 30000);
     return () => clearInterval(intervalId);
-  }, [restaurantData?._id]);
+  }, [restaurantData?._id, userConnected?.role]);
 
   function logout() {
     localStorage.removeItem("token");
+    if (restaurantData?._id) {
+      try {
+        clearNotifCounts(restaurantData._id);
+      } catch (e) {
+        console.warn("clearNotifCounts failed", e);
+      }
+    }
+    if (sseRef.current) {
+      sseRef.current.close();
+      sseRef.current = null;
+    }
     setRestaurantData(null);
     setRestaurantsList([]);
     setIsAuth(false);
@@ -484,6 +643,18 @@ export default function RestaurantContext() {
     }
   }, [router.pathname]);
 
+  // Reset auto des notifs de congés quand on visite la page des congés
+  useEffect(() => {
+    if (userConnected?.role !== "owner") return;
+    const path = router.pathname || "";
+    if (path.startsWith("/dashboard/employees/planning/days-off")) {
+      resetNewLeaveRequestsCount();
+      if ((newReservationsCount || 0) === 0) {
+        updateLastNotificationCheck();
+      }
+    }
+  }, [router.pathname, newReservationsCount, userConnected?.role]);
+
   return {
     restaurantData,
     setRestaurantData,
@@ -502,5 +673,7 @@ export default function RestaurantContext() {
     setIsAuth,
     newReservationsCount,
     resetNewReservationsCount,
+    newLeaveRequestsCount,
+    resetNewLeaveRequestsCount,
   };
 }

@@ -51,6 +51,8 @@ const leaveRequestSchema = new mongoose.Schema(
       enum: ["full", "morning", "afternoon"],
       default: "full",
     },
+    createdAt: { type: Date, default: new Date() },
+    status: { type: String, default: "pending" },
   },
   { _id: true }
 );
