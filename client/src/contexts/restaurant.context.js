@@ -24,10 +24,14 @@ export default function RestaurantContext() {
 
   const initialReservationsLoadedRef = useRef(false);
   const hasFetchedDashboardDataRef = useRef(false);
-
   const sseRef = useRef(null);
+  const currentPathRef = useRef("");
 
   const NOTIF_KEY = (rid) => `gm:notifs:${rid}`;
+
+  useEffect(() => {
+    currentPathRef.current = router.pathname || "";
+  }, [router.pathname]);
 
   function readNotifCounts(rid) {
     try {
@@ -88,18 +92,27 @@ export default function RestaurantContext() {
       try {
         const payload = JSON.parse(evt.data);
 
-        // Congés
-        if (payload.type === "leave_request_created") {
-          setNewLeaveRequestsCount((c) => {
-            const next = c + 1;
-            const rid = restaurantData?._id;
-            if (rid) {
-              const counts = readNotifCounts(rid);
-              writeNotifCounts(rid, { ...counts, leave: next });
-            }
-            return next;
-          });
+        const path = currentPathRef.current;
+        const isOnReservationsList = path === "/dashboard/reservations";
+        const isOnDaysOffPage =
+          path === "/dashboard/employees/planning/days-off";
 
+        // ——— CONGÉS ———
+        if (payload.type === "leave_request_created") {
+          // 1) n'incrémente la pastille congés QUE si on n'est pas déjà sur la page congés
+          if (!isOnDaysOffPage) {
+            setNewLeaveRequestsCount((c) => {
+              const next = c + 1;
+              const rid = restaurantData?._id;
+              if (rid) {
+                const counts = readNotifCounts(rid);
+                writeNotifCounts(rid, { ...counts, leave: next });
+              }
+              return next;
+            });
+          }
+
+          // 2) mets à jour la liste locale des demandes dans restaurantData (toujours)
           setRestaurantData((prev) => {
             if (!prev) return prev;
             const empId = String(payload.employeeId);
@@ -119,12 +132,14 @@ export default function RestaurantContext() {
           });
         }
 
-        // Réservations — création
+        // ——— RÉSERVATIONS ———
+        // CREATION
         if (payload.type === "reservation_created" && payload.reservation) {
           const r = payload.reservation;
 
-          // incrémente la pastille uniquement pour les réservations “site” (manual === false)
-          if (r && r.manual === false) {
+          // 1) n'incrémente la pastille résas QUE si on n'est pas déjà sur la page résas
+          //    et uniquement pour les résas "site"
+          if (!isOnReservationsList && r.manual === false) {
             setNewReservationsCount((c) => {
               const next = c + 1;
               const rid = restaurantData?._id;
@@ -136,7 +151,7 @@ export default function RestaurantContext() {
             });
           }
 
-          // injecte dans la liste si elle n’y est pas
+          // 2) injecte la résa dans la liste si absente (toujours)
           setRestaurantData((prev) => {
             if (!prev) return prev;
             const list = prev?.reservations?.list || [];
@@ -152,7 +167,7 @@ export default function RestaurantContext() {
           });
         }
 
-        // Réservations — update (statut/détails)
+        // UDPATE (statut/détails)
         if (payload.type === "reservation_updated" && payload.reservation) {
           const r = payload.reservation;
           setRestaurantData((prev) => {
@@ -170,7 +185,7 @@ export default function RestaurantContext() {
           });
         }
 
-        // Réservations — suppression
+        // DELETE
         if (payload.type === "reservation_deleted") {
           const id = payload.reservationId;
           setRestaurantData((prev) => {
