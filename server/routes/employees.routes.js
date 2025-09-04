@@ -6,6 +6,7 @@ const multer = require("multer");
 const streamifier = require("streamifier");
 const axios = require("axios");
 const path = require("path");
+const { broadcastToRestaurant } = require("../services/sse-bus.service")
 
 // MODELS
 const EmployeeModel = require("../models/employee.model");
@@ -89,31 +90,6 @@ function generatePassword() {
     pw.push(all[Math.floor(Math.random() * all.length)]);
   }
   return pw.sort(() => 0.5 - Math.random()).join("");
-}
-
-const clientsPerRestaurant = new Map(); // Map<restaurantId, Set<res>>
-
-function addClient(restaurantId, res) {
-  if (!clientsPerRestaurant.has(restaurantId)) {
-    clientsPerRestaurant.set(restaurantId, new Set());
-  }
-  clientsPerRestaurant.get(restaurantId).add(res);
-}
-
-function removeClient(restaurantId, res) {
-  const set = clientsPerRestaurant.get(restaurantId);
-  if (!set) return;
-  set.delete(res);
-  if (set.size === 0) clientsPerRestaurant.delete(restaurantId);
-}
-
-function broadcastToRestaurant(restaurantId, payload) {
-  const set = clientsPerRestaurant.get(restaurantId);
-  if (!set) return;
-  const data = `data: ${JSON.stringify(payload)}\n\n`;
-  for (const res of set) {
-    res.write(data);
-  }
 }
 
 // ADD EMPLOYEE
@@ -727,47 +703,28 @@ router.delete(
   }
 );
 
-router.get("/events/:restaurantId", (req, res) => {
-  const { restaurantId } = req.params;
-
-  // headers SSE
-  res.set({
-    "Content-Type": "text/event-stream",
-    "Cache-Control": "no-cache",
-    Connection: "keep-alive",
-    "Access-Control-Allow-Origin": "http://localhost:8002",
-  });
-  res.flushHeaders?.();
-
-  // ping pour garder la connexion vivante (optionnel)
-  const keepAlive = setInterval(() => res.write(":\n\n"), 25000);
-
-  addClient(restaurantId, res);
-
-  req.on("close", () => {
-    clearInterval(keepAlive);
-    removeClient(restaurantId, res);
-  });
-});
-
-// GET /restaurants/:id/leave-requests/unread-count?since=ISO_DATE
+// Récupérer les notifications non lues des demandes de congés
 router.get("/restaurants/:id/leave-requests/unread-count", async (req, res) => {
   try {
     const restaurantId = req.params.id;
     const since = req.query.since ? new Date(req.query.since) : null;
-    if (!since) return res.status(400).json({ message: "since is required (ISO)" });
+    if (!since)
+      return res.status(400).json({ message: "since is required (ISO)" });
 
     const employees = await EmployeeModel.find(
       { restaurant: restaurantId },
       { leaveRequests: 1 }
     ).lean();
 
-    const objectIdToDate = (oid) => new Date(parseInt(String(oid).substring(0, 8), 16) * 1000);
+    const objectIdToDate = (oid) =>
+      new Date(parseInt(String(oid).substring(0, 8), 16) * 1000);
 
     let count = 0;
     for (const emp of employees) {
-      for (const lr of (emp.leaveRequests || [])) {
-        const createdAt = lr.createdAt ? new Date(lr.createdAt) : objectIdToDate(lr._id);
+      for (const lr of emp.leaveRequests || []) {
+        const createdAt = lr.createdAt
+          ? new Date(lr.createdAt)
+          : objectIdToDate(lr._id);
         if (createdAt > since) count++;
       }
     }

@@ -87,8 +87,9 @@ export default function RestaurantContext() {
     es.onmessage = (evt) => {
       try {
         const payload = JSON.parse(evt.data);
+
+        // Congés
         if (payload.type === "leave_request_created") {
-          // 1) incrémente le compteur
           setNewLeaveRequestsCount((c) => {
             const next = c + 1;
             const rid = restaurantData?._id;
@@ -99,12 +100,10 @@ export default function RestaurantContext() {
             return next;
           });
 
-          // 2) *** mettre à jour la liste locale des demandes ***
           setRestaurantData((prev) => {
             if (!prev) return prev;
             const empId = String(payload.employeeId);
             const lr = payload.leaveRequest;
-
             return {
               ...prev,
               employees: (prev.employees || []).map((e) => {
@@ -116,6 +115,73 @@ export default function RestaurantContext() {
                 if (already) return e;
                 return { ...e, leaveRequests: [...existing, lr] };
               }),
+            };
+          });
+        }
+
+        // Réservations — création
+        if (payload.type === "reservation_created" && payload.reservation) {
+          const r = payload.reservation;
+
+          // incrémente la pastille uniquement pour les réservations “site” (manual === false)
+          if (r && r.manual === false) {
+            setNewReservationsCount((c) => {
+              const next = c + 1;
+              const rid = restaurantData?._id;
+              if (rid) {
+                const counts = readNotifCounts(rid);
+                writeNotifCounts(rid, { ...counts, res: next });
+              }
+              return next;
+            });
+          }
+
+          // injecte dans la liste si elle n’y est pas
+          setRestaurantData((prev) => {
+            if (!prev) return prev;
+            const list = prev?.reservations?.list || [];
+            const exists = list.some((x) => String(x._id) === String(r._id));
+            if (exists) return prev;
+            return {
+              ...prev,
+              reservations: {
+                ...prev.reservations,
+                list: [r, ...list],
+              },
+            };
+          });
+        }
+
+        // Réservations — update (statut/détails)
+        if (payload.type === "reservation_updated" && payload.reservation) {
+          const r = payload.reservation;
+          setRestaurantData((prev) => {
+            if (!prev) return prev;
+            const list = prev?.reservations?.list || [];
+            return {
+              ...prev,
+              reservations: {
+                ...prev.reservations,
+                list: list.map((x) =>
+                  String(x._id) === String(r._id) ? r : x
+                ),
+              },
+            };
+          });
+        }
+
+        // Réservations — suppression
+        if (payload.type === "reservation_deleted") {
+          const id = payload.reservationId;
+          setRestaurantData((prev) => {
+            if (!prev) return prev;
+            const list = prev?.reservations?.list || [];
+            return {
+              ...prev,
+              reservations: {
+                ...prev.reservations,
+                list: list.filter((x) => String(x._id) !== String(id)),
+              },
             };
           });
         }
@@ -537,61 +603,6 @@ export default function RestaurantContext() {
     }
   };
 
-  // RECUPERATION DES RÉSERVATIONS TOUTES LES 30s AVEC DÉTECTION DES NOUVELLES RÉSERVATIONS
-  useEffect(() => {
-    if (!restaurantData?._id || userConnected?.role !== "owner") return;
-
-    const fetchReservations = () => {
-      const token = localStorage.getItem("token");
-      axios
-        .get(
-          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantData._id}/reservations`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        )
-        .then((response) => {
-          setRestaurantData((prevData) => {
-            const previousList = prevData?.reservations?.list || [];
-            const fetchedReservations = response.data.reservations;
-            if (!initialReservationsLoadedRef.current) {
-              initialReservationsLoadedRef.current = true;
-            } else {
-              const previousIds = new Set(previousList.map((r) => r._id));
-              const newReservations = fetchedReservations.filter(
-                (r) => !r.manual && !previousIds.has(r._id)
-              );
-              if (newReservations.length > 0) {
-                setNewReservationsCount((prevCount) => {
-                  const next = prevCount + newReservations.length;
-                  const rid = restaurantData?._id;
-                  if (rid) {
-                    const counts = readNotifCounts(rid);
-                    writeNotifCounts(rid, { ...counts, res: next });
-                  }
-                  return next;
-                });
-              }
-            }
-            return {
-              ...prevData,
-              reservations: {
-                ...prevData.reservations,
-                list: fetchedReservations,
-              },
-            };
-          });
-        })
-        .catch((error) => {
-          console.error("Error fetching reservations:", error);
-        });
-    };
-
-    fetchReservations();
-    const intervalId = setInterval(fetchReservations, 30000);
-    return () => clearInterval(intervalId);
-  }, [restaurantData?._id, userConnected?.role]);
-
   function logout() {
     localStorage.removeItem("token");
     if (restaurantData?._id) {
@@ -670,6 +681,18 @@ export default function RestaurantContext() {
       }
     }
   }, [router.pathname, newReservationsCount, userConnected?.role]);
+
+  // Reset auto des notifs de réservations quand on visite la page des réservations
+  useEffect(() => {
+    if (userConnected?.role !== "owner") return;
+    const path = router.pathname || "";
+    if (path.startsWith("/dashboard/reservations")) {
+      resetNewReservationsCount();
+      if ((newLeaveRequestsCount || 0) === 0) {
+        updateLastNotificationCheck();
+      }
+    }
+  }, [router.pathname, newLeaveRequestsCount, userConnected?.role]);
 
   return {
     restaurantData,

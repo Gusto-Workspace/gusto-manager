@@ -4,6 +4,7 @@ const express = require("express");
 const http = require("http");
 const cors = require("cors");
 const mongoose = require("mongoose");
+const { mountSseRoute } = require("./services/sse-bus.service")
 
 // APP
 const app = express();
@@ -27,7 +28,7 @@ app.use(
   cors({
     origin: [
       "http://localhost:8002", // Client
-      "http://localhost:8003", // Client site restaurant
+      "http://localhost:8003", // Client site restaurant | module réservation
       "http://localhost:8012", // Server
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
@@ -87,6 +88,9 @@ app.use(apiRoutes, menusRoutes);
 app.use(apiRoutes, transactionsRoutes);
 app.use(apiRoutes, reservationsRoutes);
 app.use(apiRoutes, employeesRoutes);
+
+// SSE BUS
+mountSseRoute(app)
 
 // ÉCOUTE DU PORT
 server.listen(PORT, () => {

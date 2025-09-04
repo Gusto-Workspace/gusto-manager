@@ -220,16 +220,16 @@ export default function SettingsComponent() {
 
               <div
                 ref={notificationsRef}
-                className={`absolute -left-[100px] tablet:right-0 top-full mt-4 bg-white shadow-lg rounded-lg w-72 z-[60] tablet:z-10 transition-all duration-300 overflow-hidden ${
+                className={`absolute -left-[100px] tablet:right-0 top-full mt-4 bg-white shadow-lg rounded-lg w-fit z-[60] tablet:z-10 transition-all duration-300 overflow-hidden ${
                   showNotifications ? "max-h-[200px]" : "max-h-0"
                 }`}
                 style={{ maxHeight: showNotifications ? "200px" : "0" }}
               >
-                <ul className="flex flex-col p-4">
+                <div className="p-4">
                   {displayedCount > 0 ? (
-                    <>
+                    <ul className="flex flex-col gap-4 text-nowrap">
                       {restaurantContext.newLeaveRequestsCount > 0 && (
-                        <li className="text-sm flex items-center justify-between gap-2">
+                        <li className="text-sm flex items-center justify-between gap-4">
                           <span>
                             {restaurantContext.newLeaveRequestsCount} nouvelle
                             {restaurantContext.newLeaveRequestsCount > 1
@@ -259,22 +259,42 @@ export default function SettingsComponent() {
                           </button>
                         </li>
                       )}
+
                       {restaurantContext.newReservationsCount > 0 && (
-                        <li className="text-sm">
-                          {restaurantContext.newReservationsCount} nouvelle
-                          {restaurantContext.newReservationsCount > 1
-                            ? "s"
-                            : ""}{" "}
-                          réservation
+                        <li className="text-sm flex items-center justify-between gap-4">
+                          <span>
+                            {restaurantContext.newReservationsCount} nouvelle
+                            {restaurantContext.newReservationsCount > 1
+                              ? "s"
+                              : ""}{" "}
+                            réservation
+                            {restaurantContext.newReservationsCount > 1
+                              ? "s"
+                              : ""}{" "}
+                          </span>
+                          <button
+                            className="shrink-0 h-6 w-6 rounded-full bg-darkBlue bg-opacity-10 flex items-center justify-center hover:bg-opacity-20"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setShowNotifications(false);
+                              router.push("/dashboard/reservations");
+                            }}
+                            aria-label="Voir les réservations"
+                            title="Voir les réservations"
+                          >
+                            <span className="text-sm font-bold leading-none">
+                              <VisibleSvg width={12} />
+                            </span>
+                          </button>
                         </li>
                       )}
-                    </>
+                    </ul>
                   ) : (
-                    <li className="opacity-40 italic text-sm">
+                    <p className="opacity-40 italic text-sm w-48">
                       Aucune notification
-                    </li>
+                    </p>
                   )}
-                </ul>
+                </div>
               </div>
             </div>
           )}
