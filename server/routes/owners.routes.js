@@ -9,6 +9,7 @@ const RestaurantModel = require("../models/restaurant.model");
 
 // MIDDLEWARE
 const authenticateToken = require("../middleware/authentificate-token");
+const EmployeeModel = require("../models/employee.model");
 
 // Fonction pour initialiser le client Brevo
 function instantiateClient() {
@@ -165,36 +166,60 @@ router.put("/owner/update-data", authenticateToken, async (req, res) => {
     const owner = await OwnerModel.findById(req.user.id);
     if (!owner) return res.status(404).json({ message: "Owner not found" });
 
-    // Mise à jour des informations
+    const normalizedEmail = (email || "").trim().toLowerCase();
+
+    // Only check if email actually changes
+    if (normalizedEmail && normalizedEmail !== owner.email) {
+      const [ownerDup, employeeDup] = await Promise.all([
+        OwnerModel.findOne({ email: normalizedEmail, _id: { $ne: owner._id } }),
+        EmployeeModel.findOne({ email: normalizedEmail }),
+      ]);
+      if (ownerDup || employeeDup) {
+        return res.status(409).json({ message: "L'adresse mail est déjà utilisée" });
+      }
+    }
+
     owner.firstname = firstname;
     owner.lastname = lastname;
-    owner.email = email;
+    owner.email = normalizedEmail || owner.email;
     owner.phoneNumber = phoneNumber;
 
     await owner.save();
 
+    // fresh token (no expiry for owners)
+    const jwt = require("jsonwebtoken");
+    const token = jwt.sign(
+      {
+        id: owner._id,
+        role: "owner",
+        restaurantId: req.user.restaurantId,
+        firstname: owner.firstname,
+        lastname: owner.lastname,
+        email: owner.email,
+        phoneNumber: owner.phoneNumber,
+      },
+      process.env.JWT_SECRET
+    );
+
+    // Optional: keep Stripe in sync
     if (owner.stripeCustomerId) {
-      // Mettre à jour le client Stripe avec les nouvelles informations du propriétaire
       try {
         await stripe.customers.update(owner.stripeCustomerId, {
           email: owner.email,
           name: `${owner.firstname} ${owner.lastname}`,
         });
-      } catch (stripeError) {
-        console.error(
-          "Erreur lors de la mise à jour du client Stripe :",
-          stripeError
-        );
+      } catch (err) {
+        console.error("Stripe update error:", err);
         return res
           .status(500)
           .json({ message: "Erreur lors de la mise à jour du client Stripe" });
       }
     }
 
-    res.status(200).json({ message: "Owner information updated successfully" });
+    return res.status(200).json({ message: "Owner updated", token });
   } catch (error) {
-    console.error("Erreur lors de la mise à jour du propriétaire :", error);
-    res.status(500).json({ message: "Erreur serveur" });
+    console.error("Erreur MAJ owner :", error);
+    return res.status(500).json({ message: "Erreur serveur" });
   }
 });
 

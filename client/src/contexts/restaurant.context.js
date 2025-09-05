@@ -713,6 +713,7 @@ export default function RestaurantContext() {
     restaurantData,
     setRestaurantData,
     userConnected,
+    setUserConnected,
     restaurantsList,
     dataLoading,
     setRestaurantsList,

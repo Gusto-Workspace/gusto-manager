@@ -6,11 +6,15 @@ const multer = require("multer");
 const streamifier = require("streamifier");
 const axios = require("axios");
 const path = require("path");
-const { broadcastToRestaurant } = require("../services/sse-bus.service")
+const { broadcastToRestaurant } = require("../services/sse-bus.service");
+
+// MIDDLEWARE
+const authenticateToken = require("../middleware/authentificate-token");
 
 // MODELS
 const EmployeeModel = require("../models/employee.model");
 const RestaurantModel = require("../models/restaurant.model");
+const OwnerModel = require("../models/owner.model");
 
 // Configuration de Cloudinary
 cloudinary.config({
@@ -735,5 +739,111 @@ router.get("/restaurants/:id/leave-requests/unread-count", async (req, res) => {
     return res.status(500).json({ message: "Internal server error" });
   }
 });
+
+// GET EMPLOYEE DATA (moi)
+router.get("/employees/me", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "employee") {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+    const emp = await EmployeeModel.findById(req.user.id).select("-password");
+    if (!emp) return res.status(404).json({ message: "Employee not found" });
+
+    const restaurant = await RestaurantModel.findById(emp.restaurant)
+      .populate("owner_id", "firstname")
+      .populate("employees")
+      .populate("menus");
+
+    return res.json({ employee: emp, restaurant });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+// UPDATE EMPLOYEE DATA
+router.put("/employees/update-data", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "employee") {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    const { firstname, lastname, email, phone } = req.body;
+    const emp = await EmployeeModel.findById(req.user.id);
+    if (!emp) return res.status(404).json({ message: "Employee not found" });
+
+    const normalizedEmail = (email || "").trim().toLowerCase();
+
+    if (normalizedEmail && normalizedEmail !== emp.email) {
+      const [employeeDup, ownerDup] = await Promise.all([
+        EmployeeModel.findOne({
+          email: normalizedEmail,
+          _id: { $ne: emp._id },
+        }),
+        OwnerModel.findOne({ email: normalizedEmail }),
+      ]);
+      if (employeeDup || ownerDup) {
+        return res.status(409).json({ message: "L'adresse mail est déjà utilisée" });
+      }
+    }
+
+    if (firstname !== undefined) emp.firstname = firstname;
+    if (lastname !== undefined) emp.lastname = lastname;
+    if (email !== undefined) emp.email = normalizedEmail;
+    if (phone !== undefined) emp.phone = phone;
+
+    await emp.save();
+
+    const jwt = require("jsonwebtoken");
+    const token = jwt.sign(
+      {
+        id: emp._id,
+        role: "employee",
+        restaurantId: String(emp.restaurant),
+        firstname: emp.firstname,
+        lastname: emp.lastname,
+        email: emp.email,
+        phone: emp.phone,
+        options: emp.options,
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" } // expiration for employees only
+    );
+
+    return res.json({ message: "Employee updated", token });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+// UPDATE EMPLOYEE PASSWORD
+router.put(
+  "/employees/update-password",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      if (req.user.role !== "employee") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const { currentPassword, newPassword } = req.body;
+
+      const emp = await EmployeeModel.findById(req.user.id);
+      if (!emp) return res.status(404).json({ message: "Employee not found" });
+
+      const ok = await emp.comparePassword(currentPassword, emp.password);
+      if (!ok)
+        return res.status(401).json({ message: "Incorrect current password" });
+
+      emp.password = newPassword; // hash via pre('save')
+      await emp.save();
+
+      return res.json({ message: "Password updated successfully" });
+    } catch (e) {
+      console.error(e);
+      return res.status(500).json({ message: "Server error" });
+    }
+  }
+);
 
 module.exports = router;

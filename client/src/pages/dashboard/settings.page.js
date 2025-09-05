@@ -26,32 +26,40 @@ export default function SettingsPage(props) {
   const { t } = useTranslation("");
   const { restaurantContext } = useContext(GlobalContext);
   const router = useRouter();
-  const [ownerData, setOwnerData] = useState(null);
+  const [userData, setUserData] = useState(null);
+  const role = restaurantContext?.userConnected?.role;
 
-  function fetchOwnerData() {
+  // SettingsPage.jsx
+  function fetchUserData() {
     const token = localStorage.getItem("token");
     if (!token) return router.push("/dashboard/login");
 
+    const url =
+      role === "owner"
+        ? `${process.env.NEXT_PUBLIC_API_URL}/owner/get-data`
+        : `${process.env.NEXT_PUBLIC_API_URL}/employees/me`;
+
     axios
-      .get(`${process.env.NEXT_PUBLIC_API_URL}/owner/get-data`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      .get(url, { headers: { Authorization: `Bearer ${token}` } })
       .then((response) => {
-        setOwnerData(response.data.owner);
-        restaurantContext.setRestaurantData(response.data.restaurant);
+        if (role === "owner") {
+          setUserData(response.data.owner);
+          restaurantContext.setRestaurantData(response.data.restaurant);
+        } else {
+          setUserData(response.data.employee);
+          restaurantContext.setRestaurantData(response.data.restaurant);
+        }
       })
       .catch((error) => {
-        console.error(
-          "Erreur lors de la récupération des informations :",
-          error
-        );
+        console.error("Erreur fetch user data:", error);
         router.push("/dashboard/login");
       });
   }
 
   useEffect(() => {
-    fetchOwnerData();
-  }, []);
+    if (!role) return;
+    fetchUserData();
+  }, [role]);
 
   let title;
   let description;
@@ -94,7 +102,7 @@ export default function SettingsPage(props) {
         <div className="flex">
           <NavComponent />
 
-           <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 p-6 flex flex-col gap-6 min-h-screen">
+          <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 p-6 flex flex-col gap-6 min-h-screen">
             <SettingsComponent
               dataLoading={restaurantContext.dataLoading}
               setDataLoading={restaurantContext.setDataLoading}
@@ -114,8 +122,10 @@ export default function SettingsPage(props) {
             </div>
 
             <GeneralFormSettingsComponent
-              ownerData={ownerData}
-              fetchOwnerData={fetchOwnerData}
+              role={role}
+              userData={userData}
+              fetchUserData={fetchUserData}
+              restaurantContext={restaurantContext}
             />
             <PasswordFormSettingsComponent />
           </div>
