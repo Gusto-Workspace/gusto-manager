@@ -35,7 +35,7 @@ function broadcastToRestaurant(restaurantId, payload) {
 function mountSseRoute(appOrRouter, opts = {}) {
   const {
     path = "/api/events/:restaurantId",
-    allowOrigin = process.env.APP_URL,
+    allowOrigin = process.env.APP_URL?.replace(/\/+$/, ""),
     heartbeatMs = 25000,
   } = opts;
 
