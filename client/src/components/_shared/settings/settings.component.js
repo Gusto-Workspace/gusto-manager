@@ -4,13 +4,13 @@ import { useTranslation } from "next-i18next";
 
 // SVG
 import {
-  AboutSvg,
   ChevronSvg,
   FullScreenSvg,
   HelpSvg,
   InvoiceSvg,
   NotificationSvg,
   SettingsSvg,
+  VisibleSvg,
 } from "../_svgs/_index";
 
 // CONTEXT
@@ -66,11 +66,13 @@ export default function SettingsComponent() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showNotifications]);
 
+  const totalCount =
+    (restaurantContext.newReservationsCount || 0) +
+    (restaurantContext.newLeaveRequestsCount || 0);
+
   useEffect(() => {
-    if (showNotifications) {
-      setDisplayedCount(restaurantContext.newReservationsCount);
-    }
-  }, [restaurantContext.newReservationsCount, showNotifications]);
+    if (showNotifications) setDisplayedCount(totalCount);
+  }, [totalCount, showNotifications]);
 
   useEffect(() => {
     if (showRestaurantList) {
@@ -92,8 +94,9 @@ export default function SettingsComponent() {
     function handleTransitionEnd(e) {
       if (e.propertyName === "max-height" && !showNotifications) {
         restaurantContext.resetNewReservationsCount();
-        setDisplayedCount(0);
+        restaurantContext.resetNewLeaveRequestsCount();
         restaurantContext.updateLastNotificationCheck();
+        setDisplayedCount(0);
       }
     }
     node.addEventListener("transitionend", handleTransitionEnd);
@@ -117,7 +120,7 @@ export default function SettingsComponent() {
   }, [showUserMenu]);
 
   return (
-    <section className="flex flex-col-reverse tablet:flex-row min-h-16 gap-6 tablet:gap-12 justify-between items-center relative">
+    <section className="flex flex-col-reverse tablet:flex-row min-h-16 gap-6 tablet:gap-7 justify-between items-center relative">
       {showRestaurantList && (
         <div
           onClick={() => setShowRestaurantList(false)}
@@ -181,7 +184,7 @@ export default function SettingsComponent() {
 
       <div className="flex items-center justify-end w-full tablet:w-auto">
         <div className="flex">
-          <div className="hidden tablet:block pr-3">
+          <div className="hidden tablet:block">
             <button
               className="bg-violet p-3 rounded-lg bg-opacity-40"
               onClick={handleFullScreenToggle}
@@ -190,57 +193,115 @@ export default function SettingsComponent() {
             </button>
           </div>
 
-          <div className="tablet:border-r pr-2 tablet:pr-8 relative">
-            <div className="relative">
-              <button
-                ref={notificationsButtonRef}
-                className="bg-blue p-3 rounded-lg bg-opacity-40"
-                onClick={() => {
-                  if (!showNotifications) {
-                    setDisplayedCount(restaurantContext.newReservationsCount);
-                    setShowNotifications(true);
-                  } else {
-                    setShowNotifications(false);
-                  }
-                }}
-              >
-                <NotificationSvg width={25} height={25} fillColor="#4583FF" />
-              </button>
-              {/* Badge de notification */}
-              {restaurantContext.newReservationsCount > 0 && (
-                <span className="absolute top-0 right-0 inline-flex items-center justify-center px-1 py-0.5 text-xs font-bold leading-none text-white transform translate-x-1/2 -translate-y-1/2 bg-red rounded-full">
-                  {restaurantContext.newReservationsCount}
-                </span>
-              )}
-            </div>
-
-            <div
-              ref={notificationsRef}
-              className={`absolute -left-[100px] tablet:right-0 top-full mt-4 bg-white shadow-lg rounded-lg w-64 z-[60] tablet:z-10 transition-all duration-300 overflow-hidden ${
-                showNotifications ? "max-h-[200px]" : "max-h-0"
-              }`}
-              style={{ maxHeight: showNotifications ? "200px" : "0" }}
-            >
-              <ul className="flex flex-col p-4">
-                {displayedCount > 0 ? (
-                  <li className="text-sm">
-                    Vous avez {displayedCount}{" "}
-                    {displayedCount === 1
-                      ? "nouvelle réservation"
-                      : "nouvelles réservations"}
-                  </li>
-                ) : (
-                  <li className="opacity-40 italic text-sm">
-                    Aucune notification
-                  </li>
+          {restaurantContext?.userConnected?.role === "owner" && (
+            <div className="relative pl-3">
+              <div className="relative">
+                <button
+                  ref={notificationsButtonRef}
+                  className="bg-blue p-3 rounded-lg bg-opacity-40"
+                  onClick={() => {
+                    if (!showNotifications) {
+                      setDisplayedCount(totalCount);
+                      setShowNotifications(true);
+                    } else {
+                      setShowNotifications(false);
+                    }
+                  }}
+                >
+                  <NotificationSvg width={25} height={25} fillColor="#4583FF" />
+                </button>
+                {/* Badge de notification */}
+                {totalCount > 0 && (
+                  <span className="absolute top-0 right-0 inline-flex items-center justify-center px-1 py-0.5 text-xs font-bold leading-none text-white transform translate-x-1/2 -translate-y-1/2 bg-red rounded-full">
+                    {totalCount}
+                  </span>
                 )}
-              </ul>
+              </div>
+
+              <div
+                ref={notificationsRef}
+                className={`absolute -left-[100px] tablet:right-0 top-full mt-4 bg-white shadow-lg rounded-lg w-fit z-[60] tablet:z-10 transition-all duration-300 overflow-hidden ${
+                  showNotifications ? "max-h-[200px]" : "max-h-0"
+                }`}
+                style={{ maxHeight: showNotifications ? "200px" : "0" }}
+              >
+                <div className="p-4">
+                  {displayedCount > 0 ? (
+                    <ul className="flex flex-col gap-4 text-nowrap">
+                      {restaurantContext.newLeaveRequestsCount > 0 && (
+                        <li className="text-sm flex items-center justify-between gap-4">
+                          <span>
+                            {restaurantContext.newLeaveRequestsCount} nouvelle
+                            {restaurantContext.newLeaveRequestsCount > 1
+                              ? "s"
+                              : ""}{" "}
+                            demande
+                            {restaurantContext.newLeaveRequestsCount > 1
+                              ? "s"
+                              : ""}{" "}
+                            de congé
+                          </span>
+                          <button
+                            className="shrink-0 h-6 w-6 rounded-full bg-darkBlue bg-opacity-10 flex items-center justify-center hover:bg-opacity-20"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setShowNotifications(false);
+                              router.push(
+                                "/dashboard/employees/planning/days-off"
+                              );
+                            }}
+                            aria-label="Voir les demandes de congés"
+                            title="Voir les demandes de congés"
+                          >
+                            <span className="text-sm font-bold leading-none">
+                              <VisibleSvg width={12} />
+                            </span>
+                          </button>
+                        </li>
+                      )}
+
+                      {restaurantContext.newReservationsCount > 0 && (
+                        <li className="text-sm flex items-center justify-between gap-4">
+                          <span>
+                            {restaurantContext.newReservationsCount} nouvelle
+                            {restaurantContext.newReservationsCount > 1
+                              ? "s"
+                              : ""}{" "}
+                            réservation
+                            {restaurantContext.newReservationsCount > 1
+                              ? "s"
+                              : ""}{" "}
+                          </span>
+                          <button
+                            className="shrink-0 h-6 w-6 rounded-full bg-darkBlue bg-opacity-10 flex items-center justify-center hover:bg-opacity-20"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setShowNotifications(false);
+                              router.push("/dashboard/reservations");
+                            }}
+                            aria-label="Voir les réservations"
+                            title="Voir les réservations"
+                          >
+                            <span className="text-sm font-bold leading-none">
+                              <VisibleSvg width={12} />
+                            </span>
+                          </button>
+                        </li>
+                      )}
+                    </ul>
+                  ) : (
+                    <p className="opacity-40 italic text-sm w-48">
+                      Aucune notification
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
+          )}
 
           <div
             ref={userNameRef}
-            className="pl-2 tablet:pl-8 flex items-center gap-2 tablet:gap-4 text-sm cursor-pointer"
+            className="tablet:border-l tablet:border-black/30 pl-2 ml-6 tablet:pl-4 flex items-center gap-2 tablet:gap-4 text-sm cursor-pointer"
             onClick={() => setShowUserMenu((prev) => !prev)}
           >
             <p>

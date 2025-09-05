@@ -31,7 +31,7 @@ export default function FormForgotPasswordComponent() {
     if (step === "email") {
       try {
         await axios.post(
-          `${process.env.NEXT_PUBLIC_API_URL}/owner/send-reset-code`,
+          `${process.env.NEXT_PUBLIC_API_URL}/auth/send-reset-code`,
           { email: data.email }
         );
         setEmail(data.email);
@@ -44,7 +44,7 @@ export default function FormForgotPasswordComponent() {
     } else if (step === "code") {
       try {
         const response = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_URL}/owner/verify-reset-code`,
+          `${process.env.NEXT_PUBLIC_API_URL}/auth/verify-reset-code`,
           { email, code }
         );
         if (response.status === 200) {
@@ -63,7 +63,7 @@ export default function FormForgotPasswordComponent() {
       }
       try {
         await axios.put(
-          `${process.env.NEXT_PUBLIC_API_URL}/owner/reset-password`,
+          `${process.env.NEXT_PUBLIC_API_URL}/auth/reset-password`,
           { email, code, newPassword }
         );
         router.push("/dashboard/login");

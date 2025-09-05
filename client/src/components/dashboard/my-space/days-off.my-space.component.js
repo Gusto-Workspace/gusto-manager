@@ -9,9 +9,9 @@ export default function DaysOffMySpaceComponent({ employeeId }) {
   const { t } = useTranslation("myspace");
   const [requests, setRequests] = useState([]);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [toCancel, setToCancel] = useState(null); 
+  const [toCancel, setToCancel] = useState(null);
 
-    useEffect(() => {
+  useEffect(() => {
     if (confirmOpen) {
       document.body.classList.add("overflow-hidden");
     } else {
@@ -104,7 +104,10 @@ export default function DaysOffMySpaceComponent({ employeeId }) {
               }
 
               return (
-                <li key={req._id} className="flex midTablet:flex-row flex-col justify-between items-center">
+                <li
+                  key={req._id}
+                  className="flex midTablet:flex-row flex-col justify-between items-center"
+                >
                   <div className="space-y-1">
                     <div>
                       <strong>
@@ -117,9 +120,16 @@ export default function DaysOffMySpaceComponent({ employeeId }) {
                     </div>
                     <div className="text-sm text-gray-600">
                       {t("daysOff.requestedAt", "Demandé le")}{" "}
-                      {format(new Date(req.requestedAt), "dd/MM/yyyy HH:mm", {
-                        locale: frLocale,
-                      })}
+                      {format(
+                        req.createdAt
+                          ? new Date(req.createdAt)
+                          : new Date(
+                              parseInt(String(req._id).substring(0, 8), 16) *
+                                1000
+                            ),
+                        "dd/MM/yyyy HH:mm",
+                        { locale: frLocale }
+                      )}
                     </div>
                   </div>
 
@@ -128,34 +138,34 @@ export default function DaysOffMySpaceComponent({ employeeId }) {
                       {labelDays}
                     </span>
                     <div className="flex gap-4 items-center">
-                    <span
-                      className={`capitalize px-2 py-1 rounded ${
-                        req.status === "pending"
-                          ? "bg-lightGrey text-black"
-                          : req.status === "approved"
-                            ? "bg-green text-white"
-                            : "bg-red text-white"
-                      }`}
-                    >
-                      {t(`daysOff.status.${req.status}`)}
-                    </span>
-                    {req.status === "pending" && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setToCancel({
-                            id: req._id,
-                            start,
-                            end,
-                          });
-                          setConfirmOpen(true);
-                        }}
-                        className="text-red rounded-full border border-red min-w-6 h-6 flex items-center justify-center hover:scale-105" 
-                        title={t("daysOff.cancel", "Annuler")}
+                      <span
+                        className={`capitalize px-2 py-1 rounded ${
+                          req.status === "pending"
+                            ? "bg-lightGrey text-black"
+                            : req.status === "approved"
+                              ? "bg-green text-white"
+                              : "bg-red text-white"
+                        }`}
                       >
-                        &times;
-                      </button>
-                    )}
+                        {t(`daysOff.status.${req.status}`)}
+                      </span>
+                      {req.status === "pending" && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setToCancel({
+                              id: req._id,
+                              start,
+                              end,
+                            });
+                            setConfirmOpen(true);
+                          }}
+                          className="text-red rounded-full border border-red min-w-6 h-6 flex items-center justify-center hover:scale-105"
+                          title={t("daysOff.cancel", "Annuler")}
+                        >
+                          &times;
+                        </button>
+                      )}
                     </div>
                   </div>
                 </li>
@@ -177,14 +187,17 @@ export default function DaysOffMySpaceComponent({ employeeId }) {
               {t("daysOff.confirmTitle", "Confirmer l’annulation")}
             </h2>
             <p className="mb-4 text-balance">
-              {t("daysOff.confirmMessage", "Êtes-vous sûr de vouloir annuler votre demande :")}{" "}
+              {t(
+                "daysOff.confirmMessage",
+                "Êtes-vous sûr de vouloir annuler votre demande :"
+              )}{" "}
               <br />
               <strong>
                 {format(toCancel.start, "dd/MM/yyyy", { locale: frLocale })}
                 {" – "}
                 {format(toCancel.end, "dd/MM/yyyy", { locale: frLocale })}
-              </strong>
-              {" "}?
+              </strong>{" "}
+              ?
             </p>
             <div className="flex justify-center gap-4">
               <button

@@ -1,18 +1,9 @@
-import { useState, useMemo, useContext, useEffect, useRef } from "react";
+import { useState, useMemo, useContext, useEffect } from "react";
 import { useRouter } from "next/router";
 
 import { Calendar, dateFnsLocalizer, Views } from "react-big-calendar";
 import withDragAndDrop from "react-big-calendar/lib/addons/dragAndDrop";
-import {
-  format,
-  parse,
-  startOfWeek,
-  getDay,
-  differenceInCalendarDays,
-  addDays,
-  setHours,
-  setMinutes,
-} from "date-fns";
+import { format, parse, startOfWeek, getDay } from "date-fns";
 import frLocale from "date-fns/locale/fr";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import "react-big-calendar/lib/addons/dragAndDrop/styles.css";
@@ -24,6 +15,10 @@ import CardEmployeesComponent from "./card.employees.component";
 import axios from "axios";
 
 const DnDCalendar = withDragAndDrop(Calendar);
+
+// Helper: "Prénom N."
+const shortName = (emp) =>
+  `${emp?.firstname ?? ""} ${emp?.lastname ? emp.lastname[0] + "." : ""}`.trim();
 
 export default function PlanningEmployeesComponent() {
   const { t } = useTranslation("employees");
@@ -44,6 +39,8 @@ export default function PlanningEmployeesComponent() {
     end: null,
     title: "",
   });
+  // Recherche employé dans la modale quand aucun n’est pré-sélectionné
+  const [modalEmployeeQuery, setModalEmployeeQuery] = useState("");
 
   // Modale de suppression
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -53,10 +50,9 @@ export default function PlanningEmployeesComponent() {
     title: "",
     start: null,
     end: null,
-    shiftIndex: null,
+    leaveRequestId: null,
+    isLeave: false,
   });
-
-  const calendarContainerRef = useRef(null);
 
   // date‐fns localizer (FR)
   const locales = { fr: frLocale };
@@ -83,63 +79,54 @@ export default function PlanningEmployeesComponent() {
     [restaurantContext.restaurantData?.employees]
   );
 
+  // Normalisation pour recherche
   const normalize = (str) =>
     str
-      .normalize("NFD")
+      ?.normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
       .toLowerCase()
-      .trim();
+      .trim() ?? "";
 
   const employees = useMemo(() => {
     if (!searchTerm.trim()) return allEmployees;
     const norm = normalize(searchTerm);
-    return allEmployees.filter((e) => {
-      const fullName = `${e.firstname} ${e.lastname}`;
-      return normalize(fullName).includes(norm);
-    });
+    return allEmployees.filter((e) =>
+      normalize(`${e.firstname} ${e.lastname}`).includes(norm)
+    );
   }, [allEmployees, searchTerm]);
 
-  // ─── À chaque changement de “allEmployees”, on reconstruit “events” ──────────
+  // Liste filtrée pour la recherche dans la modale (quand aucun employé sélectionné)
+  const modalEmployeeOptions = useMemo(() => {
+    if (!modalEmployeeQuery.trim()) return [];
+    const norm = normalize(modalEmployeeQuery);
+    return allEmployees
+      .filter((e) => normalize(`${e.firstname} ${e.lastname}`).includes(norm))
+      .slice(0, 10);
+  }, [allEmployees, modalEmployeeQuery]);
+
+  // ─── Recompose les events à partir des shifts ──────────────────────────────
+  // Quand tu reconstruis les events à partir des shifts :
   useEffect(() => {
     const newEvents = allEmployees.flatMap((emp) =>
-      emp.shifts.flatMap((s, idx) => {
+      (emp.shifts || []).map((s) => {
         const startDate = new Date(s.start);
         const endDate = new Date(s.end);
-        const durationMs = endDate - startDate;
-        const daysCount = differenceInCalendarDays(endDate, startDate) + 1;
-
-        // compressé si congés ≥ 24h
-        if (s.title === "Congés" && durationMs >= 1000 * 60 * 60 * 24) {
-          return Array.from({ length: daysCount }).map((_, dayIdx) => {
-            const day = addDays(startDate, dayIdx);
-            const start = setMinutes(setHours(day, 0), 0);
-            const end = setMinutes(setHours(day, 1), 0);
-            return {
-              id: `${emp._id}-leave-${idx}-${dayIdx}`,
-              title: `${emp.name} : Congés`,
-              start,
-              end,
-              resourceId: emp._id,
-            };
-          });
-        }
-
-        // sinon on prend le shift complet
-        return [
-          {
-            id: `${emp._id}-${idx}`,
-            title: `${emp.name} : ${s.title}`,
-            start: startDate,
-            end: endDate,
-            resourceId: emp._id,
-          },
-        ];
+        const isLeave = s.title === "Congés";
+        return {
+          id: String(s._id),
+          title: `${shortName(emp)} - ${s.title}`,
+          start: startDate,
+          end: endDate,
+          resourceId: emp._id,
+          leaveRequestId: s.leaveRequestId || null,
+          isLeave,
+        };
       })
     );
     setEvents(newEvents);
   }, [allEmployees]);
 
-  // ─── Palette de couleurs ────────────────────────────────────────────────────
+  // ─── Couleurs par employé ──────────────────────────────────────────────────
   const colorPalette = [
     "#4E79A7",
     "#F28E2B",
@@ -175,72 +162,71 @@ export default function PlanningEmployeesComponent() {
     [events, selectedEmployeeId]
   );
 
-  useEffect(() => {
-    const container = calendarContainerRef.current;
-    if (!container) return;
-    setTimeout(() => {
-      const tv = container.querySelector(".rbc-time-view");
-      if (tv && !tv.classList.contains("rbc-time-view-resources")) {
-        tv.classList.add("rbc-time-view-resources");
-      }
-    }, 0);
-  }, [selectedEmployeeId, events, view]); // <-- on ré-applique à chaque vue
-
-  // ─── Sélection d’un créneau (clic ou tap, dès que l’on relâche) ───────────────
+  // ─── Sélection d’un créneau ────────────────────────────────────────────────
   function handleSelectSlot(slotInfo) {
-    // slotInfo = { start: Date, end: Date, resourceId: string | undefined }
-    const ownerId = selectedEmployeeId || slotInfo.resourceId;
-    if (!ownerId) {
-      // Si aucun employé n’est sélectionné (pas de resourceId), on ne fait rien
+    // Si un employé est sélectionné, on pré-remplit l’employé
+    if (selectedEmployeeId) {
+      setModalData({
+        employeeId: selectedEmployeeId,
+        start: slotInfo.start,
+        end: slotInfo.end,
+        title: "",
+      });
+      setModalOpen(true);
       return;
     }
+    // Sinon : on ouvre la modale avec recherche d’employé
     setModalData({
-      employeeId: ownerId,
+      employeeId: null,
       start: slotInfo.start,
       end: slotInfo.end,
       title: "",
     });
+    setModalEmployeeQuery("");
     setModalOpen(true);
   }
 
-  // ─── Valider le nouvel ajout de shift ──────────────────────────────────────
+  // ─── Valider l’ajout de shift ──────────────────────────────────────────────
   async function handleConfirmShift() {
     const { employeeId, start, end, title } = modalData;
+
     if (!title.trim()) {
       window.alert(t("planning:errors.titleRequired", "Le titre est requis"));
       return;
     }
+    if (!employeeId) {
+      window.alert(
+        t("planning:errors.employeeRequired", "Sélectionnez un employé")
+      );
+      return;
+    }
+
     try {
-      const payload = {
-        title,
-        start: start.toISOString(),
-        end: end.toISOString(),
-      };
       const response = await axios.post(
         `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/shifts`,
-        payload
+        { title, start: start.toISOString(), end: end.toISOString() }
       );
-      const updatedShifts = response.data.shifts;
 
-      // Recomposer les events de cet employé
-      const updatedEvents = updatedShifts.map((s, idx) => ({
-        id: `${employeeId}-${idx}`,
-        title: `${allEmployees.find((e) => e._id === employeeId)?.name} : ${s.title}`,
-        start: new Date(s.start),
-        end: new Date(s.end),
-        resourceId: employeeId,
-      }));
-
-      // Mettre à jour le contexte pour “allEmployees”
+      const updatedShifts = response.data.shifts; // contient des _id
       const updatedRestaurant = { ...restaurantContext.restaurantData };
       updatedRestaurant.employees = updatedRestaurant.employees.map((emp) =>
         emp._id === employeeId ? { ...emp, shifts: updatedShifts } : emp
       );
       restaurantContext.setRestaurantData(updatedRestaurant);
 
-      // Mettre à jour “events” locaux
-      const otherEvents = events.filter((ev) => ev.resourceId !== employeeId);
-      setEvents([...otherEvents, ...updatedEvents]);
+      // rebuild events (ils auront les vrais _id)
+      const employee = allEmployees.find((e) => e._id === employeeId) || {};
+      const updatedEvents = updatedShifts.map((s) => ({
+        id: String(s._id),
+        title: `${shortName(employee)} - ${s.title}`,
+        start: new Date(s.start),
+        end: new Date(s.end),
+        resourceId: employeeId,
+        leaveRequestId: s.leaveRequestId || null,
+        isLeave: s.title === "Congés",
+      }));
+      const other = events.filter((ev) => ev.resourceId !== employeeId);
+      setEvents([...other, ...updatedEvents]);
     } catch (err) {
       console.error("Erreur ajout shift :", err);
       window.alert(
@@ -250,125 +236,138 @@ export default function PlanningEmployeesComponent() {
     setModalOpen(false);
   }
 
-  // ─── Annuler la modale d’ajout ──────────────────────────────────────────────
   function handleCancelShift() {
     setModalOpen(false);
     setModalData({ employeeId: null, start: null, end: null, title: "" });
+    setModalEmployeeQuery("");
   }
 
   // ─── Drag & Drop : mise à jour du shift ───────────────────────────────────
   async function handleEventDrop({ event, start, end }) {
-    const [employeeId, idxStr] = event.id.split("-");
-    const index = parseInt(idxStr, 10);
+    if (event.isLeave) return; // pas de DnD sur congés
 
-    // 1) Mise à jour optimiste de “events”
-    const movedEvents = events.map((ev) =>
-      ev.id === event.id
-        ? { ...ev, start: new Date(start), end: new Date(end) }
-        : ev
+    const employeeId = event.resourceId;
+    const shiftId = event.id;
+
+    // Optimiste
+    setEvents((evts) =>
+      evts.map((ev) => (ev.id === shiftId ? { ...ev, start, end } : ev))
     );
-    setEvents(movedEvents);
 
     try {
-      // 2) Appel API PUT pour enregistrer en base
       const response = await axios.put(
-        `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/shifts/${index}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/shifts/${shiftId}`,
         {
-          title: event.title.split(" : ")[1],
+          title: event.title.split(" - ")[1],
           start: start.toISOString(),
           end: end.toISOString(),
         }
       );
-      const updatedShifts = response.data.shifts;
 
-      // 3) Mettre à jour le contexte pour que “allEmployees” contienne cette nouvelle date
+      // Mets à jour le contexte (employé courant)
+      const updatedShifts = response.data.shifts;
       const updatedRestaurant = { ...restaurantContext.restaurantData };
       updatedRestaurant.employees = updatedRestaurant.employees.map((emp) =>
         emp._id === employeeId ? { ...emp, shifts: updatedShifts } : emp
       );
       restaurantContext.setRestaurantData(updatedRestaurant);
-
-      // 4) Recomposer “events” depuis le contexte pour s’assurer d’être 100% synchro
-      const reloadedEvents = allEmployees.flatMap((emp) =>
-        emp._id === employeeId
-          ? updatedShifts.map((s, idx) => ({
-              id: `${employeeId}-${idx}`,
-              title: `${emp.name} : ${s.title}`,
-              start: new Date(s.start),
-              end: new Date(s.end),
-              resourceId: employeeId,
-            }))
-          : emp.shifts.map((s, idx) => ({
-              id: `${emp._id}-${idx}`,
-              title: `${emp.name} : ${s.title}`,
-              start: new Date(s.start),
-              end: new Date(s.end),
-              resourceId: emp._id,
-            }))
-      );
-      setEvents(reloadedEvents);
     } catch (err) {
       console.error("Erreur maj shift par drag:", err);
-      // 5) En cas d’échec, rollback à l’état précédent
-      const rollbackEvents = events.map((ev) =>
-        ev.id === event.id ? event : ev
-      );
-      setEvents(rollbackEvents);
+      // rollback
+      setEvents((evts) => evts.map((ev) => (ev.id === shiftId ? event : ev)));
       window.alert(
         t("planning:errors.updateFailed", "Impossible de déplacer le shift")
       );
     }
   }
 
-  // ─── Clic sur un événement = ouverture modale de suppression ───────────────
+  // ─── Clic = modale suppression ─────────────────────────────────────────────
   function handleSelectEvent(event) {
-    // On extrait employeeId et index du shift depuis l’ID “empId-index”
-    const [employeeId, idxStr] = event.id.split("-");
-    const index = parseInt(idxStr, 10);
-
     setDeleteModalData({
       eventId: event.id,
-      employeeId,
-      title: event.title.split(" : ")[1],
+      employeeId: event.resourceId,
+      title: event.title.split(" - ")[1],
       start: event.start,
       end: event.end,
-      shiftIndex: index,
+
+      leaveRequestId: event.leaveRequestId || null,
+      isLeave: !!event.isLeave,
     });
     setDeleteModalOpen(true);
   }
 
-  // ─── Confirmer suppression via modale ─────────────────────────────────────
+  // ─── Confirmer suppression ───────────────────────────────────────────────────
   async function handleConfirmDelete() {
-    const { employeeId, shiftIndex, eventId } = deleteModalData;
+    const {
+      employeeId,
+      eventId: shiftId,
+      title,
+      leaveRequestId,
+      isLeave,
+    } = deleteModalData;
+
     try {
-      // 1) Appel API DELETE pour supprimer le shift en base
-      await axios.delete(
-        `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/shifts/${shiftIndex}`
+      if (isLeave && leaveRequestId) {
+        // Annuler la LR par ID (le backend supprime le shift lié)
+        await axios.put(
+          `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/leave-requests/${leaveRequestId}`,
+          { status: "cancelled" }
+        );
+
+        // MAJ contexte: LR -> cancelled, et purge les shifts dont leaveRequestId = lrId
+        const updated = { ...restaurantContext.restaurantData };
+        updated.employees = updated.employees.map((e) => {
+          if (e._id !== employeeId) return e;
+          return {
+            ...e,
+            leaveRequests: (e.leaveRequests || []).map((r) =>
+              String(r._id) === String(leaveRequestId)
+                ? { ...r, status: "cancelled" }
+                : r
+            ),
+            shifts: (e.shifts || []).filter(
+              (s) => String(s.leaveRequestId) !== String(leaveRequestId)
+            ),
+          };
+        });
+        restaurantContext.setRestaurantData(updated);
+      } else {
+        // Shift normal -> suppression par shiftId
+        await axios.delete(
+          `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/shifts/${shiftId}`
+        );
+
+        // MAJ contexte (en retirant le shift par _id)
+        const updated = { ...restaurantContext.restaurantData };
+        updated.employees = updated.employees.map((e) => {
+          if (e._id !== employeeId) return e;
+          return {
+            ...e,
+            shifts: (e.shifts || []).filter(
+              (s) => String(s._id) !== String(shiftId)
+            ),
+          };
+        });
+        restaurantContext.setRestaurantData(updated);
+      }
+
+      // Retirer l'event du calendrier
+      setEvents((prev) =>
+        prev.filter((ev) => String(ev.id) !== String(shiftId))
       );
-
-      // 2) Mettre à jour le contexte : retirer le shift dans restaurantContext
-      const updatedRestaurant = { ...restaurantContext.restaurantData };
-      updatedRestaurant.employees = updatedRestaurant.employees.map((emp) => {
-        if (emp._id === employeeId) {
-          const newShifts = emp.shifts.filter((_, i) => i !== shiftIndex);
-          return { ...emp, shifts: newShifts };
-        }
-        return emp;
-      });
-      restaurantContext.setRestaurantData(updatedRestaurant);
-
-      // 3) Mettre à jour “events” : on enlève simplement l’événement supprimé
-      setEvents((prev) => prev.filter((ev) => ev.id !== eventId));
     } catch (err) {
-      console.error("Erreur suppression shift :", err);
+      console.error("Erreur suppression shift / annulation congé :", err);
       window.alert(
-        t("planning:errors.deleteFailed", "Impossible de supprimer le shift")
+        t(
+          "planning:errors.deleteFailed",
+          "Impossible de supprimer le shift / annuler le congé"
+        )
       );
     }
+
     setDeleteModalOpen(false);
   }
 
-  // ─── Annuler suppression (fermeture modale) ────────────────────────────────
   function handleCancelDelete() {
     setDeleteModalOpen(false);
     setDeleteModalData({
@@ -377,29 +376,27 @@ export default function PlanningEmployeesComponent() {
       title: "",
       start: null,
       end: null,
-      shiftIndex: null,
+      leaveRequestId: null,
+      isLeave: false,
     });
   }
 
   const CustomEvent = ({ event }) => {
     const isCompressedLeave =
-      event.title.endsWith(": Congés") &&
-      event.end - event.start === 1000 * 60 * 60;
-    if (isCompressedLeave) {
-      return <div>{event.title}</div>;
-    }
+      event.isLeave && event.end - event.start === 1000 * 60 * 60;
+    if (isCompressedLeave) return <div>{event.title}</div>;
     return (
       <div className="flex flex-col gap-1">
-        <span className="text-sm">
-          {format(event.start, "HH:mm")} – {format(event.end, "HH:mm")}
-        </span>
         <span>{event.title}</span>
       </div>
     );
   };
 
+  // Responsive (même logique que l'autre composant)
+  const minTableWidth = view === Views.DAY ? "auto" : `${7 * 100}px`;
+
   return (
-    <section className="flex flex-col gap-4 min-w-0" ref={calendarContainerRef}>
+    <section className="flex flex-col gap-4 min-w-0">
       {/* ─── En-tête ───────────────────────────────────────────────────────────── */}
       <div className="flex justify-between flex-wrap gap-4">
         <div className="flex flex-col gap-4">
@@ -420,7 +417,7 @@ export default function PlanningEmployeesComponent() {
 
         <button
           onClick={() => router.push("/dashboard/employees/planning/days-off")}
-          className="bg-violet px-6 py-2 rounded-lg text-white cursor-pointer hover:opacity-80 transition-all ease-in-out"
+          className="bg-violet h-fit px-6 py-2 rounded-lg text-white cursor-pointer hover:opacity-80 transition-all ease-in-out"
         >
           {t("titles.daysOff")}
         </button>
@@ -448,7 +445,7 @@ export default function PlanningEmployeesComponent() {
         )}
       </div>
 
-      {/* ─── Liste d’employés en “cartes” ───────────────────────────────────── */}
+      {/* ─── Liste d’employés ─────────────────────────────────────────────────── */}
       <div className="overflow-x-auto">
         <ul className="flex gap-4 py-4">
           {employees.map((emp) => (
@@ -472,75 +469,76 @@ export default function PlanningEmployeesComponent() {
         </ul>
       </div>
 
-      {/* ─── Calendrier Drag & Drop ───────────────────────────────────────────── */}
-      <div className="h-[75vh] min-w-0 overflow-x-auto">
-        <DnDCalendar
-          view={view}
-          onView={(v) => setView(v)}
-          components={{ event: CustomEvent }}
-          showMultiDayTimes
-          localizer={localizer}
-          culture="fr"
-          events={visibleEvents}
-          defaultView={Views.WEEK}
-          views={[Views.WEEK, Views.DAY, Views.MONTH]}
-          step={30}
-          timeslots={2}
-          defaultDate={new Date()}
-          resources={
-            selectedEmployeeId
-              ? [
+      {/* ─── Calendrier Drag & Drop (responsive, sans colonne resources) ─────── */}
+      <div className="overflow-x-auto">
+        <div style={{ minWidth: minTableWidth }} className="h-[75vh]">
+          <DnDCalendar
+            view={view}
+            onView={(v) => setView(v)}
+            components={{ event: CustomEvent }}
+            showMultiDayTimes
+            localizer={localizer}
+            culture="fr"
+            events={visibleEvents}
+            defaultView={Views.WEEK}
+            views={[Views.WEEK, Views.DAY, Views.MONTH]}
+            step={30}
+            timeslots={2}
+            defaultDate={new Date()}
+            selectable="ignoreEvents"
+            onSelectSlot={handleSelectSlot}
+            onEventDrop={handleEventDrop}
+            onSelectEvent={handleSelectEvent}
+            draggableAccessor={(event) => !event.isLeave}
+            eventPropGetter={(event) => {
+              const isLeave = event.isLeave;
+              return {
+                className: "",
+                style: {
+                  backgroundColor: isLeave
+                    ? "#FFD19C"
+                    : employeeColorMap[event.resourceId],
+                  border: `2px solid ${isLeave ? "#FDBA74" : "#FFFFFF"}`, // bordure blanche sur shifts
+                  borderRadius: "4px",
+                  outline: "none",
+                },
+              };
+            }}
+            messages={{
+              today: "Aujourd’hui",
+              previous: "<",
+              next: ">",
+              month: "Mois",
+              week: "Semaine",
+              day: "Jour",
+              date: "Date",
+              time: "Heure",
+            }}
+            formats={{
+              timeGutterFormat: (date) =>
+                format(date, "HH:mm", { locale: frLocale }),
+              weekdayFormat: (date) =>
+                format(date, "EEE dd/MM", { locale: frLocale }),
+              dayRangeHeaderFormat: ({ start, end }) =>
+                `${format(start, "dd MMM", { locale: frLocale })} – ${format(
+                  end,
+                  "dd MMM yyyy",
+                  { locale: frLocale }
+                )}`,
+              dayHeaderFormat: (date) =>
+                format(date, "EEEE dd MMMM yyyy", { locale: frLocale }),
+              eventTimeRangeFormat: ({ start, end }) =>
+                `${format(start, "HH:mm", { locale: frLocale })} – ${format(
+                  end,
+                  "HH:mm",
                   {
-                    resourceId: selectedEmployeeId,
-                    resourceTitle: allEmployees.find(
-                      (e) => e._id === selectedEmployeeId
-                    )?.name,
-                  },
-                ]
-              : undefined
-          }
-          resourceIdAccessor="resourceId"
-          resourceTitleAccessor="resourceTitle"
-          selectable="ignoreEvents"
-          onSelectSlot={handleSelectSlot}
-          onEventDrop={handleEventDrop}
-          onSelectEvent={handleSelectEvent}
-          eventPropGetter={(event) => {
-            const shiftTitle = event.title.split(" : ")[1];
-            const isCompressedLeave =
-              shiftTitle === "Congés" &&
-              event.end - event.start === 1000 * 60 * 60;
-            return {
-              className: isCompressedLeave ? "hide-label" : "",
-              style: {
-                backgroundColor: employeeColorMap[event.resourceId],
-                borderRadius: "4px",
-              },
-            };
-          }}
-          messages={{
-            today: "Aujourd’hui",
-            previous: "<",
-            next: ">",
-            month: "Mois",
-            week: "Semaine",
-            day: "Jour",
-            date: "Date",
-            time: "Heure",
-          }}
-          formats={{
-            timeGutterFormat: (date) =>
-              format(date, "HH:mm", { locale: frLocale }),
-            weekdayFormat: (date) =>
-              format(date, "EEE dd/MM", { locale: frLocale }),
-            dayRangeHeaderFormat: ({ start, end }) =>
-              `${format(start, "dd MMM", { locale: frLocale })} – ${format(end, "dd MMM yyyy", { locale: frLocale })}`,
-            dayHeaderFormat: (date) =>
-              format(date, "EEEE dd MMMM yyyy", { locale: frLocale }),
-            eventTimeRangeFormat: ({ start, end }) =>
-              `${format(start, "HH:mm", { locale: frLocale })} – ${format(end, "HH:mm", { locale: frLocale })}`,
-          }}
-        />
+                    locale: frLocale,
+                  }
+                )}`,
+            }}
+            style={{ height: "100%", width: "100%" }}
+          />
+        </div>
       </div>
 
       {/* ─── Modale Ajout Shift ───────────────────────────────────────────────── */}
@@ -550,19 +548,76 @@ export default function PlanningEmployeesComponent() {
             onClick={() => setModalOpen(false)}
             className="absolute inset-0 bg-black bg-opacity-40"
           />
-          <div className="bg-white mx-4 p-6 rounded-lg shadow-lg z-10 w-[400px]">
-            <h2 className="text-xl font-semibold mb-4 text-center">
-              {allEmployees.find((e) => e._id === modalData.employeeId)?.name}
-            </h2>
+          <div className="bg-white mx-4 p-6 rounded-lg shadow-lg z-10 w-[420px]">
+            {/* Titre / sélecteur employé */}
+            {modalData.employeeId ? (
+              <h2 className="text-xl font-semibold mb-4 text-center">
+                {(() => {
+                  const emp = allEmployees.find(
+                    (e) => e._id === modalData.employeeId
+                  );
+                  return emp ? `${emp.firstname} ${emp.lastname}` : "";
+                })()}
+              </h2>
+            ) : (
+              <div className="mb-4">
+                <label className="block text-xl text-center mb-2">
+                  {t("planning:labels.chooseEmployee", "Choisir un employé")}
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={modalEmployeeQuery}
+                    onChange={(e) => setModalEmployeeQuery(e.target.value)}
+                    placeholder={t(
+                      "planning:placeholders.searchEmployee",
+                      "Rechercher un employé"
+                    )}
+                    className="w-full p-2 border rounded"
+                  />
+                  {modalEmployeeQuery.trim() && (
+                    <ul className="-mt-1 max-h-24 drop-shadow-xl overflow-y-auto border-b border-x rounded-b absolute bg-white left-0 right-0">
+                      {modalEmployeeOptions.length === 0 && (
+                        <li className="px-3 py-2 text-sm opacity-70 italic">
+                          {t("planning:labels.noResult", "Aucun résultat")}
+                        </li>
+                      )}
+                      {modalEmployeeOptions.map((emp) => (
+                        <li
+                          key={emp._id}
+                          className={`px-3 py-[6px] cursor-pointer hover:bg-lightGrey ${
+                            modalData.employeeId === emp._id
+                              ? "bg-gray-100"
+                              : ""
+                          }`}
+                          onClick={() =>
+                            setModalData((prev) => ({
+                              ...prev,
+                              employeeId: emp._id,
+                            }))
+                          }
+                        >
+                          {emp.firstname} {emp.lastname}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Créneau */}
             <p className="mb-4 text-center">
               {t("planning:labels.slot", "Créneau :")}&nbsp;
               <strong>
                 {format(modalData.start, "EEEE dd MMM yyyy HH:mm", {
                   locale: frLocale,
-                })}
-                &nbsp;– {format(modalData.end, "HH:mm", { locale: frLocale })}
+                })}{" "}
+                – {format(modalData.end, "HH:mm", { locale: frLocale })}
               </strong>
             </p>
+
+            {/* Titre shift */}
             <input
               type="text"
               placeholder={t(
@@ -575,10 +630,15 @@ export default function PlanningEmployeesComponent() {
               }
               className="w-full p-2 border border-gray-300 rounded-lg mb-6"
             />
+
             <div className="flex justify-center gap-4">
               <button
                 onClick={handleConfirmShift}
                 className="px-4 py-2 bg-blue text-white rounded-lg disabled:opacity-40"
+                disabled={
+                  !modalData.title.trim() ||
+                  (!modalData.employeeId && !selectedEmployeeId)
+                }
               >
                 {t("buttons.confirm", "Valider")}
               </button>
@@ -602,21 +662,58 @@ export default function PlanningEmployeesComponent() {
           />
           <div className="bg-white mx-4 p-6 rounded-lg shadow-lg z-10 w-[400px]">
             <h2 className="text-xl font-semibold mb-4 text-center">
-              {
-                allEmployees.find((e) => e._id === deleteModalData.employeeId)
-                  ?.name
-              }
+              {(() => {
+                const emp = allEmployees.find(
+                  (e) => e._id === deleteModalData.employeeId
+                );
+                return emp ? `${emp.firstname} ${emp.lastname}` : "";
+              })()}
             </h2>
             <p className="mb-4 text-center flex flex-col gap-2">
               <span>
-                {t("planning:labels.deleteShift", "Supprimer ce créneau")} :
+                {t("planning:labels.deleteShift", "Supprimer ce shift")} :{" "}
+                {deleteModalData?.title}
               </span>
+
               <strong>
-                {format(deleteModalData.start, "EEEE dd MMM yyyy HH:mm", {
-                  locale: frLocale,
-                })}
-                &nbsp;–{" "}
-                {format(deleteModalData.end, "HH:mm", { locale: frLocale })}
+                {(() => {
+                  const sameDay =
+                    deleteModalData.start.toDateString() ===
+                    deleteModalData.end.toDateString();
+
+                  const isFullDay =
+                    deleteModalData.start.getHours() === 0 &&
+                    deleteModalData.start.getMinutes() === 0 &&
+                    deleteModalData.end.getHours() === 23 &&
+                    deleteModalData.end.getMinutes() >= 59;
+
+                  if (sameDay && isFullDay) {
+                    // 👉 Journée complète sur un seul jour
+                    return format(deleteModalData.start, "EEEE dd MMM yyyy", {
+                      locale: frLocale,
+                    });
+                  } else if (!sameDay) {
+                    // 👉 Plusieurs jours
+                    return `${format(
+                      deleteModalData.start,
+                      "EEEE dd MMM yyyy",
+                      {
+                        locale: frLocale,
+                      }
+                    )} – ${format(deleteModalData.end, "EEEE dd MMM yyyy", {
+                      locale: frLocale,
+                    })}`;
+                  } else {
+                    // 👉 Même jour mais avec heures
+                    return `${format(
+                      deleteModalData.start,
+                      "EEEE dd MMM yyyy HH:mm",
+                      {
+                        locale: frLocale,
+                      }
+                    )} – ${format(deleteModalData.end, "HH:mm", { locale: frLocale })}`;
+                  }
+                })()}
               </strong>
             </p>
             <div className="flex justify-center gap-4">

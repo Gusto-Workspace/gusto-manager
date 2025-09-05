@@ -4,6 +4,7 @@ const express = require("express");
 const http = require("http");
 const cors = require("cors");
 const mongoose = require("mongoose");
+const { mountSseRoute } = require("./services/sse-bus.service")
 
 // APP
 const app = express();
@@ -90,6 +91,9 @@ app.use(apiRoutes, menusRoutes);
 app.use(apiRoutes, transactionsRoutes);
 app.use(apiRoutes, reservationsRoutes);
 app.use(apiRoutes, employeesRoutes);
+
+// SSE BUS
+mountSseRoute(app)
 
 // ÉCOUTE DU PORT
 server.listen(PORT, () => {

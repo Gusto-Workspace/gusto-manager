@@ -6,10 +6,15 @@ const multer = require("multer");
 const streamifier = require("streamifier");
 const axios = require("axios");
 const path = require("path");
+const { broadcastToRestaurant } = require("../services/sse-bus.service");
+
+// MIDDLEWARE
+const authenticateToken = require("../middleware/authentificate-token");
 
 // MODELS
 const EmployeeModel = require("../models/employee.model");
 const RestaurantModel = require("../models/restaurant.model");
+const OwnerModel = require("../models/owner.model");
 
 // Configuration de Cloudinary
 cloudinary.config({
@@ -524,95 +529,56 @@ router.get("/employees/:employeeId/shifts", async (req, res) => {
 
 // POST EMPLOYEE SHIFT
 router.post("/employees/:employeeId/shifts", async (req, res) => {
-  try {
-    const { employeeId } = req.params;
-    const { title, start, end } = req.body;
+  const { employeeId } = req.params;
+  const { title, start, end, leaveRequestId = null } = req.body;
 
-    if (!title || !start || !end) {
-      return res
-        .status(400)
-        .json({ message: "title, start et end sont requis" });
-    }
+  const emp = await EmployeeModel.findById(employeeId);
+  if (!emp) return res.status(404).json({ message: "Employé non trouvé" });
 
-    const employee = await EmployeeModel.findById(employeeId);
-    if (!employee) {
-      return res.status(404).json({ message: "Employé non trouvé" });
-    }
+  emp.shifts.push({
+    title,
+    start: new Date(start),
+    end: new Date(end),
+    leaveRequestId: leaveRequestId || null,
+  });
 
-    employee.shifts.push({
-      title,
-      start: new Date(start),
-      end: new Date(end),
-    });
-    await employee.save();
-
-    return res.status(201).json({ shifts: employee.shifts });
-  } catch (err) {
-    console.error("Erreur ajout shift:", err);
-    return res.status(500).json({ message: "Internal server error" });
-  }
+  await emp.save();
+  const created = emp.shifts[emp.shifts.length - 1]; // dernier push
+  return res.status(201).json({ shift: created, shifts: emp.shifts });
 });
 
 // PUT EMPLOYEE SHIFT
-router.put("/employees/:employeeId/shifts/:idx", async (req, res) => {
-  try {
-    const { employeeId, idx } = req.params;
-    const { title, start, end } = req.body;
-    const index = parseInt(idx, 10);
+router.put("/employees/:employeeId/shifts/:shiftId", async (req, res) => {
+  const { employeeId, shiftId } = req.params;
+  const { title, start, end } = req.body;
 
-    const employee = await EmployeeModel.findById(employeeId);
-    if (!employee) {
-      return res.status(404).json({ message: "Employé non trouvé" });
-    }
+  const emp = await EmployeeModel.findById(employeeId);
+  if (!emp) return res.status(404).json({ message: "Employé non trouvé" });
 
-    if (
-      isNaN(index) ||
-      index < 0 ||
-      index >= (employee.shifts ? employee.shifts.length : 0)
-    ) {
-      return res.status(400).json({ message: "Index de shift invalide" });
-    }
+  const shift = emp.shifts.id(shiftId);
+  if (!shift) return res.status(404).json({ message: "Shift non trouvé" });
 
-    if (title !== undefined) employee.shifts[index].title = title;
-    if (start !== undefined) employee.shifts[index].start = new Date(start);
-    if (end !== undefined) employee.shifts[index].end = new Date(end);
+  if (title !== undefined) shift.title = title;
+  if (start !== undefined) shift.start = new Date(start);
+  if (end !== undefined) shift.end = new Date(end);
 
-    await employee.save();
-
-    return res.status(200).json({ shifts: employee.shifts });
-  } catch (err) {
-    console.error("Erreur mise à jour shift:", err);
-    return res.status(500).json({ message: "Internal server error" });
-  }
+  await emp.save();
+  return res.json({ shift, shifts: emp.shifts });
 });
 
 // 4) DELETE EMPLOYEE SHIFT
-router.delete("/employees/:employeeId/shifts/:idx", async (req, res) => {
-  try {
-    const { employeeId, idx } = req.params;
-    const index = parseInt(idx, 10);
+router.delete("/employees/:employeeId/shifts/:shiftId", async (req, res) => {
+  const { employeeId, shiftId } = req.params;
 
-    const employee = await EmployeeModel.findById(employeeId);
-    if (!employee) {
-      return res.status(404).json({ message: "Employé non trouvé" });
-    }
+  const emp = await EmployeeModel.findById(employeeId);
+  if (!emp) return res.status(404).json({ message: "Employé non trouvé" });
 
-    if (
-      isNaN(index) ||
-      index < 0 ||
-      index >= (employee.shifts ? employee.shifts.length : 0)
-    ) {
-      return res.status(400).json({ message: "Index de shift invalide" });
-    }
+  const shift = emp.shifts.id(shiftId);
+  if (!shift) return res.status(404).json({ message: "Shift non trouvé" });
 
-    employee.shifts.splice(index, 1);
-    await employee.save();
-
-    return res.status(200).json({ shifts: employee.shifts });
-  } catch (err) {
-    console.error("Erreur suppression shift:", err);
-    return res.status(500).json({ message: "Internal server error" });
-  }
+  shift.deleteOne(); // supprime le sous-doc
+  await emp.save();
+  return res.json({ shifts: emp.shifts });
 });
 
 // ——— DEMANDES DE CONGÉS ———
@@ -633,8 +599,20 @@ router.post("/employees/:employeeId/leave-requests", async (req, res) => {
       start: new Date(start),
       end: new Date(end),
       type: ["full", "morning", "afternoon"].includes(type) ? type : "full",
+      createdAt: new Date(),
+      status: "pending",
     });
     await emp.save();
+
+    const restaurantId = String(emp.restaurant);
+
+    // Notifie tous les clients du resto
+    broadcastToRestaurant(restaurantId, {
+      type: "leave_request_created",
+      employeeId: String(emp._id),
+      restaurantId,
+      leaveRequest: emp.leaveRequests[emp.leaveRequests.length - 1], // la dernière
+    });
 
     // on renvoie la liste à jour
     return res.status(201).json(emp.leaveRequests);
@@ -657,14 +635,56 @@ router.get("/employees/:employeeId/leave-requests", async (req, res) => {
   }
 });
 
-// 3) Mettre à jour le statut d’une demande (approved | rejected)
+// 3) Mettre à jour le statut d’une demande (approved | rejected | cancelled)
 router.put("/employees/:employeeId/leave-requests/:reqId", async (req, res) => {
-  try {
-    const { employeeId, reqId } = req.params;
-    const { status } = req.body;
-    if (!["pending", "approved", "rejected"].includes(status)) {
-      return res.status(400).json({ message: "status invalide" });
+  const { employeeId, reqId } = req.params;
+  const { status } = req.body;
+  if (!["pending", "approved", "rejected", "cancelled"].includes(status)) {
+    return res.status(400).json({ message: "status invalide" });
+  }
+
+  const emp = await EmployeeModel.findById(employeeId);
+  if (!emp) return res.status(404).json({ message: "Employee not found" });
+
+  const lr = emp.leaveRequests.id(reqId);
+  if (!lr) return res.status(404).json({ message: "Request not found" });
+
+  lr.status = status;
+
+  if (status === "approved") {
+    // évite doublon de shift relié à CETTE LR
+    const already = emp.shifts.some(
+      (s) => String(s.leaveRequestId) === String(lr._id)
+    );
+    if (!already) {
+      emp.shifts.push({
+        title: "Congés",
+        start: lr.start,
+        end: lr.end,
+        leaveRequestId: lr._id,
+      });
     }
+  }
+
+  if (status === "cancelled") {
+    // supprime UNIQUEMENT les shifts liés par leaveRequestId
+    emp.shifts = emp.shifts.filter(
+      (s) => String(s.leaveRequestId) !== String(lr._id)
+    );
+  }
+
+  await emp.save();
+  return res.json({
+    leaveRequest: lr,
+    shifts: emp.shifts,
+  });
+});
+
+// 4) Supprimer une demande de congé
+router.delete(
+  "/employees/:employeeId/leave-requests/:reqId",
+  async (req, res) => {
+    const { employeeId, reqId } = req.params;
 
     const emp = await EmployeeModel.findById(employeeId);
     if (!emp) return res.status(404).json({ message: "Employee not found" });
@@ -672,57 +692,158 @@ router.put("/employees/:employeeId/leave-requests/:reqId", async (req, res) => {
     const lr = emp.leaveRequests.id(reqId);
     if (!lr) return res.status(404).json({ message: "Request not found" });
 
-    // 1) On met à jour le statut
-    lr.status = status;
+    // supprime les shifts liés par ID
+    emp.shifts = emp.shifts.filter(
+      (s) => String(s.leaveRequestId) !== String(reqId)
+    );
 
-    // 2) Si on approuve, on crée un shift “Congés” pour la même plage
-    if (status === "approved") {
-      emp.shifts.push({
-        title: "Congés",
-        start: lr.start,
-        end: lr.end,
-      });
-    }
-
-    // 3) On sauvegarde l’employé (modification du leaveRequest + eventuel shift)
+    lr.deleteOne();
     await emp.save();
 
-    // 4) On renvoie la demande mise à jour
-    return res.json(lr);
+    return res.json({
+      leaveRequests: emp.leaveRequests,
+      shifts: emp.shifts,
+    });
+  }
+);
+
+// Récupérer les notifications non lues des demandes de congés
+router.get("/restaurants/:id/leave-requests/unread-count", async (req, res) => {
+  try {
+    const restaurantId = req.params.id;
+    const since = req.query.since ? new Date(req.query.since) : null;
+    if (!since)
+      return res.status(400).json({ message: "since is required (ISO)" });
+
+    const employees = await EmployeeModel.find(
+      { restaurant: restaurantId },
+      { leaveRequests: 1 }
+    ).lean();
+
+    const objectIdToDate = (oid) =>
+      new Date(parseInt(String(oid).substring(0, 8), 16) * 1000);
+
+    let count = 0;
+    for (const emp of employees) {
+      for (const lr of emp.leaveRequests || []) {
+        const createdAt = lr.createdAt
+          ? new Date(lr.createdAt)
+          : objectIdToDate(lr._id);
+        if (createdAt > since) count++;
+      }
+    }
+
+    return res.json({ unreadLeaveRequests: count });
   } catch (err) {
-    console.error("Erreur update leaveRequest:", err);
+    console.error("Error unread-count leaveRequests:", err);
     return res.status(500).json({ message: "Internal server error" });
   }
 });
 
-// 4) Supprimer une demande de congé
-router.delete(
-  "/employees/:employeeId/leave-requests/:reqId",
+// GET EMPLOYEE DATA (moi)
+router.get("/employees/me", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "employee") {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+    const emp = await EmployeeModel.findById(req.user.id).select("-password");
+    if (!emp) return res.status(404).json({ message: "Employee not found" });
+
+    const restaurant = await RestaurantModel.findById(emp.restaurant)
+      .populate("owner_id", "firstname")
+      .populate("employees")
+      .populate("menus");
+
+    return res.json({ employee: emp, restaurant });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+// UPDATE EMPLOYEE DATA
+router.put("/employees/update-data", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "employee") {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    const { firstname, lastname, email, phone } = req.body;
+    const emp = await EmployeeModel.findById(req.user.id);
+    if (!emp) return res.status(404).json({ message: "Employee not found" });
+
+    const normalizedEmail = (email || "").trim().toLowerCase();
+
+    if (normalizedEmail && normalizedEmail !== emp.email) {
+      const [employeeDup, ownerDup] = await Promise.all([
+        EmployeeModel.findOne({
+          email: normalizedEmail,
+          _id: { $ne: emp._id },
+        }),
+        OwnerModel.findOne({ email: normalizedEmail }),
+      ]);
+      if (employeeDup || ownerDup) {
+        return res.status(409).json({ message: "L'adresse mail est déjà utilisée" });
+      }
+    }
+
+    if (firstname !== undefined) emp.firstname = firstname;
+    if (lastname !== undefined) emp.lastname = lastname;
+    if (email !== undefined) emp.email = normalizedEmail;
+    if (phone !== undefined) emp.phone = phone;
+
+    await emp.save();
+
+    const jwt = require("jsonwebtoken");
+    const token = jwt.sign(
+      {
+        id: emp._id,
+        role: "employee",
+        restaurantId: String(emp.restaurant),
+        firstname: emp.firstname,
+        lastname: emp.lastname,
+        email: emp.email,
+        phone: emp.phone,
+        options: emp.options,
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" } // expiration for employees only
+    );
+
+    return res.json({ message: "Employee updated", token });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+// UPDATE EMPLOYEE PASSWORD
+router.put(
+  "/employees/update-password",
+  authenticateToken,
   async (req, res) => {
     try {
-      const { employeeId, reqId } = req.params;
-      const emp = await EmployeeModel.findById(employeeId);
-      if (!emp) {
-        return res.status(404).json({ message: "Employee not found" });
+      if (req.user.role !== "employee") {
+        return res.status(403).json({ message: "Forbidden" });
       }
+      const { currentPassword, newPassword } = req.body;
 
-      // Supprime la sous-doc leaveRequest dont l'_id est reqId
-      emp.leaveRequests.pull(reqId);
+      const emp = await EmployeeModel.findById(req.user.id);
+      if (!emp) return res.status(404).json({ message: "Employee not found" });
 
-      // Si la demande existe toujours après pull, on considère qu'elle n'était pas trouvée
-      if (emp.leaveRequests.id(reqId)) {
-        return res.status(404).json({ message: "Request not found" });
-      }
+      const ok = await emp.comparePassword(currentPassword, emp.password);
+      if (!ok)
+        return res.status(401).json({ message: "Incorrect current password" });
 
-      // Sauvegarde les changements
+      emp.password = newPassword; // hash via pre('save')
       await emp.save();
 
-      // Renvoie la liste mise à jour des demandes de congé
-      return res.json(emp.leaveRequests);
-    } catch (err) {
-      console.error("Erreur delete leaveRequest:", err);
-      return res.status(500).json({ message: "Internal server error" });
+      return res.json({ message: "Password updated successfully" });
+    } catch (e) {
+      console.error(e);
+      return res.status(500).json({ message: "Server error" });
     }
   }
 );
+
 module.exports = router;

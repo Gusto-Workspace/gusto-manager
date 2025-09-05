@@ -1,19 +1,15 @@
-import { useState } from "react";
-
-// REACT HOOK FORM
+import { useState, useContext } from "react";
 import { useForm } from "react-hook-form";
-
-// AXIOS
 import axios from "axios";
-
-// I18N
 import { useTranslation } from "next-i18next";
-
-// SVG
+import { GlobalContext } from "@/contexts/global.context";
 import { NoVisibleSvg, VisibleSvg } from "../../_shared/_svgs/_index";
 
-export default function PasswordFormSettingsComponent(props) {
+export default function PasswordFormSettingsComponent() {
   const { t } = useTranslation("settings");
+  const { restaurantContext } = useContext(GlobalContext);
+  const isOwner = restaurantContext?.userConnected?.role === "owner";
+
   const {
     register,
     handleSubmit,
@@ -26,15 +22,23 @@ export default function PasswordFormSettingsComponent(props) {
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [passwordError, setPasswordError] = useState(null);
+  const [passwordSuccess, setPasswordSuccess] = useState(null);
 
   function onSubmit(data) {
     setIsSubmitting(true);
+    setPasswordError(null);
+    setPasswordSuccess(null);
+
+    const endpoint = isOwner
+      ? `${process.env.NEXT_PUBLIC_API_URL}/owner/update-password`
+      : `${process.env.NEXT_PUBLIC_API_URL}/employees/update-password`;
+
     axios
-      .put(`${process.env.NEXT_PUBLIC_API_URL}/owner/update-password`, data, {
+      .put(endpoint, data, {
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
       })
       .then(() => {
-        setPasswordError(null);
+        setPasswordSuccess(t("form.password.success")); // ajoute cette clé i18n ou remplace par une string
         reset({ currentPassword: "", newPassword: "" });
         setShowCurrentPassword(false);
         setShowNewPassword(false);
@@ -43,6 +47,12 @@ export default function PasswordFormSettingsComponent(props) {
         if (error.response?.status === 401) {
           setError("currentPassword", { type: "manual" });
           setPasswordError(t("form.errors.current"));
+        } else if (error.response?.status === 403) {
+          setPasswordError(t("form.errors.forbidden") || "Accès refusé.");
+        } else {
+          setPasswordError(
+            t("form.errors.generic") || "Une erreur est survenue."
+          );
         }
       })
       .finally(() => {
@@ -61,7 +71,6 @@ export default function PasswordFormSettingsComponent(props) {
           <div className="flex gap-4 w-full relative">
             <div className="flex flex-col gap-1 w-full">
               <label className="">{t("form.password.current")}</label>
-
               <div className="relative">
                 <input
                   type={showCurrentPassword ? "text" : "password"}
@@ -79,7 +88,6 @@ export default function PasswordFormSettingsComponent(props) {
                     <VisibleSvg width={20} height={20} />
                   )}
                 </button>
-
                 {passwordError && (
                   <p className="text-red text-xs absolute -bottom-5 left-0">
                     {passwordError}
@@ -92,16 +100,14 @@ export default function PasswordFormSettingsComponent(props) {
           <div className="flex gap-4 w-full relative">
             <div className="flex flex-col gap-1 w-full">
               <label className="">{t("form.password.new")}</label>
-
               <div className="relative">
                 <input
                   type={showNewPassword ? "text" : "password"}
                   {...register("newPassword", {
-                    required: "Le nouveau mot de passe est requis.",
-                    minLength: {
-                      value: 6,
-                      message: t("form.errors.new"),
-                    },
+                    required:
+                      t("form.errors.new_required") ||
+                      "Le nouveau mot de passe est requis.",
+                    minLength: { value: 6, message: t("form.errors.new") },
                   })}
                   className={`p-2 border rounded-lg w-full ${errors.newPassword ? "border-red" : ""}`}
                 />
@@ -116,7 +122,6 @@ export default function PasswordFormSettingsComponent(props) {
                     <VisibleSvg width={20} height={20} />
                   )}
                 </button>
-
                 {errors.newPassword && (
                   <p className="text-red text-xs absolute -bottom-5 left-0">
                     {errors.newPassword.message}

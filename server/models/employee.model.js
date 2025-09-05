@@ -29,32 +29,32 @@ const documentSchema = new mongoose.Schema(
   { _id: false }
 );
 
-const shiftSchema = new mongoose.Schema(
-  {
-    title: { type: String, required: true },
-    start: { type: Date, required: true },
-    end: { type: Date, required: true },
-  },
-  { _id: false }
-);
+const shiftSchema = new mongoose.Schema({
+  title: { type: String, required: true },
+  start: { type: Date, required: true },
+  end: { type: Date, required: true },
+  leaveRequestId: { type: mongoose.Schema.Types.ObjectId, default: null },
+});
 
 const leaveRequestSchema = new mongoose.Schema(
   {
     start: { type: Date, required: true },
     end: { type: Date, required: true },
-    requestedAt: { type: Date, default: Date.now },
-    status: {
-      type: String,
-      enum: ["pending", "approved", "rejected"],
-      default: "pending",
-    },
     type: {
       type: String,
       enum: ["full", "morning", "afternoon"],
       default: "full",
     },
+    status: {
+      type: String,
+      enum: ["pending", "approved", "rejected", "cancelled"],
+      default: "pending",
+    },
   },
-  { _id: true }
+  {
+    _id: true,
+    timestamps: { createdAt: "createdAt", updatedAt: false },
+  }
 );
 
 const employeeSchema = new mongoose.Schema({
@@ -90,6 +90,7 @@ const employeeSchema = new mongoose.Schema({
 employeeSchema.index({ email: 1 });
 employeeSchema.index({ restaurant: 1 });
 employeeSchema.index({ firstname: 1, lastname: 1 });
+employeeSchema.index({ "shifts.leaveRequestId": 1 });
 
 // Hachage du mot de passe avant sauvegarde
 employeeSchema.pre("save", async function (next) {

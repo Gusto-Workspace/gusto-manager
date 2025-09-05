@@ -36,12 +36,19 @@ export default function DaysOffEmployeesComponent() {
   // 4) Aplatir leurs demandes
   const [requests, setRequests] = useState([]);
   useEffect(() => {
-    const all = employees.flatMap((emp) =>
-      (emp.leaveRequests || []).map((req) => ({
-        ...req,
-        employee: emp,
-      }))
-    );
+    const objectIdToDate = (oid) =>
+      new Date(parseInt(String(oid).substring(0, 8), 16) * 1000);
+    const createdTs = (r) =>
+      (r.createdAt ? new Date(r.createdAt) : objectIdToDate(r._id)).getTime();
+
+    const all = employees
+      .flatMap((emp) =>
+        (emp.leaveRequests || []).map((req) => ({
+          ...req,
+          employee: emp,
+        }))
+      )
+      .sort((a, b) => createdTs(b) - createdTs(a)); // plus récent d'abord
     setRequests(all);
   }, [employees]);
 
@@ -52,7 +59,7 @@ export default function DaysOffEmployeesComponent() {
         if (acc[req.status]) acc[req.status].push(req);
         return acc;
       },
-      { pending: [], approved: [], rejected: [] }
+      { pending: [], approved: [], rejected: [], cancelled: [] }
     );
   }, [requests]);
 
@@ -61,26 +68,49 @@ export default function DaysOffEmployeesComponent() {
     const start = new Date(req.start);
     const end = new Date(req.end);
     const span = differenceInCalendarDays(end, start);
+
     if (span === 0 && req.type !== "full") {
       return req.type === "morning"
         ? t("daysOff.halfMorning", "½ journée matin")
         : t("daysOff.halfAfternoon", "½ journée après-midi");
     }
-    return `${span + 1} jour(s)`;
+
+    const totalDays = span + 1;
+    return `${totalDays} ${totalDays > 1 ? "jours" : "jour"}`;
   }
 
   // 7) Mise à jour instantanée du statut
   async function updateStatus(empId, reqId, status) {
     try {
-      await axios.put(
+      const { data } = await axios.put(
         `${process.env.NEXT_PUBLIC_API_URL}/employees/${empId}/leave-requests/${reqId}`,
         { status }
       );
+
+      // 1) Mettre à jour la liste aplanie locale (UI de cette page)
       setRequests((rs) =>
         rs.map((r) =>
           r._id === reqId && r.employee._id === empId ? { ...r, status } : r
         )
       );
+
+      // 2) Mettre à jour le contexte global (très important pour la page Planning)
+      restaurantContext.setRestaurantData((prev) => ({
+        ...prev,
+        employees: (prev?.employees || []).map((e) =>
+          e._id === empId
+            ? {
+                ...e,
+                // on met à jour le status de la LR ciblée
+                leaveRequests: (e.leaveRequests || []).map((lr) =>
+                  String(lr._id) === String(reqId) ? { ...lr, status } : lr
+                ),
+                // et on remplace les shifts par ceux renvoyés par l’API
+                shifts: data.shifts || [],
+              }
+            : e
+        ),
+      }));
     } catch (err) {
       console.error("Erreur update leave request:", err);
       window.alert(t("daysOff.errorUpdate", "Impossible de mettre à jour"));
@@ -92,6 +122,7 @@ export default function DaysOffEmployeesComponent() {
     pending: t("daysOff.labels.pending", "En attente"),
     approved: t("daysOff.labels.approved", "Confirmées"),
     rejected: t("daysOff.labels.rejected", "Rejetées"),
+    cancelled: t("daysOff.labels.cancelled", "Annulées"),
   };
 
   return (
@@ -100,7 +131,12 @@ export default function DaysOffEmployeesComponent() {
       <div className="flex justify-between flex-wrap gap-4">
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-2 min-h-[40px]">
-            <EmployeesSvg width={30} height={30} fillColor="#131E3690" />
+            <EmployeesSvg
+              width={30}
+              height={30}
+              fillColor="#131E3690"
+              className="min-w-[30px]"
+            />
             <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2 flex-wrap">
               <span
                 className="cursor-pointer hover:underline"
@@ -143,7 +179,7 @@ export default function DaysOffEmployeesComponent() {
       </div>
 
       {/* ─── Sections par statut ────────────────────────────────────────────── */}
-      {["pending", "approved", "rejected"].map((status) => (
+      {["pending", "approved", "rejected", "cancelled"].map((status) => (
         <div key={status}>
           <div className="relative mb-4">
             <h2 className="relative flex items-center justify-center gap-2 w-fit px-6 mx-auto text-center text-lg font-semibold uppercase bg-lightGrey z-20">
@@ -187,9 +223,16 @@ export default function DaysOffEmployeesComponent() {
                       </div>
                       <div className="text-sm text-gray-600">
                         {t("daysOff.requestedAt", "Demandé le")}{" "}
-                        {format(new Date(req.requestedAt), "dd/MM/yyyy HH:mm", {
-                          locale: frLocale,
-                        })}
+                        {format(
+                          req.createdAt
+                            ? new Date(req.createdAt)
+                            : new Date(
+                                parseInt(String(req._id).substring(0, 8), 16) *
+                                  1000
+                              ),
+                          "dd/MM/yyyy HH:mm",
+                          { locale: frLocale }
+                        )}
                       </div>
                     </div>
 

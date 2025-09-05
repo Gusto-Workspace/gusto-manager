@@ -11,6 +11,9 @@ const authenticateToken = require("../middleware/authentificate-token");
 const RestaurantModel = require("../models/restaurant.model");
 const ReservationModel = require("../models/reservation.model");
 
+// SSE BUS
+const { broadcastToRestaurant } = require("../services/sse-bus.service");
+
 // UPDATE RESTAURANT RESERVATIONS PARAMETERS
 router.put(
   "/restaurants/:id/reservations/parameters",
@@ -210,13 +213,26 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
     }
 
     // Créer la réservation.
+    const isManual = Boolean(reservationData?.manual === true);
+
     const newReservation = new ReservationModel({
       ...reservationData,
       restaurant_id: restaurantId,
-      manual: true,
+      manual: isManual,
     });
 
     const savedReservation = await newReservation.save();
+
+    const populatedReservation = await ReservationModel.findById(
+      savedReservation._id
+    ).populate("table");
+
+    // 🔔 push temps réel
+    broadcastToRestaurant(restaurantId, {
+      type: "reservation_created",
+      restaurantId,
+      reservation: populatedReservation,
+    });
 
     // Ajouter l'ID de la réservation à la liste du restaurant.
     restaurant.reservations.list.push(savedReservation._id);
@@ -263,6 +279,12 @@ router.put(
       if (!updatedReservation) {
         return res.status(404).json({ message: "Reservation not found" });
       }
+
+      broadcastToRestaurant(String(restaurantId), {
+        type: "reservation_updated",
+        restaurantId: String(restaurantId),
+        reservation: updatedReservation,
+      });
 
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
@@ -351,6 +373,12 @@ router.put(
         return res.status(404).json({ message: "Reservation not found" });
       }
 
+      broadcastToRestaurant(restaurantId, {
+        type: "reservation_updated",
+        restaurantId,
+        reservation: updatedReservation,
+      });
+
       // Vérifier que le restaurant existe et récupérer ses données actualisées
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
@@ -372,7 +400,6 @@ router.put(
     }
   }
 );
-
 
 // DELETE A RESERVATION
 router.delete(
@@ -412,6 +439,12 @@ router.delete(
         { new: true }
       );
 
+      broadcastToRestaurant(restaurantId, {
+        type: "reservation_deleted",
+        restaurantId,
+        reservationId,
+      });
+
       const updatedRestaurant = await RestaurantModel.findById(restaurantId)
         .populate({
           path: "reservations.list",
@@ -433,25 +466,28 @@ router.delete(
 );
 
 // Récupérer la liste des réservations d'un restaurant
-router.get("/restaurants/:id/reservations", authenticateToken, async (req, res) => {
-  const restaurantId = req.params.id;
+router.get(
+  "/restaurants/:id/reservations",
+  authenticateToken,
+  async (req, res) => {
+    const restaurantId = req.params.id;
 
-  try {
-    const restaurant = await RestaurantModel.findById(restaurantId)
-      .populate({
+    try {
+      const restaurant = await RestaurantModel.findById(restaurantId).populate({
         path: "reservations.list",
         populate: { path: "table" },
       });
 
-    if (!restaurant) {
-      return res.status(404).json({ message: "Restaurant not found" });
-    }
+      if (!restaurant) {
+        return res.status(404).json({ message: "Restaurant not found" });
+      }
 
-    res.status(200).json({ reservations: restaurant.reservations.list });
-  } catch (error) {
-    console.error("Error fetching reservations:", error);
-    res.status(500).json({ message: "Internal server error" });
+      res.status(200).json({ reservations: restaurant.reservations.list });
+    } catch (error) {
+      console.error("Error fetching reservations:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
   }
-});
+);
 
 module.exports = router;
