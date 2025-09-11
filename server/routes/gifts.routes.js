@@ -106,7 +106,8 @@ router.delete("/restaurants/:id/gifts/:giftId", async (req, res) => {
 router.post("/restaurants/:id/gifts/:giftId/purchase", async (req, res) => {
   const restaurantId = req.params.id;
   const giftId = req.params.giftId;
-  const { beneficiaryFirstName, beneficiaryLastName, sender, sendEmail } = req.body;
+  const { beneficiaryFirstName, beneficiaryLastName, sender, sendEmail } =
+    req.body;
 
   try {
     // Cherche le restaurant et la carte cadeau correspondante
@@ -152,7 +153,6 @@ router.post("/restaurants/:id/gifts/:giftId/purchase", async (req, res) => {
     res.status(500).json({ error: "Error during gift card purchase" });
   }
 });
-
 
 // UPDATE GIFT CARD STATUS TO USED
 router.put(
