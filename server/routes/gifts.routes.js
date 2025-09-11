@@ -106,19 +106,16 @@ router.delete("/restaurants/:id/gifts/:giftId", async (req, res) => {
 router.post("/restaurants/:id/gifts/:giftId/purchase", async (req, res) => {
   const restaurantId = req.params.id;
   const giftId = req.params.giftId;
-  const { beneficiaryFirstName, beneficiaryLastName, sender, sendEmail } =
-    req.body;
+  const { beneficiaryFirstName, beneficiaryLastName, sender, sendEmail } = req.body;
 
   try {
     // Cherche le restaurant et la carte cadeau correspondante
-    const restaurant = await RestaurantModel.findOne({
-      _id: restaurantId,
-    })
+    const restaurant = await RestaurantModel.findOne({ _id: restaurantId })
       .populate("owner_id", "firstname")
       .populate("employees")
       .populate("menus");
 
-    const gift = restaurant.giftCards.id(giftId);
+    const gift = restaurant?.giftCards.id(giftId);
 
     if (!gift) {
       return res.status(404).json({ error: "Gift card not found" });
@@ -127,23 +124,27 @@ router.post("/restaurants/:id/gifts/:giftId/purchase", async (req, res) => {
     // Génère un code de 6 caractères pour l'achat de la carte cadeau
     const purchaseCode = generateGiftCode();
 
-    // Crée un nouvel objet pour l'achat avec code, valeur et validité de 6 mois
+    // Calcule une validité de 3 mois CALENDAIRES (ex: 11 sept -> 11 déc)
+    const validUntil = new Date();
+    validUntil.setMonth(validUntil.getMonth() + 3);
+
+    // Crée un nouvel objet pour l'achat
     const newPurchase = {
       value: gift.value,
-      description: gift.description, // Inclut la valeur de la carte cadeau dans l'achat
+      description: gift.description,
       purchaseCode,
-      validUntil: new Date(Date.now() + 6 * 30 * 24 * 60 * 60 * 1000), // Validité de 6 mois
-      status: "Valid", // Par défaut, le statut est "Valid"
+      validUntil,
+      status: "Valid",
       beneficiaryFirstName,
       beneficiaryLastName,
       sender,
       sendEmail,
     };
 
-    // Ajoute l'achat dans le tableau des achats de cartes cadeaux du restaurant
+    // Ajoute l'achat
     restaurant.purchasesGiftCards.push(newPurchase);
 
-    // Sauvegarde la mise à jour
+    // Sauvegarde
     await restaurant.save();
 
     res.status(200).json({ purchaseCode, validUntil: newPurchase.validUntil });
@@ -151,6 +152,7 @@ router.post("/restaurants/:id/gifts/:giftId/purchase", async (req, res) => {
     res.status(500).json({ error: "Error during gift card purchase" });
   }
 });
+
 
 // UPDATE GIFT CARD STATUS TO USED
 router.put(
