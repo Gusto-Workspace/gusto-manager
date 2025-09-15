@@ -244,122 +244,76 @@ router.get(
   }
 );
 
-// Récupérer les ventes mensuelles nettes (<= 1 an)
-router.get(
-  "/owner/restaurants/:id/payments/monthly-sales",
-  async (req, res) => {
-    const { id } = req.params;
+router.get("/owner/restaurants/:id/payments/monthly-sales", async (req, res) => {
+  const { id } = req.params;
 
-    try {
-      const restaurant = await RestaurantModel.findById(id);
-      if (!restaurant || !restaurant.stripeSecretKey) {
-        return res
-          .status(404)
-          .json({ message: "Clé Stripe introuvable pour ce restaurant." });
-      }
+  try {
+    const restaurant = await RestaurantModel.findById(id);
+    if (!restaurant || !restaurant.stripeSecretKey) {
+      return res.status(404).json({ message: "Clé Stripe introuvable pour ce restaurant." });
+    }
 
-      const stripe = require("stripe")(
-        decryptApiKey(restaurant.stripeSecretKey)
+    const stripe = require("stripe")(decryptApiKey(restaurant.stripeSecretKey));
+
+    const sixMonthsAgo = Math.floor(Date.now() / 1000) - 6 * 30 * 24 * 60 * 60;
+
+    const params = {
+      limit: 100,
+      created: { gte: sixMonthsAgo },
+      type: "charge", // uniquement les entrées de solde liées aux paiements
+    };
+
+    const monthlySalesMap = Object.create(null);
+
+    let hasMore = true;
+    let startingAfter = undefined;
+
+    while (hasMore) {
+      const page = await stripe.balanceTransactions.list(
+        startingAfter ? { ...params, starting_after: startingAfter } : params
       );
 
-      const sixMonthsAgo =
-        Math.floor(Date.now() / 1000) - 6 * 30 * 24 * 60 * 60;
+      for (const bt of page.data) {
+        if (bt.type !== "charge") continue;
 
-      let allCharges = [];
-      let hasMore = true;
-      let lastChargeId = null;
+        // Choisis `bt.created` (date du paiement) ou `bt.available_on` (dispo des fonds)
+        const t = bt.created || bt.available_on;
+        const d = new Date(t * 1000);
 
-      while (hasMore) {
-        const listParams = {
-          limit: 100,
-          expand: ["data.balance_transaction"],
-        };
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, "0");
 
-        if (lastChargeId) {
-          listParams.starting_after = lastChargeId;
-        }
-
-        const chargesList = await stripe.charges.list(listParams);
-
-        // On ne garde que les charges dont la date >= sixMonthsAgo
-        const filteredData = chargesList.data.filter(
-          (c) => c.created >= sixMonthsAgo
-        );
-        allCharges.push(...filteredData);
-
-        hasMore = chargesList.has_more;
-        if (chargesList.data.length > 0) {
-          const oldestCharge = chargesList.data[chargesList.data.length - 1];
-          if (oldestCharge.created < sixMonthsAgo) {
-            hasMore = false;
-          } else {
-            lastChargeId = oldestCharge.id;
-          }
-        } else {
-          hasMore = false;
-        }
-      }
-
-      // Filtrer pour ne garder que les paiements réussis et non remboursés
-      const filteredCharges = allCharges.filter(
-        (charge) =>
-          charge.status === "succeeded" &&
-          charge.refunded === false &&
-          charge.amount_refunded === 0
-      );
-
-      // On va accumuler { [sortKey]: { netCents: number, displayMonth: string } }
-      const monthlySalesMap = {};
-
-      filteredCharges.forEach((charge) => {
-        const balanceTx = charge.balance_transaction;
-        if (!balanceTx || typeof balanceTx !== "object") return;
-        const netCents = balanceTx.net || 0;
-
-        // On récupère la date
-        const dateObj = new Date(charge.created * 1000);
-
-        const year = dateObj.getFullYear();
-        const monthIndex = dateObj.getMonth() + 1; // Janvier = 0
-
-        // sortKey = "YYYY-MM" pour un tri lexical cohérent (2024-11 < 2024-12 < 2025-01)
-        const sortKey = `${year}-${String(monthIndex).padStart(2, "0")}`;
-
-        // displayMonth = "MM/YYYY" ex: "02/2025"
-        const displayMonth = `${String(monthIndex).padStart(2, "0")}/${year}`;
+        const sortKey = `${year}-${month}`;
+        const displayMonth = `${month}/${year}`;
 
         if (!monthlySalesMap[sortKey]) {
           monthlySalesMap[sortKey] = { netCents: 0, displayMonth };
         }
-        monthlySalesMap[sortKey].netCents += netCents;
-      });
+        monthlySalesMap[sortKey].netCents += bt.net || 0; // `net` déjà après frais
+      }
 
-      // On transforme l'objet en tableau et on trie
-      const monthlySalesArray = Object.entries(monthlySalesMap)
-        .map(([sortKey, info]) => ({
-          sortKey,
-          month: info.displayMonth, // "02/2025"
-          total: info.netCents / 100, // Montant net en euros
-        }))
-        .sort((a, b) => (a.sortKey < b.sortKey ? -1 : 1));
-      // Tri du plus ancien au plus récent
-
-      // On renvoie le tableau final
-      return res.status(200).json({
-        monthlySales: monthlySalesArray.map((item) => ({
-          month: item.month, // "02/2025"
-          total: item.total,
-        })),
-      });
-    } catch (error) {
-      console.error(
-        "Erreur lors de la récupération des ventes mensuelles :",
-        error
-      );
-      return res.status(500).json({ message: "Erreur interne du serveur" });
+      hasMore = page.has_more;
+      startingAfter = page.data.length ? page.data[page.data.length - 1].id : undefined;
+      if (!startingAfter) break;
     }
+
+    const monthlySales = Object.entries(monthlySalesMap)
+      .sort(([a], [b]) => (a < b ? -1 : 1))
+      .map(([, info]) => ({
+        month: info.displayMonth,
+        total: +(info.netCents / 100).toFixed(2),
+      }));
+
+    // petit cache côté client
+    res.set("Cache-Control", "private, max-age=60");
+
+    return res.status(200).json({ monthlySales });
+  } catch (error) {
+    console.error("Erreur lors de la récupération des ventes mensuelles :", error);
+    return res.status(500).json({ message: "Erreur interne du serveur" });
   }
-);
+});
+
 
 // Rembourser un paiement
 router.post("/owner/restaurants/:id/payments/refund", async (req, res) => {
