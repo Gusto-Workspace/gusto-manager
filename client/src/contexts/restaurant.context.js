@@ -21,6 +21,7 @@ export default function RestaurantContext() {
 
   const [newReservationsCount, setNewReservationsCount] = useState(0);
   const [newLeaveRequestsCount, setNewLeaveRequestsCount] = useState(0);
+  const [newGiftPurchasesCount, setNewGiftPurchasesCount] = useState(0);
 
   const initialReservationsLoadedRef = useRef(false);
   const hasFetchedDashboardDataRef = useRef(false);
@@ -36,14 +37,15 @@ export default function RestaurantContext() {
   function readNotifCounts(rid) {
     try {
       const raw = localStorage.getItem(NOTIF_KEY(rid));
-      if (!raw) return { leave: 0, res: 0 };
+      if (!raw) return { leave: 0, res: 0, gifts: 0 };
       const obj = JSON.parse(raw);
       return {
         leave: Number(obj.leave) || 0,
         res: Number(obj.res) || 0,
+        gifts: Number(obj.gifts) || 0,
       };
     } catch {
-      return { leave: 0, res: 0 };
+      return { leave: 0, res: 0, gifts: 0 };
     }
   }
 
@@ -77,6 +79,7 @@ export default function RestaurantContext() {
     const persisted = readNotifCounts(restaurantId);
     setNewLeaveRequestsCount(persisted.leave);
     setNewReservationsCount(persisted.res);
+    setNewGiftPurchasesCount(persisted.gifts);
 
     // ferme une ancienne connexion si on change de resto
     if (sseRef.current) {
@@ -96,6 +99,7 @@ export default function RestaurantContext() {
         const isOnReservationsList = path === "/dashboard/reservations";
         const isOnDaysOffPage =
           path === "/dashboard/employees/planning/days-off";
+        const isOnGiftsPage = path === "/dashboard/gifts";
 
         // ——— CONGÉS ———
         if (payload.type === "leave_request_created") {
@@ -200,6 +204,31 @@ export default function RestaurantContext() {
             };
           });
         }
+
+        // ——— CARTES CADEAUX ———
+        if (payload.type === "giftcard_purchased" && payload.purchase) {
+          // 1) pastille uniquement si on n'est pas sur la page cadeaux
+          if (!isOnGiftsPage) {
+            setNewGiftPurchasesCount((c) => {
+              const next = c + 1;
+              const rid = restaurantData?._id;
+              if (rid) {
+                const counts = readNotifCounts(rid);
+                writeNotifCounts(rid, { ...counts, gifts: next });
+              }
+              return next;
+            });
+          }
+          // 2) injecter l'achat en tête de liste si absent
+          setRestaurantData((prev) => {
+            if (!prev) return prev;
+            const list = prev.purchasesGiftCards || [];
+            const id = String(payload.purchase._id);
+            const exists = list.some((x) => String(x._id) === id);
+            if (exists) return prev;
+            return { ...prev, purchasesGiftCards: [payload.purchase, ...list] };
+          });
+        }
       } catch (e) {
         console.warn("Bad SSE payload", e);
       }
@@ -249,6 +278,19 @@ export default function RestaurantContext() {
           setNewReservationsCount(newCount);
           writeNotifCounts(rid, { ...readNotifCounts(rid), res: newCount });
 
+          // Cartes cadeaux : backfill côté front
+          const giftsList = restaurant.purchasesGiftCards || [];
+          const giftsSince = giftsList.filter((g) => {
+            const created = g.created_at
+              ? new Date(g.created_at)
+              : g.createdAt
+                ? new Date(g.createdAt)
+                : new Date(parseInt(String(g._id).slice(0, 8), 16) * 1000);
+            return created > new Date(lastCheck);
+          }).length;
+          setNewGiftPurchasesCount(giftsSince);
+          writeNotifCounts(rid, { ...readNotifCounts(rid), gifts: giftsSince });
+
           // Backfill congés ratés pendant la déconnexion
           try {
             const { data } = await axios.get(
@@ -271,7 +313,8 @@ export default function RestaurantContext() {
           // Employé : pas de compteurs ni persistance
           setNewReservationsCount(0);
           setNewLeaveRequestsCount(0);
-          writeNotifCounts(rid, { leave: 0, res: 0 });
+          setNewGiftPurchasesCount(0);
+          writeNotifCounts(rid, { leave: 0, res: 0, gifts: 0 });
         }
 
         setRestaurantData(restaurant);
@@ -618,6 +661,15 @@ export default function RestaurantContext() {
     }
   };
 
+  const resetNewGiftPurchasesCount = () => {
+    setNewGiftPurchasesCount(0);
+    const rid = restaurantData?._id;
+    if (rid) {
+      const counts = readNotifCounts(rid);
+      writeNotifCounts(rid, { ...counts, gifts: 0 });
+    }
+  };
+
   function logout() {
     localStorage.removeItem("token");
     if (restaurantData?._id) {
@@ -685,29 +737,65 @@ export default function RestaurantContext() {
     }
   }, [router.pathname]);
 
-  // Reset auto des notifs de congés quand on visite la page des congés
+  // Reset notifs sur Page CONGÉS
   useEffect(() => {
     if (userConnected?.role !== "owner") return;
     const path = router.pathname || "";
     if (path.startsWith("/dashboard/employees/planning/days-off")) {
       resetNewLeaveRequestsCount();
-      if ((newReservationsCount || 0) === 0) {
+      if (
+        (newReservationsCount || 0) === 0 &&
+        (newGiftPurchasesCount || 0) === 0
+      ) {
         updateLastNotificationCheck();
       }
     }
-  }, [router.pathname, newReservationsCount, userConnected?.role]);
+  }, [
+    router.pathname,
+    newReservationsCount,
+    newGiftPurchasesCount,
+    userConnected?.role,
+  ]);
 
-  // Reset auto des notifs de réservations quand on visite la page des réservations
+  // Reset notifs sur Page RÉSERVATIONS
   useEffect(() => {
     if (userConnected?.role !== "owner") return;
     const path = router.pathname || "";
     if (path.startsWith("/dashboard/reservations")) {
       resetNewReservationsCount();
-      if ((newLeaveRequestsCount || 0) === 0) {
+      if (
+        (newLeaveRequestsCount || 0) === 0 &&
+        (newGiftPurchasesCount || 0) === 0
+      ) {
         updateLastNotificationCheck();
       }
     }
-  }, [router.pathname, newLeaveRequestsCount, userConnected?.role]);
+  }, [
+    router.pathname,
+    newLeaveRequestsCount,
+    newGiftPurchasesCount,
+    userConnected?.role,
+  ]);
+
+  // Reset notifs sur Page GIFTS
+  useEffect(() => {
+    if (userConnected?.role !== "owner") return;
+    const path = router.pathname || "";
+    if (path.startsWith("/dashboard/gifts")) {
+      resetNewGiftPurchasesCount();
+      if (
+        (newReservationsCount || 0) === 0 &&
+        (newLeaveRequestsCount || 0) === 0
+      ) {
+        updateLastNotificationCheck();
+      }
+    }
+  }, [
+    router.pathname,
+    newReservationsCount,
+    newLeaveRequestsCount,
+    userConnected?.role,
+  ]);
 
   return {
     restaurantData,
@@ -730,5 +818,7 @@ export default function RestaurantContext() {
     resetNewReservationsCount,
     newLeaveRequestsCount,
     resetNewLeaveRequestsCount,
+    newGiftPurchasesCount,
+    resetNewGiftPurchasesCount,
   };
 }

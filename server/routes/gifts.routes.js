@@ -1,6 +1,11 @@
 const express = require("express");
 const router = express.Router();
+
+// MODELS
 const RestaurantModel = require("../models/restaurant.model");
+
+// SSE BUS
+const { broadcastToRestaurant } = require("../services/sse-bus.service");
 
 function generateGiftCode() {
   const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -147,6 +152,15 @@ router.post("/restaurants/:id/gifts/:giftId/purchase", async (req, res) => {
 
     // Sauvegarde
     await restaurant.save();
+
+    const created =
+      restaurant.purchasesGiftCards[restaurant.purchasesGiftCards.length - 1];
+
+    // 🔔 SSE: achat effectué
+    broadcastToRestaurant(String(restaurant._id), {
+      type: "giftcard_purchased",
+      purchase: created,
+    });
 
     res.status(200).json({ purchaseCode, validUntil: newPurchase.validUntil });
   } catch (error) {

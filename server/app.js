@@ -28,7 +28,8 @@ app.use(
   cors({
     origin: [
       "http://localhost:8002", // Client
-      "http://localhost:8003", // Client site restaurant | module réservation
+      "http://localhost:8003", // Client site restaurant 
+      "http://localhost:8006", // Client module réservation
       "http://localhost:8012", // Server
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
