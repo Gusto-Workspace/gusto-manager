@@ -25,7 +25,7 @@
     "sharp": "0.32.5",
     "sib-api-v3-sdk": "^8.5.0",
     "streamifier": "^0.1.1",
-    "stripe": "^15.4.0",
+    "stripe": "^18.5.0",
     "tar": "^7.4.3"
   },
   "devDependencies": {
