@@ -4,7 +4,7 @@ const express = require("express");
 const http = require("http");
 const cors = require("cors");
 const mongoose = require("mongoose");
-const { mountSseRoute } = require("./services/sse-bus.service")
+const { mountSseRoute } = require("./services/sse-bus.service");
 
 // APP
 const app = express();
@@ -33,6 +33,7 @@ app.use(
       "https://www.embrunslorient.fr", // Client Embruns
       "https://www.bourrasquekerroch.fr", // Client Bourrasque
       "https://gusto-manager.onrender.com", // Server
+      "http://localhost:8006", // Client module réservation
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     credentials: true,
@@ -93,7 +94,7 @@ app.use(apiRoutes, reservationsRoutes);
 app.use(apiRoutes, employeesRoutes);
 
 // SSE BUS
-mountSseRoute(app)
+mountSseRoute(app);
 
 // ÉCOUTE DU PORT
 server.listen(PORT, () => {
