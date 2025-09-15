@@ -244,6 +244,7 @@ router.get(
   }
 );
 
+// Récupération des ventes mensuelles de cartes cadeaux (1 an)
 router.get("/owner/restaurants/:id/payments/monthly-sales", async (req, res) => {
   const { id } = req.params;
 
@@ -255,7 +256,7 @@ router.get("/owner/restaurants/:id/payments/monthly-sales", async (req, res) => 
 
     const stripe = require("stripe")(decryptApiKey(restaurant.stripeSecretKey));
 
-    const sixMonthsAgo = Math.floor(Date.now() / 1000) - 6 * 30 * 24 * 60 * 60;
+    const sixMonthsAgo = Math.floor(Date.now() / 1000) - 12 * 30 * 24 * 60 * 60;
 
     const params = {
       limit: 100,
