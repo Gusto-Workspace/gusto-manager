@@ -68,7 +68,8 @@ export default function SettingsComponent() {
 
   const totalCount =
     (restaurantContext.newReservationsCount || 0) +
-    (restaurantContext.newLeaveRequestsCount || 0);
+    (restaurantContext.newLeaveRequestsCount || 0) +
+    (restaurantContext.newGiftPurchasesCount || 0);
 
   useEffect(() => {
     if (showNotifications) setDisplayedCount(totalCount);
@@ -95,7 +96,15 @@ export default function SettingsComponent() {
       if (e.propertyName === "max-height" && !showNotifications) {
         restaurantContext.resetNewReservationsCount();
         restaurantContext.resetNewLeaveRequestsCount();
-        restaurantContext.updateLastNotificationCheck();
+        restaurantContext.resetNewGiftPurchasesCount();
+
+        const allZero =
+          (restaurantContext.newReservationsCount || 0) === 0 &&
+          (restaurantContext.newLeaveRequestsCount || 0) === 0 &&
+          (restaurantContext.newGiftPurchasesCount || 0) === 0;
+        if (allZero) {
+          restaurantContext.updateLastNotificationCheck();
+        }
         setDisplayedCount(0);
       }
     }
@@ -281,6 +290,43 @@ export default function SettingsComponent() {
                             }}
                             aria-label="Voir les réservations"
                             title="Voir les réservations"
+                          >
+                            <span className="text-sm font-bold leading-none">
+                              <VisibleSvg width={12} />
+                            </span>
+                          </button>
+                        </li>
+                      )}
+
+                      {restaurantContext.newGiftPurchasesCount > 0 && (
+                        <li className="text-sm flex items-center justify-between gap-4">
+                          <span>
+                            {restaurantContext.newGiftPurchasesCount} nouvelle
+                            {restaurantContext.newGiftPurchasesCount > 1
+                              ? "s"
+                              : ""}{" "}
+                            carte
+                            {restaurantContext.newGiftPurchasesCount > 1
+                              ? "s"
+                              : ""}{" "}
+                            cadeau
+                            {restaurantContext.newGiftPurchasesCount > 1
+                              ? "x"
+                              : ""}{" "}
+                            vendue
+                            {restaurantContext.newGiftPurchasesCount > 1
+                              ? "s"
+                              : ""}{" "}
+                          </span>
+                          <button
+                            className="shrink-0 h-6 w-6 rounded-full bg-darkBlue bg-opacity-10 flex items-center justify-center hover:bg-opacity-20"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setShowNotifications(false);
+                              router.push("/dashboard/gifts");
+                            }}
+                            aria-label="Voir les cartes cadeaux"
+                            title="Voir les cartes cadeaux"
                           >
                             <span className="text-sm font-bold leading-none">
                               <VisibleSvg width={12} />

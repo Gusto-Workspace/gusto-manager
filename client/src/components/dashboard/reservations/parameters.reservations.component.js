@@ -220,8 +220,7 @@ export default function ParametersReservationComponent(props) {
           <p className="text-sm opacity-70 flex flex-col gap-2">
             Si cette option est cochée, alors une réservation effectuée depuis
             votre site internet passera directement en état "Confirmée". Sinon,
-            vous devrez manuellement confirmer la réservation depuis la site des
-            réservations.
+            vous devrez confirmer manuellement les réservations.
             <span>
               <i>
                 <u>Information</u>
