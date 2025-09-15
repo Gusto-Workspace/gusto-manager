@@ -33,7 +33,6 @@ app.use(
       "https://www.embrunslorient.fr", // Client Embruns
       "https://www.bourrasquekerroch.fr", // Client Bourrasque
       "https://gusto-manager.onrender.com", // Server
-      "http://localhost:8006", // Client module réservation
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     credentials: true,
