@@ -67,7 +67,7 @@ export default function PluginsLandingComponent() {
 
         <div className="mt-16 text-center">
           <p className="text-lg text-darkBlue mb-8 max-w-2xl mx-auto">
-            Modules additionnels à venir : PMS, Vente à emporter, Marketing
+            Modules additionnels à venir : HACCP, Vente à emporter, Marketing
             Direct, Analyse Avancée des Données etc. Contactez-nous pour en
             savoir plus !
           </p>

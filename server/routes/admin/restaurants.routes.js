@@ -133,6 +133,7 @@ router.post("/admin/add-restaurant", async (req, res) => {
         reservations: restaurantData.options?.reservations ?? false,
         employees: restaurantData.options?.employees ?? false,
         take_away: restaurantData.options?.take_away ?? false,
+        health_control_plan: restaurantData.options?.health_control_plan ?? false
       },
       menus: [],
       dishes: [],
@@ -258,6 +259,7 @@ router.put("/admin/restaurants/:id", async (req, res) => {
       reservations: restaurantData.options?.reservations ?? false,
       employees: restaurantData.options?.employees ?? false,
       take_away: restaurantData.options?.take_away ?? false,
+      health_control_plan : restaurantData.options?.health_control_plan ?? false
     };
 
     // Gestion de la clé Stripe

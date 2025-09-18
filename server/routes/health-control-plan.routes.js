@@ -1,0 +1,161 @@
+const express = require("express");
+const router = express.Router();
+
+// MIDDLEWARE
+const authenticateToken = require("../middleware/authentificate-token");
+
+// MODELS
+const ReceptionTemperature = require("../models/logs/reception-temperature.model");
+
+// CREATE RECEPTION TEMPERATURE
+router.post(
+  "/restaurants/:restaurantId/temperature-receptions",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { restaurantId } = req.params;
+      const data = req.body;
+
+      // option: garder receivedAt si le front l’envoie, sinon défaut côté modèle
+      const doc = new ReceptionTemperature({
+        ...data,
+        restaurantId,
+      });
+
+      await doc.save();
+      res.status(201).json(doc);
+    } catch (err) {
+      console.error("Erreur POST /temperature-receptions:", err);
+      res.status(500).json({ error: "Erreur lors de la création du relevé" });
+    }
+  }
+);
+
+// LIST RECEPTION TEMPERATURE (avec pagination + filtres date)
+router.get(
+  "/restaurants/:restaurantId/temperature-receptions",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { restaurantId } = req.params;
+      const {
+        page = 1,
+        limit = 20,
+        date_from, // ISO string
+        date_to, // ISO string
+      } = req.query;
+
+      const q = { restaurantId };
+      if (date_from || date_to) {
+        q.receivedAt = {};
+        if (date_from) q.receivedAt.$gte = new Date(date_from);
+        if (date_to) q.receivedAt.$lte = new Date(date_to);
+      }
+
+      const skip = (Number(page) - 1) * Number(limit);
+
+      const [items, total] = await Promise.all([
+        ReceptionTemperature.find(q)
+          .sort({ receivedAt: -1 })
+          .skip(skip)
+          .limit(Number(limit))
+          .populate("recordedBy", "firstName lastName")
+          .populate("signature.by", "firstName lastName"),
+        ReceptionTemperature.countDocuments(q),
+      ]);
+
+      res.json({
+        items,
+        meta: {
+          page: Number(page),
+          limit: Number(limit),
+          total,
+          pages: Math.ceil(total / Number(limit)),
+        },
+      });
+    } catch (err) {
+      console.error("Erreur GET /temperature-receptions:", err);
+      res
+        .status(500)
+        .json({ error: "Erreur lors de la récupération des relevés" });
+    }
+  }
+);
+
+// READ ONE RECEPTION TEMPERATURE
+router.get(
+  "/restaurants/:restaurantId/temperature-receptions/:tempId",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { restaurantId, tempId } = req.params;
+
+      const doc = await ReceptionTemperature.findOne({
+        _id: tempId,
+        restaurantId,
+      })
+        .populate("recordedBy", "firstName lastName")
+        .populate("signature.by", "firstName lastName");
+
+      if (!doc) return res.status(404).json({ error: "Relevé introuvable" });
+      res.json(doc);
+    } catch (err) {
+      console.error("Erreur GET /temperature-receptions/:tempId:", err);
+      res
+        .status(500)
+        .json({ error: "Erreur lors de la récupération du relevé" });
+    }
+  }
+);
+
+// UPDATE ONE RECEPTION TEMPERATURE
+router.put(
+  "/restaurants/:restaurantId/temperature-receptions/:tempId",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { restaurantId, tempId } = req.params;
+      const data = req.body;
+
+      const doc = await ReceptionTemperature.findOneAndUpdate(
+        { _id: tempId, restaurantId },
+        { $set: data },
+        { new: true }
+      );
+
+      if (!doc) return res.status(404).json({ error: "Relevé introuvable" });
+      res.json(doc);
+    } catch (err) {
+      console.error("Erreur PUT /temperature-receptions/:tempId:", err);
+      res
+        .status(500)
+        .json({ error: "Erreur lors de la mise à jour du relevé" });
+    }
+  }
+);
+
+// DELETE ONE RECEPTION TEMPERATURE
+router.delete(
+  "/restaurants/:restaurantId/temperature-receptions/:tempId",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { restaurantId, tempId } = req.params;
+
+      const doc = await ReceptionTemperature.findOneAndDelete({
+        _id: tempId,
+        restaurantId,
+      });
+
+      if (!doc) return res.status(404).json({ error: "Relevé introuvable" });
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Erreur DELETE /temperature-receptions/:tempId:", err);
+      res
+        .status(500)
+        .json({ error: "Erreur lors de la suppression du relevé" });
+    }
+  }
+);
+
+module.exports = router;

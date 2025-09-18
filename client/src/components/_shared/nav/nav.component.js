@@ -34,6 +34,7 @@ const HREF_TO_OPTION_KEY = {
   "/dashboard/gifts": "gift_card",
   "/dashboard/reservations": "reservations",
   "/dashboard/take-away": "take_away",
+  "/dashboard/health-control-plan" : "health_control_plan",
 };
 
 export default function NavComponent() {

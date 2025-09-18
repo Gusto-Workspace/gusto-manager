@@ -11,7 +11,8 @@
     "reservations": "Réservations",
     "takeAway": "Ventes à emporter",
     "employees" : "Gestion du personnel",
-    "mySpace" : "Mon espace"
+    "mySpace" : "Mon espace",
+    "health" : "HACCP"
   },
   "settings": {
     "hello": "Bonjour",

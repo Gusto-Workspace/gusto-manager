@@ -19,7 +19,7 @@
       "email": "Email de contact",
       "phone": "Téléphone",
       "web": "Site Web",
-      "stripeSecretKey" : "Clé Stripe du restaurant (si nécessaire)",
+      "stripeSecretKey": "Clé Stripe du restaurant (si nécessaire)",
       "owner": "Propriétaire",
       "contact": "Informations de contact",
       "address": {
@@ -30,10 +30,11 @@
         "country": "Pays"
       },
       "options": {
-        "title" : "Options",
+        "title": "Options",
         "giftCard": "Cartes cadeaux",
         "reservations": "Réservation en ligne",
-        "takeAway": "Ventes à emporter"
+        "takeAway": "Ventes à emporter",
+        "healthControlPlan": "HACCP"
       },
       "buttons": {
         "add": "Ajouter",

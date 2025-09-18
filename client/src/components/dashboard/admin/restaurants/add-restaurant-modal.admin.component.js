@@ -89,6 +89,7 @@ export default function AddRestaurantModal(props) {
             reservations: props.restaurant.options?.reservations ?? false,
             employees: props.restaurant.options?.employees ?? false,
             take_away: props.restaurant.options?.take_away ?? false,
+            health_control_plan : props.restaurant.options?.health_control_plan ?? false
           },
         },
       });
@@ -299,6 +300,15 @@ export default function AddRestaurantModal(props) {
                 {...register("restaurantData.options.take_away")}
               />
               {t("restaurants.form.options.takeAway")}
+            </label>
+
+            <label>
+              <input
+                className="mr-2"
+                type="checkbox"
+                {...register("restaurantData.options.health_control_plan")}
+              />
+              {t("restaurants.form.options.healthControlPlan")}
             </label>
           </div>
 
