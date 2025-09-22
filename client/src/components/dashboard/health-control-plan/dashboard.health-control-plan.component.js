@@ -5,6 +5,7 @@ import { useTranslation } from "next-i18next";
 
 // SVG
 import { HealthSvg } from "@/components/_shared/_svgs/health.svg";
+import Link from "next/link";
 
 const defaultTiles = [
   {
@@ -12,60 +13,70 @@ const defaultTiles = [
     label: "Contrôle T° réception",
     icon: "📦",
     note: "Réceptions & T°",
+    href: "/dashboard/health-control-plan/reception-temperature",
   },
   {
     key: "fridges",
     label: "T° enceintes frigorifiques",
     icon: "❄️",
     note: "Frigos / chambres",
+    href: "/dashboard/health-control-plan/reception-temperature",
   },
   {
     key: "heating-start",
     label: "T° mise en chauffe",
     icon: "🔥",
     note: "Cuisson / maintien",
+    href: "/dashboard/health-control-plan/reception-temperature",
   },
   {
     key: "heating-out",
     label: "T° sortie de chauffe",
     icon: "🍽️",
     note: "Sortie cuisson",
+    href: "/dashboard/health-control-plan/reception-temperature",
   },
   {
     key: "service",
     label: "T° service",
     icon: "🍽️",
     note: "Service",
+    href: "/dashboard/health-control-plan/reception-temperature",
   },
   {
     key: "temps-logs",
     label: "Relevés T°",
     icon: "🌡️",
     note: "Historique T°",
+    href: "/dashboard/health-control-plan/reception-temperature",
   },
   {
     key: "receptions",
     label: "Réceptions",
     icon: "📥",
     note: "Bon de livraison",
+    href: "/dashboard/health-control-plan/reception-temperature",
   },
   {
     key: "trace",
     label: "Traçabilité étiquettes",
     icon: "🔖",
     note: "Lot / DLC",
+    href: "/dashboard/health-control-plan/reception-temperature",
   },
   {
     key: "batches",
     label: "Batches recettes",
     icon: "🥣",
     note: "Traçabilité lots",
+    href: "/dashboard/health-control-plan/reception-temperature",
   },
   {
     key: "oil",
     label: "Huile de friture",
     icon: "🛢️",
     note: "Changement / qualité",
+    href: "/dashboard/health-control-plan/reception-temperature",
   },
 
   {
@@ -73,30 +84,35 @@ const defaultTiles = [
     label: "Nettoyage locaux",
     icon: "🧴",
     note: "Protocoles & preuves",
+    href: "/dashboard/health-control-plan/reception-temperature",
   },
   {
     key: "pest",
     label: "Lutte nuisibles",
     icon: "🐜",
     note: "Interventions",
+    href: "/dashboard/health-control-plan/reception-temperature",
   },
   {
     key: "allergens",
     label: "Allergènes",
     icon: "🥜",
     note: "Gestion & étiquetage",
+    href: "/dashboard/health-control-plan/reception-temperature",
   },
   {
     key: "micro",
     label: "Microbiologie",
     icon: "🔬",
     note: "Analyses labo",
+    href: "/dashboard/health-control-plan/reception-temperature",
   },
   {
     key: "ncs",
     label: "Non-conformités",
     icon: "⚠️",
     note: "NC ouvertes / fermées",
+    href: "/dashboard/health-control-plan/reception-temperature",
   },
 
   {
@@ -104,18 +120,21 @@ const defaultTiles = [
     label: "Certificats fournisseurs",
     icon: "📄",
     note: "FDS & certificats",
+    href: "/dashboard/health-control-plan/reception-temperature",
   },
   {
     key: "return-nc",
     label: "Retour marchandise NC",
     icon: "↩️",
     note: "Retours non-conformes",
+    href: "/dashboard/health-control-plan/reception-temperature",
   },
   {
     key: "calibrations",
     label: "Calibrations",
     icon: "🧭",
     note: "Sondes & instruments",
+    href: "/dashboard/health-control-plan/reception-temperature",
   },
 
   {
@@ -123,24 +142,28 @@ const defaultTiles = [
     label: "Formation du personnel",
     icon: "🎓",
     note: "Formations & certificats",
+    href: "/dashboard/health-control-plan/reception-temperature",
   },
   {
     key: "maintenance",
     label: "Maintenance équipements",
     icon: "🛠️",
     note: "Entretien & réparations",
+    href: "/dashboard/health-control-plan/reception-temperature",
   },
   {
     key: "waste",
     label: "Gestion des déchets",
     icon: "🗑️",
     note: "Tri & élimination",
+    href: "/dashboard/health-control-plan/reception-temperature",
   },
   {
     key: "covid",
     label: "Mesures COVID-19",
     icon: "🧪",
     note: "Mesures & suivi",
+    href: "/dashboard/health-control-plan/reception-temperature",
   },
 ];
 
@@ -236,9 +259,9 @@ export default function DashboardHealthControlPlanComponent({
         <div className="grid grid-cols-1 midTablet:grid-cols-2 tablet:grid-cols-3 desktop:grid-cols-4 ultraWild:grid-cols-5 gap-4 w-full">
           {filteredTiles.map((tile) => {
             return (
-              <div
+              <Link
+                href={tile.href}
                 key={tile.key}
-                role="button"
                 tabIndex={0}
                 aria-label={tile.label}
                 className={`rounded-md shadow-sm h-36 flex flex-col justify-between p-4 bg-white`}
@@ -254,7 +277,7 @@ export default function DashboardHealthControlPlanComponent({
                     </div>
                   </div>
                 </div>
-              </div>
+              </Link>
             );
           })}
         </div>

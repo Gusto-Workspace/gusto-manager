@@ -5,8 +5,8 @@ import axios from "axios";
 
 export default function ReceptionTemperatureForm({
   restaurantId,
-  initial = null, // doc existant pour édition
-  onSuccess, // callback après succès
+  initial = null,
+  onSuccess,
 }) {
   const {
     register,
@@ -20,8 +20,7 @@ export default function ReceptionTemperatureForm({
       packagingCondition: "unknown",
       note: "",
       receptionId: "",
-      lineId: "",
-      receivedAt: new Date().toISOString().slice(0, 16), // datetime-local
+      receivedAt: new Date().toISOString().slice(0, 16),
     },
   });
 
@@ -45,8 +44,8 @@ export default function ReceptionTemperatureForm({
     };
 
     const url = initial?._id
-      ? `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${restaurantId}/temperature-receptions/${initial._id}`
-      : `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${restaurantId}/temperature-receptions`;
+      ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/temperature-receptions/${initial._id}`
+      : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/temperature-receptions`;
 
     const method = initial?._id ? "put" : "post";
 
@@ -113,18 +112,6 @@ export default function ReceptionTemperatureForm({
           type="text"
           placeholder="optional: Reception ObjectId"
           {...register("receptionId")}
-          className="w-full border rounded p-2"
-        />
-      </div>
-
-      <div>
-        <label className="text-sm font-medium">
-          Ligne de réception (lineId)
-        </label>
-        <input
-          type="text"
-          placeholder="optional: custom lineId"
-          {...register("lineId")}
           className="w-full border rounded p-2"
         />
       </div>

@@ -10,11 +10,13 @@ const receptionTemperatureSchema = new Schema(
       index: true,
     },
     receptionId: { type: Schema.Types.ObjectId, ref: "Reception" },
-    lineId: { type: String },
 
     // Mesure de température
     value: { type: Number, required: true }, // ex: 4.5
     unit: { type: String, enum: ["°C", "°F"], default: "°C" },
+
+    // Date/heure mesure
+    receivedAt: { type: Date, default: Date.now, index: true },
 
     // Emballage
     packagingCondition: {
@@ -23,25 +25,26 @@ const receptionTemperatureSchema = new Schema(
       default: "unknown",
     },
 
-    // Qui a enregistré
-    recordedBy: { type: Schema.Types.ObjectId, ref: "Employee" },
+    // Note (optionnelle)
     note: { type: String },
 
-    // Validation
-    signature: {
-      by: { type: Schema.Types.ObjectId, ref: "Employee" },
-      at: Date,
-      signatureUrl: String,
-      hash: String,
-    },
-
-    // Date/heure de mesure
-    receivedAt: { type: Date, default: Date.now, index: true },
+    // Qui a enregistré (ajout automatique coté serveur)
+    recordedBy: { type: Schema.Types.ObjectId, ref: "Employee" },
   },
   { versionKey: false, collection: "temperature_receptions" }
 );
 
 receptionTemperatureSchema.index({ restaurantId: 1, receivedAt: -1 });
+receptionTemperatureSchema.index({
+  restaurantId: 1,
+  receptionId: 1,
+  receivedAt: -1,
+});
+receptionTemperatureSchema.index({
+  restaurantId: 1,
+  lineId: 1,
+  receivedAt: -1,
+});
 
 module.exports =
   mongoose.models.ReceptionTemperature ||

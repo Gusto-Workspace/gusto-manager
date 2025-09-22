@@ -14,6 +14,7 @@ import SettingsComponent from "@/components/_shared/settings/settings.component"
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
 import ReceptionTemperatureForm from "@/components/dashboard/health-control-plan/reception-temperature/form.component";
 import ReceptionTemperatureList from "@/components/dashboard/health-control-plan/reception-temperature/list.component";
+import { HealthSvg } from "@/components/_shared/_svgs/health.svg";
 
 export default function ReceptionTemperaturePage(props) {
   const { t } = useTranslation("");
@@ -73,28 +74,37 @@ export default function ReceptionTemperaturePage(props) {
 
             {restaurantContext?.restaurantData?.options?.health_control_plan ? (
               <section className="flex flex-col gap-6">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-xl font-semibold">
-                    Contrôle T° réception
-                  </h2>
+                <hr className="opacity-20" />
+
+                <div className="flex justify-between flex-wrap gap-4">
+                  <div className="flex flex-col gap-4">
+                    <div className="flex items-center gap-2 min-h-[40px]">
+                      <HealthSvg width={30} height={30} fillColor="#131E3690" />
+
+                      <h1 className="pl-2 py-1 text-xl tablet:text-2xl">
+                        {t("health-control-plan:titles.main")}
+                      </h1>
+                    </div>
+                  </div>
                 </div>
 
-                <ReceptionTemperatureForm
-                  restaurantId={restaurantContext.restaurantData?._id}
-                  initial={editing}
-                  onSuccess={() => {
-                    setEditing(null);
-                    // astuce: on va déclencher un custom event pour refresh la liste
-                    window.dispatchEvent(
-                      new CustomEvent("refresh-temp-reception")
-                    );
-                  }}
-                />
+                <div className="flex flex-col gap-6">
+                  <ReceptionTemperatureForm
+                    restaurantId={restaurantContext.restaurantData?._id}
+                    initial={editing}
+                    onSuccess={() => {
+                      setEditing(null);
+                      window.dispatchEvent(
+                        new CustomEvent("refresh-temp-reception")
+                      );
+                    }}
+                  />
 
-                <ReceptionTemperatureList
-                  restaurantId={restaurantContext.restaurantData?._id}
-                  onEdit={(doc) => setEditing(doc)}
-                />
+                  <ReceptionTemperatureList
+                    restaurantId={restaurantContext.restaurantData?._id}
+                    onEdit={(doc) => setEditing(doc)}
+                  />
+                </div>
               </section>
             ) : (
               <NoAvailableComponent

@@ -27,7 +27,7 @@ export default function ReceptionTemperatureList({ restaurantId, onEdit }) {
       if (dateFrom) params.date_from = new Date(dateFrom).toISOString();
       if (dateTo) params.date_to = new Date(dateTo).toISOString();
 
-      const url = `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${restaurantId}/temperature-receptions`;
+      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/temperature-receptions`;
       const { data } = await axios.get(url, {
         headers: { Authorization: `Bearer ${token}` },
         params,
@@ -43,8 +43,13 @@ export default function ReceptionTemperatureList({ restaurantId, onEdit }) {
 
   useEffect(() => {
     if (restaurantId) fetchData(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
+
+  useEffect(() => {
+    const handler = () => fetchData(1);
+    window.addEventListener("refresh-temp-reception", handler);
+    return () => window.removeEventListener("refresh-temp-reception", handler);
+  }, []);
 
   const filtered = useMemo(() => {
     if (!q) return items;
@@ -73,35 +78,39 @@ export default function ReceptionTemperatureList({ restaurantId, onEdit }) {
 
   return (
     <div className="bg-white rounded-lg p-4 shadow-sm">
-      <div className="flex flex-col md:flex-row md:items-end gap-3 mb-4">
-        <div className="flex-1">
-          <label className="text-sm font-medium">Recherche</label>
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Température, note, opérateur…"
-            className="w-full border rounded p-2"
-          />
+      <div className="flex flex-col gap-3 mb-4">
+        <div className="flex items-center gap-2">
+          
+           
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Rechercher température, note, opérateur…"
+              className="flex-1 w-full border rounded p-2"
+            />
+    
+
+          <div className="flex gap-2 items-center h-fit">
+            <label className="text-sm font-medium">Du</label>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="w-full border rounded p-2"
+            />
+          </div>
+
+          <div className="flex gap-2 items-center h-fit">
+            <label className="text-sm font-medium">Au</label>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="w-full border rounded p-2"
+            />
+          </div>
         </div>
 
-        <div>
-          <label className="text-sm font-medium">Du</label>
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="w-full border rounded p-2"
-          />
-        </div>
-        <div>
-          <label className="text-sm font-medium">Au</label>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="w-full border rounded p-2"
-          />
-        </div>
         <button
           onClick={() => fetchData(1)}
           className="px-4 py-2 rounded bg-[#131E36] text-white"

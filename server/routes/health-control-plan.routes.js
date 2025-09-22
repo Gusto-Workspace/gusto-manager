@@ -16,12 +16,14 @@ router.post(
       const { restaurantId } = req.params;
       const data = req.body;
 
-      // option: garder receivedAt si le front l’envoie, sinon défaut côté modèle
-      const doc = new ReceptionTemperature({
-        ...data,
-        restaurantId,
-      });
+      if (data.value !== undefined) {
+        data.value = Number(data.value);
+        if (Number.isNaN(data.value)) {
+          return res.status(400).json({ error: "value doit être un nombre" });
+        }
+      }
 
+      const doc = new ReceptionTemperature({ ...data, restaurantId });
       await doc.save();
       res.status(201).json(doc);
     } catch (err) {
@@ -38,18 +40,18 @@ router.get(
   async (req, res) => {
     try {
       const { restaurantId } = req.params;
-      const {
-        page = 1,
-        limit = 20,
-        date_from, // ISO string
-        date_to, // ISO string
-      } = req.query;
+      const { page = 1, limit = 20, date_from, date_to } = req.query;
 
       const q = { restaurantId };
       if (date_from || date_to) {
         q.receivedAt = {};
         if (date_from) q.receivedAt.$gte = new Date(date_from);
-        if (date_to) q.receivedAt.$lte = new Date(date_to);
+        if (date_to) {
+          const end = new Date(date_to);
+          end.setDate(end.getDate() + 1);
+          end.setMilliseconds(end.getMilliseconds() - 1);
+          q.receivedAt.$lte = end;
+        }
       }
 
       const skip = (Number(page) - 1) * Number(limit);
@@ -117,6 +119,13 @@ router.put(
       const { restaurantId, tempId } = req.params;
       const data = req.body;
 
+      if (data.value !== undefined) {
+        data.value = Number(data.value);
+        if (Number.isNaN(data.value)) {
+          return res.status(400).json({ error: "value doit être un nombre" });
+        }
+      }
+
       const doc = await ReceptionTemperature.findOneAndUpdate(
         { _id: tempId, restaurantId },
         { $set: data },
@@ -157,5 +166,4 @@ router.delete(
     }
   }
 );
-
 module.exports = router;
