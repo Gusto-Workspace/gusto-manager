@@ -98,11 +98,18 @@ export default function ReceptionTemperaturePage(props) {
                         new CustomEvent("refresh-temp-reception")
                       );
                     }}
+                    onCancel={() => setEditing(null)}
                   />
 
                   <ReceptionTemperatureList
                     restaurantId={restaurantContext.restaurantData?._id}
                     onEdit={(doc) => setEditing(doc)}
+                    editingId={editing?._id || null}
+                    onDeleted={(doc) => {
+                      if (editing?._id && doc?._id === editing._id) {
+                        setEditing(null);
+                      }
+                    }}
                   />
                 </div>
               </section>

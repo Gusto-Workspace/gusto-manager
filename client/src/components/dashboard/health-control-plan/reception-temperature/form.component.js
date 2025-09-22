@@ -1,44 +1,166 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import axios from "axios";
+
+function toDatetimeLocalValue(value) {
+  const base = value ? new Date(value) : new Date();
+  if (Number.isNaN(base.getTime())) {
+    const fallback = new Date();
+    return fallback.toISOString().slice(0, 16);
+  }
+  return base.toISOString().slice(0, 16);
+}
+
+function buildFormDefaults(record) {
+  return {
+    value: record?.value ?? "",
+    unit: record?.unit ?? "°C",
+    packagingCondition: record?.packagingCondition ?? "unknown",
+    note: record?.note ?? "",
+    receptionId: (() => {
+      const raw = record?.receptionId;
+      if (!raw) return "";
+      if (typeof raw === "string") return raw;
+      if (typeof raw === "object" && raw !== null) {
+        return raw._id || "";
+      }
+      return "";
+    })(),
+    receivedAt: toDatetimeLocalValue(record?.receivedAt),
+  };
+}
+
+function formatReceptionLabel(reception) {
+  if (!reception) return "Réception enregistrée";
+
+  let dateLabel = "Date inconnue";
+  if (reception.receivedAt) {
+    const date = new Date(reception.receivedAt);
+    if (!Number.isNaN(date.getTime())) {
+      dateLabel = date.toLocaleString();
+    }
+  }
+
+  const supplierInfo = reception.supplier ? ` • ${reception.supplier}` : "";
+
+  return `${dateLabel}${supplierInfo}`;
+}
 
 export default function ReceptionTemperatureForm({
   restaurantId,
   initial = null,
   onSuccess,
+  onCancel,
 }) {
+  const [receptions, setReceptions] = useState([]);
+  const [receptionsLoading, setReceptionsLoading] = useState(false);
+  const [receptionsError, setReceptionsError] = useState(false);
+
   const {
     register,
     handleSubmit,
     reset,
     formState: { errors, isSubmitting },
   } = useForm({
-    defaultValues: initial || {
-      value: "",
-      unit: "°C",
-      packagingCondition: "unknown",
-      note: "",
-      receptionId: "",
-      receivedAt: new Date().toISOString().slice(0, 16),
-    },
+    defaultValues: buildFormDefaults(initial),
   });
 
   useEffect(() => {
-    if (initial) {
-      reset({
-        ...initial,
-        receivedAt: initial?.receivedAt
-          ? new Date(initial.receivedAt).toISOString().slice(0, 16)
-          : new Date().toISOString().slice(0, 16),
-      });
-    }
+    reset(buildFormDefaults(initial));
   }, [initial, reset]);
+
+  useEffect(() => {
+    if (!restaurantId) {
+      setReceptions([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadReceptions = async () => {
+      setReceptionsLoading(true);
+      setReceptionsError(false);
+
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) {
+          if (!cancelled) {
+            setReceptions([]);
+            setReceptionsLoading(false);
+          }
+          return;
+        }
+
+        const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/reception-deliveries`;
+        const { data } = await axios.get(url, {
+          headers: { Authorization: `Bearer ${token}` },
+          params: { limit: 100 },
+        });
+
+        if (!cancelled) {
+          const items = Array.isArray(data?.items) ? data.items : [];
+          setReceptions(items);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error(err);
+          setReceptions([]);
+          setReceptionsError(true);
+        }
+      } finally {
+        if (!cancelled) {
+          setReceptionsLoading(false);
+        }
+      }
+    };
+
+    loadReceptions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [restaurantId]);
+
+  const receptionOptions = useMemo(() => {
+    const list = Array.isArray(receptions) ? [...receptions] : [];
+
+    const initialReception =
+      initial && typeof initial.receptionId === "object" && initial.receptionId
+        ? initial.receptionId
+        : null;
+
+    if (initialReception && initialReception._id) {
+      const hasInitial = list.some(
+        (item) => String(item?._id) === String(initialReception._id)
+      );
+      if (!hasInitial) {
+        list.push(initialReception);
+      }
+    }
+
+    const unique = [];
+    const seen = new Set();
+    for (const item of list) {
+      if (!item || !item._id) continue;
+      const key = String(item._id);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      unique.push(item);
+    }
+
+    return unique.sort((a, b) => {
+      const timeA = a?.receivedAt ? new Date(a.receivedAt).getTime() : 0;
+      const timeB = b?.receivedAt ? new Date(b.receivedAt).getTime() : 0;
+      return timeB - timeA;
+    });
+  }, [receptions, initial]);
 
   const onSubmit = async (data) => {
     const token = localStorage.getItem("token");
     const payload = {
       ...data,
+      receptionId: data.receptionId || undefined,
       // back attend un Date -> convertir le datetime-local (string) en Date
       receivedAt: data.receivedAt ? new Date(data.receivedAt) : undefined,
     };
@@ -53,92 +175,129 @@ export default function ReceptionTemperatureForm({
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    reset();
+    reset(buildFormDefaults(null));
     onSuccess?.();
   };
 
   return (
     <form
       onSubmit={handleSubmit(onSubmit)}
-      className="bg-white rounded-lg p-4 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-4"
+      className="bg-white rounded-lg p-4 shadow-sm flex flex-col gap-6"
     >
-      <div>
-        <label className="text-sm font-medium">Température</label>
-        <input
-          type="number"
-          step="0.1"
-          placeholder="ex: 4.5"
-          {...register("value", { required: "Requis" })}
-          className="w-full border rounded p-2"
-        />
-        {errors.value && (
-          <p className="text-xs text-red-600 mt-1">{errors.value.message}</p>
-        )}
+      <div className="flex flex-col midTablet:flex-row justify-between gap-4">
+        <div className="flex flex-col gap-2 w-full">
+          <div className="flex gap-2">
+            <div className="flex flex-col w-24">
+              <label className="text-sm font-medium">Température</label>
+              <input
+                type="number"
+                step="0.1"
+                placeholder="ex: 4.5"
+                {...register("value", { required: "Requis" })}
+                className="border rounded p-2 h-[44px]"
+              />
+              {errors.value && (
+                <p className="text-xs text-red mt-1">{errors.value.message}</p>
+              )}
+            </div>
+
+            <div className="flex flex-col w-fit">
+              <label className="text-sm font-medium">Unité</label>
+              <select
+                {...register("unit")}
+                className="border rounded p-2 h-[44px]"
+              >
+                <option value="°C">°C</option>
+                <option value="°F">°F</option>
+              </select>
+            </div>
+
+            <div className="flex flex-col">
+              <label className="text-sm font-medium">Condition emballage</label>
+              <select
+                {...register("packagingCondition")}
+                className="border rounded p-2 h-[44px]"
+              >
+                <option value="ok">ok</option>
+                <option value="damaged">endommagée</option>
+                <option value="wet">humide</option>
+                <option value="unknown">inconnue</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <div className="flex-1 flex flex-col w-1/2">
+              <label className="text-sm font-medium">Réception associée</label>
+              <select
+                {...register("receptionId")}
+                className="border rounded p-2 h-[44px]"
+              >
+                <option value="">Aucune réception liée</option>
+                {receptionOptions.map((reception) => (
+                  <option key={reception._id} value={String(reception._id)}>
+                    {formatReceptionLabel(reception)}
+                  </option>
+                ))}
+              </select>
+              {/* {receptionsLoading && (
+                <p className="text-xs text-darkBlue/60 mt-1">
+                  Chargement des réceptions…
+                </p>
+              )}
+              {!receptionsLoading && receptionsError && (
+                <p className="text-xs text-red mt-1">
+                  Impossible de récupérer les réceptions.
+                </p>
+              )}
+              {!receptionsLoading &&
+                !receptionsError &&
+                restaurantId &&
+                receptionOptions.length === 0 && (
+                  <p className="text-xs text-darkBlue/60 mt-1">
+                    Aucune réception enregistrée pour le moment.
+                  </p>
+                )} */}
+            </div>
+
+            <div className="flex flex-col w-1/2">
+              <label className="text-sm font-medium">Date/heure mesure</label>
+              <input
+                type="datetime-local"
+                {...register("receivedAt")}
+                className="border rounded p-2"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col w-full">
+          <label className="text-sm font-medium">Note</label>
+          <textarea
+            rows={4}
+            {...register("note")}
+            className="border rounded p-2 resize-none h-full min-h-[96px]"
+            placeholder="Informations complémentaires…"
+          />
+        </div>
       </div>
 
-      <div>
-        <label className="text-sm font-medium">Unité</label>
-        <select {...register("unit")} className="w-full border rounded p-2">
-          <option value="°C">°C</option>
-          <option value="°F">°F</option>
-        </select>
-      </div>
-
-      <div>
-        <label className="text-sm font-medium">Date/heure mesure</label>
-        <input
-          type="datetime-local"
-          {...register("receivedAt")}
-          className="w-full border rounded p-2"
-        />
-      </div>
-
-      <div>
-        <label className="text-sm font-medium">Condition emballage</label>
-        <select
-          {...register("packagingCondition")}
-          className="w-full border rounded p-2"
-        >
-          <option value="ok">ok</option>
-          <option value="damaged">damaged</option>
-          <option value="wet">wet</option>
-          <option value="unknown">unknown</option>
-        </select>
-      </div>
-
-      <div>
-        <label className="text-sm font-medium">Réception (ID)</label>
-        <input
-          type="text"
-          placeholder="optional: Reception ObjectId"
-          {...register("receptionId")}
-          className="w-full border rounded p-2"
-        />
-      </div>
-
-      <div className="md:col-span-3">
-        <label className="text-sm font-medium">Note</label>
-        <textarea
-          rows={2}
-          {...register("note")}
-          className="w-full border rounded p-2"
-          placeholder="Informations complémentaires…"
-        />
-      </div>
-
-      <div className="md:col-span-3 flex gap-2">
+      <div className="flex gap-2 ">
         <button
           type="submit"
           disabled={isSubmitting}
-          className="px-4 py-2 rounded bg-[#131E36] text-white disabled:opacity-50"
+          className="px-4 py-2 rounded bg-blue text-white disabled:opacity-50"
         >
           {initial?._id ? "Mettre à jour" : "Enregistrer"}
         </button>
         {initial?._id && (
           <button
             type="button"
-            onClick={() => reset()}
-            className="px-4 py-2 rounded border"
+            onClick={() => {
+              reset(buildFormDefaults(null));
+              onCancel?.();
+            }}
+            className="px-4 py-2 rounded text-white bg-red"
           >
             Annuler
           </button>

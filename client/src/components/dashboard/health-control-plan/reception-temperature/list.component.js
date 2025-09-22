@@ -10,13 +10,26 @@ function fmtDate(d) {
   }
 }
 
-export default function ReceptionTemperatureList({ restaurantId, onEdit }) {
+export default function ReceptionTemperatureList({
+  restaurantId,
+  onEdit,
+  editingId = null,
+  onDeleted,
+}) {
   const [items, setItems] = useState([]);
-  const [meta, setMeta] = useState({ page: 1, limit: 20, pages: 1, total: 0 });
+  const [meta, setMeta] = useState({ page: 1, limit: 15, pages: 1, total: 0 });
   const [loading, setLoading] = useState(false);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [q, setQ] = useState("");
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  const hasActiveFilters = useMemo(
+    () => Boolean(q || dateFrom || dateTo),
+    [q, dateFrom, dateTo]
+  );
 
   const token = useMemo(() => localStorage.getItem("token"), []);
 
@@ -69,58 +82,102 @@ export default function ReceptionTemperatureList({ restaurantId, onEdit }) {
     );
   }, [items, q]);
 
-  const onDelete = async (id) => {
-    if (!confirm("Supprimer ce relevé ?")) return;
-    const url = `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${restaurantId}/temperature-receptions/${id}`;
-    await axios.delete(url, { headers: { Authorization: `Bearer ${token}` } });
-    fetchData(meta.page);
+  const askDelete = (item) => {
+    setDeleteTarget(item);
+    setIsDeleteModalOpen(true);
+  };
+
+  const onConfirmDelete = async () => {
+    if (!deleteTarget) return;
+
+    const url = `${
+      process.env.NEXT_PUBLIC_API_URL
+    }/restaurants/${restaurantId}/temperature-receptions/${deleteTarget._id}`;
+
+    try {
+      setDeleteLoading(true);
+      await axios.delete(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const deleted = deleteTarget;
+      setIsDeleteModalOpen(false);
+      setDeleteTarget(null);
+      onDeleted?.(deleted);
+      fetchData(meta.page);
+    } catch (err) {
+      console.error("Erreur lors de la suppression du relevé:", err);
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  const closeDeleteModal = () => {
+    if (deleteLoading) return;
+    setIsDeleteModalOpen(false);
+    setDeleteTarget(null);
   };
 
   return (
-    <div className="bg-white rounded-lg p-4 shadow-sm">
+    <div className="bg-white rounded-lg drop-shadow-sm p-4">
+      {/* Filtres (fixes) */}
       <div className="flex flex-col gap-3 mb-4">
-        <div className="flex items-center gap-2">
-          
-           
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Rechercher température, note, opérateur…"
-              className="flex-1 w-full border rounded p-2"
-            />
-    
+        <div className="flex flex-col gap-3 midTablet:flex-row midTablet:flex-wrap midTablet:items-end">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Rechercher température, note, opérateur…"
+            className="w-full border rounded p-2 midTablet:flex-1"
+          />
 
-          <div className="flex gap-2 items-center h-fit">
+          <div className="flex flex-col gap-1 w-full midTablet:flex-row midTablet:items-center midTablet:gap-2 midTablet:w-auto">
             <label className="text-sm font-medium">Du</label>
             <input
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
-              className="w-full border rounded p-2"
+              className="w-full border rounded p-2 midTablet:w-auto"
             />
           </div>
 
-          <div className="flex gap-2 items-center h-fit">
+          <div className="flex flex-col gap-1 w-full midTablet:flex-row midTablet:items-center midTablet:gap-2 midTablet:w-auto">
             <label className="text-sm font-medium">Au</label>
             <input
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
-              className="w-full border rounded p-2"
+              className="w-full border rounded p-2 midTablet:w-auto"
             />
           </div>
-        </div>
 
-        <button
-          onClick={() => fetchData(1)}
-          className="px-4 py-2 rounded bg-[#131E36] text-white"
-        >
-          Filtrer
-        </button>
+          <div className="flex flex-col gap-2 w-full mobile:flex-row mobile:w-auto mobile:items-center">
+            <button
+              onClick={() => fetchData(1)}
+              className="px-4 py-2 rounded bg-blue text-white w-full mobile:w-32"
+            >
+              Filtrer
+            </button>
+
+            <button
+              onClick={() => {
+                setQ("");
+                setDateFrom("");
+                setDateTo("");
+                fetchData(1);
+              }}
+              disabled={!hasActiveFilters}
+              className={`px-4 py-2 rounded bg-blue text-white ${
+                hasActiveFilters ? "" : "opacity-30"
+              }`}
+            >
+              Réinitialiser
+            </button>
+          </div>
+        </div>
       </div>
 
-      <div className="overflow-auto">
-        <table className="min-w-full text-sm">
+      {/* --- SEULEMENT LA TABLE SCROLL HORIZONTAL --- */}
+      <div className="overflow-x-auto max-w-[calc(100vw-48px)] tablet:max-w-[calc(100vw-318px)]">
+        <table className="w-full text-sm min-w-[960px]">
           <thead>
             <tr className="text-left border-b">
               <th className="py-2 pr-3">Date</th>
@@ -149,14 +206,19 @@ export default function ReceptionTemperatureList({ restaurantId, onEdit }) {
             )}
             {!loading &&
               filtered.map((it) => (
-                <tr key={it._id} className="border-b">
+                <tr
+                  key={it._id}
+                  className={`border-b transition-colors ${
+                    editingId === it._id ? "bg-lightGrey" : ""
+                  }`}
+                >
                   <td className="py-2 pr-3 whitespace-nowrap">
                     {fmtDate(it.receivedAt)}
                   </td>
-                  <td className="py-2 pr-3">{it.value}</td>
-                  <td className="py-2 pr-3">{it.unit}</td>
-                  <td className="py-2 pr-3">{it.packagingCondition}</td>
-                  <td className="py-2 pr-3">
+                  <td className="py-2 pr-3 whitespace-nowrap">{it.value}</td>
+                  <td className="py-2 pr-3 whitespace-nowrap">{it.unit}</td>
+                  <td className="py-2 pr-3 whitespace-nowrap">{it.packagingCondition}</td>
+                  <td className="py-2 pr-3 whitespace-nowrap">
                     {it?.recordedBy
                       ? `${it.recordedBy.firstName || ""} ${it.recordedBy.lastName || ""}`.trim()
                       : "—"}
@@ -168,14 +230,14 @@ export default function ReceptionTemperatureList({ restaurantId, onEdit }) {
                     <div className="flex gap-2 justify-end">
                       <button
                         onClick={() => onEdit?.(it)}
-                        className="px-3 py-1 rounded border"
+                        className="px-3 py-1 rounded bg-green text-white"
                         aria-label="Éditer"
                       >
                         Éditer
                       </button>
                       <button
-                        onClick={() => onDelete(it._id)}
-                        className="px-3 py-1 rounded border border-red-500 text-red-600"
+                        onClick={() => askDelete(it)}
+                        className="px-3 py-1 rounded bg-red text-white"
                         aria-label="Supprimer"
                       >
                         Supprimer
@@ -188,6 +250,7 @@ export default function ReceptionTemperatureList({ restaurantId, onEdit }) {
         </table>
       </div>
 
+      {/* Pagination (fixe) */}
       {meta?.pages > 1 && (
         <div className="flex items-center justify-between mt-4">
           <div className="text-xs opacity-70">
@@ -197,17 +260,52 @@ export default function ReceptionTemperatureList({ restaurantId, onEdit }) {
             <button
               disabled={meta.page <= 1}
               onClick={() => fetchData(meta.page - 1)}
-              className="px-3 py-1 rounded border disabled:opacity-40"
+              className="px-3 py-1 rounded border border-blue text-blue disabled:opacity-40"
             >
               Précédent
             </button>
             <button
               disabled={meta.page >= meta.pages}
               onClick={() => fetchData(meta.page + 1)}
-              className="px-3 py-1 rounded border disabled:opacity-40"
+              className="px-3 py-1 rounded border border-blue text-blue disabled:opacity-40"
             >
               Suivant
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modale (fixe, hors scroll) */}
+      {isDeleteModalOpen && (
+        <div className="fixed inset-0 flex items-center mx-6 justify-center z-[100]">
+          <div
+            onClick={closeDeleteModal}
+            className="fixed inset-0 bg-black bg-opacity-20"
+          />
+          <div className="bg-white p-6 rounded-lg shadow-lg w-[450px] z-10">
+            <h2 className="text-xl font-semibold mb-6 text-center">
+              Supprimer ce relevé ?
+            </h2>
+            <p className="text-sm text-center mb-6">
+              Cette action est définitive. Le relevé sera retiré de votre plan
+              de maîtrise sanitaire.
+            </p>
+            <div className="flex gap-4 mx-auto justify-center">
+              <button
+                onClick={onConfirmDelete}
+                disabled={deleteLoading}
+                className="px-4 py-2 rounded-lg bg-blue text-white disabled:opacity-50"
+              >
+                {deleteLoading ? "Suppression…" : "Confirmer"}
+              </button>
+              <button
+                type="button"
+                onClick={closeDeleteModal}
+                className="px-4 py-2 rounded-lg text-white bg-red"
+              >
+                Annuler
+              </button>
+            </div>
           </div>
         </div>
       )}

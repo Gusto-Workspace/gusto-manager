@@ -6,6 +6,7 @@ const authenticateToken = require("../middleware/authentificate-token");
 
 // MODELS
 const ReceptionTemperature = require("../models/logs/reception-temperature.model");
+const ReceptionDelivery = require("../models/logs/reception-delivery.model");
 
 // CREATE RECEPTION TEMPERATURE
 router.post(
@@ -61,8 +62,7 @@ router.get(
           .sort({ receivedAt: -1 })
           .skip(skip)
           .limit(Number(limit))
-          .populate("recordedBy", "firstName lastName")
-          .populate("signature.by", "firstName lastName"),
+          .populate("recordedBy", "firstName lastName"),
         ReceptionTemperature.countDocuments(q),
       ]);
 
@@ -97,7 +97,6 @@ router.get(
         restaurantId,
       })
         .populate("recordedBy", "firstName lastName")
-        .populate("signature.by", "firstName lastName");
 
       if (!doc) return res.status(404).json({ error: "Relevé introuvable" });
       res.json(doc);
@@ -163,6 +162,32 @@ router.delete(
       res
         .status(500)
         .json({ error: "Erreur lors de la suppression du relevé" });
+    }
+  }
+);
+
+// GET LIST DELIVERED RECEPTIONS FOR TEMPERATURE LINKING
+router.get(
+  "/restaurants/:restaurantId/reception-deliveries",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { restaurantId } = req.params;
+      const { limit = 50 } = req.query;
+
+      const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 0, 1), 200);
+
+      const items = await ReceptionDelivery.find({ restaurantId })
+        .sort({ receivedAt: -1 })
+        .limit(safeLimit)
+        .select("_id receivedAt supplier note");
+
+      res.json({ items });
+    } catch (err) {
+      console.error("Erreur GET /reception-deliveries:", err);
+      res.status(500).json({
+        error: "Erreur lors de la récupération des réceptions",
+      });
     }
   }
 );
