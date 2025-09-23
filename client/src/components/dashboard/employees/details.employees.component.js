@@ -6,6 +6,7 @@ import { GlobalContext } from "@/contexts/global.context";
 import { EmployeesSvg } from "@/components/_shared/_svgs/employees.svg";
 import { useTranslation } from "next-i18next";
 
+// COMPONENTS
 import ModaleEmployeesComponent from "./modale.employees.component";
 import DocumentsEmployeeComponent from "./documents.employees.component";
 import AccessRightsEmployeesComponent from "./access-rights.employees.component";
@@ -62,6 +63,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     reservations: t("nav.reservations", { ns: "common" }),
     take_away: t("nav.takeAway", { ns: "common" }),
     employees: t("nav.employees", { ns: "common" }),
+    health_control_plan: t("nav.health", { ns: "common" }),
   };
 
   const restaurantId = restaurantContext.restaurantData?._id;
@@ -251,7 +253,6 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     <section className="flex flex-col gap-6">
       <hr className="opacity-20" />
 
-      {/* Fil d’Ariane */}
       <div className="flex gap-2 items-center min-h-[40px]">
         <div>
           <EmployeesSvg width={30} height={30} fillColor="#131E3690" />

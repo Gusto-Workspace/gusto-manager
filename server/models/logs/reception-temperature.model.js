@@ -11,7 +11,7 @@ const receptionTemperatureSchema = new Schema(
     },
     receptionId: { type: Schema.Types.ObjectId, ref: "Reception" },
 
-    // Mesure de température
+    // Mesure
     value: { type: Number, required: true }, // ex: 4.5
     unit: { type: String, enum: ["°C", "°F"], default: "°C" },
 
@@ -28,8 +28,13 @@ const receptionTemperatureSchema = new Schema(
     // Note (optionnelle)
     note: { type: String },
 
-    // Qui a enregistré (ajout automatique coté serveur)
-    recordedBy: { type: Schema.Types.ObjectId, ref: "Employee" },
+    // Qui a enregistré (snapshot à la création)
+    recordedBy: {
+      userId: { type: Schema.Types.ObjectId, required: true, index: true },
+      role: { type: String, enum: ["owner", "employee"], required: true },
+      firstName: { type: String },
+      lastName: { type: String },
+    },
   },
   { versionKey: false, collection: "temperature_reception" }
 );
@@ -38,11 +43,6 @@ receptionTemperatureSchema.index({ restaurantId: 1, receivedAt: -1 });
 receptionTemperatureSchema.index({
   restaurantId: 1,
   receptionId: 1,
-  receivedAt: -1,
-});
-receptionTemperatureSchema.index({
-  restaurantId: 1,
-  lineId: 1,
   receivedAt: -1,
 });
 

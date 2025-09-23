@@ -15,6 +15,7 @@ const optionsSchema = new mongoose.Schema(
     reservations: { type: Boolean, default: false },
     take_away: { type: Boolean, default: false },
     employees: { type: Boolean, default: false },
+    health_control_plan: { type: Boolean, default: false },
   },
   { _id: false }
 );

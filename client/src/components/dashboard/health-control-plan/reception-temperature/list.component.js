@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import axios from "axios";
 
 function fmtDate(d) {
@@ -18,6 +19,22 @@ function fmtDate(d) {
   }
 }
 
+function formatReceptionLabel(reception) {
+  if (!reception) return "—";
+  // si populate OK, on a un objet { _id, receivedAt, supplier? }
+  const hasFields =
+    typeof reception === "object" &&
+    (reception.receivedAt || reception.supplier);
+  if (!hasFields) return "Réception liée";
+  let dateLabel = "Date inconnue";
+  if (reception.receivedAt) {
+    const d = new Date(reception.receivedAt);
+    if (!Number.isNaN(d.getTime())) dateLabel = d.toLocaleString();
+  }
+  const supplierInfo = reception.supplier ? ` • ${reception.supplier}` : "";
+  return `${dateLabel}${supplierInfo}`;
+}
+
 export default function ReceptionTemperatureList({
   restaurantId,
   onEdit,
@@ -34,6 +51,9 @@ export default function ReceptionTemperatureList({
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
+  const [isClient, setIsClient] = useState(false); // 👈 nécessaire pour portal (SSR safe)
+  useEffect(() => setIsClient(true), []);
+
   const hasActiveFilters = useMemo(
     () => Boolean(q || dateFrom || dateTo),
     [q, dateFrom, dateTo]
@@ -42,7 +62,6 @@ export default function ReceptionTemperatureList({
   const token = useMemo(() => localStorage.getItem("token"), []);
 
   const metaRef = useRef(meta);
-
   useEffect(() => {
     metaRef.current = meta;
   }, [meta]);
@@ -78,6 +97,7 @@ export default function ReceptionTemperatureList({
 
   useEffect(() => {
     if (restaurantId) fetchData(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
 
   useEffect(() => {
@@ -145,6 +165,7 @@ export default function ReceptionTemperatureList({
         String(it?.value ?? ""),
         it?.recordedBy?.firstName,
         it?.recordedBy?.lastName,
+        it?.receptionId?.supplier,
       ]
         .join(" ")
         .toLowerCase()
@@ -160,9 +181,7 @@ export default function ReceptionTemperatureList({
   const onConfirmDelete = async () => {
     if (!deleteTarget) return;
 
-    const url = `${
-      process.env.NEXT_PUBLIC_API_URL
-    }/restaurants/${restaurantId}/temperature-receptions/${deleteTarget._id}`;
+    const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/temperature-receptions/${deleteTarget._id}`;
 
     try {
       setDeleteLoading(true);
@@ -207,7 +226,7 @@ export default function ReceptionTemperatureList({
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Rechercher température, note, opérateur…"
+            placeholder="Rechercher température, note, opérateur, fournisseur…"
             className="w-full border rounded p-2 midTablet:flex-1"
           />
 
@@ -258,13 +277,14 @@ export default function ReceptionTemperatureList({
       </div>
 
       {/* --- SEULEMENT LA TABLE SCROLL HORIZONTAL --- */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm min-w-[800px]">
-          <thead>
+      <div className="overflow-x-auto max-w-[calc(100vw-80px)] tablet:max-w-[calc(100vw-318px)]">
+        <table className="w-full text-sm ">
+          <thead className="whitespace-nowrap">
             <tr className="text-left border-b">
               <th className="py-2 pr-3">Date</th>
               <th className="py-2 pr-3">T°</th>
               <th className="py-2 pr-3">Emballage</th>
+              <th className="py-2 pr-3">Réception associée</th>
               <th className="py-2 pr-3">Opérateur</th>
               <th className="py-2 pr-3">Note</th>
               <th className="py-2 pr-3 text-right">Actions</th>
@@ -301,6 +321,9 @@ export default function ReceptionTemperatureList({
                   </td>
                   <td className="py-2 pr-3 whitespace-nowrap">
                     {it.packagingCondition}
+                  </td>
+                  <td className="py-2 pr-3 whitespace-nowrap">
+                    {formatReceptionLabel(it.receptionId)}
                   </td>
                   <td className="py-2 pr-3 whitespace-nowrap">
                     {it?.recordedBy
@@ -360,39 +383,49 @@ export default function ReceptionTemperatureList({
       )}
 
       {/* Modale (fixe, hors scroll) */}
-      {isDeleteModalOpen && (
-        <div className="fixed inset-0 flex items-center mx-6 justify-center z-[100]">
+      {isDeleteModalOpen &&
+        isClient &&
+        createPortal(
           <div
-            onClick={closeDeleteModal}
-            className="fixed inset-0 bg-black bg-opacity-20"
-          />
-          <div className="bg-white p-6 rounded-lg shadow-lg w-[450px] z-10">
-            <h2 className="text-xl font-semibold mb-6 text-center">
-              Supprimer ce relevé ?
-            </h2>
-            <p className="text-sm text-center mb-6">
-              Cette action est définitive. Le relevé sera retiré de votre plan
-              de maîtrise sanitaire.
-            </p>
-            <div className="flex gap-4 mx-auto justify-center">
-              <button
-                onClick={onConfirmDelete}
-                disabled={deleteLoading}
-                className="px-4 py-2 rounded-lg bg-blue text-white disabled:opacity-50"
-              >
-                {deleteLoading ? "Suppression…" : "Confirmer"}
-              </button>
-              <button
-                type="button"
-                onClick={closeDeleteModal}
-                className="px-4 py-2 rounded-lg text-white bg-red"
-              >
-                Annuler
-              </button>
+            className="fixed inset-0 z-[1000]"
+            aria-modal="true"
+            role="dialog"
+          >
+            <div
+              onClick={closeDeleteModal}
+              className="absolute inset-0 bg-black/20"
+            />
+
+            <div className="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
+              <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-[450px] pointer-events-auto">
+                <h2 className="text-xl font-semibold mb-6 text-center">
+                  Supprimer ce relevé ?
+                </h2>
+                <p className="text-sm text-center mb-6">
+                  Cette action est définitive. Le relevé sera retiré de votre
+                  plan de maîtrise sanitaire.
+                </p>
+                <div className="flex gap-4 mx-auto justify-center">
+                  <button
+                    onClick={onConfirmDelete}
+                    disabled={deleteLoading}
+                    className="px-4 py-2 rounded-lg bg-blue text-white disabled:opacity-50"
+                  >
+                    {deleteLoading ? "Suppression…" : "Confirmer"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={closeDeleteModal}
+                    className="px-4 py-2 rounded-lg text-white bg-red"
+                  >
+                    Annuler
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

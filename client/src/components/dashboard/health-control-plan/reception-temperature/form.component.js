@@ -188,8 +188,8 @@ export default function ReceptionTemperatureForm({
     >
       <div className="flex flex-col midTablet:flex-row justify-between gap-4">
         <div className="flex flex-col gap-2 w-full">
-          <div className="flex justify-between gap-2">
-            <div className="flex gap-2">
+          <div className="flex flex-wrap justify-between gap-2">
+            <div className="flex  gap-2">
               <div className="flex flex-col w-24">
                 <label className="text-sm font-medium">Température</label>
                 <input
@@ -232,7 +232,7 @@ export default function ReceptionTemperatureForm({
             </div>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <div className="flex-1 flex flex-col w-1/2">
               <label className="text-sm font-medium">Réception associée</label>
               <select
@@ -246,24 +246,7 @@ export default function ReceptionTemperatureForm({
                   </option>
                 ))}
               </select>
-              {/* {receptionsLoading && (
-                <p className="text-xs text-darkBlue/60 mt-1">
-                  Chargement des réceptions…
-                </p>
-              )}
-              {!receptionsLoading && receptionsError && (
-                <p className="text-xs text-red mt-1">
-                  Impossible de récupérer les réceptions.
-                </p>
-              )}
-              {!receptionsLoading &&
-                !receptionsError &&
-                restaurantId &&
-                receptionOptions.length === 0 && (
-                  <p className="text-xs text-darkBlue/60 mt-1">
-                    Aucune réception enregistrée pour le moment.
-                  </p>
-                )} */}
+              
             </div>
 
             <div className="flex flex-col w-1/2">
