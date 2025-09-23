@@ -45,8 +45,11 @@ export default function ListEmployeesComponent() {
     setIsLoadingDelete(true);
     try {
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext.restaurantData._id}/employees/${selectedEmployee._id}`;
-      const res = await axios.delete(url);
-      restaurantContext.setRestaurantData(res.data.restaurant);
+      const response = await axios.delete(url);
+      restaurantContext.setRestaurantData((prev) => ({
+        ...prev,
+        employees: response.data.restaurant.employees,
+      }));
     } catch (err) {
       console.error("Error deleting employee:", err);
     } finally {

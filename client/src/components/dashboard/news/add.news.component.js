@@ -109,8 +109,10 @@ export default function AddNewsComponent(props) {
           "Content-Type": "multipart/form-data",
         },
       });
-
-      restaurantContext.setRestaurantData(response.data.restaurant);
+      restaurantContext.setRestaurantData((prev) => ({
+        ...prev,
+        news: response.data.restaurant.news,
+      }));
       router.push("/dashboard/news");
     } catch (error) {
       console.error("Error adding or editing news:", error);
@@ -127,7 +129,7 @@ export default function AddNewsComponent(props) {
           width={30}
           height={30}
           className="min-h-[30px] min-w-[30px]"
-           strokeColor="#131E3690"
+          strokeColor="#131E3690"
         />
 
         <h1 className="pl-2 text-xl tablet:text-2xl flex items-center flex-wrap">

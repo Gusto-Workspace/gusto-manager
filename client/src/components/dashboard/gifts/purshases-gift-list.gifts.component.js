@@ -91,7 +91,10 @@ export default function PurchasesGiftListComponent(props) {
 
     axios[method](url)
       .then((response) => {
-        restaurantContext.setRestaurantData(response.data.restaurant);
+        restaurantContext.setRestaurantData((prev) => ({
+          ...prev,
+          purchasesGiftCards: response.data.restaurant.purchasesGiftCards,
+        }));
         setIsModalOpen(false);
       })
       .catch((error) => {

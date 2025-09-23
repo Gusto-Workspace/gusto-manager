@@ -122,7 +122,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     setPreviewUrl(URL.createObjectURL(f));
   }
 
-  // Sauvegarde détails + photo (inchangé)
+  // Sauvegarde détails + photo
   async function onSaveDetails(data) {
     setIsSavingDetails(true);
     try {
@@ -131,11 +131,16 @@ export default function DetailsEmployeesComponent({ employeeId }) {
         ([k, v]) => v !== undefined && fd.append(k, v)
       );
       if (profileFile) fd.append("profilePicture", profileFile);
-      const { data: res } = await axios.patch(baseUrl, fd, {
+      const response = await axios.patch(baseUrl, fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      restaurantContext.setRestaurantData(res.restaurant);
-      setEmployee(res.restaurant.employees.find((e) => e._id === employeeId));
+      restaurantContext.setRestaurantData((prev) => ({
+        ...prev,
+        employees: response.data.restaurant.employees,
+      }));
+      setEmployee(
+        response.data.restaurant.employees.find((e) => e._id === employeeId)
+      );
       setIsEditing(false);
     } catch (err) {
       console.error("Erreur update détails :", err);
@@ -144,15 +149,18 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     }
   }
 
-  // Sauvegarde options (inchangé)
+  // Sauvegarde options
   async function onSaveOptions(formData) {
     try {
       await handleOptionsSubmit(async (d) => {
-        const { data: res } = await axios.patch(baseUrl, {
+        const response = await axios.patch(baseUrl, {
           options: d.options,
         });
-        restaurantContext.setRestaurantData(res.restaurant);
-        const updated = res.restaurant.employees.find(
+        restaurantContext.setRestaurantData((prev) => ({
+          ...prev,
+          employees: response.data.restaurant.employees,
+        }));
+        const updated = response.data.restaurant.employees.find(
           (e) => e._id === employeeId
         );
         setEmployee(updated);
@@ -206,12 +214,17 @@ export default function DetailsEmployeesComponent({ employeeId }) {
         fd.append("documents", d.file);
         fd.append("titles", d.title);
       });
-      const { data: res } = await axios.post(`${baseUrl}/documents`, fd, {
+      const response = await axios.post(`${baseUrl}/documents`, fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      restaurantContext.setRestaurantData(res.restaurant);
-      setEmployee(res.restaurant.employees.find((e) => e._id === employeeId));
-      setDocs([]); // on vide la sélection après l’upload
+      restaurantContext.setRestaurantData((prev) => ({
+        ...prev,
+        employees: response.data.restaurant.employees,
+      }));
+      setEmployee(
+        response.data.restaurant.employees.find((e) => e._id === employeeId)
+      );
+      setDocs([]);
     } catch (err) {
       console.error("Erreur upload documents :", err);
     } finally {
@@ -234,11 +247,14 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     const { public_id } = docToDelete;
     setIsDeletingDocId(public_id);
     try {
-      const { data: res } = await axios.delete(
-        `${baseUrl}/documents/${public_id}`
+      const response = await axios.delete(`${baseUrl}/documents/${public_id}`);
+      restaurantContext.setRestaurantData((prev) => ({
+        ...prev,
+        employees: response.data.restaurant.employees,
+      }));
+      setEmployee(
+        response.data.restaurant.employees.find((e) => e._id === employeeId)
       );
-      restaurantContext.setRestaurantData(res.restaurant);
-      setEmployee(res.restaurant.employees.find((e) => e._id === employeeId));
       setDocToDelete(null);
     } catch (err) {
       console.error("Erreur suppression document :", err);
