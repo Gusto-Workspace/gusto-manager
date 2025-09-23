@@ -7,9 +7,11 @@ function toDatetimeLocalValue(value) {
   const base = value ? new Date(value) : new Date();
   if (Number.isNaN(base.getTime())) {
     const fallback = new Date();
-    return fallback.toISOString().slice(0, 16);
+    const offset = fallback.getTimezoneOffset() * 60000;
+    return new Date(fallback.getTime() - offset).toISOString().slice(0, 16);
   }
-  return base.toISOString().slice(0, 16);
+  const offset = base.getTimezoneOffset() * 60000;
+  return new Date(base.getTime() - offset).toISOString().slice(0, 16);
 }
 
 function buildFormDefaults(record) {
@@ -171,12 +173,12 @@ export default function ReceptionTemperatureForm({
 
     const method = initial?._id ? "put" : "post";
 
-    await axios[method](url, payload, {
+    const { data: saved } = await axios[method](url, payload, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
     reset(buildFormDefaults(null));
-    onSuccess?.();
+    onSuccess?.(saved);
   };
 
   return (
@@ -186,32 +188,36 @@ export default function ReceptionTemperatureForm({
     >
       <div className="flex flex-col midTablet:flex-row justify-between gap-4">
         <div className="flex flex-col gap-2 w-full">
-          <div className="flex gap-2">
-            <div className="flex flex-col w-24">
-              <label className="text-sm font-medium">Température</label>
-              <input
-                type="number"
-                step="0.1"
-                placeholder="ex: 4.5"
-                {...register("value", { required: "Requis" })}
-                className="border rounded p-2 h-[44px]"
-              />
-              {errors.value && (
-                <p className="text-xs text-red mt-1">{errors.value.message}</p>
-              )}
-            </div>
+          <div className="flex justify-between gap-2">
+            <div className="flex gap-2">
+              <div className="flex flex-col w-24">
+                <label className="text-sm font-medium">Température</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  placeholder="ex: 4.5"
+                  {...register("value", { required: "Requis" })}
+                  className="border rounded p-2 h-[44px]"
+                />
+                {errors.value && (
+                  <p className="text-xs text-red mt-1">
+                    {errors.value.message}
+                  </p>
+                )}
+              </div>
 
-            <div className="flex flex-col w-fit">
-              <label className="text-sm font-medium">Unité</label>
-              <select
-                {...register("unit")}
-                className="border rounded p-2 h-[44px]"
-              >
-                <option value="°C">°C</option>
-                <option value="°F">°F</option>
-              </select>
+              <div className="flex flex-col w-fit">
+                <label className="text-sm font-medium">Unité</label>
+                <select
+                  {...register("unit")}
+                  className="border rounded p-2 h-[44px]"
+                >
+                  <option value="°C">°C</option>
+                  <option value="°F">°F</option>
+                </select>
+              </div>
             </div>
-
+            
             <div className="flex flex-col">
               <label className="text-sm font-medium">Condition emballage</label>
               <select

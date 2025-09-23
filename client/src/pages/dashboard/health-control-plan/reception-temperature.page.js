@@ -92,10 +92,12 @@ export default function ReceptionTemperaturePage(props) {
                   <ReceptionTemperatureForm
                     restaurantId={restaurantContext.restaurantData?._id}
                     initial={editing}
-                    onSuccess={() => {
+                    onSuccess={(doc) => {
                       setEditing(null);
                       window.dispatchEvent(
-                        new CustomEvent("refresh-temp-reception")
+                        new CustomEvent("temperature-reception:upsert", {
+                          detail: { doc },
+                        })
                       );
                     }}
                     onCancel={() => setEditing(null)}

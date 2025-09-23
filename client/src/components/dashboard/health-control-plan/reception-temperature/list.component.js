@@ -1,10 +1,18 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 
 function fmtDate(d) {
   try {
-    return new Date(d).toLocaleString();
+    if (!d) return "";
+    const date = new Date(d);
+    return new Intl.DateTimeFormat("fr-FR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(date);
   } catch {
     return d || "";
   }
@@ -17,7 +25,7 @@ export default function ReceptionTemperatureList({
   onDeleted,
 }) {
   const [items, setItems] = useState([]);
-  const [meta, setMeta] = useState({ page: 1, limit: 15, pages: 1, total: 0 });
+  const [meta, setMeta] = useState({ page: 1, limit: 20, pages: 1, total: 0 });
   const [loading, setLoading] = useState(false);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -33,6 +41,17 @@ export default function ReceptionTemperatureList({
 
   const token = useMemo(() => localStorage.getItem("token"), []);
 
+  const metaRef = useRef(meta);
+
+  useEffect(() => {
+    metaRef.current = meta;
+  }, [meta]);
+
+  const sortByDate = (list) =>
+    [...list].sort(
+      (a, b) => new Date(b?.receivedAt || 0) - new Date(a?.receivedAt || 0)
+    );
+
   const fetchData = async (page = 1) => {
     setLoading(true);
     try {
@@ -45,8 +64,11 @@ export default function ReceptionTemperatureList({
         headers: { Authorization: `Bearer ${token}` },
         params,
       });
-      setItems(data.items || []);
-      setMeta(data.meta || { page: 1, limit: 20, pages: 1, total: 0 });
+      const list = sortByDate(data.items || []);
+      const nextMeta = data.meta || { page: 1, limit: 20, pages: 1, total: 0 };
+      setItems(list);
+      setMeta(nextMeta);
+      metaRef.current = nextMeta;
     } catch (e) {
       console.error(e);
     } finally {
@@ -59,10 +81,58 @@ export default function ReceptionTemperatureList({
   }, [restaurantId]);
 
   useEffect(() => {
-    const handler = () => fetchData(1);
-    window.addEventListener("refresh-temp-reception", handler);
-    return () => window.removeEventListener("refresh-temp-reception", handler);
-  }, []);
+    const handleUpsert = (event) => {
+      const doc = event?.detail?.doc;
+      if (!doc || !doc._id) return;
+      if (restaurantId && String(doc.restaurantId) !== String(restaurantId)) {
+        return;
+      }
+
+      const currentMeta = metaRef.current || {};
+      const limit = currentMeta.limit || 20;
+      const page = currentMeta.page || 1;
+
+      let isNew = false;
+
+      setItems((prev) => {
+        const prevList = Array.isArray(prev) ? prev : [];
+        const index = prevList.findIndex((item) => item?._id === doc._id);
+        let nextList;
+
+        if (index !== -1) {
+          nextList = [...prevList];
+          nextList[index] = { ...prevList[index], ...doc };
+        } else {
+          isNew = true;
+          if (page === 1) {
+            nextList = [doc, ...prevList];
+            if (nextList.length > limit) {
+              nextList = nextList.slice(0, limit);
+            }
+          } else {
+            nextList = prevList;
+          }
+        }
+
+        return sortByDate(nextList || prevList);
+      });
+
+      if (isNew) {
+        setMeta((prevMeta) => {
+          const limitValue = prevMeta.limit || limit;
+          const total = (prevMeta.total || 0) + 1;
+          const pages = Math.max(1, Math.ceil(total / limitValue));
+          const nextMeta = { ...prevMeta, total, pages };
+          metaRef.current = nextMeta;
+          return nextMeta;
+        });
+      }
+    };
+
+    window.addEventListener("temperature-reception:upsert", handleUpsert);
+    return () =>
+      window.removeEventListener("temperature-reception:upsert", handleUpsert);
+  }, [restaurantId]);
 
   const filtered = useMemo(() => {
     if (!q) return items;
@@ -100,10 +170,22 @@ export default function ReceptionTemperatureList({
         headers: { Authorization: `Bearer ${token}` },
       });
       const deleted = deleteTarget;
+      const updatedItems = (items || []).filter(
+        (item) => String(item?._id) !== String(deleted._id)
+      );
+      setItems(updatedItems);
       setIsDeleteModalOpen(false);
       setDeleteTarget(null);
       onDeleted?.(deleted);
-      fetchData(meta.page);
+      setMeta((prevMeta) => {
+        const limitValue = prevMeta.limit || 20;
+        const total = Math.max(0, (prevMeta.total || 0) - 1);
+        const pages = total > 0 ? Math.ceil(total / limitValue) : 1;
+        const page = Math.min(prevMeta.page || 1, pages);
+        const nextMeta = { ...prevMeta, total, pages, page };
+        metaRef.current = nextMeta;
+        return nextMeta;
+      });
     } catch (err) {
       console.error("Erreur lors de la suppression du relevé:", err);
     } finally {
@@ -176,13 +258,12 @@ export default function ReceptionTemperatureList({
       </div>
 
       {/* --- SEULEMENT LA TABLE SCROLL HORIZONTAL --- */}
-      <div className="overflow-x-auto max-w-[calc(100vw-48px)] tablet:max-w-[calc(100vw-318px)]">
-        <table className="w-full text-sm min-w-[960px]">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm min-w-[800px]">
           <thead>
             <tr className="text-left border-b">
               <th className="py-2 pr-3">Date</th>
               <th className="py-2 pr-3">T°</th>
-              <th className="py-2 pr-3">Unité</th>
               <th className="py-2 pr-3">Emballage</th>
               <th className="py-2 pr-3">Opérateur</th>
               <th className="py-2 pr-3">Note</th>
@@ -215,9 +296,12 @@ export default function ReceptionTemperatureList({
                   <td className="py-2 pr-3 whitespace-nowrap">
                     {fmtDate(it.receivedAt)}
                   </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">{it.value}</td>
-                  <td className="py-2 pr-3 whitespace-nowrap">{it.unit}</td>
-                  <td className="py-2 pr-3 whitespace-nowrap">{it.packagingCondition}</td>
+                  <td className="py-2 pr-3 whitespace-nowrap">
+                    {it.value} {it.unit}
+                  </td>
+                  <td className="py-2 pr-3 whitespace-nowrap">
+                    {it.packagingCondition}
+                  </td>
                   <td className="py-2 pr-3 whitespace-nowrap">
                     {it?.recordedBy
                       ? `${it.recordedBy.firstName || ""} ${it.recordedBy.lastName || ""}`.trim()

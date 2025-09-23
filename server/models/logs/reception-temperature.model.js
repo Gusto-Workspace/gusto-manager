@@ -31,7 +31,7 @@ const receptionTemperatureSchema = new Schema(
     // Qui a enregistré (ajout automatique coté serveur)
     recordedBy: { type: Schema.Types.ObjectId, ref: "Employee" },
   },
-  { versionKey: false, collection: "temperature_receptions" }
+  { versionKey: false, collection: "temperature_reception" }
 );
 
 receptionTemperatureSchema.index({ restaurantId: 1, receivedAt: -1 });
