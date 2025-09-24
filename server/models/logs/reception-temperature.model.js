@@ -36,7 +36,7 @@ const receptionTemperatureSchema = new Schema(
       lastName: { type: String },
     },
   },
-  { versionKey: false, collection: "temperature_reception" }
+  { versionKey: false, collection: "reception_temperature" }
 );
 
 receptionTemperatureSchema.index({ restaurantId: 1, receivedAt: -1 });

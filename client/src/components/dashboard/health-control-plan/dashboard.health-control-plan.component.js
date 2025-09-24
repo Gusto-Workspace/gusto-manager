@@ -20,7 +20,7 @@ const defaultTiles = [
     label: "T° enceintes frigorifiques",
     icon: "❄️",
     note: "Frigos / chambres",
-    href: "/dashboard/health-control-plan/reception-temperature",
+    href: "/dashboard/health-control-plan/fridge-temperature",
   },
   {
     key: "heating-start",

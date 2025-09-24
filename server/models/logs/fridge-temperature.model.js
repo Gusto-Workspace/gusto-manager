@@ -9,9 +9,9 @@ const fridgeTemperatureSchema = new Schema(
       required: true,
       index: true,
     },
-    fridgeName: { type: String, required: true, index: true }, // ex "Frigo 1"
-    fridgeId: { type: String, index: true }, // id matériel
-    location: { type: String }, // optionnel
+    fridgeName: { type: String, required: true, index: true },
+    fridgeId: { type: String, index: true },
+    location: { type: String },
     locationId: { type: String, index: true },
     value: { type: Number, required: true },
     unit: { type: String, enum: ["°C", "°F"], default: "°C" },
@@ -21,21 +21,21 @@ const fridgeTemperatureSchema = new Schema(
       enum: ["open", "closed", "unknown"],
       default: "unknown",
     },
-    recordedBy: { type: Schema.Types.ObjectId, ref: "Employee" },
-    note: String,
-    signature: {
-      by: { type: Schema.Types.ObjectId, ref: "Employee" },
-      at: Date,
-      signatureUrl: String,
-      hash: String,
+    recordedBy: {
+      userId: { type: Schema.Types.ObjectId, required: true, index: true },
+      role: { type: String, enum: ["owner", "employee"], required: true },
+      firstName: { type: String },
+      lastName: { type: String },
     },
+    note: String,
+
     createdAt: { type: Date, default: Date.now, index: true },
   },
-  { versionKey: false, collection: "temperature_fridge" }
+  { versionKey: false, collection: "fridge_temperature" }
 );
 
 fridgeTemperatureSchema.index({ restaurantId: 1, createdAt: -1 });
 
 module.exports =
-  mongoose.models.TemperatureFridge ||
-  mongoose.model("TemperatureFridge", fridgeTemperatureSchema);
+  mongoose.models.FridgeTemperature ||
+  mongoose.model("FridgeTemperature", fridgeTemperatureSchema);

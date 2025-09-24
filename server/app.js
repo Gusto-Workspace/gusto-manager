@@ -75,7 +75,6 @@ const menusRoutes = require("./routes/menus.routes");
 const transactionsRoutes = require("./routes/transactions.routes");
 const reservationsRoutes = require("./routes/reservations.routes");
 const employeesRoutes = require("./routes/employees.routes");
-const reception_temperature = require("./routes/health-control-plan/reception-temperature.routes");
 
 app.use(apiRoutes, restaurantsRoutes);
 app.use(apiRoutes, hoursRoutes);
@@ -90,7 +89,13 @@ app.use(apiRoutes, menusRoutes);
 app.use(apiRoutes, transactionsRoutes);
 app.use(apiRoutes, reservationsRoutes);
 app.use(apiRoutes, employeesRoutes);
+
+// HACCP
+const reception_temperature = require("./routes/health-control-plan/reception-temperature.routes");
+const fridge_temperature = require("./routes/health-control-plan/fridge-temperature.routes");
+
 app.use(apiRoutes, reception_temperature);
+app.use(apiRoutes, fridge_temperature);
 
 // SSE BUS
 mountSseRoute(app);

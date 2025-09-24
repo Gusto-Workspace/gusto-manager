@@ -19,22 +19,7 @@ function fmtDate(d) {
   }
 }
 
-function formatReceptionLabel(reception) {
-  if (!reception) return "—";
-  const hasFields =
-    typeof reception === "object" &&
-    (reception.receivedAt || reception.supplier);
-  if (!hasFields) return "Réception liée";
-  let dateLabel = "Date inconnue";
-  if (reception.receivedAt) {
-    const d = new Date(reception.receivedAt);
-    if (!Number.isNaN(d.getTime())) dateLabel = d.toLocaleString();
-  }
-  const supplierInfo = reception.supplier ? ` • ${reception.supplier}` : "";
-  return `${dateLabel}${supplierInfo}`;
-}
-
-export default function ReceptionTemperatureList({
+export default function FridgeTemperatureList({
   restaurantId,
   onEdit,
   editingId = null,
@@ -66,7 +51,6 @@ export default function ReceptionTemperatureList({
   }, [dateFrom, dateTo]);
 
   const token = useMemo(() => localStorage.getItem("token"), []);
-
   const metaRef = useRef(meta);
   useEffect(() => {
     metaRef.current = meta;
@@ -74,12 +58,13 @@ export default function ReceptionTemperatureList({
 
   const sortByDate = (list) =>
     [...list].sort(
-      (a, b) => new Date(b?.receivedAt || 0) - new Date(a?.receivedAt || 0)
+      (a, b) => new Date(b?.createdAt || 0) - new Date(a?.createdAt || 0)
     );
 
   const fetchData = async (page = 1, overrides = {}) => {
     setLoading(true);
     try {
+      const curQ = overrides.q !== undefined ? overrides.q : q;
       const curFrom =
         overrides.dateFrom !== undefined ? overrides.dateFrom : dateFrom;
       const curTo = overrides.dateTo !== undefined ? overrides.dateTo : dateTo;
@@ -87,8 +72,9 @@ export default function ReceptionTemperatureList({
       const params = { page, limit: meta.limit || 20 };
       if (curFrom) params.date_from = new Date(curFrom).toISOString();
       if (curTo) params.date_to = new Date(curTo).toISOString();
+      if (curQ) params.q = curQ;
 
-      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/temperature-receptions`;
+      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/fridge-temperatures`;
       const { data } = await axios.get(url, {
         headers: { Authorization: `Bearer ${token}` },
         params,
@@ -106,16 +92,15 @@ export default function ReceptionTemperatureList({
   };
 
   useEffect(() => {
-    if (restaurantId) fetchData(1, { dateFrom: "", dateTo: "" });
+    if (restaurantId) fetchData(1, { q: "", dateFrom: "", dateTo: "" });
   }, [restaurantId]);
 
   useEffect(() => {
     const handleUpsert = (event) => {
       const doc = event?.detail?.doc;
       if (!doc || !doc._id) return;
-      if (restaurantId && String(doc.restaurantId) !== String(restaurantId)) {
+      if (restaurantId && String(doc.restaurantId) !== String(restaurantId))
         return;
-      }
 
       const currentMeta = metaRef.current || {};
       const limit = currentMeta.limit || 20;
@@ -135,14 +120,11 @@ export default function ReceptionTemperatureList({
           isNew = true;
           if (page === 1) {
             nextList = [doc, ...prevList];
-            if (nextList.length > limit) {
-              nextList = nextList.slice(0, limit);
-            }
+            if (nextList.length > limit) nextList = nextList.slice(0, limit);
           } else {
             nextList = prevList;
           }
         }
-
         return sortByDate(nextList || prevList);
       });
 
@@ -158,9 +140,9 @@ export default function ReceptionTemperatureList({
       }
     };
 
-    window.addEventListener("temperature-reception:upsert", handleUpsert);
+    window.addEventListener("fridge-temperature:upsert", handleUpsert);
     return () =>
-      window.removeEventListener("temperature-reception:upsert", handleUpsert);
+      window.removeEventListener("fridge-temperature:upsert", handleUpsert);
   }, [restaurantId]);
 
   const filtered = useMemo(() => {
@@ -168,13 +150,17 @@ export default function ReceptionTemperatureList({
     const qq = q.toLowerCase();
     return items.filter((it) =>
       [
-        it?.packagingCondition,
-        it?.note,
+        it?.fridgeName,
+        it?.fridgeId,
+        it?.location,
+        it?.locationId,
+        it?.doorState,
+        it?.sensorIdentifier,
         it?.unit,
         String(it?.value ?? ""),
         it?.recordedBy?.firstName,
         it?.recordedBy?.lastName,
-        it?.receptionId?.supplier,
+        it?.note,
       ]
         .join(" ")
         .toLowerCase()
@@ -190,7 +176,7 @@ export default function ReceptionTemperatureList({
   const onConfirmDelete = async () => {
     if (!deleteTarget) return;
 
-    const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/temperature-receptions/${deleteTarget._id}`;
+    const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/fridge-temperatures/${deleteTarget._id}`;
 
     try {
       setDeleteLoading(true);
@@ -229,13 +215,12 @@ export default function ReceptionTemperatureList({
 
   return (
     <div className="bg-white rounded-lg drop-shadow-sm p-4">
-      {/* Filtres (fixes) */}
       <div className="flex flex-col gap-3 mb-4">
         <div className="flex flex-col gap-3 midTablet:flex-row midTablet:flex-wrap midTablet:items-end">
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Rechercher température, note, opérateur, fournisseur…"
+            placeholder="Rechercher nom, emplacement, capteur, note, opérateur…"
             className="w-full border rounded p-2 midTablet:flex-1"
           />
 
@@ -282,7 +267,7 @@ export default function ReceptionTemperatureList({
                 setQ("");
                 setDateFrom("");
                 setDateTo("");
-                fetchData(1, { dateFrom: "", dateTo: "" });
+                fetchData(1, { q: "", dateFrom: "", dateTo: "" });
               }}
               disabled={!hasActiveFilters}
               className={`px-4 py-2 rounded bg-blue text-white ${
@@ -300,9 +285,11 @@ export default function ReceptionTemperatureList({
           <thead className="whitespace-nowrap">
             <tr className="text-left border-b">
               <th className="py-2 pr-3">Date</th>
+              <th className="py-2 pr-3">Enceinte</th>
+              <th className="py-2 pr-3">Emplacement</th>
               <th className="py-2 pr-3">T°</th>
-              <th className="py-2 pr-3">Emballage</th>
-              <th className="py-2 pr-3">Réception associée</th>
+              <th className="py-2 pr-3">Porte</th>
+              <th className="py-2 pr-3">Capteur</th>
               <th className="py-2 pr-3">Opérateur</th>
               <th className="py-2 pr-3">Note</th>
               <th className="py-2 pr-3 text-right">Actions</th>
@@ -311,14 +298,14 @@ export default function ReceptionTemperatureList({
           <tbody>
             {!loading && filtered.length === 0 && (
               <tr>
-                <td colSpan={7} className="py-6 text-center opacity-60">
+                <td colSpan={9} className="py-6 text-center opacity-60">
                   Aucun relevé
                 </td>
               </tr>
             )}
             {loading && (
               <tr>
-                <td colSpan={7} className="py-6 text-center opacity-60">
+                <td colSpan={9} className="py-6 text-center opacity-60">
                   Chargement…
                 </td>
               </tr>
@@ -327,21 +314,31 @@ export default function ReceptionTemperatureList({
               filtered.map((it) => (
                 <tr
                   key={it._id}
-                  className={`border-b transition-colors ${
-                    editingId === it._id ? "bg-lightGrey" : ""
-                  }`}
+                  className={`border-b transition-colors ${editingId === it._id ? "bg-lightGrey" : ""}`}
                 >
                   <td className="py-2 pr-3 whitespace-nowrap">
-                    {fmtDate(it.receivedAt)}
+                    {fmtDate(it.createdAt)}
+                  </td>
+                  <td className="py-2 pr-3 whitespace-nowrap">
+                    {it.fridgeName}
+                    {it.fridgeId ? (
+                      <span className="opacity-60"> • {it.fridgeId}</span>
+                    ) : null}
+                  </td>
+                  <td className="py-2 pr-3 whitespace-nowrap">
+                    {it.location || "—"}
+                    {it.locationId ? (
+                      <span className="opacity-60"> • {it.locationId}</span>
+                    ) : null}
                   </td>
                   <td className="py-2 pr-3 whitespace-nowrap">
                     {it.value} {it.unit}
                   </td>
                   <td className="py-2 pr-3 whitespace-nowrap">
-                    {it.packagingCondition}
+                    {it.doorState || "unknown"}
                   </td>
                   <td className="py-2 pr-3 whitespace-nowrap">
-                    {formatReceptionLabel(it.receptionId)}
+                    {it.sensorIdentifier || "—"}
                   </td>
                   <td className="py-2 pr-3 whitespace-nowrap">
                     {it?.recordedBy
@@ -411,7 +408,6 @@ export default function ReceptionTemperatureList({
               onClick={closeDeleteModal}
               className="absolute inset-0 bg-black/20"
             />
-
             <div className="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
               <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-[450px] pointer-events-auto">
                 <h2 className="text-xl font-semibold mb-6 text-center">
