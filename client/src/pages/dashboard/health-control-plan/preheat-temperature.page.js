@@ -16,10 +16,10 @@ import NoAvailableComponent from "@/components/_shared/options/no-available.opti
 
 // SVG
 import { HealthSvg } from "@/components/_shared/_svgs/health.svg";
-import FridgeTemperatureForm from "@/components/dashboard/health-control-plan/fridge-temperature/form.component";
-import FridgeTemperatureList from "@/components/dashboard/health-control-plan/fridge-temperature/list.component";
+import PreheatTemperatureForm from "@/components/dashboard/health-control-plan/preheat-temperature/form.component";
+import PreheatTemperatureList from "@/components/dashboard/health-control-plan/preheat-temperature/list.component";
 
-export default function FridgeTemperaturePage(props) {
+export default function PreheatTemperaturePage(props) {
   const { t } = useTranslation("");
   const router = useRouter();
 
@@ -96,19 +96,19 @@ export default function FridgeTemperaturePage(props) {
 
                       <>
                         <span>/</span>
-                        <span>T° enceintes frigorifiques</span>
+                        <span>T° mise en chauffe</span>
                       </>
                     </h1>
                   </div>
                 </div>
                 <div className="flex flex-col gap-6">
-                  <FridgeTemperatureForm
+                  <PreheatTemperatureForm
                     restaurantId={restaurantContext.restaurantData?._id}
                     initial={editing}
                     onSuccess={(doc) => {
                       setEditing(null);
                       window.dispatchEvent(
-                        new CustomEvent("fridge-temperature:upsert", {
+                        new CustomEvent("preheat-temperature:upsert", {
                           detail: { doc },
                         })
                       );
@@ -116,7 +116,7 @@ export default function FridgeTemperaturePage(props) {
                     onCancel={() => setEditing(null)}
                   />
 
-                  <FridgeTemperatureList
+                  <PreheatTemperatureList
                     restaurantId={restaurantContext.restaurantData?._id}
                     onEdit={(doc) => setEditing(doc)}
                     editingId={editing?._id || null}

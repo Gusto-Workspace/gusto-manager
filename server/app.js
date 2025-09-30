@@ -93,9 +93,13 @@ app.use(apiRoutes, employeesRoutes);
 // HACCP
 const reception_temperature = require("./routes/health-control-plan/reception-temperature.routes");
 const fridge_temperature = require("./routes/health-control-plan/fridge-temperature.routes");
+const preheat_temperature = require("./routes/health-control-plan/preheat-temperature.routes")
+const postheat_temperature = require("./routes/health-control-plan/postheat-temperature.routes")
 
 app.use(apiRoutes, reception_temperature);
 app.use(apiRoutes, fridge_temperature);
+app.use(apiRoutes, preheat_temperature)
+app.use(apiRoutes, postheat_temperature)
 
 // SSE BUS
 mountSseRoute(app);

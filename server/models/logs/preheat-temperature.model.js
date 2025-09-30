@@ -9,19 +9,30 @@ const preheatTemperatureSchema = new Schema(
       required: true,
       index: true,
     },
-    location: { type: String, required: true }, // ex "Four 1", "Friteuse 1"
+
+    // Libellé libre (ex "Four 1", "Friteuse 1")
+    location: { type: String, required: true },
+
+    // Identifiants
+    equipmentId: { type: String, index: true },
     locationId: { type: String, index: true },
+
+    // Mesure
     value: { type: Number, required: true },
     unit: { type: String, enum: ["°C", "°F"], default: "°C" },
-    recipeId: { type: Schema.Types.ObjectId, ref: "Recipe" },
-    batchId: String,
     phase: { type: String, default: "preheat" },
+
+    // Note (optionnelle)
+    note: String,
+
+    // Qui a enregistré (snapshot)
     recordedBy: {
       userId: { type: Schema.Types.ObjectId, required: true, index: true },
       role: { type: String, enum: ["owner", "employee"], required: true },
       firstName: { type: String },
       lastName: { type: String },
     },
+
     createdAt: { type: Date, default: Date.now, index: true },
   },
   { versionKey: false, collection: "preheat_temperature" }

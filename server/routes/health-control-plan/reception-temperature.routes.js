@@ -207,7 +207,6 @@ router.put(
         return res.json(prev);
       }
 
-      // on applique les changements et on sauvegarde
       prev.value = next.value;
       prev.unit = next.unit;
       prev.packagingCondition = next.packagingCondition;

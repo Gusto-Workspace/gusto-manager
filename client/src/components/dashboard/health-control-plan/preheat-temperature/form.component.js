@@ -1,8 +1,7 @@
 "use client";
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import axios from "axios";
-import { useState } from "react";
 
 function toDatetimeLocalValue(value) {
   const base = value ? new Date(value) : new Date();
@@ -17,20 +16,18 @@ function toDatetimeLocalValue(value) {
 
 function buildFormDefaults(record) {
   return {
-    fridgeName: record?.fridgeName ?? "",
-    fridgeId: record?.fridgeId ?? "",
     location: record?.location ?? "",
+    equipmentId: record?.equipmentId ?? "",
     locationId: record?.locationId ?? "",
     value: record?.value ?? "",
     unit: record?.unit ?? "°C",
-    sensorIdentifier: record?.sensorIdentifier ?? "",
-    doorState: record?.doorState ?? "unknown",
-    note: record?.note ?? "",
+    phase: record?.phase ?? "preheat",
+    note: record?.note ?? "", // ➕
     createdAt: toDatetimeLocalValue(record?.createdAt),
   };
 }
 
-export default function FridgeTemperatureForm({
+export default function PreheatTemperatureForm({
   restaurantId,
   initial = null,
   onSuccess,
@@ -41,7 +38,9 @@ export default function FridgeTemperatureForm({
     handleSubmit,
     reset,
     formState: { errors, isSubmitting },
-  } = useForm({ defaultValues: buildFormDefaults(initial) });
+  } = useForm({
+    defaultValues: buildFormDefaults(initial),
+  });
 
   useEffect(() => {
     reset(buildFormDefaults(initial));
@@ -49,15 +48,26 @@ export default function FridgeTemperatureForm({
 
   const onSubmit = async (data) => {
     const token = localStorage.getItem("token");
+    if (!token) {
+      console.error("Token manquant");
+      return;
+    }
+
     const payload = {
-      ...data,
+      location: data.location,
+      equipmentId: data.equipmentId || undefined,
+      locationId: data.locationId || undefined,
+      value: Number(data.value),
+      unit: data.unit,
+      phase: data.phase || "preheat",
+      note: data.note || undefined, // ➕
       createdAt: data.createdAt ? new Date(data.createdAt) : undefined,
-      // recordedBy est géré côté serveur à partir du token si role=employee
     };
 
     const url = initial?._id
-      ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/fridge-temperatures/${initial._id}`
-      : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/fridge-temperatures`;
+      ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/preheat-temperatures/${initial._id}`
+      : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/preheat-temperatures`;
+
     const method = initial?._id ? "put" : "post";
 
     const { data: saved } = await axios[method](url, payload, {
@@ -76,44 +86,33 @@ export default function FridgeTemperatureForm({
       <div className="flex flex-col midTablet:flex-row justify-between gap-4">
         {/* Bloc gauche */}
         <div className="flex flex-col gap-4 w-full">
-          {/* Ligne 1: Enceinte + Emplacement */}
+          {/* Ligne 1 : Emplacement */}
           <div className="flex flex-col gap-2 midTablet:flex-row">
             <div className="flex-1 flex flex-col">
-              <label className="text-sm font-medium">Nom de l’enceinte *</label>
+              <label className="text-sm font-medium">Emplacement *</label>
               <input
                 type="text"
-                placeholder="Ex: Frigo préparation 1"
-                {...register("fridgeName", { required: "Requis" })}
+                placeholder='ex: "Four 1", "Friteuse 1"'
+                autoComplete="on"
+                {...register("location", { required: "Requis" })}
                 className="border rounded p-2 h-[44px]"
               />
-              {errors.fridgeName && (
+              {errors.location && (
                 <p className="text-xs text-red mt-1">
-                  {errors.fridgeName.message}
+                  {errors.location.message}
                 </p>
               )}
             </div>
-
-            <div className="flex-1 flex flex-col">
-              <label className="text-sm font-medium">Emplacement</label>
-              <input
-                type="text"
-                placeholder="Cuisine, réserve…"
-                {...register("location")}
-                className="border rounded p-2 h-[44px]"
-              />
-            </div>
           </div>
 
-          {/* Ligne 2: Identifiants */}
+          {/* Ligne 2 : Identifiants */}
           <div className="flex flex-col gap-2 midTablet:flex-row">
             <div className="flex-1 flex flex-col">
-              <label className="text-sm font-medium">
-                Identifiant enceinte
-              </label>
+              <label className="text-sm font-medium">Identifiant interne</label>
               <input
                 type="text"
-                placeholder="ID interne (optionnel)"
-                {...register("fridgeId")}
+                placeholder="ID équipement (optionnel)"
+                {...register("equipmentId")}
                 className="border rounded p-2 h-[44px]"
               />
             </div>
@@ -130,15 +129,15 @@ export default function FridgeTemperatureForm({
             </div>
           </div>
 
-          {/* Ligne 3: Mesure */}
+          {/* Ligne 3 : Mesure + phase + date */}
           <div className="flex flex-wrap justify-between gap-2">
             <div className="flex gap-2">
-              <div className="flex flex-col w-24">
+              <div className="flex flex-col w-28">
                 <label className="text-sm font-medium">Température *</label>
                 <input
                   type="number"
                   step="0.1"
-                  placeholder="ex: 3.2"
+                  placeholder="ex: 180"
                   {...register("value", { required: "Requis" })}
                   className="border rounded p-2 h-[44px]"
                 />
@@ -161,53 +160,41 @@ export default function FridgeTemperatureForm({
               </div>
             </div>
 
-            <div className="flex gap-2">
-              <div className="flex flex-col">
-                <label className="text-sm font-medium">État de porte</label>
-                <select
-                  {...register("doorState")}
-                  className="border rounded p-2 h-[44px]"
-                >
-                  <option value="unknown">inconnu</option>
-                  <option value="closed">fermée</option>
-                  <option value="open">ouverte</option>
-                </select>
-              </div>
-
-              <div className="flex flex-col">
-                <label className="text-sm font-medium">Capteur</label>
-                <input
-                  type="text"
-                  placeholder="N° de sonde / ref"
-                  {...register("sensorIdentifier")}
-                  className="border rounded p-2 h-[44px]"
-                />
-              </div>
+            <div className="flex flex-col w-[180px]">
+              <label className="text-sm font-medium">Phase</label>
+              <select
+                {...register("phase")}
+                className="border rounded p-2 h-[44px]"
+              >
+                <option value="preheat">Mise en chauffe</option>
+                <option value="hot-holding">Maintien au chaud</option>
+              </select>
             </div>
-          </div>
-          <div className="flex flex-col w-fit">
-            <label className="text-sm font-medium">Date/heure mesure</label>
-            <input
-              type="datetime-local"
-              {...register("createdAt")}
-              className="border rounded p-2 h-[44px]"
-            />
+
+            <div className="flex flex-col w-[240px]">
+              <label className="text-sm font-medium">Date/heure mesure</label>
+              <input
+                type="datetime-local"
+                {...register("createdAt")}
+                className="border rounded p-2"
+              />
+            </div>
           </div>
         </div>
 
-        {/* Bloc droit */}
+        {/* Bloc droit (Note) */}
         <div className="flex flex-col w-full">
           <label className="text-sm font-medium">Note</label>
           <textarea
             rows={4}
-            {...register("note")}
+            {...register("note")} // ➕
             className="border rounded p-2 resize-none h-full min-h-[96px]"
             placeholder="Informations complémentaires…"
           />
         </div>
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex gap-2 ">
         <button
           type="submit"
           disabled={isSubmitting}
@@ -215,6 +202,7 @@ export default function FridgeTemperatureForm({
         >
           {initial?._id ? "Mettre à jour" : "Enregistrer"}
         </button>
+
         {initial?._id && (
           <button
             type="button"

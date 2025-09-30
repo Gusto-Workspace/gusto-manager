@@ -27,14 +27,14 @@ const defaultTiles = [
     label: "T° mise en chauffe",
     icon: "🔥",
     note: "Cuisson / maintien",
-    href: "/dashboard/health-control-plan/reception-temperature",
+    href: "/dashboard/health-control-plan/preheat-temperature",
   },
   {
     key: "heating-out",
     label: "T° sortie de chauffe",
     icon: "🍽️",
     note: "Sortie cuisson",
-    href: "/dashboard/health-control-plan/reception-temperature",
+    href: "/dashboard/health-control-plan/postheat-temperature",
   },
   {
     key: "service",

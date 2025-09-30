@@ -4,8 +4,8 @@ const router = express.Router();
 // MIDDLEWARE
 const authenticateToken = require("../../middleware/authentificate-token");
 
-// MODELS
-const FridgeTemperature = require("../../models/logs/fridge-temperature.model");
+// MODEL
+const PreheatTemperature = require("../../models/logs/preheat-temperature.model");
 
 /* --------- helpers --------- */
 function currentUserFromToken(req) {
@@ -32,75 +32,61 @@ function normalizeDate(v) {
 /** True si au moins un champ métier a changé */
 function hasBusinessChanges(prev, next) {
   const fields = [
-    "fridgeName",
-    "fridgeId",
     "location",
+    "equipmentId",
     "locationId",
     "value",
     "unit",
-    "sensorIdentifier",
-    "doorState",
+    "phase",
     "note",
   ];
-  for (const f of fields) {
+  for (const f of fields)
     if ((prev?.[f] ?? null) !== (next?.[f] ?? null)) return true;
-  }
-  if (
-    (prev?.createdAt?.getTime?.() ?? null) !==
-    (next?.createdAt?.getTime?.() ?? null)
-  )
-    return true;
-  return false;
+  const prevTime = prev?.createdAt?.getTime?.() ?? null;
+  const nextTime = next?.createdAt?.getTime?.() ?? null;
+  return prevTime !== nextTime;
 }
 
 /* -------------------- CREATE -------------------- */
 router.post(
-  "/restaurants/:restaurantId/fridge-temperatures",
+  "/restaurants/:restaurantId/preheat-temperatures",
   authenticateToken,
   async (req, res) => {
     try {
       const { restaurantId } = req.params;
       const inData = { ...req.body };
 
-      // validations légères
-      if (!inData.fridgeName || !String(inData.fridgeName).trim()) {
-        return res.status(400).json({ error: "fridgeName est requis" });
-      }
-      if (inData.value === undefined || inData.value === null) {
+      const location = normalizeStr(inData.location);
+      if (!location)
+        return res.status(400).json({ error: "location est requise" });
+
+      if (inData.value === undefined || inData.value === null)
         return res.status(400).json({ error: "value est requise" });
-      }
       const numVal = Number(inData.value);
-      if (Number.isNaN(numVal)) {
+      if (Number.isNaN(numVal))
         return res.status(400).json({ error: "value doit être un nombre" });
-      }
 
       const currentUser = currentUserFromToken(req);
       if (!currentUser)
         return res.status(400).json({ error: "Utilisateur non reconnu" });
 
-      const doc = new FridgeTemperature({
+      const doc = new PreheatTemperature({
         restaurantId,
-        fridgeName: String(inData.fridgeName).trim(),
-        fridgeId: normalizeStr(inData.fridgeId),
-        location: normalizeStr(inData.location),
+        location,
+        equipmentId: normalizeStr(inData.equipmentId),
         locationId: normalizeStr(inData.locationId),
         value: numVal,
         unit: inData.unit === "°F" ? "°F" : "°C",
-        sensorIdentifier: normalizeStr(inData.sensorIdentifier),
-        doorState: ["open", "closed", "unknown"].includes(inData.doorState)
-          ? inData.doorState
-          : "unknown",
-        recordedBy: currentUser, // snapshot auteur (owner ou employee)
-        note: normalizeStr(inData.note),
+        phase: normalizeStr(inData.phase) || "preheat",
+        note: normalizeStr(inData.note), // ➕
+        recordedBy: currentUser, // snapshot auteur
         createdAt: normalizeDate(inData.createdAt) || new Date(),
       });
 
       await doc.save();
-
-      // pas de populate nécessaire: recordedBy est un snapshot embarqué
       return res.status(201).json(doc);
     } catch (err) {
-      console.error("POST /fridge-temperatures:", err);
+      console.error("POST /preheat-temperatures:", err);
       return res
         .status(500)
         .json({ error: "Erreur lors de la création du relevé" });
@@ -110,22 +96,15 @@ router.post(
 
 /* -------------------- LIST -------------------- */
 router.get(
-  "/restaurants/:restaurantId/fridge-temperatures",
+  "/restaurants/:restaurantId/preheat-temperatures",
   authenticateToken,
   async (req, res) => {
     try {
       const { restaurantId } = req.params;
-      const {
-        page = 1,
-        limit = 20,
-        date_from,
-        date_to,
-        q, // filtre texte libre
-      } = req.query;
+      const { page = 1, limit = 20, date_from, date_to, q } = req.query;
 
       const query = { restaurantId };
 
-      // filtre date: createdAt
       if (date_from || date_to) {
         query.createdAt = {};
         if (date_from) query.createdAt.$gte = new Date(date_from);
@@ -137,17 +116,15 @@ router.get(
         }
       }
 
-      // recherche texte (nom, emplacement, capteur, porte, note, opérateur)
       if (q && String(q).trim().length) {
         const rx = new RegExp(String(q).trim(), "i");
         query.$or = [
-          { fridgeName: rx },
-          { fridgeId: rx },
           { location: rx },
+          { equipmentId: rx },
           { locationId: rx },
-          { note: rx },
-          { sensorIdentifier: rx },
-          { doorState: rx },
+          { unit: rx },
+          { phase: rx },
+          { note: rx }, // ➕
           { "recordedBy.firstName": rx },
           { "recordedBy.lastName": rx },
         ];
@@ -155,11 +132,11 @@ router.get(
 
       const skip = (Number(page) - 1) * Number(limit);
       const [items, total] = await Promise.all([
-        FridgeTemperature.find(query)
+        PreheatTemperature.find(query)
           .sort({ createdAt: -1 })
           .skip(skip)
           .limit(Number(limit)),
-        FridgeTemperature.countDocuments(query),
+        PreheatTemperature.countDocuments(query),
       ]);
 
       return res.json({
@@ -172,7 +149,7 @@ router.get(
         },
       });
     } catch (err) {
-      console.error("GET /fridge-temperatures:", err);
+      console.error("GET /preheat-temperatures:", err);
       return res
         .status(500)
         .json({ error: "Erreur lors de la récupération des relevés" });
@@ -182,19 +159,19 @@ router.get(
 
 /* -------------------- READ ONE -------------------- */
 router.get(
-  "/restaurants/:restaurantId/fridge-temperatures/:tempId",
+  "/restaurants/:restaurantId/preheat-temperatures/:tempId",
   authenticateToken,
   async (req, res) => {
     try {
       const { restaurantId, tempId } = req.params;
-      const doc = await FridgeTemperature.findOne({
+      const doc = await PreheatTemperature.findOne({
         _id: tempId,
         restaurantId,
       });
       if (!doc) return res.status(404).json({ error: "Relevé introuvable" });
       return res.json(doc);
     } catch (err) {
-      console.error("GET /fridge-temperatures/:tempId:", err);
+      console.error("GET /preheat-temperatures/:tempId:", err);
       return res
         .status(500)
         .json({ error: "Erreur lors de la récupération du relevé" });
@@ -204,36 +181,30 @@ router.get(
 
 /* -------------------- UPDATE -------------------- */
 router.put(
-  "/restaurants/:restaurantId/fridge-temperatures/:tempId",
+  "/restaurants/:restaurantId/preheat-temperatures/:tempId",
   authenticateToken,
   async (req, res) => {
     try {
       const { restaurantId, tempId } = req.params;
       const inData = { ...req.body };
 
-      // empêche toute tentative de modifier recordedBy côté client
       delete inData.recordedBy;
 
-      const prev = await FridgeTemperature.findOne({
+      const prev = await PreheatTemperature.findOne({
         _id: tempId,
         restaurantId,
       });
       if (!prev) return res.status(404).json({ error: "Relevé introuvable" });
 
-      // normalisations
       const next = {
-        fridgeName:
-          inData.fridgeName !== undefined
-            ? normalizeStr(inData.fridgeName)
-            : prev.fridgeName,
-        fridgeId:
-          inData.fridgeId !== undefined
-            ? normalizeStr(inData.fridgeId)
-            : prev.fridgeId,
         location:
           inData.location !== undefined
             ? normalizeStr(inData.location)
             : prev.location,
+        equipmentId:
+          inData.equipmentId !== undefined
+            ? normalizeStr(inData.equipmentId)
+            : prev.equipmentId,
         locationId:
           inData.locationId !== undefined
             ? normalizeStr(inData.locationId)
@@ -245,50 +216,38 @@ router.put(
               ? "°F"
               : "°C"
             : prev.unit,
-        sensorIdentifier:
-          inData.sensorIdentifier !== undefined
-            ? normalizeStr(inData.sensorIdentifier)
-            : prev.sensorIdentifier,
-        doorState:
-          inData.doorState !== undefined &&
-          ["open", "closed", "unknown"].includes(inData.doorState)
-            ? inData.doorState
-            : prev.doorState,
-        note: inData.note !== undefined ? normalizeStr(inData.note) : prev.note,
+        phase:
+          inData.phase !== undefined
+            ? normalizeStr(inData.phase) || "preheat"
+            : prev.phase,
+        note: inData.note !== undefined ? normalizeStr(inData.note) : prev.note, // ➕
         createdAt:
           inData.createdAt !== undefined
             ? normalizeDate(inData.createdAt) || prev.createdAt
             : prev.createdAt,
       };
 
-      if (next.value !== undefined && Number.isNaN(next.value)) {
+      if (!next.location)
+        return res.status(400).json({ error: "location est requise" });
+      if (next.value !== undefined && Number.isNaN(next.value))
         return res.status(400).json({ error: "value doit être un nombre" });
-      }
-      if (!next.fridgeName) {
-        return res.status(400).json({ error: "fridgeName est requis" });
-      }
 
       const changed = hasBusinessChanges(prev, next);
-      if (!changed) {
-        return res.json(prev);
-      }
+      if (!changed) return res.json(prev);
 
-      // apply
-      prev.fridgeName = next.fridgeName;
-      prev.fridgeId = next.fridgeId;
       prev.location = next.location;
+      prev.equipmentId = next.equipmentId;
       prev.locationId = next.locationId;
       prev.value = next.value;
       prev.unit = next.unit;
-      prev.sensorIdentifier = next.sensorIdentifier;
-      prev.doorState = next.doorState;
-      prev.note = next.note;
+      prev.phase = next.phase;
+      prev.note = next.note; // ➕
       prev.createdAt = next.createdAt;
 
       await prev.save();
       return res.json(prev);
     } catch (err) {
-      console.error("PUT /fridge-temperatures/:tempId:", err);
+      console.error("PUT /preheat-temperatures/:tempId:", err);
       return res
         .status(500)
         .json({ error: "Erreur lors de la mise à jour du relevé" });
@@ -298,19 +257,19 @@ router.put(
 
 /* -------------------- DELETE -------------------- */
 router.delete(
-  "/restaurants/:restaurantId/fridge-temperatures/:tempId",
+  "/restaurants/:restaurantId/preheat-temperatures/:tempId",
   authenticateToken,
   async (req, res) => {
     try {
       const { restaurantId, tempId } = req.params;
-      const doc = await FridgeTemperature.findOneAndDelete({
+      const doc = await PreheatTemperature.findOneAndDelete({
         _id: tempId,
         restaurantId,
       });
       if (!doc) return res.status(404).json({ error: "Relevé introuvable" });
       return res.json({ success: true });
     } catch (err) {
-      console.error("DELETE /fridge-temperatures/:tempId:", err);
+      console.error("DELETE /preheat-temperatures/:tempId:", err);
       return res
         .status(500)
         .json({ error: "Erreur lors de la suppression du relevé" });

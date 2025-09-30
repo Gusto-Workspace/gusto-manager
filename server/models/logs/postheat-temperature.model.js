@@ -10,27 +10,25 @@ const postheatTemperatureSchema = new Schema(
       index: true,
     },
     location: { type: String, required: true },
+    equipmentId: { type: String, index: true },
     locationId: { type: String, index: true },
     value: { type: Number, required: true },
     unit: { type: String, enum: ["°C", "°F"], default: "°C" },
-    recipeId: { type: Schema.Types.ObjectId, ref: "Recipe" },
-    batchId: String,
     phase: { type: String, default: "postheat" },
-    recordedBy: { type: Schema.Types.ObjectId, ref: "Employee" },
     note: String,
-    signature: {
-      by: { type: Schema.Types.ObjectId, ref: "Employee" },
-      at: Date,
-      signatureUrl: String,
-      hash: String,
+    recordedBy: {
+      userId: { type: Schema.Types.ObjectId, required: true, index: true },
+      role: { type: String, enum: ["owner", "employee"], required: true },
+      firstName: { type: String },
+      lastName: { type: String },
     },
     createdAt: { type: Date, default: Date.now, index: true },
   },
-  { versionKey: false, collection: "temperature_postheat" }
+  { versionKey: false, collection: "postheat_temperature" }
 );
 
 postheatTemperatureSchema.index({ restaurantId: 1, createdAt: -1 });
 
 module.exports =
-  mongoose.models.TemperaturePostheat ||
-  mongoose.model("TemperaturePostheat", postheatTemperatureSchema);
+  mongoose.models.PostheatTemperature ||
+  mongoose.model("PostheatTemperature", postheatTemperatureSchema);
