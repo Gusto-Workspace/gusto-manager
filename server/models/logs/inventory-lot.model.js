@@ -60,7 +60,12 @@ const inventoryLotSchema = new Schema(
     // Opérationnel
     labelCode: String, // code/QR à imprimer sur l’étiquette
     notes: String,
-    createdBy: { type: Schema.Types.ObjectId, ref: "Employee" },
+    createdBy: {
+      userId: { type: Schema.Types.ObjectId, required: true, index: true },
+      role: { type: String, enum: ["owner", "employee"], required: true },
+      firstName: { type: String },
+      lastName: { type: String },
+    },
   },
   { versionKey: false, timestamps: true }
 );

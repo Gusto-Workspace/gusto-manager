@@ -16,28 +16,22 @@ function toDatetimeLocalValue(value) {
 
 function buildFormDefaults(record) {
   return {
-    equipmentName: record?.equipmentName ?? "",
-    equipmentId: record?.equipmentId ?? "",
-    equipmentType: record?.equipmentType ?? "other",
-
+    serviceArea: record?.serviceArea ?? "",
+    serviceId: record?.serviceId ?? "",
+    plateId: record?.plateId ?? "",
+    dishName: record?.dishName ?? "",
+    servingMode: record?.servingMode ?? "pass",
+    serviceType: record?.serviceType ?? "unknown",
     location: record?.location ?? "",
     locationId: record?.locationId ?? "",
-
     value: record?.value ?? "",
     unit: record?.unit ?? "°C",
-
-    setpoint: record?.setpoint ?? "",
-    setpointUnit: record?.setpointUnit ?? "°C",
-
-    probeType: record?.probeType ?? "core",
-    phase: record?.phase ?? "postheat",
-
     note: record?.note ?? "",
     createdAt: toDatetimeLocalValue(record?.createdAt),
   };
 }
 
-export default function PostheatTemperatureForm({
+export default function ServiceTemperatureForm({
   restaurantId,
   initial = null,
   onSuccess,
@@ -59,32 +53,23 @@ export default function PostheatTemperatureForm({
     if (!token) return;
 
     const payload = {
-      equipmentName: data.equipmentName,
-      equipmentId: data.equipmentId || undefined,
-      equipmentType: data.equipmentType || undefined,
-
+      serviceArea: data.serviceArea,
+      serviceId: data.serviceId || undefined,
+      plateId: data.plateId || undefined,
+      dishName: data.dishName || undefined,
+      servingMode: data.servingMode || undefined,
+      serviceType: data.serviceType || undefined,
       location: data.location || undefined,
       locationId: data.locationId || undefined,
-
       value: Number(data.value),
       unit: data.unit,
-
-      setpoint:
-        data.setpoint === "" || data.setpoint === null
-          ? undefined
-          : Number(data.setpoint),
-      setpointUnit: data.setpointUnit || undefined,
-
-      probeType: data.probeType || undefined,
-      phase: data.phase || undefined,
-
       note: data.note || undefined,
       createdAt: data.createdAt ? new Date(data.createdAt) : undefined,
     };
 
     const url = initial?._id
-      ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/postheat-temperatures/${initial._id}`
-      : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/postheat-temperatures`;
+      ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/service-temperatures/${initial._id}`
+      : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/service-temperatures`;
     const method = initial?._id ? "put" : "post";
 
     const { data: saved } = await axios[method](url, payload, {
@@ -103,73 +88,66 @@ export default function PostheatTemperatureForm({
       <div className="flex flex-col midTablet:flex-row justify-between gap-4">
         {/* Bloc gauche */}
         <div className="flex flex-col gap-4 w-full">
-          {/* Ligne 1: Équipement */}
+          {/* Ligne 1: Zone + Plat */}
           <div className="flex flex-col gap-2 midTablet:flex-row">
             <div className="flex-1 flex flex-col">
-              <label className="text-sm font-medium">Équipement *</label>
+              <label className="text-sm font-medium">Zone de service *</label>
               <input
                 type="text"
-                placeholder='ex: "Four 1", "Combi 2", "Friteuse 1"…'
-                {...register("equipmentName", { required: "Requis" })}
+                placeholder='ex: "Pass 1", "Salle"'
+                {...register("serviceArea", { required: "Requis" })}
                 className="border rounded p-2 h-[44px]"
-                autoComplete="off"
               />
-              {errors.equipmentName && (
+              {errors.serviceArea && (
                 <p className="text-xs text-red mt-1">
-                  {errors.equipmentName.message}
+                  {errors.serviceArea.message}
                 </p>
               )}
             </div>
-
             <div className="flex-1 flex flex-col">
-              <label className="text-sm font-medium">Type</label>
-              <select
-                {...register("equipmentType")}
+              <label className="text-sm font-medium">Plat / préparation</label>
+              <input
+                type="text"
+                placeholder="ex: Lasagnes bœuf, Velouté potimarron…"
+                {...register("dishName")}
                 className="border rounded p-2 h-[44px]"
-              >
-                <option value="oven">oven</option>
-                <option value="combi-oven">combi-oven</option>
-                <option value="fryer">fryer</option>
-                <option value="plancha">plancha</option>
-                <option value="grill">grill</option>
-                <option value="hob">hob</option>
-                <option value="microwave">microwave</option>
-                <option value="water-bath">water-bath</option>
-                <option value="salamander">salamander</option>
-                <option value="steam-oven">steam-oven</option>
-                <option value="other">other</option>
-              </select>
+              />
             </div>
           </div>
 
-          {/* Ligne 2: Identifiants & Emplacement */}
+          {/* Ligne 2: Identifiants (service/plat) */}
           <div className="flex flex-col gap-2 midTablet:flex-row">
             <div className="flex-1 flex flex-col">
-              <label className="text-sm font-medium">
-                Identifiant équipement
-              </label>
+              <label className="text-sm font-medium">Identifiant service</label>
               <input
                 type="text"
-                placeholder="ID interne (optionnel)"
-                {...register("equipmentId")}
+                placeholder="ID service (optionnel)"
+                {...register("serviceId")}
                 className="border rounded p-2 h-[44px]"
-                autoComplete="off"
               />
             </div>
+            <div className="flex-1 flex flex-col">
+              <label className="text-sm font-medium">Identifiant plat</label>
+              <input
+                type="text"
+                placeholder="ID plat / lot (optionnel)"
+                {...register("plateId")}
+                className="border rounded p-2 h-[44px]"
+              />
+            </div>
+          </div>
+
+          {/* Ligne 3: Emplacement + Mode/Type */}
+          <div className="flex flex-col gap-2 midTablet:flex-row">
             <div className="flex-1 flex flex-col">
               <label className="text-sm font-medium">Emplacement</label>
               <input
                 type="text"
-                placeholder="ex: Cuisine chaude, Poste grill…"
+                placeholder="Zone précise (optionnel)"
                 {...register("location")}
                 className="border rounded p-2 h-[44px]"
-                autoComplete="off"
               />
             </div>
-          </div>
-
-          {/* Ligne 3: Identifiant emplacement */}
-          <div className="flex flex-col gap-2 midTablet:flex-row">
             <div className="flex-1 flex flex-col">
               <label className="text-sm font-medium">
                 Identifiant emplacement
@@ -179,31 +157,49 @@ export default function PostheatTemperatureForm({
                 placeholder="ID emplacement (optionnel)"
                 {...register("locationId")}
                 className="border rounded p-2 h-[44px]"
-                autoComplete="off"
               />
             </div>
+          </div>
 
+          <div className="flex flex-col gap-2 midTablet:flex-row">
             <div className="flex-1 flex flex-col">
-              <label className="text-sm font-medium">Phase</label>
+              <label className="text-sm font-medium">Mode de service</label>
               <select
-                {...register("phase")}
+                {...register("servingMode")}
                 className="border rounded p-2 h-[44px]"
               >
-                <option value="postheat">postheat</option>
-                <option value="reheat">reheat</option>
-                <option value="hot-holding">hot-holding</option>
+                <option value="pass">pass</option>
+                <option value="buffet-hot">buffet-hot</option>
+                <option value="buffet-cold">buffet-cold</option>
+                <option value="table">table</option>
+                <option value="delivery">delivery</option>
+                <option value="takeaway">takeaway</option>
+                <option value="room-service">room-service</option>
+                <option value="catering">catering</option>
+                <option value="other">other</option>
+              </select>
+            </div>
+            <div className="flex-1 flex flex-col">
+              <label className="text-sm font-medium">Type de service</label>
+              <select
+                {...register("serviceType")}
+                className="border rounded p-2 h-[44px]"
+              >
+                <option value="unknown">unknown</option>
+                <option value="hot">hot</option>
+                <option value="cold">cold</option>
               </select>
             </div>
           </div>
 
-          {/* Ligne 4: Mesure & Consigne */}
+          {/* Mesure */}
           <div className="flex flex-wrap gap-2 items-end">
             <div className="flex flex-col w-28">
               <label className="text-sm font-medium">Température *</label>
               <input
                 type="number"
                 step="0.1"
-                placeholder="ex: 75.0"
+                placeholder="ex: 63.0"
                 {...register("value", { required: "Requis" })}
                 className="border rounded p-2 h-[44px]"
               />
@@ -219,20 +215,6 @@ export default function PostheatTemperatureForm({
               >
                 <option value="°C">°C</option>
                 <option value="°F">°F</option>
-              </select>
-            </div>
-
-            <div className="flex flex-col">
-              <label className="text-sm font-medium">Type de mesure</label>
-              <select
-                {...register("probeType")}
-                className="border rounded p-2 h-[44px]"
-              >
-                <option value="core">core</option>
-                <option value="surface">surface</option>
-                <option value="ambient">ambient</option>
-                <option value="oil">oil</option>
-                <option value="other">other</option>
               </select>
             </div>
           </div>

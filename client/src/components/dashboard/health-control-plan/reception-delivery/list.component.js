@@ -19,7 +19,18 @@ function fmtDate(d) {
   }
 }
 
-export default function PostheatTemperatureList({
+function summarizeLots(lines) {
+  const lots = new Set();
+  (lines || []).forEach((l) => {
+    if (l?.lotNumber) lots.add(String(l.lotNumber));
+  });
+  const arr = Array.from(lots);
+  if (!arr.length) return "—";
+  if (arr.length <= 2) return arr.join(", ");
+  return `${arr.slice(0, 2).join(", ")} +${arr.length - 2}`;
+}
+
+export default function ReceptionDeliveryList({
   restaurantId,
   onEdit,
   editingId = null,
@@ -56,9 +67,10 @@ export default function PostheatTemperatureList({
 
   const sortByDate = (list) =>
     [...list].sort(
-      (a, b) => new Date(b?.createdAt || 0) - new Date(a?.createdAt || 0)
+      (a, b) => new Date(b?.receivedAt || 0) - new Date(a?.receivedAt || 0)
     );
 
+  // fetchData avec overrides pour reset propre
   const fetchData = async (page = 1, overrides = {}) => {
     setLoading(true);
     try {
@@ -72,7 +84,7 @@ export default function PostheatTemperatureList({
       if (curTo) params.date_to = new Date(curTo).toISOString();
       if (curQ) params.q = curQ;
 
-      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/postheat-temperatures`;
+      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/reception-deliveries`;
       const { data } = await axios.get(url, {
         headers: { Authorization: `Bearer ${token}` },
         params,
@@ -139,9 +151,9 @@ export default function PostheatTemperatureList({
       }
     };
 
-    window.addEventListener("postheat-temperature:upsert", handleUpsert);
+    window.addEventListener("reception-delivery:upsert", handleUpsert);
     return () =>
-      window.removeEventListener("postheat-temperature:upsert", handleUpsert);
+      window.removeEventListener("reception-delivery:upsert", handleUpsert);
   }, [restaurantId]);
 
   const filtered = useMemo(() => {
@@ -149,18 +161,13 @@ export default function PostheatTemperatureList({
     const qq = q.toLowerCase();
     return items.filter((it) =>
       [
-        it?.equipmentName,
-        it?.equipmentId,
-        it?.equipmentType,
-        it?.location,
-        it?.locationId,
-        it?.probeType,
-        it?.phase,
-        it?.unit,
-        String(it?.value ?? ""),
+        it?.supplier,
+        it?.note,
+        ...(Array.isArray(it?.lines)
+          ? it.lines.flatMap((l) => [l?.productName, l?.lotNumber, l?.unit])
+          : []),
         it?.recordedBy?.firstName,
         it?.recordedBy?.lastName,
-        it?.note,
       ]
         .join(" ")
         .toLowerCase()
@@ -176,7 +183,7 @@ export default function PostheatTemperatureList({
   const onConfirmDelete = async () => {
     if (!deleteTarget) return;
 
-    const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/postheat-temperatures/${deleteTarget._id}`;
+    const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/reception-deliveries/${deleteTarget._id}`;
 
     try {
       setDeleteLoading(true);
@@ -201,7 +208,7 @@ export default function PostheatTemperatureList({
         return nextMeta;
       });
     } catch (err) {
-      console.error("Erreur lors de la suppression du relevé:", err);
+      console.error("Erreur lors de la suppression de la réception:", err);
     } finally {
       setDeleteLoading(false);
     }
@@ -221,7 +228,7 @@ export default function PostheatTemperatureList({
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Rechercher équipement, type, emplacement, sonde, phase, consigne, note, opérateur…"
+            placeholder="Rechercher fournisseur, lot, produit, note…"
             className="w-full border rounded p-2 midTablet:flex-1"
           />
 
@@ -287,12 +294,9 @@ export default function PostheatTemperatureList({
           <thead className="whitespace-nowrap">
             <tr className="text-left border-b">
               <th className="py-2 pr-3">Date</th>
-              <th className="py-2 pr-3">Équipement</th>
-              <th className="py-2 pr-3">Type</th>
-              <th className="py-2 pr-3">Emplacement</th>
-              <th className="py-2 pr-3">Phase</th>
-              <th className="py-2 pr-3">Sonde</th>
-              <th className="py-2 pr-3">T°</th>
+              <th className="py-2 pr-3">Fournisseur</th>
+              <th className="py-2 pr-3">Lignes</th>
+              <th className="py-2 pr-3">Lots</th>
               <th className="py-2 pr-3">Opérateur</th>
               <th className="py-2 pr-3">Note</th>
               <th className="py-2 pr-3 text-right">Actions</th>
@@ -301,14 +305,14 @@ export default function PostheatTemperatureList({
           <tbody>
             {!loading && filtered.length === 0 && (
               <tr>
-                <td colSpan={11} className="py-6 text-center opacity-60">
-                  Aucun relevé
+                <td colSpan={7} className="py-6 text-center opacity-60">
+                  Aucune réception
                 </td>
               </tr>
             )}
             {loading && (
               <tr>
-                <td colSpan={11} className="py-6 text-center opacity-60">
+                <td colSpan={7} className="py-6 text-center opacity-60">
                   Chargement…
                 </td>
               </tr>
@@ -317,34 +321,21 @@ export default function PostheatTemperatureList({
               filtered.map((it) => (
                 <tr
                   key={it._id}
-                  className={`border-b transition-colors ${editingId === it._id ? "bg-lightGrey" : ""}`}
+                  className={`border-b transition-colors ${
+                    editingId === it._id ? "bg-lightGrey" : ""
+                  }`}
                 >
                   <td className="py-2 pr-3 whitespace-nowrap">
-                    {fmtDate(it.createdAt)}
+                    {fmtDate(it.receivedAt)}
                   </td>
                   <td className="py-2 pr-3 whitespace-nowrap">
-                    {it.equipmentName}
-                    {it.equipmentId ? (
-                      <span className="opacity-60"> • {it.equipmentId}</span>
-                    ) : null}
+                    {it.supplier || "—"}
                   </td>
                   <td className="py-2 pr-3 whitespace-nowrap">
-                    {it.equipmentType || "—"}
+                    {Array.isArray(it.lines) ? it.lines.length : 0}
                   </td>
                   <td className="py-2 pr-3 whitespace-nowrap">
-                    <span>{it.location || "—"}</span>
-                    {it.locationId ? (
-                      <span className="opacity-60"> • {it.locationId}</span>
-                    ) : null}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {it.phase || "postheat"}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {it.probeType || "core"}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {it.value} {it.unit}
+                    {summarizeLots(it.lines)}
                   </td>
                   <td className="py-2 pr-3 whitespace-nowrap">
                     {it?.recordedBy
@@ -364,9 +355,7 @@ export default function PostheatTemperatureList({
                         Éditer
                       </button>
                       <button
-                        onClick={() =>
-                          setIsDeleteModalOpen(true) || setDeleteTarget(it)
-                        }
+                        onClick={() => askDelete(it)}
                         className="px-3 py-1 rounded bg-red text-white"
                         aria-label="Supprimer"
                       >
@@ -380,10 +369,11 @@ export default function PostheatTemperatureList({
         </table>
       </div>
 
+      {/* Pagination */}
       {meta?.pages > 1 && (
         <div className="flex items-center justify-between mt-4">
           <div className="text-xs opacity-70">
-            Page {meta.page}/{meta.pages} — {meta.total} relevés
+            Page {meta.page}/{meta.pages} — {meta.total} réceptions
           </div>
           <div className="flex gap-2">
             <button
@@ -404,6 +394,7 @@ export default function PostheatTemperatureList({
         </div>
       )}
 
+      {/* Modale suppression */}
       {isDeleteModalOpen &&
         isClient &&
         createPortal(
@@ -419,11 +410,11 @@ export default function PostheatTemperatureList({
             <div className="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
               <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-[450px] pointer-events-auto">
                 <h2 className="text-xl font-semibold mb-6 text-center">
-                  Supprimer ce relevé ?
+                  Supprimer cette réception ?
                 </h2>
                 <p className="text-sm text-center mb-6">
-                  Cette action est définitive. Le relevé sera retiré de votre
-                  plan de maîtrise sanitaire.
+                  Cette action est définitive. La réception sera retirée de
+                  votre plan de maîtrise sanitaire.
                 </p>
                 <div className="flex gap-4 mx-auto justify-center">
                   <button

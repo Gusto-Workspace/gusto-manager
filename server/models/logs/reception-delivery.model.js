@@ -1,11 +1,10 @@
 const mongoose = require("mongoose");
 const { Schema } = mongoose;
 
-const receptionLineSchema = new Schema(
+const receptionDeliveryLineSchema = new Schema(
   {
     productName: String,
     supplierProductId: String,
-    supplierId: { type: Schema.Types.ObjectId, ref: "Supplier" },
     lotNumber: String,
     dlc: Date,
     ddm: Date,
@@ -22,7 +21,7 @@ const receptionLineSchema = new Schema(
   { _id: false }
 );
 
-const receptionSchema = new Schema(
+const receptionDeliverySchema = new Schema(
   {
     restaurantId: {
       type: Schema.Types.ObjectId,
@@ -31,17 +30,23 @@ const receptionSchema = new Schema(
       index: true,
     },
     supplier: String,
-    supplierId: { type: Schema.Types.ObjectId, ref: "Supplier" },
     receivedAt: { type: Date, default: Date.now, index: true },
-    lines: { type: [receptionLineSchema], default: [] },
-    receivedBy: { type: Schema.Types.ObjectId, ref: "Employee" },
+    lines: { type: [receptionDeliveryLineSchema], default: [] },
+    recordedBy: {
+      userId: { type: Schema.Types.ObjectId, required: true, index: true },
+      role: { type: String, enum: ["owner", "employee"], required: true },
+      firstName: { type: String },
+      lastName: { type: String },
+    },
     note: String,
     billUrl: String,
   },
   { versionKey: false }
 );
 
-receptionSchema.index({ restaurantId: 1, receivedAt: -1 });
+receptionDeliverySchema.index({ restaurantId: 1, receivedAt: -1 });
+receptionDeliverySchema.index({ restaurantId: 1, "lines.lotNumber": 1 });
 
 module.exports =
-  mongoose.models.Reception || mongoose.model("Reception", receptionSchema);
+  mongoose.models.ReceptionDelivery ||
+  mongoose.model("ReceptionDelivery", receptionDeliverySchema);

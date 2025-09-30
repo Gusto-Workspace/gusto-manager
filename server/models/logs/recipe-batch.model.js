@@ -4,9 +4,7 @@ const { Schema } = mongoose;
 const ingredientRefSchema = new Schema(
   {
     name: String,
-    supplierId: { type: Schema.Types.ObjectId, ref: "Supplier" },
     lotNumber: String,
-    stockLotId: { type: Schema.Types.ObjectId, ref: "InventoryLot" },
     qty: Number,
     unit: String,
   },
@@ -26,7 +24,12 @@ const recipeBatchSchema = new Schema(
     preparedAt: { type: Date, default: Date.now, index: true },
     usedByServiceDate: Date,
     ingredients: { type: [ingredientRefSchema], default: [] },
-    createdBy: { type: Schema.Types.ObjectId, ref: "Employee" },
+    createdBy: {
+      userId: { type: Schema.Types.ObjectId, required: true, index: true },
+      role: { type: String, enum: ["owner", "employee"], required: true },
+      firstName: { type: String },
+      lastName: { type: String },
+    },
     notes: String,
   },
   { versionKey: false }

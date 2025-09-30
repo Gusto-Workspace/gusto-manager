@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 
 const authenticateToken = require("../../middleware/authentificate-token");
-const PostheatTemperature = require("../../models/logs/postheat-temperature.model");
+const ServiceTemperature = require("../../models/logs/service-temperature.model");
 
 /* --------- helpers --------- */
 function currentUserFromToken(req) {
@@ -28,15 +28,16 @@ function normalizeDate(v) {
 }
 function hasBusinessChanges(prev, next) {
   const fields = [
-    "equipmentName",
-    "equipmentId",
-    "equipmentType",
+    "serviceArea",
+    "serviceId",
+    "plateId",
+    "dishName",
+    "servingMode",
+    "serviceType",
     "location",
     "locationId",
     "value",
     "unit",
-    "probeType",
-    "phase",
     "note",
   ];
   for (const f of fields)
@@ -48,16 +49,16 @@ function hasBusinessChanges(prev, next) {
 
 /* -------------------- CREATE -------------------- */
 router.post(
-  "/restaurants/:restaurantId/postheat-temperatures",
+  "/restaurants/:restaurantId/service-temperatures",
   authenticateToken,
   async (req, res) => {
     try {
       const { restaurantId } = req.params;
       const inData = { ...req.body };
 
-      const equipmentName = normalizeStr(inData.equipmentName);
-      if (!equipmentName)
-        return res.status(400).json({ error: "equipmentName est requis" });
+      const serviceArea = normalizeStr(inData.serviceArea);
+      if (!serviceArea)
+        return res.status(400).json({ error: "serviceArea est requis" });
 
       if (inData.value === undefined || inData.value === null) {
         return res.status(400).json({ error: "value est requise" });
@@ -71,26 +72,31 @@ router.post(
       if (!currentUser)
         return res.status(400).json({ error: "Utilisateur non reconnu" });
 
-      const doc = new PostheatTemperature({
+      const doc = new ServiceTemperature({
         restaurantId,
-
-        equipmentName,
-        equipmentId: normalizeStr(inData.equipmentId),
-        equipmentType: [
-          "oven",
-          "combi-oven",
-          "fryer",
-          "plancha",
-          "grill",
-          "hob",
-          "microwave",
-          "water-bath",
-          "salamander",
-          "steam-oven",
-          "other",
-        ].includes(inData.equipmentType)
-          ? inData.equipmentType
-          : "other",
+        serviceArea,
+        serviceId: normalizeStr(inData.serviceId),
+        plateId: normalizeStr(inData.plateId),
+        dishName: normalizeStr(inData.dishName),
+        servingMode: (() => {
+          const allowed = [
+            "pass",
+            "buffet-hot",
+            "buffet-cold",
+            "table",
+            "delivery",
+            "takeaway",
+            "room-service",
+            "catering",
+            "other",
+          ];
+          return allowed.includes(inData.servingMode)
+            ? inData.servingMode
+            : "pass";
+        })(),
+        serviceType: ["hot", "cold", "unknown"].includes(inData.serviceType)
+          ? inData.serviceType
+          : "unknown",
 
         location: normalizeStr(inData.location),
         locationId: normalizeStr(inData.locationId),
@@ -98,26 +104,16 @@ router.post(
         value: numVal,
         unit: inData.unit === "°F" ? "°F" : "°C",
 
-        probeType: ["core", "surface", "ambient", "oil", "other"].includes(
-          inData.probeType
-        )
-          ? inData.probeType
-          : "core",
-
-        phase: ["postheat", "reheat", "hot-holding"].includes(inData.phase)
-          ? inData.phase
-          : "postheat",
-
         note: normalizeStr(inData.note),
 
-        recordedBy: currentUser,
+        recordedBy: currentUser, // snapshot
         createdAt: normalizeDate(inData.createdAt) || new Date(),
       });
 
       await doc.save();
       return res.status(201).json(doc);
     } catch (err) {
-      console.error("POST /postheat-temperatures:", err);
+      console.error("POST /service-temperatures:", err);
       return res
         .status(500)
         .json({ error: "Erreur lors de la création du relevé" });
@@ -127,7 +123,7 @@ router.post(
 
 /* -------------------- LIST -------------------- */
 router.get(
-  "/restaurants/:restaurantId/postheat-temperatures",
+  "/restaurants/:restaurantId/service-temperatures",
   authenticateToken,
   async (req, res) => {
     try {
@@ -150,14 +146,15 @@ router.get(
       if (q && String(q).trim().length) {
         const rx = new RegExp(String(q).trim(), "i");
         query.$or = [
-          { equipmentName: rx },
-          { equipmentId: rx },
-          { equipmentType: rx },
+          { serviceArea: rx },
+          { serviceId: rx },
+          { plateId: rx },
+          { dishName: rx },
+          { servingMode: rx },
+          { serviceType: rx },
           { location: rx },
           { locationId: rx },
           { unit: rx },
-          { probeType: rx },
-          { phase: rx },
           { note: rx },
           { "recordedBy.firstName": rx },
           { "recordedBy.lastName": rx },
@@ -166,11 +163,11 @@ router.get(
 
       const skip = (Number(page) - 1) * Number(limit);
       const [items, total] = await Promise.all([
-        PostheatTemperature.find(query)
+        ServiceTemperature.find(query)
           .sort({ createdAt: -1 })
           .skip(skip)
           .limit(Number(limit)),
-        PostheatTemperature.countDocuments(query),
+        ServiceTemperature.countDocuments(query),
       ]);
 
       return res.json({
@@ -183,7 +180,7 @@ router.get(
         },
       });
     } catch (err) {
-      console.error("GET /postheat-temperatures:", err);
+      console.error("GET /service-temperatures:", err);
       return res
         .status(500)
         .json({ error: "Erreur lors de la récupération des relevés" });
@@ -193,19 +190,19 @@ router.get(
 
 /* -------------------- READ ONE -------------------- */
 router.get(
-  "/restaurants/:restaurantId/postheat-temperatures/:tempId",
+  "/restaurants/:restaurantId/service-temperatures/:tempId",
   authenticateToken,
   async (req, res) => {
     try {
       const { restaurantId, tempId } = req.params;
-      const doc = await PostheatTemperature.findOne({
+      const doc = await ServiceTemperature.findOne({
         _id: tempId,
         restaurantId,
       });
       if (!doc) return res.status(404).json({ error: "Relevé introuvable" });
       return res.json(doc);
     } catch (err) {
-      console.error("GET /postheat-temperatures/:tempId:", err);
+      console.error("GET /service-temperatures/:tempId:", err);
       return res
         .status(500)
         .json({ error: "Erreur lors de la récupération du relevé" });
@@ -215,7 +212,7 @@ router.get(
 
 /* -------------------- UPDATE -------------------- */
 router.put(
-  "/restaurants/:restaurantId/postheat-temperatures/:tempId",
+  "/restaurants/:restaurantId/service-temperatures/:tempId",
   authenticateToken,
   async (req, res) => {
     try {
@@ -224,39 +221,51 @@ router.put(
 
       delete inData.recordedBy;
 
-      const prev = await PostheatTemperature.findOne({
+      const prev = await ServiceTemperature.findOne({
         _id: tempId,
         restaurantId,
       });
       if (!prev) return res.status(404).json({ error: "Relevé introuvable" });
 
       const next = {
-        equipmentName:
-          inData.equipmentName !== undefined
-            ? normalizeStr(inData.equipmentName)
-            : prev.equipmentName,
-        equipmentId:
-          inData.equipmentId !== undefined
-            ? normalizeStr(inData.equipmentId)
-            : prev.equipmentId,
-        equipmentType:
-          inData.equipmentType !== undefined
+        serviceArea:
+          inData.serviceArea !== undefined
+            ? normalizeStr(inData.serviceArea)
+            : prev.serviceArea,
+        serviceId:
+          inData.serviceId !== undefined
+            ? normalizeStr(inData.serviceId)
+            : prev.serviceId,
+        plateId:
+          inData.plateId !== undefined
+            ? normalizeStr(inData.plateId)
+            : prev.plateId,
+        dishName:
+          inData.dishName !== undefined
+            ? normalizeStr(inData.dishName)
+            : prev.dishName,
+        servingMode:
+          inData.servingMode !== undefined
             ? [
-                "oven",
-                "combi-oven",
-                "fryer",
-                "plancha",
-                "grill",
-                "hob",
-                "microwave",
-                "water-bath",
-                "salamander",
-                "steam-oven",
+                "pass",
+                "buffet-hot",
+                "buffet-cold",
+                "table",
+                "delivery",
+                "takeaway",
+                "room-service",
+                "catering",
                 "other",
-              ].includes(inData.equipmentType)
-              ? inData.equipmentType
-              : prev.equipmentType
-            : prev.equipmentType,
+              ].includes(inData.servingMode)
+              ? inData.servingMode
+              : prev.servingMode
+            : prev.servingMode,
+        serviceType:
+          inData.serviceType !== undefined
+            ? ["hot", "cold", "unknown"].includes(inData.serviceType)
+              ? inData.serviceType
+              : prev.serviceType
+            : prev.serviceType,
 
         location:
           inData.location !== undefined
@@ -275,22 +284,6 @@ router.put(
               : "°C"
             : prev.unit,
 
-        probeType:
-          inData.probeType !== undefined
-            ? ["core", "surface", "ambient", "oil", "other"].includes(
-                inData.probeType
-              )
-              ? inData.probeType
-              : prev.probeType
-            : prev.probeType,
-
-        phase:
-          inData.phase !== undefined
-            ? ["postheat", "reheat", "hot-holding"].includes(inData.phase)
-              ? inData.phase
-              : prev.phase
-            : prev.phase,
-
         note: inData.note !== undefined ? normalizeStr(inData.note) : prev.note,
 
         createdAt:
@@ -299,8 +292,8 @@ router.put(
             : prev.createdAt,
       };
 
-      if (!next.equipmentName)
-        return res.status(400).json({ error: "equipmentName est requis" });
+      if (!next.serviceArea)
+        return res.status(400).json({ error: "serviceArea est requis" });
       if (next.value !== undefined && Number.isNaN(next.value)) {
         return res.status(400).json({ error: "value doit être un nombre" });
       }
@@ -309,22 +302,23 @@ router.put(
       if (!changed) return res.json(prev);
 
       // apply
-      prev.equipmentName = next.equipmentName;
-      prev.equipmentId = next.equipmentId;
-      prev.equipmentType = next.equipmentType;
+      prev.serviceArea = next.serviceArea;
+      prev.serviceId = next.serviceId;
+      prev.plateId = next.plateId;
+      prev.dishName = next.dishName;
+      prev.servingMode = next.servingMode;
+      prev.serviceType = next.serviceType;
       prev.location = next.location;
       prev.locationId = next.locationId;
       prev.value = next.value;
       prev.unit = next.unit;
-      prev.probeType = next.probeType;
-      prev.phase = next.phase;
       prev.note = next.note;
       prev.createdAt = next.createdAt;
 
       await prev.save();
       return res.json(prev);
     } catch (err) {
-      console.error("PUT /postheat-temperatures/:tempId:", err);
+      console.error("PUT /service-temperatures/:tempId:", err);
       return res
         .status(500)
         .json({ error: "Erreur lors de la mise à jour du relevé" });
@@ -334,65 +328,22 @@ router.put(
 
 /* -------------------- DELETE -------------------- */
 router.delete(
-  "/restaurants/:restaurantId/postheat-temperatures/:tempId",
+  "/restaurants/:restaurantId/service-temperatures/:tempId",
   authenticateToken,
   async (req, res) => {
     try {
       const { restaurantId, tempId } = req.params;
-      const doc = await PostheatTemperature.findOneAndDelete({
+      const doc = await ServiceTemperature.findOneAndDelete({
         _id: tempId,
         restaurantId,
       });
       if (!doc) return res.status(404).json({ error: "Relevé introuvable" });
       return res.json({ success: true });
     } catch (err) {
-      console.error("DELETE /postheat-temperatures/:tempId:", err);
+      console.error("DELETE /service-temperatures/:tempId:", err);
       return res
         .status(500)
         .json({ error: "Erreur lors de la suppression du relevé" });
-    }
-  }
-);
-
-/* -------------------- DISTINCT ÉQUIPEMENTS -------------------- */
-router.get(
-  "/restaurants/:restaurantId/postheat-temperatures/distinct/equipments",
-  authenticateToken,
-  async (req, res) => {
-    try {
-      const { restaurantId } = req.params;
-      const rows = await PostheatTemperature.aggregate([
-        { $match: { restaurantId } },
-        {
-          $group: {
-            _id: {
-              equipmentName: "$equipmentName",
-              equipmentId: "$equipmentId",
-              equipmentType: "$equipmentType",
-              location: "$location",
-              locationId: "$locationId",
-            },
-            count: { $sum: 1 },
-            lastAt: { $max: "$createdAt" },
-          },
-        },
-        { $sort: { "_id.equipmentName": 1 } },
-      ]);
-      const items = rows.map((r) => ({
-        equipmentName: r._id.equipmentName || "",
-        equipmentId: r._id.equipmentId || "",
-        equipmentType: r._id.equipmentType || "other",
-        location: r._id.location || "",
-        locationId: r._id.locationId || "",
-        count: r.count,
-        lastAt: r.lastAt,
-      }));
-      return res.json({ items });
-    } catch (err) {
-      console.error("GET /postheat-temperatures/distinct/equipments:", err);
-      return res
-        .status(500)
-        .json({ error: "Erreur lors de la récupération des équipements" });
     }
   }
 );

@@ -13,13 +13,12 @@ const genericTemperatureSchema = new Schema(
     locationId: { type: String, index: true }, // id interne
     value: { type: Number, required: true },
     unit: { type: String, enum: ["°C", "°F"], default: "°C" },
-    recordedBy: { type: Schema.Types.ObjectId, ref: "Employee" },
     note: { type: String },
-    signature: {
-      by: { type: Schema.Types.ObjectId, ref: "Employee" },
-      at: Date,
-      signatureUrl: String,
-      hash: String,
+    recordedBy: {
+      userId: { type: Schema.Types.ObjectId, required: true, index: true },
+      role: { type: String, enum: ["owner", "employee"], required: true },
+      firstName: { type: String },
+      lastName: { type: String },
     },
     createdAt: { type: Date, default: Date.now, index: true },
   },
@@ -29,5 +28,5 @@ const genericTemperatureSchema = new Schema(
 genericTemperatureSchema.index({ restaurantId: 1, createdAt: -1 });
 
 module.exports =
-  mongoose.models.TemperatureGeneric ||
-  mongoose.model("TemperatureGeneric", genericTemperatureSchema);
+  mongoose.models.GenericTemperature ||
+  mongoose.model("GenericTemperature", genericTemperatureSchema);
