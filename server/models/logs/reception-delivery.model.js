@@ -41,7 +41,7 @@ const receptionDeliverySchema = new Schema(
     note: String,
     billUrl: String,
   },
-  { versionKey: false }
+  { versionKey: false, collection: "reception_delivery" }
 );
 
 receptionDeliverySchema.index({ restaurantId: 1, receivedAt: -1 });

@@ -1,10 +1,8 @@
+// routes/logs/reception-delivery.routes.js
 const express = require("express");
 const router = express.Router();
 
-// MIDDLEWARE
 const authenticateToken = require("../../middleware/authentificate-token");
-
-// MODEL
 const ReceptionDelivery = require("../../models/logs/reception-delivery.model");
 
 /* --------- helpers --------- */
@@ -19,6 +17,7 @@ function currentUserFromToken(req) {
     lastName: u.lastname || u.lastName || "",
   };
 }
+
 function normalizeStr(v) {
   if (v == null) return null;
   const s = String(v).trim();
@@ -29,67 +28,73 @@ function normalizeDate(v) {
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? null : d;
 }
-function cleanAllergens(v) {
-  if (Array.isArray(v)) {
-    return v.map((x) => String(x).trim()).filter(Boolean);
-  }
-  if (typeof v === "string") {
-    return v
-      .split(/[;,]/g)
-      .map((s) => s.trim())
-      .filter(Boolean);
-  }
-  return [];
+
+function normalizeNumber(v) {
+  if (v === undefined || v === null || v === "") return null;
+  const n = Number(v);
+  return Number.isNaN(n) ? null : n;
 }
-function cleanPackagingCondition(v) {
-  const allowed = ["ok", "damaged", "wet", "unknown"];
-  return allowed.includes(v) ? v : "unknown";
-}
-function cleanLine(l) {
-  if (!l || typeof l !== "object") return null;
-  const out = {
-    productName: normalizeStr(l.productName),
-    supplierProductId: normalizeStr(l.supplierProductId),
-    lotNumber: normalizeStr(l.lotNumber),
-    dlc: normalizeDate(l.dlc),
-    ddm: normalizeDate(l.ddm),
-    qty: l.qty == null ? null : Number(l.qty),
-    unit: normalizeStr(l.unit),
-    tempOnArrival: l.tempOnArrival == null ? null : Number(l.tempOnArrival),
-    allergens: cleanAllergens(l.allergens),
-    packagingCondition: cleanPackagingCondition(l.packagingCondition),
+
+const ALLOWED_PACKAGING = new Set(["ok", "damaged", "wet", "unknown"]);
+function normalizeLine(l = {}) {
+  const productName = normalizeStr(l.productName);
+  const supplierProductId = normalizeStr(l.supplierProductId);
+  const lotNumber = normalizeStr(l.lotNumber);
+  const dlc = normalizeDate(l.dlc);
+  const ddm = normalizeDate(l.ddm);
+  const qty = normalizeNumber(l.qty);
+  const unit = normalizeStr(l.unit);
+  const tempOnArrival = normalizeNumber(l.tempOnArrival);
+  let allergens = Array.isArray(l.allergens)
+    ? l.allergens
+    : typeof l.allergens === "string"
+      ? l.allergens
+          .split(/[;,]/g)
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+
+  // sanitise allergens -> strings
+  allergens = allergens
+    .map((a) => normalizeStr(a))
+    .filter((a) => a && a.length);
+
+  const packagingCondition = ALLOWED_PACKAGING.has(l.packagingCondition)
+    ? l.packagingCondition
+    : "unknown";
+
+  return {
+    productName: productName ?? undefined,
+    supplierProductId: supplierProductId ?? undefined,
+    lotNumber: lotNumber ?? undefined,
+    dlc: dlc ?? undefined,
+    ddm: ddm ?? undefined,
+    qty: qty ?? undefined,
+    unit: unit ?? undefined,
+    tempOnArrival: tempOnArrival ?? undefined,
+    allergens,
+    packagingCondition,
   };
-  // Si rien d'utile -> ignorer
-  const hasSignal =
-    out.productName ||
-    out.supplierProductId ||
-    out.lotNumber ||
-    out.qty != null ||
-    out.unit ||
-    out.dlc ||
-    out.ddm ||
-    out.tempOnArrival != null ||
-    (out.allergens && out.allergens.length);
-  return hasSignal ? out : null;
 }
-function cleanLines(lines) {
-  const src = Array.isArray(lines) ? lines : [];
-  const cleaned = src.map(cleanLine).filter(Boolean);
-  return cleaned;
+
+function isMeaningfulLine(x = {}) {
+  // on retient la ligne si au moins un champ métier est présent
+  return Boolean(
+    x.productName ||
+      x.supplierProductId ||
+      x.lotNumber ||
+      x.dlc ||
+      x.ddm ||
+      x.qty != null ||
+      x.unit ||
+      x.tempOnArrival != null ||
+      (Array.isArray(x.allergens) && x.allergens.length > 0)
+  );
 }
-function hasBusinessChanges(prev, next) {
-  // comparaison simple sur champs racine + JSON des lignes
-  const rootFields = ["supplier", "note", "billUrl"];
-  for (const f of rootFields)
-    if ((prev?.[f] ?? null) !== (next?.[f] ?? null)) return true;
 
-  const t1 = prev?.receivedAt?.getTime?.() ?? null;
-  const t2 = next?.receivedAt?.getTime?.() ?? null;
-  if (t1 !== t2) return true;
-
-  const a = JSON.stringify(prev?.lines || []);
-  const b = JSON.stringify(next?.lines || []);
-  return a !== b;
+function normalizeLines(inLines) {
+  const arr = Array.isArray(inLines) ? inLines : [];
+  return arr.map(normalizeLine).filter(isMeaningfulLine);
 }
 
 /* -------------------- CREATE -------------------- */
@@ -101,40 +106,28 @@ router.post(
       const { restaurantId } = req.params;
       const inData = { ...req.body };
 
-      const currentUser = currentUserFromToken(req);
-      if (!currentUser)
-        return res.status(400).json({ error: "Utilisateur non reconnu" });
-
       const supplier = normalizeStr(inData.supplier);
       if (!supplier)
         return res.status(400).json({ error: "supplier est requis" });
 
-      const lines = cleanLines(inData.lines);
-      if (!lines.length)
-        return res
-          .status(400)
-          .json({ error: "Au moins une ligne valide est requise" });
+      const currentUser = currentUserFromToken(req);
+      if (!currentUser)
+        return res.status(400).json({ error: "Utilisateur non reconnu" });
 
-      // Valide numéros
-      for (const l of lines) {
-        if (l.qty != null && Number.isNaN(l.qty)) {
-          return res.status(400).json({ error: "qty doit être un nombre" });
-        }
-        if (l.tempOnArrival != null && Number.isNaN(l.tempOnArrival)) {
-          return res
-            .status(400)
-            .json({ error: "tempOnArrival doit être un nombre" });
-        }
-      }
+      const receivedAt = normalizeDate(inData.receivedAt) || new Date();
+      const note = normalizeStr(inData.note);
+      const billUrl = normalizeStr(inData.billUrl);
+
+      const lines = normalizeLines(inData.lines);
 
       const doc = new ReceptionDelivery({
         restaurantId,
         supplier,
-        receivedAt: normalizeDate(inData.receivedAt) || new Date(),
+        receivedAt,
         lines,
-        recordedBy: currentUser, // snapshot auteur
-        note: normalizeStr(inData.note),
-        billUrl: normalizeStr(inData.billUrl) || null, // pas d'upload pour l'instant
+        recordedBy: currentUser,
+        note: note ?? undefined,
+        billUrl: billUrl ?? undefined,
       });
 
       await doc.save();
@@ -150,7 +143,7 @@ router.post(
 
 /* -------------------- LIST -------------------- */
 router.get(
-  "/restaurants/:restaurantId/reception-deliveries",
+  "/restaurants/:restaurantId/list-reception-deliveries",
   authenticateToken,
   async (req, res) => {
     try {
@@ -159,23 +152,28 @@ router.get(
 
       const query = { restaurantId };
 
+      // filtre par période (receivedAt)
       if (date_from || date_to) {
         query.receivedAt = {};
         if (date_from) query.receivedAt.$gte = new Date(date_from);
         if (date_to) {
           const end = new Date(date_to);
+          // inclusif : fin de journée
           end.setDate(end.getDate() + 1);
           end.setMilliseconds(end.getMilliseconds() - 1);
           query.receivedAt.$lte = end;
         }
       }
 
+      // recherche plein-texte simple
       if (q && String(q).trim().length) {
         const rx = new RegExp(String(q).trim(), "i");
         query.$or = [
           { supplier: rx },
           { note: rx },
+          { billUrl: rx },
           { "lines.productName": rx },
+          { "lines.supplierProductId": rx },
           { "lines.lotNumber": rx },
           { "lines.unit": rx },
           { "recordedBy.firstName": rx },
@@ -187,7 +185,7 @@ router.get(
 
       const [items, total] = await Promise.all([
         ReceptionDelivery.find(query)
-          .sort({ receivedAt: -1 })
+          .sort({ receivedAt: -1, _id: -1 })
           .skip(skip)
           .limit(Number(limit)),
         ReceptionDelivery.countDocuments(query),
@@ -213,16 +211,19 @@ router.get(
 
 /* -------------------- READ ONE -------------------- */
 router.get(
-  "/restaurants/:restaurantId/reception-deliveries/:recId",
+  "/restaurants/:restaurantId/reception-deliveries/:receptionId",
   authenticateToken,
   async (req, res) => {
     try {
-      const { restaurantId, recId } = req.params;
-      const doc = await ReceptionDelivery.findOne({ _id: recId, restaurantId });
+      const { restaurantId, receptionId } = req.params;
+      const doc = await ReceptionDelivery.findOne({
+        _id: receptionId,
+        restaurantId,
+      });
       if (!doc) return res.status(404).json({ error: "Réception introuvable" });
       return res.json(doc);
     } catch (err) {
-      console.error("GET /reception-deliveries/:recId:", err);
+      console.error("GET /reception-deliveries/:receptionId:", err);
       return res
         .status(500)
         .json({ error: "Erreur lors de la récupération de la réception" });
@@ -232,71 +233,61 @@ router.get(
 
 /* -------------------- UPDATE -------------------- */
 router.put(
-  "/restaurants/:restaurantId/reception-deliveries/:recId",
+  "/restaurants/:restaurantId/reception-deliveries/:receptionId",
   authenticateToken,
   async (req, res) => {
     try {
-      const { restaurantId, recId } = req.params;
+      const { restaurantId, receptionId } = req.params;
       const inData = { ...req.body };
 
-      // Le client ne doit pas modifier recordedBy
+      // ne pas permettre d’écraser recordedBy depuis l’extérieur
       delete inData.recordedBy;
+      delete inData.restaurantId;
 
-      const prev = await ReceptionDelivery.findOne({ _id: recId, restaurantId });
+      const prev = await ReceptionDelivery.findOne({
+        _id: receptionId,
+        restaurantId,
+      });
       if (!prev)
         return res.status(404).json({ error: "Réception introuvable" });
 
-      const nextLines =
-        inData.lines !== undefined ? cleanLines(inData.lines) : prev.lines;
-      if (!nextLines.length) {
-        return res
-          .status(400)
-          .json({ error: "Au moins une ligne valide est requise" });
-      }
-      for (const l of nextLines) {
-        if (l.qty != null && Number.isNaN(l.qty)) {
-          return res.status(400).json({ error: "qty doit être un nombre" });
-        }
-        if (l.tempOnArrival != null && Number.isNaN(l.tempOnArrival)) {
-          return res
-            .status(400)
-            .json({ error: "tempOnArrival doit être un nombre" });
-        }
-      }
+      const supplier =
+        inData.supplier !== undefined
+          ? normalizeStr(inData.supplier)
+          : prev.supplier;
 
-      const next = {
-        supplier:
-          inData.supplier !== undefined
-            ? normalizeStr(inData.supplier)
-            : prev.supplier,
-        receivedAt:
-          inData.receivedAt !== undefined
-            ? normalizeDate(inData.receivedAt) || prev.receivedAt
-            : prev.receivedAt,
-        lines: nextLines,
-        note: inData.note !== undefined ? normalizeStr(inData.note) : prev.note,
-        billUrl:
-          inData.billUrl !== undefined
-            ? normalizeStr(inData.billUrl)
-            : prev.billUrl,
-      };
-
-      if (!next.supplier)
+      if (!supplier)
         return res.status(400).json({ error: "supplier est requis" });
 
-      const changed = hasBusinessChanges(prev, next);
-      if (!changed) return res.json(prev);
+      const receivedAt =
+        inData.receivedAt !== undefined
+          ? normalizeDate(inData.receivedAt) || prev.receivedAt
+          : prev.receivedAt;
 
-      prev.supplier = next.supplier;
-      prev.receivedAt = next.receivedAt;
-      prev.lines = next.lines;
-      prev.note = next.note;
-      prev.billUrl = next.billUrl;
+      const note =
+        inData.note !== undefined ? normalizeStr(inData.note) : prev.note;
+
+      const billUrl =
+        inData.billUrl !== undefined
+          ? normalizeStr(inData.billUrl)
+          : prev.billUrl;
+
+      const lines =
+        inData.lines !== undefined
+          ? normalizeLines(inData.lines)
+          : prev.lines || [];
+
+      // appliquer
+      prev.supplier = supplier;
+      prev.receivedAt = receivedAt;
+      prev.note = note ?? undefined;
+      prev.billUrl = billUrl ?? undefined;
+      prev.lines = lines;
 
       await prev.save();
       return res.json(prev);
     } catch (err) {
-      console.error("PUT /reception-deliveries/:recId:", err);
+      console.error("PUT /reception-deliveries/:receptionId:", err);
       return res
         .status(500)
         .json({ error: "Erreur lors de la mise à jour de la réception" });
@@ -306,19 +297,19 @@ router.put(
 
 /* -------------------- DELETE -------------------- */
 router.delete(
-  "/restaurants/:restaurantId/reception-deliveries/:recId",
+  "/restaurants/:restaurantId/reception-deliveries/:receptionId",
   authenticateToken,
   async (req, res) => {
     try {
-      const { restaurantId, recId } = req.params;
+      const { restaurantId, receptionId } = req.params;
       const doc = await ReceptionDelivery.findOneAndDelete({
-        _id: recId,
+        _id: receptionId,
         restaurantId,
       });
       if (!doc) return res.status(404).json({ error: "Réception introuvable" });
       return res.json({ success: true });
     } catch (err) {
-      console.error("DELETE /reception-deliveries/:recId:", err);
+      console.error("DELETE /reception-deliveries/:receptionId:", err);
       return res
         .status(500)
         .json({ error: "Erreur lors de la suppression de la réception" });

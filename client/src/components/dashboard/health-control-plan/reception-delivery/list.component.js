@@ -84,11 +84,12 @@ export default function ReceptionDeliveryList({
       if (curTo) params.date_to = new Date(curTo).toISOString();
       if (curQ) params.q = curQ;
 
-      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/reception-deliveries`;
+      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-reception-deliveries`;
       const { data } = await axios.get(url, {
         headers: { Authorization: `Bearer ${token}` },
         params,
       });
+
       const list = sortByDate(data.items || []);
       const nextMeta = data.meta || { page: 1, limit: 20, pages: 1, total: 0 };
       setItems(list);
