@@ -7,6 +7,7 @@ const ingredientRefSchema = new Schema(
     lotNumber: String,
     qty: Number,
     unit: String,
+    inventoryLotId: { type: Schema.Types.ObjectId, ref: "InventoryLot" },
   },
   { _id: false }
 );
@@ -19,7 +20,7 @@ const recipeBatchSchema = new Schema(
       required: true,
       index: true,
     },
-    recipeId: { type: Schema.Types.ObjectId, ref: "Recipe" },
+    recipeId: String,
     batchId: String,
     preparedAt: { type: Date, default: Date.now, index: true },
     usedByServiceDate: Date,
@@ -32,7 +33,7 @@ const recipeBatchSchema = new Schema(
     },
     notes: String,
   },
-  { versionKey: false }
+  { versionKey: false, collection: "recipe_batch" }
 );
 
 recipeBatchSchema.index({ restaurantId: 1, preparedAt: -1 });

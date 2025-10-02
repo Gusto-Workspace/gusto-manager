@@ -217,7 +217,7 @@ export default function ReceptionTemperatureForm({
                 </select>
               </div>
             </div>
-            
+
             <div className="flex flex-col">
               <label className="text-sm font-medium">Condition emballage</label>
               <select
@@ -246,7 +246,6 @@ export default function ReceptionTemperatureForm({
                   </option>
                 ))}
               </select>
-              
             </div>
 
             <div className="flex flex-col w-1/2">

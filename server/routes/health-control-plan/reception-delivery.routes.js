@@ -1,4 +1,3 @@
-// routes/logs/reception-delivery.routes.js
 const express = require("express");
 const router = express.Router();
 

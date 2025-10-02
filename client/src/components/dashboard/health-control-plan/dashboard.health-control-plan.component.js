@@ -62,14 +62,14 @@ const defaultTiles = [
     label: "Traçabilité étiquettes",
     icon: "🔖",
     note: "Lot / DLC",
-    href: "/dashboard/health-control-plan/reception-temperature",
+    href: "/dashboard/health-control-plan/inventory-lot",
   },
   {
     key: "batches",
     label: "Batches recettes",
     icon: "🥣",
     note: "Traçabilité lots",
-    href: "/dashboard/health-control-plan/reception-temperature",
+    href: "/dashboard/health-control-plan/recipe-batches",
   },
   {
     key: "oil",

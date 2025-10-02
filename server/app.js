@@ -98,6 +98,8 @@ const postheat_temperature = require("./routes/health-control-plan/postheat-temp
 const service_temperature = require("./routes/health-control-plan/service-temperature.routes")
 const generic_temperature = require("./routes/health-control-plan/generic-temperature.routes")
 const reception_delivery = require("./routes/health-control-plan/reception-delivery.routes")
+const inventory_lot = require("./routes/health-control-plan/inventory-lot.routes")
+const recipe_batches = require("./routes/health-control-plan/recipe-batches.routes")
 
 app.use(apiRoutes, reception_temperature);
 app.use(apiRoutes, fridge_temperature);
@@ -106,6 +108,8 @@ app.use(apiRoutes, postheat_temperature)
 app.use(apiRoutes, service_temperature)
 app.use(apiRoutes, generic_temperature)
 app.use(apiRoutes, reception_delivery)
+app.use(apiRoutes, inventory_lot)
+app.use(apiRoutes, recipe_batches)
 
 // SSE BUS
 mountSseRoute(app);

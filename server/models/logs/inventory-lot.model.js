@@ -11,11 +11,11 @@ const inventoryLotSchema = new Schema(
     },
 
     // Lien vers la réception d’origine (preuve & doc)
-    receptionId: { type: Schema.Types.ObjectId, ref: "Reception" },
+    receptionId: { type: Schema.Types.ObjectId, ref: "ReceptionDelivery" },
 
     // Info produit / fournisseur
     productName: { type: String, required: true },
-    supplierId: { type: Schema.Types.ObjectId, ref: "Supplier" },
+    supplier: String,
 
     // Traçabilité étiquette
     lotNumber: { type: String, required: true, index: true },
@@ -67,7 +67,7 @@ const inventoryLotSchema = new Schema(
       lastName: { type: String },
     },
   },
-  { versionKey: false, timestamps: true }
+  { versionKey: false, collection: "inventory_lot", timestamps: true }
 );
 
 // Index utiles
