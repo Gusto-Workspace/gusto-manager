@@ -101,6 +101,7 @@ const reception_delivery = require("./routes/health-control-plan/reception-deliv
 const inventory_lot = require("./routes/health-control-plan/inventory-lot.routes");
 const recipe_batches = require("./routes/health-control-plan/recipe-batches.routes");
 const oil_change = require("./routes/health-control-plan/oil-change.routes");
+const cleaning_task = require("./routes/health-control-plan/cleaning-task.routes");
 
 app.use(apiRoutes, reception_temperature);
 app.use(apiRoutes, fridge_temperature);
@@ -112,6 +113,7 @@ app.use(apiRoutes, reception_delivery);
 app.use(apiRoutes, inventory_lot);
 app.use(apiRoutes, recipe_batches);
 app.use(apiRoutes, oil_change);
+app.use(apiRoutes, cleaning_task);
 
 // SSE BUS
 mountSseRoute(app);

@@ -11,7 +11,7 @@ const oilChangeSchema = new Schema(
       index: true,
     },
 
-    fryerId: { type: String }, // identifiant friteuse/équipement
+    fryerId: { type: String },
     performedAt: { type: Date, default: Date.now, required: true, index: true },
 
     litersRemoved: Number,
@@ -24,12 +24,12 @@ const oilChangeSchema = new Schema(
     // --- Qualité / suivi
     tpmPercent: Number, // Total Polar Materials (%)
     filteredBeforeChange: { type: Boolean, default: false },
-    colorIndex: String, // ex: claire / dorée / ambrée / foncée ...
-    odorCheck: String, // ex: neutre / ok / rance / acide ...
-    oilBrand: String, // marque de l’huile neuve
+    colorIndex: String,
+    odorCheck: String,
+    oilBrand: String,
 
-    qualityNotes: String, // notes libres
-    disposalDocumentUrl: String, // justificatif d’élimination
+    qualityNotes: String,
+    disposalDocumentUrl: String,
 
     recordedBy: {
       userId: { type: Schema.Types.ObjectId, required: true, index: true },

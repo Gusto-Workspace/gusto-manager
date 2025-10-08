@@ -84,7 +84,7 @@ const defaultTiles = [
     label: "Nettoyage locaux",
     icon: "🧴",
     note: "Protocoles & preuves",
-    href: "/dashboard/health-control-plan/reception-temperature",
+    href: "/dashboard/health-control-plan/cleaning-task",
   },
   {
     key: "pest",
