@@ -1,3 +1,4 @@
+// components/dashboard/health-control-plan/oil-changes/list.component.jsx
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -19,18 +20,7 @@ function fmtDate(d) {
   }
 }
 
-function summarizeLots(lines) {
-  const lots = new Set();
-  (lines || []).forEach((l) => {
-    if (l?.lotNumber) lots.add(String(l.lotNumber));
-  });
-  const arr = Array.from(lots);
-  if (!arr.length) return "—";
-  if (arr.length <= 2) return arr.join(", ");
-  return `${arr.slice(0, 2).join(", ")} +${arr.length - 2}`;
-}
-
-export default function ReceptionDeliveryList({
+export default function OilChangeList({
   restaurantId,
   onEdit,
   editingId = null,
@@ -67,10 +57,9 @@ export default function ReceptionDeliveryList({
 
   const sortByDate = (list) =>
     [...list].sort(
-      (a, b) => new Date(b?.receivedAt || 0) - new Date(a?.receivedAt || 0)
+      (a, b) => new Date(b?.performedAt || 0) - new Date(a?.performedAt || 0)
     );
 
-  // fetchData avec overrides pour reset propre
   const fetchData = async (page = 1, overrides = {}) => {
     setLoading(true);
     try {
@@ -84,7 +73,7 @@ export default function ReceptionDeliveryList({
       if (curTo) params.date_to = new Date(curTo).toISOString();
       if (curQ) params.q = curQ;
 
-      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-reception-deliveries`;
+      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-oil-changes`;
       const { data } = await axios.get(url, {
         headers: { Authorization: `Bearer ${token}` },
         params,
@@ -152,9 +141,8 @@ export default function ReceptionDeliveryList({
       }
     };
 
-    window.addEventListener("reception-delivery:upsert", handleUpsert);
-    return () =>
-      window.removeEventListener("reception-delivery:upsert", handleUpsert);
+    window.addEventListener("oil-change:upsert", handleUpsert);
+    return () => window.removeEventListener("oil-change:upsert", handleUpsert);
   }, [restaurantId]);
 
   const filtered = useMemo(() => {
@@ -162,11 +150,13 @@ export default function ReceptionDeliveryList({
     const qq = q.toLowerCase();
     return items.filter((it) =>
       [
-        it?.supplier,
-        it?.note,
-        ...(Array.isArray(it?.lines)
-          ? it.lines.flatMap((l) => [l?.productName, l?.lotNumber, l?.unit])
-          : []),
+        it?.fryerId,
+        it?.qualityNotes,
+        it?.disposalDocumentUrl,
+        it?.newOilBatch?.batchNumber,
+        it?.oilBrand,
+        it?.colorIndex,
+        it?.odorCheck,
         it?.recordedBy?.firstName,
         it?.recordedBy?.lastName,
       ]
@@ -184,13 +174,14 @@ export default function ReceptionDeliveryList({
   const onConfirmDelete = async () => {
     if (!deleteTarget) return;
 
-    const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/reception-deliveries/${deleteTarget._id}`;
+    const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/oil-changes/${deleteTarget._id}`;
 
     try {
       setDeleteLoading(true);
       await axios.delete(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
+
       const deleted = deleteTarget;
       const updatedItems = (items || []).filter(
         (item) => String(item?._id) !== String(deleted._id)
@@ -199,6 +190,7 @@ export default function ReceptionDeliveryList({
       setIsDeleteModalOpen(false);
       setDeleteTarget(null);
       onDeleted?.(deleted);
+
       setMeta((prevMeta) => {
         const limitValue = prevMeta.limit || 20;
         const total = Math.max(0, (prevMeta.total || 0) - 1);
@@ -209,7 +201,7 @@ export default function ReceptionDeliveryList({
         return nextMeta;
       });
     } catch (err) {
-      console.error("Erreur lors de la suppression de la réception:", err);
+      console.error("Erreur lors de la suppression:", err);
     } finally {
       setDeleteLoading(false);
     }
@@ -229,7 +221,7 @@ export default function ReceptionDeliveryList({
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Rechercher fournisseur, lot, produit, note…"
+            placeholder="Rechercher friteuse, marque, lot, couleur, odeur, notes…"
             className="w-full border rounded p-2 midTablet:flex-1 min-w-[200px]"
           />
 
@@ -290,30 +282,33 @@ export default function ReceptionDeliveryList({
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto max-w-[calc(100vw-80px)] tablet:max-w-[calc(100vw-318px)]">
-        <table className="w-full text-sm ">
+      <div className="overflow-x-auto max-w-[calc(100vw-80px)] tablet:max-w-[calc(100vw-355px)]">
+        <table className="w-full text-sm">
           <thead className="whitespace-nowrap">
             <tr className="text-left border-b">
               <th className="py-2 pr-3">Date</th>
-              <th className="py-2 pr-3">Fournisseur</th>
-              <th className="py-2 pr-3">Lignes</th>
-              <th className="py-2 pr-3">Lots</th>
+              <th className="py-2 pr-3">Friteuse</th>
+              <th className="py-2 pr-3">Litres retirés</th>
+              <th className="py-2 pr-3">TPM %</th>
+              <th className="py-2 pr-3">Filtrée</th>
+              <th className="py-2 pr-3">Marque</th>
+              <th className="py-2 pr-3">Lot huile neuve</th>
               <th className="py-2 pr-3">Opérateur</th>
-              <th className="py-2 pr-3">Note</th>
+              <th className="py-2 pr-3">Notes</th>
               <th className="py-2 pr-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {!loading && filtered.length === 0 && (
               <tr>
-                <td colSpan={7} className="py-6 text-center opacity-60">
-                  Aucune réception
+                <td colSpan={10} className="py-6 text-center opacity-60">
+                  Aucune opération
                 </td>
               </tr>
             )}
             {loading && (
               <tr>
-                <td colSpan={7} className="py-6 text-center opacity-60">
+                <td colSpan={10} className="py-6 text-center opacity-60">
                   Chargement…
                 </td>
               </tr>
@@ -327,16 +322,25 @@ export default function ReceptionDeliveryList({
                   }`}
                 >
                   <td className="py-2 pr-3 whitespace-nowrap">
-                    {fmtDate(it.receivedAt)}
+                    {fmtDate(it.performedAt)}
                   </td>
                   <td className="py-2 pr-3 whitespace-nowrap">
-                    {it.supplier || "—"}
+                    {it.fryerId || "—"}
                   </td>
                   <td className="py-2 pr-3 whitespace-nowrap">
-                    {Array.isArray(it.lines) ? it.lines.length : 0}
+                    {it?.litersRemoved != null ? `${it.litersRemoved} L` : "—"}
                   </td>
                   <td className="py-2 pr-3 whitespace-nowrap">
-                    {summarizeLots(it.lines)}
+                    {it?.tpmPercent != null ? `${it.tpmPercent}` : "—"}
+                  </td>
+                  <td className="py-2 pr-3 whitespace-nowrap">
+                    {it?.filteredBeforeChange ? "Oui" : "Non"}
+                  </td>
+                  <td className="py-2 pr-3 whitespace-nowrap">
+                    {it?.oilBrand || "—"}
+                  </td>
+                  <td className="py-2 pr-3 whitespace-nowrap">
+                    {it?.newOilBatch?.batchNumber || "—"}
                   </td>
                   <td className="py-2 pr-3 whitespace-nowrap">
                     {it?.recordedBy
@@ -344,7 +348,23 @@ export default function ReceptionDeliveryList({
                       : "—"}
                   </td>
                   <td className="py-2 pr-3 max-w-[320px]">
-                    <span className="line-clamp-2">{it.note || "—"}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="line-clamp-2">
+                        {it.qualityNotes || "—"}
+                        {it?.colorIndex ? ` • ${it.colorIndex}` : ""}
+                        {it?.odorCheck ? ` • ${it.odorCheck}` : ""}
+                      </span>
+                      {it.disposalDocumentUrl && (
+                        <a
+                          href={it.disposalDocumentUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-blue underline whitespace-nowrap"
+                        >
+                          Voir doc
+                        </a>
+                      )}
+                    </div>
                   </td>
                   <td className="py-2 pr-0">
                     <div className="flex gap-2 justify-end">
@@ -356,7 +376,9 @@ export default function ReceptionDeliveryList({
                         Éditer
                       </button>
                       <button
-                        onClick={() => askDelete(it)}
+                        onClick={() =>
+                          setIsDeleteModalOpen(true) || setDeleteTarget(it)
+                        }
                         className="px-3 py-1 rounded bg-red text-white"
                         aria-label="Supprimer"
                       >
@@ -374,7 +396,7 @@ export default function ReceptionDeliveryList({
       {meta?.pages > 1 && (
         <div className="flex items-center justify-between mt-4">
           <div className="text-xs opacity-70">
-            Page {meta.page}/{meta.pages} — {meta.total} réceptions
+            Page {meta.page}/{meta.pages} — {meta.total} opérations
           </div>
           <div className="flex gap-2">
             <button
@@ -411,11 +433,11 @@ export default function ReceptionDeliveryList({
             <div className="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
               <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-[450px] pointer-events-auto">
                 <h2 className="text-xl font-semibold mb-6 text-center">
-                  Supprimer cette réception ?
+                  Supprimer cette opération ?
                 </h2>
                 <p className="text-sm text-center mb-6">
-                  Cette action est définitive. La réception sera retirée de
-                  votre plan de maîtrise sanitaire.
+                  Cette action est définitive. L’opération sera retirée de
+                  l’historique.
                 </p>
                 <div className="flex gap-4 mx-auto justify-center">
                   <button

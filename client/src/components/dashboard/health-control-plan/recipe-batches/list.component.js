@@ -200,7 +200,7 @@ export default function RecipeBatchesList({
       setDeleteTarget(null);
       onDeleted?.(deleted);
       window.dispatchEvent(new CustomEvent("inventory-lots:refresh"));
-      
+
       setMeta((prevMeta) => {
         const limitValue = prevMeta.limit || 20;
         const total = Math.max(0, (prevMeta.total || 0) - 1);
@@ -232,7 +232,7 @@ export default function RecipeBatchesList({
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Rechercher recette, batch, ingrédient, lot, note…"
-            className="w-full border rounded p-2 midTablet:flex-1"
+            className="w-full border rounded p-2 midTablet:flex-1 min-w-[200px]"
           />
 
           <div className="flex flex-col gap-1 w-full midTablet:flex-row midTablet:items-center midTablet:gap-2 midTablet:w-auto">

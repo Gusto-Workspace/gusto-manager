@@ -76,7 +76,7 @@ const defaultTiles = [
     label: "Huile de friture",
     icon: "🛢️",
     note: "Changement / qualité",
-    href: "/dashboard/health-control-plan/reception-temperature",
+    href: "/dashboard/health-control-plan/oil-change",
   },
 
   {

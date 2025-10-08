@@ -230,7 +230,7 @@ export default function InventoryLotList({
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Rechercher produit, lot, fournisseur, note…"
-            className="w-full border rounded p-2 midTablet:flex-1"
+            className="w-full border rounded p-2 midTablet:flex-1 min-w-[200px]"
           />
 
           <div className="flex flex-col gap-1 w-full midTablet:flex-row midTablet:items-center midTablet:gap-2 midTablet:w-auto">
