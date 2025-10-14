@@ -1,5 +1,4 @@
 import { useContext, useState } from "react";
-import { useRouter } from "next/router";
 import Head from "next/head";
 
 // I18N
@@ -13,13 +12,12 @@ import { GlobalContext } from "@/contexts/global.context";
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
-import InventoryLotForm from "@/components/dashboard/health-control-plan/inventory-lot/form.component";
-import InventoryLotList from "@/components/dashboard/health-control-plan/inventory-lot/list.component";
-
-// SVG
+import PestControlForm from "@/components/dashboard/health-control-plan/pest-control/form.component";
+import PestControlList from "@/components/dashboard/health-control-plan/pest-control/list.component";
 import { HealthSvg } from "@/components/_shared/_svgs/health.svg";
+import { useRouter } from "next/router";
 
-export default function InventoryLotPage(props) {
+export default function PestControlPage(props) {
   const { t } = useTranslation("");
   const router = useRouter();
   const { restaurantContext } = useContext(GlobalContext);
@@ -96,20 +94,20 @@ export default function InventoryLotPage(props) {
 
                       <>
                         <span>/</span>
-                        <span>Traçabilité étiquettes</span>
+                        <span>Lutte nuisibles</span>
                       </>
                     </h1>
                   </div>
                 </div>
 
                 <div className="flex flex-col gap-6">
-                  <InventoryLotForm
+                  <PestControlForm
                     restaurantId={restaurantContext.restaurantData?._id}
                     initial={editing}
                     onSuccess={(doc) => {
                       setEditing(null);
                       window.dispatchEvent(
-                        new CustomEvent("inventory-lot:upsert", {
+                        new CustomEvent("cleaning-task:upsert", {
                           detail: { doc },
                         })
                       );
@@ -117,7 +115,7 @@ export default function InventoryLotPage(props) {
                     onCancel={() => setEditing(null)}
                   />
 
-                  <InventoryLotList
+                  <PestControlList
                     restaurantId={restaurantContext.restaurantData?._id}
                     onEdit={(doc) => setEditing(doc)}
                     editingId={editing?._id || null}

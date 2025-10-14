@@ -91,7 +91,7 @@ const defaultTiles = [
     label: "Lutte nuisibles",
     icon: "🐜",
     note: "Interventions",
-    href: "/dashboard/health-control-plan/reception-temperature",
+    href: "/dashboard/health-control-plan/pest-control",
   },
   {
     key: "allergens",

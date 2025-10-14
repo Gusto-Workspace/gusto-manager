@@ -1,5 +1,6 @@
 import { useContext, useState } from "react";
 import Head from "next/head";
+import { useRouter } from "next/router";
 
 // I18N
 import { i18n, useTranslation } from "next-i18next";
@@ -14,12 +15,13 @@ import SettingsComponent from "@/components/_shared/settings/settings.component"
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
 import OilChangeForm from "@/components/dashboard/health-control-plan/oil-change/form.component";
 import OilChangeList from "@/components/dashboard/health-control-plan/oil-change/list.component";
+
+// SVG
 import { HealthSvg } from "@/components/_shared/_svgs/health.svg";
-import { useRouter } from "next/router";
 
 export default function OilChangePage(props) {
   const { t } = useTranslation("");
-    const router = useRouter();
+  const router = useRouter();
   const { restaurantContext } = useContext(GlobalContext);
 
   const [editing, setEditing] = useState(null);
@@ -79,33 +81,25 @@ export default function OilChangePage(props) {
                 <hr className="opacity-20" />
 
                 <div className="flex justify-between  gap-4">
-                 
-                    <div className="flex items-center gap-2 min-h-[40px]">
-                      <HealthSvg width={30} height={30} fillColor="#131E3690" />
+                  <div className="flex items-center gap-2 min-h-[40px]">
+                    <HealthSvg width={30} height={30} fillColor="#131E3690" />
 
-                      
+                    <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2 flex-wrap">
+                      <span
+                        className="cursor-pointer hover:underline"
+                        onClick={() =>
+                          router.push("/dashboard/health-control-plan")
+                        }
+                      >
+                        {t("health-control-plan:titles.main")}
+                      </span>
 
-                      <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2 flex-wrap">
-                        <span
-                          className="cursor-pointer hover:underline"
-                          onClick={() => router.push("/dashboard/health-control-plan")}
-                        >
-                         {t("health-control-plan:titles.main")}
-                        </span>
-
-                        
-                          <>
-                            <span>/</span>
-                            <span
-                             
-                            >
-                              Huile de friture
-                            </span>
-                          </>
-                      
-                      </h1>
-                    </div>
-                  
+                      <>
+                        <span>/</span>
+                        <span>Huile de friture</span>
+                      </>
+                    </h1>
+                  </div>
                 </div>
 
                 <div className="flex flex-col gap-6">
