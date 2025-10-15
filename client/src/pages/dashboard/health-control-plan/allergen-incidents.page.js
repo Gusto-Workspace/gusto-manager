@@ -1,5 +1,6 @@
 import { useContext, useState } from "react";
 import Head from "next/head";
+import { useRouter } from "next/router";
 
 // I18N
 import { i18n, useTranslation } from "next-i18next";
@@ -12,12 +13,14 @@ import { GlobalContext } from "@/contexts/global.context";
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
-import PestControlForm from "@/components/dashboard/health-control-plan/pest-control/form.component";
-import PestControlList from "@/components/dashboard/health-control-plan/pest-control/list.component";
-import { HealthSvg } from "@/components/_shared/_svgs/health.svg";
-import { useRouter } from "next/router";
+import AllergenIncidentsForm from "@/components/dashboard/health-control-plan/allergen-incidents/form.component";
+import AllergenIncidentsList from "@/components/dashboard/health-control-plan/allergen-incidents/list.component";
 
-export default function PestControlPage(props) {
+// SVG
+import { HealthSvg } from "@/components/_shared/_svgs/health.svg";
+
+
+export default function AllergenIncidentsPage(props) {
   const { t } = useTranslation("");
   const router = useRouter();
   const { restaurantContext } = useContext(GlobalContext);
@@ -94,20 +97,20 @@ export default function PestControlPage(props) {
 
                       <>
                         <span>/</span>
-                        <span>Lutte nuisibles</span>
+                        <span>Allergènes</span>
                       </>
                     </h1>
                   </div>
                 </div>
 
                 <div className="flex flex-col gap-6">
-                  <PestControlForm
+                  <AllergenIncidentsForm
                     restaurantId={restaurantContext.restaurantData?._id}
                     initial={editing}
                     onSuccess={(doc) => {
                       setEditing(null);
                       window.dispatchEvent(
-                        new CustomEvent("pest-control:upsert", {
+                        new CustomEvent("allergen-incidents:upsert", {
                           detail: { doc },
                         })
                       );
@@ -115,7 +118,7 @@ export default function PestControlPage(props) {
                     onCancel={() => setEditing(null)}
                   />
 
-                  <PestControlList
+                  <AllergenIncidentsList
                     restaurantId={restaurantContext.restaurantData?._id}
                     onEdit={(doc) => setEditing(doc)}
                     editingId={editing?._id || null}

@@ -115,7 +115,7 @@ export default function ReceptionTemperaturePage(props) {
                     onSuccess={(doc) => {
                       setEditing(null);
                       window.dispatchEvent(
-                        new CustomEvent("temperature-reception:upsert", {
+                        new CustomEvent("reception-temperature:upsert", {
                           detail: { doc },
                         })
                       );

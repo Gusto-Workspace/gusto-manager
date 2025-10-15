@@ -9,7 +9,7 @@ const receptionTemperatureSchema = new Schema(
       required: true,
       index: true,
     },
-    receptionId: { type: Schema.Types.ObjectId, ref: "Reception" },
+    receptionId: { type: Schema.Types.ObjectId, ref: "ReceptionDelivery" },
 
     // Mesure
     value: { type: Number, required: true }, // ex: 4.5

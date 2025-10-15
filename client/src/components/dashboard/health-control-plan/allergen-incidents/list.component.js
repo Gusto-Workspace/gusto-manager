@@ -18,13 +18,11 @@ function fmtDate(d) {
     return d || "—";
   }
 }
-function contractBadge(it) {
-  if (!it?.contractEnd) return "Actif (sans fin)";
-  const end = new Date(it.contractEnd);
-  return end > new Date() ? "Actif" : "Expiré";
+function statusBadge(it) {
+  return it?.closed ? "Clôturé" : "Ouvert";
 }
 
-export default function PestControlList({
+export default function AllergenIncidentList({
   restaurantId,
   onEdit,
   editingId = null,
@@ -36,10 +34,9 @@ export default function PestControlList({
 
   // Filtres
   const [q, setQ] = useState("");
-  const [status, setStatus] = useState("all"); // all|active_contract|expired_contract
-  const [freq, setFreq] = useState(""); // ''
-  const [activity, setActivity] = useState(""); // ''
-
+  const [status, setStatus] = useState("all"); // all|open|closed
+  const [severity, setSeverity] = useState(""); // ''
+  const [source, setSource] = useState(""); // ''
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
@@ -59,19 +56,17 @@ export default function PestControlList({
 
   const sortLogic = (list) =>
     [...list].sort((a, b) => {
-      const ak = a?.lastVisitAt
-        ? new Date(a.lastVisitAt).getTime()
-        : new Date(a.createdAt || 0).getTime();
-      const bk = b?.lastVisitAt
-        ? new Date(b.lastVisitAt).getTime()
-        : new Date(b.createdAt || 0).getTime();
+      const ak = new Date(a?.detectedAt || 0).getTime();
+      const bk = new Date(b?.detectedAt || 0).getTime();
       return bk - ak;
     });
 
   const hasActiveFilters = useMemo(
     () =>
-      Boolean(q || status !== "all" || freq || activity || dateFrom || dateTo),
-    [q, status, freq, activity, dateFrom, dateTo]
+      Boolean(
+        q || status !== "all" || severity || source || dateFrom || dateTo
+      ),
+    [q, status, severity, source, dateFrom, dateTo]
   );
   const hasFullDateRange = Boolean(dateFrom && dateTo);
 
@@ -81,20 +76,20 @@ export default function PestControlList({
       const cur = {
         q: overrides.q ?? q,
         status: overrides.status ?? status,
-        freq: overrides.freq ?? freq,
-        activity: overrides.activity ?? activity,
+        severity: overrides.severity ?? severity,
+        source: overrides.source ?? source,
         dateFrom: overrides.dateFrom ?? dateFrom,
         dateTo: overrides.dateTo ?? dateTo,
       };
       const params = { page, limit: meta.limit || 20 };
       if (cur.q) params.q = cur.q;
       if (cur.status && cur.status !== "all") params.status = cur.status;
-      if (cur.freq) params.freq = cur.freq;
-      if (cur.activity) params.activity = cur.activity;
+      if (cur.severity) params.severity = cur.severity;
+      if (cur.source) params.source = cur.source;
       if (cur.dateFrom) params.date_from = new Date(cur.dateFrom).toISOString();
       if (cur.dateTo) params.date_to = new Date(cur.dateTo).toISOString();
 
-      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-pest-controls`;
+      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-allergen-incidents`;
       const { data } = await axios.get(url, {
         headers: { Authorization: `Bearer ${token}` },
         params,
@@ -113,15 +108,16 @@ export default function PestControlList({
   };
 
   useEffect(() => {
-    if (restaurantId)
+    if (restaurantId) {
       fetchData(1, {
         q: "",
         status: "all",
-        freq: "",
-        activity: "",
+        severity: "",
+        source: "",
         dateFrom: "",
         dateTo: "",
       });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
 
@@ -168,9 +164,9 @@ export default function PestControlList({
       }
     };
 
-    window.addEventListener("pest-control:upsert", handleUpsert);
+    window.addEventListener("allergen-incident:upsert", handleUpsert);
     return () =>
-      window.removeEventListener("pest-control:upsert", handleUpsert);
+      window.removeEventListener("allergen-incident:upsert", handleUpsert);
   }, [restaurantId]);
 
   const askDelete = (it) => {
@@ -181,7 +177,7 @@ export default function PestControlList({
     if (!deleteTarget) return;
     try {
       setDeleteLoading(true);
-      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/pest-controls/${deleteTarget._id}`;
+      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/allergen-incidents/${deleteTarget._id}`;
       await axios.delete(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -214,6 +210,25 @@ export default function PestControlList({
     setDeleteTarget(null);
   };
 
+  // Filtrage client sur q pour plus de réactivité
+  const filtered = useMemo(() => {
+    if (!q) return items;
+    const qq = q.toLowerCase();
+    return items.filter((it) =>
+      [
+        it?.itemName,
+        it?.source,
+        it?.severity,
+        ...(Array.isArray(it?.allergens) ? it.allergens : []),
+        it?.description,
+        it?.immediateAction,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(qq)
+    );
+  }, [items, q]);
+
   return (
     <div className="bg-white rounded-lg drop-shadow-sm p-4">
       {/* Filtres */}
@@ -222,22 +237,46 @@ export default function PestControlList({
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Rechercher prestataire, action, zone, note…"
+            placeholder="Rechercher produit, allergène, action…"
             className="w-full border rounded p-2 midTablet:flex-1 min-w-[220px]"
           />
 
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value)}
-            className="border rounded p-2 h-[44px] w-full midTablet:w-48"
+            className="border rounded p-2 h-[44px] w-full midTablet:w-40"
           >
-            <option value="all">Tous contrats</option>
-            <option value="active_contract">Contrat actif</option>
-            <option value="expired_contract">Contrat expiré</option>
+            <option value="all">Tous</option>
+            <option value="open">Ouverts</option>
+            <option value="closed">Clôturés</option>
+          </select>
+
+          <select
+            value={severity}
+            onChange={(e) => setSeverity(e.target.value)}
+            className="border rounded p-2 h-[44px] w-full midTablet:w-40"
+          >
+            <option value="">Gravité</option>
+            <option value="low">Faible</option>
+            <option value="medium">Moyenne</option>
+            <option value="high">Élevée</option>
+          </select>
+
+          <select
+            value={source}
+            onChange={(e) => setSource(e.target.value)}
+            className="border rounded p-2 h-[44px] w-full midTablet:w-44"
+          >
+            <option value="">Source</option>
+            <option value="internal">Interne</option>
+            <option value="supplier">Fournisseur</option>
+            <option value="customer">Client</option>
+            <option value="lab">Laboratoire</option>
+            <option value="other">Autre</option>
           </select>
 
           <div className="flex flex-col gap-1 w-full midTablet:flex-row midTablet:items-center midTablet:gap-2 midTablet:w-auto">
-            <label className="text-sm font-medium">Visites du</label>
+            <label className="text-sm font-medium">Du</label>
             <input
               type="date"
               value={dateFrom}
@@ -260,11 +299,9 @@ export default function PestControlList({
 
           <div className="flex flex-col gap-2 w-full mobile:flex-row mobile:w-auto mobile:items-center">
             <button
-              onClick={() => dateFrom && dateTo && fetchData(1)}
-              disabled={!(dateFrom && dateTo)}
-              className={`px-4 py-2 rounded bg-blue text-white w-full mobile:w-32 ${
-                dateFrom && dateTo ? "" : "opacity-30 cursor-not-allowed"
-              }`}
+              onClick={() => hasFullDateRange && fetchData(1)}
+              disabled={!hasFullDateRange}
+              className={`px-4 py-2 rounded bg-blue text-white w-full mobile:w-32 ${hasFullDateRange ? "" : "opacity-30 cursor-not-allowed"}`}
             >
               Filtrer
             </button>
@@ -273,15 +310,15 @@ export default function PestControlList({
               onClick={() => {
                 setQ("");
                 setStatus("all");
-                setFreq("");
-                setActivity("");
+                setSeverity("");
+                setSource("");
                 setDateFrom("");
                 setDateTo("");
                 fetchData(1, {
                   q: "",
                   status: "all",
-                  freq: "",
-                  activity: "",
+                  severity: "",
+                  source: "",
                   dateFrom: "",
                   dateTo: "",
                 });
@@ -300,15 +337,13 @@ export default function PestControlList({
         <table className="w-full text-sm">
           <thead className="whitespace-nowrap">
             <tr className="text-left border-b">
-              <th className="py-2 pr-3">Prestataire</th>
-              <th className="py-2 pr-3">Contrat</th>
-              <th className="py-2 pr-3">Fréq.</th>
-              <th className="py-2 pr-3">Dernière visite</th>
-              <th className="py-2 pr-3">Prochaine</th>
-              <th className="py-2 pr-3">Activité</th>
-              <th className="py-2 pr-3">Conformité</th>
-              <th className="py-2 pr-3">Parc</th>
-              <th className="py-2 pr-3">Rapports</th>
+              <th className="py-2 pr-3">Statut</th>
+              <th className="py-2 pr-3">Détecté le</th>
+              <th className="py-2 pr-3">Produit / Plat</th>
+              <th className="py-2 pr-3">Allergènes</th>
+              <th className="py-2 pr-3">Gravité</th>
+              <th className="py-2 pr-3">Source</th>
+              <th className="py-2 pr-3">Actions corr.</th>
               <th className="py-2 pr-3">Opérateur</th>
               <th className="py-2 pr-3 text-right">Actions</th>
             </tr>
@@ -316,94 +351,70 @@ export default function PestControlList({
           <tbody>
             {!loading && items.length === 0 && (
               <tr>
-                <td colSpan={10} className="py-6 text-center opacity-60">
-                  Aucun suivi nuisibles
+                <td colSpan={8} className="py-6 text-center opacity-60">
+                  Aucun incident
                 </td>
               </tr>
             )}
             {loading && (
               <tr>
-                <td colSpan={10} className="py-6 text-center opacity-60">
+                <td colSpan={8} className="py-6 text-center opacity-60">
                   Chargement…
                 </td>
               </tr>
             )}
             {!loading &&
-              items.map((it) => {
-                const cBadge = contractBadge(it);
-                const isExpired = cBadge === "Expiré";
+              (filtered.length ? filtered : items).map((it) => {
+                const badge = statusBadge(it);
+                const sev =
+                  it.severity === "high"
+                    ? "bg-red"
+                    : it.severity === "medium"
+                      ? "bg-orange"
+                      : "bg-green";
                 return (
                   <tr
                     key={it._id}
                     className={`border-b ${editingId === it._id ? "bg-lightGrey" : ""}`}
                   >
                     <td className="py-2 pr-3 whitespace-nowrap">
-                      <div className="flex flex-col gap-1">
-                        <span className="font-medium">
-                          {it.provider || "—"}
-                        </span>
-                        <span className="text-xs opacity-70">
-                          {it.providerContactName || "—"}{" "}
-                          {it.providerPhone ? `• ${it.providerPhone}` : ""}{" "}
-                          {it.providerEmail ? `• ${it.providerEmail}` : ""}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="py-2 pr-3 whitespace-nowrap flex flex-col gap-1">
                       <span
-                        className={`w-fit px-2 py-0.5 rounded text-xs ${isExpired ? "bg-red text-white" : "bg-green text-white"}`}
+                        className={`px-2 py-0.5 rounded text-xs ${it.closed ? "bg-green text-white" : "bg-orange text-white"}`}
                       >
-                        {cBadge}
-                      </span>
-                      <div className="text-xs opacity-70">
-                        {it.contractStart
-                          ? new Date(it.contractStart).toLocaleDateString(
-                              "fr-FR"
-                            )
-                          : "—"}{" "}
-                        →{" "}
-                        {it.contractEnd
-                          ? new Date(it.contractEnd).toLocaleDateString("fr-FR")
-                          : "—"}
-                      </div>
-                    </td>
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      {it.visitFrequency || "—"}
-                    </td>
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      {fmtDate(it.lastVisitAt)}
-                    </td>
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      {fmtDate(it.nextPlannedVisit)}
-                    </td>
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      {it.activityLevel || "—"}
-                    </td>
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      <span
-                        className={`px-2 py-0.5 rounded text-xs ${
-                          it.complianceStatus === "compliant"
-                            ? "bg-green text-white"
-                            : it.complianceStatus === "non_compliant"
-                              ? "bg-red text-white"
-                              : "bg-orange text-white"
-                        }`}
-                      >
-                        {it.complianceStatus || "pending"}
+                        {badge}
                       </span>
                     </td>
                     <td className="py-2 pr-3 whitespace-nowrap">
-                      {it.baitStationsCount ?? 0} appâts / {it.trapsCount ?? 0}{" "}
-                      pièges
+                      {fmtDate(it.detectedAt)}
                     </td>
                     <td className="py-2 pr-3 whitespace-nowrap">
-                      {Array.isArray(it.reportUrls) && it.reportUrls.length
-                        ? `${it.reportUrls.length} doc(s)`
+                      {it.itemName || "—"}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {Array.isArray(it.allergens) && it.allergens.length
+                        ? it.allergens.join(", ")
                         : "—"}
                     </td>
                     <td className="py-2 pr-3 whitespace-nowrap">
+                      <span
+                        className={`px-2 py-0.5 rounded text-xs text-white ${sev}`}
+                      >
+                        {it.severity || "—"}
+                      </span>
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it.source || "—"}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {Array.isArray(it.correctiveActions)
+                        ? it.correctiveActions.length
+                        : 0}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
                       {it?.recordedBy
-                        ? `${it.recordedBy.firstName || ""} ${it.recordedBy.lastName || ""}`.trim()
+                        ? `${it.recordedBy.firstName || ""} ${
+                            it.recordedBy.lastName || ""
+                          }`.trim()
                         : "—"}
                     </td>
                     <td className="py-2 pr-0">
@@ -435,7 +446,7 @@ export default function PestControlList({
       {meta?.pages > 1 && (
         <div className="flex items-center justify-between mt-4">
           <div className="text-xs opacity-70">
-            Page {meta.page}/{meta.pages} — {meta.total} suivis
+            Page {meta.page}/{meta.pages} — {meta.total} incidents
           </div>
           <div className="flex gap-2">
             <button
@@ -471,7 +482,7 @@ export default function PestControlList({
             <div className="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
               <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-[450px] pointer-events-auto">
                 <h2 className="text-xl font-semibold mb-6 text-center">
-                  Supprimer ce suivi nuisibles ?
+                  Supprimer cet incident ?
                 </h2>
                 <p className="text-sm text-center mb-6">
                   Cette action est définitive.

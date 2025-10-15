@@ -162,14 +162,14 @@ export default function ReceptionTemperatureForm({
     const token = localStorage.getItem("token");
     const payload = {
       ...data,
-      receptionId: data.receptionId || undefined,
+      receptionId: data.receptionId === "" ? null : data.receptionId,
       // back attend un Date -> convertir le datetime-local (string) en Date
       receivedAt: data.receivedAt ? new Date(data.receivedAt) : undefined,
     };
 
     const url = initial?._id
-      ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/temperature-receptions/${initial._id}`
-      : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/temperature-receptions`;
+      ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/reception-temperatures/${initial._id}`
+      : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/reception-temperatures`;
 
     const method = initial?._id ? "put" : "post";
 

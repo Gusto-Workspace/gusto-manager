@@ -88,7 +88,7 @@ export default function ReceptionTemperatureList({
       if (curFrom) params.date_from = new Date(curFrom).toISOString();
       if (curTo) params.date_to = new Date(curTo).toISOString();
 
-      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/temperature-receptions`;
+      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/reception-temperatures`;
       const { data } = await axios.get(url, {
         headers: { Authorization: `Bearer ${token}` },
         params,
@@ -158,9 +158,9 @@ export default function ReceptionTemperatureList({
       }
     };
 
-    window.addEventListener("temperature-reception:upsert", handleUpsert);
+    window.addEventListener("reception-temperature:upsert", handleUpsert);
     return () =>
-      window.removeEventListener("temperature-reception:upsert", handleUpsert);
+      window.removeEventListener("reception-temperature:upsert", handleUpsert);
   }, [restaurantId]);
 
   const filtered = useMemo(() => {
@@ -190,7 +190,7 @@ export default function ReceptionTemperatureList({
   const onConfirmDelete = async () => {
     if (!deleteTarget) return;
 
-    const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/temperature-receptions/${deleteTarget._id}`;
+    const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/reception-temperatures/${deleteTarget._id}`;
 
     try {
       setDeleteLoading(true);

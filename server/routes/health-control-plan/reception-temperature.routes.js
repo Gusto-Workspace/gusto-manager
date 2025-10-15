@@ -41,7 +41,7 @@ function hasBusinessChanges(prev, next) {
 
 /* -------------------- CREATE -------------------- */
 router.post(
-  "/restaurants/:restaurantId/temperature-receptions",
+  "/restaurants/:restaurantId/reception-temperatures",
   authenticateToken,
   async (req, res) => {
     try {
@@ -67,15 +67,16 @@ router.post(
       });
 
       await doc.save();
-      // 👉 renvoie le doc avec receptionId peuplé pour la liste
+      
       await doc.populate({
         path: "receptionId",
         select: "receivedAt supplier",
+        model: "ReceptionDelivery",
       });
 
       return res.status(201).json(doc);
     } catch (err) {
-      console.error("POST /temperature-receptions:", err);
+      console.error("POST /reception-temperatures:", err);
       return res
         .status(500)
         .json({ error: "Erreur lors de la création du relevé" });
@@ -85,7 +86,7 @@ router.post(
 
 /* -------------------- LIST -------------------- */
 router.get(
-  "/restaurants/:restaurantId/temperature-receptions",
+  "/restaurants/:restaurantId/reception-temperatures",
   authenticateToken,
   async (req, res) => {
     try {
@@ -111,7 +112,11 @@ router.get(
           .sort({ receivedAt: -1 })
           .skip(skip)
           .limit(Number(limit))
-          .populate({ path: "receptionId", select: "receivedAt supplier" }), // 👈 populate
+          .populate({
+            path: "receptionId",
+            select: "receivedAt supplier",
+            model: "ReceptionDelivery",
+          }),
         ReceptionTemperature.countDocuments(q),
       ]);
 
@@ -125,7 +130,7 @@ router.get(
         },
       });
     } catch (err) {
-      console.error("GET /temperature-receptions:", err);
+      console.error("GET /reception-temperatures:", err);
       return res
         .status(500)
         .json({ error: "Erreur lors de la récupération des relevés" });
@@ -135,7 +140,7 @@ router.get(
 
 /* -------------------- READ ONE -------------------- */
 router.get(
-  "/restaurants/:restaurantId/temperature-receptions/:tempId",
+  "/restaurants/:restaurantId/reception-temperatures/:tempId",
   authenticateToken,
   async (req, res) => {
     try {
@@ -143,11 +148,15 @@ router.get(
       const doc = await ReceptionTemperature.findOne({
         _id: tempId,
         restaurantId,
-      }).populate({ path: "receptionId", select: "receivedAt supplier" }); // 👈 populate
+      }).populate({
+        path: "receptionId",
+        select: "receivedAt supplier",
+        model: "ReceptionDelivery",
+      });
       if (!doc) return res.status(404).json({ error: "Relevé introuvable" });
       return res.json(doc);
     } catch (err) {
-      console.error("GET /temperature-receptions/:tempId:", err);
+      console.error("GET /reception-temperatures/:tempId:", err);
       return res
         .status(500)
         .json({ error: "Erreur lors de la récupération du relevé" });
@@ -157,7 +166,7 @@ router.get(
 
 /* -------------------- UPDATE -------------------- */
 router.put(
-  "/restaurants/:restaurantId/temperature-receptions/:tempId",
+  "/restaurants/:restaurantId/reception-temperatures/:tempId",
   authenticateToken,
   async (req, res) => {
     try {
@@ -166,6 +175,18 @@ router.put(
 
       // empêche toute tentative de modifier recordedBy côté client
       delete inData.recordedBy;
+
+      // Normalisation du champ de liaison
+      const hasReceptionId = Object.prototype.hasOwnProperty.call(
+        inData,
+        "receptionId"
+      );
+      if (
+        hasReceptionId &&
+        (inData.receptionId === "" || inData.receptionId === null)
+      ) {
+        inData.receptionId = null;
+      }
 
       if (inData.value !== undefined) {
         inData.value = Number(inData.value);
@@ -189,10 +210,7 @@ router.put(
             ? inData.packagingCondition
             : prev.packagingCondition,
         note: inData.note !== undefined ? inData.note : prev.note,
-        receptionId:
-          inData.receptionId !== undefined
-            ? inData.receptionId
-            : prev.receptionId,
+        receptionId: hasReceptionId ? inData.receptionId : prev.receptionId,
         receivedAt:
           inData.receivedAt !== undefined ? inData.receivedAt : prev.receivedAt,
       };
@@ -221,7 +239,7 @@ router.put(
       }); // 👈 populate retour
       return res.json(prev);
     } catch (err) {
-      console.error("PUT /temperature-receptions/:tempId:", err);
+      console.error("PUT /reception-temperatures/:tempId:", err);
       return res
         .status(500)
         .json({ error: "Erreur lors de la mise à jour du relevé" });
@@ -231,7 +249,7 @@ router.put(
 
 /* -------------------- DELETE -------------------- */
 router.delete(
-  "/restaurants/:restaurantId/temperature-receptions/:tempId",
+  "/restaurants/:restaurantId/reception-temperatures/:tempId",
   authenticateToken,
   async (req, res) => {
     try {
@@ -243,7 +261,7 @@ router.delete(
       if (!doc) return res.status(404).json({ error: "Relevé introuvable" });
       return res.json({ success: true });
     } catch (err) {
-      console.error("DELETE /temperature-receptions/:tempId:", err);
+      console.error("DELETE /reception-temperatures/:tempId:", err);
       return res
         .status(500)
         .json({ error: "Erreur lors de la suppression du relevé" });

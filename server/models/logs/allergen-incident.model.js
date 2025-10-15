@@ -14,16 +14,33 @@ const correctiveActionSchema = new Schema(
 
 const allergenIncidentSchema = new Schema(
   {
-    restaurantId: { type: Schema.Types.ObjectId, ref: "Restaurant", required: true, index: true },
-    source: { type: String, enum: ["supplier", "customer", "internal", "lab", "other"], default: "internal" },
+    restaurantId: {
+      type: Schema.Types.ObjectId,
+      ref: "Restaurant",
+      required: true,
+      index: true,
+    },
+    source: {
+      type: String,
+      enum: ["supplier", "customer", "internal", "lab", "other"],
+      default: "internal",
+    },
     itemName: String, // plat / ingrédient
     itemId: { type: Schema.Types.ObjectId, refPath: "itemRefModel" }, // optionnel (Recipe/Dish)
-    itemRefModel: { type: String, enum: ["Recipe", "Dish", null], default: null },
+    itemRefModel: {
+      type: String,
+      enum: ["Recipe", "Dish", null],
+      default: null,
+    },
     supplierId: { type: Schema.Types.ObjectId, ref: "Supplier" },
     detectedAt: { type: Date, default: Date.now, index: true },
     detectedBy: { type: Schema.Types.ObjectId, ref: "Employee" },
     allergens: { type: [String], default: [] }, // ex: ["gluten","lait"]
-    severity: { type: String, enum: ["low", "medium", "high"], default: "medium" },
+    severity: {
+      type: String,
+      enum: ["low", "medium", "high"],
+      default: "medium",
+    },
     description: String,
     immediateAction: String, // ex: "isolation lot", "recall"
     correctiveActions: { type: [correctiveActionSchema], default: [] },
@@ -31,8 +48,16 @@ const allergenIncidentSchema = new Schema(
     closed: { type: Boolean, default: false },
     closedAt: Date,
     createdAt: { type: Date, default: Date.now },
+    
+    // Qui a enregistré (snapshot à la création)
+    recordedBy: {
+      userId: { type: Schema.Types.ObjectId, required: true, index: true },
+      role: { type: String, enum: ["owner", "employee"], required: true },
+      firstName: { type: String },
+      lastName: { type: String },
+    },
   },
-  { versionKey: false }
+  { versionKey: false, collection: "allergen_incidents" }
 );
 
 allergenIncidentSchema.index({ restaurantId: 1, detectedAt: -1 });

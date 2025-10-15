@@ -125,7 +125,7 @@ export default function ServiceTemperaturePage(props) {
                         setEditing(null);
                     }}
                   />
-                </div>{" "}
+                </div>
               </section>
             ) : (
               <NoAvailableComponent

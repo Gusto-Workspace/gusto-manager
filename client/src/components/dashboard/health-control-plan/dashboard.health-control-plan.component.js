@@ -98,7 +98,7 @@ const defaultTiles = [
     label: "Allergènes",
     icon: "🥜",
     note: "Gestion & étiquetage",
-    href: "/dashboard/health-control-plan/reception-temperature",
+    href: "/dashboard/health-control-plan/allergen-incidents",
   },
   {
     key: "micro",
