@@ -112,7 +112,7 @@ const defaultTiles = [
     label: "Non-conformités",
     icon: "⚠️",
     note: "NC ouvertes / fermées",
-    href: "/dashboard/health-control-plan/reception-temperature",
+    href: "/dashboard/health-control-plan/non-conformity",
   },
 
   {
@@ -120,7 +120,7 @@ const defaultTiles = [
     label: "Certificats fournisseurs",
     icon: "📄",
     note: "FDS & certificats",
-    href: "/dashboard/health-control-plan/reception-temperature",
+    href: "/dashboard/health-control-plan/suppliers-certificates",
   },
   {
     key: "return-nc",

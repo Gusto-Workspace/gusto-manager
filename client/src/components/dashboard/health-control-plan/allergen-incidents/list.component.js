@@ -107,6 +107,7 @@ export default function AllergenIncidentList({
     }
   };
 
+  // Initial fetch
   useEffect(() => {
     if (restaurantId) {
       fetchData(1, {
@@ -120,6 +121,13 @@ export default function AllergenIncidentList({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
+
+  // Auto-fetch quand Statut / Gravité / Source changent
+  useEffect(() => {
+    if (!restaurantId) return;
+    fetchData(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, severity, source]);
 
   useEffect(() => {
     const handleUpsert = (event) => {
@@ -169,6 +177,27 @@ export default function AllergenIncidentList({
       window.removeEventListener("allergen-incident:upsert", handleUpsert);
   }, [restaurantId]);
 
+  // Filtrage client sur q (instantané)
+  const filtered = useMemo(() => {
+    if (!q) return items;
+    const qq = q.toLowerCase();
+    return items.filter((it) =>
+      [
+        it?.itemName,
+        it?.source,
+        it?.severity,
+        ...(Array.isArray(it?.allergens) ? it.allergens : []),
+        it?.description,
+        it?.immediateAction,
+        it?.recordedBy?.firstName,
+        it?.recordedBy?.lastName,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(qq)
+    );
+  }, [items, q]);
+
   const askDelete = (it) => {
     setDeleteTarget(it);
     setIsDeleteModalOpen(true);
@@ -209,25 +238,6 @@ export default function AllergenIncidentList({
     setIsDeleteModalOpen(false);
     setDeleteTarget(null);
   };
-
-  // Filtrage client sur q pour plus de réactivité
-  const filtered = useMemo(() => {
-    if (!q) return items;
-    const qq = q.toLowerCase();
-    return items.filter((it) =>
-      [
-        it?.itemName,
-        it?.source,
-        it?.severity,
-        ...(Array.isArray(it?.allergens) ? it.allergens : []),
-        it?.description,
-        it?.immediateAction,
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(qq)
-    );
-  }, [items, q]);
 
   return (
     <div className="bg-white rounded-lg drop-shadow-sm p-4">
@@ -349,22 +359,22 @@ export default function AllergenIncidentList({
             </tr>
           </thead>
           <tbody>
-            {!loading && items.length === 0 && (
+            {!loading && filtered.length === 0 && (
               <tr>
-                <td colSpan={8} className="py-6 text-center opacity-60">
+                <td colSpan={9} className="py-6 text-center opacity-60">
                   Aucun incident
                 </td>
               </tr>
             )}
             {loading && (
               <tr>
-                <td colSpan={8} className="py-6 text-center opacity-60">
+                <td colSpan={9} className="py-6 text-center opacity-60">
                   Chargement…
                 </td>
               </tr>
             )}
             {!loading &&
-              (filtered.length ? filtered : items).map((it) => {
+              filtered.map((it) => {
                 const badge = statusBadge(it);
                 const sev =
                   it.severity === "high"

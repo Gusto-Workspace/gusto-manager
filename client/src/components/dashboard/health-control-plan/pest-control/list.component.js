@@ -112,6 +112,7 @@ export default function PestControlList({
     }
   };
 
+  // Initial fetch
   useEffect(() => {
     if (restaurantId)
       fetchData(1, {
@@ -124,6 +125,13 @@ export default function PestControlList({
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
+
+  // Auto-fetch quand Contrat / Fréq. / Activité changent
+  useEffect(() => {
+    if (!restaurantId) return;
+    fetchData(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, freq, activity]);
 
   useEffect(() => {
     const handleUpsert = (event) => {
@@ -172,6 +180,31 @@ export default function PestControlList({
     return () =>
       window.removeEventListener("pest-control:upsert", handleUpsert);
   }, [restaurantId]);
+
+  // Recherche locale instantanée (comme pour l'autre composant)
+  const filtered = useMemo(() => {
+    if (!q) return items;
+    const qq = q.toLowerCase();
+    return items.filter((it) =>
+      [
+        it?.provider,
+        it?.providerContactName,
+        it?.providerPhone,
+        it?.providerEmail,
+        it?.visitFrequency,
+        it?.activityLevel,
+        it?.complianceStatus,
+        String(it?.baitStationsCount ?? ""),
+        String(it?.trapsCount ?? ""),
+        ...(Array.isArray(it?.reportUrls) ? it.reportUrls : []),
+        it?.recordedBy?.firstName,
+        it?.recordedBy?.lastName,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(qq)
+    );
+  }, [items, q]);
 
   const askDelete = (it) => {
     setDeleteTarget(it);
@@ -236,6 +269,31 @@ export default function PestControlList({
             <option value="expired_contract">Contrat expiré</option>
           </select>
 
+          <select
+            value={freq}
+            onChange={(e) => setFreq(e.target.value)}
+            className="border rounded p-2 h-[44px] w-full midTablet:w-40"
+            title="Fréq. visites"
+          >
+            <option value="">Fréq. (toutes)</option>
+            <option value="monthly">Mensuelle</option>
+            <option value="quarterly">Trimestrielle</option>
+            <option value="biannual">Semestrielle</option>
+            <option value="annual">Annuelle</option>
+          </select>
+
+          <select
+            value={activity}
+            onChange={(e) => setActivity(e.target.value)}
+            className="border rounded p-2 h-[44px] w-full midTablet:w-40"
+            title="Activité"
+          >
+            <option value="">Activité (toutes)</option>
+            <option value="low">Faible</option>
+            <option value="medium">Moyenne</option>
+            <option value="high">Forte</option>
+          </select>
+
           <div className="flex flex-col gap-1 w-full midTablet:flex-row midTablet:items-center midTablet:gap-2 midTablet:w-auto">
             <label className="text-sm font-medium">Visites du</label>
             <input
@@ -260,10 +318,10 @@ export default function PestControlList({
 
           <div className="flex flex-col gap-2 w-full mobile:flex-row mobile:w-auto mobile:items-center">
             <button
-              onClick={() => dateFrom && dateTo && fetchData(1)}
-              disabled={!(dateFrom && dateTo)}
+              onClick={() => hasFullDateRange && fetchData(1)}
+              disabled={!hasFullDateRange}
               className={`px-4 py-2 rounded bg-blue text-white w-full mobile:w-32 ${
-                dateFrom && dateTo ? "" : "opacity-30 cursor-not-allowed"
+                hasFullDateRange ? "" : "opacity-30 cursor-not-allowed"
               }`}
             >
               Filtrer
@@ -287,7 +345,9 @@ export default function PestControlList({
                 });
               }}
               disabled={!hasActiveFilters}
-              className={`px-4 py-2 rounded bg-blue text-white ${hasActiveFilters ? "" : "opacity-30 cursor-not-allowed"}`}
+              className={`px-4 py-2 rounded bg-blue text-white ${
+                hasActiveFilters ? "" : "opacity-30 cursor-not-allowed"
+              }`}
             >
               Réinitialiser
             </button>
@@ -314,7 +374,7 @@ export default function PestControlList({
             </tr>
           </thead>
           <tbody>
-            {!loading && items.length === 0 && (
+            {!loading && filtered.length === 0 && (
               <tr>
                 <td colSpan={10} className="py-6 text-center opacity-60">
                   Aucun suivi nuisibles
@@ -329,7 +389,7 @@ export default function PestControlList({
               </tr>
             )}
             {!loading &&
-              items.map((it) => {
+              filtered.map((it) => {
                 const cBadge = contractBadge(it);
                 const isExpired = cBadge === "Expiré";
                 return (

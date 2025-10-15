@@ -5,7 +5,7 @@ import axios from "axios";
 
 function fmtDate(d) {
   try {
-    if (!d) return "";
+    if (!d) return "—";
     const date = new Date(d);
     return new Intl.DateTimeFormat("fr-FR", {
       day: "2-digit",
@@ -15,26 +15,22 @@ function fmtDate(d) {
       minute: "2-digit",
     }).format(date);
   } catch {
-    return d || "";
+    return d || "—";
   }
 }
+const statusBadge = (s) => {
+  const map = {
+    open: "bg-red text-white",
+    in_progress: "bg-orange text-white",
+    closed: "bg-green text-white",
+  };
+  const cls = map[s] || "bg-gray text-white";
+  return (
+    <span className={`px-2 py-0.5 rounded text-xs ${cls}`}>{s || "—"}</span>
+  );
+};
 
-function formatReceptionLabel(reception) {
-  if (!reception) return "—";
-  const hasFields =
-    typeof reception === "object" &&
-    (reception.receivedAt || reception.supplier);
-  if (!hasFields) return "Réception liée";
-  let dateLabel = "Date inconnue";
-  if (reception.receivedAt) {
-    const d = new Date(reception.receivedAt);
-    if (!Number.isNaN(d.getTime())) dateLabel = d.toLocaleString();
-  }
-  const supplierInfo = reception.supplier ? ` • ${reception.supplier}` : "";
-  return `${dateLabel}${supplierInfo}`;
-}
-
-export default function ReceptionTemperatureList({
+export default function NonConformityList({
   restaurantId,
   onEdit,
   editingId = null,
@@ -45,29 +41,16 @@ export default function ReceptionTemperatureList({
   const [loading, setLoading] = useState(false);
 
   // Filtres
+  const [q, setQ] = useState("");
+  const [type, setType] = useState("");
+  const [severity, setSeverity] = useState("");
+  const [status, setStatus] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [q, setQ] = useState("");
-  const [packaging, setPackaging] = useState(""); // <= nouveau filtre Emballage
 
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
-
-  const [isClient, setIsClient] = useState(false);
-  useEffect(() => setIsClient(true), []);
-
-  const hasActiveFilters = useMemo(
-    () => Boolean(q || dateFrom || dateTo || packaging),
-    [q, dateFrom, dateTo, packaging]
-  );
-  const hasFullDateRange = Boolean(dateFrom && dateTo);
-
-  useEffect(() => {
-    if (dateFrom && dateTo && dateTo < dateFrom) {
-      setDateTo(dateFrom);
-    }
-  }, [dateFrom, dateTo]);
 
   const token = useMemo(() => localStorage.getItem("token"), []);
   const metaRef = useRef(meta);
@@ -75,79 +58,103 @@ export default function ReceptionTemperatureList({
     metaRef.current = meta;
   }, [meta]);
 
-  const sortByDate = (list) =>
-    [...list].sort(
-      (a, b) => new Date(b?.receivedAt || 0) - new Date(a?.receivedAt || 0)
-    );
+  // Corrige si 'Au' < 'Du'
+  useEffect(() => {
+    if (dateFrom && dateTo && dateTo < dateFrom) setDateTo(dateFrom);
+  }, [dateFrom, dateTo]);
+
+  const sortLogic = (list) =>
+    [...list].sort((a, b) => {
+      const ak = a?.reportedAt
+        ? new Date(a.reportedAt).getTime()
+        : new Date(a.createdAt || 0).getTime();
+      const bk = b?.reportedAt
+        ? new Date(b.reportedAt).getTime()
+        : new Date(b.createdAt || 0).getTime();
+      return bk - ak;
+    });
+
+  const hasActiveFilters = useMemo(
+    () => Boolean(q || type || severity || status || dateFrom || dateTo),
+    [q, type, severity, status, dateFrom, dateTo]
+  );
+  const hasFullDateRange = Boolean(dateFrom && dateTo);
 
   const fetchData = async (page = 1, overrides = {}) => {
     setLoading(true);
     try {
       const cur = {
-        dateFrom: overrides.dateFrom !== undefined ? overrides.dateFrom : dateFrom,
-        dateTo: overrides.dateTo !== undefined ? overrides.dateTo : dateTo,
-        packaging: overrides.packaging !== undefined ? overrides.packaging : packaging,
+        q: overrides.q ?? q,
+        type: overrides.type ?? type,
+        severity: overrides.severity ?? severity,
+        status: overrides.status ?? status,
+        dateFrom: overrides.dateFrom ?? dateFrom,
+        dateTo: overrides.dateTo ?? dateTo,
       };
-
       const params = { page, limit: meta.limit || 20 };
+      if (cur.q) params.q = cur.q;
+      if (cur.type) params.type = cur.type;
+      if (cur.severity) params.severity = cur.severity;
+      if (cur.status) params.status = cur.status;
       if (cur.dateFrom) params.date_from = new Date(cur.dateFrom).toISOString();
       if (cur.dateTo) params.date_to = new Date(cur.dateTo).toISOString();
-      if (cur.packaging) {
-        // on tente les deux conventions côté API ; si une est ignorée, l'autre peut fonctionner
-        params.packaging = cur.packaging;
-        params.packagingCondition = cur.packaging;
-      }
 
-      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/reception-temperatures`;
+      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-non-conformities`;
       const { data } = await axios.get(url, {
         headers: { Authorization: `Bearer ${token}` },
         params,
       });
-      const list = sortByDate(data.items || []);
+
+      const list = sortLogic(data.items || []);
       const nextMeta = data.meta || { page: 1, limit: 20, pages: 1, total: 0 };
       setItems(list);
       setMeta(nextMeta);
       metaRef.current = nextMeta;
     } catch (e) {
-      console.error(e);
+      console.error("fetch NC list error:", e);
     } finally {
       setLoading(false);
     }
   };
 
-  // Initial load
+  // Initial fetch
   useEffect(() => {
-    if (restaurantId) fetchData(1, { dateFrom: "", dateTo: "", packaging: "" });
+    if (restaurantId)
+      fetchData(1, {
+        q: "",
+        type: "",
+        severity: "",
+        status: "",
+        dateFrom: "",
+        dateTo: "",
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
 
-  // Auto-refresh quand l’emballage change (dates via bouton Filtrer)
+  // Auto-fetch quand Type / Gravité / Statut changent (dates via bouton)
   useEffect(() => {
     if (!restaurantId) return;
     fetchData(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [packaging]);
+  }, [type, severity, status]);
 
-  // Live updates
+  // Live update via event
   useEffect(() => {
     const handleUpsert = (event) => {
       const doc = event?.detail?.doc;
       if (!doc || !doc._id) return;
-      if (restaurantId && String(doc.restaurantId) !== String(restaurantId)) {
+      if (restaurantId && String(doc.restaurantId) !== String(restaurantId))
         return;
-      }
 
       const currentMeta = metaRef.current || {};
       const limit = currentMeta.limit || 20;
       const page = currentMeta.page || 1;
 
       let isNew = false;
-
       setItems((prev) => {
         const prevList = Array.isArray(prev) ? prev : [];
-        const index = prevList.findIndex((item) => item?._id === doc._id);
+        const index = prevList.findIndex((it) => it?._id === doc._id);
         let nextList;
-
         if (index !== -1) {
           nextList = [...prevList];
           nextList[index] = { ...prevList[index], ...doc };
@@ -155,15 +162,12 @@ export default function ReceptionTemperatureList({
           isNew = true;
           if (page === 1) {
             nextList = [doc, ...prevList];
-            if (nextList.length > limit) {
-              nextList = nextList.slice(0, limit);
-            }
+            if (nextList.length > limit) nextList = nextList.slice(0, limit);
           } else {
             nextList = prevList;
           }
         }
-
-        return sortByDate(nextList || prevList);
+        return sortLogic(nextList || prevList);
       });
 
       if (isNew) {
@@ -178,35 +182,26 @@ export default function ReceptionTemperatureList({
       }
     };
 
-    window.addEventListener("reception-temperature:upsert", handleUpsert);
+    window.addEventListener("non-conformity:upsert", handleUpsert);
     return () =>
-      window.removeEventListener("reception-temperature:upsert", handleUpsert);
+      window.removeEventListener("non-conformity:upsert", handleUpsert);
   }, [restaurantId]);
 
-  // Options d’emballage dynamiques depuis les données
-  const packagingOptions = useMemo(() => {
-    const set = new Set(
-      (items || []).map((it) => it?.packagingCondition).filter(Boolean)
-    );
-    const arr = Array.from(set).sort((a, b) => a.localeCompare(b, "fr"));
-    // s’assurer que la valeur sélectionnée reste visible même si plus présente
-    if (packaging && !set.has(packaging)) arr.unshift(packaging);
-    return arr;
-  }, [items, packaging]);
-
-  // Filtrage client pour la recherche texte uniquement
+  // Recherche locale instantanée (sur q uniquement)
   const filtered = useMemo(() => {
     if (!q) return items;
     const qq = q.toLowerCase();
     return items.filter((it) =>
       [
-        it?.packagingCondition,
-        it?.note,
-        it?.unit,
-        String(it?.value ?? ""),
+        it?.type,
+        it?.severity,
+        it?.status,
+        it?.referenceId,
+        it?.description,
+        ...(Array.isArray(it?.correctiveActions) ? it.correctiveActions : []),
+        ...(Array.isArray(it?.attachments) ? it.attachments : []),
         it?.recordedBy?.firstName,
         it?.recordedBy?.lastName,
-        it?.receptionId?.supplier,
       ]
         .join(" ")
         .toLowerCase()
@@ -214,29 +209,26 @@ export default function ReceptionTemperatureList({
     );
   }, [items, q]);
 
-  const askDelete = (item) => {
-    setDeleteTarget(item);
+  const askDelete = (it) => {
+    setDeleteTarget(it);
     setIsDeleteModalOpen(true);
   };
-
   const onConfirmDelete = async () => {
     if (!deleteTarget) return;
-
-    const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/reception-temperatures/${deleteTarget._id}`;
-
     try {
       setDeleteLoading(true);
+      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/non-conformities/${deleteTarget._id}`;
       await axios.delete(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const deleted = deleteTarget;
-      const updatedItems = (items || []).filter(
-        (item) => String(item?._id) !== String(deleted._id)
+
+      setItems((prev) =>
+        prev.filter((x) => String(x._id) !== String(deleteTarget._id))
       );
-      setItems(updatedItems);
+      onDeleted?.(deleteTarget);
       setIsDeleteModalOpen(false);
       setDeleteTarget(null);
-      onDeleted?.(deleted);
+
       setMeta((prevMeta) => {
         const limitValue = prevMeta.limit || 20;
         const total = Math.max(0, (prevMeta.total || 0) - 1);
@@ -247,12 +239,11 @@ export default function ReceptionTemperatureList({
         return nextMeta;
       });
     } catch (err) {
-      console.error("Erreur lors de la suppression du relevé:", err);
+      console.error("Erreur suppression :", err);
     } finally {
       setDeleteLoading(false);
     }
   };
-
   const closeDeleteModal = () => {
     if (deleteLoading) return;
     setIsDeleteModalOpen(false);
@@ -267,27 +258,47 @@ export default function ReceptionTemperatureList({
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Rechercher température, note, opérateur, fournisseur…"
-            className="w-full border rounded p-2 midTablet:flex-1 min-w-[200px]"
+            placeholder="Rechercher description, référence, action, note…"
+            className="w-full border rounded p-2 midTablet:flex-1 min-w-[220px]"
           />
 
-          {/* Nouveau filtre Emballage */}
           <select
-            value={packaging}
-            onChange={(e) => setPackaging(e.target.value)}
+            value={type}
+            onChange={(e) => setType(e.target.value)}
             className="border rounded p-2 h-[44px] w-full midTablet:w-48"
-            title="Emballage"
           >
-            <option value="">Tous emballages</option>
-            {packagingOptions.map((opt) => (
-              <option key={opt} value={opt}>
-                {opt}
-              </option>
-            ))}
+            <option value="">Tous types</option>
+            <option value="temperature">Température</option>
+            <option value="hygiene">Hygiène</option>
+            <option value="reception">Réception</option>
+            <option value="microbiology">Microbiologie</option>
+            <option value="other">Autre</option>
+          </select>
+
+          <select
+            value={severity}
+            onChange={(e) => setSeverity(e.target.value)}
+            className="border rounded p-2 h-[44px] w-full midTablet:w-48"
+          >
+            <option value="">Toutes gravités</option>
+            <option value="low">Faible</option>
+            <option value="medium">Moyenne</option>
+            <option value="high">Élevée</option>
+          </select>
+
+          <select
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+            className="border rounded p-2 h-[44px] w-full midTablet:w-48"
+          >
+            <option value="">Tous statuts</option>
+            <option value="open">Ouverte</option>
+            <option value="in_progress">En cours</option>
+            <option value="closed">Fermée</option>
           </select>
 
           <div className="flex flex-col gap-1 w-full midTablet:flex-row midTablet:items-center midTablet:gap-2 midTablet:w-auto">
-            <label className="text-sm font-medium">Du</label>
+            <label className="text-sm font-medium">Déclarées du</label>
             <input
               type="date"
               value={dateFrom}
@@ -312,25 +323,28 @@ export default function ReceptionTemperatureList({
             <button
               onClick={() => hasFullDateRange && fetchData(1)}
               disabled={!hasFullDateRange}
-              title={
-                !hasFullDateRange
-                  ? "Sélectionnez 'Du' ET 'Au' pour filtrer par dates"
-                  : undefined
-              }
               className={`px-4 py-2 rounded bg-blue text-white w-full mobile:w-32 ${
                 hasFullDateRange ? "" : "opacity-30 cursor-not-allowed"
               }`}
             >
               Filtrer
             </button>
-
             <button
               onClick={() => {
                 setQ("");
-                setPackaging("");
+                setType("");
+                setSeverity("");
+                setStatus("");
                 setDateFrom("");
                 setDateTo("");
-                fetchData(1, { dateFrom: "", dateTo: "", packaging: "" });
+                fetchData(1, {
+                  q: "",
+                  type: "",
+                  severity: "",
+                  status: "",
+                  dateFrom: "",
+                  dateTo: "",
+                });
               }}
               disabled={!hasActiveFilters}
               className={`px-4 py-2 rounded bg-blue text-white ${
@@ -343,30 +357,34 @@ export default function ReceptionTemperatureList({
         </div>
       </div>
 
-      <div className="overflow-x-auto max-w-[calc(100vw-80px)] tablet:max-w-[calc(100vw-318px)]">
-        <table className="w-full text-sm ">
+      {/* Table */}
+      <div className="overflow-x-auto max-w-[calc(100vw-80px)] tablet:max-w-[calc(100vw-350px)]">
+        <table className="w-full text-sm">
           <thead className="whitespace-nowrap">
             <tr className="text-left border-b">
-              <th className="py-2 pr-3">Date</th>
-              <th className="py-2 pr-3">T°</th>
-              <th className="py-2 pr-3">Emballage</th>
-              <th className="py-2 pr-3">Réception associée</th>
+              <th className="py-2 pr-3">Déclarée le</th>
+              <th className="py-2 pr-3">Type</th>
+              <th className="py-2 pr-3">Gravité</th>
+              <th className="py-2 pr-3">Statut</th>
+              <th className="py-2 pr-3">Référence</th>
+              <th className="py-2 pr-3">Description</th>
+              <th className="py-2 pr-3">Actions corr.</th>
+              <th className="py-2 pr-3">Pièces</th>
               <th className="py-2 pr-3">Opérateur</th>
-              <th className="py-2 pr-3">Note</th>
               <th className="py-2 pr-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {!loading && filtered.length === 0 && (
               <tr>
-                <td colSpan={7} className="py-6 text-center opacity-60">
-                  Aucun relevé
+                <td colSpan={10} className="py-6 text-center opacity-60">
+                  Aucune non-conformité
                 </td>
               </tr>
             )}
             {loading && (
               <tr>
-                <td colSpan={7} className="py-6 text-center opacity-60">
+                <td colSpan={10} className="py-6 text-center opacity-60">
                   Chargement…
                 </td>
               </tr>
@@ -375,43 +393,53 @@ export default function ReceptionTemperatureList({
               filtered.map((it) => (
                 <tr
                   key={it._id}
-                  className={`border-b transition-colors ${
-                    editingId === it._id ? "bg-lightGrey" : ""
-                  }`}
+                  className={`border-b ${editingId === it._id ? "bg-lightGrey" : ""}`}
                 >
                   <td className="py-2 pr-3 whitespace-nowrap">
-                    {fmtDate(it.receivedAt)}
+                    {fmtDate(it.reportedAt)}
+                  </td>
+                  <td className="py-2 pr-3 whitespace-nowrap capitalize">
+                    {it.type || "—"}
                   </td>
                   <td className="py-2 pr-3 whitespace-nowrap">
-                    {it.value} {it.unit}
+                    {it.severity || "—"}
                   </td>
                   <td className="py-2 pr-3 whitespace-nowrap">
-                    {it.packagingCondition || "—"}
+                    {statusBadge(it.status)}
                   </td>
                   <td className="py-2 pr-3 whitespace-nowrap">
-                    {formatReceptionLabel(it.receptionId)}
+                    {it.referenceId || "—"}
+                  </td>
+                  <td className="py-2 pr-3">{it.description || "—"}</td>
+                  <td className="py-2 pr-3 whitespace-nowrap">
+                    {Array.isArray(it.correctiveActions)
+                      ? it.correctiveActions.length
+                      : 0}
+                  </td>
+                  <td className="py-2 pr-3 whitespace-nowrap">
+                    {Array.isArray(it.attachments) && it.attachments.length
+                      ? `${it.attachments.length} doc(s)`
+                      : "—"}
                   </td>
                   <td className="py-2 pr-3 whitespace-nowrap">
                     {it?.recordedBy
-                      ? `${it.recordedBy.firstName || ""} ${it.recordedBy.lastName || ""}`.trim()
+                      ? `${it.recordedBy.firstName || ""} ${it.recordedBy.lastName || ""}`.trim() ||
+                        "—"
                       : "—"}
-                  </td>
-                  <td className="py-2 pr-3 max-w-[320px]">
-                    <span className="line-clamp-2">{it.note || "—"}</span>
                   </td>
                   <td className="py-2 pr-0">
                     <div className="flex gap-2 justify-end">
                       <button
                         onClick={() => onEdit?.(it)}
                         className="px-3 py-1 rounded bg-green text-white"
-                        aria-label="Éditer"
                       >
                         Éditer
                       </button>
                       <button
-                        onClick={() => askDelete(it)}
+                        onClick={() =>
+                          setIsDeleteModalOpen(true) || setDeleteTarget(it)
+                        }
                         className="px-3 py-1 rounded bg-red text-white"
-                        aria-label="Supprimer"
                       >
                         Supprimer
                       </button>
@@ -423,10 +451,11 @@ export default function ReceptionTemperatureList({
         </table>
       </div>
 
+      {/* Pagination */}
       {meta?.pages > 1 && (
         <div className="flex items-center justify-between mt-4">
           <div className="text-xs opacity-70">
-            Page {meta.page}/{meta.pages} — {meta.total} relevés
+            Page {meta.page}/{meta.pages} — {meta.total} non-conformités
           </div>
           <div className="flex gap-2">
             <button
@@ -447,8 +476,8 @@ export default function ReceptionTemperatureList({
         </div>
       )}
 
+      {/* Modale suppression */}
       {isDeleteModalOpen &&
-        isClient &&
         createPortal(
           <div
             className="fixed inset-0 z-[1000]"
@@ -459,15 +488,13 @@ export default function ReceptionTemperatureList({
               onClick={closeDeleteModal}
               className="absolute inset-0 bg-black/20"
             />
-
             <div className="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
               <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-[450px] pointer-events-auto">
                 <h2 className="text-xl font-semibold mb-6 text-center">
-                  Supprimer ce relevé ?
+                  Supprimer cette non-conformité ?
                 </h2>
                 <p className="text-sm text-center mb-6">
-                  Cette action est définitive. Le relevé sera retiré de votre
-                  plan de maîtrise sanitaire.
+                  Cette action est définitive.
                 </p>
                 <div className="flex gap-4 mx-auto justify-center">
                   <button

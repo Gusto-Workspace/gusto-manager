@@ -28,9 +28,13 @@ export default function FridgeTemperatureList({
   const [items, setItems] = useState([]);
   const [meta, setMeta] = useState({ page: 1, limit: 20, pages: 1, total: 0 });
   const [loading, setLoading] = useState(false);
+
+  // Filtres
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [q, setQ] = useState("");
+  const [door, setDoor] = useState(""); // <= nouveau filtre Porte
+
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -39,8 +43,8 @@ export default function FridgeTemperatureList({
   useEffect(() => setIsClient(true), []);
 
   const hasActiveFilters = useMemo(
-    () => Boolean(q || dateFrom || dateTo),
-    [q, dateFrom, dateTo]
+    () => Boolean(q || dateFrom || dateTo || door),
+    [q, dateFrom, dateTo, door]
   );
   const hasFullDateRange = Boolean(dateFrom && dateTo);
 
@@ -64,15 +68,23 @@ export default function FridgeTemperatureList({
   const fetchData = async (page = 1, overrides = {}) => {
     setLoading(true);
     try {
-      const curQ = overrides.q !== undefined ? overrides.q : q;
-      const curFrom =
-        overrides.dateFrom !== undefined ? overrides.dateFrom : dateFrom;
-      const curTo = overrides.dateTo !== undefined ? overrides.dateTo : dateTo;
+      const cur = {
+        q: overrides.q !== undefined ? overrides.q : q,
+        dateFrom:
+          overrides.dateFrom !== undefined ? overrides.dateFrom : dateFrom,
+        dateTo: overrides.dateTo !== undefined ? overrides.dateTo : dateTo,
+        door: overrides.door !== undefined ? overrides.door : door,
+      };
 
       const params = { page, limit: meta.limit || 20 };
-      if (curFrom) params.date_from = new Date(curFrom).toISOString();
-      if (curTo) params.date_to = new Date(curTo).toISOString();
-      if (curQ) params.q = curQ;
+      if (cur.dateFrom) params.date_from = new Date(cur.dateFrom).toISOString();
+      if (cur.dateTo) params.date_to = new Date(cur.dateTo).toISOString();
+      if (cur.q) params.q = cur.q;
+      if (cur.door) {
+        // on tente deux clés possibles côté API
+        params.door = cur.door;
+        params.doorState = cur.door;
+      }
 
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/fridge-temperatures`;
       const { data } = await axios.get(url, {
@@ -91,9 +103,19 @@ export default function FridgeTemperatureList({
     }
   };
 
+  // Chargement initial
   useEffect(() => {
-    if (restaurantId) fetchData(1, { q: "", dateFrom: "", dateTo: "" });
+    if (restaurantId)
+      fetchData(1, { q: "", dateFrom: "", dateTo: "", door: "" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
+
+  // Auto-refresh quand le filtre Porte change
+  useEffect(() => {
+    if (!restaurantId) return;
+    fetchData(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [door]);
 
   useEffect(() => {
     const handleUpsert = (event) => {
@@ -144,6 +166,18 @@ export default function FridgeTemperatureList({
     return () =>
       window.removeEventListener("fridge-temperature:upsert", handleUpsert);
   }, [restaurantId]);
+
+  // Options "Porte" dynamiques depuis les données
+  const doorOptions = useMemo(() => {
+    const setVals = new Set(
+      (items || []).map((it) => it?.doorState).filter(Boolean)
+    );
+    const arr = Array.from(setVals).sort((a, b) =>
+      String(a).localeCompare(String(b), "fr")
+    );
+    if (door && !setVals.has(door)) arr.unshift(door);
+    return arr;
+  }, [items, door]);
 
   const filtered = useMemo(() => {
     if (!q) return items;
@@ -224,6 +258,21 @@ export default function FridgeTemperatureList({
             className="w-full border rounded p-2 midTablet:flex-1 min-w-[200px]"
           />
 
+          {/* Nouveau filtre Porte */}
+          <select
+            value={door}
+            onChange={(e) => setDoor(e.target.value)}
+            className="border rounded p-2 h-[44px] w-full midTablet:w-40"
+            title="Porte"
+          >
+            <option value="">Toutes portes</option>
+            {doorOptions.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+          </select>
+
           <div className="flex flex-col gap-1 w-full midTablet:flex-row midTablet:items-center midTablet:gap-2 midTablet:w-auto">
             <label className="text-sm font-medium">Du</label>
             <input
@@ -267,7 +316,8 @@ export default function FridgeTemperatureList({
                 setQ("");
                 setDateFrom("");
                 setDateTo("");
-                fetchData(1, { q: "", dateFrom: "", dateTo: "" });
+                setDoor("");
+                fetchData(1, { q: "", dateFrom: "", dateTo: "", door: "" });
               }}
               disabled={!hasActiveFilters}
               className={`px-4 py-2 rounded bg-blue text-white ${

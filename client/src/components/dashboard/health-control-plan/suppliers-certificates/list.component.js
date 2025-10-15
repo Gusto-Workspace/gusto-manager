@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import axios from "axios";
 
-function fmtDate(d) {
+function fmtDate(d, withTime = false) {
   try {
     if (!d) return "—";
     const date = new Date(d);
@@ -11,15 +11,33 @@ function fmtDate(d) {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
+      ...(withTime ? { hour: "2-digit", minute: "2-digit" } : {}),
     }).format(date);
   } catch {
     return d || "—";
   }
 }
+function statusFrom(item) {
+  const now = new Date();
+  const until = item?.validUntil ? new Date(item.validUntil) : null;
+  if (!until) return "sans date";
+  if (until <= now) return "expiré";
+  const soon = new Date();
+  soon.setDate(soon.getDate() + 30);
+  return until <= soon ? "expire bientôt" : "actif";
+}
+function statusBadge(s) {
+  const map = {
+    expiré: "bg-red text-white",
+    "expire bientôt": "bg-orange text-white",
+    actif: "bg-green text-white",
+    "sans date": "bg-gray text-white",
+  };
+  const cls = map[s] || "bg-gray text-white";
+  return <span className={`px-2 py-0.5 rounded text-xs ${cls}`}>{s}</span>;
+}
 
-export default function MicrobiologyList({
+export default function SupplierCertificateList({
   restaurantId,
   onEdit,
   editingId = null,
@@ -31,14 +49,9 @@ export default function MicrobiologyList({
 
   // Filtres
   const [q, setQ] = useState("");
-  const [type, setType] = useState(""); // surface|food|water|''
-  const [passed, setPassed] = useState(""); // ''|true|false (string)
-  const [dateFrom, setDateFrom] = useState("");
+  const [status, setStatus] = useState("all"); // all | active | expiring_soon | expired
+  const [dateFrom, setDateFrom] = useState(""); // sur validUntil
   const [dateTo, setDateTo] = useState("");
-
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState(null);
-  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const token = useMemo(() => localStorage.getItem("token"), []);
   const metaRef = useRef(meta);
@@ -46,25 +59,25 @@ export default function MicrobiologyList({
     metaRef.current = meta;
   }, [meta]);
 
-  // Corrige si 'Au' < 'Du'
+  // Corriger intervalle invalide
   useEffect(() => {
     if (dateFrom && dateTo && dateTo < dateFrom) setDateTo(dateFrom);
   }, [dateFrom, dateTo]);
 
+  // Tri: proches d'expiration d'abord, sinon upload récent
   const sortLogic = (list) =>
     [...list].sort((a, b) => {
-      const ak = a?.sampledAt
-        ? new Date(a.sampledAt).getTime()
-        : new Date(a.createdAt || 0).getTime();
-      const bk = b?.sampledAt
-        ? new Date(b.sampledAt).getTime()
-        : new Date(b.createdAt || 0).getTime();
-      return bk - ak;
+      const ak = a?.validUntil ? new Date(a.validUntil).getTime() : Infinity;
+      const bk = b?.validUntil ? new Date(b.validUntil).getTime() : Infinity;
+      if (ak !== bk) return ak - bk;
+      const au = a?.uploadedAt ? new Date(a.uploadedAt).getTime() : 0;
+      const bu = b?.uploadedAt ? new Date(b.uploadedAt).getTime() : 0;
+      return bu - au;
     });
 
   const hasActiveFilters = useMemo(
-    () => Boolean(q || type || passed || dateFrom || dateTo),
-    [q, type, passed, dateFrom, dateTo]
+    () => Boolean(q || status !== "all" || dateFrom || dateTo),
+    [q, status, dateFrom, dateTo]
   );
   const hasFullDateRange = Boolean(dateFrom && dateTo);
 
@@ -72,20 +85,18 @@ export default function MicrobiologyList({
     setLoading(true);
     try {
       const cur = {
-        q: overrides.q ?? q,
-        type: overrides.type ?? type,
-        passed: overrides.passed ?? passed,
+        status: overrides.status ?? status,
         dateFrom: overrides.dateFrom ?? dateFrom,
         dateTo: overrides.dateTo ?? dateTo,
       };
+
       const params = { page, limit: meta.limit || 20 };
-      if (cur.q) params.q = cur.q;
-      if (cur.type) params.type = cur.type;
-      if (cur.passed) params.passed = cur.passed; // "true"/"false"
+      // ⬇️ Pas de q ici → recherche locale sans scintillement
+      if (cur.status && cur.status !== "all") params.status = cur.status;
       if (cur.dateFrom) params.date_from = new Date(cur.dateFrom).toISOString();
       if (cur.dateTo) params.date_to = new Date(cur.dateTo).toISOString();
 
-      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-microbiology`;
+      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-supplier-certificates`;
       const { data } = await axios.get(url, {
         headers: { Authorization: `Bearer ${token}` },
         params,
@@ -97,27 +108,31 @@ export default function MicrobiologyList({
       setMeta(nextMeta);
       metaRef.current = nextMeta;
     } catch (e) {
-      console.error("fetch microbiology list error:", e);
+      console.error("fetch certificates list error:", e);
     } finally {
       setLoading(false);
     }
   };
 
-  // Initial fetch
+  // Initial
   useEffect(() => {
     if (restaurantId)
-      fetchData(1, { q: "", type: "", passed: "", dateFrom: "", dateTo: "" });
+      fetchData(1, {
+        status: "all",
+        dateFrom: "",
+        dateTo: "",
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
 
-  // Auto-fetch quand Type / Conformité changent
+  // Auto-refresh quand le statut change (select)
   useEffect(() => {
     if (!restaurantId) return;
-    fetchData(1);
+    fetchData(1, { status });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [type, passed]);
+  }, [status]);
 
-  // Écoute des upserts
+  // Upsert temps réel
   useEffect(() => {
     const handleUpsert = (event) => {
       const doc = event?.detail?.doc;
@@ -161,44 +176,43 @@ export default function MicrobiologyList({
       }
     };
 
-    window.addEventListener("microbiology:upsert", handleUpsert);
+    window.addEventListener("suppliers-certificates:upsert", handleUpsert);
     return () =>
-      window.removeEventListener("microbiology:upsert", handleUpsert);
+      window.removeEventListener("suppliers-certificates:upsert", handleUpsert);
   }, [restaurantId]);
 
-  // Recherche locale instantanée
+  // Recherche locale (q inclut le type dans le haystack)
   const filtered = useMemo(() => {
-    if (!q) return items;
-    const qq = q.toLowerCase();
-    return items.filter((it) =>
-      [
-        it?.sampleType,
-        it?.parameter,
-        it?.result,
-        it?.unit,
-        it?.labName,
-        it?.productName,
-        it?.samplingPoint,
-        it?.lotNumber,
+    const qq = q.trim().toLowerCase();
+    if (!qq) return items;
+
+    return items.filter((it) => {
+      const hay = [
+        it?.supplierName,
+        it?.supplierId,
+        it?.type, // déjà couvert par q
+        it?.certificateNumber,
         it?.notes,
-        it?.recordedBy?.firstName,
-        it?.recordedBy?.lastName,
+        it?.fileUrl,
       ]
+        .filter(Boolean)
         .join(" ")
-        .toLowerCase()
-        .includes(qq)
-    );
+        .toLowerCase();
+
+      return hay.includes(qq);
+    });
   }, [items, q]);
 
-  const askDelete = (it) => {
-    setDeleteTarget(it);
-    setIsDeleteModalOpen(true);
-  };
+  // Suppression
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
   const onConfirmDelete = async () => {
     if (!deleteTarget) return;
     try {
       setDeleteLoading(true);
-      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/microbiology/${deleteTarget._id}`;
+      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/supplier-certificates/${deleteTarget._id}`;
       await axios.delete(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -239,33 +253,23 @@ export default function MicrobiologyList({
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Rechercher paramètre, labo, produit, lot, note…"
+            placeholder="Rechercher fournisseur, type, n°, note, url…"
             className="w-full border rounded p-2 midTablet:flex-1 min-w-[220px]"
           />
 
           <select
-            value={type}
-            onChange={(e) => setType(e.target.value)}
-            className="border rounded p-2 h-[44px] w-full midTablet:w-48"
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+            className="border rounded p-2 h-[44px] w-full midTablet:w-56"
           >
-            <option value="">Tous types</option>
-            <option value="surface">Surface</option>
-            <option value="food">Aliment</option>
-            <option value="water">Eau</option>
-          </select>
-
-          <select
-            value={passed}
-            onChange={(e) => setPassed(e.target.value)}
-            className="border rounded p-2 h-[44px] w-full midTablet:w-48"
-          >
-            <option value="">Toutes conformités</option>
-            <option value="true">Conforme</option>
-            <option value="false">Non conforme</option>
+            <option value="all">Tous statuts</option>
+            <option value="active">Actifs</option>
+            <option value="expiring_soon">Expire bientôt (30j)</option>
+            <option value="expired">Expirés</option>
           </select>
 
           <div className="flex flex-col gap-1 w-full midTablet:flex-row midTablet:items-center midTablet:gap-2 midTablet:w-auto">
-            <label className="text-sm font-medium">Prélevés du</label>
+            <label className="text-sm font-medium">Expire du</label>
             <input
               type="date"
               value={dateFrom}
@@ -274,7 +278,6 @@ export default function MicrobiologyList({
               max={dateTo || undefined}
             />
           </div>
-
           <div className="flex flex-col gap-1 w-full midTablet:flex-row midTablet:items-center midTablet:gap-2 midTablet:w-auto">
             <label className="text-sm font-medium">Au</label>
             <input
@@ -290,24 +293,21 @@ export default function MicrobiologyList({
             <button
               onClick={() => hasFullDateRange && fetchData(1)}
               disabled={!hasFullDateRange}
+              title={!hasFullDateRange ? "Sélectionnez 'Du' ET 'Au'" : undefined}
               className={`px-4 py-2 rounded bg-blue text-white w-full mobile:w-32 ${
                 hasFullDateRange ? "" : "opacity-30 cursor-not-allowed"
               }`}
             >
               Filtrer
             </button>
-
             <button
               onClick={() => {
                 setQ("");
-                setType("");
-                setPassed("");
+                setStatus("all");
                 setDateFrom("");
                 setDateTo("");
                 fetchData(1, {
-                  q: "",
-                  type: "",
-                  passed: "",
+                  status: "all",
                   dateFrom: "",
                   dateTo: "",
                 });
@@ -328,14 +328,13 @@ export default function MicrobiologyList({
         <table className="w-full text-sm">
           <thead className="whitespace-nowrap">
             <tr className="text-left border-b">
-              <th className="py-2 pr-3">Prélevé le</th>
+              <th className="py-2 pr-3">Fournisseur</th>
               <th className="py-2 pr-3">Type</th>
-              <th className="py-2 pr-3">Paramètre</th>
-              <th className="py-2 pr-3">Résultat</th>
-              <th className="py-2 pr-3">Conformité</th>
-              <th className="py-2 pr-3">Labo</th>
-              <th className="py-2 pr-3">Produit / Lot</th>
-              <th className="py-2 pr-3">Rapport</th>
+              <th className="py-2 pr-3">N°</th>
+              <th className="py-2 pr-3">Validité</th>
+              <th className="py-2 pr-3">Statut</th>
+              <th className="py-2 pr-3">Document</th>
+              <th className="py-2 pr-3">Notes</th>
               <th className="py-2 pr-3">Opérateur</th>
               <th className="py-2 pr-3 text-right">Actions</th>
             </tr>
@@ -343,96 +342,72 @@ export default function MicrobiologyList({
           <tbody>
             {!loading && filtered.length === 0 && (
               <tr>
-                <td colSpan={10} className="py-6 text-center opacity-60">
-                  Aucune analyse
+                <td colSpan={9} className="py-6 text-center opacity-60">
+                  Aucun certificat
                 </td>
               </tr>
             )}
             {loading && (
               <tr>
-                <td colSpan={10} className="py-6 text-center opacity-60">
+                <td colSpan={9} className="py-6 text-center opacity-60">
                   Chargement…
                 </td>
               </tr>
             )}
             {!loading &&
-              filtered.map((it) => (
-                <tr
-                  key={it._id}
-                  className={`border-b ${editingId === it._id ? "bg-lightGrey" : ""}`}
-                >
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {fmtDate(it.sampledAt)}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap capitalize">
-                    {it.sampleType || "—"}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {it.parameter || "—"}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {[it.result, it.unit].filter(Boolean).join(" ") || "—"}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {typeof it.passed === "boolean" ? (
-                      <span
-                        className={`px-2 py-0.5 rounded text-xs ${it.passed ? "bg-green text-white" : "bg-red text-white"}`}
-                      >
-                        {it.passed ? "Conforme" : "Non conforme"}
-                      </span>
-                    ) : (
-                      <span className="px-2 py-0.5 rounded text-xs bg-orange text-white">
-                        Indéfini
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {it.labName || "—"}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {it.productName || it.samplingPoint || "—"}
-                    {it.lotNumber ? ` • Lot ${it.lotNumber}` : ""}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {it.reportUrl ? (
-                      <a
-                        href={it.reportUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-blue underline"
-                      >
-                        Ouvrir
-                      </a>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {it?.recordedBy
-                      ? `${it.recordedBy.firstName || ""} ${it.recordedBy.lastName || ""}`.trim() ||
+              filtered.map((it) => {
+                const st = statusFrom(it);
+                return (
+                  <tr
+                    key={it._id}
+                    className={`border-b ${editingId === it._id ? "bg-lightGrey" : ""}`}
+                  >
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      <div className="flex flex-col gap-1">
+                        <span className="font-medium">{it.supplierName || "—"}</span>
+                        <span className="text-xs opacity-70">{it.supplierId || ""}</span>
+                      </div>
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">{it.type || "—"}</td>
+                    <td className="py-2 pr-3 whitespace-nowrap">{it.certificateNumber || "—"}</td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {fmtDate(it.validFrom)} → {fmtDate(it.validUntil)}
+                      <div className="text-[11px] opacity-60">
+                        Upload: {fmtDate(it.uploadedAt, true)}
+                      </div>
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">{statusBadge(st)}</td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it.fileUrl ? (
+                        <a href={it.fileUrl} target="_blank" rel="noreferrer" className="text-blue underline">
+                          Ouvrir
+                        </a>
+                      ) : (
                         "—"
-                      : "—"}
-                  </td>
-                  <td className="py-2 pr-0">
-                    <div className="flex gap-2 justify-end">
-                      <button
-                        onClick={() => onEdit?.(it)}
-                        className="px-3 py-1 rounded bg-green text-white"
-                      >
-                        Éditer
-                      </button>
-                      <button
-                        onClick={() =>
-                          setIsDeleteModalOpen(true) || setDeleteTarget(it)
-                        }
-                        className="px-3 py-1 rounded bg-red text-white"
-                      >
-                        Supprimer
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                      )}
+                    </td>
+                    <td className="py-2 pr-3">{it.notes || "—"}</td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it?.recordedBy
+                        ? `${it.recordedBy.firstName || ""} ${it.recordedBy.lastName || ""}`.trim() || "—"
+                        : "—"}
+                    </td>
+                    <td className="py-2 pr-0">
+                      <div className="flex gap-2 justify-end">
+                        <button onClick={() => onEdit?.(it)} className="px-3 py-1 rounded bg-green text-white">
+                          Éditer
+                        </button>
+                        <button
+                          onClick={() => setIsDeleteModalOpen(true) || setDeleteTarget(it)}
+                          className="px-3 py-1 rounded bg-red text-white"
+                        >
+                          Supprimer
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
           </tbody>
         </table>
       </div>
@@ -440,9 +415,7 @@ export default function MicrobiologyList({
       {/* Pagination */}
       {meta?.pages > 1 && (
         <div className="flex items-center justify-between mt-4">
-          <div className="text-xs opacity-70">
-            Page {meta.page}/{meta.pages} — {meta.total} analyses
-          </div>
+          <div className="text-xs opacity-70">Page {meta.page}/{meta.pages} — {meta.total} certificats</div>
           <div className="flex gap-2">
             <button
               disabled={meta.page <= 1}
@@ -465,23 +438,12 @@ export default function MicrobiologyList({
       {/* Modale suppression */}
       {isDeleteModalOpen &&
         createPortal(
-          <div
-            className="fixed inset-0 z-[1000]"
-            aria-modal="true"
-            role="dialog"
-          >
-            <div
-              onClick={closeDeleteModal}
-              className="absolute inset-0 bg-black/20"
-            />
+          <div className="fixed inset-0 z-[1000]" aria-modal="true" role="dialog">
+            <div onClick={closeDeleteModal} className="absolute inset-0 bg-black/20" />
             <div className="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
               <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-[450px] pointer-events-auto">
-                <h2 className="text-xl font-semibold mb-6 text-center">
-                  Supprimer cette analyse ?
-                </h2>
-                <p className="text-sm text-center mb-6">
-                  Cette action est définitive.
-                </p>
+                <h2 className="text-xl font-semibold mb-6 text-center">Supprimer ce certificat ?</h2>
+                <p className="text-sm text-center mb-6">Cette action est définitive.</p>
                 <div className="flex gap-4 mx-auto justify-center">
                   <button
                     onClick={onConfirmDelete}
@@ -490,11 +452,7 @@ export default function MicrobiologyList({
                   >
                     {deleteLoading ? "Suppression…" : "Confirmer"}
                   </button>
-                  <button
-                    type="button"
-                    onClick={closeDeleteModal}
-                    className="px-4 py-2 rounded-lg text-white bg-red"
-                  >
+                  <button type="button" onClick={closeDeleteModal} className="px-4 py-2 rounded-lg text-white bg-red">
                     Annuler
                   </button>
                 </div>

@@ -1,3 +1,4 @@
+// server/models/logs/non-conformity.model.js
 const mongoose = require("mongoose");
 const { Schema } = mongoose;
 
@@ -24,6 +25,7 @@ const nonConformitySchema = new Schema(
       type: String,
       enum: ["temperature", "hygiene", "reception", "microbiology", "other"],
       default: "other",
+      index: true,
     },
     referenceId: String,
     description: String,
@@ -31,21 +33,37 @@ const nonConformitySchema = new Schema(
       type: String,
       enum: ["low", "medium", "high"],
       default: "medium",
+      index: true,
     },
-    reportedBy: { type: Schema.Types.ObjectId, ref: "Employee" },
+    recordedBy: {
+      userId: { type: Schema.Types.ObjectId, required: true, index: true },
+      role: { type: String, enum: ["owner", "employee"], required: true },
+      firstName: { type: String },
+      lastName: { type: String },
+    },
     reportedAt: { type: Date, default: Date.now, index: true },
     correctiveActions: { type: [correctiveActionSchema], default: [] },
     status: {
       type: String,
       enum: ["open", "in_progress", "closed"],
       default: "open",
+      index: true,
     },
     attachments: { type: [String], default: [] },
+
+    // métadonnées
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now },
   },
-  { versionKey: false }
+  { versionKey: false, collection: "non_conformity" }
 );
 
 nonConformitySchema.index({ restaurantId: 1, status: 1, reportedAt: -1 });
+
+nonConformitySchema.pre("save", function (next) {
+  this.updatedAt = new Date();
+  next();
+});
 
 module.exports =
   mongoose.models.NonConformity ||

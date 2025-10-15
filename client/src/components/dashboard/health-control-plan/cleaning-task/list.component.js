@@ -1,4 +1,3 @@
-// components/dashboard/health-control-plan/cleaning-tasks/list.component.jsx
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -118,6 +117,7 @@ export default function CleaningTaskList({
     }
   };
 
+  // Initial fetch
   useEffect(() => {
     if (restaurantId)
       fetchData(1, {
@@ -129,6 +129,13 @@ export default function CleaningTaskList({
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
+
+  // Auto-fetch quand Statut / Fréquence changent (logique du 2e composant)
+  useEffect(() => {
+    if (!restaurantId) return;
+    fetchData(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, freq]);
 
   useEffect(() => {
     const handleUpsert = (event) => {
@@ -180,6 +187,7 @@ export default function CleaningTaskList({
       window.removeEventListener("cleaning-task:upsert", handleUpsert);
   }, [restaurantId]);
 
+  // Recherche locale (comme initialement)
   const filtered = useMemo(() => {
     if (!q) return items;
     const qq = q.toLowerCase();
