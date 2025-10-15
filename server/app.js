@@ -104,6 +104,7 @@ const oil_change = require("./routes/health-control-plan/oil-change.routes");
 const cleaning_task = require("./routes/health-control-plan/cleaning-task.routes");
 const pest_control = require("./routes/health-control-plan/pest-control.routes");
 const allergen_incidents = require("./routes/health-control-plan/allergen-incidents.routes");
+const microbiology = require("./routes/health-control-plan/microbiology.routes");
 
 app.use(apiRoutes, reception_temperature);
 app.use(apiRoutes, fridge_temperature);
@@ -118,6 +119,7 @@ app.use(apiRoutes, oil_change);
 app.use(apiRoutes, cleaning_task);
 app.use(apiRoutes, pest_control);
 app.use(apiRoutes, allergen_incidents);
+app.use(apiRoutes, microbiology);
 
 // SSE BUS
 mountSseRoute(app);

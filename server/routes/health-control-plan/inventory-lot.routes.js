@@ -3,7 +3,6 @@ const router = express.Router();
 
 const authenticateToken = require("../../middleware/authentificate-token");
 const InventoryLot = require("../../models/logs/inventory-lot.model");
-const ReceptionDelivery = require("../../models/logs/reception-delivery.model");
 
 /* --------- helpers --------- */
 function currentUserFromToken(req) {
@@ -34,9 +33,7 @@ function normalizeNumber(v) {
 }
 function normalizeAllergens(v) {
   if (Array.isArray(v)) {
-    return v
-      .map((a) => normalizeStr(a))
-      .filter((a) => a && a.length);
+    return v.map((a) => normalizeStr(a)).filter((a) => a && a.length);
   }
   if (typeof v === "string") {
     return v
@@ -76,10 +73,13 @@ router.post(
       const unit = normalizeStr(inData.unit);
       const qtyReceived = normalizeNumber(inData.qtyReceived);
 
-      if (!productName) return res.status(400).json({ error: "productName est requis" });
-      if (!lotNumber) return res.status(400).json({ error: "lotNumber est requis" });
+      if (!productName)
+        return res.status(400).json({ error: "productName est requis" });
+      if (!lotNumber)
+        return res.status(400).json({ error: "lotNumber est requis" });
       if (!unit) return res.status(400).json({ error: "unit est requis" });
-      if (qtyReceived == null) return res.status(400).json({ error: "qtyReceived est requis" });
+      if (qtyReceived == null)
+        return res.status(400).json({ error: "qtyReceived est requis" });
 
       const doc = new InventoryLot({
         restaurantId,
@@ -216,7 +216,9 @@ router.get(
       return res.json(doc);
     } catch (err) {
       console.error("GET /inventory-lots/:lotId:", err);
-      return res.status(500).json({ error: "Erreur lors de la récupération du lot" });
+      return res
+        .status(500)
+        .json({ error: "Erreur lors de la récupération du lot" });
     }
   }
 );
@@ -239,7 +241,9 @@ router.put(
 
       const next = {
         receptionId:
-          inData.receptionId !== undefined ? inData.receptionId : prev.receptionId,
+          inData.receptionId !== undefined
+            ? inData.receptionId
+            : prev.receptionId,
 
         productName:
           inData.productName !== undefined
@@ -280,8 +284,7 @@ router.put(
             ? Math.max(0, normalizeNumber(inData.qtyRemaining))
             : prev.qtyRemaining,
 
-        unit:
-          inData.unit !== undefined ? normalizeStr(inData.unit) : prev.unit,
+        unit: inData.unit !== undefined ? normalizeStr(inData.unit) : prev.unit,
 
         tempOnArrival:
           inData.tempOnArrival !== undefined
@@ -336,8 +339,7 @@ router.put(
         return res.status(400).json({ error: "productName est requis" });
       if (!next.lotNumber)
         return res.status(400).json({ error: "lotNumber est requis" });
-      if (!next.unit)
-        return res.status(400).json({ error: "unit est requis" });
+      if (!next.unit) return res.status(400).json({ error: "unit est requis" });
       if (next.qtyReceived == null)
         return res.status(400).json({ error: "qtyReceived est requis" });
       if (next.qtyRemaining != null && Number.isNaN(next.qtyRemaining))
@@ -363,7 +365,10 @@ router.delete(
   async (req, res) => {
     try {
       const { restaurantId, lotId } = req.params;
-      const doc = await InventoryLot.findOneAndDelete({ _id: lotId, restaurantId });
+      const doc = await InventoryLot.findOneAndDelete({
+        _id: lotId,
+        restaurantId,
+      });
       if (!doc) return res.status(404).json({ error: "Lot introuvable" });
       return res.json({ success: true });
     } catch (err) {

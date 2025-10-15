@@ -86,7 +86,6 @@ const pestControlSchema = new Schema(
       firstName: { type: String },
       lastName: { type: String },
     },
-
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now },
   },

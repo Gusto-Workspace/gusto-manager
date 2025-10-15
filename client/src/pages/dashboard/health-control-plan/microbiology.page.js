@@ -14,13 +14,13 @@ import { GlobalContext } from "@/contexts/global.context";
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
-import CleaningTaskForm from "@/components/dashboard/health-control-plan/cleaning-task/form.component";
-import CleaningTaskList from "@/components/dashboard/health-control-plan/cleaning-task/list.component";
+import MicrobiologyForm from "@/components/dashboard/health-control-plan/microbiology/form.component";
+import MicrobiologyList from "@/components/dashboard/health-control-plan/microbiology/list.component";
 
 // SVG
 import { HealthSvg } from "@/components/_shared/_svgs/health.svg";
 
-export default function CleaningTaskPage(props) {
+export default function MicrobiologyPage(props) {
   const { t } = useTranslation("");
   const router = useRouter();
   const { restaurantContext } = useContext(GlobalContext);
@@ -97,20 +97,20 @@ export default function CleaningTaskPage(props) {
 
                       <>
                         <span>/</span>
-                        <span>Nettoyage locaux</span>
+                        <span>Microbiologie</span>
                       </>
                     </h1>
                   </div>
                 </div>
 
                 <div className="flex flex-col gap-6">
-                  <CleaningTaskForm
+                  <MicrobiologyForm
                     restaurantId={restaurantContext.restaurantData?._id}
                     initial={editing}
                     onSuccess={(doc) => {
                       setEditing(null);
                       window.dispatchEvent(
-                        new CustomEvent("cleaning-task:upsert", {
+                        new CustomEvent("microbiology:upsert", {
                           detail: { doc },
                         })
                       );
@@ -118,7 +118,7 @@ export default function CleaningTaskPage(props) {
                     onCancel={() => setEditing(null)}
                   />
 
-                  <CleaningTaskList
+                  <MicrobiologyList
                     restaurantId={restaurantContext.restaurantData?._id}
                     onEdit={(doc) => setEditing(doc)}
                     editingId={editing?._id || null}

@@ -105,7 +105,7 @@ const defaultTiles = [
     label: "Microbiologie",
     icon: "🔬",
     note: "Analyses labo",
-    href: "/dashboard/health-control-plan/reception-temperature",
+    href: "/dashboard/health-control-plan/microbiology",
   },
   {
     key: "ncs",

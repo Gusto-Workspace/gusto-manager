@@ -9,22 +9,57 @@ const microbiologySchema = new Schema(
       required: true,
       index: true,
     },
-    sampleType: { type: String }, // "surface", "food", "water"
-    sampledAt: { type: Date, required: true },
-    labName: String,
-    labReference: String,
-    parameter: String, // ex: "Listeria", "S. aureus"
-    result: String,
-    unit: String,
+
+    // Échantillon
+    sampleType: {
+      type: String,
+      enum: ["surface", "food", "water"],
+      required: true,
+      index: true,
+    },
+    sampledAt: { type: Date, required: true, index: true },
+    analysedAt: { type: Date },
+    samplingPoint: { type: String },
+    productName: { type: String },
+    lotNumber: { type: String },
+
+    // Labo
+    labName: { type: String },
+    labReference: { type: String },
+    method: { type: String },
+    detectionLimit: { type: String },
+    criterion: { type: String },
+
+    // Résultat
+    parameter: { type: String },
+    result: { type: String },
+    unit: { type: String },
     passed: { type: Boolean },
-    reportUrl: String,
-    notes: String,
+
+    // Traçabilité
+    recordedBy: {
+      userId: { type: Schema.Types.ObjectId, required: true, index: true },
+      role: { type: String, enum: ["owner", "employee"], required: true },
+      firstName: { type: String },
+      lastName: { type: String },
+    },
+
+    // Pièces & notes
+    reportUrl: { type: String },
+    notes: { type: String },
+
     createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now },
   },
-  { versionKey: false }
+  { versionKey: false, collection: "microbiology" }
 );
 
 microbiologySchema.index({ restaurantId: 1, sampledAt: -1 });
+
+microbiologySchema.pre("save", function (next) {
+  this.updatedAt = new Date();
+  next();
+});
 
 module.exports =
   mongoose.models.Microbiology ||
