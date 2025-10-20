@@ -39,6 +39,45 @@ function buildFormDefaults(record) {
   };
 }
 
+/* ---------- conversions & unités autorisées ---------- */
+const ALL_UNITS = ["kg", "g", "L", "mL", "unit"];
+const UNIT_GROUP = {
+  MASS: new Set(["kg", "g"]),
+  VOL: new Set(["L", "mL"]),
+  COUNT: new Set(["unit"]),
+};
+function sameGroup(a, b) {
+  if (!a || !b) return null;
+  if (UNIT_GROUP.MASS.has(a) && UNIT_GROUP.MASS.has(b)) return "MASS";
+  if (UNIT_GROUP.VOL.has(a) && UNIT_GROUP.VOL.has(b)) return "VOL";
+  if (UNIT_GROUP.COUNT.has(a) && UNIT_GROUP.COUNT.has(b)) return "COUNT";
+  return null;
+}
+function convertQty(qty, from, to) {
+  if (qty == null || !Number.isFinite(Number(qty))) return null;
+  if (from === to) return Number(qty);
+  const g = sameGroup(from, to);
+  if (!g) return null;
+  const n = Number(qty);
+  if (g === "MASS") {
+    if (from === "kg" && to === "g") return n * 1000;
+    if (from === "g" && to === "kg") return n / 1000;
+  }
+  if (g === "VOL") {
+    if (from === "L" && to === "mL") return n * 1000;
+    if (from === "mL" && to === "L") return n / 1000;
+  }
+  if (g === "COUNT") return n;
+  return null;
+}
+function allowedUnitsForLotUnit(lotUnit) {
+  if (!lotUnit) return ALL_UNITS;
+  if (lotUnit === "kg") return ["kg", "g"];
+  if (lotUnit === "L") return ["L", "mL"];
+  // pour g, mL, unit -> figé
+  return [lotUnit];
+}
+
 function fmtShortDate(d) {
   if (!d) return null;
   try {
@@ -75,6 +114,9 @@ export default function RecipeBatchesForm({
     formState: { errors, isSubmitting },
     setValue,
     watch,
+    getValues,
+    setError,
+    clearErrors,
   } = useForm({ defaultValues: buildFormDefaults(initial) });
 
   const { fields, append, remove } = useFieldArray({
@@ -159,6 +201,20 @@ export default function RecipeBatchesForm({
   // observe les ingrédients pour déduire la sélection en édition
   const ingredientsWatch = watch("ingredients") || [];
 
+  function findLotByIdOrNumber({ lotId, lotNumber }) {
+    if (lotId) {
+      const byId = sortedLots.find((l) => String(l._id) === String(lotId));
+      if (byId) return byId;
+    }
+    if (lotNumber) {
+      return (
+        sortedLots.find((l) => String(l.lotNumber) === String(lotNumber)) ||
+        null
+      );
+    }
+    return null;
+  }
+
   function getSelectedLotIdForIndex(idx) {
     const row = ingredientsWatch[idx] || {};
     const curLotId = row.inventoryLotId ? String(row.inventoryLotId) : "";
@@ -196,15 +252,90 @@ export default function RecipeBatchesForm({
       shouldDirty: true,
       shouldValidate: true,
     });
+
+    // ⚠️ unité = unité du lot
     setValue(`ingredients.${idx}.unit`, lot.unit || "", {
       shouldDirty: true,
       shouldValidate: true,
     });
   }
 
+  /* ---------- Max autorisé par ligne (avec conversions) ---------- */
+  function allowedMaxForRow(idx) {
+    const row = ingredientsWatch[idx] || {};
+    const lotId = row?.inventoryLotId ? String(row.inventoryLotId) : "";
+    const lotNumber = row?.lotNumber ? String(row.lotNumber) : "";
+    const lot = findLotByIdOrNumber({ lotId, lotNumber });
+    if (!lot) return null;
+
+    const rowUnit = row?.unit || lot.unit; // si pas d’unité, suppose unité lot
+    if (!rowUnit) return null;
+
+    // capacité totale disponible dans l’unité de la ligne
+    const lotRemainInRowUnit = convertQty(lot.qtyRemaining, lot.unit, rowUnit);
+    if (lotRemainInRowUnit == null) return null;
+
+    // somme des autres lignes du même lot, converties vers l’unité de la ligne
+    let usedByOthers = 0;
+    (ingredientsWatch || []).forEach((r, j) => {
+      if (j === idx) return;
+      const same =
+        (r?.inventoryLotId && String(r.inventoryLotId) === String(lot._id)) ||
+        (!r?.inventoryLotId &&
+          r?.lotNumber &&
+          String(r.lotNumber) === String(lot.lotNumber));
+      if (!same) return;
+      const q = Number(r?.qty);
+      if (!Number.isFinite(q) || q <= 0) return;
+      const fromUnit = r?.unit || lot.unit;
+      const qInRowUnit = convertQty(q, fromUnit, rowUnit);
+      if (qInRowUnit != null) usedByOthers += qInRowUnit;
+    });
+
+    return Math.max(0, lotRemainInRowUnit - usedByOthers);
+  }
+
+  // Sur changement de n'importe quelle ligne (lot/quantité/unité), on recape automatiquement si besoin
+  useEffect(() => {
+    (ingredientsWatch || []).forEach((row, idx) => {
+      const allowed = allowedMaxForRow(idx);
+      const n = Number(row?.qty);
+      if (allowed != null && Number.isFinite(n) && n > allowed) {
+        setValue(`ingredients.${idx}.qty`, String(allowed), {
+          shouldDirty: true,
+          shouldValidate: true,
+        });
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    JSON.stringify(
+      (ingredientsWatch || []).map((r) => [
+        r.inventoryLotId,
+        r.lotNumber,
+        r.qty,
+        r.unit,
+      ])
+    ),
+    JSON.stringify(sortedLots.map((l) => [l._id, l.qtyRemaining, l.unit])),
+  ]);
+
   const onSubmit = async (data) => {
     const token = localStorage.getItem("token");
     if (!token) return;
+
+    // Sécurité: respecte le max par lot (après conversions)
+    for (let idx = 0; idx < (data.ingredients || []).length; idx++) {
+      const max = allowedMaxForRow(idx);
+      const n = Number(data.ingredients[idx]?.qty);
+      if (max != null && Number.isFinite(n) && n > max) {
+        setError(`ingredients.${idx}.qty`, {
+          type: "manual",
+          message: `Max autorisé : ${max}`,
+        });
+        return;
+      }
+    }
 
     const payload = {
       recipeId: data.recipeId || undefined,
@@ -321,6 +452,31 @@ export default function RecipeBatchesForm({
 
         {fields.map((field, idx) => {
           const selectedLotId = getSelectedLotIdForIndex(idx);
+          const row = ingredientsWatch[idx] || {};
+          const lot =
+            findLotByIdOrNumber({
+              lotId: row?.inventoryLotId ? String(row.inventoryLotId) : "",
+              lotNumber: row?.lotNumber ? String(row.lotNumber) : "",
+            }) || null;
+          const allowedUnits = lot
+            ? allowedUnitsForLotUnit(lot.unit)
+            : ALL_UNITS;
+
+          // corrige l’unité si non autorisée
+          const curUnit = row?.unit || (lot ? lot.unit : "");
+          const safeUnit = allowedUnits.includes(curUnit)
+            ? curUnit
+            : lot?.unit || allowedUnits[0] || "";
+          if (safeUnit !== curUnit) {
+            setTimeout(() => {
+              setValue(`ingredients.${idx}.unit`, safeUnit, {
+                shouldDirty: true,
+                shouldValidate: true,
+              });
+            }, 0);
+          }
+
+          const allowed = allowedMaxForRow(idx);
 
           return (
             <div
@@ -383,22 +539,59 @@ export default function RecipeBatchesForm({
                     type="number"
                     step="0.01"
                     placeholder="ex: 2.5"
-                    {...register(`ingredients.${idx}.qty`)}
+                    max={allowed != null ? allowed : undefined}
+                    {...register(`ingredients.${idx}.qty`, {
+                      validate: (val) => {
+                        if (val === "" || val == null) return true;
+                        const n = Number(val);
+                        if (!Number.isFinite(n) || n < 0)
+                          return "Valeur invalide";
+                        const a = allowedMaxForRow(idx);
+                        if (a != null && n > a) return `Max autorisé: ${a}`;
+                        return true;
+                      },
+                    })}
+                    onBlur={(e) => {
+                      const a = allowedMaxForRow(idx);
+                      const n = Number(e.target.value);
+                      if (a != null && Number.isFinite(n) && n > a) {
+                        setValue(`ingredients.${idx}.qty`, String(a), {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        });
+                      }
+                    }}
                     className="border rounded p-2 h-[44px] w-full"
                   />
+                  {allowed != null && (
+                    <div className="text-xs opacity-60 mt-1">
+                      Max restant : {allowed}
+                    </div>
+                  )}
+                  {errors.ingredients?.[idx]?.qty && (
+                    <p className="text-xs text-red mt-1">
+                      {errors.ingredients[idx].qty.message}
+                    </p>
+                  )}
                 </div>
                 <div className="w-36">
                   <label className="text-sm font-medium">Unité</label>
                   <select
-                    {...register(`ingredients.${idx}.unit`)}
+                    value={safeUnit}
+                    onChange={(e) =>
+                      setValue(`ingredients.${idx}.unit`, e.target.value, {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      })
+                    }
                     className="border rounded p-2 h-[44px] w-full"
+                    disabled={lot ? allowedUnits.length === 1 : false}
                   >
-                    <option value="">—</option>
-                    <option value="kg">kg</option>
-                    <option value="g">g</option>
-                    <option value="L">L</option>
-                    <option value="mL">mL</option>
-                    <option value="unit">unité</option>
+                    {allowedUnits.map((u) => (
+                      <option key={u} value={u}>
+                        {u}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>

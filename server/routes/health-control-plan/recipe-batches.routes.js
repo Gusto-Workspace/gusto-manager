@@ -6,6 +6,20 @@ const authenticateToken = require("../../middleware/authentificate-token");
 const RecipeBatch = require("../../models/logs/recipe-batch.model");
 const InventoryLot = require("../../models/logs/inventory-lot.model");
 
+/* ---------- ARRONDI (helper local au fichier) ---------- */
+function decimalsForUnit(u) {
+  const unit = String(u || "").trim();
+  if (unit === "unit") return 0;
+  return 3; // kg/g/L/mL : 3 décimales
+}
+function roundByUnit(val, unit) {
+  const n = Number(val);
+  if (!Number.isFinite(n)) return n;
+  const d = decimalsForUnit(unit);
+  const f = Math.pow(10, d);
+  return Math.round(n * f) / f;
+}
+
 /* ---------- helpers ---------- */
 function currentUserFromToken(req) {
   const u = req.user || {};
@@ -94,8 +108,9 @@ function convertQty(qty, from, to) {
 /**
  * direction: "consume" | "restore"
  * - consume  : décrémente qtyRemaining (autorise négatif)
- * - restore  : incrémente qtyRemaining
- * Règles statut:
+ * - restore  : incrémente qtyRemaining (⚠️ plafonné au qtyReceived)
+ * Arrondi: toujours arrondir qtyRemaining à l’unité du lot après $inc
+ * Statut:
  *  - qtyRemaining <= 0  -> used
  *  - qtyRemaining  > 0  -> in_stock
  */
@@ -127,7 +142,7 @@ async function applyInventoryAdjustments(
 
     if (!lot) continue;
 
-    // conversion quantité vers l'unité du lot
+    // conversion vers l’unité du lot
     const adj = convertQty(Number(ing.qty), ing.unit, lot.unit);
     if (adj == null) {
       throw new Error(
@@ -136,22 +151,34 @@ async function applyInventoryAdjustments(
     }
     const delta = direction === "consume" ? -Math.abs(adj) : Math.abs(adj);
 
-    // ⚠️ plus de garde-fou : on autorise le négatif
+    // 1) $inc
     const updated = await InventoryLot.findOneAndUpdate(
       { _id: lot._id, restaurantId },
       { $inc: { qtyRemaining: delta } },
       { new: true, session }
     );
+    if (!updated) continue;
 
-    if (updated) {
-      const nextStatus = updated.qtyRemaining <= 0 ? "used" : "in_stock";
-      if (updated.status !== nextStatus) {
-        await InventoryLot.updateOne(
-          { _id: updated._id, restaurantId },
-          { $set: { status: nextStatus } },
-          { session }
-        );
-      }
+    // 2) Arrondi + plafonnement upper-bound (pas de floor à 0 ici: négatif autorisé)
+    const rounded = roundByUnit(updated.qtyRemaining, updated.unit);
+    const capped =
+      updated.qtyReceived != null
+        ? Math.min(rounded, Number(updated.qtyReceived))
+        : rounded;
+
+    if (capped !== updated.qtyRemaining) {
+      updated.qtyRemaining = capped;
+      await updated.save({ session });
+    }
+
+    // 3) statut
+    const nextStatus = updated.qtyRemaining <= 0 ? "used" : "in_stock";
+    if (updated.status !== nextStatus) {
+      await InventoryLot.updateOne(
+        { _id: updated._id, restaurantId },
+        { $set: { status: nextStatus } },
+        { session }
+      );
     }
   }
 }
@@ -206,12 +233,9 @@ router.post(
       });
     } catch (err) {
       console.error("POST /recipe-batches:", err);
-      // on garde 409 seulement pour les cas "métier" ( unités incompatibles, etc. )
-      res
-        .status(409)
-        .json({
-          error: err.message || "Erreur lors de la création du batch recette",
-        });
+      res.status(409).json({
+        error: err.message || "Erreur lors de la création du batch recette",
+      });
     } finally {
       session.endSession();
     }
@@ -354,7 +378,7 @@ router.put(
           "restore",
           session
         );
-        // 2) consommer le nouveau (autorise négatif)
+        // 2) consommer le nouveau
         await applyInventoryAdjustments(
           restaurantId,
           next.ingredients || [],
@@ -368,11 +392,9 @@ router.put(
       });
     } catch (err) {
       console.error("PUT /recipe-batches/:batchId:", err);
-      res
-        .status(409)
-        .json({
-          error: err.message || "Erreur lors de la mise à jour du batch",
-        });
+      res.status(409).json({
+        error: err.message || "Erreur lors de la mise à jour du batch",
+      });
     } finally {
       session.endSession();
     }
@@ -405,11 +427,9 @@ router.delete(
       });
     } catch (err) {
       console.error("DELETE /recipe-batches/:batchId:", err);
-      res
-        .status(500)
-        .json({
-          error: err.message || "Erreur lors de la suppression du batch",
-        });
+      res.status(500).json({
+        error: err.message || "Erreur lors de la suppression du batch",
+      });
     } finally {
       session.endSession();
     }
@@ -418,10 +438,8 @@ router.delete(
 
 /* -------------------- SELECT LOTS -------------------- */
 /**
- * Désormais on NE filtre PLUS sur qtyRemaining>0 :
- *  - on renvoie aussi les lots à 0 et négatifs.
- *  - on laisse au front l’affichage (ex: quantité négative).
- * On garde un filtre simple « restaurantId » + recherche plein texte.
+ * On renvoie aussi les lots à 0 et négatifs.
+ * ➜ On arrondit qtyRemaining ici pour éviter les artefacts d’affichage.
  */
 router.get(
   "/restaurants/:restaurantId/inventory-lots-select",
@@ -439,12 +457,19 @@ router.get(
 
       const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 0, 1), 500);
 
-      const items = await InventoryLot.find(query)
+      const rows = await InventoryLot.find(query)
         .sort({ createdAt: -1, _id: -1 })
         .limit(safeLimit)
         .select(
-          "_id productName lotNumber qtyRemaining unit dlc ddm createdAt status"
+          "_id productName lotNumber qtyRemaining unit dlc ddm createdAt status supplier"
         );
+
+      // sortie propre: qtyRemaining arrondi à l’unité du lot
+      const items = rows.map((it) => {
+        const obj = it.toObject();
+        obj.qtyRemaining = roundByUnit(obj.qtyRemaining, obj.unit);
+        return obj;
+      });
 
       return res.json({ items });
     } catch (err) {

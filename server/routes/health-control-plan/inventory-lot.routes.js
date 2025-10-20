@@ -4,6 +4,20 @@ const router = express.Router();
 const authenticateToken = require("../../middleware/authentificate-token");
 const InventoryLot = require("../../models/logs/inventory-lot.model");
 
+/* --------- ARRONDI (helper local au fichier) --------- */
+function decimalsForUnit(u) {
+  const unit = String(u || "").trim();
+  if (unit === "unit") return 0; // unités comptées
+  return 3; // kg, g, L, mL -> 3 décimales
+}
+function roundByUnit(val, unit) {
+  const n = Number(val);
+  if (!Number.isFinite(n)) return n;
+  const d = decimalsForUnit(unit);
+  const f = Math.pow(10, d);
+  return Math.round(n * f) / f;
+}
+
 /* --------- helpers --------- */
 function currentUserFromToken(req) {
   const u = req.user || {};
@@ -32,16 +46,18 @@ function normalizeNumber(v) {
   return Number.isNaN(n) ? null : n;
 }
 function normalizeAllergens(v) {
-  if (Array.isArray(v)) {
-    return v.map((a) => normalizeStr(a)).filter((a) => a && a.length);
-  }
-  if (typeof v === "string") {
+  if (Array.isArray(v)) return v.map((a) => normalizeStr(a)).filter(Boolean);
+  if (typeof v === "string")
     return v
       .split(/[;,]/g)
       .map((s) => s.trim())
       .filter(Boolean);
-  }
   return [];
+}
+function clampQtyRemaining(qtyRemaining, qtyReceived) {
+  const q = Number.isFinite(Number(qtyRemaining)) ? Number(qtyRemaining) : 0;
+  const r = Number.isFinite(Number(qtyReceived)) ? Number(qtyReceived) : 0;
+  return Math.max(0, Math.min(q, r));
 }
 
 const PACKAGING = new Set(["ok", "damaged", "wet", "unknown"]);
@@ -67,19 +83,27 @@ router.post(
       if (!currentUser)
         return res.status(400).json({ error: "Utilisateur non reconnu" });
 
-      // Requis
       const productName = normalizeStr(inData.productName);
       const lotNumber = normalizeStr(inData.lotNumber);
       const unit = normalizeStr(inData.unit);
-      const qtyReceived = normalizeNumber(inData.qtyReceived);
+      const qtyReceivedRaw = normalizeNumber(inData.qtyReceived);
 
       if (!productName)
         return res.status(400).json({ error: "productName est requis" });
       if (!lotNumber)
         return res.status(400).json({ error: "lotNumber est requis" });
       if (!unit) return res.status(400).json({ error: "unit est requis" });
-      if (qtyReceived == null)
+      if (qtyReceivedRaw == null)
         return res.status(400).json({ error: "qtyReceived est requis" });
+
+      const qtyReceived = roundByUnit(qtyReceivedRaw, unit);
+
+      const initialRemainingCandidate =
+        normalizeNumber(inData.qtyRemaining) != null
+          ? normalizeNumber(inData.qtyRemaining)
+          : qtyReceived;
+      const qtyRemainingRounded = roundByUnit(initialRemainingCandidate, unit);
+      const qtyRemaining = clampQtyRemaining(qtyRemainingRounded, qtyReceived);
 
       const doc = new InventoryLot({
         restaurantId,
@@ -94,10 +118,7 @@ router.post(
         allergens: normalizeAllergens(inData.allergens),
 
         qtyReceived,
-        qtyRemaining:
-          normalizeNumber(inData.qtyRemaining) != null
-            ? normalizeNumber(inData.qtyRemaining)
-            : qtyReceived, // init par défaut = qtyReceived
+        qtyRemaining,
         unit,
 
         tempOnArrival: normalizeNumber(inData.tempOnArrival),
@@ -130,7 +151,6 @@ router.post(
 );
 
 /* -------------------- LIST -------------------- */
-// NB: on utilise un nom dédié pour éviter collisions: list-inventory-lots
 router.get(
   "/restaurants/:restaurantId/list-inventory-lots",
   authenticateToken,
@@ -141,7 +161,6 @@ router.get(
 
       const query = { restaurantId };
 
-      // filtre période sur createdAt (timestamps)
       if (date_from || date_to) {
         query.createdAt = {};
         if (date_from) query.createdAt.$gte = new Date(date_from);
@@ -153,12 +172,8 @@ router.get(
         }
       }
 
-      // filtre status optionnel
-      if (status && STATUS.has(String(status))) {
-        query.status = String(status);
-      }
+      if (status && STATUS.has(String(status))) query.status = String(status);
 
-      // recherche plein-texte simple
       if (q && String(q).trim().length) {
         const rx = new RegExp(String(q).trim(), "i");
         query.$or = [
@@ -173,7 +188,6 @@ router.get(
           { disposalReason: rx },
           { "createdBy.firstName": rx },
           { "createdBy.lastName": rx },
-          // dates en texte
         ];
       }
 
@@ -232,34 +246,47 @@ router.put(
       const { restaurantId, lotId } = req.params;
       const inData = { ...req.body };
 
-      // interdit de modifier ces champs directement
       delete inData.createdBy;
       delete inData.restaurantId;
 
       const prev = await InventoryLot.findOne({ _id: lotId, restaurantId });
       if (!prev) return res.status(404).json({ error: "Lot introuvable" });
 
+      // unité finale (pour arrondir correctement)
+      const nextUnit =
+        inData.unit !== undefined ? normalizeStr(inData.unit) : prev.unit;
+
+      // compute + round + clamp
+      const nextQtyReceivedRaw =
+        inData.qtyReceived !== undefined
+          ? normalizeNumber(inData.qtyReceived)
+          : prev.qtyReceived;
+      const nextQtyRemainingRaw =
+        inData.qtyRemaining !== undefined
+          ? normalizeNumber(inData.qtyRemaining)
+          : prev.qtyRemaining;
+
+      const nextQtyReceived = roundByUnit(nextQtyReceivedRaw, nextUnit);
+      let nextQtyRemaining = roundByUnit(nextQtyRemainingRaw, nextUnit);
+      nextQtyRemaining = clampQtyRemaining(nextQtyRemaining, nextQtyReceived);
+
       const next = {
         receptionId:
           inData.receptionId !== undefined
             ? inData.receptionId
             : prev.receptionId,
-
         productName:
           inData.productName !== undefined
             ? normalizeStr(inData.productName)
             : prev.productName,
-
         supplier:
           inData.supplier !== undefined
             ? normalizeStr(inData.supplier)
             : prev.supplier,
-
         lotNumber:
           inData.lotNumber !== undefined
             ? normalizeStr(inData.lotNumber)
             : prev.lotNumber,
-
         dlc:
           inData.dlc !== undefined
             ? normalizeDate(inData.dlc) || null
@@ -268,46 +295,33 @@ router.put(
           inData.ddm !== undefined
             ? normalizeDate(inData.ddm) || null
             : prev.ddm,
-
         allergens:
           inData.allergens !== undefined
             ? normalizeAllergens(inData.allergens)
             : prev.allergens,
 
-        qtyReceived:
-          inData.qtyReceived !== undefined
-            ? normalizeNumber(inData.qtyReceived)
-            : prev.qtyReceived,
+        qtyReceived: nextQtyReceived,
+        qtyRemaining: nextQtyRemaining,
 
-        qtyRemaining:
-          inData.qtyRemaining !== undefined
-            ? Math.max(0, normalizeNumber(inData.qtyRemaining))
-            : prev.qtyRemaining,
-
-        unit: inData.unit !== undefined ? normalizeStr(inData.unit) : prev.unit,
-
+        unit: nextUnit,
         tempOnArrival:
           inData.tempOnArrival !== undefined
             ? normalizeNumber(inData.tempOnArrival)
             : prev.tempOnArrival,
-
         packagingCondition:
           inData.packagingCondition !== undefined
             ? PACKAGING.has(inData.packagingCondition)
               ? inData.packagingCondition
               : prev.packagingCondition
             : prev.packagingCondition,
-
         storageArea:
           inData.storageArea !== undefined
             ? normalizeStr(inData.storageArea)
             : prev.storageArea,
-
         openedAt:
           inData.openedAt !== undefined
             ? normalizeDate(inData.openedAt) || null
             : prev.openedAt,
-
         internalUseBy:
           inData.internalUseBy !== undefined
             ? normalizeDate(inData.internalUseBy) || null
@@ -319,7 +333,6 @@ router.put(
               ? inData.status
               : prev.status
             : prev.status,
-
         disposalReason:
           inData.disposalReason !== undefined
             ? normalizeStr(inData.disposalReason)
@@ -329,12 +342,10 @@ router.put(
           inData.labelCode !== undefined
             ? normalizeStr(inData.labelCode)
             : prev.labelCode,
-
         notes:
           inData.notes !== undefined ? normalizeStr(inData.notes) : prev.notes,
       };
 
-      // validations de cohérence minimales
       if (!next.productName)
         return res.status(400).json({ error: "productName est requis" });
       if (!next.lotNumber)
@@ -342,10 +353,7 @@ router.put(
       if (!next.unit) return res.status(400).json({ error: "unit est requis" });
       if (next.qtyReceived == null)
         return res.status(400).json({ error: "qtyReceived est requis" });
-      if (next.qtyRemaining != null && Number.isNaN(next.qtyRemaining))
-        return res.status(400).json({ error: "qtyRemaining invalide" });
 
-      // apply + save
       Object.assign(prev, next);
       await prev.save();
       return res.json(prev);

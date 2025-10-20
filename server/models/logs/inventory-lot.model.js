@@ -1,6 +1,19 @@
 const mongoose = require("mongoose");
 const { Schema } = mongoose;
 
+function decimalsForUnit(u) {
+  const unit = String(u || "").trim();
+  if (unit === "unit") return 0; // unités comptées
+  return 3; // kg, g, L, mL
+}
+function roundByUnit(val, unit) {
+  const n = Number(val);
+  if (!Number.isFinite(n)) return n;
+  const d = decimalsForUnit(unit);
+  const f = Math.pow(10, d);
+  return Math.round(n * f) / f;
+}
+
 const inventoryLotSchema = new Schema(
   {
     restaurantId: {
@@ -9,26 +22,20 @@ const inventoryLotSchema = new Schema(
       required: true,
       index: true,
     },
-
-    // Lien vers la réception d’origine (preuve & doc)
     receptionId: { type: Schema.Types.ObjectId, ref: "ReceptionDelivery" },
 
-    // Info produit / fournisseur
     productName: { type: String, required: true },
     supplier: String,
 
-    // Traçabilité étiquette
     lotNumber: { type: String, required: true, index: true },
-    dlc: Date, // Date Limite de Consommation (produits frais)
-    ddm: Date, // Date de Durabilité Minimale (DLUO)
+    dlc: Date,
+    ddm: Date,
     allergens: { type: [String], default: [] },
 
-    // Quantités & unité
     qtyReceived: { type: Number, required: true },
-    qtyRemaining: { type: Number, required: true }, // init = qtyReceived
+    qtyRemaining: { type: Number, required: true },
     unit: { type: String, required: true },
 
-    // Suivi hygiène / conditions
     tempOnArrival: Number,
     packagingCondition: {
       type: String,
@@ -36,12 +43,10 @@ const inventoryLotSchema = new Schema(
       default: "unknown",
     },
 
-    // Stockage & vie du lot
-    storageArea: { type: String }, // ex: "fridge-1", "freezer-2", "dry"
-    openedAt: Date, // date d’ouverture du lot
-    internalUseBy: Date, // DLU après ouverture (si applicable)
+    storageArea: { type: String },
+    openedAt: Date,
+    internalUseBy: Date,
 
-    // Statut du lot
     status: {
       type: String,
       enum: [
@@ -55,10 +60,9 @@ const inventoryLotSchema = new Schema(
       default: "in_stock",
       index: true,
     },
-    disposalReason: String, // motif si discarded/returned
+    disposalReason: String,
 
-    // Opérationnel
-    labelCode: String, // code/QR à imprimer sur l’étiquette
+    labelCode: String,
     notes: String,
     createdBy: {
       userId: { type: Schema.Types.ObjectId, required: true, index: true },
@@ -70,7 +74,26 @@ const inventoryLotSchema = new Schema(
   { versionKey: false, collection: "inventory_lot", timestamps: true }
 );
 
-// Index utiles
+// --- Arrondi systématique ---
+inventoryLotSchema.path("qtyReceived").set(function (v) {
+  const unit = this.unit || this.get("unit");
+  return roundByUnit(v, unit);
+});
+inventoryLotSchema.path("qtyRemaining").set(function (v) {
+  const unit = this.unit || this.get("unit");
+  return roundByUnit(v, unit);
+});
+
+// Ceinture/bretelles : si l’unité change, re-arrondir les quantités
+inventoryLotSchema.pre("save", function (next) {
+  if (this.isModified("unit")) {
+    this.qtyReceived = roundByUnit(this.qtyReceived, this.unit);
+    this.qtyRemaining = roundByUnit(this.qtyRemaining, this.unit);
+  }
+  next();
+});
+
+// Index
 inventoryLotSchema.index({ restaurantId: 1, lotNumber: 1 });
 inventoryLotSchema.index({ restaurantId: 1, status: 1 });
 inventoryLotSchema.index({ restaurantId: 1, dlc: 1 });

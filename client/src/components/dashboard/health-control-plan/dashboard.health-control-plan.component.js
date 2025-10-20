@@ -127,7 +127,7 @@ const defaultTiles = [
     label: "Retour marchandise NC",
     icon: "↩️",
     note: "Retours non-conformes",
-    href: "/dashboard/health-control-plan/reception-temperature",
+    href: "/dashboard/health-control-plan/recalls",
   },
   {
     key: "calibrations",
