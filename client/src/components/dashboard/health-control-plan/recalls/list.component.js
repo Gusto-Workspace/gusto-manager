@@ -1,4 +1,3 @@
-// app/(components)/haccp/recall/RecallList.jsx
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -40,7 +39,6 @@ export default function RecallList({
 
   // Filtres
   const [q, setQ] = useState("");
-  const [source, setSource] = useState("");
   const [status, setStatus] = useState("all"); // all|open|closed
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -67,8 +65,8 @@ export default function RecallList({
     });
 
   const hasActiveFilters = useMemo(
-    () => Boolean(q || source || status !== "all" || dateFrom || dateTo),
-    [q, source, status, dateFrom, dateTo]
+    () => Boolean(q || status !== "all" || dateFrom || dateTo),
+    [q, status, dateFrom, dateTo]
   );
   const hasFullDateRange = Boolean(dateFrom && dateTo);
 
@@ -77,15 +75,14 @@ export default function RecallList({
     try {
       const cur = {
         q: overrides.q ?? q,
-        source: overrides.source ?? source,
         status: overrides.status ?? status,
         dateFrom: overrides.dateFrom ?? dateFrom,
         dateTo: overrides.dateTo ?? dateTo,
       };
       const params = { page, limit: meta.limit || 20 };
       if (cur.q) params.q = cur.q;
-      if (cur.source) params.source = cur.source;
-      if (cur.status && cur.status !== "all") params.status = cur.status;
+      // backend attend 'closed' = 'open' | 'closed'
+      if (cur.status && cur.status !== "all") params.closed = cur.status;
       if (cur.dateFrom) params.date_from = new Date(cur.dateFrom).toISOString();
       if (cur.dateTo) params.date_to = new Date(cur.dateTo).toISOString();
 
@@ -112,7 +109,6 @@ export default function RecallList({
     if (restaurantId)
       fetchData(1, {
         q: "",
-        source: "",
         status: "all",
         dateFrom: "",
         dateTo: "",
@@ -224,17 +220,6 @@ export default function RecallList({
           />
 
           <select
-            value={source}
-            onChange={(e) => setSource(e.target.value)}
-            className="border rounded p-2 h-[44px] w-full midTablet:w-48"
-          >
-            <option value="">Toutes sources</option>
-            <option value="supplier">Fournisseur</option>
-            <option value="authority">Autorité</option>
-            <option value="internal">Interne</option>
-          </select>
-
-          <select
             value={status}
             onChange={(e) => setStatus(e.target.value)}
             className="border rounded p-2 h-[44px] w-full midTablet:w-48"
@@ -267,22 +252,23 @@ export default function RecallList({
 
           <div className="flex flex-col gap-2 w-full mobile:flex-row mobile:w-auto mobile:items-center">
             <button
-              onClick={() => hasFullDateRange && fetchData(1)}
-              disabled={!hasFullDateRange}
-              className={`px-4 py-2 rounded bg-blue text-white w-full mobile:w-32 ${hasFullDateRange ? "" : "opacity-30 cursor-not-allowed"}`}
+              onClick={() => {
+                if (hasFullDateRange || q || status !== "all") {
+                  fetchData(1);
+                }
+              }}
+              className={`px-4 py-2 rounded bg-blue text-white w-full mobile:w-32`}
             >
               Filtrer
             </button>
             <button
               onClick={() => {
                 setQ("");
-                setSource("");
                 setStatus("all");
                 setDateFrom("");
                 setDateTo("");
                 fetchData(1, {
                   q: "",
-                  source: "",
                   status: "all",
                   dateFrom: "",
                   dateTo: "",
@@ -303,9 +289,11 @@ export default function RecallList({
           <thead className="whitespace-nowrap">
             <tr className="text-left border-b">
               <th className="py-2 pr-3">Déclaré le</th>
-              <th className="py-2 pr-3">Source</th>
+              <th className="py-2 pr-3">Produit</th>
               <th className="py-2 pr-3">Fournisseur</th>
-              <th className="py-2 pr-3">Produits</th>
+              <th className="py-2 pr-3">N° lot</th>
+              <th className="py-2 pr-3">Qté</th>
+              <th className="py-2 pr-3">DLC/DDM</th>
               <th className="py-2 pr-3">Statut</th>
               <th className="py-2 pr-3">Clôturé le</th>
               <th className="py-2 pr-3">Pièces</th>
@@ -316,75 +304,84 @@ export default function RecallList({
           <tbody>
             {!loading && items.length === 0 && (
               <tr>
-                <td colSpan={9} className="py-6 text-center opacity-60">
+                <td colSpan={12} className="py-6 text-center opacity-60">
                   Aucun retour NC
                 </td>
               </tr>
             )}
             {loading && (
               <tr>
-                <td colSpan={9} className="py-6 text-center opacity-60">
+                <td colSpan={12} className="py-6 text-center opacity-60">
                   Chargement…
                 </td>
               </tr>
             )}
             {!loading &&
-              items.map((it) => (
-                <tr
-                  key={it._id}
-                  className={`border-b ${editingId === it._id ? "bg-lightGrey" : ""}`}
-                >
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {fmtDate(it.initiatedAt)}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap capitalize">
-                    {it.source || "—"}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {it.supplierName || "—"}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {Array.isArray(it.items) && it.items.length
-                      ? `${it.items.length} produit(s)`
-                      : "—"}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {statusBadge(it.closedAt)}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {fmtDate(it.closedAt)}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {Array.isArray(it.attachments) && it.attachments.length
-                      ? `${it.attachments.length} doc(s)`
-                      : "—"}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {it?.recordedBy
-                      ? `${it.recordedBy.firstName || ""} ${it.recordedBy.lastName || ""}`.trim() ||
-                        "—"
-                      : "—"}
-                  </td>
-                  <td className="py-2 pr-0">
-                    <div className="flex gap-2 justify-end">
-                      <button
-                        onClick={() => onEdit?.(it)}
-                        className="px-3 py-1 rounded bg-green text-white"
-                      >
-                        Éditer
-                      </button>
-                      <button
-                        onClick={() => (
-                          setIsDeleteModalOpen(true), setDeleteTarget(it)
-                        )}
-                        className="px-3 py-1 rounded bg-red text-white"
-                      >
-                        Supprimer
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              items.map((it) => {
+                const item = it?.item || {};
+                return (
+                  <tr
+                    key={it._id}
+                    className={`border-b ${editingId === it._id ? "bg-lightGrey" : ""}`}
+                  >
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {fmtDate(it.initiatedAt)}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {item.productName || "—"}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {item.supplierName || "—"}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {item.lotNumber || "—"}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {item.quantity ?? "—"}
+                      {item.unit || "—"}
+                    </td>
+
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {fmtDate(item.bestBefore, false)}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {statusBadge(it.closedAt)}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {fmtDate(it.closedAt)}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {Array.isArray(it.attachments) && it.attachments.length
+                        ? `${it.attachments.length} doc(s)`
+                        : "—"}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it?.recordedBy
+                        ? `${it.recordedBy.firstName || ""} ${it.recordedBy.lastName || ""}`.trim() ||
+                          "—"
+                        : "—"}
+                    </td>
+                    <td className="py-2 pr-0">
+                      <div className="flex gap-2 justify-end">
+                        <button
+                          onClick={() => onEdit?.(it)}
+                          className="px-3 py-1 rounded bg-green text-white"
+                        >
+                          Éditer
+                        </button>
+                        <button
+                          onClick={() => (
+                            setIsDeleteModalOpen(true), setDeleteTarget(it)
+                          )}
+                          className="px-3 py-1 rounded bg-red text-white"
+                        >
+                          Supprimer
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
           </tbody>
         </table>
       </div>

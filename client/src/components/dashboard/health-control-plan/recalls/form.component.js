@@ -1,6 +1,7 @@
+// app/(components)/haccp/recall/RecallForm.jsx
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useForm, useFieldArray } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import axios from "axios";
 
 function toDateValue(value) {
@@ -53,12 +54,20 @@ function allowedUnitsForLotUnit(lotUnit) {
   if (lotUnit === "L") return ["L", "mL"];
   return [lotUnit]; // g, mL, unit -> figé
 }
+// ✨ alignement arrondi côté front avec le serveur
+function decimalsForUnit(u) {
+  return String(u || "").trim() === "unit" ? 0 : 3;
+}
+function roundByUnit(val, unit) {
+  const n = Number(val);
+  if (!Number.isFinite(n)) return n;
+  const f = Math.pow(10, decimalsForUnit(unit));
+  return Math.round(n * f) / f;
+}
 
 function buildDefaults(rec) {
+  const it = rec?.item || {};
   return {
-    source: rec?.source ?? "supplier",
-    supplierName: rec?.supplierName ?? "",
-    supplierId: rec?.supplierId ? String(rec.supplierId) : "",
     initiatedAt: toDatetimeLocal(rec?.initiatedAt ?? new Date()),
     actionsTaken: rec?.actionsTaken ?? "",
     attachmentsText: Array.isArray(rec?.attachments)
@@ -67,40 +76,22 @@ function buildDefaults(rec) {
     closed: !!rec?.closedAt,
     closedAt: toDatetimeLocal(rec?.closedAt),
 
-    items:
-      Array.isArray(rec?.items) && rec.items.length
-        ? rec.items.map((it) => ({
-            inventoryLotId: it?.inventoryLotId ? String(it.inventoryLotId) : "",
-            inventoryLotDisplay: "", // affichage (produit)
-            lotMaxRemaining:
-              it?.lotMaxRemaining !== undefined && it?.lotMaxRemaining !== null
-                ? String(it.lotMaxRemaining)
-                : "", // stock restant au moment de la sélection (dans l’unité du lot)
-            lotBaseUnit: it?.lotBaseUnit ?? "", // unité du lot pour les conversions
-            productName: it?.productName ?? "",
-            lotNumber: it?.lotNumber ?? "",
-            quantity:
-              it?.quantity !== undefined && it?.quantity !== null
-                ? String(it.quantity)
-                : "",
-            unit: it?.unit ?? "",
-            bestBefore: toDateValue(it?.bestBefore),
-            note: it?.note ?? "",
-          }))
-        : [
-            {
-              inventoryLotId: "",
-              inventoryLotDisplay: "",
-              lotMaxRemaining: "",
-              lotBaseUnit: "",
-              productName: "",
-              lotNumber: "",
-              quantity: "",
-              unit: "",
-              bestBefore: "",
-              note: "",
-            },
-          ],
+    // champs produit (un seul)
+    inventoryLotId: it?.inventoryLotId ? String(it.inventoryLotId) : "",
+    productSearch: it?.productName ?? "", // préremplir à l’édition
+    lotMaxRemaining: "", // hydraté après fetch du lot
+    lotBaseUnit: it?.unit ?? "",
+
+    productName: it?.productName ?? "",
+    supplierName: it?.supplierName ?? "",
+    lotNumber: it?.lotNumber ?? "",
+    quantity:
+      it?.quantity !== undefined && it?.quantity !== null
+        ? String(it.quantity)
+        : "",
+    unit: it?.unit ?? "",
+    bestBefore: toDateValue(it?.bestBefore),
+    note: it?.note ?? "",
   };
 }
 
@@ -112,7 +103,6 @@ export default function RecallForm({
 }) {
   const {
     register,
-    control,
     handleSubmit,
     reset,
     watch,
@@ -122,8 +112,6 @@ export default function RecallForm({
     clearErrors,
     formState: { errors, isSubmitting },
   } = useForm({ defaultValues: buildDefaults(initial) });
-
-  const { fields, append, remove } = useFieldArray({ control, name: "items" });
 
   const token = useMemo(
     () =>
@@ -149,232 +137,221 @@ export default function RecallForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [closedWatch]);
 
-  /* ---------- Autocomplete InventoryLot par ligne ---------- */
-  const [lotDropdownOpen, setLotDropdownOpen] = useState({});
-  const [lotOptions, setLotOptions] = useState({}); // { [idx]: [...] }
-  const searchTimers = useRef({}); // debounce
+  /* ---------- Autocomplete via input Produit ---------- */
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [options, setOptions] = useState([]);
+  const searchTimer = useRef(null);
 
-  function setLotOpen(idx, open) {
-    setLotDropdownOpen((m) => ({ ...m, [idx]: open }));
-  }
-
-  async function fetchLots(idx, query) {
+  async function fetchLots(query) {
     try {
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/recalls/select/inventory-lots`;
       const { data } = await axios.get(url, {
         headers: { Authorization: `Bearer ${token}` },
         params: { q: query || "", limit: 12, status: "in_stock" },
       });
-      setLotOptions((m) => ({ ...m, [idx]: data.items || [] }));
+      setOptions(Array.isArray(data?.items) ? data.items : []);
     } catch (e) {
       console.error("fetch lot options:", e);
-      setLotOptions((m) => ({ ...m, [idx]: [] }));
+      setOptions([]);
     }
   }
 
-  function onLotInputChange(idx, val) {
-    setValue(`items.${idx}.inventoryLotDisplay`, val, { shouldDirty: true });
-    setValue(`items.${idx}.inventoryLotId`, "", {
-      shouldDirty: true,
-      shouldValidate: true,
-    });
-    setValue(`items.${idx}.lotMaxRemaining`, "", { shouldDirty: true });
-    setValue(`items.${idx}.lotBaseUnit`, "", { shouldDirty: true });
-    setLotOpen(idx, true);
+  function onProductInputChange(val) {
+    setValue("productSearch", val, { shouldDirty: true });
+    setValue("inventoryLotId", "", { shouldDirty: true, shouldValidate: true });
+    setValue("lotMaxRemaining", "", { shouldDirty: true });
+    setValue("lotBaseUnit", "", { shouldDirty: true });
+    setDropdownOpen(true);
 
-    clearTimeout(searchTimers.current[idx]);
-    searchTimers.current[idx] = setTimeout(() => fetchLots(idx, val), 250);
+    clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => fetchLots(val), 250);
   }
 
-  function onLotFocus(idx) {
-    setLotOpen(idx, true);
-    fetchLots(
-      idx,
-      (getValues(`items.${idx}.inventoryLotDisplay`) || "").trim()
-    );
+  function onProductFocus() {
+    setDropdownOpen(true);
+    fetchLots((getValues("productSearch") || "").trim());
   }
 
-  function onLotBlur(idx) {
-    setTimeout(() => setLotOpen(idx, false), 120);
-    const txt = (getValues(`items.${idx}.inventoryLotDisplay`) || "").trim();
-    const id = getValues(`items.${idx}.inventoryLotId`) || "";
-    if (!txt) {
-      clearErrors([
-        `items.${idx}.inventoryLotDisplay`,
-        `items.${idx}.inventoryLotId`,
-      ]);
-      return;
-    }
-    if (!id) {
-      setError(`items.${idx}.inventoryLotDisplay`, {
-        type: "manual",
-        message: "Veuillez sélectionner un lot dans la liste",
-      });
-    } else {
-      clearErrors([
-        `items.${idx}.inventoryLotDisplay`,
-        `items.${idx}.inventoryLotId`,
-      ]);
-    }
+  function onProductBlur() {
+    setTimeout(() => setDropdownOpen(false), 120);
+    clearErrors(["productSearch", "inventoryLotId"]);
   }
 
-  // Calcule le max autorisé pour la ligne idx en tenant compte des autres lignes du même lot (avec conversions)
-  function allowedMaxForRow(idx) {
-    const lotId = getValues(`items.${idx}.inventoryLotId`) || "";
-    const baseRemain = Number(getValues(`items.${idx}.lotMaxRemaining`));
-    const lotBaseUnit = getValues(`items.${idx}.lotBaseUnit`) || "";
-    const rowUnit = getValues(`items.${idx}.unit`) || lotBaseUnit;
-
-    if (!lotId || !Number.isFinite(baseRemain) || !lotBaseUnit || !rowUnit)
-      return null;
-
-    // Capacité du lot exprimée dans l’unité de la ligne
+  // Cap autorisé = stock restant du lot (converti dans l’unité choisie)
+  function allowedMax() {
+    const baseRemain = Number(getValues("lotMaxRemaining"));
+    const lotBaseUnit = getValues("lotBaseUnit") || "";
+    const rowUnit = getValues("unit") || lotBaseUnit;
+    if (!Number.isFinite(baseRemain) || !lotBaseUnit || !rowUnit) return null;
     const baseInRowUnit = convertQty(baseRemain, lotBaseUnit, rowUnit);
-    if (baseInRowUnit == null) return null;
-
-    // somme des autres lignes de ce lot, converties vers l’unité de la ligne
-    const rows = getValues("items") || [];
-    let usedByOthers = 0;
-    rows.forEach((r, j) => {
-      if (j === idx) return;
-      if (String(r?.inventoryLotId || "") === String(lotId)) {
-        const q = Number(r?.quantity);
-        if (!Number.isFinite(q) || q <= 0) return;
-        const fromUnit = r?.unit || lotBaseUnit;
-        const qInRowUnit = convertQty(q, fromUnit, rowUnit);
-        if (qInRowUnit != null) usedByOthers += qInRowUnit;
-      }
-    });
-
-    return Math.max(0, baseInRowUnit - usedByOthers);
+    return baseInRowUnit == null
+      ? null
+      : roundByUnit(Math.max(0, baseInRowUnit), rowUnit);
   }
 
-  function pickLot(idx, lot) {
-    setValue(`items.${idx}.inventoryLotId`, lot?._id || "", {
+  function pickLot(lot) {
+    // id + libellé
+    setValue("inventoryLotId", lot?._id || "", {
       shouldDirty: true,
       shouldValidate: true,
     });
+    setValue("productSearch", lot?.productName || "", { shouldDirty: true });
 
-    // Libellé = produit uniquement
-    setValue(`items.${idx}.inventoryLotDisplay`, lot?.productName || "", {
+    // champs liés
+    setValue("productName", lot?.productName || "", { shouldDirty: true });
+    setValue("supplierName", lot?.supplier || "", { shouldDirty: true });
+    setValue("lotNumber", lot?.lotNumber || "", { shouldDirty: true });
+    setValue("unit", lot?.unit || "", { shouldDirty: true });
+    setValue("lotBaseUnit", lot?.unit ? String(lot.unit) : "", {
       shouldDirty: true,
     });
 
-    // Écrase systématiquement les champs liés au lot
-    setValue(`items.${idx}.productName`, lot?.productName || "", {
-      shouldDirty: true,
-    });
-    setValue(`items.${idx}.lotNumber`, lot?.lotNumber || "", {
-      shouldDirty: true,
-    });
-
-    // ⚠️ unité = unité du lot (avec choix restreint)
-    setValue(`items.${idx}.unit`, lot?.unit || "", { shouldDirty: true });
-    setValue(`items.${idx}.lotBaseUnit`, lot?.unit ? String(lot.unit) : "", {
-      shouldDirty: true,
-    });
-
-    // DLC/DDM → bestBefore
     const bb = lot?.dlc || lot?.ddm || "";
-    setValue(`items.${idx}.bestBefore`, toDateValue(bb), { shouldDirty: true });
+    setValue("bestBefore", toDateValue(bb), { shouldDirty: true });
 
-    // Stock maximum (lot.unit)
     const lotMax = Number(lot?.qtyRemaining);
-    setValue(
-      `items.${idx}.lotMaxRemaining`,
-      Number.isFinite(lotMax) ? String(lotMax) : "",
-      { shouldDirty: true }
-    );
+    setValue("lotMaxRemaining", Number.isFinite(lotMax) ? String(lotMax) : "", {
+      shouldDirty: true,
+    });
 
     // Si quantité vide → propose le restant (dans l’unité du lot)
-    const curQ = (getValues(`items.${idx}.quantity`) || "").trim();
+    const curQ = (getValues("quantity") || "").trim();
     if (!curQ && Number.isFinite(lotMax)) {
-      setValue(`items.${idx}.quantity`, String(lotMax), {
+      setValue("quantity", String(lotMax), {
         shouldDirty: true,
         shouldValidate: true,
       });
     } else {
-      // Sinon, s'il y a une valeur > max autorisé (après conversion), on la rabat
-      const allowed = allowedMaxForRow(idx);
+      // sinon, laisse la quantité existante, juste clip si > max
+      const a = allowedMax();
       const n = Number(curQ);
-      if (allowed != null && Number.isFinite(n) && n > allowed) {
-        setValue(`items.${idx}.quantity`, String(allowed), {
+      if (a != null && Number.isFinite(n) && n > a) {
+        setValue("quantity", String(a), {
           shouldDirty: true,
           shouldValidate: true,
         });
       }
     }
 
-    clearErrors([
-      `items.${idx}.inventoryLotDisplay`,
-      `items.${idx}.inventoryLotId`,
-    ]);
-    setLotOpen(idx, false);
+    clearErrors(["productSearch", "inventoryLotId"]);
+    setDropdownOpen(false);
   }
 
-  function clearPickedLot(idx) {
-    setValue(`items.${idx}.inventoryLotId`, "", {
-      shouldDirty: true,
-      shouldValidate: true,
-    });
-    setValue(`items.${idx}.inventoryLotDisplay`, "", { shouldDirty: true });
-    setValue(`items.${idx}.lotMaxRemaining`, "", { shouldDirty: true });
-    setValue(`items.${idx}.lotBaseUnit`, "", { shouldDirty: true });
-    setLotOpen(idx, false);
-    clearErrors([
-      `items.${idx}.inventoryLotDisplay`,
-      `items.${idx}.inventoryLotId`,
-    ]);
+  function clearPickedLot() {
+    // meta lot
+    setValue("inventoryLotId", "", { shouldDirty: true, shouldValidate: true });
+    setValue("lotMaxRemaining", "", { shouldDirty: true });
+    setValue("lotBaseUnit", "", { shouldDirty: true });
+
+    // champs “métier” liés au produit/lot
+    setValue("productSearch", "", { shouldDirty: true, shouldValidate: true });
+    setValue("productName", "", { shouldDirty: true, shouldValidate: true });
+    setValue("supplierName", "", { shouldDirty: true });
+    setValue("lotNumber", "", { shouldDirty: true });
+    setValue("unit", "", { shouldDirty: true, shouldValidate: true });
+    setValue("bestBefore", "", { shouldDirty: true });
+    setValue("quantity", "", { shouldDirty: true, shouldValidate: true });
+
+    setValue("note", "", { shouldDirty: true, shouldValidate: true });
+    setValue("actionsTaken", "", { shouldDirty: true, shouldValidate: true });
+    setValue("attachmentsText", "", { shouldDirty: true, shouldValidate: true });
+
+    // UI
+    setDropdownOpen(false);
+    clearErrors(["productSearch", "productName", "inventoryLotId", "quantity"]);
   }
 
-  const lotInvalid = (idx) => {
-    const txt = (watch(`items.${idx}.inventoryLotDisplay`) || "").trim();
-    const id = watch(`items.${idx}.inventoryLotId`) || "";
-    return txt !== "" && !id;
-  };
-
-  // Sur changement d’une ligne (lot/quantité/unité), on recape automatiquement si besoin
-  const itemsWatch = watch("items");
+  // Sécurité : si l’unité choisie n’est pas compatible avec le lot, on corrige
+  const lotBaseUnit = watch("lotBaseUnit") || "";
+  const unitOpts = allowedUnitsForLotUnit(lotBaseUnit);
+  const curUnit = watch("unit") || lotBaseUnit || "";
+  const safeUnit = lotBaseUnit
+    ? unitOpts.includes(curUnit)
+      ? curUnit
+      : lotBaseUnit
+    : curUnit || "";
   useEffect(() => {
-    const rows = itemsWatch || [];
-    rows.forEach((row, idx) => {
-      const allowed = allowedMaxForRow(idx);
-      const n = Number(row?.quantity);
-      if (allowed != null && Number.isFinite(n) && n > allowed) {
-        setValue(`items.${idx}.quantity`, String(allowed), {
-          shouldDirty: true,
-          shouldValidate: true,
-        });
-      }
-
-      // sécurité : corriger l’unité si elle n’est pas autorisée par le lot
-      const baseUnit = row?.lotBaseUnit || "";
-      const opts = allowedUnitsForLotUnit(baseUnit);
-      const cur = row?.unit || baseUnit || "";
-      if (baseUnit && !opts.includes(cur)) {
-        setValue(`items.${idx}.unit`, baseUnit, {
-          shouldDirty: true,
-          shouldValidate: true,
-        });
-      }
-    });
+    if (safeUnit !== curUnit) {
+      setValue("unit", safeUnit, { shouldDirty: true, shouldValidate: true });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    JSON.stringify(
-      (itemsWatch || []).map((r) => [
-        r.inventoryLotId,
-        r.quantity,
-        r.unit,
-        r.lotMaxRemaining,
-        r.lotBaseUnit,
-      ])
-    ),
-  ]);
+  }, [lotBaseUnit, JSON.stringify(unitOpts), curUnit]);
+
+  /* --- HYDRATATION : reconstituer le “max restant” réel uniquement si un lot est sélectionné actuellement --- */
+useEffect(() => {
+  const curLotId = getValues("inventoryLotId"); // <- seulement la valeur du form
+  if (!restaurantId || !token || !curLotId) return;
+
+  let cancelled = false;
+  (async () => {
+    try {
+      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/inventory-lots/${curLotId}`;
+      const { data: lot } = await axios.get(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (cancelled || !lot) return;
+
+      // si on est en édition avec une qté déjà saisie, on reconstruit le “remain”
+      const myQty = Number(initial?.item?.quantity);
+      const myUnit = (initial?.item?.unit) || lot.unit;
+      const addBack =
+        Number.isFinite(myQty) && myUnit
+          ? convertQty(myQty, myUnit, lot.unit)
+          : 0;
+
+      const effectiveRemain = roundByUnit(
+        (Number(lot?.qtyRemaining) || 0) + (Number(addBack) || 0),
+        lot.unit
+      );
+
+      setValue("lotMaxRemaining", String(effectiveRemain), { shouldDirty: false });
+      setValue("lotBaseUnit", lot?.unit ? String(lot.unit) : "", { shouldDirty: false });
+
+      // ne pré-remplir que si vide
+      if (!(getValues("bestBefore") || "").trim()) {
+        const bb = lot?.dlc || lot?.ddm || "";
+        setValue("bestBefore", toDateValue(bb), { shouldDirty: false });
+      }
+      if (!(getValues("supplierName") || "").trim() && lot?.supplier) {
+        setValue("supplierName", lot.supplier, { shouldDirty: false });
+      }
+    } catch (e) {
+      console.error("hydrate lot on edit:", e);
+    }
+  })();
+
+  return () => {
+    cancelled = true;
+  };
+  // dépendre de la valeur COURANTE (et non de initial.item)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [restaurantId, token, watch("inventoryLotId")]);
+
 
   /* ---------- Submit ---------- */
   const onSubmit = async (data) => {
     const token = localStorage.getItem("token");
     if (!token) return;
+
+    // productName requis (champ caché + mirroring de productSearch)
+    const pname =
+      (data.productName || "").trim() || (data.productSearch || "").trim();
+    if (!pname) {
+      setError("productName", { type: "manual", message: "Requis" });
+      return;
+    }
+    clearErrors("productName");
+
+    // Si lot sélectionné : clip final
+    const a = allowedMax();
+    const n = Number(data.quantity);
+    if (data.inventoryLotId && a != null && Number.isFinite(n) && n > a) {
+      setError("quantity", {
+        type: "manual",
+        message: `Quantité > stock restant (${a} ${safeUnit || ""})`,
+      });
+      return;
+    }
 
     const attachments =
       typeof data.attachmentsText === "string" &&
@@ -385,79 +362,21 @@ export default function RecallForm({
             .filter(Boolean)
         : [];
 
-    // texte sans sélection => refuse
-    const itemsFront = Array.isArray(data.items) ? data.items : [];
-    for (let idx = 0; idx < itemsFront.length; idx++) {
-      const txt = (getValues(`items.${idx}.inventoryLotDisplay`) || "").trim();
-      const id = getValues(`items.${idx}.inventoryLotId`) || "";
-      if (txt && !id) {
-        setError(`items.${idx}.inventoryLotDisplay`, {
-          type: "manual",
-          message: "Veuillez sélectionner un lot dans la liste",
-        });
-        return;
-      }
-    }
-
-    // Sécurité finale : somme par lot ≤ stock restant (avec conversions)
-    const rows = itemsFront;
-    const sumByLotInBase = {};
-    const baseUnitByLot = {};
-    const maxByLotBase = {};
-    rows.forEach((it, idx) => {
-      const lotId = getValues(`items.${idx}.inventoryLotId`) || "";
-      if (!lotId) return;
-      const q = Number(it.quantity);
-      const baseUnit = getValues(`items.${idx}.lotBaseUnit`) || "";
-      const baseMax = Number(getValues(`items.${idx}.lotMaxRemaining`));
-      if (baseUnit) baseUnitByLot[lotId] = baseUnit;
-      if (Number.isFinite(baseMax)) maxByLotBase[lotId] = baseMax;
-
-      if (Number.isFinite(q) && q > 0) {
-        const fromUnit = it.unit || baseUnit;
-        const inBase = convertQty(q, fromUnit, baseUnit);
-        if (inBase != null) {
-          sumByLotInBase[lotId] = (sumByLotInBase[lotId] || 0) + inBase;
-        }
-      }
-    });
-    for (const id of Object.keys(sumByLotInBase)) {
-      const baseMax = maxByLotBase[id];
-      if (baseMax != null && sumByLotInBase[id] > baseMax) {
-        const errIdx = itemsFront.findIndex(
-          (_, j) => (getValues(`items.${j}.inventoryLotId`) || "") === id
-        );
-        setError(`items.${errIdx}.quantity`, {
-          type: "manual",
-          message: `Quantité totale > stock restant (${baseMax} ${baseUnitByLot[id] || ""})`,
-        });
-        return;
-      }
-    }
-
-    const items = rows
-      .map((it) => ({
-        inventoryLotId: it.inventoryLotId || undefined,
-        productName: it.productName || undefined,
-        lotNumber: it.lotNumber || undefined,
-        quantity:
-          it.quantity !== "" && it.quantity != null
-            ? Number(it.quantity)
-            : undefined,
-        unit: it.unit || undefined,
-        bestBefore: it.bestBefore ? new Date(it.bestBefore) : undefined,
-        note: it.note || undefined,
-      }))
-      .filter((x) => x.productName);
-
-    if (!items.length) return;
-
     const payload = {
-      source: data.source || "supplier",
-      supplierName: data.supplierName || undefined,
-      supplierId: data.supplierId || undefined,
       initiatedAt: data.initiatedAt ? new Date(data.initiatedAt) : new Date(),
-      items,
+      item: {
+        inventoryLotId: data.inventoryLotId || undefined,
+        productName: pname,
+        supplierName: data.supplierName || undefined,
+        lotNumber: data.lotNumber || undefined,
+        quantity:
+          data.quantity !== "" && data.quantity != null
+            ? Number(data.quantity)
+            : undefined,
+        unit: data.unit || undefined,
+        bestBefore: data.bestBefore ? new Date(data.bestBefore) : undefined,
+        note: data.note || undefined,
+      },
       actionsTaken: data.actionsTaken || undefined,
       attachments,
       closedAt: data.closed
@@ -489,289 +408,189 @@ export default function RecallForm({
       onSubmit={handleSubmit(onSubmit)}
       className="bg-white rounded-lg p-4 shadow-sm flex flex-col gap-6"
     >
-      {/* Ligne 1 : Source / Fournisseur / Date */}
-      <div className="flex flex-col gap-4 mobile:flex-row flex-wrap">
-        <div className="w-full mobile:w-56">
-          <label className="text-sm font-medium">Source</label>
-          <select
-            {...register("source")}
-            className="border rounded p-2 h-[44px] w-full"
-          >
-            <option value="supplier">Fournisseur</option>
-            <option value="authority">Autorité</option>
-            <option value="internal">Interne</option>
-          </select>
-        </div>
-        <div className="flex-1 min-w-[220px]">
-          <label className="text-sm font-medium">Fournisseur</label>
-          <input
-            type="text"
-            {...register("supplierName")}
-            className="border rounded p-2 h-[44px] w-full"
-          />
-        </div>
-        <div className="w-full mobile:w-72">
-          <label className="text-sm font-medium">Déclaré le *</label>
-          <input
-            type="datetime-local"
-            {...register("initiatedAt", { required: "Requis" })}
-            className="border rounded p-2 h-[44px] w-full"
-          />
-          {errors.initiatedAt && (
-            <p className="text-xs text-red mt-1">
-              {errors.initiatedAt.message}
-            </p>
-          )}
-        </div>
+      {/* 1) Déclaré le */}
+      <div className="w-full mobile:w-72">
+        <label className="text-sm font-medium">Déclaré le *</label>
+        <input
+          type="datetime-local"
+          {...register("initiatedAt", { required: "Requis" })}
+          className="border rounded p-2 h-[44px] w-full"
+        />
+        {errors.initiatedAt && (
+          <p className="text-xs text-red mt-1">{errors.initiatedAt.message}</p>
+        )}
       </div>
 
-      {/* Items */}
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-base font-semibold">Produits retournés</h3>
-          <button
-            type="button"
-            onClick={() =>
-              append({
-                inventoryLotId: "",
-                inventoryLotDisplay: "",
-                lotMaxRemaining: "",
-                lotBaseUnit: "",
-                productName: "",
-                lotNumber: "",
-                quantity: "",
-                unit: "",
-                bestBefore: "",
-                note: "",
-              })
-            }
-            className="px-3 py-1 rounded bg-blue text-white"
-          >
-            Ajouter un produit
-          </button>
-        </div>
-
-        {fields.map((f, idx) => {
-          const baseUnit = watch(`items.${idx}.lotBaseUnit`) || "";
-          const unitOpts = allowedUnitsForLotUnit(baseUnit);
-          const curUnit = watch(`items.${idx}.unit`) || baseUnit || "";
-          const safeUnit = baseUnit
-            ? unitOpts.includes(curUnit)
-              ? curUnit
-              : baseUnit
-            : curUnit || "";
-
-          if (safeUnit !== curUnit) {
-            setTimeout(() => {
-              setValue(`items.${idx}.unit`, safeUnit, {
+      {/* 2) Produit (autocomplete sur lots) */}
+      <div className="w-full mobile:w-[520px]">
+        <label className="text-sm font-medium">Produit *</label>
+        <div className="relative">
+          <input
+            type="text"
+            {...register("productSearch")}
+            onFocus={onProductFocus}
+            onBlur={onProductBlur}
+            onChange={(e) => {
+              onProductInputChange(e.target.value);
+              // miroir -> productName pour la validation
+              setValue("productName", e.target.value, {
                 shouldDirty: true,
                 shouldValidate: true,
               });
-            }, 0);
-          }
-
-          const allowed = allowedMaxForRow(idx);
-
-          return (
-            <div key={f.id} className="border rounded p-3 flex flex-col gap-3">
-              {/* Sélection du lot (autocomplete) */}
-              <div className="w-full mobile:w-[420px]">
-                <label className="text-sm font-medium">Lot d’inventaire</label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    {...register(`items.${idx}.inventoryLotDisplay`)}
-                    onFocus={() => onLotFocus(idx)}
-                    onBlur={() => onLotBlur(idx)}
-                    onChange={(e) => onLotInputChange(idx, e.target.value)}
-                    className={`w-full border rounded p-2 h-[44px] pr-8 ${
-                      lotInvalid(idx) ||
-                      errors?.items?.[idx]?.inventoryLotDisplay
-                        ? "border-red ring-1 ring-red"
-                        : ""
-                    }`}
-                    placeholder="Rechercher produit…"
-                  />
-                  {(watch(`items.${idx}.inventoryLotDisplay`) || "") && (
-                    <button
-                      type="button"
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => clearPickedLot(idx)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 bg-black/30 text-white rounded-full flex items-center justify-center"
-                      title="Effacer"
-                    >
-                      &times;
-                    </button>
-                  )}
-                  {lotDropdownOpen[idx] &&
-                    (watch(`items.${idx}.inventoryLotDisplay`) || "").trim() !==
-                      "" && (
-                      <ul
-                        className="absolute z-10 left-0 right-0 mt-1 bg-white border rounded shadow max-h-56 overflow-auto"
-                        onMouseDown={(e) => e.preventDefault()}
-                      >
-                        {(lotOptions[idx] || []).length === 0 && (
-                          <li className="px-3 py-2 text-sm opacity-70 italic">
-                            Aucun résultat
-                          </li>
-                        )}
-                        {(lotOptions[idx] || []).map((lot) => (
-                          <li
-                            key={lot._id}
-                            onClick={() => pickLot(idx, lot)}
-                            className="px-3 py-[8px] cursor-pointer hover:bg-lightGrey"
-                          >
-                            <div className="font-medium">{lot.productName}</div>
-                            <div className="text-xs opacity-70">
-                              Lot: {lot.lotNumber || "—"} •{" "}
-                              {lot.qtyRemaining ?? "?"} {lot.unit || ""} •{" "}
-                              {lot.supplier || "—"}
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                </div>
-                <input
-                  type="hidden"
-                  {...register(`items.${idx}.inventoryLotId`)}
-                />
-                <input
-                  type="hidden"
-                  {...register(`items.${idx}.lotMaxRemaining`)}
-                />
-                <input
-                  type="hidden"
-                  {...register(`items.${idx}.lotBaseUnit`)}
-                />
-                {(lotInvalid(idx) ||
-                  errors?.items?.[idx]?.inventoryLotDisplay) && (
-                  <p className="text-xs text-red mt-1">
-                    {errors?.items?.[idx]?.inventoryLotDisplay?.message ||
-                      "Veuillez sélectionner un lot dans la liste"}
-                  </p>
-                )}
-              </div>
-
-              <div className="flex gap-3 midTablet:flex-row flex-col">
-                <div className="flex-1">
-                  <label className="text-sm font-medium">Produit *</label>
-                  <input
-                    type="text"
-                    {...register(`items.${idx}.productName`, {
-                      required: "Requis",
-                    })}
-                    className="border rounded p-2 h-[44px] w-full"
-                    placeholder="Ex: Poulet émincé"
-                  />
-                  {errors.items?.[idx]?.productName && (
-                    <p className="text-xs text-red mt-1">
-                      {errors.items[idx].productName.message}
-                    </p>
-                  )}
-                </div>
-                <div className="w-full mobile:w-56">
-                  <label className="text-sm font-medium">Lot</label>
-                  <input
-                    type="text"
-                    {...register(`items.${idx}.lotNumber`)}
-                    className="border rounded p-2 h-[44px] w-full"
-                  />
-                </div>
-                <div className="w-full mobile:w-40">
-                  <label className="text-sm font-medium">Quantité</label>
-                  <input
-                    type="number"
-                    step="any"
-                    max={allowed != null ? allowed : undefined}
-                    {...register(`items.${idx}.quantity`, {
-                      validate: (val) => {
-                        if (val === "" || val == null) return true;
-                        const n = Number(val);
-                        if (!Number.isFinite(n) || n < 0)
-                          return "Valeur invalide";
-                        const a = allowedMaxForRow(idx);
-                        if (a != null && n > a) return `Max autorisé: ${a}`;
-                        return true;
-                      },
-                    })}
-                    onBlur={(e) => {
-                      const a = allowedMaxForRow(idx);
-                      const n = Number(e.target.value);
-                      if (a != null && Number.isFinite(n) && n > a) {
-                        setValue(`items.${idx}.quantity`, String(a), {
-                          shouldDirty: true,
-                          shouldValidate: true,
-                        });
-                      }
-                    }}
-                    className="border rounded p-2 h-[44px] w-full"
-                  />
-                  {allowed != null && (
-                    <div className="text-xs opacity-60 mt-1">
-                      Max restant : {allowed} {safeUnit || ""}
-                    </div>
-                  )}
-                  {errors.items?.[idx]?.quantity && (
-                    <p className="text-xs text-red mt-1">
-                      {errors.items[idx].quantity.message}
-                    </p>
-                  )}
-                </div>
-                <div className="w-full mobile:w-40">
-                  <label className="text-sm font-medium">Unité</label>
-                  <select
-                    value={safeUnit}
-                    onChange={(e) =>
-                      setValue(`items.${idx}.unit`, e.target.value, {
-                        shouldDirty: true,
-                        shouldValidate: true,
-                      })
-                    }
-                    className="border rounded p-2 h-[44px] w-full"
-                    disabled={baseUnit ? unitOpts.length === 1 : false}
-                  >
-                    {(baseUnit ? unitOpts : ALL_UNITS).map((u) => (
-                      <option key={u} value={u}>
-                        {u}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="w-full mobile:w-48">
-                  <label className="text-sm font-medium">DLC/DDM</label>
-                  <input
-                    type="date"
-                    {...register(`items.${idx}.bestBefore`)}
-                    className="border rounded p-2 h-[44px] w-full"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium">Note</label>
-                <input
-                  type="text"
-                  {...register(`items.${idx}.note`)}
-                  className="border rounded p-2 h-[44px] w-full"
-                />
-              </div>
-
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => remove(idx)}
-                  className="px-3 py-1 rounded bg-red text-white"
+            }}
+            className={`w-full border rounded p-2 h-[44px] pr-8 ${
+              errors?.productName ? "border-red ring-1 ring-red" : ""
+            }`}
+            placeholder="Rechercher un produit/lot…"
+          />
+          {(watch("productSearch") || "") && (
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={clearPickedLot}
+              className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 bg-black/30 text-white rounded-full flex items-center justify-center"
+              title="Effacer"
+            >
+              &times;
+            </button>
+          )}
+          {dropdownOpen && (watch("productSearch") || "").trim() !== "" && (
+            <ul
+              className="absolute z-10 left-0 right-0 mt-1 bg-white border rounded shadow max-h-56 overflow-auto"
+              onMouseDown={(e) => e.preventDefault()}
+            >
+              {options.length === 0 && (
+                <li className="px-3 py-2 text-sm opacity-70 italic">
+                  Aucun résultat
+                </li>
+              )}
+              {options.map((lot) => (
+                <li
+                  key={lot._id}
+                  onClick={() => pickLot(lot)}
+                  className="px-3 py-[8px] cursor-pointer hover:bg-lightGrey"
                 >
-                  Supprimer
-                </button>
-              </div>
-            </div>
-          );
-        })}
+                  <div className="font-medium">{lot.productName}</div>
+                  <div className="text-xs opacity-70">
+                    Lot: {lot.lotNumber || "—"} • {lot.qtyRemaining ?? "?"}{" "}
+                    {lot.unit || ""} • {lot.supplier || "—"}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <input
+          type="hidden"
+          {...register("productName", { required: "Requis" })}
+        />
+        <input type="hidden" {...register("inventoryLotId")} />
+        <input type="hidden" {...register("lotMaxRemaining")} />
+        <input type="hidden" {...register("lotBaseUnit")} />
+        {errors.productName && (
+          <p className="text-xs text-red mt-1">{errors.productName.message}</p>
+        )}
       </div>
 
-      {/* Actions / pièces */}
+      {/* 3) Fournisseur */}
+      <div className="w-full mobile:w-[420px]">
+        <label className="text-sm font-medium">Fournisseur</label>
+        <input
+          type="text"
+          {...register("supplierName")}
+          className="border rounded p-2 h-[44px] w-full"
+          placeholder="Préf rempli s’il provient d’un lot"
+        />
+      </div>
+
+      {/* 4) Lot / quantité / unité / DLC-DDM */}
+      <div className="flex gap-3 midTablet:flex-row flex-col">
+        <div className="w-full mobile:w-56">
+          <label className="text-sm font-medium">N° lot</label>
+          <input
+            type="text"
+            {...register("lotNumber")}
+            className="border rounded p-2 h-[44px] w-full"
+          />
+        </div>
+        <div className="w-full mobile:w-40">
+          <label className="text-sm font-medium">Quantité</label>
+          <input
+            type="number"
+            step="any"
+            max={allowedMax() != null ? allowedMax() : undefined}
+            {...register("quantity", {
+              validate: (val) => {
+                if (val === "" || val == null) return true;
+                const n = Number(val);
+                if (!Number.isFinite(n) || n < 0) return "Valeur invalide";
+                const a = allowedMax();
+                if (a != null && n > a) return `Max autorisé: ${a}`;
+                return true;
+              },
+            })}
+            onBlur={(e) => {
+              const a = allowedMax();
+              const n = Number(e.target.value);
+              if (a != null && Number.isFinite(n) && n > a) {
+                setValue("quantity", String(a), {
+                  shouldDirty: true,
+                  shouldValidate: true,
+                });
+              }
+            }}
+            className="border rounded p-2 h-[44px] w-full"
+          />
+          {allowedMax() != null && (
+            <div className="text-xs opacity-60 mt-1">
+              Max restant : {allowedMax()} {safeUnit || ""}
+            </div>
+          )}
+          {errors.quantity && (
+            <p className="text-xs text-red mt-1">{errors.quantity.message}</p>
+          )}
+        </div>
+        <div className="w-full mobile:w-40">
+          <label className="text-sm font-medium">Unité</label>
+          <select
+            value={safeUnit}
+            onChange={(e) =>
+              setValue("unit", e.target.value, {
+                shouldDirty: true,
+                shouldValidate: true,
+              })
+            }
+            className="border rounded p-2 h-[44px] w-full"
+            disabled={lotBaseUnit ? unitOpts.length === 1 : false}
+          >
+            {(lotBaseUnit ? unitOpts : ALL_UNITS).map((u) => (
+              <option key={u} value={u}>
+                {u}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="w-full mobile:w-48">
+          <label className="text-sm font-medium">DLC/DDM</label>
+          <input
+            type="date"
+            {...register("bestBefore")}
+            className="border rounded p-2 h-[44px] w-full"
+          />
+        </div>
+      </div>
+
+      {/* 5) Note */}
+      <div>
+        <label className="text-sm font-medium">Note</label>
+        <input
+          type="text"
+          {...register("note")}
+          className="border rounded p-2 h-[44px] w-full"
+        />
+      </div>
+
+      {/* 6) Actions / pièces */}
       <div className="flex flex-col gap-4 mobile:flex-row flex-wrap">
         <div className="flex-1">
           <label className="text-sm font-medium">Actions menées</label>
@@ -794,7 +613,7 @@ export default function RecallForm({
         </div>
       </div>
 
-      {/* Clôture */}
+      {/* 7) Clôture */}
       <div className="flex gap-4 items-center">
         <div className="flex items-center gap-2">
           <input id="closed" type="checkbox" {...register("closed")} />

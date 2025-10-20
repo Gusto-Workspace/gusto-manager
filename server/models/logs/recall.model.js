@@ -9,6 +9,7 @@ const itemSchema = new Schema(
 
     // Données “snapshot” (garde une trace même si le lot disparaît / change)
     productName: { type: String, required: true },
+    supplierName: String, // intégré dans l'item désormais
     lotNumber: String,
 
     // Détails retour
@@ -17,7 +18,7 @@ const itemSchema = new Schema(
     bestBefore: Date, // DLC/DDM si connu
     note: String,
   },
-  { _id: true }
+  { _id: false }
 );
 
 const recallSchema = new Schema(
@@ -29,20 +30,10 @@ const recallSchema = new Schema(
       index: true,
     },
 
-    // Origine
-    source: {
-      type: String,
-      enum: ["supplier", "authority", "internal"],
-      default: "supplier",
-      index: true,
-    },
-
-    // Fournisseur (facultatif, utile si pas de lot lié)
-    supplierName: { type: String, index: true },
-
     initiatedAt: { type: Date, default: Date.now, index: true },
 
-    items: { type: [itemSchema], default: [] },
+    // Un seul produit par retour
+    item: { type: itemSchema, required: true },
 
     actionsTaken: String,
     attachments: { type: [String], default: [] },
@@ -65,7 +56,7 @@ const recallSchema = new Schema(
 );
 
 recallSchema.index({ restaurantId: 1, initiatedAt: -1 });
-recallSchema.index({ restaurantId: 1, source: 1, initiatedAt: -1 });
+recallSchema.index({ restaurantId: 1, "item.productName": 1, initiatedAt: -1 });
 
 recallSchema.pre("save", function (next) {
   this.updatedAt = new Date();

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import axios from "axios";
 
@@ -20,6 +20,7 @@ function buildFormDefaults(record) {
       return "";
     })(),
 
+    // champs lot
     productName: record?.productName ?? "",
     supplier: record?.supplier ?? "",
     lotNumber: record?.lotNumber ?? "",
@@ -57,17 +58,38 @@ function buildFormDefaults(record) {
   };
 }
 
-function formatReceptionLabel(reception) {
-  if (!reception) return "Réception enregistrée";
+function formatReceptionLabel(r) {
+  if (!r) return "Réception enregistrée";
   let dateLabel = "Date inconnue";
-  if (reception.receivedAt) {
-    const date = new Date(reception.receivedAt);
+  if (r.receivedAt) {
+    const date = new Date(r.receivedAt);
     if (!Number.isNaN(date.getTime())) {
       dateLabel = date.toLocaleString();
     }
   }
-  const supplierInfo = reception.supplier ? ` • ${reception.supplier}` : "";
+  const supplierInfo = r.supplier ? ` • ${r.supplier}` : "";
   return `${dateLabel}${supplierInfo}`;
+}
+
+function formatLineOptionLabel(line) {
+  const name = line?.productName || "Produit";
+  const lot = line?.lotNumber ? ` • lot ${line.lotNumber}` : "";
+  const qty =
+    line?.qty != null && line?.unit
+      ? ` • ${line.qty} ${line.unit}`
+      : line?.qty != null
+        ? ` • ${line.qty}`
+        : "";
+  return `${name}${lot}${qty}`;
+}
+
+// Clé stable pour une ligne (évite collisions si 2 lignes identiques)
+function lineKey(line, idx) {
+  const n = String(line?.productName || "");
+  const l = String(line?.lotNumber || "");
+  const u = String(line?.unit || "");
+  const q = String(line?.qty ?? "");
+  return `${n}::${l}::${u}::${q}::${idx}`;
 }
 
 export default function InventoryLotForm({
@@ -76,36 +98,52 @@ export default function InventoryLotForm({
   onSuccess,
   onCancel,
 }) {
-  const [receptions, setReceptions] = useState([]);
-  const [receptionsLoading, setReceptionsLoading] = useState(false);
-  const [receptionsError, setReceptionsError] = useState(false);
-
   const {
     register,
     handleSubmit,
     reset,
     formState: { errors, isSubmitting },
     watch,
+    setValue,
   } = useForm({ defaultValues: buildFormDefaults(initial) });
 
+  // ---- Réceptions (liste)
+  const [receptions, setReceptions] = useState([]);
+  const [receptionsLoading, setReceptionsLoading] = useState(false);
+  const [receptionsError, setReceptionsError] = useState(false);
+
+  // ---- Réception sélectionnée (doc complet + options produits)
+  const [selectedReception, setSelectedReception] = useState(null);
+  const [productOptions, setProductOptions] = useState([]); // [{key, line}]
+  const [selectedProductKey, setSelectedProductKey] = useState("");
+
+  const isMounted = useRef(true);
+  useEffect(
+    () => () => {
+      isMounted.current = false;
+    },
+    []
+  );
+
+  // Reset si "initial" change
   useEffect(() => {
     reset(buildFormDefaults(initial));
+    setSelectedReception(null);
+    setProductOptions([]);
+    setSelectedProductKey("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial]);
 
-  // Charger les réceptions (même route que ton autre composant)
+  // Charger la liste des réceptions
   useEffect(() => {
     if (!restaurantId) {
       setReceptions([]);
-      return;
     }
 
     let cancelled = false;
-
     const loadReceptions = async () => {
       setReceptionsLoading(true);
       setReceptionsError(false);
-
       try {
         const token = localStorage.getItem("token");
         if (!token) {
@@ -115,13 +153,11 @@ export default function InventoryLotForm({
           }
           return;
         }
-
-        const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/reception-deliveries`;
+        const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-reception-deliveries`;
         const { data } = await axios.get(url, {
           headers: { Authorization: `Bearer ${token}` },
           params: { limit: 100 },
         });
-
         if (!cancelled) {
           const items = Array.isArray(data?.items) ? data.items : [];
           setReceptions(items);
@@ -133,54 +169,150 @@ export default function InventoryLotForm({
           setReceptionsError(true);
         }
       } finally {
-        if (!cancelled) {
-          setReceptionsLoading(false);
-        }
+        if (!cancelled) setReceptionsLoading(false);
       }
     };
-
-    loadReceptions();
+    if (restaurantId) loadReceptions();
     return () => {
       cancelled = true;
     };
   }, [restaurantId]);
 
+  // Options de réception triées (récents d'abord)
   const receptionOptions = useMemo(() => {
     const list = Array.isArray(receptions) ? [...receptions] : [];
 
+    // inclure la réception "initiale" si elle n'est pas dans la page
     const initialReception =
       initial && typeof initial.receptionId === "object" && initial.receptionId
         ? initial.receptionId
         : null;
-
     if (initialReception && initialReception._id) {
       const hasInitial = list.some(
-        (item) => String(item?._id) === String(initialReception._id)
+        (it) => String(it?._id) === String(initialReception._id)
       );
-      if (!hasInitial) {
-        list.push(initialReception);
-      }
+      if (!hasInitial) list.push(initialReception);
     }
 
-    const unique = [];
+    // unique par _id
     const seen = new Set();
-    for (const item of list) {
-      if (!item || !item._id) continue;
-      const key = String(item._id);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      unique.push(item);
+    const uniq = [];
+    for (const r of list) {
+      if (!r || !r._id) continue;
+      const k = String(r._id);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      uniq.push(r);
     }
 
-    return unique.sort((a, b) => {
-      const timeA = a?.receivedAt ? new Date(a.receivedAt).getTime() : 0;
-      const timeB = b?.receivedAt ? new Date(b.receivedAt).getTime() : 0;
-      return timeB - timeA;
+    return uniq.sort((a, b) => {
+      const ta = a?.receivedAt ? new Date(a.receivedAt).getTime() : 0;
+      const tb = b?.receivedAt ? new Date(b.receivedAt).getTime() : 0;
+      return tb - ta;
     });
   }, [receptions, initial]);
 
-  const status = watch("status");
+  const receptionIdWatch = watch("receptionId");
 
+  // Charger le détail d'une réception sélectionnée + construire les options produit
+  const fetchReception = useCallback(
+    async (receptionId) => {
+      if (!receptionId) {
+        setSelectedReception(null);
+        setProductOptions([]);
+        setSelectedProductKey("");
+        return;
+      }
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) {
+          setSelectedReception(null);
+          setProductOptions([]);
+          setSelectedProductKey("");
+          return;
+        }
+        const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/reception-deliveries/${receptionId}`;
+        const { data } = await axios.get(url, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        const lines = Array.isArray(data?.lines) ? data.lines : [];
+        // Produits triés alpha (insensible à la casse/accents)
+        const sorted = [...lines].sort((a, b) => {
+          const A = String(a?.productName || "");
+          const B = String(b?.productName || "");
+          return A.localeCompare(B, "fr", { sensitivity: "base" });
+        });
+
+        const opts = sorted.map((ln, i) => ({
+          key: lineKey(ln, i),
+          line: ln,
+        }));
+
+        setSelectedReception(data);
+        setProductOptions(opts);
+        setSelectedProductKey("");
+      } catch (e) {
+        console.error("fetch reception:", e);
+        setSelectedReception(null);
+        setProductOptions([]);
+        setSelectedProductKey("");
+      }
+    },
+    [restaurantId]
+  );
+
+  // Quand l'utilisateur change la réception → (re)charge ses lignes
+  useEffect(() => {
+    fetchReception(receptionIdWatch);
+  }, [receptionIdWatch, fetchReception]);
+
+  // Pré-remplir les champs à partir d’une ligne
+  function prefillFromReceptionLine(line, reception) {
+    if (!line) return;
+    const r = reception || selectedReception || {};
+
+    // 1) Champs lot directs
+    setValue("productName", line.productName || "", {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+    setValue("supplier", r.supplier || "", { shouldDirty: true });
+    setValue("lotNumber", line.lotNumber || "", { shouldDirty: true });
+    setValue("dlc", toDateValue(line.dlc), { shouldDirty: true });
+    setValue("ddm", toDateValue(line.ddm), { shouldDirty: true });
+
+    // 2) Quantités / unité
+    if (line.qty != null) {
+      setValue("qtyReceived", String(line.qty), {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+    }
+    setValue("unit", line.unit || "", {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+
+    // 3) Conditions & allergènes
+    if (line.tempOnArrival != null) {
+      setValue("tempOnArrival", String(line.tempOnArrival), {
+        shouldDirty: true,
+      });
+    }
+    if (Array.isArray(line.allergens) && line.allergens.length) {
+      setValue("allergens", line.allergens.join(", "), { shouldDirty: true });
+    } else {
+      setValue("allergens", "", { shouldDirty: true });
+    }
+    if (line.packagingCondition) {
+      setValue("packagingCondition", line.packagingCondition, {
+        shouldDirty: true,
+      });
+    }
+  }
+
+  // Soumission
   const onSubmit = async (data) => {
     const token = localStorage.getItem("token");
     if (!token) return;
@@ -207,6 +339,7 @@ export default function InventoryLotForm({
           ? Number(data.qtyReceived)
           : undefined,
 
+      // en création, on ne l’envoie pas → la route mettra qtyRemaining = qtyReceived
       qtyRemaining:
         initial?._id && data.qtyRemaining !== "" && data.qtyRemaining != null
           ? Number(data.qtyRemaining)
@@ -246,6 +379,9 @@ export default function InventoryLotForm({
     });
 
     reset(buildFormDefaults(null));
+    setSelectedReception(null);
+    setProductOptions([]);
+    setSelectedProductKey("");
     onSuccess?.(saved);
   };
 
@@ -277,20 +413,58 @@ export default function InventoryLotForm({
         </div>
       </div>
 
-      {/* En-tête produit */}
+      {/* Produit : input texte (sans réception) OU select (avec réception) */}
       <div className="flex flex-col gap-4 midTablet:flex-row">
         <div className="flex-1">
           <label className="text-sm font-medium">Produit *</label>
-          <input
-            type="text"
-            placeholder="Désignation"
-            {...register("productName", { required: "Requis" })}
-            className="border rounded p-2 h-[44px] w-full"
-          />
-          {errors.productName && (
-            <p className="text-xs text-red mt-1">
-              {errors.productName.message}
-            </p>
+
+          {!selectedReception ? (
+            <>
+              <input
+                type="text"
+                placeholder="Désignation"
+                {...register("productName", { required: "Requis" })}
+                className="border rounded p-2 h-[44px] w-full"
+              />
+              {errors.productName && (
+                <p className="text-xs text-red mt-1">
+                  {errors.productName.message}
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              <select
+                value={selectedProductKey}
+                onChange={(e) => {
+                  const key = e.target.value;
+                  setSelectedProductKey(key);
+                  const opt = productOptions.find((o) => o.key === key);
+                  if (opt)
+                    prefillFromReceptionLine(opt.line, selectedReception);
+                }}
+                className={`border rounded p-2 h-[44px] w-full ${
+                  errors.productName ? "border-red ring-1 ring-red" : ""
+                }`}
+              >
+                <option value="">Choisir un produit…</option>
+                {productOptions.map((opt) => (
+                  <option key={opt.key} value={opt.key}>
+                    {formatLineOptionLabel(opt.line)}
+                  </option>
+                ))}
+              </select>
+              {/* on garde la contrainte "required" sur productName via RHF */}
+              <input
+                type="hidden"
+                {...register("productName", { required: "Requis" })}
+              />
+              {errors.productName && (
+                <p className="text-xs text-red mt-1">
+                  {errors.productName.message}
+                </p>
+              )}
+            </>
           )}
         </div>
 
@@ -343,7 +517,7 @@ export default function InventoryLotForm({
           <label className="text-sm font-medium">Qté reçue *</label>
           <input
             type="number"
-            step="0.01"
+            step="0.001"
             placeholder="ex: 5"
             {...register("qtyReceived", { required: "Requis" })}
             className="border rounded p-2 h-[44px] w-full"
@@ -359,7 +533,7 @@ export default function InventoryLotForm({
             <label className="text-sm font-medium">Qté restante</label>
             <input
               type="number"
-              step="0.01"
+              step="0.001"
               placeholder="ex: 3"
               {...register("qtyRemaining")}
               className="border rounded p-2 h-[44px] w-full"
@@ -521,6 +695,9 @@ export default function InventoryLotForm({
             type="button"
             onClick={() => {
               reset(buildFormDefaults(null));
+              setSelectedReception(null);
+              setProductOptions([]);
+              setSelectedProductKey("");
               onCancel?.();
             }}
             className="px-4 py-2 rounded text-white bg-red"

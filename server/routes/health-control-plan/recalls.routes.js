@@ -100,30 +100,40 @@ function clampQtyRemaining(qtyRemaining, qtyReceived) {
   return Math.max(0, Math.min(q, r));
 }
 
-const ALLOWED_SOURCE = ["supplier", "authority", "internal"];
 function listSortExpr() {
   return { initiatedAt: -1, createdAt: -1, _id: -1 };
 }
 
+/* ---------- normalisation d’un item (1 produit) ---------- */
 function normItem(i = {}) {
-  const productName = normStr(i.productName);
-  const lotNumber = normStr(i.lotNumber);
-  const quantity = normNum(i.quantity);
-  const unit = normStr(i.unit);
-  const bestBefore = normDate(i.bestBefore);
-  const note = normStr(i.note);
-  const inventoryLotId = normObjId(i.inventoryLotId);
-  if (!productName && !inventoryLotId) return null;
-
-  return {
-    productName: productName || undefined,
-    lotNumber: lotNumber || undefined,
-    quantity: quantity ?? undefined,
-    unit: unit ?? undefined,
-    bestBefore: bestBefore ?? undefined,
-    note: note ?? undefined,
-    inventoryLotId: inventoryLotId ?? undefined,
+  const out = {};
+  if (i.inventoryLotId != null) {
+    const s = String(i.inventoryLotId);
+    if (Types.ObjectId.isValid(s)) out.inventoryLotId = s;
+  }
+  const s = (x) => (x == null ? undefined : String(x).trim() || undefined);
+  const n = (x) => {
+    if (x === undefined || x === null || x === "") return undefined;
+    const v = Number(x);
+    return Number.isNaN(v) ? undefined : v;
   };
+  const d = (x) => {
+    if (!x) return undefined;
+    const dt = new Date(x);
+    return Number.isNaN(dt.getTime()) ? undefined : dt;
+  };
+
+  out.productName = s(i.productName);
+  out.supplierName = s(i.supplierName);
+  out.lotNumber = s(i.lotNumber);
+  out.quantity = n(i.quantity);
+  out.unit = s(i.unit);
+  out.bestBefore = d(i.bestBefore);
+  out.note = s(i.note);
+
+  // pas de lot & pas de nom produit -> invalide
+  if (!out.inventoryLotId && !out.productName) return null;
+  return out;
 }
 
 /* --------- autocomplete inventory lots --------- */
@@ -158,7 +168,7 @@ router.get(
         lotNumber: l.lotNumber || "",
         supplier: l.supplier || "",
         unit: l.unit || "",
-        qtyRemaining: roundByUnit(l.qtyRemaining ?? null, l.unit), // sortie propre
+        qtyRemaining: roundByUnit(l.qtyRemaining ?? null, l.unit),
         dlc: l.dlc || null,
         ddm: l.ddm || null,
         status: l.status || "",
@@ -174,7 +184,7 @@ router.get(
   }
 );
 
-/* ------------------ CREATE ------------------ */
+/* ------------------ CREATE (1 produit) ------------------ */
 router.post(
   "/restaurants/:restaurantId/recalls",
   authenticateToken,
@@ -191,63 +201,41 @@ router.post(
         return res.status(400).json({ error: "Utilisateur non reconnu" });
       }
 
-      const source = ALLOWED_SOURCE.includes(String(inData.source))
-        ? String(inData.source)
-        : "supplier";
-
-      const supplierId = normObjId(inData.supplierId);
-      const supplierName = normStr(inData.supplierName);
-
-      let items = Array.isArray(inData.items)
-        ? inData.items.map(normItem).filter(Boolean)
-        : [];
-      if (!items.length) {
+      let item = normItem(inData.item);
+      if (!item) {
         await session.abortTransaction();
-        return res
-          .status(400)
-          .json({ error: "Au moins un produit est requis" });
+        return res.status(400).json({ error: "Produit invalide/requis" });
       }
 
-      // enrich with inventory lots (map aussi utilisé pour conversions)
-      const lotIds = [
-        ...new Set(
-          items
-            .map((it) => it.inventoryLotId)
-            .filter(Boolean)
-            .map(String)
-        ),
-      ];
-      const lotsById = {};
-      if (lotIds.length) {
-        const lots = await InventoryLot.find({
-          _id: { $in: lotIds },
+      // Si lot lié -> enrichissement snapshot + contrôle d'unité
+      let lot = null;
+      if (item.inventoryLotId) {
+        lot = await InventoryLot.findOne({
+          _id: item.inventoryLotId,
           restaurantId,
         }).session(session);
-        lots.forEach((l) => (lotsById[String(l._id)] = l));
-      }
-      items = items.map((it) => {
-        if (!it.inventoryLotId) return it;
-        const lot = lotsById[String(it.inventoryLotId)];
         if (!lot) {
-          const { inventoryLotId, ...rest } = it;
-          return rest;
+          await session.abortTransaction();
+          return res.status(404).json({ error: "Lot inventaire introuvable" });
         }
-        return {
-          ...it,
-          productName: it.productName || lot.productName || "Produit",
-          lotNumber: it.lotNumber || lot.lotNumber || undefined,
-          unit: it.unit || lot.unit || undefined,
-          bestBefore: it.bestBefore || lot.dlc || lot.ddm || undefined,
-        };
-      });
+        item.productName ||= lot.productName || "Produit";
+        item.lotNumber ||= lot.lotNumber || undefined;
+        item.unit ||= lot.unit || undefined;
+        item.bestBefore ||= lot.dlc || lot.ddm || undefined;
+        item.supplierName ||= lot.supplier || undefined;
+      }
 
+      // sécurité min : exiger un nom produit au final
+      if (!item.productName) {
+        await session.abortTransaction();
+        return res.status(400).json({ error: "productName requis" });
+      }
+
+      // Créer le doc
       const doc = new Recall({
         restaurantId,
-        source,
-        supplierId: supplierId ?? undefined,
-        supplierName: supplierName ?? undefined,
         initiatedAt: normDate(inData.initiatedAt) ?? new Date(),
-        items,
+        item,
         actionsTaken: normStr(inData.actionsTaken) ?? undefined,
         attachments: normStringArray(inData.attachments),
         closedAt: normDate(inData.closedAt) ?? undefined,
@@ -256,41 +244,20 @@ router.post(
 
       await doc.save({ session });
 
-      // decrement qtyRemaining per lot (sum quantities en unité du lot + arrondi)
-      const sumByLot = {};
-      for (const it of items) {
-        if (!it.inventoryLotId) continue;
-        const lot = lotsById[String(it.inventoryLotId)];
-        if (!lot) continue;
-
-        const q = Number(it.quantity || 0);
-        if (!Number.isFinite(q) || q <= 0) continue;
-
-        const fromUnit = it.unit || lot.unit;
+      // Impact inventaire si lot lié et qty > 0
+      if (lot && Number.isFinite(Number(item.quantity)) && item.quantity > 0) {
+        const fromUnit = item.unit || lot.unit;
         const toUnit = lot.unit;
-        const converted = convertQty(q, fromUnit, toUnit);
-        if (converted == null) {
+        const conv = convertQty(Number(item.quantity), fromUnit, toUnit);
+        if (conv == null) {
           await session.abortTransaction();
           return res.status(409).json({
             error: `Unité incompatible pour le lot ${lot._id}: item=${fromUnit} vs lot=${toUnit}`,
           });
         }
-        const rounded = roundByUnit(converted, toUnit);
-        const id = String(it.inventoryLotId);
-        sumByLot[id] = (sumByLot[id] || 0) + rounded;
-      }
+        const dec = roundByUnit(conv, toUnit);
 
-      for (const id of Object.keys(sumByLot)) {
-        const lot =
-          lotsById[id] ||
-          (await InventoryLot.findOne({ _id: id, restaurantId }).session(
-            session
-          ));
-        if (!lot) continue;
-
-        const dec = sumByLot[id];
         let newRemaining = (lot.qtyRemaining ?? 0) - dec;
-        // arrondi à l’unité du lot puis clamp [0..qtyReceived]
         newRemaining = roundByUnit(newRemaining, lot.unit);
         newRemaining = clampQtyRemaining(newRemaining, lot.qtyReceived);
 
@@ -303,7 +270,7 @@ router.post(
           patch.disposalReason = undefined;
         }
         await InventoryLot.updateOne(
-          { _id: id, restaurantId },
+          { _id: lot._id, restaurantId },
           { $set: patch },
           { session }
         );
@@ -330,20 +297,9 @@ router.get(
   async (req, res) => {
     try {
       const { restaurantId } = req.params;
-      const {
-        page = 1,
-        limit = 20,
-        date_from,
-        date_to,
-        q,
-        source,
-        closed,
-      } = req.query;
+      const { page = 1, limit = 20, date_from, date_to, q, closed } = req.query;
 
       const query = { restaurantId };
-
-      if (source && ALLOWED_SOURCE.includes(String(source)))
-        query.source = String(source);
 
       // closed: "open" / "closed"
       if (closed === "open") query.closedAt = { $exists: false };
@@ -367,12 +323,12 @@ router.get(
       if (q && String(q).trim().length) {
         const rx = new RegExp(String(q).trim(), "i");
         (query.$or ||= []).push(
-          { supplierName: rx },
+          { "item.productName": rx },
+          { "item.supplierName": rx },
+          { "item.lotNumber": rx },
+          { "item.unit": rx },
           { actionsTaken: rx },
           { attachments: rx },
-          { "items.productName": rx },
-          { "items.lotNumber": rx },
-          { "items.unit": rx },
           { "recordedBy.firstName": rx },
           { "recordedBy.lastName": rx }
         );
@@ -419,7 +375,7 @@ router.get(
   }
 );
 
-/* ------------------ UPDATE (apply diff per lot) ------------------ */
+/* ------------------ UPDATE (1 produit, diff par lot) ------------------ */
 router.put(
   "/restaurants/:restaurantId/recalls/:recallId",
   authenticateToken,
@@ -430,6 +386,7 @@ router.put(
       const { restaurantId, recallId } = req.params;
       const inData = { ...req.body };
 
+      // ne pas accepter d’override de champs protégés
       delete inData.recordedBy;
       delete inData.restaurantId;
 
@@ -442,22 +399,22 @@ router.put(
         return res.status(404).json({ error: "Retour NC introuvable" });
       }
 
-      // NEW items normalized
-      let nextItems =
-        inData.items !== undefined && Array.isArray(inData.items)
-          ? inData.items.map(normItem).filter(Boolean)
-          : prev.items || [];
+      // normaliser l’item entrant (un seul)
+      let nextItem =
+        inData.item !== undefined ? normItem(inData.item) : { ...prev.item };
+      if (!nextItem) nextItem = { ...prev.item }; // garde au moins l’existant
 
-      // lots utilisés (prev + next) pour conversions
-      const lotIds = [
-        ...new Set(
-          []
-            .concat((prev.items || []).map((x) => x.inventoryLotId))
-            .concat((nextItems || []).map((x) => x.inventoryLotId))
-            .filter(Boolean)
-            .map(String)
-        ),
-      ];
+      // lots impliqués (ancien et/ou nouveau)
+      const prevLotId = prev?.item?.inventoryLotId
+        ? String(prev.item.inventoryLotId)
+        : null;
+      const nextLotId = nextItem?.inventoryLotId
+        ? String(nextItem.inventoryLotId)
+        : null;
+
+      const lotIds = [...new Set([prevLotId, nextLotId].filter(Boolean))];
+
+      // lire les lots nécessaires
       const lotsById = {};
       if (lotIds.length) {
         const lots = await InventoryLot.find({
@@ -467,70 +424,58 @@ router.put(
         lots.forEach((l) => (lotsById[String(l._id)] = l));
       }
 
-      nextItems = (nextItems || []).map((it) => {
-        if (!it.inventoryLotId) return it;
-        const lot = lotsById[String(it.inventoryLotId)];
+      // *** calcul des ajustements par lot ***
+      // adj[lotId] = quantité (en unité du lot) à appliquer
+      //  -> positive => décrémente qtyRemaining (retour supplémentaire)
+      //  -> negative => incrémente qtyRemaining (on “rend” du stock)
+      const adj = {};
+
+      // 1) annuler l'effet "ancien item"
+      if (prevLotId) {
+        const lot = lotsById[prevLotId];
+        if (lot) {
+          const qPrev = Number(prev?.item?.quantity || 0);
+          const uPrev = prev?.item?.unit || lot.unit;
+          if (Number.isFinite(qPrev) && qPrev > 0) {
+            const conv = convertQty(qPrev, uPrev, lot.unit);
+            if (conv == null) {
+              await session.abortTransaction();
+              return res.status(409).json({
+                error: `Unité incompatible (ancien item) pour le lot ${prevLotId}: item=${uPrev} vs lot=${lot.unit}`,
+              });
+            }
+            const rounded = roundByUnit(conv, lot.unit);
+            adj[prevLotId] = (adj[prevLotId] || 0) - rounded;
+          }
+        }
+      }
+
+      // 2) appliquer l'effet "nouvel item"
+      if (nextLotId) {
+        const lot = lotsById[nextLotId];
         if (!lot) {
-          const { inventoryLotId, ...rest } = it;
-          return rest;
-        }
-        return {
-          ...it,
-          productName: it.productName || lot.productName || "Produit",
-          lotNumber: it.lotNumber || lot.lotNumber || undefined,
-          unit: it.unit || lot.unit || undefined,
-          bestBefore: it.bestBefore || lot.dlc || lot.ddm || undefined,
-        };
-      });
-
-      // sums per lot (prev vs next) en unité du lot + arrondi
-      const sumPrev = {};
-      for (const it of prev.items || []) {
-        if (!it.inventoryLotId) continue;
-        const lot = lotsById[String(it.inventoryLotId)];
-        if (!lot) continue;
-        const q = Number(it.quantity || 0);
-        if (!Number.isFinite(q) || q <= 0) continue;
-        const fromUnit = it.unit || lot.unit;
-        const toUnit = lot.unit;
-        const conv = convertQty(q, fromUnit, toUnit);
-        if (conv == null) {
           await session.abortTransaction();
-          return res.status(409).json({
-            error: `Unité incompatible pour le lot ${lot._id}: item=${fromUnit} vs lot=${toUnit}`,
-          });
+          return res
+            .status(404)
+            .json({ error: `Lot lié introuvable (${nextLotId})` });
         }
-        const rounded = roundByUnit(conv, toUnit);
-        const id = String(it.inventoryLotId);
-        sumPrev[id] = (sumPrev[id] || 0) + rounded;
-      }
-      const sumNext = {};
-      for (const it of nextItems || []) {
-        if (!it.inventoryLotId) continue;
-        const lot = lotsById[String(it.inventoryLotId)];
-        if (!lot) continue;
-        const q = Number(it.quantity || 0);
-        if (!Number.isFinite(q) || q <= 0) continue;
-        const fromUnit = it.unit || lot.unit;
-        const toUnit = lot.unit;
-        const conv = convertQty(q, fromUnit, toUnit);
-        if (conv == null) {
-          await session.abortTransaction();
-          return res.status(409).json({
-            error: `Unité incompatible pour le lot ${lot._id}: item=${fromUnit} vs lot=${toUnit}`,
-          });
+        const qNext = Number(nextItem?.quantity || 0);
+        const uNext = nextItem?.unit || lot.unit;
+        if (Number.isFinite(qNext) && qNext > 0) {
+          const conv = convertQty(qNext, uNext, lot.unit);
+          if (conv == null) {
+            await session.abortTransaction();
+            return res.status(409).json({
+              error: `Unité incompatible (nouvel item) pour le lot ${nextLotId}: item=${uNext} vs lot=${lot.unit}`,
+            });
+          }
+          const rounded = roundByUnit(conv, lot.unit);
+          adj[nextLotId] = (adj[nextLotId] || 0) + rounded;
         }
-        const rounded = roundByUnit(conv, toUnit);
-        const id = String(it.inventoryLotId);
-        sumNext[id] = (sumNext[id] || 0) + rounded;
       }
 
-      const lotIdsAll = new Set([
-        ...Object.keys(sumPrev),
-        ...Object.keys(sumNext),
-      ]);
-
-      for (const id of lotIdsAll) {
+      // 3) appliquer les ajustements de stock
+      for (const id of Object.keys(adj)) {
         const lot =
           lotsById[id] ||
           (await InventoryLot.findOne({ _id: id, restaurantId }).session(
@@ -538,13 +483,7 @@ router.put(
           ));
         if (!lot) continue;
 
-        const prevQ = sumPrev[id] || 0;
-        const nextQ = sumNext[id] || 0;
-        const delta = nextQ - prevQ; // >0 more returned, <0 less returned (give back to stock)
-
-        if (delta === 0) continue;
-
-        let newRemaining = (lot.qtyRemaining ?? 0) - delta;
+        let newRemaining = (lot.qtyRemaining ?? 0) - adj[id];
         newRemaining = roundByUnit(newRemaining, lot.unit);
         newRemaining = clampQtyRemaining(newRemaining, lot.qtyReceived);
 
@@ -556,6 +495,7 @@ router.put(
           patch.status = "in_stock";
           patch.disposalReason = undefined;
         }
+
         await InventoryLot.updateOne(
           { _id: id, restaurantId },
           { $set: patch },
@@ -563,37 +503,47 @@ router.put(
         );
       }
 
-      // patch recall
-      prev.source =
-        inData.source !== undefined &&
-        ALLOWED_SOURCE.includes(String(inData.source))
-          ? String(inData.source)
-          : prev.source;
-      prev.supplierId =
-        inData.supplierId !== undefined
-          ? normObjId(inData.supplierId)
-          : prev.supplierId;
-      prev.supplierName =
-        inData.supplierName !== undefined
-          ? normStr(inData.supplierName)
-          : prev.supplierName;
+      // 4) enrichir/sauver le recall (compléter depuis le lot si besoin)
+      if (nextLotId) {
+        const lot = lotsById[nextLotId];
+        if (lot) {
+          if (!nextItem.productName)
+            nextItem.productName = lot.productName || "Produit";
+          if (!nextItem.unit) nextItem.unit = lot.unit || undefined;
+          if (!nextItem.bestBefore)
+            nextItem.bestBefore = lot.dlc || lot.ddm || undefined;
+          if (!nextItem.supplierName && lot.supplier)
+            nextItem.supplierName = lot.supplier;
+          if (!nextItem.lotNumber)
+            nextItem.lotNumber = lot.lotNumber || undefined;
+        }
+      }
+      // garde une valeur métier minimale
+      if (!nextItem.productName)
+        nextItem.productName = prev?.item?.productName || "Produit";
+
+      // patch root fields
       prev.initiatedAt =
         inData.initiatedAt !== undefined
-          ? normDate(inData.initiatedAt)
+          ? normDate(inData.initiatedAt) || prev.initiatedAt
           : prev.initiatedAt;
-      prev.items = nextItems;
+
       prev.actionsTaken =
         inData.actionsTaken !== undefined
-          ? normStr(inData.actionsTaken)
+          ? normStr(inData.actionsTaken) || undefined
           : prev.actionsTaken;
-      prev.attachments =
-        inData.attachments !== undefined
-          ? normStringArray(inData.attachments)
-          : prev.attachments || [];
+
+      if (inData.attachments !== undefined) {
+        prev.attachments = normStringArray(inData.attachments);
+      }
+
       prev.closedAt =
         inData.closedAt !== undefined
           ? normDate(inData.closedAt)
           : prev.closedAt;
+
+      // appliquer le nouvel item
+      prev.item = nextItem;
 
       await prev.save({ session });
 
@@ -609,7 +559,7 @@ router.put(
   }
 );
 
-/* ------------------ DELETE (recrédite les lots) ------------------ */
+/* ------------------ DELETE (recrédite le lot) ------------------ */
 router.delete(
   "/restaurants/:restaurantId/recalls/:recallId",
   authenticateToken,
@@ -627,66 +577,46 @@ router.delete(
         return res.status(404).json({ error: "Retour NC introuvable" });
       }
 
-      // reverse lot decrements (convert + round à l’unité du lot)
-      const lotIds = [
-        ...new Set(
-          (doc.items || [])
-            .map((x) => x.inventoryLotId)
-            .filter(Boolean)
-            .map(String)
-        ),
-      ];
-      const lotsById = {};
-      if (lotIds.length) {
-        const lots = await InventoryLot.find({
-          _id: { $in: lotIds },
+      const lotId = doc.item?.inventoryLotId
+        ? String(doc.item.inventoryLotId)
+        : null;
+
+      if (lotId) {
+        const lot = await InventoryLot.findOne({
+          _id: lotId,
           restaurantId,
         }).session(session);
-        lots.forEach((l) => (lotsById[String(l._id)] = l));
-      }
+        if (lot) {
+          const fromUnit = doc.item.unit || lot.unit;
+          const toUnit = lot.unit;
+          const conv = convertQty(
+            Number(doc.item.quantity || 0),
+            fromUnit,
+            toUnit
+          );
+          if (conv == null) {
+            await session.abortTransaction();
+            return res.status(409).json({
+              error: `Unité incompatible pour le lot ${lot._id}: item=${fromUnit} vs lot=${toUnit}`,
+            });
+          }
+          const inc = roundByUnit(conv, toUnit);
 
-      const sumByLot = {};
-      for (const it of doc.items || []) {
-        if (!it.inventoryLotId) continue;
-        const lot = lotsById[String(it.inventoryLotId)];
-        if (!lot) continue;
-        const q = Number(it.quantity || 0);
-        if (!Number.isFinite(q) || q <= 0) continue;
+          let newRemaining = (lot.qtyRemaining ?? 0) + inc;
+          newRemaining = roundByUnit(newRemaining, lot.unit);
+          newRemaining = clampQtyRemaining(newRemaining, lot.qtyReceived);
 
-        const conv = convertQty(q, it.unit || lot.unit, lot.unit);
-        if (conv == null) {
-          await session.abortTransaction();
-          return res.status(409).json({
-            error: `Unité incompatible pour le lot ${lot._id}: item=${it.unit} vs lot=${lot.unit}`,
-          });
+          const patch = { qtyRemaining: newRemaining };
+          if (newRemaining > 0 && lot.status === "returned") {
+            patch.status = "in_stock";
+            patch.disposalReason = undefined;
+          }
+          await InventoryLot.updateOne(
+            { _id: lot._id, restaurantId },
+            { $set: patch },
+            { session }
+          );
         }
-        const rounded = roundByUnit(conv, lot.unit);
-        const id = String(it.inventoryLotId);
-        sumByLot[id] = (sumByLot[id] || 0) + rounded;
-      }
-
-      for (const id of Object.keys(sumByLot)) {
-        const lot =
-          lotsById[id] ||
-          (await InventoryLot.findOne({ _id: id, restaurantId }).session(
-            session
-          ));
-        if (!lot) continue;
-
-        let newRemaining = (lot.qtyRemaining ?? 0) + sumByLot[id];
-        newRemaining = roundByUnit(newRemaining, lot.unit);
-        newRemaining = clampQtyRemaining(newRemaining, lot.qtyReceived);
-
-        const patch = { qtyRemaining: newRemaining };
-        if (newRemaining > 0 && lot.status === "returned") {
-          patch.status = "in_stock";
-          patch.disposalReason = undefined;
-        }
-        await InventoryLot.updateOne(
-          { _id: id, restaurantId },
-          { $set: patch },
-          { session }
-        );
       }
 
       await Recall.deleteOne({ _id: recallId, restaurantId }).session(session);

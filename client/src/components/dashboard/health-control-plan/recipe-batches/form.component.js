@@ -1,3 +1,4 @@
+// app/(components)/recipes/RecipeBatchesForm.jsx
 "use client";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
@@ -74,8 +75,7 @@ function allowedUnitsForLotUnit(lotUnit) {
   if (!lotUnit) return ALL_UNITS;
   if (lotUnit === "kg") return ["kg", "g"];
   if (lotUnit === "L") return ["L", "mL"];
-  // pour g, mL, unit -> figé
-  return [lotUnit];
+  return [lotUnit]; // g, mL, unit -> figé
 }
 
 function fmtShortDate(d) {
@@ -119,6 +119,11 @@ export default function RecipeBatchesForm({
     clearErrors,
   } = useForm({ defaultValues: buildFormDefaults(initial) });
 
+  const initialSnapshot = useMemo(
+    () => (Array.isArray(initial?.ingredients) ? initial.ingredients : []),
+    [initial]
+  );
+
   const { fields, append, remove } = useFieldArray({
     control,
     name: "ingredients",
@@ -129,7 +134,6 @@ export default function RecipeBatchesForm({
   const [lotsLoading, setLotsLoading] = useState(false);
   const [lotsError, setLotsError] = useState(false);
 
-  // pour éviter setState après unmount
   const isMountedRef = useRef(true);
   useEffect(() => {
     return () => {
@@ -247,7 +251,6 @@ export default function RecipeBatchesForm({
       shouldValidate: true,
     });
 
-    // mise à jour systématique du nom et de l’unité pour rester cohérent
     setValue(`ingredients.${idx}.name`, lot.productName || "", {
       shouldDirty: true,
       shouldValidate: true,
@@ -260,7 +263,29 @@ export default function RecipeBatchesForm({
     });
   }
 
-  /* ---------- Max autorisé par ligne (avec conversions) ---------- */
+  /* ---------- Stock virtuel & Max autorisé par ligne ---------- */
+  // Somme des quantités de l'ANCIEN batch par lot (unité du lot)
+  function prevTotalForLotInLotUnit(lot) {
+    if (!lot) return 0;
+    let sum = 0;
+    (initialSnapshot || []).forEach((ing) => {
+      const same =
+        (ing?.inventoryLotId &&
+          String(ing.inventoryLotId) === String(lot._id)) ||
+        (!ing?.inventoryLotId &&
+          ing?.lotNumber &&
+          String(ing.lotNumber) === String(lot.lotNumber));
+      if (!same) return;
+      const q = Number(ing?.qty);
+      if (!Number.isFinite(q) || q <= 0) return;
+      const fromUnit = ing?.unit || lot.unit;
+      const conv = convertQty(q, fromUnit, lot.unit);
+      if (conv != null) sum += conv;
+    });
+    return sum;
+  }
+
+  // retourne le max autorisé pour la ligne idx dans l’unité de la ligne
   function allowedMaxForRow(idx) {
     const row = ingredientsWatch[idx] || {};
     const lotId = row?.inventoryLotId ? String(row.inventoryLotId) : "";
@@ -268,14 +293,23 @@ export default function RecipeBatchesForm({
     const lot = findLotByIdOrNumber({ lotId, lotNumber });
     if (!lot) return null;
 
-    const rowUnit = row?.unit || lot.unit; // si pas d’unité, suppose unité lot
+    const rowUnit = row?.unit || lot.unit;
     if (!rowUnit) return null;
 
-    // capacité totale disponible dans l’unité de la ligne
-    const lotRemainInRowUnit = convertQty(lot.qtyRemaining, lot.unit, rowUnit);
-    if (lotRemainInRowUnit == null) return null;
+    // *** Stock virtuel pour l’édition ***
+    // qtyRemaining(BDD) + somme des quantités de l'ancien batch pour CE lot
+    const virtualRemainLotUnit =
+      Number(lot.qtyRemaining || 0) + prevTotalForLotInLotUnit(lot);
 
-    // somme des autres lignes du même lot, converties vers l’unité de la ligne
+    // capacité en unité de la ligne
+    const virtualRemainInRowUnit = convertQty(
+      virtualRemainLotUnit,
+      lot.unit,
+      rowUnit
+    );
+    if (virtualRemainInRowUnit == null) return null;
+
+    // somme des autres lignes du même lot (form en cours)
     let usedByOthers = 0;
     (ingredientsWatch || []).forEach((r, j) => {
       if (j === idx) return;
@@ -292,10 +326,10 @@ export default function RecipeBatchesForm({
       if (qInRowUnit != null) usedByOthers += qInRowUnit;
     });
 
-    return Math.max(0, lotRemainInRowUnit - usedByOthers);
+    return Math.max(0, virtualRemainInRowUnit - usedByOthers);
   }
 
-  // Sur changement de n'importe quelle ligne (lot/quantité/unité), on recape automatiquement si besoin
+  // Sur changement d’une ligne (lot/quantité/unité), on recape automatiquement si besoin
   useEffect(() => {
     (ingredientsWatch || []).forEach((row, idx) => {
       const allowed = allowedMaxForRow(idx);
@@ -318,6 +352,14 @@ export default function RecipeBatchesForm({
       ])
     ),
     JSON.stringify(sortedLots.map((l) => [l._id, l.qtyRemaining, l.unit])),
+    JSON.stringify(
+      (initialSnapshot || []).map((r) => [
+        r.inventoryLotId,
+        r.lotNumber,
+        r.qty,
+        r.unit,
+      ])
+    ),
   ]);
 
   const onSubmit = async (data) => {
@@ -565,7 +607,7 @@ export default function RecipeBatchesForm({
                   />
                   {allowed != null && (
                     <div className="text-xs opacity-60 mt-1">
-                      Max restant : {allowed}
+                      Max restant : {allowed} {safeUnit || ""}
                     </div>
                   )}
                   {errors.ingredients?.[idx]?.qty && (
