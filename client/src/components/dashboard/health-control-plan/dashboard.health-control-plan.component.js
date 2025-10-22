@@ -134,7 +134,7 @@ const defaultTiles = [
     label: "Calibrations",
     icon: "🧭",
     note: "Sondes & instruments",
-    href: "/dashboard/health-control-plan/reception-temperature",
+    href: "/dashboard/health-control-plan/calibrations",
   },
 
   {

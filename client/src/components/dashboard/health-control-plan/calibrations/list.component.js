@@ -3,23 +3,42 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import axios from "axios";
 
-function fmtDate(d) {
+function fmtDate(d, withTime = true) {
   try {
-    if (!d) return "";
+    if (!d) return "—";
     const date = new Date(d);
     return new Intl.DateTimeFormat("fr-FR", {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
+      ...(withTime ? { hour: "2-digit", minute: "2-digit" } : {}),
     }).format(date);
   } catch {
-    return d || "";
+    return d || "—";
   }
 }
 
-export default function FridgeTemperatureList({
+const DUE_SOON_DAYS = 14;
+
+function dueStatus(nextCalibrationDue, soonDays = DUE_SOON_DAYS) {
+  if (!nextCalibrationDue)
+    return { label: "OK", key: "ok", cls: "bg-green text-white" };
+  const now = new Date();
+  const due = new Date(nextCalibrationDue);
+  if (due < now)
+    return { label: "En retard", key: "overdue", cls: "bg-red text-white" };
+  const soon = new Date(now);
+  soon.setDate(soon.getDate() + soonDays);
+  if (due <= soon)
+    return {
+      label: "Bientôt dû",
+      key: "due_soon",
+      cls: "bg-orange text-white",
+    };
+  return { label: "OK", key: "ok", cls: "bg-green text-white" };
+}
+
+export default function CalibrationList({
   restaurantId,
   onEdit,
   editingId = null,
@@ -30,27 +49,10 @@ export default function FridgeTemperatureList({
   const [loading, setLoading] = useState(false);
 
   // Filtres
+  const [q, setQ] = useState("");
+  const [status, setStatus] = useState("all"); // all | overdue | due_soon | ok
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [q, setQ] = useState("");
-  const [door, setDoor] = useState(""); // Porte
-
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState(null);
-  const [deleteLoading, setDeleteLoading] = useState(false);
-
-  const [isClient, setIsClient] = useState(false);
-  useEffect(() => setIsClient(true), []);
-
-  const hasActiveFilters = useMemo(
-    () => Boolean(q || dateFrom || dateTo || door),
-    [q, dateFrom, dateTo, door]
-  );
-  const hasFullDateRange = Boolean(dateFrom && dateTo);
-
-  useEffect(() => {
-    if (dateFrom && dateTo && dateTo < dateFrom) setDateTo(dateFrom);
-  }, [dateFrom, dateTo]);
 
   const token = useMemo(() => localStorage.getItem("token"), []);
   const metaRef = useRef(meta);
@@ -58,63 +60,77 @@ export default function FridgeTemperatureList({
     metaRef.current = meta;
   }, [meta]);
 
-  const sortByDate = (list) =>
-    [...list].sort(
-      (a, b) => new Date(b?.createdAt || 0) - new Date(a?.createdAt || 0)
-    );
+  // Corriger intervalle invalide
+  useEffect(() => {
+    if (dateFrom && dateTo && dateTo < dateFrom) setDateTo(dateFrom);
+  }, [dateFrom, dateTo]);
+
+  const sortLogic = (list) =>
+    [...list].sort((a, b) => {
+      const ak = a?.calibratedAt
+        ? new Date(a.calibratedAt).getTime()
+        : new Date(a.createdAt || 0).getTime();
+      const bk = b?.calibratedAt
+        ? new Date(b.calibratedAt).getTime()
+        : new Date(b.createdAt || 0).getTime();
+      return bk - ak;
+    });
+
+  const hasActiveFilters = useMemo(
+    () => Boolean(q || status !== "all" || dateFrom || dateTo),
+    [q, status, dateFrom, dateTo]
+  );
+  const hasFullDateRange = Boolean(dateFrom && dateTo);
 
   const fetchData = async (page = 1, overrides = {}) => {
     setLoading(true);
     try {
       const cur = {
-        q: overrides.q !== undefined ? overrides.q : q,
-        dateFrom:
-          overrides.dateFrom !== undefined ? overrides.dateFrom : dateFrom,
-        dateTo: overrides.dateTo !== undefined ? overrides.dateTo : dateTo,
-        door: overrides.door !== undefined ? overrides.door : door,
+        status: overrides.status ?? status,
+        dateFrom: overrides.dateFrom ?? dateFrom,
+        dateTo: overrides.dateTo ?? dateTo,
       };
-
       const params = { page, limit: meta.limit || 20 };
+      // ❗️On n’envoie pas q (recherche locale uniquement)
+      if (cur.status && cur.status !== "all") {
+        params.status = cur.status;
+        if (cur.status === "due_soon") params.due_within_days = DUE_SOON_DAYS;
+      }
       if (cur.dateFrom) params.date_from = new Date(cur.dateFrom).toISOString();
       if (cur.dateTo) params.date_to = new Date(cur.dateTo).toISOString();
-      if (cur.q) params.q = cur.q;
-      if (cur.door) {
-        // compatibles avec plusieurs backends possibles
-        params.door = cur.door;
-        params.doorState = cur.door;
-      }
 
-      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/fridge-temperatures`;
+      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-calibrations`;
       const { data } = await axios.get(url, {
         headers: { Authorization: `Bearer ${token}` },
         params,
       });
-      const list = sortByDate(data.items || []);
+
+      const list = sortLogic(data.items || []);
       const nextMeta = data.meta || { page: 1, limit: 20, pages: 1, total: 0 };
       setItems(list);
       setMeta(nextMeta);
       metaRef.current = nextMeta;
     } catch (e) {
-      console.error(e);
+      console.error("fetch calibrations list error:", e);
     } finally {
       setLoading(false);
     }
   };
 
-  // Chargement initial
+  // Initial fetch
   useEffect(() => {
-    if (restaurantId)
-      fetchData(1, { q: "", dateFrom: "", dateTo: "", door: "" });
+    if (restaurantId) fetchData(1, { status: "all", dateFrom: "", dateTo: "" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
 
-  // Auto-refresh quand le filtre Porte change (si l’API filtre côté serveur)
+  // Auto-refresh quand le statut change
   useEffect(() => {
     if (!restaurantId) return;
-    fetchData(1);
+    fetchData(1, { status });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [door]);
+  }, [status]);
 
+  // Live update via event (création/mise à jour)
   useEffect(() => {
     const handleUpsert = (event) => {
       const doc = event?.detail?.doc;
@@ -127,12 +143,10 @@ export default function FridgeTemperatureList({
       const page = currentMeta.page || 1;
 
       let isNew = false;
-
       setItems((prev) => {
         const prevList = Array.isArray(prev) ? prev : [];
-        const index = prevList.findIndex((item) => item?._id === doc._id);
+        const index = prevList.findIndex((it) => it?._id === doc._id);
         let nextList;
-
         if (index !== -1) {
           nextList = [...prevList];
           nextList[index] = { ...prevList[index], ...doc };
@@ -145,7 +159,7 @@ export default function FridgeTemperatureList({
             nextList = prevList;
           }
         }
-        return sortByDate(nextList || prevList);
+        return sortLogic(nextList || prevList);
       });
 
       if (isNew) {
@@ -160,24 +174,12 @@ export default function FridgeTemperatureList({
       }
     };
 
-    window.addEventListener("fridge-temperature:upsert", handleUpsert);
+    window.addEventListener("calibrations:upsert", handleUpsert);
     return () =>
-      window.removeEventListener("fridge-temperature:upsert", handleUpsert);
+      window.removeEventListener("calibrations:upsert", handleUpsert);
   }, [restaurantId]);
 
-  // Options "Porte" dynamiques
-  const doorOptions = useMemo(() => {
-    const setVals = new Set(
-      (items || []).map((it) => it?.doorState).filter(Boolean)
-    );
-    const arr = Array.from(setVals).sort((a, b) =>
-      String(a).localeCompare(String(b), "fr")
-    );
-    if (door && !setVals.has(door)) arr.unshift(door);
-    return arr;
-  }, [items, door]);
-
-  // 🔧 Filtrage client (q + door)
+  // Filtrage client (q + statut, pour la page chargée)
   const filtered = useMemo(() => {
     let base = items;
 
@@ -185,60 +187,50 @@ export default function FridgeTemperatureList({
       const qq = q.toLowerCase();
       base = base.filter((it) =>
         [
-          it?.fridgeName,
-          it?.fridgeId,
-          it?.location,
-          it?.locationId,
-          it?.doorState,
-          it?.sensorIdentifier,
-          it?.unit,
-          String(it?.value ?? ""),
-          it?.recordedBy?.firstName,
-          it?.recordedBy?.lastName,
-          it?.note,
+          it?.deviceIdentifier,
+          it?.deviceType, // le "type" est couvert par la recherche
+          it?.method,
+          it?.provider,
+          it?.certificateUrl,
+          it?.notes,
         ]
+          .filter(Boolean)
           .join(" ")
           .toLowerCase()
           .includes(qq)
       );
     }
 
-    if (door) {
-      const dd = door.trim().toLowerCase();
+    if (status !== "all") {
       base = base.filter(
-        (it) =>
-          String(it?.doorState || "")
-            .trim()
-            .toLowerCase() === dd
+        (it) => dueStatus(it.nextCalibrationDue).key === status
       );
     }
 
     return base;
-  }, [items, q, door]);
+  }, [items, q, status]);
 
-  const askDelete = (item) => {
-    setDeleteTarget(item);
-    setIsDeleteModalOpen(true);
-  };
+  // Suppression
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const onConfirmDelete = async () => {
     if (!deleteTarget) return;
-
-    const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/fridge-temperatures/${deleteTarget._id}`;
-
     try {
       setDeleteLoading(true);
+      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/calibrations/${deleteTarget._id}`;
       await axios.delete(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const deleted = deleteTarget;
-      const updatedItems = (items || []).filter(
-        (item) => String(item?._id) !== String(deleted._id)
+
+      setItems((prev) =>
+        prev.filter((x) => String(x._id) !== String(deleteTarget._id))
       );
-      setItems(updatedItems);
+      onDeleted?.(deleteTarget);
       setIsDeleteModalOpen(false);
       setDeleteTarget(null);
-      onDeleted?.(deleted);
+
       setMeta((prevMeta) => {
         const limitValue = prevMeta.limit || 20;
         const total = Math.max(0, (prevMeta.total || 0) - 1);
@@ -249,46 +241,43 @@ export default function FridgeTemperatureList({
         return nextMeta;
       });
     } catch (err) {
-      console.error("Erreur lors de la suppression du relevé:", err);
+      console.error("Erreur suppression :", err);
     } finally {
       setDeleteLoading(false);
     }
   };
-
   const closeDeleteModal = () => {
-    if (deleteLoading) return;
-    setIsDeleteModalOpen(false);
-    setDeleteTarget(null);
+    if (!deleteLoading) {
+      setIsDeleteModalOpen(false);
+      setDeleteTarget(null);
+    }
   };
 
   return (
     <div className="bg-white rounded-lg drop-shadow-sm p-4">
+      {/* Filtres */}
       <div className="flex flex-col gap-3 mb-4">
         <div className="flex flex-col gap-3 midTablet:flex-row midTablet:flex-wrap midTablet:items-end">
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Rechercher nom, emplacement, capteur, note, opérateur…"
-            className="w-full border rounded p-2 midTablet:flex-1 min-w-[200px]"
+            placeholder="Recherche (appareil, type, méthode, fournisseur, notes)…"
+            className="w-full border rounded p-2 midTablet:flex-1 min-w-[220px]"
           />
 
-          {/* Filtre Porte */}
           <select
-            value={door}
-            onChange={(e) => setDoor(e.target.value)}
-            className="border rounded p-2 h-[44px] w-full midTablet:w-40"
-            title="Porte"
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+            className="border rounded p-2 h-[44px] w-full midTablet:w-48"
           >
-            <option value="">Toutes portes</option>
-            {doorOptions.map((opt) => (
-              <option key={opt} value={opt}>
-                {opt}
-              </option>
-            ))}
+            <option value="all">Tous statuts</option>
+            <option value="overdue">En retard</option>
+            <option value="due_soon">Bientôt dû</option>
+            <option value="ok">OK</option>
           </select>
 
           <div className="flex flex-col gap-1 w-full midTablet:flex-row midTablet:items-center midTablet:gap-2 midTablet:w-auto">
-            <label className="text-sm font-medium">Du</label>
+            <label className="text-sm font-medium">Calibré du</label>
             <input
               type="date"
               value={dateFrom}
@@ -297,7 +286,6 @@ export default function FridgeTemperatureList({
               max={dateTo || undefined}
             />
           </div>
-
           <div className="flex flex-col gap-1 w-full midTablet:flex-row midTablet:items-center midTablet:gap-2 midTablet:w-auto">
             <label className="text-sm font-medium">Au</label>
             <input
@@ -318,25 +306,20 @@ export default function FridgeTemperatureList({
                   ? "Sélectionnez 'Du' ET 'Au' pour filtrer par dates"
                   : undefined
               }
-              className={`px-4 py-2 rounded bg-blue text-white w-full mobile:w-32 ${
-                hasFullDateRange ? "" : "opacity-30 cursor-not-allowed"
-              }`}
+              className={`px-4 py-2 rounded bg-blue text-white w-full mobile:w-32 ${hasFullDateRange ? "" : "opacity-30 cursor-not-allowed"}`}
             >
               Filtrer
             </button>
-
             <button
               onClick={() => {
                 setQ("");
+                setStatus("all");
                 setDateFrom("");
                 setDateTo("");
-                setDoor("");
-                fetchData(1, { q: "", dateFrom: "", dateTo: "", door: "" });
+                fetchData(1, { status: "all", dateFrom: "", dateTo: "" });
               }}
               disabled={!hasActiveFilters}
-              className={`px-4 py-2 rounded bg-blue text-white ${
-                hasActiveFilters ? "" : "opacity-30 cursor-not-allowed"
-              }`}
+              className={`px-4 py-2 rounded bg-blue text-white ${hasActiveFilters ? "" : "opacity-30 cursor-not-allowed"}`}
             >
               Réinitialiser
             </button>
@@ -344,102 +327,119 @@ export default function FridgeTemperatureList({
         </div>
       </div>
 
-      <div className="overflow-x-auto max-w-[calc(100vw-80px)] tablet:max-w-[calc(100vw-318px)]">
-        <table className="w-full text-sm ">
+      {/* Table */}
+      <div className="overflow-x-auto max-w-[calc(100vw-80px)] tablet:max-w-[calc(100vw-350px)]">
+        <table className="w-full text-sm">
           <thead className="whitespace-nowrap">
             <tr className="text-left border-b">
-              <th className="py-2 pr-3">Date</th>
-              <th className="py-2 pr-3">Enceinte</th>
-              <th className="py-2 pr-3">Emplacement</th>
-              <th className="py-2 pr-3">T°</th>
-              <th className="py-2 pr-3">Porte</th>
-              <th className="py-2 pr-3">Capteur</th>
+              <th className="py-2 pr-3">Calibré le</th>
+              <th className="py-2 pr-3">Appareil</th>
+              <th className="py-2 pr-3">Type</th>
+              <th className="py-2 pr-3">Méthode</th>
+              <th className="py-2 pr-3">Fournisseur</th>
+              <th className="py-2 pr-3">Certificat</th>
+              <th className="py-2 pr-3">Échéance</th>
+              <th className="py-2 pr-3">Statut</th>
               <th className="py-2 pr-3">Opérateur</th>
-              <th className="py-2 pr-3">Note</th>
               <th className="py-2 pr-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {!loading && filtered.length === 0 && (
               <tr>
-                <td colSpan={9} className="py-6 text-center opacity-60">
-                  Aucun relevé
+                <td colSpan={10} className="py-6 text-center opacity-60">
+                  Aucune calibration
                 </td>
               </tr>
             )}
             {loading && (
               <tr>
-                <td colSpan={9} className="py-6 text-center opacity-60">
+                <td colSpan={10} className="py-6 text-center opacity-60">
                   Chargement…
                 </td>
               </tr>
             )}
             {!loading &&
-              filtered.map((it) => (
-                <tr
-                  key={it._id}
-                  className={`border-b transition-colors ${editingId === it._id ? "bg-lightGrey" : ""}`}
-                >
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {fmtDate(it.createdAt)}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {it.fridgeName}
-                    {it.fridgeId ? (
-                      <span className="opacity-60"> • {it.fridgeId}</span>
-                    ) : null}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {it.location || "—"}
-                    {it.locationId ? (
-                      <span className="opacity-60"> • {it.locationId}</span>
-                    ) : null}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {it.value} {it.unit}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {it.doorState || "unknown"}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {it.sensorIdentifier || "—"}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {it?.recordedBy
-                      ? `${it.recordedBy.firstName || ""} ${it.recordedBy.lastName || ""}`.trim()
-                      : "—"}
-                  </td>
-                  <td className="py-2 pr-3 max-w-[320px]">
-                    <span className="line-clamp-2">{it.note || "—"}</span>
-                  </td>
-                  <td className="py-2 pr-0">
-                    <div className="flex gap-2 justify-end">
-                      <button
-                        onClick={() => onEdit?.(it)}
-                        className="px-3 py-1 rounded bg-green text-white"
-                        aria-label="Éditer"
-                      >
-                        Éditer
-                      </button>
-                      <button
-                        onClick={() => askDelete(it)}
-                        className="px-3 py-1 rounded bg-red text-white"
-                        aria-label="Supprimer"
-                      >
-                        Supprimer
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              filtered.map((it) => {
+                const st = dueStatus(it.nextCalibrationDue);
+                return (
+                  <tr
+                    key={it._id}
+                    className={`border-b ${editingId === it._id ? "bg-lightGrey" : ""}`}
+                  >
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {fmtDate(it.calibratedAt)}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it.deviceIdentifier || "—"}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it.deviceType || "—"}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it.method || "—"}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it.provider || "—"}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it.certificateUrl ? (
+                        <a
+                          className="text-blue underline"
+                          href={it.certificateUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Voir
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {fmtDate(it.nextCalibrationDue, false)}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      <span className={`px-2 py-0.5 rounded text-xs ${st.cls}`}>
+                        {st.label}
+                      </span>
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it?.recordedBy
+                        ? `${it.recordedBy.firstName || ""} ${it.recordedBy.lastName || ""}`.trim() ||
+                          "—"
+                        : "—"}
+                    </td>
+                    <td className="py-2 pr-0">
+                      <div className="flex gap-2 justify-end">
+                        <button
+                          onClick={() => onEdit?.(it)}
+                          className="px-3 py-1 rounded bg-green text-white"
+                        >
+                          Éditer
+                        </button>
+                        <button
+                          onClick={() => (
+                            setIsDeleteModalOpen(true), setDeleteTarget(it)
+                          )}
+                          className="px-3 py-1 rounded bg-red text-white"
+                        >
+                          Supprimer
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
           </tbody>
         </table>
       </div>
 
+      {/* Pagination */}
       {meta?.pages > 1 && (
         <div className="flex items-center justify-between mt-4">
           <div className="text-xs opacity-70">
-            Page {meta.page}/{meta.pages} — {meta.total} relevés
+            Page {meta.page}/{meta.pages} — {meta.total} calibration(s)
           </div>
           <div className="flex gap-2">
             <button
@@ -460,8 +460,8 @@ export default function FridgeTemperatureList({
         </div>
       )}
 
+      {/* Modale suppression */}
       {isDeleteModalOpen &&
-        isClient &&
         createPortal(
           <div
             className="fixed inset-0 z-[1000]"
@@ -475,11 +475,10 @@ export default function FridgeTemperatureList({
             <div className="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
               <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-[450px] pointer-events-auto">
                 <h2 className="text-xl font-semibold mb-6 text-center">
-                  Supprimer ce relevé ?
+                  Supprimer cette calibration ?
                 </h2>
                 <p className="text-sm text-center mb-6">
-                  Cette action est définitive. Le relevé sera retiré de votre
-                  plan de maîtrise sanitaire.
+                  Cette action est définitive.
                 </p>
                 <div className="flex gap-4 mx-auto justify-center">
                   <button

@@ -48,7 +48,7 @@ export default function ReceptionTemperatureList({
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [q, setQ] = useState("");
-  const [packaging, setPackaging] = useState(""); // <= nouveau filtre Emballage
+  const [packaging, setPackaging] = useState(""); // Emballage
 
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -64,9 +64,7 @@ export default function ReceptionTemperatureList({
   const hasFullDateRange = Boolean(dateFrom && dateTo);
 
   useEffect(() => {
-    if (dateFrom && dateTo && dateTo < dateFrom) {
-      setDateTo(dateFrom);
-    }
+    if (dateFrom && dateTo && dateTo < dateFrom) setDateTo(dateFrom);
   }, [dateFrom, dateTo]);
 
   const token = useMemo(() => localStorage.getItem("token"), []);
@@ -84,16 +82,18 @@ export default function ReceptionTemperatureList({
     setLoading(true);
     try {
       const cur = {
-        dateFrom: overrides.dateFrom !== undefined ? overrides.dateFrom : dateFrom,
+        dateFrom:
+          overrides.dateFrom !== undefined ? overrides.dateFrom : dateFrom,
         dateTo: overrides.dateTo !== undefined ? overrides.dateTo : dateTo,
-        packaging: overrides.packaging !== undefined ? overrides.packaging : packaging,
+        packaging:
+          overrides.packaging !== undefined ? overrides.packaging : packaging,
       };
 
       const params = { page, limit: meta.limit || 20 };
       if (cur.dateFrom) params.date_from = new Date(cur.dateFrom).toISOString();
       if (cur.dateTo) params.date_to = new Date(cur.dateTo).toISOString();
       if (cur.packaging) {
-        // on tente les deux conventions côté API ; si une est ignorée, l'autre peut fonctionner
+        // On envoie les deux clés possibles selon le backend
         params.packaging = cur.packaging;
         params.packagingCondition = cur.packaging;
       }
@@ -121,98 +121,57 @@ export default function ReceptionTemperatureList({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
 
-  // Auto-refresh quand l’emballage change (dates via bouton Filtrer)
+  // Auto-refresh quand l’emballage change (au cas où l’API filtre)
   useEffect(() => {
     if (!restaurantId) return;
     fetchData(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [packaging]);
 
-  // Live updates
-  useEffect(() => {
-    const handleUpsert = (event) => {
-      const doc = event?.detail?.doc;
-      if (!doc || !doc._id) return;
-      if (restaurantId && String(doc.restaurantId) !== String(restaurantId)) {
-        return;
-      }
-
-      const currentMeta = metaRef.current || {};
-      const limit = currentMeta.limit || 20;
-      const page = currentMeta.page || 1;
-
-      let isNew = false;
-
-      setItems((prev) => {
-        const prevList = Array.isArray(prev) ? prev : [];
-        const index = prevList.findIndex((item) => item?._id === doc._id);
-        let nextList;
-
-        if (index !== -1) {
-          nextList = [...prevList];
-          nextList[index] = { ...prevList[index], ...doc };
-        } else {
-          isNew = true;
-          if (page === 1) {
-            nextList = [doc, ...prevList];
-            if (nextList.length > limit) {
-              nextList = nextList.slice(0, limit);
-            }
-          } else {
-            nextList = prevList;
-          }
-        }
-
-        return sortByDate(nextList || prevList);
-      });
-
-      if (isNew) {
-        setMeta((prevMeta) => {
-          const limitValue = prevMeta.limit || limit;
-          const total = (prevMeta.total || 0) + 1;
-          const pages = Math.max(1, Math.ceil(total / limitValue));
-          const nextMeta = { ...prevMeta, total, pages };
-          metaRef.current = nextMeta;
-          return nextMeta;
-        });
-      }
-    };
-
-    window.addEventListener("reception-temperature:upsert", handleUpsert);
-    return () =>
-      window.removeEventListener("reception-temperature:upsert", handleUpsert);
-  }, [restaurantId]);
-
-  // Options d’emballage dynamiques depuis les données
+  // Options d’emballage dynamiques
   const packagingOptions = useMemo(() => {
     const set = new Set(
       (items || []).map((it) => it?.packagingCondition).filter(Boolean)
     );
     const arr = Array.from(set).sort((a, b) => a.localeCompare(b, "fr"));
-    // s’assurer que la valeur sélectionnée reste visible même si plus présente
     if (packaging && !set.has(packaging)) arr.unshift(packaging);
     return arr;
   }, [items, packaging]);
 
-  // Filtrage client pour la recherche texte uniquement
+  // 🔧 Filtrage client (q + packaging)
   const filtered = useMemo(() => {
-    if (!q) return items;
-    const qq = q.toLowerCase();
-    return items.filter((it) =>
-      [
-        it?.packagingCondition,
-        it?.note,
-        it?.unit,
-        String(it?.value ?? ""),
-        it?.recordedBy?.firstName,
-        it?.recordedBy?.lastName,
-        it?.receptionId?.supplier,
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(qq)
-    );
-  }, [items, q]);
+    let base = items;
+
+    if (q) {
+      const qq = q.toLowerCase();
+      base = base.filter((it) =>
+        [
+          it?.packagingCondition,
+          it?.note,
+          it?.unit,
+          String(it?.value ?? ""),
+          it?.recordedBy?.firstName,
+          it?.recordedBy?.lastName,
+          it?.receptionId?.supplier,
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(qq)
+      );
+    }
+
+    if (packaging) {
+      const pp = packaging.trim().toLowerCase();
+      base = base.filter(
+        (it) =>
+          String(it?.packagingCondition || "")
+            .trim()
+            .toLowerCase() === pp
+      );
+    }
+
+    return base;
+  }, [items, q, packaging]);
 
   const askDelete = (item) => {
     setDeleteTarget(item);
@@ -271,7 +230,7 @@ export default function ReceptionTemperatureList({
             className="w-full border rounded p-2 midTablet:flex-1 min-w-[200px]"
           />
 
-          {/* Nouveau filtre Emballage */}
+          {/* Filtre Emballage */}
           <select
             value={packaging}
             onChange={(e) => setPackaging(e.target.value)}
@@ -459,7 +418,6 @@ export default function ReceptionTemperatureList({
               onClick={closeDeleteModal}
               className="absolute inset-0 bg-black/20"
             />
-
             <div className="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
               <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-[450px] pointer-events-auto">
                 <h2 className="text-xl font-semibold mb-6 text-center">

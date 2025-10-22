@@ -108,6 +108,7 @@ const microbiology = require("./routes/health-control-plan/microbiology.routes")
 const non_conformity = require("./routes/health-control-plan/non-conformity.routes");
 const supplier_certificate = require("./routes/health-control-plan/suppliers-certificates.routes");
 const recalls = require("./routes/health-control-plan/recalls.routes");
+const calibration = require("./routes/health-control-plan/calibration.routes");
 
 app.use(apiRoutes, reception_temperature);
 app.use(apiRoutes, fridge_temperature);
@@ -126,6 +127,7 @@ app.use(apiRoutes, microbiology);
 app.use(apiRoutes, non_conformity);
 app.use(apiRoutes, supplier_certificate);
 app.use(apiRoutes, recalls);
+app.use(apiRoutes, calibration);
 
 // SSE BUS
 mountSseRoute(app);

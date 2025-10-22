@@ -254,7 +254,10 @@ export default function RecallForm({
 
     setValue("note", "", { shouldDirty: true, shouldValidate: true });
     setValue("actionsTaken", "", { shouldDirty: true, shouldValidate: true });
-    setValue("attachmentsText", "", { shouldDirty: true, shouldValidate: true });
+    setValue("attachmentsText", "", {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
 
     // UI
     setDropdownOpen(false);
@@ -278,55 +281,58 @@ export default function RecallForm({
   }, [lotBaseUnit, JSON.stringify(unitOpts), curUnit]);
 
   /* --- HYDRATATION : reconstituer le “max restant” réel uniquement si un lot est sélectionné actuellement --- */
-useEffect(() => {
-  const curLotId = getValues("inventoryLotId"); // <- seulement la valeur du form
-  if (!restaurantId || !token || !curLotId) return;
+  useEffect(() => {
+    const curLotId = getValues("inventoryLotId"); // <- seulement la valeur du form
+    if (!restaurantId || !token || !curLotId) return;
 
-  let cancelled = false;
-  (async () => {
-    try {
-      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/inventory-lots/${curLotId}`;
-      const { data: lot } = await axios.get(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (cancelled || !lot) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/inventory-lots/${curLotId}`;
+        const { data: lot } = await axios.get(url, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (cancelled || !lot) return;
 
-      // si on est en édition avec une qté déjà saisie, on reconstruit le “remain”
-      const myQty = Number(initial?.item?.quantity);
-      const myUnit = (initial?.item?.unit) || lot.unit;
-      const addBack =
-        Number.isFinite(myQty) && myUnit
-          ? convertQty(myQty, myUnit, lot.unit)
-          : 0;
+        // si on est en édition avec une qté déjà saisie, on reconstruit le “remain”
+        const myQty = Number(initial?.item?.quantity);
+        const myUnit = initial?.item?.unit || lot.unit;
+        const addBack =
+          Number.isFinite(myQty) && myUnit
+            ? convertQty(myQty, myUnit, lot.unit)
+            : 0;
 
-      const effectiveRemain = roundByUnit(
-        (Number(lot?.qtyRemaining) || 0) + (Number(addBack) || 0),
-        lot.unit
-      );
+        const effectiveRemain = roundByUnit(
+          (Number(lot?.qtyRemaining) || 0) + (Number(addBack) || 0),
+          lot.unit
+        );
 
-      setValue("lotMaxRemaining", String(effectiveRemain), { shouldDirty: false });
-      setValue("lotBaseUnit", lot?.unit ? String(lot.unit) : "", { shouldDirty: false });
+        setValue("lotMaxRemaining", String(effectiveRemain), {
+          shouldDirty: false,
+        });
+        setValue("lotBaseUnit", lot?.unit ? String(lot.unit) : "", {
+          shouldDirty: false,
+        });
 
-      // ne pré-remplir que si vide
-      if (!(getValues("bestBefore") || "").trim()) {
-        const bb = lot?.dlc || lot?.ddm || "";
-        setValue("bestBefore", toDateValue(bb), { shouldDirty: false });
+        // ne pré-remplir que si vide
+        if (!(getValues("bestBefore") || "").trim()) {
+          const bb = lot?.dlc || lot?.ddm || "";
+          setValue("bestBefore", toDateValue(bb), { shouldDirty: false });
+        }
+        if (!(getValues("supplierName") || "").trim() && lot?.supplier) {
+          setValue("supplierName", lot.supplier, { shouldDirty: false });
+        }
+      } catch (e) {
+        console.error("hydrate lot on edit:", e);
       }
-      if (!(getValues("supplierName") || "").trim() && lot?.supplier) {
-        setValue("supplierName", lot.supplier, { shouldDirty: false });
-      }
-    } catch (e) {
-      console.error("hydrate lot on edit:", e);
-    }
-  })();
+    })();
 
-  return () => {
-    cancelled = true;
-  };
-  // dépendre de la valeur COURANTE (et non de initial.item)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [restaurantId, token, watch("inventoryLotId")]);
-
+    return () => {
+      cancelled = true;
+    };
+    // dépendre de la valeur COURANTE (et non de initial.item)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restaurantId, token, watch("inventoryLotId")]);
 
   /* ---------- Submit ---------- */
   const onSubmit = async (data) => {
@@ -383,7 +389,7 @@ useEffect(() => {
         ? data.closedAt
           ? new Date(data.closedAt)
           : new Date()
-        : undefined,
+        : null,
     };
 
     const url = initial?._id

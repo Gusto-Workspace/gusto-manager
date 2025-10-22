@@ -49,6 +49,7 @@ export default function RecallList({
     metaRef.current = meta;
   }, [meta]);
 
+  // Corrige si 'Au' < 'Du'
   useEffect(() => {
     if (dateFrom && dateTo && dateTo < dateFrom) setDateTo(dateFrom);
   }, [dateFrom, dateTo]);
@@ -69,20 +70,22 @@ export default function RecallList({
     [q, status, dateFrom, dateTo]
   );
   const hasFullDateRange = Boolean(dateFrom && dateTo);
+  const invalidRange = useMemo(
+    () => Boolean(dateFrom && dateTo && dateTo < dateFrom),
+    [dateFrom, dateTo]
+  );
 
   const fetchData = async (page = 1, overrides = {}) => {
     setLoading(true);
     try {
       const cur = {
-        q: overrides.q ?? q,
         status: overrides.status ?? status,
         dateFrom: overrides.dateFrom ?? dateFrom,
         dateTo: overrides.dateTo ?? dateTo,
       };
       const params = { page, limit: meta.limit || 20 };
-      if (cur.q) params.q = cur.q;
-      // backend attend 'closed' = 'open' | 'closed'
-      if (cur.status && cur.status !== "all") params.closed = cur.status;
+      // Recherche serveur: seulement statut + dates (pas de q → filtrage local)
+      if (cur.status && cur.status !== "all") params.closed = cur.status; // backend: 'closed' = 'open' | 'closed'
       if (cur.dateFrom) params.date_from = new Date(cur.dateFrom).toISOString();
       if (cur.dateTo) params.date_to = new Date(cur.dateTo).toISOString();
 
@@ -108,13 +111,19 @@ export default function RecallList({
   useEffect(() => {
     if (restaurantId)
       fetchData(1, {
-        q: "",
         status: "all",
         dateFrom: "",
         dateTo: "",
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
+
+  // Auto-refresh quand le statut change
+  useEffect(() => {
+    if (!restaurantId) return;
+    fetchData(1, { status });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
 
   // Live update via event
   useEffect(() => {
@@ -164,7 +173,30 @@ export default function RecallList({
     return () => window.removeEventListener("recall:upsert", handleUpsert);
   }, [restaurantId]);
 
-  // Modale suppression
+  // Filtrage client sur q (sans scintillement)
+  const filtered = useMemo(() => {
+    const qq = q.trim().toLowerCase();
+    if (!qq) return items;
+
+    return items.filter((it) => {
+      const item = it?.item || {};
+      const hay = [
+        item.productName,
+        item.supplierName,
+        item.lotNumber,
+        String(item.quantity ?? ""),
+        item.unit,
+        // on peut inclure d'autres champs si présents côté API
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return hay.includes(qq);
+    });
+  }, [items, q]);
+
+  // Suppression
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -252,12 +284,20 @@ export default function RecallList({
 
           <div className="flex flex-col gap-2 w-full mobile:flex-row mobile:w-auto mobile:items-center">
             <button
-              onClick={() => {
-                if (hasFullDateRange || q || status !== "all") {
-                  fetchData(1);
-                }
-              }}
-              className={`px-4 py-2 rounded bg-blue text-white w-full mobile:w-32`}
+              onClick={() => fetchData(1)}
+              disabled={invalidRange || !hasFullDateRange}
+              title={
+                invalidRange
+                  ? "Intervalle invalide : 'Du' doit être ≤ 'Au'."
+                  : !hasFullDateRange
+                    ? "Sélectionnez 'Du' ET 'Au'"
+                    : undefined
+              }
+              className={`px-4 py-2 rounded bg-blue text-white w-full mobile:w-32 ${
+                invalidRange || !hasFullDateRange
+                  ? "opacity-30 cursor-not-allowed"
+                  : ""
+              }`}
             >
               Filtrer
             </button>
@@ -268,14 +308,15 @@ export default function RecallList({
                 setDateFrom("");
                 setDateTo("");
                 fetchData(1, {
-                  q: "",
                   status: "all",
                   dateFrom: "",
                   dateTo: "",
                 });
               }}
               disabled={!hasActiveFilters}
-              className={`px-4 py-2 rounded bg-blue text-white ${hasActiveFilters ? "" : "opacity-30 cursor-not-allowed"}`}
+              className={`px-4 py-2 rounded bg-blue text-white ${
+                hasActiveFilters ? "" : "opacity-30 cursor-not-allowed"
+              }`}
             >
               Réinitialiser
             </button>
@@ -302,27 +343,29 @@ export default function RecallList({
             </tr>
           </thead>
           <tbody>
-            {!loading && items.length === 0 && (
+            {!loading && filtered.length === 0 && (
               <tr>
-                <td colSpan={12} className="py-6 text-center opacity-60">
+                <td colSpan={11} className="py-6 text-center opacity-60">
                   Aucun retour NC
                 </td>
               </tr>
             )}
             {loading && (
               <tr>
-                <td colSpan={12} className="py-6 text-center opacity-60">
+                <td colSpan={11} className="py-6 text-center opacity-60">
                   Chargement…
                 </td>
               </tr>
             )}
             {!loading &&
-              items.map((it) => {
+              filtered.map((it) => {
                 const item = it?.item || {};
                 return (
                   <tr
                     key={it._id}
-                    className={`border-b ${editingId === it._id ? "bg-lightGrey" : ""}`}
+                    className={`border-b ${
+                      editingId === it._id ? "bg-lightGrey" : ""
+                    }`}
                   >
                     <td className="py-2 pr-3 whitespace-nowrap">
                       {fmtDate(it.initiatedAt)}
@@ -338,9 +381,8 @@ export default function RecallList({
                     </td>
                     <td className="py-2 pr-3 whitespace-nowrap">
                       {item.quantity ?? "—"}
-                      {item.unit || "—"}
+                      {item.unit ? ` ${item.unit}` : ""}
                     </td>
-
                     <td className="py-2 pr-3 whitespace-nowrap">
                       {fmtDate(item.bestBefore, false)}
                     </td>
@@ -357,8 +399,9 @@ export default function RecallList({
                     </td>
                     <td className="py-2 pr-3 whitespace-nowrap">
                       {it?.recordedBy
-                        ? `${it.recordedBy.firstName || ""} ${it.recordedBy.lastName || ""}`.trim() ||
-                          "—"
+                        ? `${it.recordedBy.firstName || ""} ${
+                            it.recordedBy.lastName || ""
+                          }`.trim() || "—"
                         : "—"}
                     </td>
                     <td className="py-2 pr-0">
