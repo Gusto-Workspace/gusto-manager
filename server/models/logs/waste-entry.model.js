@@ -54,7 +54,7 @@ const wasteEntrySchema = new Schema(
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now },
   },
-  { versionKey: false, collection: "waste-entries" }
+  { versionKey: false, collection: "waste_entries" }
 );
 
 wasteEntrySchema.index({ restaurantId: 1, date: -1 });

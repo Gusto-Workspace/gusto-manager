@@ -160,10 +160,10 @@ const defaultTiles = [
   },
   {
     key: "covid",
-    label: "Mesures COVID-19",
+    label: "Mesures d'hygiène",
     icon: "🧪",
     note: "Mesures & suivi",
-    href: "/dashboard/health-control-plan/reception-temperature",
+    href: "/dashboard/health-control-plan/health-mesures",
   },
 ];
 

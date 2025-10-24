@@ -112,6 +112,7 @@ const calibration = require("./routes/health-control-plan/calibration.routes");
 const training_sessions = require("./routes/health-control-plan/training-sessions.routes");
 const maintenance = require("./routes/health-control-plan/maintenance.routes");
 const waste_entries = require("./routes/health-control-plan/waste-entries.routes");
+const health_mesures = require("./routes/health-control-plan/health-mesures.routes");
 
 app.use(apiRoutes, reception_temperature);
 app.use(apiRoutes, fridge_temperature);
@@ -134,6 +135,7 @@ app.use(apiRoutes, calibration);
 app.use(apiRoutes, training_sessions);
 app.use(apiRoutes, maintenance);
 app.use(apiRoutes, waste_entries);
+app.use(apiRoutes, health_mesures);
 
 // SSE BUS
 mountSseRoute(app);
