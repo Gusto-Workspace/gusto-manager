@@ -384,6 +384,7 @@ export default function CleaningTaskForm({
           <input
             type="number"
             step="1"
+            onWheel={(e) => e.currentTarget.blur()}
             min="0"
             {...register("dwellTimeMin")}
             className="border rounded p-2 h-[44px] w-full"

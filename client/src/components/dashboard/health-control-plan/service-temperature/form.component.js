@@ -200,6 +200,7 @@ export default function ServiceTemperatureForm({
                 type="number"
                 step="0.1"
                 placeholder="ex: 63.0"
+                onWheel={(e) => e.currentTarget.blur()}
                 {...register("value", { required: "Requis" })}
                 className="border rounded p-2 h-[44px]"
               />

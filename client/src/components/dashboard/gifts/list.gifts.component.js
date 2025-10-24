@@ -345,6 +345,7 @@ export default function ListGiftsComponent(props) {
                     type="number"
                     placeholder="-"
                     step="0.01"
+                    onWheel={(e) => e.currentTarget.blur()}
                     defaultValue={editingGift?.value || ""}
                     disabled={isDeleting}
                     {...register("value", { required: !isDeleting })}

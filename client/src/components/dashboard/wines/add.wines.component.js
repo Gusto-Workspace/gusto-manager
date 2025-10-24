@@ -222,6 +222,7 @@ export default function AddWinesComponent(props) {
                     type="number"
                     placeholder="Volume"
                     step="0.01"
+                    onWheel={(e) => e.currentTarget.blur()}
                     {...register(`volumes.${index}.volume`, { required: true })}
                     className="border p-2 rounded-lg w-24"
                   />
@@ -245,6 +246,7 @@ export default function AddWinesComponent(props) {
                     <input
                       type="number"
                       step="0.01"
+                      onWheel={(e) => e.currentTarget.blur()}
                       placeholder={t("form.labels.price")}
                       {...register(`volumes.${index}.price`, {
                         required: true,

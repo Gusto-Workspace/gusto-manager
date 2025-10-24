@@ -238,6 +238,7 @@ export default function ReceptionDeliveryForm({
                     type="number"
                     step="0.01"
                     placeholder="ex: 5"
+                    onWheel={(e) => e.currentTarget.blur()}
                     {...register(`lines.${idx}.qty`)}
                     className="border rounded p-2 h-[44px] w-full"
                   />
@@ -266,6 +267,7 @@ export default function ReceptionDeliveryForm({
                   type="number"
                   step="0.1"
                   placeholder="ex: 4.5"
+                  onWheel={(e) => e.currentTarget.blur()}
                   {...register(`lines.${idx}.tempOnArrival`)}
                   className="border rounded p-2 h-[44px] w-full"
                 />

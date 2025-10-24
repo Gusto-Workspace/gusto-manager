@@ -138,6 +138,7 @@ export default function FridgeTemperatureForm({
                   type="number"
                   step="0.1"
                   placeholder="ex: 3.2"
+                  onWheel={(e) => e.currentTarget.blur()}
                   {...register("value", { required: "Requis" })}
                   className="border rounded p-2 h-[44px]"
                 />

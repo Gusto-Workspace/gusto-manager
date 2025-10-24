@@ -117,6 +117,7 @@ export default function GenericTemperatureForm({
                   type="number"
                   step="0.1"
                   placeholder="ex: 22.5"
+                  onWheel={(e) => e.currentTarget.blur()}
                   {...register("value", { required: "Requis" })}
                   className="border rounded p-2 h-[44px]"
                 />

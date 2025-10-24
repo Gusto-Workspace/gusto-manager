@@ -523,6 +523,7 @@ export default function RecallForm({
           <input
             type="number"
             step="any"
+            onWheel={(e) => e.currentTarget.blur()}
             max={allowedMax() != null ? allowedMax() : undefined}
             {...register("quantity", {
               validate: (val) => {

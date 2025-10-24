@@ -136,6 +136,7 @@ export default function WasteEntriesForm({
           <input
             type="number"
             step="0.01"
+            onWheel={(e) => e.currentTarget.blur()}
             min="0"
             {...register("weightKg", {
               required: "Requis",

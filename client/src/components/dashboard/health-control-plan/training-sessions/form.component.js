@@ -225,6 +225,7 @@ export default function TrainingForm({
           <input
             type="number"
             step="1"
+            onWheel={(e) => e.currentTarget.blur()}
             min="0"
             {...register("durationMinutes", {
               validate: (v) =>

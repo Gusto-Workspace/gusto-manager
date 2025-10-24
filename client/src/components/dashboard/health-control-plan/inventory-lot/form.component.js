@@ -518,6 +518,7 @@ export default function InventoryLotForm({
           <input
             type="number"
             step="0.001"
+            onWheel={(e) => e.currentTarget.blur()}
             placeholder="ex: 5"
             {...register("qtyReceived", { required: "Requis" })}
             className="border rounded p-2 h-[44px] w-full"
@@ -534,6 +535,7 @@ export default function InventoryLotForm({
             <input
               type="number"
               step="0.001"
+              onWheel={(e) => e.currentTarget.blur()}
               placeholder="ex: 3"
               {...register("qtyRemaining")}
               className="border rounded p-2 h-[44px] w-full"
@@ -567,6 +569,7 @@ export default function InventoryLotForm({
             type="number"
             step="0.1"
             placeholder="ex: 4.5"
+            onWheel={(e) => e.currentTarget.blur()}
             {...register("tempOnArrival")}
             className="border rounded p-2 h-[44px] w-full"
           />

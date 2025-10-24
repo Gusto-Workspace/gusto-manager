@@ -146,6 +146,7 @@ export default function OilChangeForm({
             type="number"
             step="0.1"
             placeholder="ex: 12.5"
+            onWheel={(e) => e.currentTarget.blur()}
             {...register("litersRemoved")}
             className="border rounded p-2 h-[44px] w-full"
           />
@@ -178,6 +179,7 @@ export default function OilChangeForm({
             step="0.1"
             min="0"
             max="100"
+            onWheel={(e) => e.currentTarget.blur()}
             placeholder="ex: 22.5"
             {...register("tpmPercent")}
             className="border rounded p-2 h-[44px] w-full"

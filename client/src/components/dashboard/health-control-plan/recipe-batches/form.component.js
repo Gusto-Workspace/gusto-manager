@@ -580,6 +580,7 @@ export default function RecipeBatchesForm({
                   <input
                     type="number"
                     step="0.01"
+                    onWheel={(e) => e.currentTarget.blur()}
                     placeholder="ex: 2.5"
                     max={allowed != null ? allowed : undefined}
                     {...register(`ingredients.${idx}.qty`, {

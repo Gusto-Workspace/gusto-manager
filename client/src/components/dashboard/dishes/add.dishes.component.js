@@ -168,6 +168,7 @@ export default function AddDishesComponent(props) {
                 type="number"
                 placeholder="-"
                 step="0.01"
+                onWheel={(e) => e.currentTarget.blur()}
                 {...register("price")}
                 className={`border p-2 rounded-r-lg w-full ${errors.price ? "border-red" : ""}`}
               />
