@@ -110,6 +110,7 @@ const supplier_certificate = require("./routes/health-control-plan/suppliers-cer
 const recalls = require("./routes/health-control-plan/recalls.routes");
 const calibration = require("./routes/health-control-plan/calibration.routes");
 const training_sessions = require("./routes/health-control-plan/training-sessions.routes");
+const maintenance = require("./routes/health-control-plan/maintenance.routes");
 
 app.use(apiRoutes, reception_temperature);
 app.use(apiRoutes, fridge_temperature);
@@ -130,6 +131,7 @@ app.use(apiRoutes, supplier_certificate);
 app.use(apiRoutes, recalls);
 app.use(apiRoutes, calibration);
 app.use(apiRoutes, training_sessions);
+app.use(apiRoutes, maintenance);
 
 // SSE BUS
 mountSseRoute(app);

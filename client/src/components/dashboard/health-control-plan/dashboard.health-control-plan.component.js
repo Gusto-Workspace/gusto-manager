@@ -149,7 +149,7 @@ const defaultTiles = [
     label: "Maintenance équipements",
     icon: "🛠️",
     note: "Entretien & réparations",
-    href: "/dashboard/health-control-plan/reception-temperature",
+    href: "/dashboard/health-control-plan/maintenance",
   },
   {
     key: "waste",
