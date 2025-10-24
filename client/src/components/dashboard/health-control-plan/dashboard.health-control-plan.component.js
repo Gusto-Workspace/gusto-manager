@@ -142,7 +142,7 @@ const defaultTiles = [
     label: "Formation du personnel",
     icon: "🎓",
     note: "Formations & certificats",
-    href: "/dashboard/health-control-plan/reception-temperature",
+    href: "/dashboard/health-control-plan/training-sessions",
   },
   {
     key: "maintenance",
