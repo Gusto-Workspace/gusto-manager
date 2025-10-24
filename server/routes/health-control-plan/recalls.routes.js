@@ -1,4 +1,3 @@
-// server/routes/health-control-plan/recall.routes.js
 const express = require("express");
 const router = express.Router();
 const mongoose = require("mongoose");

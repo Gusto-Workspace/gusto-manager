@@ -156,7 +156,7 @@ const defaultTiles = [
     label: "Gestion des déchets",
     icon: "🗑️",
     note: "Tri & élimination",
-    href: "/dashboard/health-control-plan/reception-temperature",
+    href: "/dashboard/health-control-plan/waste-entry",
   },
   {
     key: "covid",
