@@ -7,13 +7,14 @@ import { useTranslation } from "next-i18next";
 import { HealthSvg } from "@/components/_shared/_svgs/health.svg";
 import Link from "next/link";
 
-const defaultTiles = [
+const tiles = [
   {
     key: "reception-temp",
     label: "Contrôle T° réception",
     icon: "📦",
     note: "Réceptions & T°",
     href: "/dashboard/health-control-plan/reception-temperature",
+    tone: "210 90% 55%",
   },
   {
     key: "fridges",
@@ -21,6 +22,7 @@ const defaultTiles = [
     icon: "❄️",
     note: "Frigos / chambres",
     href: "/dashboard/health-control-plan/fridge-temperature",
+    tone: "200 95% 50%",
   },
   {
     key: "heating-start",
@@ -28,6 +30,7 @@ const defaultTiles = [
     icon: "🔥",
     note: "Cuisson / maintien",
     href: "/dashboard/health-control-plan/preheat-temperature",
+    tone: "18 92% 55%",
   },
   {
     key: "heating-out",
@@ -35,6 +38,7 @@ const defaultTiles = [
     icon: "🍽️",
     note: "Sortie cuisson",
     href: "/dashboard/health-control-plan/postheat-temperature",
+    tone: "0 84% 60%",
   },
   {
     key: "service",
@@ -42,6 +46,7 @@ const defaultTiles = [
     icon: "🍽️",
     note: "Service",
     href: "/dashboard/health-control-plan/service-temperature",
+    tone: "32 95% 55%",
   },
   {
     key: "temps-logs",
@@ -49,6 +54,7 @@ const defaultTiles = [
     icon: "🌡️",
     note: "Historique T°",
     href: "/dashboard/health-control-plan/generic-temperature",
+    tone: "350 84% 58%",
   },
   {
     key: "receptions",
@@ -56,6 +62,7 @@ const defaultTiles = [
     icon: "📥",
     note: "Bon de livraison",
     href: "/dashboard/health-control-plan/reception-delivery",
+    tone: "162 72% 45%",
   },
   {
     key: "trace",
@@ -63,6 +70,7 @@ const defaultTiles = [
     icon: "🔖",
     note: "Lot / DLC",
     href: "/dashboard/health-control-plan/inventory-lot",
+    tone: "238 83% 66%",
   },
   {
     key: "batches",
@@ -70,6 +78,7 @@ const defaultTiles = [
     icon: "🥣",
     note: "Traçabilité lots",
     href: "/dashboard/health-control-plan/recipe-batches",
+    tone: "270 91% 65%",
   },
   {
     key: "oil",
@@ -77,14 +86,15 @@ const defaultTiles = [
     icon: "🛢️",
     note: "Changement / qualité",
     href: "/dashboard/health-control-plan/oil-change",
+    tone: "38 92% 55%",
   },
-
   {
     key: "clean",
     label: "Nettoyage locaux",
     icon: "🧴",
     note: "Protocoles & preuves",
     href: "/dashboard/health-control-plan/cleaning-task",
+    tone: "187 92% 42%",
   },
   {
     key: "pest",
@@ -92,6 +102,7 @@ const defaultTiles = [
     icon: "🐜",
     note: "Interventions",
     href: "/dashboard/health-control-plan/pest-control",
+    tone: "352 75% 54%",
   },
   {
     key: "allergens",
@@ -99,6 +110,7 @@ const defaultTiles = [
     icon: "🥜",
     note: "Gestion & étiquetage",
     href: "/dashboard/health-control-plan/allergen-incidents",
+    tone: "30 92% 50%",
   },
   {
     key: "micro",
@@ -106,6 +118,7 @@ const defaultTiles = [
     icon: "🔬",
     note: "Analyses labo",
     href: "/dashboard/health-control-plan/microbiology",
+    tone: "250 80% 65%",
   },
   {
     key: "ncs",
@@ -113,14 +126,15 @@ const defaultTiles = [
     icon: "⚠️",
     note: "NC ouvertes / fermées",
     href: "/dashboard/health-control-plan/non-conformity",
+    tone: "50 100% 46%",
   },
-
   {
     key: "supplier-cert",
     label: "Certificats fournisseurs",
     icon: "📄",
     note: "FDS & certificats",
     href: "/dashboard/health-control-plan/suppliers-certificates",
+    tone: "215 20% 65%",
   },
   {
     key: "return-nc",
@@ -128,6 +142,7 @@ const defaultTiles = [
     icon: "↩️",
     note: "Retours non-conformes",
     href: "/dashboard/health-control-plan/recalls",
+    tone: "28 92% 54%",
   },
   {
     key: "calibrations",
@@ -135,14 +150,15 @@ const defaultTiles = [
     icon: "🧭",
     note: "Sondes & instruments",
     href: "/dashboard/health-control-plan/calibrations",
+    tone: "199 89% 48%",
   },
-
   {
     key: "trainings",
     label: "Formation du personnel",
     icon: "🎓",
     note: "Formations & certificats",
     href: "/dashboard/health-control-plan/training-sessions",
+    tone: "217 91% 60%",
   },
   {
     key: "maintenance",
@@ -150,6 +166,7 @@ const defaultTiles = [
     icon: "🛠️",
     note: "Entretien & réparations",
     href: "/dashboard/health-control-plan/maintenance",
+    tone: "215 15% 50%",
   },
   {
     key: "waste",
@@ -157,6 +174,7 @@ const defaultTiles = [
     icon: "🗑️",
     note: "Tri & élimination",
     href: "/dashboard/health-control-plan/waste-entry",
+    tone: "142 72% 40%",
   },
   {
     key: "covid",
@@ -164,15 +182,12 @@ const defaultTiles = [
     icon: "🧪",
     note: "Mesures & suivi",
     href: "/dashboard/health-control-plan/health-mesures",
+    tone: "181 84% 45%",
   },
 ];
 
-export default function DashboardHealthControlPlanComponent({
-  restaurantData = null,
-  tilesConfig = null,
-}) {
+export default function DashboardHealthControlPlanComponent() {
   const { t } = useTranslation(["health-control-plan", "common"]);
-  const tiles = tilesConfig || defaultTiles;
 
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -225,7 +240,7 @@ export default function DashboardHealthControlPlanComponent({
           {/* Search + count */}
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
             <div className="flex items-center gap-3">
-              <div className="relative max-w-[320px]">
+              <div className="relative max-w-[320px] w-full">
                 <input
                   type="text"
                   placeholder={t(
@@ -258,25 +273,60 @@ export default function DashboardHealthControlPlanComponent({
         {/* Tiles grid */}
         <div className="grid grid-cols-1 midTablet:grid-cols-2 tablet:grid-cols-3 desktop:grid-cols-4 ultraWild:grid-cols-5 gap-4 w-full">
           {filteredTiles.map((tile) => {
+            const tone = tile.tone;
             return (
               <Link
                 href={tile.href}
                 key={tile.key}
                 tabIndex={0}
                 aria-label={tile.label}
-                className={`rounded-md shadow-sm h-36 flex flex-col justify-between p-4 bg-white`}
+                style={{ "--tone": tone }}
+                className={[
+                  "group relative overflow-hidden rounded-xl bg-white h-36",
+                  "border-slate-200/80 shadow-[0_1px_0_rgba(0,0,0,0.03)]",
+                  "transition-all duration-200 hover:-translate-y-[1px] hover:shadow-md",
+                  "focus:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone)/0.35)]",
+                ].join(" ")}
               >
-                <div className="flex flex-col w-full h-full justify-center text-center items-center gap-3">
-                  <div className="text-3xl">{tile.icon}</div>
-                  <div>
-                    <div className="text-sm font-semibold">
+                {/* halo radial discret en haut-droite */}
+                <div
+                  className="absolute inset-0 pointer-events-none"
+                  style={{
+                    background: `radial-gradient(70% 55% at 100% 0%, hsl(${tone}/0.10) 0%, transparent 60%)`,
+                  }}
+                  aria-hidden="true"
+                />
+
+                {/* contenu centré */}
+                <div className="relative z-[1] h-full px-4 py-3 flex flex-col items-center justify-center gap-3 text-center">
+                  {/* badge icône */}
+                  <div
+                    className="h-11 w-11 rounded-2xl flex items-center justify-center text-2xl leading-none select-none
+                       transition-transform duration-200 group-hover:scale-[1.03]"
+                    style={{ backgroundColor: `hsl(${tone} / 0.16)` }}
+                    aria-hidden="true"
+                  >
+                    {tile.icon}
+                  </div>
+
+                  <div className="space-y-0.5">
+                    <div className="text-sm font-semibold text-slate-900">
                       {t(`tiles.${tile.key}`, tile.label)}
                     </div>
-                    <div className="text-xs">
+                    <div className="text-xs text-slate-600">
                       {t(`tiles.${tile.key}.note`, tile.note)}
                     </div>
                   </div>
                 </div>
+
+                {/* finitions hover : léger ring interne teinté */}
+                <div
+                  className="absolute inset-0 rounded-xl pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                  style={{
+                    boxShadow: "inset 0 0 0 1px hsl(var(--tone) / 0.28)",
+                  }}
+                  aria-hidden="true"
+                />
               </Link>
             );
           })}

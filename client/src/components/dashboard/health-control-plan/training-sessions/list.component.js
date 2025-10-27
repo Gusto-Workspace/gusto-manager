@@ -174,8 +174,8 @@ export default function TrainingList({
       }
     };
 
-    window.addEventListener("training:upsert", handleUpsert);
-    return () => window.removeEventListener("training:upsert", handleUpsert);
+    window.addEventListener("training-sessions:upsert", handleUpsert);
+    return () => window.removeEventListener("training-sessions:upsert", handleUpsert);
   }, [restaurantId]);
 
   // Filtrage client (q + statut) sur la page chargée

@@ -83,6 +83,10 @@ const employeeSchema = new mongoose.Schema({
   shifts: { type: [shiftSchema], default: [] },
   leaveRequests: { type: [leaveRequestSchema], default: [] },
   created_at: { type: Date, default: Date.now },
+  trainingSessions: [
+    { type: mongoose.Schema.Types.ObjectId, ref: "TrainingSession" },
+  ],
+
   resetCode: String,
   resetCodeExpires: Date,
 });
@@ -92,6 +96,7 @@ employeeSchema.index({ email: 1 });
 employeeSchema.index({ restaurant: 1 });
 employeeSchema.index({ firstname: 1, lastname: 1 });
 employeeSchema.index({ "shifts.leaveRequestId": 1 });
+employeeSchema.index({ trainingSessions: 1 });
 
 // Hachage du mot de passe avant sauvegarde
 employeeSchema.pre("save", async function (next) {

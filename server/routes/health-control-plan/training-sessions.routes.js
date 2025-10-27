@@ -101,6 +101,18 @@ router.post(
       });
 
       await doc.save();
+
+      const attendedEmployeeIds = (doc.attendees || [])
+        .filter((a) => a && a.employeeId)
+        .map((a) => a.employeeId);
+
+      if (attendedEmployeeIds.length) {
+        await Employee.updateMany(
+          { _id: { $in: attendedEmployeeIds } },
+          { $addToSet: { trainingSessions: doc._id } }
+        );
+      }
+
       return res.status(201).json(doc);
     } catch (err) {
       console.error("POST /training-sessions:", err);
