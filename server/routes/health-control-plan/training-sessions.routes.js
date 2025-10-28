@@ -46,7 +46,7 @@ function normAttendance(a = {}) {
     employeeId,
     status,
     certificateUrl: normStr(a.certificateUrl) ?? undefined,
-    signedAt: normDate(a.signedAt) ?? undefined,
+    signedAt: normDate(a.signedAt) ?? null,
     notes: normStr(a.notes) ?? undefined,
   };
 }
@@ -74,7 +74,7 @@ function normBody(inData = {}) {
     location: normStr(inData.location) ?? undefined,
     materialsUrl: normStr(inData.materialsUrl) ?? undefined,
     attendees: normAttendees(inData.attendees),
-    validUntil: normDate(inData.validUntil) ?? undefined,
+    validUntil: normDate(inData.validUntil) ?? null,
     notes: normStr(inData.notes) ?? undefined,
   };
 }
@@ -246,7 +246,7 @@ router.put(
       if (!prev)
         return res.status(404).json({ error: "Formation introuvable" });
 
-      // —— NOUVEAU: mode patch présence —— //
+      // —— mode patch présence —— //
       const attendanceUpdate = req.body?.attendanceUpdate;
       if (
         attendanceUpdate?.employeeId &&
@@ -255,7 +255,6 @@ router.put(
         const employeeId = String(attendanceUpdate.employeeId);
         const status = String(attendanceUpdate.status);
 
-        // Sécurité basique : un employé ne peut patcher que lui-même
         const me = req.user || {};
         if (me.role === "employee" && String(me.id) !== employeeId) {
           return res.status(403).json({ error: "Forbidden" });
@@ -265,27 +264,20 @@ router.put(
           await Employee.findById(employeeId).select("_id restaurant");
         if (!emp) return res.status(404).json({ error: "Employé introuvable" });
 
-        // Upsert dans attendees
         const idx = (prev.attendees || []).findIndex(
           (a) => String(a.employeeId) === employeeId
         );
+
         if (idx >= 0) {
           prev.attendees[idx].status = status;
-          prev.attendees[idx].signedAt =
-            status === "attended"
-              ? prev.attendees[idx].signedAt || new Date()
-              : prev.attendees[idx].signedAt || undefined;
         } else {
-          prev.attendees.push({
-            employeeId,
-            status,
-            signedAt: status === "attended" ? new Date() : undefined,
-          });
+          prev.attendees.push({ employeeId, status });
         }
 
         prev.updatedAt = new Date();
         await prev.save();
 
+        // on garde la session liée à l'employé quoi qu'il arrive
         await Employee.updateOne(
           { _id: employeeId },
           { $addToSet: { trainingSessions: prev._id } }
