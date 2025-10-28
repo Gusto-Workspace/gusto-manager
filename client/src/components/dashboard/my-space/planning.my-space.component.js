@@ -220,7 +220,7 @@ export default function PlanningMySpaceComponent({ employeeId }) {
             fillColor="#131E3690"
             strokeColor="#131E3690"
           />
-          <h1 className="text-lg sm:text-xl md:text-2xl">{t("titles.main")}</h1>
+          <h1 className="text-lg sm:text-xl tablet:text-2xl">{t("titles.main")}</h1>
         </div>
         <button
           onClick={openLeaveModal}

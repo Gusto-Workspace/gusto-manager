@@ -74,7 +74,7 @@ export default function DocumentsEmployeeComponent(props) {
               </div>
               <input
                 type="text"
-                placeholder={t("placeholders.documentTitle")}
+                placeholder="Titre du document"
                 value={d.title}
                 onChange={(e) => props.onDocTitleChange(i, e.target.value)}
                 className="border px-2 py-1 rounded w-full"

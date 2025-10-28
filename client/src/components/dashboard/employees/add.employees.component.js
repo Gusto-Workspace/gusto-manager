@@ -47,10 +47,13 @@ export default function AddEmployeesComponent() {
 
     setIsLoading(true);
     try {
-      const res = await axios.post(url, formData, {
+      const response = await axios.post(url, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      restaurantContext.setRestaurantData(res.data.restaurant);
+       restaurantContext.setRestaurantData((prev) => ({
+          ...prev,
+          employees: response.data.restaurant.employees,
+        }));
       reset();
       router.replace("/dashboard/employees");
     } catch (err) {

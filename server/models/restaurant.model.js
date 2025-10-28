@@ -1,5 +1,7 @@
 const mongoose = require("mongoose");
 
+const healthControlPlanEmbeddedSchema = require("./health-control-plan.model");
+
 const addressSchema = new mongoose.Schema({
   line1: { type: String, required: true },
   zipCode: { type: String, required: true },
@@ -62,6 +64,7 @@ const optionsSchema = new mongoose.Schema(
     wines: { type: Boolean, default: true },
     news: { type: Boolean, default: true },
     employees: { type: Boolean, default: false },
+    health_control_plan: { type: Boolean, default: false },
   },
   { _id: false }
 );
@@ -221,7 +224,8 @@ const restaurantSchema = new mongoose.Schema({
   options: { type: optionsSchema, default: {} },
   reservations: { type: reservationsSchema, default: {} },
   lastNotificationCheck: { type: Date, default: Date.now },
-  employees :[{ type: mongoose.Schema.Types.ObjectId, ref: "Employee" }],
+  employees: [{ type: mongoose.Schema.Types.ObjectId, ref: "Employee" }],
+  healthControlPlan: { type: healthControlPlanEmbeddedSchema, default: () => ({}) },
   created_at: { type: Date, default: Date.now },
 });
 

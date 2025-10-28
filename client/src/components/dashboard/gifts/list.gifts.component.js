@@ -101,7 +101,11 @@ export default function ListGiftsComponent(props) {
 
     axios[method](apiUrl, isDeleting ? {} : data)
       .then((response) => {
-        restaurantContext.setRestaurantData(response.data.restaurant);
+        restaurantContext.setRestaurantData((prev) => ({
+          ...prev,
+          giftCards: response.data.restaurant.giftCards,
+        }));
+
         setIsModalOpen(false);
         reset();
         setEditingGift(null);
@@ -121,7 +125,10 @@ export default function ListGiftsComponent(props) {
         { visible: updatedVisibility }
       )
       .then((response) => {
-        restaurantContext.setRestaurantData(response.data.restaurant);
+        restaurantContext.setRestaurantData((prev) => ({
+          ...prev,
+          giftCards: response.data.restaurant.giftCards,
+        }));
       })
       .catch((error) => {
         console.error("Error updating gift visibility:", error);
@@ -338,6 +345,7 @@ export default function ListGiftsComponent(props) {
                     type="number"
                     placeholder="-"
                     step="0.01"
+                    onWheel={(e) => e.currentTarget.blur()}
                     defaultValue={editingGift?.value || ""}
                     disabled={isDeleting}
                     {...register("value", { required: !isDeleting })}

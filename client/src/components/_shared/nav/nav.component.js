@@ -34,6 +34,7 @@ const HREF_TO_OPTION_KEY = {
   "/dashboard/gifts": "gift_card",
   "/dashboard/reservations": "reservations",
   "/dashboard/take-away": "take_away",
+  "/dashboard/health-control-plan" : "health_control_plan",
 };
 
 export default function NavComponent() {
@@ -186,9 +187,9 @@ export default function NavComponent() {
         style={{ boxShadow: "3px 0 5px rgba(0,0,0,0.05)" }}
         className={`${
           menuOpen ? "translate-x-0" : "-translate-x-full"
-        } transition duration-200 ease-in-out custom-scrollbar tablet:translate-x-0 w-[270px] fixed bg-white h-[100dvh] overflow-y-auto flex flex-col py-6 px-4 gap-8 z-[90] tablet:z-10 text-darkBlue overscroll-contain`}
+        } transition duration-200 ease-in-out custom-scrollbar tablet:translate-x-0 w-[270px] fixed bg-white h-[100dvh] overflow-y-auto flex flex-col py-6 px-4 gap-6 z-[90] tablet:z-10 text-darkBlue overscroll-contain`}
       >
-        <div className="z-10 h-[86px] flex items-center justify-center">
+        <div className="z-10 h-[80px] flex items-center justify-center">
           <img
             src="/img/logo-2.png"
             draggable={false}
@@ -197,7 +198,7 @@ export default function NavComponent() {
           />
         </div>
 
-        <ul className="flex-1 flex flex-col gap-6">
+        <ul className="flex-1 flex flex-col gap-4">
           {sortedNavItems.map((item) => {
             const Icon = icons[item.icon];
             const active = isActive(item.href);

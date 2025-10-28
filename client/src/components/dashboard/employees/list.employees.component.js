@@ -45,8 +45,11 @@ export default function ListEmployeesComponent() {
     setIsLoadingDelete(true);
     try {
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext.restaurantData._id}/employees/${selectedEmployee._id}`;
-      const res = await axios.delete(url);
-      restaurantContext.setRestaurantData(res.data.restaurant);
+      const response = await axios.delete(url);
+      restaurantContext.setRestaurantData((prev) => ({
+        ...prev,
+        employees: response.data.restaurant.employees,
+      }));
     } catch (err) {
       console.error("Error deleting employee:", err);
     } finally {
@@ -84,7 +87,7 @@ export default function ListEmployeesComponent() {
             {searchTerm && (
               <button
                 onClick={() => setSearchTerm("")}
-                className="absolute right-4 top-1/2 transform -translate-y-1/2 w-4 h-4 bg-black bg-opacity-30 text-white rounded-full flex items-center justify-center"
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 w-6 h-6 bg-black bg-opacity-30 text-white rounded-full flex items-center justify-center"
               >
                 &times;
               </button>

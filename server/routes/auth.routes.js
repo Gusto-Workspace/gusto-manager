@@ -53,6 +53,8 @@ router.post("/user/login", async (req, res) => {
         {
           id: owner._id,
           firstname: owner.firstname,
+          lastname: owner.lastname,
+          email: owner.email,
           role: "owner",
           stripeCustomerId: owner.stripeCustomerId,
         },
@@ -78,6 +80,8 @@ router.post("/user/login", async (req, res) => {
       {
         id: employee._id,
         firstname: employee.firstname,
+        lastname: employee.lastname,
+        email: employee.email,
         role: "employee",
         options: employee.options,
       },
@@ -189,7 +193,7 @@ router.put("/auth/reset-password", async (req, res) => {
       return res.status(400).json({ message: "Code invalide ou expiré" });
     }
 
-    user.password = newPassword;           // hash via pre('save')
+    user.password = newPassword; // hash via pre('save')
     user.resetCode = undefined;
     user.resetCodeExpires = undefined;
     await user.save();

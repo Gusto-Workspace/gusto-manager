@@ -29,7 +29,6 @@ export default function SettingsPage(props) {
   const [userData, setUserData] = useState(null);
   const role = restaurantContext?.userConnected?.role;
 
-  // SettingsPage.jsx
   function fetchUserData() {
     const token = localStorage.getItem("token");
     if (!token) return router.push("/dashboard/login");

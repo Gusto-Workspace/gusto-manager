@@ -60,3 +60,5 @@ export { WarningSvg } from "./warning.svg";
 export { DocumentSvg } from "./document.svg";
 export { EmployeeSvg } from "./employee.svg";
 export { DownloadSvg } from "./download.svg";
+export { HealthSvg } from "./health.svg";
+export { StudySvg } from "./study.svg";

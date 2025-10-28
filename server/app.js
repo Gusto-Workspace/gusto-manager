@@ -29,7 +29,6 @@ app.use(
     origin: [
       "https://www.gusto-manager.com", // Client
       "https://www.lacoquille-concarneau.fr", // Client La coquille
-      "https://demonstration-kopi-nona-gusto-manager.vercel.app", // Client Kopi Nona
       "https://www.embrunslorient.fr", // Client Embruns
       "https://www.bourrasquekerroch.fr", // Client Bourrasque
       "https://gusto-manager.onrender.com", // Server
@@ -91,6 +90,53 @@ app.use(apiRoutes, menusRoutes);
 app.use(apiRoutes, transactionsRoutes);
 app.use(apiRoutes, reservationsRoutes);
 app.use(apiRoutes, employeesRoutes);
+
+// HACCP
+const reception_temperature = require("./routes/health-control-plan/reception-temperature.routes");
+const fridge_temperature = require("./routes/health-control-plan/fridge-temperature.routes");
+const preheat_temperature = require("./routes/health-control-plan/preheat-temperature.routes");
+const postheat_temperature = require("./routes/health-control-plan/postheat-temperature.routes");
+const service_temperature = require("./routes/health-control-plan/service-temperature.routes");
+const generic_temperature = require("./routes/health-control-plan/generic-temperature.routes");
+const reception_delivery = require("./routes/health-control-plan/reception-delivery.routes");
+const inventory_lot = require("./routes/health-control-plan/inventory-lot.routes");
+const recipe_batches = require("./routes/health-control-plan/recipe-batches.routes");
+const oil_change = require("./routes/health-control-plan/oil-change.routes");
+const cleaning_task = require("./routes/health-control-plan/cleaning-task.routes");
+const pest_control = require("./routes/health-control-plan/pest-control.routes");
+const allergen_incidents = require("./routes/health-control-plan/allergen-incidents.routes");
+const microbiology = require("./routes/health-control-plan/microbiology.routes");
+const non_conformity = require("./routes/health-control-plan/non-conformity.routes");
+const supplier_certificate = require("./routes/health-control-plan/suppliers-certificates.routes");
+const recalls = require("./routes/health-control-plan/recalls.routes");
+const calibration = require("./routes/health-control-plan/calibration.routes");
+const training_sessions = require("./routes/health-control-plan/training-sessions.routes");
+const maintenance = require("./routes/health-control-plan/maintenance.routes");
+const waste_entries = require("./routes/health-control-plan/waste-entries.routes");
+const health_mesures = require("./routes/health-control-plan/health-mesures.routes");
+
+app.use(apiRoutes, reception_temperature);
+app.use(apiRoutes, fridge_temperature);
+app.use(apiRoutes, preheat_temperature);
+app.use(apiRoutes, postheat_temperature);
+app.use(apiRoutes, service_temperature);
+app.use(apiRoutes, generic_temperature);
+app.use(apiRoutes, reception_delivery);
+app.use(apiRoutes, inventory_lot);
+app.use(apiRoutes, recipe_batches);
+app.use(apiRoutes, oil_change);
+app.use(apiRoutes, cleaning_task);
+app.use(apiRoutes, pest_control);
+app.use(apiRoutes, allergen_incidents);
+app.use(apiRoutes, microbiology);
+app.use(apiRoutes, non_conformity);
+app.use(apiRoutes, supplier_certificate);
+app.use(apiRoutes, recalls);
+app.use(apiRoutes, calibration);
+app.use(apiRoutes, training_sessions);
+app.use(apiRoutes, maintenance);
+app.use(apiRoutes, waste_entries);
+app.use(apiRoutes, health_mesures);
 
 // SSE BUS
 mountSseRoute(app);

@@ -55,9 +55,11 @@ export default function RestaurantContext() {
     } catch {}
   }
 
-  function clearNotifCounts(rid) {
+  function clearAllNotifCounts() {
     try {
-      localStorage.removeItem(NOTIF_KEY(rid));
+      Object.keys(localStorage).forEach((key) => {
+        if (key.startsWith("gm:notifs:")) localStorage.removeItem(key);
+      });
     } catch {}
   }
 
@@ -247,6 +249,9 @@ export default function RestaurantContext() {
   function handleInvalidToken() {
     setRestaurantsList([]);
     localStorage.removeItem("token");
+    try {
+      clearAllNotifCounts();
+    } catch {}
     router.push("/dashboard/login");
   }
 
@@ -672,13 +677,9 @@ export default function RestaurantContext() {
 
   function logout() {
     localStorage.removeItem("token");
-    if (restaurantData?._id) {
-      try {
-        clearNotifCounts(restaurantData._id);
-      } catch (e) {
-        console.warn("clearNotifCounts failed", e);
-      }
-    }
+    try {
+      clearAllNotifCounts();
+    } catch {}
     if (sseRef.current) {
       sseRef.current.close();
       sseRef.current = null;

@@ -54,7 +54,10 @@ export default function ListNewsComponent(props) {
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/news/${selectedNews._id}`
       )
       .then((response) => {
-        restaurantContext.setRestaurantData(response.data.restaurant);
+        restaurantContext.setRestaurantData((prev) => ({
+          ...prev,
+          news: response.data.restaurant.news,
+        })); 
         closeDeleteModal();
       })
       .catch((error) => {
@@ -74,7 +77,10 @@ export default function ListNewsComponent(props) {
         { visible: updatedVisibility }
       )
       .then((response) => {
-        restaurantContext.setRestaurantData(response.data.restaurant);
+        restaurantContext.setRestaurantData((prev) => ({
+          ...prev,
+          news: response.data.restaurant.news,
+        }));
       })
       .catch((error) => {
         console.error("Error updating category visibility:", error);

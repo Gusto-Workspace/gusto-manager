@@ -91,7 +91,10 @@ export default function PurchasesGiftListComponent(props) {
 
     axios[method](url)
       .then((response) => {
-        restaurantContext.setRestaurantData(response.data.restaurant);
+        restaurantContext.setRestaurantData((prev) => ({
+          ...prev,
+          purchasesGiftCards: response.data.restaurant.purchasesGiftCards,
+        }));
         setIsModalOpen(false);
       })
       .catch((error) => {
@@ -133,7 +136,7 @@ export default function PurchasesGiftListComponent(props) {
           {searchTerm && (
             <button
               onClick={() => setSearchTerm("")}
-              className="absolute right-4 top-1/2 transform -translate-y-1/2 w-4 h-4 bg-black bg-opacity-30 text-white rounded-full flex items-center justify-center"
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 w-6 h-6 bg-black bg-opacity-30 text-white rounded-full flex items-center justify-center"
             >
               &times;
             </button>
