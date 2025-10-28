@@ -3,12 +3,23 @@ import { useEffect, useMemo, useState } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import axios from "axios";
 
-function toDatetimeLocal(value) {
+// a) Pour les champs qui DOIVENT avoir une valeur par défaut (ex: date de la session)
+function toDatetimeLocalDefaultNow(value) {
   const d = value ? new Date(value) : new Date();
   if (Number.isNaN(d.getTime())) return "";
   const off = d.getTimezoneOffset() * 60000;
   return new Date(d.getTime() - off).toISOString().slice(0, 16);
 }
+
+// b) Pour les champs qui peuvent rester vides (ex: signedAt)
+function toDatetimeLocalAllowEmpty(value) {
+  if (!value) return ""; // <— clé du fix : ne pas injecter "now"
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const off = d.getTimezoneOffset() * 60000;
+  return new Date(d.getTime() - off).toISOString().slice(0, 16);
+}
+
 function toDateValue(value) {
   if (!value) return "";
   const d = new Date(value);
@@ -20,7 +31,7 @@ function buildDefaults(rec) {
     title: rec?.title ?? "",
     topic: rec?.topic ?? "",
     provider: rec?.provider ?? "",
-    date: toDatetimeLocal(rec?.date ?? new Date()),
+    date: toDatetimeLocalDefaultNow(rec?.date ?? new Date()),
     durationMinutes:
       typeof rec?.durationMinutes === "number"
         ? String(rec.durationMinutes)
@@ -35,7 +46,7 @@ function buildDefaults(rec) {
             employeeId: a?.employeeId ? String(a.employeeId) : "",
             status: a?.status ?? "attended",
             certificateUrl: a?.certificateUrl ?? "",
-            signedAt: toDatetimeLocal(a?.signedAt),
+            signedAt: toDatetimeLocalAllowEmpty(a?.signedAt),
             notes: a?.notes ?? "",
           }))
         : [
@@ -147,17 +158,17 @@ export default function TrainingForm({
           : undefined,
       location: data.location || undefined,
       materialsUrl: data.materialsUrl || undefined,
-      validUntil: data.validUntil ? new Date(data.validUntil) : undefined,
+      validUntil: data.validUntil ? new Date(data.validUntil) : null,
       notes: data.notes || undefined,
       attendees: (Array.isArray(data.attendees) ? data.attendees : [])
         .map((a) => ({
           employeeId: a.employeeId || undefined,
           status: a.status || "attended",
           certificateUrl: a.certificateUrl || undefined,
-          signedAt: a.signedAt ? new Date(a.signedAt) : undefined,
+          signedAt: a.signedAt ? new Date(a.signedAt) : null,
           notes: a.notes || undefined,
         }))
-        .filter((x) => x.employeeId), // côté serveur on re-valide, mais on nettoie déjà
+        .filter((x) => x.employeeId),
     };
 
     const url = initial?._id
