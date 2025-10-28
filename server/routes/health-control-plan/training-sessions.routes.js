@@ -39,7 +39,7 @@ const normObjId = (v) => {
 function normAttendance(a = {}) {
   const employeeId = normObjId(a.employeeId);
   if (!employeeId) return null;
-  const status = ["attended", "absent", "excused"].includes(String(a.status))
+  const status = ["attended", "absent"].includes(String(a.status))
     ? String(a.status)
     : "attended";
   return {
@@ -241,20 +241,130 @@ router.put(
   async (req, res) => {
     try {
       const { restaurantId, id } = req.params;
-      const inData = { ...req.body };
-
-      delete inData.recordedBy;
-      delete inData.restaurantId;
-      delete inData.createdAt;
-      delete inData.updatedAt;
 
       const prev = await TrainingSession.findOne({ _id: id, restaurantId });
       if (!prev)
         return res.status(404).json({ error: "Formation introuvable" });
 
+      // —— NOUVEAU: mode patch présence —— //
+      const attendanceUpdate = req.body?.attendanceUpdate;
+      if (
+        attendanceUpdate?.employeeId &&
+        ["attended", "absent"].includes(String(attendanceUpdate.status))
+      ) {
+        const employeeId = String(attendanceUpdate.employeeId);
+        const status = String(attendanceUpdate.status);
+
+        // Sécurité basique : un employé ne peut patcher que lui-même
+        const me = req.user || {};
+        if (me.role === "employee" && String(me.id) !== employeeId) {
+          return res.status(403).json({ error: "Forbidden" });
+        }
+
+        const emp =
+          await Employee.findById(employeeId).select("_id restaurant");
+        if (!emp) return res.status(404).json({ error: "Employé introuvable" });
+
+        // Upsert dans attendees
+        const idx = (prev.attendees || []).findIndex(
+          (a) => String(a.employeeId) === employeeId
+        );
+        if (idx >= 0) {
+          prev.attendees[idx].status = status;
+          prev.attendees[idx].signedAt =
+            status === "attended"
+              ? prev.attendees[idx].signedAt || new Date()
+              : prev.attendees[idx].signedAt || undefined;
+        } else {
+          prev.attendees.push({
+            employeeId,
+            status,
+            signedAt: status === "attended" ? new Date() : undefined,
+          });
+        }
+
+        prev.updatedAt = new Date();
+        await prev.save();
+
+        await Employee.updateOne(
+          { _id: employeeId },
+          { $addToSet: { trainingSessions: prev._id } }
+        );
+
+        const att = (prev.attendees || []).find(
+          (a) => String(a.employeeId) === employeeId
+        );
+
+        return res.json({
+          sessionId: String(prev._id),
+          employeeId,
+          myStatus: att?.status || status,
+          mySignedAt: att?.signedAt || null,
+          myCertificateUrl: att?.certificateUrl || null,
+          myNotes: att?.notes || null,
+          updatedAt: prev.updatedAt,
+        });
+      }
+
+      // —— Comportement existant (mise à jour "full") —— //
+      const inData = { ...req.body };
+      delete inData.attendanceUpdate; // on évite l'injection dans normBody
+      delete inData.recordedBy;
+      delete inData.restaurantId;
+      delete inData.createdAt;
+      delete inData.updatedAt;
+
+      // 1) IDs avant patch
+      const prevIds = new Set(
+        (prev.attendees || []).map((a) => String(a.employeeId))
+      );
+
       const patch = normBody(inData);
+
+      // (Optionnel) dédoublonner les attendees par employeeId
+      if (Array.isArray(patch.attendees) && patch.attendees.length) {
+        const uniq = new Map();
+        for (const a of patch.attendees) {
+          if (a?.employeeId) uniq.set(String(a.employeeId), a);
+        }
+        patch.attendees = Array.from(uniq.values());
+      }
+
+      // 2) IDs après patch (si attendees fournis)
+      let toAdd = [];
+      let toRemove = [];
+
+      if (Array.isArray(patch.attendees)) {
+        const nextIds = new Set(
+          patch.attendees.map((a) => String(a.employeeId))
+        );
+        toAdd = [...nextIds].filter((id) => !prevIds.has(id));
+        toRemove = [...prevIds].filter((id) => !nextIds.has(id));
+      }
+
+      // 3) Appliquer le patch sur la session
       Object.assign(prev, patch, { updatedAt: new Date() });
       await prev.save();
+
+      // 4) Synchroniser les employés
+      const ops = [];
+      if (toAdd.length) {
+        ops.push(
+          Employee.updateMany(
+            { _id: { $in: toAdd } },
+            { $addToSet: { trainingSessions: prev._id } }
+          )
+        );
+      }
+      if (toRemove.length) {
+        ops.push(
+          Employee.updateMany(
+            { _id: { $in: toRemove } },
+            { $pull: { trainingSessions: prev._id } }
+          )
+        );
+      }
+      if (ops.length) await Promise.all(ops);
 
       return res.json(prev);
     } catch (err) {
@@ -275,6 +385,12 @@ router.delete(
       const { restaurantId, id } = req.params;
       const doc = await TrainingSession.findOne({ _id: id, restaurantId });
       if (!doc) return res.status(404).json({ error: "Formation introuvable" });
+
+      // Retirer la session de tous les employés qui l'ont
+      await Employee.updateMany(
+        { trainingSessions: doc._id },
+        { $pull: { trainingSessions: doc._id } }
+      );
 
       await TrainingSession.deleteOne({ _id: id, restaurantId });
       return res.json({ success: true });

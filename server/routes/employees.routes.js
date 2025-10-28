@@ -15,6 +15,7 @@ const authenticateToken = require("../middleware/authentificate-token");
 const EmployeeModel = require("../models/employee.model");
 const RestaurantModel = require("../models/restaurant.model");
 const OwnerModel = require("../models/owner.model");
+const TrainingSession = require("../models/logs/training-session.model");
 
 // Configuration de Cloudinary
 cloudinary.config({
@@ -783,7 +784,9 @@ router.put("/employees/update-data", authenticateToken, async (req, res) => {
         OwnerModel.findOne({ email: normalizedEmail }),
       ]);
       if (employeeDup || ownerDup) {
-        return res.status(409).json({ message: "L'adresse mail est déjà utilisée" });
+        return res
+          .status(409)
+          .json({ message: "L'adresse mail est déjà utilisée" });
       }
     }
 
@@ -845,5 +848,59 @@ router.put(
     }
   }
 );
+
+router.get("/employees/:employeeId/training-sessions", async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+
+    // Pagination
+    const page = Math.max(parseInt(req.query.page || "1", 10), 1);
+    const limit = Math.min(
+      Math.max(parseInt(req.query.limit || "50", 10), 1),
+      100
+    );
+    const skip = (page - 1) * limit;
+
+    // 1) Récupère l'employé pour obtenir la LISTE COMPLETE d'IDs
+    const emp = await EmployeeModel.findById(employeeId)
+      .select("trainingSessions")
+      .lean();
+
+    if (!emp) return res.status(404).json({ message: "Employee not found" });
+
+    const ids = Array.isArray(emp.trainingSessions) ? emp.trainingSessions : [];
+    const total = ids.length;
+
+    if (total === 0) {
+      return res.json({ trainingSessions: [], total, page, limit });
+    }
+
+    // 2) Charge les sessions par $in + tri + pagination
+    const items = await TrainingSession.find({ _id: { $in: ids } })
+      .sort({ date: -1, _id: -1 }) // ton modèle a 'date' + created/updated
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    // 3) Ajoute la "vue employé" (statut + notes individuelles, etc.)
+    const trainingSessions = items.map((s) => {
+      const me = (s.attendees || []).find(
+        (a) => String(a.employeeId) === String(employeeId)
+      );
+      return {
+        ...s,
+        myStatus: me?.status || "attended", // "attended" | "absent"
+        myNotes: me?.notes || "", // notes individuelles de cet employé
+        mySignedAt: me?.signedAt || null,
+        myCertificateUrl: me?.certificateUrl || null,
+      };
+    });
+
+    return res.json({ trainingSessions, total, page, limit });
+  } catch (e) {
+    console.error("Error fetching training sessions:", e);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
 
 module.exports = router;

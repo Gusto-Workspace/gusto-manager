@@ -10,7 +10,7 @@ const attendanceSchema = new Schema(
     },
     status: {
       type: String,
-      enum: ["attended", "absent", "excused"],
+      enum: ["attended", "absent"],
       default: "attended",
     },
     certificateUrl: String,

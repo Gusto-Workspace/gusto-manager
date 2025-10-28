@@ -378,7 +378,6 @@ export default function TrainingForm({
                   >
                     <option value="attended">Présent</option>
                     <option value="absent">Absent</option>
-                    <option value="excused">Excusé</option>
                   </select>
                 </div>
               </div>

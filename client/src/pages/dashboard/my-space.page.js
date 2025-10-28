@@ -16,6 +16,7 @@ import DocumentsMySpaceComponent from "@/components/dashboard/my-space/documents
 import PlanningMySpaceComponent from "@/components/dashboard/my-space/planning.my-space.component";
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
 import DaysOffMySpaceComponent from "@/components/dashboard/my-space/days-off.my-space.component";
+import TrainingSessionsMySpaceComponent from "@/components/dashboard/my-space/training-sessions.my-space.component";
 
 export default function MySpacePage(props) {
   const { t } = useTranslation("");
@@ -84,6 +85,10 @@ export default function MySpacePage(props) {
                 />
 
                 <DaysOffMySpaceComponent
+                  employeeId={restaurantContext?.userConnected?.id}
+                />
+
+                <TrainingSessionsMySpaceComponent
                   employeeId={restaurantContext?.userConnected?.id}
                 />
               </>
