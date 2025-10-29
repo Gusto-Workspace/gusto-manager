@@ -42,7 +42,8 @@ export default function CalibrationsForm({
   } = useForm({ defaultValues: buildDefaults(initial) });
 
   const token = useMemo(
-    () => (typeof window !== "undefined" ? localStorage.getItem("token") : null),
+    () =>
+      typeof window !== "undefined" ? localStorage.getItem("token") : null,
     []
   );
 
@@ -57,7 +58,9 @@ export default function CalibrationsForm({
     const payload = {
       deviceIdentifier: data.deviceIdentifier,
       deviceType: data.deviceType || undefined,
-      calibratedAt: data.calibratedAt ? new Date(data.calibratedAt) : new Date(),
+      calibratedAt: data.calibratedAt
+        ? new Date(data.calibratedAt)
+        : new Date(),
       nextCalibrationDue: data.nextCalibrationDue
         ? new Date(data.nextCalibrationDue)
         : undefined,
@@ -98,6 +101,10 @@ export default function CalibrationsForm({
             {...register("deviceIdentifier", { required: "Requis" })}
             className="border rounded p-2 h-[44px] w-full"
             placeholder="ex: THERMO-001 / SONDE-12A"
+            autoComplete="off"
+            spellCheck={false}
+             
+            autoCorrect="off"
           />
           {errors.deviceIdentifier && (
             <p className="text-xs text-red mt-1">
@@ -112,6 +119,10 @@ export default function CalibrationsForm({
             {...register("deviceType")}
             className="border rounded p-2 h-[44px] w-full"
             placeholder='ex: "thermometer"'
+            autoComplete="off"
+            spellCheck={false}
+             
+            autoCorrect="off"
           />
         </div>
       </div>
@@ -125,7 +136,9 @@ export default function CalibrationsForm({
             className="border rounded p-2 h-[44px] w-full"
           />
           {errors.calibratedAt && (
-            <p className="text-xs text-red mt-1">{errors.calibratedAt.message}</p>
+            <p className="text-xs text-red mt-1">
+              {errors.calibratedAt.message}
+            </p>
           )}
         </div>
         <div className="w-full midTablet:w-72">
@@ -146,6 +159,10 @@ export default function CalibrationsForm({
             {...register("method")}
             className="border rounded p-2 h-[44px] w-full"
             placeholder='ex: "ice point", "wet bath"'
+            autoComplete="off"
+            spellCheck={false}
+             
+            autoCorrect="off"
           />
         </div>
         <div className="flex-1">
@@ -155,6 +172,10 @@ export default function CalibrationsForm({
             {...register("provider")}
             className="border rounded p-2 h-[44px] w-full"
             placeholder="ex: Acme Labs"
+            autoComplete="off"
+            spellCheck={false}
+             
+            autoCorrect="off"
           />
         </div>
       </div>
@@ -167,6 +188,10 @@ export default function CalibrationsForm({
             {...register("certificateUrl")}
             className="border rounded p-2 h-[44px] w-full"
             placeholder="https://…/certificat.pdf"
+            autoComplete="off"
+            spellCheck={false}
+             
+            autoCorrect="off"
           />
         </div>
       </div>

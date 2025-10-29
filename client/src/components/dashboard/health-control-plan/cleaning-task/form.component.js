@@ -234,6 +234,10 @@ export default function CleaningTaskForm({
           <input
             type="text"
             placeholder="ex: Plonge, Sol cuisine, Plan de travail froid…"
+            autoComplete="off"
+            spellCheck={false}
+             
+            autoCorrect="off"
             {...register("zone", { required: "Requis" })}
             className="border rounded p-2 h-[44px] w-full"
           />
@@ -273,6 +277,10 @@ export default function CleaningTaskForm({
           <input
             type="text"
             placeholder="Détails de l’intervention"
+            autoComplete="off"
+            spellCheck={false}
+             
+            autoCorrect="off"
             {...register("description")}
             className="border rounded p-2 h-[44px] w-full"
           />
@@ -369,6 +377,10 @@ export default function CleaningTaskForm({
             type="text"
             {...register("productUsed")}
             className="border rounded p-2 h-[44px] w-full"
+            autoComplete="off"
+            spellCheck={false}
+             
+            autoCorrect="off"
           />
         </div>
         <div className="flex-1">
@@ -377,6 +389,10 @@ export default function CleaningTaskForm({
             type="url"
             {...register("productFDSUrl")}
             className="border rounded p-2 h-[44px] w-full"
+            autoComplete="off"
+            spellCheck={false}
+             
+            autoCorrect="off"
           />
         </div>
         <div className="w-48">

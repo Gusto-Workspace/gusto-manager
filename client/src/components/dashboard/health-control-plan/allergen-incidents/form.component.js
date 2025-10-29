@@ -431,6 +431,10 @@ export default function AllergenIncidentForm({
           <label className="text-sm font-medium">Produit / Plat</label>
           <input
             type="text"
+            autoComplete="off"
+            spellCheck={false}
+             
+            autoCorrect="off"
             {...register("itemName")}
             className="border rounded p-2 h-[44px] w-full"
             placeholder="Ex: Sauce bolognaise"
@@ -534,6 +538,10 @@ export default function AllergenIncidentForm({
           <label className="text-sm font-medium">Action immédiate</label>
           <input
             type="text"
+            autoComplete="off"
+            spellCheck={false}
+             
+            autoCorrect="off"
             {...register("immediateAction")}
             className="border rounded p-2 h-[44px] w-full"
             placeholder="Isolement lot, rappel, etc."

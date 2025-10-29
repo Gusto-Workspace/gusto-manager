@@ -91,7 +91,6 @@ app.use(apiRoutes, reservationsRoutes);
 app.use(apiRoutes, employeesRoutes);
 
 // HACCP
-const reception_temperature = require("./routes/health-control-plan/reception-temperature.routes");
 const fridge_temperature = require("./routes/health-control-plan/fridge-temperature.routes");
 const preheat_temperature = require("./routes/health-control-plan/preheat-temperature.routes");
 const postheat_temperature = require("./routes/health-control-plan/postheat-temperature.routes");
@@ -114,7 +113,6 @@ const maintenance = require("./routes/health-control-plan/maintenance.routes");
 const waste_entries = require("./routes/health-control-plan/waste-entries.routes");
 const health_mesures = require("./routes/health-control-plan/health-mesures.routes");
 
-app.use(apiRoutes, reception_temperature);
 app.use(apiRoutes, fridge_temperature);
 app.use(apiRoutes, preheat_temperature);
 app.use(apiRoutes, postheat_temperature);

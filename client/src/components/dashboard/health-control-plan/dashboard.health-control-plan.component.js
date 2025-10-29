@@ -9,12 +9,12 @@ import Link from "next/link";
 
 const tiles = [
   {
-    key: "reception-temp",
-    label: "Contrôle T° réception",
-    icon: "📦",
-    note: "Réceptions & T°",
-    href: "/dashboard/health-control-plan/reception-temperature",
-    tone: "210 90% 55%",
+    key: "receptions",
+    label: "Réceptions",
+    icon: "📥",
+    note: "Bon de livraison",
+    href: "/dashboard/health-control-plan/reception-delivery",
+    tone: "162 72% 45%",
   },
   {
     key: "fridges",
@@ -56,14 +56,7 @@ const tiles = [
     href: "/dashboard/health-control-plan/generic-temperature",
     tone: "350 84% 58%",
   },
-  {
-    key: "receptions",
-    label: "Réceptions",
-    icon: "📥",
-    note: "Bon de livraison",
-    href: "/dashboard/health-control-plan/reception-delivery",
-    tone: "162 72% 45%",
-  },
+
   {
     key: "trace",
     label: "Traçabilité étiquettes",

@@ -93,7 +93,9 @@ export default function PreheatTemperatureForm({
               <input
                 type="text"
                 placeholder='ex: "Four 1", "Friteuse 1"'
-                autoComplete="on"
+                autoComplete="off"
+                spellCheck={false}
+                autoCorrect="off"
                 {...register("location", { required: "Requis" })}
                 className="border rounded p-2 h-[44px]"
               />
@@ -114,6 +116,9 @@ export default function PreheatTemperatureForm({
                 placeholder="ID équipement (optionnel)"
                 {...register("equipmentId")}
                 className="border rounded p-2 h-[44px]"
+                autoComplete="off"
+                spellCheck={false}
+                autoCorrect="off"
               />
             </div>
             <div className="flex-1 flex flex-col">
@@ -125,6 +130,9 @@ export default function PreheatTemperatureForm({
                 placeholder="ID emplacement (optionnel)"
                 {...register("locationId")}
                 className="border rounded p-2 h-[44px]"
+                autoComplete="off"
+                spellCheck={false}
+                autoCorrect="off"
               />
             </div>
           </div>

@@ -435,6 +435,9 @@ export default function RecallForm({
             {...register("productSearch")}
             onFocus={onProductFocus}
             onBlur={onProductBlur}
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
             onChange={(e) => {
               onProductInputChange(e.target.value);
               // miroir -> productName pour la validation
@@ -504,7 +507,10 @@ export default function RecallForm({
           type="text"
           {...register("supplierName")}
           className="border rounded p-2 h-[44px] w-full"
-          placeholder="Préf rempli s’il provient d’un lot"
+          placeholder="Prérempli s’il provient d’un lot"
+          autoComplete="off"
+          spellCheck={false}
+          autoCorrect="off"
         />
       </div>
 
@@ -516,6 +522,9 @@ export default function RecallForm({
             type="text"
             {...register("lotNumber")}
             className="border rounded p-2 h-[44px] w-full"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
         <div className="w-full mobile:w-40">
@@ -593,6 +602,9 @@ export default function RecallForm({
           type="text"
           {...register("note")}
           className="border rounded p-2 h-[44px] w-full"
+          autoComplete="off"
+          spellCheck={false}
+          autoCorrect="off"
         />
       </div>
 

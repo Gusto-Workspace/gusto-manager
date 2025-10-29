@@ -60,7 +60,7 @@ function clampQtyRemaining(qtyRemaining, qtyReceived) {
   return Math.max(0, Math.min(q, r));
 }
 
-const PACKAGING = new Set(["ok", "damaged", "wet", "unknown"]);
+const PACKAGING = new Set(["compliant", "non-compliant"]);
 const STATUS = new Set([
   "in_stock",
   "used",
@@ -124,7 +124,7 @@ router.post(
         tempOnArrival: normalizeNumber(inData.tempOnArrival),
         packagingCondition: PACKAGING.has(inData.packagingCondition)
           ? inData.packagingCondition
-          : "unknown",
+          : "compliant",
 
         storageArea: normalizeStr(inData.storageArea),
         openedAt: normalizeDate(inData.openedAt),

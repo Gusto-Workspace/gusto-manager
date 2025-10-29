@@ -34,7 +34,7 @@ function normalizeNumber(v) {
   return Number.isNaN(n) ? null : n;
 }
 
-const ALLOWED_PACKAGING = new Set(["ok", "damaged", "wet", "unknown"]);
+const ALLOWED_PACKAGING = new Set(["compliant", "non-compliant"]);
 function normalizeLine(l = {}) {
   const productName = normalizeStr(l.productName);
   const supplierProductId = normalizeStr(l.supplierProductId);
@@ -60,7 +60,7 @@ function normalizeLine(l = {}) {
 
   const packagingCondition = ALLOWED_PACKAGING.has(l.packagingCondition)
     ? l.packagingCondition
-    : "unknown";
+    : "compliant";
 
   return {
     productName: productName ?? undefined,

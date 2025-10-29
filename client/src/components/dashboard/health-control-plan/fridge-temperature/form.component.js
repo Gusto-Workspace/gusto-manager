@@ -82,6 +82,10 @@ export default function FridgeTemperatureForm({
               <input
                 type="text"
                 placeholder="Ex: Frigo préparation 1"
+                autoComplete="off"
+                spellCheck={false}
+                 
+                autoCorrect="off"
                 {...register("fridgeName", { required: "Requis" })}
                 className="border rounded p-2 h-[44px]"
               />
@@ -97,6 +101,10 @@ export default function FridgeTemperatureForm({
               <input
                 type="text"
                 placeholder="Cuisine, réserve…"
+                autoComplete="off"
+                spellCheck={false}
+                 
+                autoCorrect="off"
                 {...register("location")}
                 className="border rounded p-2 h-[44px]"
               />
@@ -114,6 +122,10 @@ export default function FridgeTemperatureForm({
                 placeholder="ID interne (optionnel)"
                 {...register("fridgeId")}
                 className="border rounded p-2 h-[44px]"
+                autoComplete="off"
+                spellCheck={false}
+                 
+                autoCorrect="off"
               />
             </div>
             <div className="flex-1 flex flex-col">
@@ -125,6 +137,10 @@ export default function FridgeTemperatureForm({
                 placeholder="ID emplacement (optionnel)"
                 {...register("locationId")}
                 className="border rounded p-2 h-[44px]"
+                autoComplete="off"
+                spellCheck={false}
+                 
+                autoCorrect="off"
               />
             </div>
           </div>
@@ -181,6 +197,10 @@ export default function FridgeTemperatureForm({
                   placeholder="N° de sonde / ref"
                   {...register("sensorIdentifier")}
                   className="border rounded p-2 h-[44px]"
+                  autoComplete="off"
+                  spellCheck={false}
+                   
+                  autoCorrect="off"
                 />
               </div>
             </div>

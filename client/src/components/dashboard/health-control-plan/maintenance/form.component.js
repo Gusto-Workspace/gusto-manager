@@ -111,6 +111,9 @@ export default function MaintenanceForm({
             {...register("equipment", { required: "Requis" })}
             className="border rounded p-2 h-[44px] w-full"
             placeholder='ex: "Friteuse 1"'
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
           {errors.equipment && (
             <p className="text-xs text-red mt-1">{errors.equipment.message}</p>
@@ -123,6 +126,9 @@ export default function MaintenanceForm({
             {...register("equipmentId")}
             className="border rounded p-2 h-[44px] w-full"
             placeholder="ex: EQ-001"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
       </div>
@@ -173,6 +179,9 @@ export default function MaintenanceForm({
             {...register("provider")}
             className="border rounded p-2 h-[44px] w-full"
             placeholder="ex: Acme Services"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
         <div className="flex-1">

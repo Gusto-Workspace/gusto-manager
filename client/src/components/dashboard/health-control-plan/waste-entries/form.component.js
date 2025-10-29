@@ -177,6 +177,9 @@ export default function WasteEntriesForm({
             {...register("contractor")}
             className="border rounded p-2 h-[44px] w-full"
             placeholder="Nom du collecteur"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
         <div className="flex-1">
@@ -186,6 +189,9 @@ export default function WasteEntriesForm({
             {...register("manifestNumber")}
             className="border rounded p-2 h-[44px] w-full"
             placeholder="Référence / numéro de suivi"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
       </div>

@@ -14,8 +14,8 @@ const receptionDeliveryLineSchema = new Schema(
     allergens: { type: [String], default: [] },
     packagingCondition: {
       type: String,
-      enum: ["ok", "damaged", "wet", "unknown"],
-      default: "unknown",
+      enum: ["compliant", "non-compliant"],
+      default: "compliant",
     },
   },
   { _id: false }
