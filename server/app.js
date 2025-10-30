@@ -44,6 +44,9 @@ app.use(
   })
 );
 
+// SSE BUS
+mountSseRoute(app);
+
 // ROUTES
 const apiRoutes = "/api";
 const authRoutes = require("./routes/auth.routes");
@@ -135,8 +138,7 @@ app.use(apiRoutes, maintenance);
 app.use(apiRoutes, waste_entries);
 app.use(apiRoutes, health_mesures);
 
-// SSE BUS
-mountSseRoute(app);
+
 
 // ÉCOUTE DU PORT
 server.listen(PORT, () => {
