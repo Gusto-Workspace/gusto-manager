@@ -166,6 +166,9 @@ export default function MicrobiologyForm({
             type="text"
             {...register("samplingPoint")}
             className="border rounded p-2 h-[44px] w-full"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
         <div className="flex-1 min-w-[200px]">
@@ -175,6 +178,9 @@ export default function MicrobiologyForm({
             {...register("productName")}
             className="border rounded p-2 h-[44px] w-full"
             placeholder="Ex: Tiramisu"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
         <div className="w-full mobile:w-48">
@@ -183,6 +189,9 @@ export default function MicrobiologyForm({
             type="text"
             {...register("lotNumber")}
             className="border rounded p-2 h-[44px] w-full"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
       </div>
@@ -195,6 +204,9 @@ export default function MicrobiologyForm({
             type="text"
             {...register("labName")}
             className="border rounded p-2 h-[44px] w-full"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
         <div className="flex-1 min-w-[200px]">
@@ -203,6 +215,9 @@ export default function MicrobiologyForm({
             type="text"
             {...register("labReference")}
             className="border rounded p-2 h-[44px] w-full"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
       </div>
@@ -216,6 +231,9 @@ export default function MicrobiologyForm({
             {...register("method")}
             className="border rounded p-2 h-[44px] w-full"
             placeholder="Ex: ISO 6579-1"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
         <div className="w-full mobile:w-48">
@@ -225,6 +243,9 @@ export default function MicrobiologyForm({
             {...register("detectionLimit")}
             className="border rounded p-2 h-[44px] w-full"
             placeholder="<10"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
         <div className="flex-1 min-w-[200px]">
@@ -234,6 +255,9 @@ export default function MicrobiologyForm({
             {...register("criterion")}
             className="border rounded p-2 h-[44px] w-full"
             placeholder="Ex: Absence/25g"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
       </div>
@@ -247,6 +271,9 @@ export default function MicrobiologyForm({
             {...register("parameter")}
             className="border rounded p-2 h-[44px] w-full"
             placeholder="Ex: Listeria monocytogenes"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
         <div className="w-full mobile:w-56">
@@ -256,6 +283,9 @@ export default function MicrobiologyForm({
             {...register("result")}
             className="border rounded p-2 h-[44px] w-full"
             placeholder="<10 / absent"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
         <div className="w-full mobile:w-48">
@@ -265,6 +295,9 @@ export default function MicrobiologyForm({
             {...register("unit")}
             className="border rounded p-2 h-[44px] w-full"
             placeholder="CFU/g, abs/25g, …"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
         <div className="w-full mobile:w-56 flex items-center gap-2">
@@ -284,6 +317,9 @@ export default function MicrobiologyForm({
             {...register("reportUrl")}
             className="border rounded p-2 h-[44px] w-full"
             placeholder="https://…/rapport.pdf"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
         <div className="flex-1 min-w-[200px]">

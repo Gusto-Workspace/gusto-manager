@@ -203,6 +203,9 @@ export default function TrainingForm({
             {...register("title", { required: "Requis" })}
             className="border rounded p-2 h-[44px] w-full"
             placeholder='ex: "Formation Hygiène HACCP"'
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
           {errors.title && (
             <p className="text-xs text-red mt-1">{errors.title.message}</p>
@@ -215,6 +218,9 @@ export default function TrainingForm({
             {...register("topic")}
             className="border rounded p-2 h-[44px] w-full"
             placeholder='ex: "Allergènes"'
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
       </div>
@@ -259,6 +265,9 @@ export default function TrainingForm({
             {...register("provider")}
             className="border rounded p-2 h-[44px] w-full"
             placeholder="ex: Acme Training"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
       </div>
@@ -271,6 +280,9 @@ export default function TrainingForm({
             {...register("location")}
             className="border rounded p-2 h-[44px] w-full"
             placeholder="Salle de réunion, visio…"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
         <div className="flex-1">
@@ -280,6 +292,9 @@ export default function TrainingForm({
             {...register("materialsUrl")}
             className="border rounded p-2 h-[44px] w-full"
             placeholder="https://…/supports.pdf"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
       </div>
@@ -403,6 +418,9 @@ export default function TrainingForm({
                     {...register(`attendees.${idx}.certificateUrl`)}
                     className="border rounded p-2 h-[44px] w-full"
                     placeholder="https://…/certificat.pdf"
+                    autoComplete="off"
+                    spellCheck={false}
+                    autoCorrect="off"
                   />
                 </div>
                 <div className="w-full midTablet:w-72">
@@ -422,6 +440,9 @@ export default function TrainingForm({
                     type="text"
                     {...register(`attendees.${idx}.notes`)}
                     className="border rounded p-2 h-[44px] w-full"
+                    autoComplete="off"
+                    spellCheck={false}
+                    autoCorrect="off"
                   />
                 </div>
                 <div className="w-full midTablet:w-40 flex items-end justify-end">

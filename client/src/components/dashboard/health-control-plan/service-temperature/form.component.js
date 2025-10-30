@@ -97,6 +97,9 @@ export default function ServiceTemperatureForm({
                 placeholder='ex: "Pass 1", "Salle"'
                 {...register("serviceArea", { required: "Requis" })}
                 className="border rounded p-2 h-[44px]"
+                autoComplete="off"
+                spellCheck={false}
+                autoCorrect="off"
               />
               {errors.serviceArea && (
                 <p className="text-xs text-red mt-1">
@@ -111,6 +114,9 @@ export default function ServiceTemperatureForm({
                 placeholder="ex: Lasagnes bœuf, Velouté potimarron…"
                 {...register("dishName")}
                 className="border rounded p-2 h-[44px]"
+                autoComplete="off"
+                spellCheck={false}
+                autoCorrect="off"
               />
             </div>
           </div>
@@ -124,6 +130,9 @@ export default function ServiceTemperatureForm({
                 placeholder="ID service (optionnel)"
                 {...register("serviceId")}
                 className="border rounded p-2 h-[44px]"
+                autoComplete="off"
+                spellCheck={false}
+                autoCorrect="off"
               />
             </div>
             <div className="flex-1 flex flex-col">
@@ -133,6 +142,9 @@ export default function ServiceTemperatureForm({
                 placeholder="ID plat / lot (optionnel)"
                 {...register("plateId")}
                 className="border rounded p-2 h-[44px]"
+                autoComplete="off"
+                spellCheck={false}
+                autoCorrect="off"
               />
             </div>
           </div>
@@ -146,6 +158,9 @@ export default function ServiceTemperatureForm({
                 placeholder="Zone précise (optionnel)"
                 {...register("location")}
                 className="border rounded p-2 h-[44px]"
+                autoComplete="off"
+                spellCheck={false}
+                autoCorrect="off"
               />
             </div>
             <div className="flex-1 flex flex-col">
@@ -157,6 +172,9 @@ export default function ServiceTemperatureForm({
                 placeholder="ID emplacement (optionnel)"
                 {...register("locationId")}
                 className="border rounded p-2 h-[44px]"
+                autoComplete="off"
+                spellCheck={false}
+                autoCorrect="off"
               />
             </div>
           </div>

@@ -127,6 +127,9 @@ export default function OilChangeForm({
             placeholder="ex: fryer-1 / cuisine"
             {...register("fryerId")}
             className="border rounded p-2 h-[44px] w-full"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
         <div className="flex-1">
@@ -158,6 +161,9 @@ export default function OilChangeForm({
             placeholder="ex: OIL-2025-07-18-A"
             {...register("batchNumber")}
             className="border rounded p-2 h-[44px] w-full"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
         <div className="flex-1">
@@ -167,6 +173,9 @@ export default function OilChangeForm({
             placeholder="Nom du fournisseur"
             {...register("supplier")}
             className="border rounded p-2 h-[44px] w-full"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
       </div>
@@ -206,6 +215,9 @@ export default function OilChangeForm({
             placeholder="ex: dorée / ambrée / foncée…"
             {...register("colorIndex")}
             className="border rounded p-2 h-[44px] w-full"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
         <div className="flex-1">
@@ -215,6 +227,9 @@ export default function OilChangeForm({
             placeholder="ex: neutre, ok, rance…"
             {...register("odorCheck")}
             className="border rounded p-2 h-[44px] w-full"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
         <div className="flex-1">
@@ -224,6 +239,9 @@ export default function OilChangeForm({
             placeholder="ex: XYZ ProFry"
             {...register("oilBrand")}
             className="border rounded p-2 h-[44px] w-full"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
       </div>
@@ -247,6 +265,9 @@ export default function OilChangeForm({
             placeholder="https://… (BSDA, ticket collecte, etc.)"
             {...register("disposalDocumentUrl")}
             className="border rounded p-2 h-[44px] w-full"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
       </div>

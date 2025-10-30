@@ -1,7 +1,5 @@
 const mongoose = require("mongoose");
 
-const healthControlPlanEmbeddedSchema = require("./health-control-plan.model");
-
 const addressSchema = new mongoose.Schema({
   line1: { type: String, required: true },
   zipCode: { type: String, required: true },
@@ -225,7 +223,6 @@ const restaurantSchema = new mongoose.Schema({
   reservations: { type: reservationsSchema, default: {} },
   lastNotificationCheck: { type: Date, default: Date.now },
   employees: [{ type: mongoose.Schema.Types.ObjectId, ref: "Employee" }],
-  healthControlPlan: { type: healthControlPlanEmbeddedSchema, default: () => ({}) },
   created_at: { type: Date, default: Date.now },
 });
 

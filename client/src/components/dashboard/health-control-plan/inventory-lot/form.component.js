@@ -45,7 +45,7 @@ function buildFormDefaults(record) {
         ? String(record.tempOnArrival)
         : "",
 
-    packagingCondition: record?.packagingCondition ?? "unknown",
+    packagingCondition: record?.packagingCondition ?? "compliant",
     storageArea: record?.storageArea ?? "",
     openedAt: toDateValue(record?.openedAt),
     internalUseBy: toDateValue(record?.internalUseBy),
@@ -351,7 +351,7 @@ export default function InventoryLotForm({
           ? Number(data.tempOnArrival)
           : undefined,
 
-      packagingCondition: data.packagingCondition || "unknown",
+      packagingCondition: data.packagingCondition || "compliant",
       storageArea: data.storageArea || undefined,
 
       openedAt: data.openedAt ? new Date(data.openedAt) : undefined,
@@ -425,6 +425,9 @@ export default function InventoryLotForm({
                 placeholder="Désignation"
                 {...register("productName", { required: "Requis" })}
                 className="border rounded p-2 h-[44px] w-full"
+                autoComplete="off"
+                spellCheck={false}
+                autoCorrect="off"
               />
               {errors.productName && (
                 <p className="text-xs text-red mt-1">
@@ -475,6 +478,9 @@ export default function InventoryLotForm({
             placeholder="Nom du fournisseur"
             {...register("supplier")}
             className="border rounded p-2 h-[44px] w-full"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
       </div>
@@ -488,6 +494,9 @@ export default function InventoryLotForm({
             placeholder="Lot"
             {...register("lotNumber", { required: "Requis" })}
             className="border rounded p-2 h-[44px] w-full"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
           {errors.lotNumber && (
             <p className="text-xs text-red mt-1">{errors.lotNumber.message}</p>
@@ -581,6 +590,9 @@ export default function InventoryLotForm({
             placeholder="séparés par virgules (ex: gluten, lait)"
             {...register("allergens")}
             className="border rounded p-2 h-[44px] w-full"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
         <div className="w-48">
@@ -589,10 +601,8 @@ export default function InventoryLotForm({
             {...register("packagingCondition")}
             className="border rounded p-2 h-[44px] w-full"
           >
-            <option value="unknown">inconnue</option>
-            <option value="ok">ok</option>
-            <option value="damaged">endommagée</option>
-            <option value="wet">humide</option>
+            <option value="compliant">conforme</option>
+            <option value="non-compliant">non conforme</option>
           </select>
         </div>
       </div>
@@ -606,6 +616,9 @@ export default function InventoryLotForm({
             placeholder="ex: fridge-1, dry, freezer-2"
             {...register("storageArea")}
             className="border rounded p-2 h-[44px] w-full"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
         <div className="flex-1">
@@ -651,6 +664,9 @@ export default function InventoryLotForm({
             placeholder="motif"
             {...register("disposalReason")}
             className="border rounded p-2 h-[44px] w-full"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
           {["discarded", "returned", "recalled"].includes(watch("status")) && (
             <p className="text-xs opacity-70 mt-1">
@@ -670,6 +686,9 @@ export default function InventoryLotForm({
             placeholder="ex: QR-ABC123"
             {...register("labelCode")}
             className="border rounded p-2 h-[44px] w-full"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
       </div>

@@ -430,6 +430,9 @@ export default function RecipeBatchesForm({
             placeholder="ex: recette-123"
             {...register("recipeId", { required: "Requis" })}
             className="border rounded p-2 h-[44px] w-full"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
           {errors.recipeId && (
             <p className="text-xs text-red mt-1">{errors.recipeId.message}</p>
@@ -442,6 +445,9 @@ export default function RecipeBatchesForm({
             placeholder="ex: BOLO-2025-10-02-A"
             {...register("batchId", { required: "Requis" })}
             className="border rounded p-2 h-[44px] w-full"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
           {errors.batchId && (
             <p className="text-xs text-red mt-1">{errors.batchId.message}</p>
@@ -558,6 +564,9 @@ export default function RecipeBatchesForm({
                     placeholder="ex: Sauce bolognaise"
                     {...register(`ingredients.${idx}.name`)}
                     className="border rounded p-2 h-[44px] w-full"
+                    autoComplete="off"
+                    spellCheck={false}
+                    autoCorrect="off"
                   />
                 </div>
               </div>
@@ -573,6 +582,9 @@ export default function RecipeBatchesForm({
                     placeholder="ex: LOT-ABC123"
                     {...register(`ingredients.${idx}.lotNumber`)}
                     className="border rounded p-2 h-[44px] w-full"
+                    autoComplete="off"
+                    spellCheck={false}
+                    autoCorrect="off"
                   />
                 </div>
                 <div className="flex-1">

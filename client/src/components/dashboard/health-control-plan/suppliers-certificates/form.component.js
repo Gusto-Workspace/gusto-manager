@@ -85,6 +85,9 @@ export default function SupplierCertificateForm({
             {...register("supplierName", { required: "Requis" })}
             className={`border rounded p-2 h-[44px] w-full ${errors.supplierName ? "border-red ring-1 ring-red" : ""}`}
             placeholder="Nom du fournisseur"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
           {errors.supplierName && (
             <p className="text-xs text-red mt-1">
@@ -99,6 +102,9 @@ export default function SupplierCertificateForm({
             {...register("type", { required: "Requis" })}
             className={`border rounded p-2 h-[44px] w-full ${errors.type ? "border-red ring-1 ring-red" : ""}`}
             placeholder="Ex: IFS/BRC, Allergènes, HACCP…"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
           {errors.type && (
             <p className="text-xs text-red mt-1">{errors.type.message}</p>
@@ -114,6 +120,9 @@ export default function SupplierCertificateForm({
             type="text"
             {...register("certificateNumber")}
             className="border rounded p-2 h-[44px] w-full"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
         <div className="flex-1 min-w-[240px]">
@@ -123,6 +132,9 @@ export default function SupplierCertificateForm({
             {...register("fileUrl")}
             className="border rounded p-2 h-[44px] w-full"
             placeholder="https://…/certificate.pdf"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
       </div>

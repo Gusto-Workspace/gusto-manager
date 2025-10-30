@@ -113,6 +113,8 @@ export default function PostheatTemperatureForm({
                 {...register("equipmentName", { required: "Requis" })}
                 className="border rounded p-2 h-[44px]"
                 autoComplete="off"
+                spellCheck={false}
+                autoCorrect="off"
               />
               {errors.equipmentName && (
                 <p className="text-xs text-red mt-1">
@@ -154,6 +156,8 @@ export default function PostheatTemperatureForm({
                 {...register("equipmentId")}
                 className="border rounded p-2 h-[44px]"
                 autoComplete="off"
+                spellCheck={false}
+                autoCorrect="off"
               />
             </div>
             <div className="flex-1 flex flex-col">
@@ -164,6 +168,8 @@ export default function PostheatTemperatureForm({
                 {...register("location")}
                 className="border rounded p-2 h-[44px]"
                 autoComplete="off"
+                spellCheck={false}
+                autoCorrect="off"
               />
             </div>
           </div>
@@ -180,6 +186,8 @@ export default function PostheatTemperatureForm({
                 {...register("locationId")}
                 className="border rounded p-2 h-[44px]"
                 autoComplete="off"
+                spellCheck={false}
+                autoCorrect="off"
               />
             </div>
 

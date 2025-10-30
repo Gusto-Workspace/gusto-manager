@@ -34,7 +34,7 @@ function buildFormDefaults(record) {
             allergens: Array.isArray(l?.allergens)
               ? l.allergens.join(", ")
               : "",
-            packagingCondition: l?.packagingCondition ?? "unknown",
+            packagingCondition: l?.packagingCondition ?? "compliant",
           }))
         : [
             {
@@ -47,7 +47,7 @@ function buildFormDefaults(record) {
               unit: "",
               tempOnArrival: "",
               allergens: "",
-              packagingCondition: "unknown",
+              packagingCondition: "compliant",
             },
           ],
   };
@@ -103,7 +103,7 @@ export default function ReceptionDeliveryForm({
                   .map((s) => s.trim())
                   .filter(Boolean)
               : [],
-          packagingCondition: l.packagingCondition || "unknown",
+          packagingCondition: l.packagingCondition || "compliant",
         }))
         // on laisse le serveur filtrer aussi, mais on évite d’envoyer des lignes vides
         .filter((x) =>
@@ -136,6 +136,9 @@ export default function ReceptionDeliveryForm({
           <input
             type="text"
             placeholder="Nom du fournisseur"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
             {...register("supplier", { required: "Requis" })}
             className="border rounded p-2 h-[44px] w-full"
           />
@@ -170,7 +173,7 @@ export default function ReceptionDeliveryForm({
                 unit: "",
                 tempOnArrival: "",
                 allergens: "",
-                packagingCondition: "unknown",
+                packagingCondition: "compliant",
               })
             }
             className="px-3 py-1 rounded bg-blue text-white"
@@ -190,6 +193,9 @@ export default function ReceptionDeliveryForm({
                 <input
                   type="text"
                   placeholder="Désignation"
+                  autoComplete="off"
+                  spellCheck={false}
+                  autoCorrect="off"
                   {...register(`lines.${idx}.productName`)}
                   className="border rounded p-2 h-[44px] w-full"
                 />
@@ -199,6 +205,9 @@ export default function ReceptionDeliveryForm({
                 <input
                   type="text"
                   placeholder="Code article fournisseur"
+                  autoComplete="off"
+                  spellCheck={false}
+                  autoCorrect="off"
                   {...register(`lines.${idx}.supplierProductId`)}
                   className="border rounded p-2 h-[44px] w-full"
                 />
@@ -208,6 +217,9 @@ export default function ReceptionDeliveryForm({
                 <input
                   type="text"
                   placeholder="Lot"
+                  autoComplete="off"
+                  spellCheck={false}
+                  autoCorrect="off"
                   {...register(`lines.${idx}.lotNumber`)}
                   className="border rounded p-2 h-[44px] w-full"
                 />
@@ -277,6 +289,9 @@ export default function ReceptionDeliveryForm({
                 <input
                   type="text"
                   placeholder="séparés par virgules (ex: gluten, lait)"
+                  autoComplete="off"
+                  spellCheck={false}
+                  autoCorrect="off"
                   {...register(`lines.${idx}.allergens`)}
                   className="border rounded p-2 h-[44px] w-full"
                 />
@@ -287,10 +302,8 @@ export default function ReceptionDeliveryForm({
                   {...register(`lines.${idx}.packagingCondition`)}
                   className="border rounded p-2 h-[44px] w-full"
                 >
-                  <option value="unknown">inconnue</option>
-                  <option value="ok">ok</option>
-                  <option value="damaged">endommagée</option>
-                  <option value="wet">humide</option>
+                  <option value="compliant">conforme</option>
+                  <option value="non-compliant">non conforme</option>
                 </select>
               </div>
             </div>
@@ -317,6 +330,9 @@ export default function ReceptionDeliveryForm({
           <input
             type="url"
             placeholder="https://… (optionnel)"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
             {...register("billUrl")}
             className="border rounded p-2 h-[44px] w-full"
           />

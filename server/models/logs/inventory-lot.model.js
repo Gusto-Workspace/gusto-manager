@@ -39,8 +39,8 @@ const inventoryLotSchema = new Schema(
     tempOnArrival: Number,
     packagingCondition: {
       type: String,
-      enum: ["ok", "damaged", "wet", "unknown"],
-      default: "unknown",
+      enum: ["compliant", "non-compliant"],
+      default: "compliant",
     },
 
     storageArea: { type: String },

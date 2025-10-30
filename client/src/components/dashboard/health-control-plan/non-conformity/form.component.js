@@ -393,6 +393,9 @@ export default function NonConformityForm({
             {...register("referenceId")}
             className="border rounded p-2 h-[44px] w-full"
             placeholder="Ex: BON-RECEP-0425"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
         <div className="flex-1 min-w-[220px]">
@@ -402,6 +405,9 @@ export default function NonConformityForm({
             {...register("description")}
             className="border rounded p-2 h-[44px] w-full"
             placeholder="Détail de la NC"
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
       </div>
@@ -455,6 +461,9 @@ export default function NonConformityForm({
                   })}
                   placeholder="Ex: Corriger l'étiquetage, Former le personnel…"
                   className="border rounded p-2 h-[44px] w-full"
+                  autoComplete="off"
+                  spellCheck={false}
+                  autoCorrect="off"
                 />
                 {errors.correctiveActions?.[idx]?.action && (
                   <p className="text-xs text-red mt-1">
@@ -493,6 +502,9 @@ export default function NonConformityForm({
                   <input
                     type="text"
                     {...register(`correctiveActions.${idx}.doneByDisplay`)}
+                    autoComplete="off"
+                    spellCheck={false}
+                    autoCorrect="off"
                     onFocus={() => setActionOpen(idx, true)}
                     onBlur={() => onActionBlur(idx)}
                     onChange={(e) => {
@@ -571,6 +583,9 @@ export default function NonConformityForm({
                   type="text"
                   {...register(`correctiveActions.${idx}.note`)}
                   className="border rounded p-2 h-[44px] w-full"
+                  autoComplete="off"
+                  spellCheck={false}
+                  autoCorrect="off"
                 />
               </div>
             </div>

@@ -86,6 +86,8 @@ export default function GenericTemperatureForm({
                 {...register("location", { required: "Requis" })}
                 className="border rounded p-2 h-[44px]"
                 autoComplete="off"
+                spellCheck={false}
+                autoCorrect="off"
               />
               {errors.location && (
                 <p className="text-xs text-red mt-1">
@@ -104,6 +106,8 @@ export default function GenericTemperatureForm({
                 {...register("locationId")}
                 className="border rounded p-2 h-[44px]"
                 autoComplete="off"
+                spellCheck={false}
+                autoCorrect="off"
               />
             </div>
           </div>

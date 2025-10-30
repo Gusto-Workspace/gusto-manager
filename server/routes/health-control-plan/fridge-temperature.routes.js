@@ -1,13 +1,11 @@
 const express = require("express");
 const router = express.Router();
 
-// MIDDLEWARE
 const authenticateToken = require("../../middleware/authentificate-token");
-
-// MODELS
+const Fridge = require("../../models/logs/fridge.model");
 const FridgeTemperature = require("../../models/logs/fridge-temperature.model");
 
-/* --------- helpers --------- */
+/* ---------- helpers ---------- */
 function currentUserFromToken(req) {
   const u = req.user || {};
   const role = (u.role || "").toLowerCase();
@@ -29,76 +27,208 @@ function normalizeDate(v) {
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? null : d;
 }
-/** True si au moins un champ métier a changé */
-function hasBusinessChanges(prev, next) {
-  const fields = [
-    "fridgeName",
-    "fridgeId",
-    "location",
-    "locationId",
-    "value",
-    "unit",
-    "sensorIdentifier",
-    "doorState",
-    "note",
-  ];
-  for (const f of fields) {
-    if ((prev?.[f] ?? null) !== (next?.[f] ?? null)) return true;
-  }
-  if (
-    (prev?.createdAt?.getTime?.() ?? null) !==
-    (next?.createdAt?.getTime?.() ?? null)
-  )
-    return true;
-  return false;
+function normalizeDoor(v) {
+  const s = String(v || "").toLowerCase();
+  if (s === "open" || s === "closed") return s;
+  // compat: si pas fourni, on force "closed"
+  return "closed";
+}
+async function loadFridgeSnapshot(restaurantId, fridgeRef) {
+  const f = await Fridge.findOne({ _id: fridgeRef, restaurantId });
+  if (!f) return null;
+  return {
+    name: f.name,
+    fridgeCode: f.fridgeCode || null,
+    location: f.location || null,
+    locationCode: f.locationCode || null,
+    sensorIdentifier: f.sensorIdentifier || null,
+    unit: f.unit || "°C",
+  };
 }
 
-/* -------------------- CREATE -------------------- */
+/* ============================================================
+   A) CRUD ENCEINTES (modale "Liste des enceintes")
+   ============================================================ */
+
+router.use(authenticateToken);
+
+/** LIST
+ * GET /restaurants/:restaurantId/fridges?active=1&q=...
+ */
+router.get("/restaurants/:restaurantId/fridges", async (req, res) => {
+  try {
+    const { restaurantId } = req.params;
+    const { q, active } = req.query;
+    const query = { restaurantId };
+    if (active === "1" || active === "true") query.isActive = true;
+    if (q && String(q).trim()) {
+      const rx = new RegExp(String(q).trim(), "i");
+      query.$or = [
+        { name: rx },
+        { fridgeCode: rx },
+        { location: rx },
+        { locationCode: rx },
+        { sensorIdentifier: rx },
+      ];
+    }
+    const items = await Fridge.find(query).sort({ isActive: -1, name: 1 });
+    res.json({ items });
+  } catch (err) {
+    console.error("GET /fridges:", err);
+    res.status(500).json({ error: "Erreur lors du chargement des enceintes" });
+  }
+});
+
+/** CREATE
+ * POST /restaurants/:restaurantId/fridges
+ */
+router.post("/restaurants/:restaurantId/fridges", async (req, res) => {
+  try {
+    const { restaurantId } = req.params;
+    const {
+      name,
+      fridgeCode,
+      location,
+      locationCode,
+      sensorIdentifier,
+      unit,
+      isActive,
+    } = req.body;
+
+    if (!name || !String(name).trim())
+      return res.status(400).json({ error: "name est requis" });
+
+    const doc = new Fridge({
+      restaurantId,
+      name: String(name).trim(),
+      fridgeCode: normalizeStr(fridgeCode),
+      location: normalizeStr(location),
+      locationCode: normalizeStr(locationCode),
+      sensorIdentifier: normalizeStr(sensorIdentifier),
+      unit: unit === "°F" ? "°F" : "°C",
+      isActive: !!isActive,
+    });
+
+    await doc.save();
+    res.status(201).json(doc);
+  } catch (err) {
+    if (err?.code === 11000) {
+      return res
+        .status(409)
+        .json({ error: "Une enceinte avec ce nom existe déjà." });
+    }
+    console.error("POST /fridges:", err);
+    res.status(500).json({ error: "Erreur lors de la création de l’enceinte" });
+  }
+});
+
+/** UPDATE
+ * PUT /restaurants/:restaurantId/fridges/:id
+ */
+router.put("/restaurants/:restaurantId/fridges/:id", async (req, res) => {
+  try {
+    const { restaurantId, id } = req.params;
+    const f = await Fridge.findOne({ _id: id, restaurantId });
+    if (!f) return res.status(404).json({ error: "Enceinte introuvable" });
+
+    const {
+      name,
+      fridgeCode,
+      location,
+      locationCode,
+      sensorIdentifier,
+      unit,
+      isActive,
+    } = req.body;
+
+    if (name !== undefined) f.name = String(name || "").trim();
+    if (fridgeCode !== undefined) f.fridgeCode = normalizeStr(fridgeCode);
+    if (location !== undefined) f.location = normalizeStr(location);
+    if (locationCode !== undefined) f.locationCode = normalizeStr(locationCode);
+    if (sensorIdentifier !== undefined)
+      f.sensorIdentifier = normalizeStr(sensorIdentifier);
+    if (unit !== undefined) f.unit = unit === "°F" ? "°F" : "°C";
+    if (isActive !== undefined) f.isActive = !!isActive;
+
+    await f.save();
+    res.json(f);
+  } catch (err) {
+    if (err?.code === 11000) {
+      return res
+        .status(409)
+        .json({ error: "Une enceinte avec ce nom existe déjà." });
+    }
+    console.error("PUT /fridges/:id:", err);
+    res
+      .status(500)
+      .json({ error: "Erreur lors de la mise à jour de l’enceinte" });
+  }
+});
+
+/** DELETE
+ * DELETE /restaurants/:restaurantId/fridges/:id
+ */
+router.delete("/restaurants/:restaurantId/fridges/:id", async (req, res) => {
+  try {
+    const { restaurantId, id } = req.params;
+    const doc = await Fridge.findOneAndDelete({ _id: id, restaurantId });
+    if (!doc) return res.status(404).json({ error: "Enceinte introuvable" });
+    res.json({ success: true });
+  } catch (err) {
+    console.error("DELETE /fridges/:id:", err);
+    res
+      .status(500)
+      .json({ error: "Erreur lors de la suppression de l’enceinte" });
+  }
+});
+
+/* ============================================================
+   B) CRUD RELEVÉS T°
+   ============================================================ */
+
+/** CREATE
+ * body: { fridgeRef, value, doorState, note, createdAt }
+ */
 router.post(
   "/restaurants/:restaurantId/fridge-temperatures",
-  authenticateToken,
   async (req, res) => {
     try {
       const { restaurantId } = req.params;
       const inData = { ...req.body };
 
-      // validations légères
-      if (!inData.fridgeName || !String(inData.fridgeName).trim()) {
-        return res.status(400).json({ error: "fridgeName est requis" });
-      }
+      const fridgeRef = inData.fridgeRef;
+      if (!fridgeRef)
+        return res.status(400).json({ error: "fridgeRef est requis" });
+
       if (inData.value === undefined || inData.value === null) {
         return res.status(400).json({ error: "value est requise" });
       }
       const numVal = Number(inData.value);
-      if (Number.isNaN(numVal)) {
+      if (Number.isNaN(numVal))
         return res.status(400).json({ error: "value doit être un nombre" });
-      }
 
       const currentUser = currentUserFromToken(req);
       if (!currentUser)
         return res.status(400).json({ error: "Utilisateur non reconnu" });
 
+      const snapshot = await loadFridgeSnapshot(restaurantId, fridgeRef);
+      if (!snapshot)
+        return res.status(404).json({ error: "Enceinte inconnue" });
+
       const doc = new FridgeTemperature({
         restaurantId,
-        fridgeName: String(inData.fridgeName).trim(),
-        fridgeId: normalizeStr(inData.fridgeId),
-        location: normalizeStr(inData.location),
-        locationId: normalizeStr(inData.locationId),
+        fridgeRef,
+        fridge: snapshot,
         value: numVal,
-        unit: inData.unit === "°F" ? "°F" : "°C",
-        sensorIdentifier: normalizeStr(inData.sensorIdentifier),
-        doorState: ["open", "closed", "unknown"].includes(inData.doorState)
-          ? inData.doorState
-          : "unknown",
-        recordedBy: currentUser, // snapshot auteur (owner ou employee)
+        unit: snapshot.unit || "°C",
+        doorState: normalizeDoor(inData.doorState),
+        recordedBy: currentUser,
         note: normalizeStr(inData.note),
         createdAt: normalizeDate(inData.createdAt) || new Date(),
       });
 
       await doc.save();
-
-      // pas de populate nécessaire: recordedBy est un snapshot embarqué
-      return res.status(201).json(doc);
+      return res.status(201).json(doc.toJSON());
     } catch (err) {
       console.error("POST /fridge-temperatures:", err);
       return res
@@ -108,24 +238,26 @@ router.post(
   }
 );
 
-/* -------------------- LIST -------------------- */
+/** LIST (pagination + filtres)
+ * GET /restaurants/:restaurantId/fridge-temperatures?date_from=&date_to=&q=&fridgeRef=
+ */
 router.get(
   "/restaurants/:restaurantId/fridge-temperatures",
-  authenticateToken,
   async (req, res) => {
     try {
       const { restaurantId } = req.params;
       const {
         page = 1,
-        limit = 20,
+        limit = 200, // un peu élevé pour les vues “mois”
         date_from,
         date_to,
-        q, // filtre texte libre
+        q,
+        doorState,
+        fridgeRef,
       } = req.query;
 
       const query = { restaurantId };
 
-      // filtre date: createdAt
       if (date_from || date_to) {
         query.createdAt = {};
         if (date_from) query.createdAt.$gte = new Date(date_from);
@@ -136,18 +268,18 @@ router.get(
           query.createdAt.$lte = end;
         }
       }
+      if (doorState) query.doorState = doorState;
+      if (fridgeRef) query.fridgeRef = fridgeRef;
 
-      // recherche texte (nom, emplacement, capteur, porte, note, opérateur)
-      if (q && String(q).trim().length) {
+      if (q && String(q).trim()) {
         const rx = new RegExp(String(q).trim(), "i");
         query.$or = [
-          { fridgeName: rx },
-          { fridgeId: rx },
-          { location: rx },
-          { locationId: rx },
+          { "fridge.name": rx },
+          { "fridge.fridgeCode": rx },
+          { "fridge.location": rx },
+          { "fridge.locationCode": rx },
+          { "fridge.sensorIdentifier": rx },
           { note: rx },
-          { sensorIdentifier: rx },
-          { doorState: rx },
           { "recordedBy.firstName": rx },
           { "recordedBy.lastName": rx },
         ];
@@ -156,14 +288,14 @@ router.get(
       const skip = (Number(page) - 1) * Number(limit);
       const [items, total] = await Promise.all([
         FridgeTemperature.find(query)
-          .sort({ createdAt: -1 })
+          .sort({ createdAt: -1, _id: -1 })
           .skip(skip)
           .limit(Number(limit)),
         FridgeTemperature.countDocuments(query),
       ]);
 
       return res.json({
-        items,
+        items: items.map((d) => d.toJSON()),
         meta: {
           page: Number(page),
           limit: Number(limit),
@@ -180,10 +312,9 @@ router.get(
   }
 );
 
-/* -------------------- READ ONE -------------------- */
+/** READ ONE */
 router.get(
   "/restaurants/:restaurantId/fridge-temperatures/:tempId",
-  authenticateToken,
   async (req, res) => {
     try {
       const { restaurantId, tempId } = req.params;
@@ -192,7 +323,7 @@ router.get(
         restaurantId,
       });
       if (!doc) return res.status(404).json({ error: "Relevé introuvable" });
-      return res.json(doc);
+      return res.json(doc.toJSON());
     } catch (err) {
       console.error("GET /fridge-temperatures/:tempId:", err);
       return res
@@ -202,16 +333,14 @@ router.get(
   }
 );
 
-/* -------------------- UPDATE -------------------- */
+/** UPDATE (cellule en ligne) */
 router.put(
   "/restaurants/:restaurantId/fridge-temperatures/:tempId",
-  authenticateToken,
   async (req, res) => {
     try {
       const { restaurantId, tempId } = req.params;
       const inData = { ...req.body };
 
-      // empêche toute tentative de modifier recordedBy côté client
       delete inData.recordedBy;
 
       const prev = await FridgeTemperature.findOne({
@@ -220,73 +349,34 @@ router.put(
       });
       if (!prev) return res.status(404).json({ error: "Relevé introuvable" });
 
-      // normalisations
-      const next = {
-        fridgeName:
-          inData.fridgeName !== undefined
-            ? normalizeStr(inData.fridgeName)
-            : prev.fridgeName,
-        fridgeId:
-          inData.fridgeId !== undefined
-            ? normalizeStr(inData.fridgeId)
-            : prev.fridgeId,
-        location:
-          inData.location !== undefined
-            ? normalizeStr(inData.location)
-            : prev.location,
-        locationId:
-          inData.locationId !== undefined
-            ? normalizeStr(inData.locationId)
-            : prev.locationId,
-        value: inData.value !== undefined ? Number(inData.value) : prev.value,
-        unit:
-          inData.unit !== undefined
-            ? inData.unit === "°F"
-              ? "°F"
-              : "°C"
-            : prev.unit,
-        sensorIdentifier:
-          inData.sensorIdentifier !== undefined
-            ? normalizeStr(inData.sensorIdentifier)
-            : prev.sensorIdentifier,
-        doorState:
-          inData.doorState !== undefined &&
-          ["open", "closed", "unknown"].includes(inData.doorState)
-            ? inData.doorState
-            : prev.doorState,
-        note: inData.note !== undefined ? normalizeStr(inData.note) : prev.note,
-        createdAt:
-          inData.createdAt !== undefined
-            ? normalizeDate(inData.createdAt) || prev.createdAt
-            : prev.createdAt,
-      };
-
-      if (next.value !== undefined && Number.isNaN(next.value)) {
-        return res.status(400).json({ error: "value doit être un nombre" });
-      }
-      if (!next.fridgeName) {
-        return res.status(400).json({ error: "fridgeName est requis" });
+      // Autoriser maj de valeur/porte/note/date; optionnellement changer d’enceinte
+      if (inData.fridgeRef) {
+        const snapshot = await loadFridgeSnapshot(
+          restaurantId,
+          inData.fridgeRef
+        );
+        if (!snapshot)
+          return res.status(404).json({ error: "Enceinte inconnue" });
+        prev.fridgeRef = inData.fridgeRef;
+        prev.fridge = snapshot;
+        prev.unit = snapshot.unit || "°C";
       }
 
-      const changed = hasBusinessChanges(prev, next);
-      if (!changed) {
-        return res.json(prev);
+      if (inData.value !== undefined) {
+        const numVal = Number(inData.value);
+        if (Number.isNaN(numVal))
+          return res.status(400).json({ error: "value doit être un nombre" });
+        prev.value = numVal;
       }
-
-      // apply
-      prev.fridgeName = next.fridgeName;
-      prev.fridgeId = next.fridgeId;
-      prev.location = next.location;
-      prev.locationId = next.locationId;
-      prev.value = next.value;
-      prev.unit = next.unit;
-      prev.sensorIdentifier = next.sensorIdentifier;
-      prev.doorState = next.doorState;
-      prev.note = next.note;
-      prev.createdAt = next.createdAt;
+      if (inData.doorState !== undefined)
+        prev.doorState = normalizeDoor(inData.doorState);
+      if (inData.note !== undefined) prev.note = normalizeStr(inData.note);
+      if (inData.createdAt !== undefined) {
+        prev.createdAt = normalizeDate(inData.createdAt) || prev.createdAt;
+      }
 
       await prev.save();
-      return res.json(prev);
+      return res.json(prev.toJSON());
     } catch (err) {
       console.error("PUT /fridge-temperatures/:tempId:", err);
       return res
@@ -296,10 +386,9 @@ router.put(
   }
 );
 
-/* -------------------- DELETE -------------------- */
+/** DELETE */
 router.delete(
   "/restaurants/:restaurantId/fridge-temperatures/:tempId",
-  authenticateToken,
   async (req, res) => {
     try {
       const { restaurantId, tempId } = req.params;
