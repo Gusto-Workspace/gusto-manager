@@ -15,6 +15,8 @@ export default function FridgeManagerModal({
   const [allItems, setAllItems] = useState(() => initialFridges);
   const [q, setQ] = useState("");
   const [onlyActive, setOnlyActive] = useState(true);
+  const [nameError, setNameError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
   // si le parent change la liste (ex: revalidation), on la répercute
   useEffect(() => {
@@ -96,16 +98,44 @@ export default function FridgeManagerModal({
   };
 
   const saveFridge = async () => {
-    const url = editingId
-      ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/fridges/${editingId}`
-      : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/fridges`;
-    const method = editingId ? "put" : "post";
-    const { data: saved } = await axios[method](url, draft, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    upsertLocal(saved);
-    resetDraft();
-    setPendingDeleteId(null);
+    const trimmedName = (draft.name || "").trim();
+
+    // validation côté client
+    if (!trimmedName) {
+      setNameError("Le nom de l’enceinte est obligatoire");
+      return;
+    }
+
+    setIsSaving(true);
+    setNameError("");
+
+    try {
+      const url = editingId
+        ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/fridges/${editingId}`
+        : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/fridges`;
+      const method = editingId ? "put" : "post";
+
+      // On envoie le name trimé pour éviter les doublons invisibles
+      const payload = { ...draft, name: trimmedName };
+
+      const { data: saved } = await axios[method](url, payload, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      upsertLocal(saved);
+      resetDraft();
+      setPendingDeleteId(null);
+    } catch (err) {
+      // Duplicate (côté serveur: code 409 sur 11000)
+      if (err?.response?.status === 409) {
+        setNameError("Enceinte déjà existante");
+        return;
+      }
+      // autre erreur
+      setNameError("Erreur lors de l’enregistrement");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const requestDelete = (id) => setPendingDeleteId(id);
@@ -163,12 +193,14 @@ export default function FridgeManagerModal({
           {/* Formulaire add/edit */}
           <div className="border rounded p-3 mb-4 grid grid-cols-1 midTablet:grid-cols-3 gap-3">
             <input
-              className="border rounded p-2"
+              className={`border rounded p-2 ${nameError ? "border-red" : ""}`}
               placeholder="Nom *"
               value={draft.name}
-              onChange={(e) =>
-                setDraft((d) => ({ ...d, name: e.target.value }))
-              }
+              aria-invalid={!!nameError}
+              onChange={(e) => {
+                setDraft((d) => ({ ...d, name: e.target.value }));
+                if (nameError) setNameError("");
+              }}
             />
             <input
               className="border rounded p-2"
@@ -222,21 +254,34 @@ export default function FridgeManagerModal({
               />
               Active
             </label>
-            <div className="midTablet:col-span-2 flex gap-2 justify-end">
-              {editingId && (
+            <div className="midTablet:col-span-2 flex items-center justify-between">
+              <div className="text-red text-sm min-h-[20px]">
+                {nameError || null}
+              </div>
+              <div className="flex gap-2">
+                {editingId && (
+                  <button
+                    className="px-3 py-1 rounded bg-gray-200"
+                    onClick={resetDraft}
+                    type="button"
+                    disabled={isSaving}
+                  >
+                    Annuler
+                  </button>
+                )}
                 <button
-                  className="px-3 py-1 rounded bg-gray-200"
-                  onClick={resetDraft}
+                  className="px-3 py-1 rounded bg-blue text-white disabled:opacity-50"
+                  onClick={saveFridge}
+                  type="button"
+                  disabled={isSaving}
                 >
-                  Annuler
+                  {isSaving
+                    ? "En cours…"
+                    : editingId
+                      ? "Mettre à jour"
+                      : "Ajouter"}
                 </button>
-              )}
-              <button
-                className="px-3 py-1 rounded bg-blue text-white"
-                onClick={saveFridge}
-              >
-                {editingId ? "Mettre à jour" : "Ajouter"}
-              </button>
+              </div>
             </div>
           </div>
 
