@@ -36,41 +36,23 @@ function buildDefaults(doc = null) {
 
 export default function FridgeTemperatureForm({
   restaurantId,
-  fridgesVersion = 0,
-  onSaved,
+  fridges = [], // ← injecté par la page
+  onSaved, // optionnel
+  onCreated, // optionnel (compat avec ton code existant)
 }) {
   const {
     register,
     handleSubmit,
     reset,
     watch,
-    setValue,
     formState: { errors, isSubmitting },
   } = useForm({ defaultValues: buildDefaults() });
 
-  const [fridges, setFridges] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [recordedBy, setRecordedBy] = useState(null);
 
-  const token = useMemo(
-    () =>
-      typeof window !== "undefined" ? localStorage.getItem("token") : null,
-    []
-  );
-
-  // Charger fridges actifs
-  useEffect(() => {
-    const fetchFridges = async () => {
-      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/fridges`;
-      const { data } = await axios.get(url, {
-        headers: { Authorization: `Bearer ${token}` },
-        params: { active: 1 },
-      });
-      setFridges(data.items || []);
-    };
-    if (restaurantId) fetchFridges();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [restaurantId, fridgesVersion]);
+  const token =
+    typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
   const selected = watch("fridgeRef");
   const selectedUnit = useMemo(() => {
@@ -149,15 +131,13 @@ export default function FridgeTemperatureForm({
       const { data: saved } = await axios.post(url, payload, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      // Upsert local côté liste
       window.dispatchEvent(
         new CustomEvent("fridge-temperature:upsert", { detail: { doc: saved } })
       );
+      onCreated?.(saved);
       onSaved?.(saved);
-      // garder l’enceinte, reset le reste
       reset({
         ...buildDefaults(null),
-        fridgeRef: data.fridgeRef,
         createdAt: toDatetimeLocalValue(),
       });
     } else {
@@ -176,7 +156,6 @@ export default function FridgeTemperatureForm({
 
   const handleDelete = async () => {
     if (!editingId) return;
-    if (!confirm("Supprimer ce relevé ?")) return;
     const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/fridge-temperatures/${editingId}`;
     await axios.delete(url, { headers: { Authorization: `Bearer ${token}` } });
     window.dispatchEvent(
@@ -260,7 +239,6 @@ export default function FridgeTemperatureForm({
 
       <div>
         <label className="text-sm font-medium">Notes</label>
-
         <textarea
           rows={3}
           {...register("note")}
@@ -279,27 +257,27 @@ export default function FridgeTemperatureForm({
         <button
           type="submit"
           disabled={isSubmitting}
-          className="px-4 py-2 rounded bg-blue text-white disabled:opacity-50"
+          className="px-4 py-2 rounded bg-blue text-white disabled:opacity-50 text-nowrap"
         >
           {editingId ? "Mettre à jour" : "Enregistrer"}
         </button>
         {editingId && (
-          <>
+          <div className="flex justify-between w-full h-auto">
             <button
               type="button"
-              className="px-4 py-2 rounded bg-gray-200"
+              className="px-4 py-2 rounded bg-red text-white"
               onClick={clearEditing}
             >
               Annuler
             </button>
             <button
               type="button"
-              className="px-4 py-2 rounded bg-red text-white"
+              className="px-4 py-2 rounded border border-red text-red"
               onClick={handleDelete}
             >
               Supprimer
             </button>
-          </>
+          </div>
         )}
       </div>
     </form>

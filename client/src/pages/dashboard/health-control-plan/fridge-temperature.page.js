@@ -1,8 +1,9 @@
-import { useContext, useEffect, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
-import { i18n, useTranslation } from "next-i18next";
+import { useTranslation } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
+import axios from "axios";
 
 import { GlobalContext } from "@/contexts/global.context";
 import NavComponent from "@/components/_shared/nav/nav.component";
@@ -20,11 +21,50 @@ export default function FridgeTemperaturePage() {
   const { restaurantContext } = useContext(GlobalContext);
 
   const [isFridgeModalOpen, setIsFridgeModalOpen] = useState(false);
-  const [fridgesVersion, setFridgesVersion] = useState(0); // pour refetch fridges après CRUD
+
+  // --- Fridges: source de vérité locale de la page ---
+  const [fridges, setFridges] = useState([]);
+  const [fridgesLoading, setFridgesLoading] = useState(false);
+
+  const restaurantId = restaurantContext?.restaurantData?._id;
+  const token = useMemo(
+    () =>
+      typeof window !== "undefined" ? localStorage.getItem("token") : null,
+    []
+  );
+
+  // Fetch unique à l’ouverture de la page
+  useEffect(() => {
+    const fetchFridges = async () => {
+      if (!restaurantId) return;
+      setFridgesLoading(true);
+      try {
+        const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/fridges`;
+        const { data } = await axios.get(url, {
+          headers: { Authorization: `Bearer ${token}` },
+          params: { active: 1 }, // n’affiche que les actives dans les tableaux
+        });
+        const items = (data?.items || []).sort((a, b) =>
+          String(a.name).localeCompare(String(b.name), "fr")
+        );
+        setFridges(items);
+      } finally {
+        setFridgesLoading(false);
+      }
+    };
+    fetchFridges();
+  }, [restaurantId, token]);
+
+  // Callback passé à la modale : upsert/suppressions locales (déjà faites en BDD par la modale)
+  const handleFridgesChanged = (nextList) => {
+    // nextList est déjà triée dans la modale ; on peut re-trier pour sûreté :
+    const sorted = [...(nextList || [])].sort((a, b) =>
+      String(a.name).localeCompare(String(b.name), "fr")
+    );
+    setFridges(sorted);
+  };
 
   let title = "Gusto Manager";
-  let description = "";
-
   if (!restaurantContext.isAuth) return null;
 
   return (
@@ -69,6 +109,8 @@ export default function FridgeTemperaturePage() {
                 <button
                   onClick={() => setIsFridgeModalOpen(true)}
                   className="bg-blue px-6 py-2 rounded-lg text-white h-fit"
+                  disabled={fridgesLoading}
+                  title={fridgesLoading ? "Chargement des enceintes…" : ""}
                 >
                   Liste des enceintes
                 </button>
@@ -76,9 +118,10 @@ export default function FridgeTemperaturePage() {
 
               <div className="flex flex-col gap-6">
                 <FridgeTemperatureForm
-                  restaurantId={restaurantContext.restaurantData?._id}
-                  fridgesVersion={fridgesVersion}
+                  restaurantId={restaurantId}
+                  fridges={fridges} // ← injecté
                   onCreated={(doc) => {
+                    // on conserve l’event bus pour la List
                     window.dispatchEvent(
                       new CustomEvent("fridge-temperature:upsert", {
                         detail: { doc },
@@ -88,8 +131,8 @@ export default function FridgeTemperaturePage() {
                 />
 
                 <FridgeTemperatureList
-                  restaurantId={restaurantContext.restaurantData?._id}
-                  fridgesVersion={fridgesVersion}
+                  restaurantId={restaurantId}
+                  fridges={fridges} // ← injecté
                 />
               </div>
             </section>
@@ -101,9 +144,10 @@ export default function FridgeTemperaturePage() {
 
       {isFridgeModalOpen && (
         <FridgeManagerModal
-          restaurantId={restaurantContext.restaurantData?._id}
+          restaurantId={restaurantId}
+          initialFridges={fridges} // ← pas de fetch dans la modale
+          onChanged={handleFridgesChanged} // ← upsert/remove local
           onClose={() => setIsFridgeModalOpen(false)}
-          onChanged={() => setFridgesVersion((v) => v + 1)}
         />
       )}
     </>

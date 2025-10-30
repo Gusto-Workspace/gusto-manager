@@ -7,32 +7,22 @@ export default function FridgeManagerModal({
   restaurantId,
   onClose,
   onChanged,
+  initialFridges = [],
 }) {
   const token = useMemo(() => localStorage.getItem("token"), []);
 
-  // allItems = bruts depuis l’API, items = filtrés localement
-  const [allItems, setAllItems] = useState([]);
+  // Dataset local (source de vérité dans la modale)
+  const [allItems, setAllItems] = useState(() => initialFridges);
   const [q, setQ] = useState("");
   const [onlyActive, setOnlyActive] = useState(true);
-  const [loading, setLoading] = useState(false);
 
-  const fetchFridges = async () => {
-    setLoading(true);
-    try {
-      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/fridges`;
-      const { data } = await axios.get(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setAllItems(data.items || []);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // si le parent change la liste (ex: revalidation), on la répercute
   useEffect(() => {
-    if (restaurantId) fetchFridges();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [restaurantId]);
+    setAllItems(initialFridges || []);
+  }, [initialFridges]);
+
+  const byName = (a, b) =>
+    String(a?.name || "").localeCompare(String(b?.name || ""), "fr");
 
   const items = useMemo(() => {
     const qx = (q || "").trim().toLowerCase();
@@ -52,9 +42,10 @@ export default function FridgeManagerModal({
           .toLowerCase();
         return hay.includes(qx);
       })
-      .sort((a, b) => String(a.name).localeCompare(String(b.name), "fr"));
+      .sort(byName);
   }, [allItems, q, onlyActive]);
 
+  // édition / création (form du haut)
   const [draft, setDraft] = useState({
     name: "",
     fridgeCode: "",
@@ -65,6 +56,10 @@ export default function FridgeManagerModal({
     isActive: true,
   });
   const [editingId, setEditingId] = useState(null);
+
+  // suppression en 2 temps
+  const [pendingDeleteId, setPendingDeleteId] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const resetDraft = () => {
     setEditingId(null);
@@ -79,25 +74,58 @@ export default function FridgeManagerModal({
     });
   };
 
+  // Upsert local + remontée parent
+  const upsertLocal = (doc) => {
+    setAllItems((prev) => {
+      const idx = prev.findIndex((x) => String(x._id) === String(doc._id));
+      let next = idx >= 0 ? [...prev] : [...prev, doc];
+      if (idx >= 0) next[idx] = { ...next[idx], ...doc };
+      next.sort(byName);
+      onChanged?.(next);
+      return next;
+    });
+  };
+
+  // Remove local + remontée parent
+  const removeLocal = (id) => {
+    setAllItems((prev) => {
+      const next = prev.filter((x) => String(x._id) !== String(id));
+      onChanged?.(next);
+      return next;
+    });
+  };
+
   const saveFridge = async () => {
     const url = editingId
       ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/fridges/${editingId}`
       : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/fridges`;
     const method = editingId ? "put" : "post";
-    await axios[method](url, draft, {
+    const { data: saved } = await axios[method](url, draft, {
       headers: { Authorization: `Bearer ${token}` },
     });
+    upsertLocal(saved);
     resetDraft();
-    onChanged?.();
-    await fetchFridges(); // refresh dataset local
+    setPendingDeleteId(null);
   };
 
-  const deleteFridge = async (id) => {
-    if (!confirm("Supprimer cette enceinte ?")) return;
-    const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/fridges/${id}`;
-    await axios.delete(url, { headers: { Authorization: `Bearer ${token}` } });
-    onChanged?.();
-    await fetchFridges();
+  const requestDelete = (id) => setPendingDeleteId(id);
+  const cancelDelete = () => {
+    setPendingDeleteId(null);
+    setDeleteLoading(false);
+  };
+  const confirmDelete = async (id) => {
+    try {
+      setDeleteLoading(true);
+      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/fridges/${id}`;
+      await axios.delete(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      removeLocal(id);
+      if (editingId === id) resetDraft();
+    } finally {
+      setDeleteLoading(false);
+      setPendingDeleteId(null);
+    }
   };
 
   return createPortal(
@@ -214,30 +242,29 @@ export default function FridgeManagerModal({
 
           {/* Liste (filtrée localement) - hauteur fixe */}
           <div className="overflow-x-auto overflow-y-auto max-h-[250px] min-h-[250px]">
-            {loading ? (
-              <div className="py-6 text-center opacity-60">Chargement…</div>
-            ) : (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left border-b">
-                    <th className="py-2 pr-3">Nom</th>
-                    <th className="py-2 pr-3">Identifiant</th>
-                    <th className="py-2 pr-3">Emplacement</th>
-                    <th className="py-2 pr-3">Capteur</th>
-                    <th className="py-2 pr-3">Unité</th>
-                    <th className="py-2 pr-3">Active</th>
-                    <th className="py-2 pr-3 text-right">Actions</th>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left border-b">
+                  <th className="py-2 pr-3">Nom</th>
+                  <th className="py-2 pr-3">Identifiant</th>
+                  <th className="py-2 pr-3">Emplacement</th>
+                  <th className="py-2 pr-3">Capteur</th>
+                  <th className="py-2 pr-3">Unité</th>
+                  <th className="py-2 pr-3">Active</th>
+                  <th className="py-2 pr-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="py-6 text-center opacity-60">
+                      Aucune enceinte
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {items.length === 0 && (
-                    <tr>
-                      <td colSpan={7} className="py-6 text-center opacity-60">
-                        Aucune enceinte
-                      </td>
-                    </tr>
-                  )}
-                  {items.map((f) => (
+                )}
+                {items.map((f) => {
+                  const isPending = pendingDeleteId === f._id;
+                  return (
                     <tr key={f._id} className="border-b">
                       <td className="py-2 pr-3">{f.name}</td>
                       <td className="py-2 pr-3">{f.fridgeCode || "—"}</td>
@@ -257,36 +284,57 @@ export default function FridgeManagerModal({
                       </td>
                       <td className="py-2 pr-0">
                         <div className="flex gap-2 justify-end">
-                          <button
-                            className="px-3 py-1 rounded bg-green text-white"
-                            onClick={() => {
-                              setEditingId(f._id);
-                              setDraft({
-                                name: f.name || "",
-                                fridgeCode: f.fridgeCode || "",
-                                location: f.location || "",
-                                locationCode: f.locationCode || "",
-                                sensorIdentifier: f.sensorIdentifier || "",
-                                unit: f.unit || "°C",
-                                isActive: !!f.isActive,
-                              });
-                            }}
-                          >
-                            Éditer
-                          </button>
-                          <button
-                            className="px-3 py-1 rounded bg-red text-white"
-                            onClick={() => deleteFridge(f._id)}
-                          >
-                            Supprimer
-                          </button>
+                          {isPending ? (
+                            <>
+                              <button
+                                className="px-3 py-1 rounded bg-red text-white"
+                                onClick={() => confirmDelete(f._id)}
+                                disabled={deleteLoading}
+                              >
+                                {deleteLoading ? "Suppression…" : "Confirmer"}
+                              </button>
+                              <button
+                                className="px-3 py-1 rounded bg-gray-200"
+                                onClick={cancelDelete}
+                                disabled={deleteLoading}
+                              >
+                                Annuler
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                className="px-3 py-1 rounded bg-green text-white"
+                                onClick={() => {
+                                  setEditingId(f._id);
+                                  setDraft({
+                                    name: f.name || "",
+                                    fridgeCode: f.fridgeCode || "",
+                                    location: f.location || "",
+                                    locationCode: f.locationCode || "",
+                                    sensorIdentifier: f.sensorIdentifier || "",
+                                    unit: f.unit || "°C",
+                                    isActive: !!f.isActive,
+                                  });
+                                }}
+                              >
+                                Éditer
+                              </button>
+                              <button
+                                className="px-3 py-1 rounded bg-red text-white"
+                                onClick={() => requestDelete(f._id)}
+                              >
+                                Supprimer
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>

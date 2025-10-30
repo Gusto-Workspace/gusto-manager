@@ -35,10 +35,9 @@ function isInRange(d, from, to) {
 
 export default function FridgeTemperatureList({
   restaurantId,
-  fridgesVersion = 0,
+  fridges = [], // ← injecté par la page
 }) {
   const tokenRef = useRef(null);
-  const [fridges, setFridges] = useState([]);
 
   // Données mensuelles (grande table)
   const [items, setItems] = useState([]);
@@ -57,20 +56,6 @@ export default function FridgeTemperatureList({
   useEffect(() => {
     tokenRef.current = localStorage.getItem("token");
   }, []);
-
-  // Fetch fridges (actives)
-  const fetchFridges = async () => {
-    const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/fridges`;
-    const { data } = await axios.get(url, {
-      headers: { Authorization: `Bearer ${tokenRef.current}` },
-      params: { active: 1 },
-    });
-    setFridges(
-      (data?.items || []).sort((a, b) =>
-        String(a.name).localeCompare(String(b.name), "fr")
-      )
-    );
-  };
 
   // Fetch relevés (période du mois affiché)
   const fetchTemps = async () => {
@@ -111,17 +96,14 @@ export default function FridgeTemperatureList({
   };
 
   useEffect(() => {
-    if (restaurantId) {
-      fetchFridges();
-      fetchTodayTemps(); // une fois au montage
-    }
+    if (restaurantId) fetchTodayTemps(); // au montage
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [restaurantId, fridgesVersion]);
+  }, [restaurantId]);
 
   useEffect(() => {
-    if (restaurantId) fetchTemps();
+    if (restaurantId) fetchTemps(); // à chaque changement de mois
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [restaurantId, curMonth]);
+  }, [restaurantId, dateFrom.getTime(), dateTo.getTime()]);
 
   // Upsert local (sans refetch)
   const upsertLocal = (arr, doc) => {
@@ -134,19 +116,19 @@ export default function FridgeTemperatureList({
   const removeLocal = (arr, id) =>
     (Array.isArray(arr) ? arr : []).filter((x) => x?._id !== id);
 
-  // Écoute création/mise à jour via formulaire (sans refetch)
+  // Écoute création/mise à jour/suppression via formulaire (sans refetch)
   useEffect(() => {
     const onUpsert = (e) => {
       const doc = e?.detail?.doc;
       if (!doc || !doc._id) return;
       if (String(doc.restaurantId) !== String(restaurantId)) return;
 
-      // pour la grande table : seulement si dans le mois affiché
+      // grande table : uniquement si dans le mois affiché
       if (isInRange(doc.createdAt, dateFrom, dateTo)) {
         setItems((prev) => upsertLocal(prev, doc));
       }
 
-      // pour la mini-table du jour : seulement si c'est aujourd'hui
+      // mini-table du jour
       if (ymd(doc.createdAt) === todayYMD) {
         setTodayItems((prev) => upsertLocal(prev, doc));
       }
@@ -179,7 +161,7 @@ export default function FridgeTemperatureList({
     return arr;
   }, [dateFrom, dateTo]);
 
-  // Map (day|fridgeId) => array de relevés triés par heure croissante
+  // Map (day|fridgeId) => array de relevés triés
   const cellMap = useMemo(() => {
     const m = new Map();
     for (const it of items) {
@@ -217,14 +199,12 @@ export default function FridgeTemperatureList({
   const nextMonth = () =>
     setCurMonth((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1));
 
-  // Clic d’une puce = éditer dans le form
   const editDoc = (doc) => {
     window.dispatchEvent(
       new CustomEvent("fridge-temperature:edit", { detail: { doc } })
     );
   };
 
-  // Clic “Ajouter” (mini-table du jour) = préremplir le form
   const presetCreate = (fridgeRef) => {
     const now = new Date();
     const hh = String(now.getHours()).padStart(2, "0");
@@ -240,12 +220,12 @@ export default function FridgeTemperatureList({
   return (
     <div className="">
       {/* Mini-table du jour */}
-      <div className="mb-4 bg-white rounded-lg drop-shadow-sm p-4">
-        <div className="w-full mx-auto text-sm font-semibold mb-2 text-center">
+      <div className="mb-4 bg-white rounded-lg drop-shadow-sm p-4 pb-0">
+        <div className="w-full mx-auto font-semibold mb-4 text-center">
           Saisies du jour
         </div>
 
-        <div className="overflow-x-auto max-w-[calc(100vw-80px)] tablet:max-w-[calc(100vw-350px)]">
+        <div className="overflow-x-auto max-w-[calc(100vw-80px)] tablet:max-w-[calc(100vw-350px)] pb-4">
           <table className="w-full text-sm">
             <thead className="whitespace-nowrap">
               <tr className="border-b sticky top-0 bg-white">
@@ -261,31 +241,27 @@ export default function FridgeTemperatureList({
               </tr>
             </thead>
             <tbody>
-              <tr className="border-b">
-                <td className="py-2 pr-3 whitespace-nowrap font-medium sticky left-0 bg-white z-10">
+              <tr>
+                <td className="py-2 pr-3 whitespace-nowrap font-medium bg-white z-10">
                   {fmtDay(today)}
                 </td>
                 {fridges.map((f) => {
                   const key = `${todayYMD}|${f._id}`;
                   const arr = todayMap.get(key) || [];
                   return (
-                    <td key={key} className="py-2 pr-3 align-top text-center">
+                    <td key={key} className="py-2 pr-3 text-center">
                       {arr.length > 0 ? (
                         <div className="flex flex-wrap gap-2 justify-center">
                           {arr.map((it) => (
-                            <div
+                            <button
                               key={it._id}
-                              className="inline-flex items-center gap-1"
+                              type="button"
+                              className="px-2 py-1 rounded bg-lightGrey hover:bg-gray-200 transition"
+                              title="Modifier ce relevé"
+                              onClick={() => editDoc(it)}
                             >
-                              <button
-                                type="button"
-                                className="px-2 py-1 rounded bg-lightGrey hover:bg-gray-200 transition"
-                                title="Modifier ce relevé"
-                                onClick={() => editDoc(it)}
-                              >
-                                {it.value} {it.unit}
-                              </button>
-                            </div>
+                              {it.value} {it.unit}
+                            </button>
                           ))}
                         </div>
                       ) : (
@@ -312,7 +288,10 @@ export default function FridgeTemperatureList({
         {/* Navigation mois */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <button onClick={prevMonth} className="px-3 py-1 border rounded border-blue text-blue">
+            <button
+              onClick={prevMonth}
+              className="px-3 py-1 border rounded border-blue text-blue"
+            >
               Mois précédent
             </button>
           </div>
@@ -323,81 +302,64 @@ export default function FridgeTemperatureList({
             })}
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={nextMonth} className="px-3 py-1 border rounded border-blue text-blue">
+            <button
+              onClick={nextMonth}
+              className="px-3 py-1 border rounded border-blue text-blue"
+            >
               Mois suivant
             </button>
           </div>
         </div>
 
-        {/* Scroll X + Y (max-height 200px) */}
+        {/* Scroll X + Y */}
         <div className="overflow-x-auto overflow-y-auto max-h-[350px] max-w-[calc(100vw-80px)] tablet:max-w-[calc(100vw-350px)]">
-          <table className="w-full text-sm">
-            <thead className="whitespace-nowrap">
-              <tr className="border-b sticky top-0 bg-white z-10">
-                <th className="py-2 pr-3 min-w-[120px] text-left">Date</th>
-                {fridges.map((f) => (
-                  <th
-                    key={f._id}
-                    className="py-2 pr-3 min-w-[140px] text-center"
-                  >
-                    {f.name}
-                  </th>
-                ))}
-              </tr>
-            </thead>
+          {loading ? (
+            <div className="h-[350px] w-full flex items-center justify-center">
+              <div className="opacity-60 italic">Chargement…</div>
+            </div>
+          ) : days.length === 0 ? (
+            <div className="h-[350px] w-full flex items-center justify-center">
+              <div className="opacity-60">Aucune donnée</div>
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="whitespace-nowrap">
+                <tr className="border-b sticky top-0 bg-white z-10">
+                  <th className="py-2 pr-3 min-w-[120px] text-left">Date</th>
+                  {fridges.map((f) => (
+                    <th
+                      key={f._id}
+                      className="py-2 pr-3 min-w-[140px] text-center"
+                    >
+                      {f.name}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
 
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td
-                    colSpan={fridges.length + 1}
-                    className="py-6 text-center opacity-60 h-[350px]"
-                  >
-                    Chargement…
-                  </td>
-                </tr>
-              ) : days.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={fridges.length + 1}
-                    className="py-6 text-center opacity-60"
-                  >
-                    Aucune donnée
-                  </td>
-                </tr>
-              ) : (
-                days.map((day) => (
+              <tbody>
+                {days.map((day) => (
                   <tr key={day} className="border-b">
-                    {/* Date sticky à gauche */}
-                    <td className="py-2 pr-3 whitespace-nowrap font-medium sticky left-0 bg-white z-10">
+                    <td className="py-2 pr-3 whitespace-nowrap font-medium sticky left-0 bg-white">
                       {fmtDay(day)}
                     </td>
-
-                    {/* Cellules */}
                     {fridges.map((f) => {
                       const key = `${day}|${f._id}`;
                       const arr = cellMap.get(key) || [];
                       return (
-                        <td
-                          key={key}
-                          className="py-2 pr-3 align-top text-center"
-                        >
+                        <td key={key} className="py-2 pr-3 text-center">
                           {arr.length > 0 ? (
                             <div className="flex flex-wrap gap-2 justify-center">
                               {arr.map((it) => (
-                                <div
+                                <button
                                   key={it._id}
-                                  className="inline-flex items-center gap-1"
+                                  type="button"
+                                  className="px-2 py-1 rounded bg-lightGrey hover:bg-gray-200 transition"
+                                  title="Modifier ce relevé"
+                                  onClick={() => editDoc(it)}
                                 >
-                                  <button
-                                    type="button"
-                                    className="px-2 py-1 rounded bg-lightGrey hover:bg-gray-200 transition"
-                                    title="Modifier ce relevé"
-                                    onClick={() => editDoc(it)}
-                                  >
-                                    {it.value} {it.unit}
-                                  </button>
-                                </div>
+                                  {it.value} {it.unit}
+                                </button>
                               ))}
                             </div>
                           ) : (
@@ -407,10 +369,10 @@ export default function FridgeTemperatureList({
                       );
                     })}
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
     </div>
