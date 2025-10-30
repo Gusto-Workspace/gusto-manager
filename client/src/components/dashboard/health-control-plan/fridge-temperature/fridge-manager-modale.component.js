@@ -22,7 +22,6 @@ export default function FridgeManagerModal({
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/fridges`;
       const { data } = await axios.get(url, {
         headers: { Authorization: `Bearer ${token}` },
-        // ⛔️ plus de filtre serveur sur q/active : on récupère tout et on filtre localement
       });
       setAllItems(data.items || []);
     } finally {
@@ -213,8 +212,8 @@ export default function FridgeManagerModal({
             </div>
           </div>
 
-          {/* Liste (filtrée localement) */}
-          <div className="overflow-x-auto">
+          {/* Liste (filtrée localement) - hauteur fixe */}
+          <div className="overflow-x-auto overflow-y-auto max-h-[250px] min-h-[250px]">
             {loading ? (
               <div className="py-6 text-center opacity-60">Chargement…</div>
             ) : (

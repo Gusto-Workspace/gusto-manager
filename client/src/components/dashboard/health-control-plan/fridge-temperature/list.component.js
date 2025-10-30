@@ -25,7 +25,12 @@ function fmtDay(d) {
 function monthBounds(date = new Date()) {
   const start = new Date(date.getFullYear(), date.getMonth(), 1);
   const end = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+  end.setHours(23, 59, 59, 999);
   return [start, end];
+}
+function isInRange(d, from, to) {
+  const t = new Date(d).getTime();
+  return t >= from.getTime() && t <= to.getTime();
 }
 
 export default function FridgeTemperatureList({
@@ -34,8 +39,13 @@ export default function FridgeTemperatureList({
 }) {
   const tokenRef = useRef(null);
   const [fridges, setFridges] = useState([]);
+
+  // Données mensuelles (grande table)
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
+
+  // Données du jour (mini-table) -> indépendantes du mois affiché
+  const [todayItems, setTodayItems] = useState([]);
 
   // Mois courant pour la grande table
   const [curMonth, setCurMonth] = useState(() => new Date());
@@ -81,8 +91,30 @@ export default function FridgeTemperatureList({
     }
   };
 
+  // Fetch relevés du jour (indépendant du mois)
+  const fetchTodayTemps = async () => {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
+
+    const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/fridge-temperatures`;
+    const { data } = await axios.get(url, {
+      headers: { Authorization: `Bearer ${tokenRef.current}` },
+      params: {
+        date_from: start.toISOString(),
+        date_to: end.toISOString(),
+        limit: 500,
+      },
+    });
+    setTodayItems(data.items || []);
+  };
+
   useEffect(() => {
-    if (restaurantId) fetchFridges();
+    if (restaurantId) {
+      fetchFridges();
+      fetchTodayTemps(); // une fois au montage
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId, fridgesVersion]);
 
@@ -91,28 +123,56 @@ export default function FridgeTemperatureList({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId, curMonth]);
 
-  // Refresh automatique après sauvegarde via form
+  // Upsert local (sans refetch)
+  const upsertLocal = (arr, doc) => {
+    const next = Array.isArray(arr) ? [...arr] : [];
+    const i = next.findIndex((x) => x?._id === doc._id);
+    if (i >= 0) next[i] = doc;
+    else next.push(doc);
+    return next;
+  };
+  const removeLocal = (arr, id) =>
+    (Array.isArray(arr) ? arr : []).filter((x) => x?._id !== id);
+
+  // Écoute création/mise à jour via formulaire (sans refetch)
   useEffect(() => {
-    const handler = (e) => {
+    const onUpsert = (e) => {
       const doc = e?.detail?.doc;
       if (!doc || !doc._id) return;
       if (String(doc.restaurantId) !== String(restaurantId)) return;
-      fetchTemps();
+
+      // pour la grande table : seulement si dans le mois affiché
+      if (isInRange(doc.createdAt, dateFrom, dateTo)) {
+        setItems((prev) => upsertLocal(prev, doc));
+      }
+
+      // pour la mini-table du jour : seulement si c'est aujourd'hui
+      if (ymd(doc.createdAt) === todayYMD) {
+        setTodayItems((prev) => upsertLocal(prev, doc));
+      }
     };
-    window.addEventListener("fridge-temperature:upsert", handler);
-    return () =>
-      window.removeEventListener("fridge-temperature:upsert", handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [restaurantId]);
+
+    const onDeleted = (e) => {
+      const id = e?.detail?.id;
+      if (!id) return;
+      setItems((prev) => removeLocal(prev, id));
+      setTodayItems((prev) => removeLocal(prev, id));
+    };
+
+    window.addEventListener("fridge-temperature:upsert", onUpsert);
+    window.addEventListener("fridge-temperature:deleted", onDeleted);
+    return () => {
+      window.removeEventListener("fridge-temperature:upsert", onUpsert);
+      window.removeEventListener("fridge-temperature:deleted", onDeleted);
+    };
+  }, [restaurantId, dateFrom, dateTo, todayYMD]);
 
   // Jours du mois
   const days = useMemo(() => {
     const arr = [];
     const cur = new Date(dateFrom);
     cur.setHours(0, 0, 0, 0);
-    const end = new Date(dateTo);
-    end.setHours(0, 0, 0, 0);
-    while (cur <= end) {
+    while (cur <= dateTo) {
       arr.push(ymd(cur));
       cur.setDate(cur.getDate() + 1);
     }
@@ -135,6 +195,22 @@ export default function FridgeTemperatureList({
     }
     return m;
   }, [items]);
+
+  // Map du jour (indépendant du mois)
+  const todayMap = useMemo(() => {
+    const m = new Map();
+    for (const it of todayItems) {
+      const fid = it.fridgeRef || it.fridge?._id;
+      if (!fid) continue;
+      const key = `${todayYMD}|${fid}`;
+      if (!m.has(key)) m.set(key, []);
+      m.get(key).push(it);
+    }
+    for (const arr of m.values()) {
+      arr.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    }
+    return m;
+  }, [todayItems, todayYMD]);
 
   const prevMonth = () =>
     setCurMonth((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1));
@@ -165,15 +241,20 @@ export default function FridgeTemperatureList({
     <div className="">
       {/* Mini-table du jour */}
       <div className="mb-4 bg-white rounded-lg drop-shadow-sm p-4">
-        <div className="w-full mx-auto text-sm font-semibold mb-2">Saisies du jour</div>
-       
+        <div className="w-full mx-auto text-sm font-semibold mb-2 text-center">
+          Saisies du jour
+        </div>
+
         <div className="overflow-x-auto max-w-[calc(100vw-80px)] tablet:max-w-[calc(100vw-350px)]">
           <table className="w-full text-sm">
             <thead className="whitespace-nowrap">
-              <tr className="text-left border-b sticky top-0 bg-white">
-                <th className="py-2 pr-3 min-w-[120px]">Date</th>
+              <tr className="border-b sticky top-0 bg-white">
+                <th className="py-2 pr-3 min-w-[120px] text-left">Date</th>
                 {fridges.map((f) => (
-                  <th key={f._id} className="py-2 pr-3 min-w-[140px]">
+                  <th
+                    key={f._id}
+                    className="py-2 pr-3 min-w-[140px] text-center"
+                  >
                     {f.name}
                   </th>
                 ))}
@@ -186,27 +267,31 @@ export default function FridgeTemperatureList({
                 </td>
                 {fridges.map((f) => {
                   const key = `${todayYMD}|${f._id}`;
-                  const arr = cellMap.get(key) || [];
+                  const arr = todayMap.get(key) || [];
                   return (
-                    <td key={key} className="py-2 pr-3 align-top">
+                    <td key={key} className="py-2 pr-3 align-top text-center">
                       {arr.length > 0 ? (
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex flex-wrap gap-2 justify-center">
                           {arr.map((it) => (
-                            <button
+                            <div
                               key={it._id}
-                              type="button"
-                              className="px-2 py-1 rounded bg-lightGrey hover:bg-gray-200 transition"
-                              title="Modifier ce relevé"
-                              onClick={() => editDoc(it)}
+                              className="inline-flex items-center gap-1"
                             >
-                              {it.value} {it.unit}
-                            </button>
+                              <button
+                                type="button"
+                                className="px-2 py-1 rounded bg-lightGrey hover:bg-gray-200 transition"
+                                title="Modifier ce relevé"
+                                onClick={() => editDoc(it)}
+                              >
+                                {it.value} {it.unit}
+                              </button>
+                            </div>
                           ))}
                         </div>
                       ) : (
                         <button
                           type="button"
-                          className="px-2 py-1 rounded border hover:bg-gray-50"
+                          className="underline underline-offset-2 text-blue"
                           title="Ajouter un relevé pour aujourd’hui"
                           onClick={() => presetCreate(f._id)}
                         >
@@ -222,11 +307,12 @@ export default function FridgeTemperatureList({
         </div>
       </div>
 
+      {/* Grande table (mois) */}
       <div className="bg-white rounded-lg drop-shadow-sm p-4">
         {/* Navigation mois */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <button onClick={prevMonth} className="px-3 py-1 border rounded">
+            <button onClick={prevMonth} className="px-3 py-1 border rounded border-blue text-blue">
               Mois précédent
             </button>
           </div>
@@ -237,20 +323,23 @@ export default function FridgeTemperatureList({
             })}
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={nextMonth} className="px-3 py-1 border rounded">
+            <button onClick={nextMonth} className="px-3 py-1 border rounded border-blue text-blue">
               Mois suivant
             </button>
           </div>
         </div>
 
-        {/* Grande table (scroll X + Y avec max height) */}
+        {/* Scroll X + Y (max-height 200px) */}
         <div className="overflow-x-auto overflow-y-auto max-h-[350px] max-w-[calc(100vw-80px)] tablet:max-w-[calc(100vw-350px)]">
           <table className="w-full text-sm">
             <thead className="whitespace-nowrap">
-              <tr className="text-left border-b sticky top-0 bg-white z-10">
-                <th className="py-2 pr-3 min-w-[120px]">Date</th>
+              <tr className="border-b sticky top-0 bg-white z-10">
+                <th className="py-2 pr-3 min-w-[120px] text-left">Date</th>
                 {fridges.map((f) => (
-                  <th key={f._id} className="py-2 pr-3 min-w-[140px]">
+                  <th
+                    key={f._id}
+                    className="py-2 pr-3 min-w-[140px] text-center"
+                  >
                     {f.name}
                   </th>
                 ))}
@@ -262,7 +351,7 @@ export default function FridgeTemperatureList({
                 <tr>
                   <td
                     colSpan={fridges.length + 1}
-                    className="py-6 text-center opacity-60"
+                    className="py-6 text-center opacity-60 h-[350px]"
                   >
                     Chargement…
                   </td>
@@ -289,19 +378,26 @@ export default function FridgeTemperatureList({
                       const key = `${day}|${f._id}`;
                       const arr = cellMap.get(key) || [];
                       return (
-                        <td key={key} className="py-2 pr-3 align-top">
+                        <td
+                          key={key}
+                          className="py-2 pr-3 align-top text-center"
+                        >
                           {arr.length > 0 ? (
-                            <div className="flex flex-wrap gap-2">
+                            <div className="flex flex-wrap gap-2 justify-center">
                               {arr.map((it) => (
-                                <button
+                                <div
                                   key={it._id}
-                                  type="button"
-                                  className="px-2 py-1 rounded bg-lightGrey hover:bg-gray-200 transition"
-                                  title="Modifier ce relevé"
-                                  onClick={() => editDoc(it)}
+                                  className="inline-flex items-center gap-1"
                                 >
-                                  {it.value} {it.unit}
-                                </button>
+                                  <button
+                                    type="button"
+                                    className="px-2 py-1 rounded bg-lightGrey hover:bg-gray-200 transition"
+                                    title="Modifier ce relevé"
+                                    onClick={() => editDoc(it)}
+                                  >
+                                    {it.value} {it.unit}
+                                  </button>
+                                </div>
                               ))}
                             </div>
                           ) : (

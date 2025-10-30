@@ -37,7 +37,7 @@ function buildDefaults(doc = null) {
 export default function FridgeTemperatureForm({
   restaurantId,
   fridgesVersion = 0,
-  onSaved, // (doc) => void  (create ou update)
+  onSaved,
 }) {
   const {
     register,
@@ -49,8 +49,8 @@ export default function FridgeTemperatureForm({
   } = useForm({ defaultValues: buildDefaults() });
 
   const [fridges, setFridges] = useState([]);
-  const [editingId, setEditingId] = useState(null); // null => create, sinon edit
-  const [recordedBy, setRecordedBy] = useState(null); // affichage read-only en mode édition
+  const [editingId, setEditingId] = useState(null);
+  const [recordedBy, setRecordedBy] = useState(null);
 
   const token = useMemo(
     () =>
@@ -58,7 +58,7 @@ export default function FridgeTemperatureForm({
     []
   );
 
-  // Charger les fridges actifs
+  // Charger fridges actifs
   useEffect(() => {
     const fetchFridges = async () => {
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/fridges`;
@@ -84,7 +84,7 @@ export default function FridgeTemperatureForm({
     reset(buildDefaults(null));
   }, [reset]);
 
-  // Écoute : éditer un relevé existant
+  // Éditer un relevé existant (depuis la liste)
   useEffect(() => {
     const onEdit = (e) => {
       const doc = e?.detail?.doc;
@@ -92,7 +92,6 @@ export default function FridgeTemperatureForm({
       setEditingId(doc._id);
       setRecordedBy(doc.recordedBy || null);
       reset(buildDefaults(doc));
-      // focus sur T° pour rapidité
       setTimeout(() => {
         const el = document.querySelector("#ft-form-value");
         if (el) el.focus();
@@ -102,12 +101,11 @@ export default function FridgeTemperatureForm({
     return () => window.removeEventListener("fridge-temperature:edit", onEdit);
   }, [reset]);
 
-  // Écoute : preset (préremplir pour création) -> fridgeRef + createdAt
+  // Préremplir pour création (depuis la mini-table "Ajouter")
   useEffect(() => {
     const onPreset = (e) => {
       const { fridgeRef, createdAt } = e?.detail || {};
       if (!fridgeRef) return;
-      // on sort du mode édition si actif
       setEditingId(null);
       setRecordedBy(null);
       reset({
@@ -125,6 +123,17 @@ export default function FridgeTemperatureForm({
       window.removeEventListener("fridge-temperature:preset", onPreset);
   }, [reset]);
 
+  // Si le relevé en cours d’édition est supprimé depuis la liste
+  useEffect(() => {
+    const onDeleted = (e) => {
+      const id = e?.detail?.id;
+      if (id && id === editingId) clearEditing();
+    };
+    window.addEventListener("fridge-temperature:deleted", onDeleted);
+    return () =>
+      window.removeEventListener("fridge-temperature:deleted", onDeleted);
+  }, [editingId, clearEditing]);
+
   const onSubmit = async (data) => {
     const payload = {
       fridgeRef: data.fridgeRef,
@@ -140,11 +149,12 @@ export default function FridgeTemperatureForm({
       const { data: saved } = await axios.post(url, payload, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      // Upsert local côté liste
       window.dispatchEvent(
         new CustomEvent("fridge-temperature:upsert", { detail: { doc: saved } })
       );
       onSaved?.(saved);
-      // garder la même enceinte, reset value/note/date
+      // garder l’enceinte, reset le reste
       reset({
         ...buildDefaults(null),
         fridgeRef: data.fridgeRef,
@@ -164,46 +174,36 @@ export default function FridgeTemperatureForm({
     }
   };
 
+  const handleDelete = async () => {
+    if (!editingId) return;
+    if (!confirm("Supprimer ce relevé ?")) return;
+    const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/fridge-temperatures/${editingId}`;
+    await axios.delete(url, { headers: { Authorization: `Bearer ${token}` } });
+    window.dispatchEvent(
+      new CustomEvent("fridge-temperature:deleted", {
+        detail: { id: editingId },
+      })
+    );
+    clearEditing();
+  };
+
   return (
     <form
       onSubmit={handleSubmit(onSubmit)}
       className="bg-white rounded-lg p-4 shadow-sm flex flex-col gap-4"
     >
-      {/* Bandeau mode édition + RecordedBy */}
-      {editingId && (
-        <div className="p-3 rounded bg-yellow-50 border border-yellow-200 text-sm flex items-center justify-between">
-          <div>
-            <strong>Mode édition</strong>
-            {recordedBy ? (
-              <span className="ml-2 opacity-80">
-                • Saisi par : {recordedBy.firstName || ""}{" "}
-                {recordedBy.lastName || ""}
-              </span>
-            ) : null}
-          </div>
-          <button
-            type="button"
-            className="px-3 py-1 rounded bg-red text-white"
-            onClick={clearEditing}
-          >
-            Annuler
-          </button>
-        </div>
-      )}
-
       <div className="flex flex-col gap-2 midTablet:flex-row">
         <div className="flex-1">
           <label className="text-sm font-medium">Enceinte *</label>
           <select
             {...register("fridgeRef", { required: "Requis" })}
             className="border rounded p-2 h-[44px] w-full"
-            disabled={!!editingId} // on évite de changer l’enceinte en edit (optionnel)
+            disabled={!!editingId}
           >
             <option value="">— Sélectionner —</option>
             {fridges.map((f) => (
               <option key={f._id} value={f._id}>
                 {f.name}
-                {/* volontairement sans code/référence */}
               </option>
             ))}
           </select>
@@ -259,7 +259,8 @@ export default function FridgeTemperatureForm({
       </div>
 
       <div>
-        <label className="text-sm font-medium">Note</label>
+        <label className="text-sm font-medium">Notes</label>
+
         <textarea
           rows={3}
           {...register("note")}
@@ -267,6 +268,12 @@ export default function FridgeTemperatureForm({
           placeholder="Informations complémentaires…"
         />
       </div>
+
+      {editingId && recordedBy && (
+        <div className="text-sm opacity-70">
+          Saisie par : {recordedBy.firstName || ""} {recordedBy.lastName || ""}
+        </div>
+      )}
 
       <div className="flex gap-2">
         <button
@@ -277,13 +284,22 @@ export default function FridgeTemperatureForm({
           {editingId ? "Mettre à jour" : "Enregistrer"}
         </button>
         {editingId && (
-          <button
-            type="button"
-            className="px-4 py-2 rounded bg-gray-200"
-            onClick={clearEditing}
-          >
-            Annuler
-          </button>
+          <>
+            <button
+              type="button"
+              className="px-4 py-2 rounded bg-gray-200"
+              onClick={clearEditing}
+            >
+              Annuler
+            </button>
+            <button
+              type="button"
+              className="px-4 py-2 rounded bg-red text-white"
+              onClick={handleDelete}
+            >
+              Supprimer
+            </button>
+          </>
         )}
       </div>
     </form>
