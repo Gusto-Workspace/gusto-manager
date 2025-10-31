@@ -1,6 +1,15 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
+import {
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  PlusCircle,
+  Loader2,
+  Thermometer,
+  Snowflake,
+} from "lucide-react";
 
 function ymd(d) {
   const dt = new Date(d);
@@ -217,23 +226,36 @@ export default function FridgeTemperatureList({
     );
   };
 
-  return (
-    <div className="">
-      {/* Mini-table du jour */}
-      <div className="mb-4 bg-white rounded-lg drop-shadow-sm p-4 pb-0">
-        <div className="w-full mx-auto font-semibold mb-4 text-center">
-          Saisies du jour
-        </div>
+  const pill =
+    "inline-flex items-center gap-1 rounded-md border border-darkBlue/20 bg-darkBlue/5 px-2 py-1 text-[13px] text-darkBlue/80 hover:bg-darkBlue/10 transition";
 
-        <div className="overflow-x-auto max-w-[calc(100vw-80px)] tablet:max-w-[calc(100vw-350px)] pb-4">
-          <table className="w-full text-sm">
+  return (
+    <div className="space-y-4">
+      {/* Mini-table du jour */}
+      <section className="rounded-2xl border border-darkBlue/10 bg-white p-4 shadow-sm">
+        <header className="mb-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="grid size-9 place-items-center rounded-xl bg-blue/10 text-blue">
+              <CalendarDays className="size-5" />
+            </div>
+            <h3 className="text-sm font-semibold text-darkBlue">
+              Saisies du jour
+            </h3>
+          </div>
+          <div className="text-xs text-darkBlue/50">{fmtDay(today)}</div>
+        </header>
+
+        <div className="overflow-x-auto max-w-[calc(100vw-80px)] tablet:max-w-[calc(100vw-350px)] pb-2">
+          <table className="w-full text-[13px]">
             <thead className="whitespace-nowrap">
-              <tr className="border-b sticky top-0 bg-white">
-                <th className="py-2 pr-3 min-w-[120px] text-left">Date</th>
+              <tr className="sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
+                <th className="py-2 pr-3 min-w-[120px] text-left font-medium text-darkBlue/70">
+                  Date
+                </th>
                 {fridges.map((f) => (
                   <th
                     key={f._id}
-                    className="py-2 pr-3 min-w-[140px] text-center"
+                    className="py-2 pr-3 min-w-[140px] text-center font-medium text-darkBlue/70"
                   >
                     {f.name}
                   </th>
@@ -242,7 +264,7 @@ export default function FridgeTemperatureList({
             </thead>
             <tbody>
               <tr>
-                <td className="py-2 pr-3 whitespace-nowrap font-medium bg-white z-10">
+                <td className="py-2 pr-3 whitespace-nowrap font-medium text-darkBlue">
                   {fmtDay(today)}
                 </td>
                 {fridges.map((f) => {
@@ -251,27 +273,28 @@ export default function FridgeTemperatureList({
                   return (
                     <td key={key} className="py-2 pr-3 text-center">
                       {arr.length > 0 ? (
-                        <div className="flex flex-wrap gap-2 justify-center">
+                        <div className="flex flex-wrap items-center justify-center gap-2">
                           {arr.map((it) => (
                             <button
                               key={it._id}
                               type="button"
-                              className="px-2 py-1 rounded bg-lightGrey hover:bg-gray-200 transition"
+                              className={pill}
                               title="Modifier ce relevé"
                               onClick={() => editDoc(it)}
                             >
-                              {it.value} {it.unit}
+                              <Thermometer className="size-3.5" /> {it.value}{" "}
+                              {it.unit}
                             </button>
                           ))}
                         </div>
                       ) : (
                         <button
                           type="button"
-                          className="underline underline-offset-2 text-blue"
+                          className="inline-flex items-center gap-1 rounded-md border border-blue bg-white px-2 py-1 text-[13px] text-blue hover:bg-blue/5 transition"
                           title="Ajouter un relevé pour aujourd’hui"
                           onClick={() => presetCreate(f._id)}
                         >
-                          Ajouter
+                          <PlusCircle className="size-3.5" /> Ajouter
                         </button>
                       )}
                     </td>
@@ -281,55 +304,58 @@ export default function FridgeTemperatureList({
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
 
       {/* Grande table (mois) */}
-      <div className="bg-white rounded-lg drop-shadow-sm p-4">
+      <section className="rounded-2xl border border-darkBlue/10 bg-white p-4 shadow-sm">
         {/* Navigation mois */}
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={prevMonth}
-              className="px-3 py-1 border rounded border-blue text-blue"
-            >
-              Mois précédent
-            </button>
-          </div>
-          <div className="font-semibold">
+        <header className="mb-3 flex flex-col gap-4 mobile:gap-0 mobile:flex-row items-center justify-between">
+          <button
+            onClick={prevMonth}
+            className="inline-flex w-full justify-center mobile:justify-normal mobile:w-auto items-center gap-2 rounded-md border border-blue bg-white px-3 py-1.5 text-sm font-medium text-blue transition hover:bg-blue/5"
+            aria-label="Mois précédent"
+          >
+            <ChevronLeft className="size-4" /> Précédent
+          </button>
+
+          <div className="flex items-center gap-2 text-sm font-semibold text-darkBlue">
+            <Snowflake className="size-4" />
             {curMonth.toLocaleDateString("fr-FR", {
               month: "2-digit",
               year: "numeric",
             })}
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={nextMonth}
-              className="px-3 py-1 border rounded border-blue text-blue"
-            >
-              Mois suivant
-            </button>
-          </div>
-        </div>
+
+          <button
+            onClick={nextMonth}
+            className="inline-flex w-full justify-center mobile:justify-normal mobile:w-auto items-center gap-2 rounded-md border border-blue bg-white px-3 py-1.5 text-sm font-medium text-blue transition hover:bg-blue/5"
+            aria-label="Mois suivant"
+          >
+            Suivant <ChevronRight className="size-4" />
+          </button>
+        </header>
 
         {/* Scroll X + Y */}
         <div className="overflow-x-auto overflow-y-auto max-h-[350px] max-w-[calc(100vw-80px)] tablet:max-w-[calc(100vw-350px)]">
           {loading ? (
-            <div className="h-[350px] w-full flex items-center justify-center">
-              <div className="opacity-60 italic">Chargement…</div>
+            <div className="flex h-[300px] w-full items-center justify-center text-darkBlue/60">
+              <Loader2 className="mr-2 size-4 animate-spin" /> Chargement…
             </div>
           ) : days.length === 0 ? (
-            <div className="h-[350px] w-full flex items-center justify-center">
-              <div className="opacity-60">Aucune donnée</div>
+            <div className="flex h-[300px] w-full items-center justify-center text-darkBlue/60">
+              Aucune donnée
             </div>
           ) : (
-            <table className="w-full text-sm">
+            <table className="w-full text-[13px]">
               <thead className="whitespace-nowrap">
-                <tr className="border-b sticky top-0 bg-white z-10">
-                  <th className="py-2 pr-3 min-w-[120px] text-left">Date</th>
+                <tr className="sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
+                  <th className="py-2 pr-3 min-w-[120px] text-left font-medium text-darkBlue/70">
+                    Date
+                  </th>
                   {fridges.map((f) => (
                     <th
                       key={f._id}
-                      className="py-2 pr-3 min-w-[140px] text-center"
+                      className="py-2 pr-3 min-w-[140px] text-center font-medium text-darkBlue/70"
                     >
                       {f.name}
                     </th>
@@ -339,8 +365,8 @@ export default function FridgeTemperatureList({
 
               <tbody>
                 {days.map((day) => (
-                  <tr key={day} className="border-b">
-                    <td className="py-2 pr-3 whitespace-nowrap font-medium sticky left-0 bg-white">
+                  <tr key={day} className="border-b border-darkBlue/10">
+                    <td className="sticky left-0 bg-white py-2 pr-3 whitespace-nowrap font-medium text-darkBlue">
                       {fmtDay(day)}
                     </td>
                     {fridges.map((f) => {
@@ -349,21 +375,22 @@ export default function FridgeTemperatureList({
                       return (
                         <td key={key} className="py-2 pr-3 text-center">
                           {arr.length > 0 ? (
-                            <div className="flex flex-wrap gap-2 justify-center">
+                            <div className="flex flex-wrap items-center justify-center gap-2">
                               {arr.map((it) => (
                                 <button
                                   key={it._id}
                                   type="button"
-                                  className="px-2 py-1 rounded bg-lightGrey hover:bg-gray-200 transition"
+                                  className={pill}
                                   title="Modifier ce relevé"
                                   onClick={() => editDoc(it)}
                                 >
+                                  <Thermometer className="size-3.5" />{" "}
                                   {it.value} {it.unit}
                                 </button>
                               ))}
                             </div>
                           ) : (
-                            <span className="opacity-40">-</span>
+                            <span className="text-darkBlue/30">—</span>
                           )}
                         </td>
                       );
@@ -374,7 +401,7 @@ export default function FridgeTemperatureList({
             </table>
           )}
         </div>
-      </div>
+      </section>
     </div>
   );
 }

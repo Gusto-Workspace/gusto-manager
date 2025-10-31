@@ -33,6 +33,18 @@ export default function FridgeTemperaturePage() {
     []
   );
 
+    useEffect(() => {
+    if (isFridgeModalOpen) {
+      document.body.classList.add("overflow-hidden");
+    } else {
+      document.body.classList.remove("overflow-hidden");
+    }
+
+    return () => {
+      document.body.classList.remove("overflow-hidden");
+    };
+  }, [isFridgeModalOpen]);
+
   // Fetch unique à l’ouverture de la page
   useEffect(() => {
     const fetchFridges = async () => {
@@ -88,7 +100,7 @@ export default function FridgeTemperaturePage() {
           {restaurantContext?.restaurantData?.options?.health_control_plan ? (
             <section className="flex flex-col gap-6">
               <hr className="opacity-20" />
-              <div className="flex justify-between gap-4">
+              <div className="flex justify-between flex-wrap gap-4">
                 <div className="flex items-center gap-2 min-h-[40px]">
                   <HealthSvg width={30} height={30} fillColor="#131E3690" />
                   <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2 flex-wrap">
@@ -145,8 +157,8 @@ export default function FridgeTemperaturePage() {
       {isFridgeModalOpen && (
         <FridgeManagerModal
           restaurantId={restaurantId}
-          initialFridges={fridges} // ← pas de fetch dans la modale
-          onChanged={handleFridgesChanged} // ← upsert/remove local
+          initialFridges={fridges}
+          onChanged={handleFridgesChanged}
           onClose={() => setIsFridgeModalOpen(false)}
         />
       )}

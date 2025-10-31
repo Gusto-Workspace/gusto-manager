@@ -2,6 +2,18 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import axios from "axios";
+import {
+  Thermometer,
+  Snowflake,
+  CalendarClock,
+  ChevronDown,
+  DoorOpen,
+  Lock,
+  Loader2,
+  Trash2,
+  X,
+  Info,
+} from "lucide-react";
 
 function toDatetimeLocalValue(value) {
   const base = value ? new Date(value) : new Date();
@@ -45,8 +57,12 @@ export default function FridgeTemperatureForm({
     handleSubmit,
     reset,
     watch,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm({ defaultValues: buildDefaults() });
+
+  const noteValue = watch("note");
+  const doorState = watch("doorState");
 
   const [editingId, setEditingId] = useState(null);
   const [recordedBy, setRecordedBy] = useState(null);
@@ -166,116 +182,211 @@ export default function FridgeTemperatureForm({
     clearEditing();
   };
 
+  // UI helpers
+  const setNow = () => setValue("createdAt", toDatetimeLocalValue());
+  const selectDoor = (state) => setValue("doorState", state);
+
+  const fieldWrap =
+    "group relative rounded-xl bg-white/50 backdrop-blur-sm px-3 py-2 h-[80px] transition-shadow";
+  const labelCls =
+    "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
+  const inputCls =
+    "h-11 w-full rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition placeholder:text-darkBlue/40";
+  const selectCls =
+    "h-11 w-full appearance-none rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition";
+
   return (
     <form
       onSubmit={handleSubmit(onSubmit)}
-      className="bg-white rounded-lg p-4 shadow-sm flex flex-col gap-4"
+      className="relative flex flex-col gap-2"
     >
-      <div className="flex flex-col gap-2 midTablet:flex-row">
-        <div className="flex-1">
-          <label className="text-sm font-medium">Enceinte *</label>
-          <select
-            {...register("fridgeRef", { required: "Requis" })}
-            className="border rounded p-2 h-[44px] w-full"
-            disabled={!!editingId}
-          >
-            <option value="">— Sélectionner —</option>
-            {fridges.map((f) => (
-              <option key={f._id} value={f._id}>
-                {f.name}
-              </option>
-            ))}
-          </select>
+      {/* Grid fields */}
+      <div className="grid grid-cols-1 midTablet:grid-cols-3 gap-2">
+        {/* Enceinte */}
+        <div className="w-full">
+          <div className={fieldWrap}>
+            <label className={labelCls}>
+              <Snowflake className="size-4" /> Enceinte *
+            </label>
+            <div className="relative">
+              <select
+                {...register("fridgeRef", { required: "Requis" })}
+                className={selectCls}
+                disabled={!!editingId}
+              >
+                <option value="">— Sélectionner —</option>
+                {fridges.map((f) => (
+                  <option key={f._id} value={f._id}>
+                    {f.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40" />
+            </div>
+          </div>
           {errors.fridgeRef && (
-            <p className="text-xs text-red mt-1">{errors.fridgeRef.message}</p>
+            <p className="mt-1 text-xs text-red-600">
+              {errors.fridgeRef.message}
+            </p>
           )}
         </div>
 
-        <div className="w-28">
-          <label className="text-sm font-medium">T° *</label>
-          <input
-            id="ft-form-value"
-            type="number"
-            step="0.1"
-            placeholder="ex: 3.2"
-            onWheel={(e) => e.currentTarget.blur()}
-            {...register("value", { required: "Requis" })}
-            className="border rounded p-2 h-[44px] w-full"
-          />
+        {/* Temperature */}
+        <div className="w-full">
+          <div className={fieldWrap}>
+            <label className={labelCls}>
+              <Thermometer className="size-4" /> T° *
+            </label>
+
+            <div className="relative">
+              <input
+                id="ft-form-value"
+                type="number"
+                step="0.1"
+                placeholder="ex: 3.2"
+                onWheel={(e) => e.currentTarget.blur()}
+                {...register("value", { required: "Requis" })}
+                className={`${inputCls} text-right pr-12`}
+              />
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 select-none rounded-md bg-darkBlue/10 px-2 py-1 text-xs text-darkBlue/60">
+                {selectedUnit}
+              </span>
+            </div>
+          </div>
           {errors.value && (
-            <p className="text-xs text-red mt-1">{errors.value.message}</p>
+            <p className="mt-1 text-xs text-red">{errors.value.message}</p>
           )}
         </div>
 
-        <div className="w-24">
-          <label className="text-sm font-medium">Unité</label>
-          <input
-            value={selectedUnit}
-            readOnly
-            className="border rounded p-2 h-[44px] w-full bg-gray-50"
-          />
-        </div>
+        {/* Door state segmented */}
+        <div className="w-full">
+          <div className={fieldWrap}>
+            <label className={labelCls}>
+              <DoorOpen className="size-4" />
+              Porte
+            </label>
 
-        <div className="w-40">
-          <label className="text-sm font-medium">Porte</label>
-          <select
-            {...register("doorState")}
-            className="border rounded p-2 h-[44px] w-full"
-          >
-            <option value="closed">fermée</option>
-            <option value="open">ouverte</option>
-          </select>
-        </div>
+            <div className="flex h-11 w-full items-center gap-2 rounded-lg border border-darkBlue/20 p-1">
+              <button
+                type="button"
+                onClick={() => selectDoor("closed")}
+                className={`flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1 text-xs transition ${
+                  doorState === "closed"
+                    ? "bg-darkBlue/80 text-white shadow"
+                    : "text-darkBlue/60 hover:bg-darkBlue/10 bg-white"
+                }`}
+              >
+                <Lock className="size-3.5" /> fermée
+              </button>
 
-        <div className="w-[220px]">
-          <label className="text-sm font-medium">Date/heure</label>
-          <input
-            type="datetime-local"
-            {...register("createdAt")}
-            className="border rounded p-2 h-[44px] w-full"
-          />
+              <button
+                type="button"
+                onClick={() => selectDoor("open")}
+                className={`flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1 text-xs transition ${
+                  doorState === "open"
+                    ? "bg-darkBlue/80 text-white shadow"
+                    : "text-darkBlue/60 hover:bg-darkBlue/10 bg-white"
+                }`}
+              >
+                <DoorOpen className="size-3.5" /> ouverte
+              </button>
+            </div>
+
+            {/* champ réel (caché) géré par RHF */}
+            <select {...register("doorState")} className="hidden">
+              <option value="closed">fermée</option>
+              <option value="open">ouverte</option>
+            </select>
+          </div>
         </div>
       </div>
 
-      <div>
-        <label className="text-sm font-medium">Notes</label>
-        <textarea
-          rows={3}
-          {...register("note")}
-          className="border rounded p-2 w-full resize-none"
-          placeholder="Informations complémentaires…"
-        />
-      </div>
+      <div className="flex flex-col midTablet:flex-row gap-2">
+        {/* Datetime */}
+        <div className="">
+          <div className={fieldWrap}>
+            <label className={labelCls}>
+              <CalendarClock className="size-4" /> Date / heure
+            </label>
+            <div className="relative flex items-center gap-2">
+              <input
+                type="datetime-local"
+                {...register("createdAt")}
+                className={selectCls}
+              />
+              <button
+                type="button"
+                onClick={setNow}
+                className="inline-flex h-11 items-center rounded-lg border border-darkBlue/20 bg-white px-3 text-xs font-medium text-darkBlue/70 transition  hover:text-blue/70"
+                title="Maintenant"
+              >
+                Maintenant
+              </button>
+            </div>
+          </div>
+        </div>
 
+        {/* Notes */}
+        <div className="w-full h-[80px]">
+          <div className={fieldWrap}>
+            <label className={labelCls}>Notes</label>
+
+            <div className="relative">
+              <textarea
+                rows={1}
+                {...register("note")}
+                className="w-full resize-none rounded-lg border border-darkBlue/20 bg-white p-2 pr-16 text-[15px] outline-none transition placeholder:text-darkBlue/40"
+                placeholder="Informations complémentaires…"
+              />
+              <span className="pointer-events-none absolute bottom-2 right-3 select-none text-[11px] text-darkBlue/40">
+                {noteValue?.length ?? 0}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+      {/* Meta */}
       {editingId && recordedBy && (
-        <div className="text-sm opacity-70">
+        <div className="mt-2 text-xs text-slate-500">
           Saisie par : {recordedBy.firstName || ""} {recordedBy.lastName || ""}
         </div>
       )}
 
-      <div className="flex gap-2">
+      {/* Actions */}
+      <div className="mt-4 flex flex-col mobile:flex-row gap-2">
         <button
           type="submit"
           disabled={isSubmitting}
-          className="px-4 py-2 rounded bg-blue text-white disabled:opacity-50 text-nowrap"
+          className="text-nowrap inline-flex items-center justify-center gap-2 rounded-lg bg-blue px-4 py-2 text-sm font-medium text-white shadow"
         >
-          {editingId ? "Mettre à jour" : "Enregistrer"}
+          {isSubmitting ? (
+            <>
+              <Loader2 className="size-4 animate-spin" />
+              Enregistrement…
+            </>
+          ) : (
+            <>
+              <Thermometer className="size-4" />
+              {editingId ? "Mettre à jour" : "Enregistrer"}
+            </>
+          )}
         </button>
+
         {editingId && (
-          <div className="flex justify-between w-full h-auto">
+          <div className="flex w-full items-center justify-between gap-6">
             <button
               type="button"
-              className="px-4 py-2 rounded bg-red text-white"
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-red px-4 py-2 text-sm font-medium text-white"
               onClick={clearEditing}
             >
-              Annuler
+              <X className="size-4" /> Annuler
             </button>
             <button
               type="button"
-              className="px-4 py-2 rounded border border-red text-red"
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-red bg-white px-4 py-2 text-sm font-medium text-red"
               onClick={handleDelete}
             >
-              Supprimer
+              <Trash2 className="size-4" /> Supprimer
             </button>
           </div>
         )}
