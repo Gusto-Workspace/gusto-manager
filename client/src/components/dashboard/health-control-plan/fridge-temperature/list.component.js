@@ -309,14 +309,15 @@ export default function FridgeTemperatureList({
       {/* Grande table (mois) */}
       <section className="rounded-2xl border border-darkBlue/10 bg-white p-4 shadow-sm">
         {/* Navigation mois */}
-        <header className="mb-3 flex items-center justify-between">
+        <header className="mb-3 flex flex-col gap-4 mobile:gap-0 mobile:flex-row items-center justify-between">
           <button
             onClick={prevMonth}
-            className="inline-flex items-center gap-2 rounded-md border border-blue bg-white px-3 py-1.5 text-sm font-medium text-blue transition hover:bg-blue/5"
+            className="inline-flex w-full justify-center mobile:justify-normal mobile:w-auto items-center gap-2 rounded-md border border-blue bg-white px-3 py-1.5 text-sm font-medium text-blue transition hover:bg-blue/5"
             aria-label="Mois précédent"
           >
             <ChevronLeft className="size-4" /> Précédent
           </button>
+
           <div className="flex items-center gap-2 text-sm font-semibold text-darkBlue">
             <Snowflake className="size-4" />
             {curMonth.toLocaleDateString("fr-FR", {
@@ -324,9 +325,10 @@ export default function FridgeTemperatureList({
               year: "numeric",
             })}
           </div>
+
           <button
             onClick={nextMonth}
-            className="inline-flex items-center gap-2 rounded-md border border-blue bg-white px-3 py-1.5 text-sm font-medium text-blue transition hover:bg-blue/5"
+            className="inline-flex w-full justify-center mobile:justify-normal mobile:w-auto items-center gap-2 rounded-md border border-blue bg-white px-3 py-1.5 text-sm font-medium text-blue transition hover:bg-blue/5"
             aria-label="Mois suivant"
           >
             Suivant <ChevronRight className="size-4" />
