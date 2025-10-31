@@ -33,6 +33,18 @@ export default function FridgeTemperaturePage() {
     []
   );
 
+    useEffect(() => {
+    if (isFridgeModalOpen) {
+      document.body.classList.add("overflow-hidden");
+    } else {
+      document.body.classList.remove("overflow-hidden");
+    }
+
+    return () => {
+      document.body.classList.remove("overflow-hidden");
+    };
+  }, [isFridgeModalOpen]);
+
   // Fetch unique à l’ouverture de la page
   useEffect(() => {
     const fetchFridges = async () => {
@@ -145,8 +157,8 @@ export default function FridgeTemperaturePage() {
       {isFridgeModalOpen && (
         <FridgeManagerModal
           restaurantId={restaurantId}
-          initialFridges={fridges} // ← pas de fetch dans la modale
-          onChanged={handleFridgesChanged} // ← upsert/remove local
+          initialFridges={fridges}
+          onChanged={handleFridgesChanged}
           onClose={() => setIsFridgeModalOpen(false)}
         />
       )}

@@ -34,3 +34,28 @@ body {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* Taille uniforme pour tous les champs date-like */
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"],
+input[type="month"] {
+  box-sizing: border-box;
+  height: 44px; /* cible principale */
+  padding: 0 12px;
+  font: inherit;
+}
+
+/* WebKit (Chrome/Safari) : aligne la valeur à l'intérieur sans rogner */
+input[type="date"]::-webkit-datetime-edit,
+input[type="time"]::-webkit-datetime-edit,
+input[type="datetime-local"]::-webkit-datetime-edit,
+input[type="month"]::-webkit-datetime-edit {
+  padding: 0;
+  line-height: 44px;
+}
+
+/* Garde l’icône calendrier centrée */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  margin: 0;
+}
