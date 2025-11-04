@@ -17,6 +17,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 
+/* ---------- Utils ---------- */
 function toDatetimeLocalValue(value) {
   const base = value ? new Date(value) : new Date();
   if (Number.isNaN(base.getTime())) {
@@ -27,7 +28,24 @@ function toDatetimeLocalValue(value) {
   const offset = base.getTimezoneOffset() * 60000;
   return new Date(base.getTime() - offset).toISOString().slice(0, 16);
 }
+const isLineEmpty = (row) =>
+  !row?.productName &&
+  !row?.supplierProductId &&
+  !row?.lotNumber &&
+  !row?.dlc &&
+  !row?.ddm &&
+  !row?.qty &&
+  !row?.unit &&
+  !row?.tempOnArrival &&
+  !(typeof row?.allergens === "string" && row.allergens.trim().length > 0);
+const hasOtherDataWithoutProduct = (row) =>
+  !row?.productName?.trim() && !isLineEmpty(row);
 
+const cToF = (c) => (c * 9) / 5 + 32;
+const fToC = (f) => ((f - 32) * 5) / 9;
+const round1 = (n) => (Number.isFinite(n) ? Math.round(n * 10) / 10 : n);
+
+/* ---------- Defaults ---------- */
 function buildFormDefaults(record) {
   return {
     supplier: record?.supplier ?? "",
@@ -45,6 +63,7 @@ function buildFormDefaults(record) {
             qty: l?.qty ?? "",
             unit: l?.unit ?? "",
             tempOnArrival: l?.tempOnArrival ?? "",
+            tempOnArrivalUnit: l?.tempOnArrivalUnit === "F" ? "F" : "C", // default C
             allergens: Array.isArray(l?.allergens) ? l.allergens.join(", ") : "",
             packagingCondition: l?.packagingCondition ?? "compliant",
           }))
@@ -58,6 +77,7 @@ function buildFormDefaults(record) {
               qty: "",
               unit: "",
               tempOnArrival: "",
+              tempOnArrivalUnit: "C",
               allergens: "",
               packagingCondition: "compliant",
             },
@@ -87,32 +107,22 @@ export default function ReceptionDeliveryForm({
   const { fields, append, remove } = useFieldArray({ control, name: "lines" });
   const lines = watch("lines");
 
-  // --- Collapsible state per line (keyed by field.id)
+  // --- Collapsible state per line
   const [openById, setOpenById] = useState({});
   const contentRefs = useRef({});
+  const openNewLineRef = useRef(false);
 
-  // Init/reset form
   useEffect(() => {
     reset(buildFormDefaults(initial));
   }, [initial, reset]);
 
-  // Ensure open state exists for each field (new lines open if empty)
   useEffect(() => {
     setOpenById((prev) => {
       const next = { ...prev };
       fields.forEach((f, idx) => {
         if (next[f.id] == null) {
           const l = (lines && lines[idx]) || {};
-          const isEmpty =
-            !l?.productName &&
-            !l?.qty &&
-            !l?.unit &&
-            !l?.lotNumber &&
-            !l?.dlc &&
-            !l?.ddm &&
-            !l?.tempOnArrival &&
-            !l?.allergens;
-          next[f.id] = isEmpty ? true : false; // new/empty => open
+          next[f.id] = isLineEmpty(l); // lignes vides => ouvertes
         }
       });
       Object.keys(next).forEach((k) => {
@@ -122,52 +132,77 @@ export default function ReceptionDeliveryForm({
     });
   }, [fields, lines]);
 
+  useEffect(() => {
+    if (!openNewLineRef.current) return;
+    const last = fields[fields.length - 1];
+    if (last) {
+      setOpenById((s) => ({ ...s, [last.id]: true }));
+      setTimeout(() => setFocus(`lines.${fields.length - 1}.productName`), 0);
+    }
+    openNewLineRef.current = false;
+  }, [fields, setFocus]);
+
   const toggleOpen = (id) => setOpenById((s) => ({ ...s, [id]: !s[id] }));
 
-  // ✅ Valide la ligne : exige "Produit" non vide
+  // Valider une ligne : produit requis si autres données présentes
   const validateLine = (id, idx) => {
-    const value = (lines?.[idx]?.productName || "").trim();
-    if (!value) {
+    const row = (lines && lines[idx]) || {};
+    const val = (row.productName || "").trim();
+    if (!val) {
+      if (hasOtherDataWithoutProduct(row)) {
+        setError(`lines.${idx}.productName`, { type: "manual" });
+      }
       setOpenById((s) => ({ ...s, [id]: true }));
-      setError(`lines.${idx}.productName`, { type: "manual", message: "Requis" });
       setFocus(`lines.${idx}.productName`);
       return;
     }
     setOpenById((s) => ({ ...s, [id]: false }));
   };
 
+  // Submit
   const onSubmit = async (data) => {
     const token = localStorage.getItem("token");
     if (!token) return;
+
+    (data.lines || []).forEach((row, idx) => {
+      if (hasOtherDataWithoutProduct(row)) {
+        setError(`lines.${idx}.productName`, { type: "manual" });
+        setOpenById((s) => ({ ...s, [fields[idx]?.id]: true }));
+      }
+    });
+
+    const mapped = (Array.isArray(data.lines) ? data.lines : []).map((l) => ({
+      productName: l.productName || undefined,
+      supplierProductId: l.supplierProductId || undefined,
+      lotNumber: l.lotNumber || undefined,
+      dlc: l.dlc ? new Date(l.dlc) : undefined,
+      ddm: l.ddm ? new Date(l.ddm) : undefined,
+      qty: l.qty !== "" && l.qty != null ? Number(l.qty) : undefined,
+      unit: l.unit || undefined,
+      tempOnArrival:
+        l.tempOnArrival !== "" && l.tempOnArrival != null
+          ? Number(l.tempOnArrival)
+          : undefined,
+      tempOnArrivalUnit: l.tempOnArrivalUnit === "F" ? "F" : "C",
+      allergens:
+        typeof l.allergens === "string" && l.allergens.trim().length
+          ? l.allergens
+              .split(/[;,]/g)
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : [],
+      packagingCondition: l.packagingCondition || "compliant",
+    }));
+
+    // garder uniquement les lignes avec un produit
+    const linesFiltered = mapped.filter((x) => !!x.productName);
 
     const payload = {
       supplier: data.supplier,
       receivedAt: data.receivedAt ? new Date(data.receivedAt) : undefined,
       note: data.note || undefined,
       billUrl: data.billUrl || undefined,
-      lines: (Array.isArray(data.lines) ? data.lines : [])
-        .map((l) => ({
-          productName: l.productName || undefined,
-          supplierProductId: l.supplierProductId || undefined,
-          lotNumber: l.lotNumber || undefined,
-          dlc: l.dlc ? new Date(l.dlc) : undefined,
-          ddm: l.ddm ? new Date(l.ddm) : undefined,
-          qty: l.qty !== "" && l.qty != null ? Number(l.qty) : undefined,
-          unit: l.unit || undefined,
-          tempOnArrival:
-            l.tempOnArrival !== "" && l.tempOnArrival != null
-              ? Number(l.tempOnArrival)
-              : undefined,
-          allergens:
-            typeof l.allergens === "string" && l.allergens.trim().length
-              ? l.allergens
-                  .split(/[;,]/g)
-                  .map((s) => s.trim())
-                  .filter(Boolean)
-              : [],
-          packagingCondition: l.packagingCondition || "compliant",
-        }))
-        .filter((x) => Object.values(x).some((v) => v !== undefined && v !== "")),
+      lines: linesFiltered,
     };
 
     const url = initial?._id
@@ -191,7 +226,7 @@ export default function ReceptionDeliveryForm({
   const inputCls =
     "h-11 w-full rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition placeholder:text-darkBlue/40";
   const selectCls =
-    "h-11 w-full appearance-none rounded-lg border border-darkBlue/20 bg-white px-1 text-[15px] outline-none transition";
+    "h-11 w-full appearance-none rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition";
   const btnBase =
     "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition active:scale-[0.98]";
   const chip =
@@ -203,6 +238,25 @@ export default function ReceptionDeliveryForm({
     } catch {
       return d || "";
     }
+  };
+
+  // Toggle °C/°F pour une ligne donnée (avec conversion)
+  const toggleTempUnit = (idx) => {
+    const row = (lines && lines[idx]) || {};
+    const curU = row?.tempOnArrivalUnit === "F" ? "F" : "C";
+    const nextU = curU === "C" ? "F" : "C";
+    const raw = Number(row?.tempOnArrival);
+    if (Number.isFinite(raw)) {
+      const converted = curU === "C" ? cToF(raw) : fToC(raw);
+      setValue(`lines.${idx}.tempOnArrival`, String(round1(converted)), {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+    }
+    setValue(`lines.${idx}.tempOnArrivalUnit`, nextU, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
   };
 
   return (
@@ -243,7 +297,8 @@ export default function ReceptionDeliveryForm({
 
           <button
             type="button"
-            onClick={() =>
+            onClick={() => {
+              openNewLineRef.current = true;
               append({
                 productName: "",
                 supplierProductId: "",
@@ -253,10 +308,11 @@ export default function ReceptionDeliveryForm({
                 qty: "",
                 unit: "",
                 tempOnArrival: "",
+                tempOnArrivalUnit: "C",
                 allergens: "",
                 packagingCondition: "compliant",
-              })
-            }
+              });
+            }}
             className={`${btnBase} border border-violet/20 bg-white text-violet hover:bg-violet/5`}
           >
             <PlusCircle className="size-4" /> Ajouter un produit
@@ -269,10 +325,13 @@ export default function ReceptionDeliveryForm({
             const isOpen = !!openById[id];
             const l = (lines && lines[idx]) || {};
             const pkg = l?.packagingCondition || "compliant";
+            const tempUnit = l?.tempOnArrivalUnit === "F" ? "F" : "C";
 
-            // register avec clearErrors quand on tape
             const productReg = register(`lines.${idx}.productName`);
-            const hasProdErr = !!(errors?.lines && errors.lines[idx]?.productName);
+            const needsProductNow = hasOtherDataWithoutProduct(l);
+            const hasProdErr =
+              needsProductNow ||
+              !!(errors?.lines && errors.lines[idx]?.productName);
 
             return (
               <div key={id} className="rounded-xl border border-darkBlue/10 bg-white">
@@ -304,7 +363,11 @@ export default function ReceptionDeliveryForm({
                     {!!l?.qty && <span className={chip}>{l.qty} {l.unit || ""}</span>}
                     {!!l?.lotNumber && <span className={chip}>Lot {l.lotNumber}</span>}
                     {!!l?.dlc && <span className={chip}>DLC {fmtDate(l.dlc)}</span>}
-                    {!!l?.tempOnArrival && <span className={chip}>{l.tempOnArrival}°C</span>}
+                    {!!l?.tempOnArrival && (
+                      <span className={chip}>
+                        {l.tempOnArrival}{tempUnit === "F" ? "°F" : "°C"}
+                      </span>
+                    )}
                     <span
                       className={`rounded-md px-2 py-0.5 text-[11px] ${
                         pkg === "compliant" ? "bg-green/10 text-green" : "bg-red/10 text-red"
@@ -344,9 +407,7 @@ export default function ReceptionDeliveryForm({
                               clearErrors(`lines.${idx}.productName`);
                             }
                           }}
-                          className={`${inputCls} ${
-                            hasProdErr ? "border-red focus:ring-red/20" : ""
-                          }`}
+                          className={`${inputCls} ${hasProdErr ? "border-red focus:ring-red/20" : ""}`}
                           aria-invalid={hasProdErr ? "true" : "false"}
                         />
                       </div>
@@ -431,11 +492,24 @@ export default function ReceptionDeliveryForm({
                             placeholder="ex: 4.5"
                             onWheel={(e) => e.currentTarget.blur()}
                             {...register(`lines.${idx}.tempOnArrival`)}
-                            className={`${inputCls} pr-12 text-right`}
+                            className={`${inputCls} pr-16 text-right`}
                           />
-                          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 select-none rounded-md bg-darkBlue/10 px-2 py-1 text-xs text-darkBlue/60">
-                            °C
-                          </span>
+                          {/* Toggle °C/°F */}
+                          <button
+                            type="button"
+                            onClick={() => toggleTempUnit(idx)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 select-none rounded-md bg-darkBlue/10 px-2 py-1 text-xs text-darkBlue/60 hover:bg-darkBlue/15"
+                            title="Changer l’unité"
+                          >
+                            {tempUnit === "F" ? "°F" : "°C"}
+                          </button>
+                          {/* champ caché pour stocker l’unité */}
+                          <input
+                            type="hidden"
+                            {...register(`lines.${idx}.tempOnArrivalUnit`)}
+                            value={tempUnit}
+                            readOnly
+                          />
                         </div>
                       </div>
 
@@ -451,51 +525,66 @@ export default function ReceptionDeliveryForm({
                         />
                       </div>
 
-                      {/* Segmented control Emballage */}
+                      {/* Toggle Emballage (conforme / non conforme) */}
                       <div className={fieldWrap}>
                         <label className={labelCls}>Emballage</label>
-                        <div className="flex h-11 w-full items-center gap-2 rounded-lg border border-darkBlue/20 p-1">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setValue(`lines.${idx}.packagingCondition`, "compliant", {
-                                shouldDirty: true,
-                                shouldTouch: true,
-                              })
+
+                        <label
+                          role="switch"
+                          aria-checked={pkg === "compliant"}
+                          className="group inline-flex justify-between h-11 w-full items-center gap-3 rounded-xl border border-darkBlue/20 bg-white px-3 py-2 cursor-pointer select-none"
+                          title="Basculer conforme / non conforme"
+                        >
+                          <span className="text-sm text-darkBlue/70">
+                            {pkg === "compliant" ? "Conforme" : "Non conforme"}
+                          </span>
+
+                          {/* Checkbox visuelle (non enregistrée) */}
+                          <input
+                            type="checkbox"
+                            className="sr-only peer"
+                            checked={pkg === "compliant"}
+                            onChange={() =>
+                              setValue(
+                                `lines.${idx}.packagingCondition`,
+                                pkg === "compliant" ? "non-compliant" : "compliant",
+                                { shouldDirty: true, shouldTouch: true }
+                              )
                             }
-                            className={`flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1 text-xs transition ${
-                              pkg === "compliant"
-                                ? "bg-darkBlue/80 text-white shadow"
-                                : "text-darkBlue/60 hover:bg-darkBlue/10 bg-white"
-                            }`}
+                          />
+
+                          {/* Rail + knob */}
+                          <span
+                            className="
+                              relative inline-flex h-6 w-11 items-center rounded-full
+                              bg-darkBlue/20 transition-colors
+                              peer-checked:bg-darkBlue/80 group-aria-checked:bg-darkBlue/80
+                            "
                           >
-                            conforme
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setValue(`lines.${idx}.packagingCondition`, "non-compliant", {
-                                shouldDirty: true,
-                                shouldTouch: true,
-                              })
-                            }
-                            className={`flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1 text-xs transition ${
-                              pkg === "non-compliant"
-                                ? "bg-darkBlue/80 text-white shadow"
-                                : "text-darkBlue/60 hover:bg-darkBlue/10 bg-white"
-                            }`}
-                          >
-                            non conforme
-                          </button>
-                        </div>
-                        <select {...register(`lines.${idx}.packagingCondition`)} className="hidden">
+                            <span
+                              className="
+                                absolute left-1 top-1/2 -translate-y-1/2
+                                size-4 rounded-full bg-white shadow
+                                transition-transform will-change-transform translate-x-0
+                                peer-checked:translate-x-5 group-aria-checked:translate-x-5
+                              "
+                            />
+                          </span>
+                        </label>
+
+                        {/* Champ RHF caché pour conserver la valeur string */}
+                        <select
+                          {...register(`lines.${idx}.packagingCondition`)}
+                          className="hidden"
+                          defaultValue={pkg}
+                        >
                           <option value="compliant">conforme</option>
                           <option value="non-compliant">non conforme</option>
                         </select>
                       </div>
                     </div>
 
-                    <div className="flex justify-between mt-2 gap-2 px-3">
+                    <div className="flex justify-between mt-2 gap-2">
                       <button
                         type="button"
                         onClick={() => remove(idx)}
@@ -523,7 +612,7 @@ export default function ReceptionDeliveryForm({
         </div>
       </div>
 
-      {/* Pièce jointe simple + Note */}
+      {/* Pièce jointe + Note */}
       <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
         <div className={`${fieldWrap} px-3`}>
           <label className={labelCls}>

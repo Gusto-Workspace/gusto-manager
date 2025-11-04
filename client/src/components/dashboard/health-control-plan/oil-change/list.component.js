@@ -2,10 +2,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import axios from "axios";
+import {
+  Search,
+  CalendarClock,
+  Edit3,
+  Trash2,
+  Loader2,
+  X,
+} from "lucide-react";
 
 function fmtDate(d) {
   try {
-    if (!d) return "";
+    if (!d) return "—";
     const date = new Date(d);
     return new Intl.DateTimeFormat("fr-FR", {
       day: "2-digit",
@@ -15,7 +23,7 @@ function fmtDate(d) {
       minute: "2-digit",
     }).format(date);
   } catch {
-    return d || "";
+    return d || "—";
   }
 }
 
@@ -28,9 +36,12 @@ export default function OilChangeList({
   const [items, setItems] = useState([]);
   const [meta, setMeta] = useState({ page: 1, limit: 20, pages: 1, total: 0 });
   const [loading, setLoading] = useState(false);
+
+  // Filtres
+  const [q, setQ] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [q, setQ] = useState("");
+
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -44,6 +55,7 @@ export default function OilChangeList({
   );
   const hasFullDateRange = Boolean(dateFrom && dateTo);
 
+  // Empêche Au < Du
   useEffect(() => {
     if (dateFrom && dateTo && dateTo < dateFrom) setDateTo(dateFrom);
   }, [dateFrom, dateTo]);
@@ -59,6 +71,19 @@ export default function OilChangeList({
       (a, b) => new Date(b?.performedAt || 0) - new Date(a?.performedAt || 0)
     );
 
+  // Styles (alignés sur InventoryLotList / RecipeBatchesList)
+  const fieldWrap =
+    "group relative rounded-xl bg-white/50 backdrop-blur-sm transition-shadow";
+  const labelCls =
+    "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
+  const inputCls =
+    "h-11 w-full rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition placeholder:text-darkBlue/40";
+  const selectCls =
+    "h-11 w-full appearance-none rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition";
+  const btnBase =
+    "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition active:scale-[0.98]";
+
+  // fetchData avec overrides pour reset propre
   const fetchData = async (page = 1, overrides = {}) => {
     setLoading(true);
     try {
@@ -84,17 +109,19 @@ export default function OilChangeList({
       setMeta(nextMeta);
       metaRef.current = nextMeta;
     } catch (e) {
-      console.error(e);
+      console.error("fetch oil-changes error:", e);
     } finally {
       setLoading(false);
     }
   };
 
+  // Initial fetch
   useEffect(() => {
     if (restaurantId) fetchData(1, { q: "", dateFrom: "", dateTo: "" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
 
+  // Upserts live
   useEffect(() => {
     const handleUpsert = (event) => {
       const doc = event?.detail?.doc;
@@ -105,7 +132,6 @@ export default function OilChangeList({
       const currentMeta = metaRef.current || {};
       const limit = currentMeta.limit || 20;
       const page = currentMeta.page || 1;
-
       let isNew = false;
 
       setItems((prev) => {
@@ -144,6 +170,7 @@ export default function OilChangeList({
     return () => window.removeEventListener("oil-change:upsert", handleUpsert);
   }, [restaurantId]);
 
+  // Recherche locale
   const filtered = useMemo(() => {
     if (!q) return items;
     const qq = q.toLowerCase();
@@ -180,7 +207,6 @@ export default function OilChangeList({
       await axios.delete(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
-
       const deleted = deleteTarget;
       const updatedItems = (items || []).filter(
         (item) => String(item?._id) !== String(deleted._id)
@@ -213,111 +239,127 @@ export default function OilChangeList({
   };
 
   return (
-    <div className="bg-white rounded-lg drop-shadow-sm p-4">
+    <div className="rounded-2xl border border-darkBlue/10 bg-white p-4  midTablet:p-5 shadow">
       {/* Filtres */}
-      <div className="flex flex-col gap-3 mb-4">
-        <div className="flex flex-col gap-3 midTablet:flex-row midTablet:flex-wrap midTablet:items-end">
+      <div className="flex flex-col midTablet:flex-row gap-2 mb-2">
+        {/* Recherche */}
+        <div className={`${fieldWrap} w-full`}>
+          <label className={labelCls}>
+            <Search className="size-4" /> Recherche
+          </label>
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Rechercher friteuse, marque, lot, couleur, odeur, notes…"
-            className="w-full border rounded p-2 midTablet:flex-1 min-w-[200px]"
+            placeholder="Friteuse, marque, lot, couleur/odeur, notes…"
+            className={inputCls}
           />
+        </div>
 
-          <div className="flex flex-col gap-1 w-full midTablet:flex-row midTablet:items-center midTablet:gap-2 midTablet:w-auto">
-            <label className="text-sm font-medium">Du</label>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="w-full border rounded p-2 midTablet:w-auto"
-              max={dateTo || undefined}
-            />
-          </div>
+        {/* Du */}
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <CalendarClock className="size-4" /> Réalisées du
+          </label>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className={selectCls}
+            max={dateTo || undefined}
+          />
+        </div>
 
-          <div className="flex flex-col gap-1 w-full midTablet:flex-row midTablet:items-center midTablet:gap-2 midTablet:w-auto">
-            <label className="text-sm font-medium">Au</label>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="w-full border rounded p-2 midTablet:w-auto"
-              min={dateFrom || undefined}
-            />
-          </div>
+        {/* Au */}
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <CalendarClock className="size-4" /> Au
+          </label>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className={selectCls}
+            min={dateFrom || undefined}
+          />
+        </div>
+      </div>
 
-          <div className="flex flex-col gap-2 w-full mobile:flex-row mobile:w-auto mobile:items-center">
-            <button
-              onClick={() => hasFullDateRange && fetchData(1)}
-              disabled={!hasFullDateRange}
-              title={
-                !hasFullDateRange
-                  ? "Sélectionnez 'Du' ET 'Au' pour filtrer par dates"
-                  : undefined
-              }
-              className={`px-4 py-2 rounded bg-blue text-white w-full mobile:w-32 ${
-                hasFullDateRange ? "" : "opacity-30 cursor-not-allowed"
-              }`}
-            >
-              Filtrer
-            </button>
+      {/* Actions filtres */}
+      <div className="mb-4">
+        <div className="col-span-full flex flex-col gap-2 midTablet:flex-row">
+          <button
+            onClick={() => hasFullDateRange && fetchData(1)}
+            disabled={!hasFullDateRange}
+            title={
+              !hasFullDateRange
+                ? "Sélectionnez 'Du' ET 'Au' pour filtrer par dates"
+                : undefined
+            }
+            className={`${btnBase} bg-blue text-white disabled:opacity-40`}
+            type="button"
+          >
+            Filtrer
+          </button>
 
-            <button
-              onClick={() => {
-                setQ("");
-                setDateFrom("");
-                setDateTo("");
-                fetchData(1, { q: "", dateFrom: "", dateTo: "" });
-              }}
-              disabled={!hasActiveFilters}
-              className={`px-4 py-2 rounded bg-blue text-white ${
-                hasActiveFilters ? "" : "opacity-30 cursor-not-allowed"
-              }`}
-            >
-              Réinitialiser
-            </button>
-          </div>
+          <button
+            onClick={() => {
+              setQ("");
+              setDateFrom("");
+              setDateTo("");
+              fetchData(1, { q: "", dateFrom: "", dateTo: "" });
+            }}
+            disabled={!hasActiveFilters}
+            className={`${btnBase} border border-darkBlue/20 bg-white text-darkBlue hover:border-darkBlue/30 disabled:opacity-40`}
+            type="button"
+          >
+            Réinitialiser
+          </button>
         </div>
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto max-w-[calc(100vw-80px)] tablet:max-w-[calc(100vw-355px)]">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto max-w-[calc(100vw-83px)] midTablet:max-w-[calc(100vw-92px)] tablet:max-w-[calc(100vw-360px)] rounded-xl border border-darkBlue/10 p-2">
+        <table className="w-full text-[13px]">
           <thead className="whitespace-nowrap">
-            <tr className="text-left border-b">
-              <th className="py-2 pr-3">Date</th>
-              <th className="py-2 pr-3">Friteuse</th>
-              <th className="py-2 pr-3">Litres retirés</th>
-              <th className="py-2 pr-3">TPM %</th>
-              <th className="py-2 pr-3">Filtrée</th>
-              <th className="py-2 pr-3">Marque</th>
-              <th className="py-2 pr-3">Lot huile neuve</th>
-              <th className="py-2 pr-3">Opérateur</th>
-              <th className="py-2 pr-3">Notes</th>
-              <th className="py-2 pr-3 text-right">Actions</th>
+            <tr className="sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Date</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Friteuse</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Litres retirés</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">TPM %</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Filtrée</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Marque</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Lot huile neuve</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Opérateur</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Notes</th>
+              <th className="py-2 pr-0 text-right font-medium text-darkBlue/70">Actions</th>
             </tr>
           </thead>
-          <tbody>
+
+          <tbody className="divide-y divide-darkBlue/10 [&>tr:last-child>td]:!pb-0">
             {!loading && filtered.length === 0 && (
               <tr>
-                <td colSpan={10} className="py-6 text-center opacity-60">
+                <td colSpan={10} className="py-8 text-center text-darkBlue/50">
                   Aucune opération
                 </td>
               </tr>
             )}
+
             {loading && (
               <tr>
-                <td colSpan={10} className="py-6 text-center opacity-60">
-                  Chargement…
+                <td colSpan={10} className="py-8 text-center text-darkBlue/50">
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="size-4 animate-spin" /> Chargement…
+                  </span>
                 </td>
               </tr>
             )}
+
             {!loading &&
               filtered.map((it) => (
                 <tr
                   key={it._id}
-                  className={`border-b transition-colors ${
-                    editingId === it._id ? "bg-lightGrey" : ""
+                  className={`transition-colors hover:bg-darkBlue/[0.03] ${
+                    editingId === it._id ? "bg-blue/5 ring-1 ring-blue/20" : ""
                   }`}
                 >
                   <td className="py-2 pr-3 whitespace-nowrap">
@@ -343,7 +385,9 @@ export default function OilChangeList({
                   </td>
                   <td className="py-2 pr-3 whitespace-nowrap">
                     {it?.recordedBy
-                      ? `${it.recordedBy.firstName || ""} ${it.recordedBy.lastName || ""}`.trim()
+                      ? `${it.recordedBy.firstName || ""} ${
+                          it.recordedBy.lastName || ""
+                        }`.trim() || "—"
                       : "—"}
                   </td>
                   <td className="py-2 pr-3 max-w-[320px]">
@@ -366,22 +410,22 @@ export default function OilChangeList({
                     </div>
                   </td>
                   <td className="py-2 pr-0">
-                    <div className="flex gap-2 justify-end">
+                    <div className="flex items-center justify-end gap-2">
                       <button
                         onClick={() => onEdit?.(it)}
-                        className="px-3 py-1 rounded bg-green text-white"
+                        className={`${btnBase} border border-green/50 bg-white text-green`}
                         aria-label="Éditer"
+                        type="button"
                       >
-                        Éditer
+                        <Edit3 className="size-4" /> Éditer
                       </button>
                       <button
-                        onClick={() =>
-                          setIsDeleteModalOpen(true) || setDeleteTarget(it)
-                        }
-                        className="px-3 py-1 rounded bg-red text-white"
+                        onClick={() => askDelete(it)}
+                        className={`${btnBase} border border-red bg-white text-red hover:border-red/80`}
                         aria-label="Supprimer"
+                        type="button"
                       >
-                        Supprimer
+                        <Trash2 className="size-4" /> Supprimer
                       </button>
                     </div>
                   </td>
@@ -393,22 +437,24 @@ export default function OilChangeList({
 
       {/* Pagination */}
       {meta?.pages > 1 && (
-        <div className="flex items-center justify-between mt-4">
-          <div className="text-xs opacity-70">
+        <div className="mt-4 flex items-center justify-between">
+          <div className="text-xs text-darkBlue/60">
             Page {meta.page}/{meta.pages} — {meta.total} opérations
           </div>
           <div className="flex gap-2">
             <button
               disabled={meta.page <= 1}
               onClick={() => fetchData(meta.page - 1)}
-              className="px-3 py-1 rounded border border-blue text-blue disabled:opacity-40"
+              className={`${btnBase} border border-darkBlue/20 bg-white text-darkBlue hover:border-darkBlue/30 disabled:opacity-40`}
+              type="button"
             >
               Précédent
             </button>
             <button
               disabled={meta.page >= meta.pages}
               onClick={() => fetchData(meta.page + 1)}
-              className="px-3 py-1 rounded border border-blue text-blue disabled:opacity-40"
+              className={`${btnBase} border border-darkBlue/20 bg-white text-darkBlue hover:border-darkBlue/30 disabled:opacity-40`}
+              type="button"
             >
               Suivant
             </button>
@@ -420,38 +466,40 @@ export default function OilChangeList({
       {isDeleteModalOpen &&
         isClient &&
         createPortal(
-          <div
-            className="fixed inset-0 z-[1000]"
-            aria-modal="true"
-            role="dialog"
-          >
+          <div className="fixed inset-0 z-[1000]" aria-modal="true" role="dialog">
             <div
               onClick={closeDeleteModal}
-              className="absolute inset-0 bg-black/20"
+              className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"
             />
             <div className="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
-              <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-[450px] pointer-events-auto">
-                <h2 className="text-xl font-semibold mb-6 text-center">
+              <div className="pointer-events-auto w-full max-w-[480px] rounded-2xl border border-darkBlue/10 bg-white p-5 shadow-2xl">
+                <h2 className="mb-2 text-center text-lg font-semibold text-darkBlue">
                   Supprimer cette opération ?
                 </h2>
-                <p className="text-sm text-center mb-6">
-                  Cette action est définitive. L’opération sera retirée de
-                  l’historique.
+                <p className="mb-5 text-center text-sm text-darkBlue/70">
+                  Cette action est définitive. L’opération sera retirée de l’historique.
                 </p>
-                <div className="flex gap-4 mx-auto justify-center">
+                <div className="flex items-center justify-center gap-2">
                   <button
                     onClick={onConfirmDelete}
                     disabled={deleteLoading}
-                    className="px-4 py-2 rounded-lg bg-blue text-white disabled:opacity-50"
+                    className={`${btnBase} bg-blue text-white disabled:opacity-50`}
+                    type="button"
                   >
-                    {deleteLoading ? "Suppression…" : "Confirmer"}
+                    {deleteLoading ? (
+                      <>
+                        <Loader2 className="size-4 animate-spin" /> Suppression…
+                      </>
+                    ) : (
+                      "Confirmer"
+                    )}
                   </button>
                   <button
                     type="button"
                     onClick={closeDeleteModal}
-                    className="px-4 py-2 rounded-lg text-white bg-red"
+                    className={`${btnBase} border border-red bg-red text-white`}
                   >
-                    Annuler
+                    <X className="size-4" /> Annuler
                   </button>
                 </div>
               </div>

@@ -235,7 +235,7 @@ export default function ReceptionDeliveryList({
   };
 
   return (
-    <div className="rounded-2xl border border-darkBlue/10 bg-white p-4 midTablet:p-5 shadow-2xl">
+    <div className="rounded-2xl border border-darkBlue/10 bg-white p-4  midTablet:p-5 shadow">
       {/* Filtres */}
       <div className="mb-4 grid grid-cols-1 gap-2 midTablet:grid-cols-3">
         {/* Recherche */}

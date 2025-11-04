@@ -1,7 +1,22 @@
+// app/(components)/inventory/InventoryLotForm.jsx
 "use client";
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import axios from "axios";
+import {
+  CalendarDays,
+  Hash,
+  Package as PackageIcon,
+  Thermometer,
+  ChevronDown,
+  Loader2,
+  FileText,
+} from "lucide-react";
+
+/* ------- Utils ------- */
+const cToF = (c) => (c * 9) / 5 + 32;
+const fToC = (f) => ((f - 32) * 5) / 9;
+const round1 = (n) => (Number.isFinite(n) ? Math.round(n * 10) / 10 : n);
 
 function toDateValue(value) {
   if (!value) return "";
@@ -20,7 +35,7 @@ function buildFormDefaults(record) {
       return "";
     })(),
 
-    // champs lot
+    // lot
     productName: record?.productName ?? "",
     supplier: record?.supplier ?? "",
     lotNumber: record?.lotNumber ?? "",
@@ -38,14 +53,16 @@ function buildFormDefaults(record) {
       record?.qtyRemaining !== undefined && record?.qtyRemaining !== null
         ? String(record.qtyRemaining)
         : "",
-
     unit: record?.unit ?? "",
+
     tempOnArrival:
       record?.tempOnArrival !== undefined && record?.tempOnArrival !== null
         ? String(record.tempOnArrival)
         : "",
+    tempOnArrivalUnit: record?.tempOnArrivalUnit === "F" ? "F" : "C",
 
     packagingCondition: record?.packagingCondition ?? "compliant",
+
     storageArea: record?.storageArea ?? "",
     openedAt: toDateValue(record?.openedAt),
     internalUseBy: toDateValue(record?.internalUseBy),
@@ -63,9 +80,7 @@ function formatReceptionLabel(r) {
   let dateLabel = "Date inconnue";
   if (r.receivedAt) {
     const date = new Date(r.receivedAt);
-    if (!Number.isNaN(date.getTime())) {
-      dateLabel = date.toLocaleString();
-    }
+    if (!Number.isNaN(date.getTime())) dateLabel = date.toLocaleString();
   }
   const supplierInfo = r.supplier ? ` • ${r.supplier}` : "";
   return `${dateLabel}${supplierInfo}`;
@@ -78,12 +93,11 @@ function formatLineOptionLabel(line) {
     line?.qty != null && line?.unit
       ? ` • ${line.qty} ${line.unit}`
       : line?.qty != null
-        ? ` • ${line.qty}`
-        : "";
+      ? ` • ${line.qty}`
+      : "";
   return `${name}${lot}${qty}`;
 }
 
-// Clé stable pour une ligne (évite collisions si 2 lignes identiques)
 function lineKey(line, idx) {
   const n = String(line?.productName || "");
   const l = String(line?.lotNumber || "");
@@ -107,15 +121,47 @@ export default function InventoryLotForm({
     setValue,
   } = useForm({ defaultValues: buildFormDefaults(initial) });
 
-  // ---- Réceptions (liste)
+  // ---- Styles
+  const fieldWrap =
+    "group relative rounded-xl bg-white/50 backdrop-blur-sm px-3 py-2 h-[80px] transition-shadow";
+  const labelCls =
+    "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
+  const inputCls =
+    "h-11 w-full rounded-lg border bg-white px-3 text-[15px] outline-none transition placeholder:text-darkBlue/40";
+  const selectBase =
+    "h-11 w-full appearance-none rounded-lg border bg-white px-3 text-[15px] outline-none transition";
+  const selectChevron =
+    "pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40";
+  const btnPrimary =
+    "text-nowrap inline-flex items-center justify-center gap-2 h-[38px] rounded-lg bg-blue px-4 py-2 text-sm font-medium text-white shadow disabled:opacity-60";
+  const btnSecondary =
+    "inline-flex items-center justify-center gap-2 rounded-lg border border-red bg-white px-4 py-2 text-sm font-medium text-red";
+  const errCls = "border-red ring-1 ring-red/30";
+  const okBorder = "border-darkBlue/20";
+
+  // ---- Réceptions
   const [receptions, setReceptions] = useState([]);
   const [receptionsLoading, setReceptionsLoading] = useState(false);
   const [receptionsError, setReceptionsError] = useState(false);
 
-  // ---- Réception sélectionnée (doc complet + options produits)
   const [selectedReception, setSelectedReception] = useState(null);
   const [productOptions, setProductOptions] = useState([]); // [{key, line}]
   const [selectedProductKey, setSelectedProductKey] = useState("");
+
+  const notesVal = watch("notes");
+  const packCond = watch("packagingCondition"); // "compliant" | "non-compliant"
+  const statusWatch = watch("status");
+  const qtyReceivedWatch = watch("qtyReceived");
+  const unitWatch = watch("unit");
+  const receptionIdWatch = watch("receptionId");
+  const tempUnitWatch = watch("tempOnArrivalUnit") === "F" ? "F" : "C";
+
+  const isEditing = !!initial?._id;
+  const hasSelectedProduct = !!(selectedReception && selectedProductKey);
+  const showCombinedQty = isEditing || hasSelectedProduct;
+
+  // Quand un produit est sélectionné -> on lock les champs préremplis
+  const isPrefilledLock = hasSelectedProduct;
 
   const isMounted = useRef(true);
   useEffect(
@@ -138,8 +184,8 @@ export default function InventoryLotForm({
   useEffect(() => {
     if (!restaurantId) {
       setReceptions([]);
+      return;
     }
-
     let cancelled = false;
     const loadReceptions = async () => {
       setReceptionsLoading(true);
@@ -172,17 +218,15 @@ export default function InventoryLotForm({
         if (!cancelled) setReceptionsLoading(false);
       }
     };
-    if (restaurantId) loadReceptions();
+    loadReceptions();
     return () => {
       cancelled = true;
     };
   }, [restaurantId]);
 
-  // Options de réception triées (récents d'abord)
+  // Options de réception triées
   const receptionOptions = useMemo(() => {
     const list = Array.isArray(receptions) ? [...receptions] : [];
-
-    // inclure la réception "initiale" si elle n'est pas dans la page
     const initialReception =
       initial && typeof initial.receptionId === "object" && initial.receptionId
         ? initial.receptionId
@@ -193,8 +237,6 @@ export default function InventoryLotForm({
       );
       if (!hasInitial) list.push(initialReception);
     }
-
-    // unique par _id
     const seen = new Set();
     const uniq = [];
     for (const r of list) {
@@ -204,7 +246,6 @@ export default function InventoryLotForm({
       seen.add(k);
       uniq.push(r);
     }
-
     return uniq.sort((a, b) => {
       const ta = a?.receivedAt ? new Date(a.receivedAt).getTime() : 0;
       const tb = b?.receivedAt ? new Date(b.receivedAt).getTime() : 0;
@@ -212,9 +253,7 @@ export default function InventoryLotForm({
     });
   }, [receptions, initial]);
 
-  const receptionIdWatch = watch("receptionId");
-
-  // Charger le détail d'une réception sélectionnée + construire les options produit
+  // Charger le détail d'une réception + options produit
   const fetchReception = useCallback(
     async (receptionId) => {
       if (!receptionId) {
@@ -235,20 +274,13 @@ export default function InventoryLotForm({
         const { data } = await axios.get(url, {
           headers: { Authorization: `Bearer ${token}` },
         });
-
         const lines = Array.isArray(data?.lines) ? data.lines : [];
-        // Produits triés alpha (insensible à la casse/accents)
         const sorted = [...lines].sort((a, b) => {
           const A = String(a?.productName || "");
           const B = String(b?.productName || "");
           return A.localeCompare(B, "fr", { sensitivity: "base" });
         });
-
-        const opts = sorted.map((ln, i) => ({
-          key: lineKey(ln, i),
-          line: ln,
-        }));
-
+        const opts = sorted.map((ln, i) => ({ key: lineKey(ln, i), line: ln }));
         setSelectedReception(data);
         setProductOptions(opts);
         setSelectedProductKey("");
@@ -262,17 +294,14 @@ export default function InventoryLotForm({
     [restaurantId]
   );
 
-  // Quand l'utilisateur change la réception → (re)charge ses lignes
   useEffect(() => {
     fetchReception(receptionIdWatch);
   }, [receptionIdWatch, fetchReception]);
 
-  // Pré-remplir les champs à partir d’une ligne
+  // Pré-remplir depuis une ligne de réception (inclut l'unité de T°)
   function prefillFromReceptionLine(line, reception) {
     if (!line) return;
     const r = reception || selectedReception || {};
-
-    // 1) Champs lot directs
     setValue("productName", line.productName || "", {
       shouldDirty: true,
       shouldValidate: true,
@@ -282,24 +311,30 @@ export default function InventoryLotForm({
     setValue("dlc", toDateValue(line.dlc), { shouldDirty: true });
     setValue("ddm", toDateValue(line.ddm), { shouldDirty: true });
 
-    // 2) Quantités / unité
     if (line.qty != null) {
       setValue("qtyReceived", String(line.qty), {
         shouldDirty: true,
         shouldValidate: true,
       });
+    } else {
+      setValue("qtyReceived", "", { shouldDirty: true });
     }
     setValue("unit", line.unit || "", {
       shouldDirty: true,
       shouldValidate: true,
     });
 
-    // 3) Conditions & allergènes
     if (line.tempOnArrival != null) {
       setValue("tempOnArrival", String(line.tempOnArrival), {
         shouldDirty: true,
       });
+    } else {
+      setValue("tempOnArrival", "", { shouldDirty: true });
     }
+    setValue("tempOnArrivalUnit", line?.tempOnArrivalUnit === "F" ? "F" : "C", {
+      shouldDirty: true,
+    });
+
     if (Array.isArray(line.allergens) && line.allergens.length) {
       setValue("allergens", line.allergens.join(", "), { shouldDirty: true });
     } else {
@@ -311,6 +346,24 @@ export default function InventoryLotForm({
       });
     }
   }
+
+  // Toggle °C/°F (avec conversion si valeur numérique présente)
+  const toggleTempUnit = () => {
+    const curU = tempUnitWatch; // "C" | "F"
+    const nextU = curU === "C" ? "F" : "C";
+    const raw = Number(watch("tempOnArrival"));
+    if (Number.isFinite(raw)) {
+      const converted = curU === "C" ? cToF(raw) : fToC(raw);
+      setValue("tempOnArrival", String(round1(converted)), {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+    }
+    setValue("tempOnArrivalUnit", nextU, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+  };
 
   // Soumission
   const onSubmit = async (data) => {
@@ -336,20 +389,22 @@ export default function InventoryLotForm({
 
       qtyReceived:
         data.qtyReceived !== "" && data.qtyReceived != null
-          ? Number(data.qtyReceived)
+          ? Number(String(data.qtyReceived).replace(",", "."))
           : undefined,
 
-      // en création, on ne l’envoie pas → la route mettra qtyRemaining = qtyReceived
+      // Qté restante: même unité que "Quantité" (pas de conversion)
       qtyRemaining:
         initial?._id && data.qtyRemaining !== "" && data.qtyRemaining != null
-          ? Number(data.qtyRemaining)
+          ? Number(String(data.qtyRemaining).replace(",", "."))
           : undefined,
 
       unit: data.unit || undefined,
+
       tempOnArrival:
         data.tempOnArrival !== "" && data.tempOnArrival != null
-          ? Number(data.tempOnArrival)
+          ? Number(String(data.tempOnArrival).replace(",", "."))
           : undefined,
+      tempOnArrivalUnit: data.tempOnArrivalUnit === "F" ? "F" : "C",
 
       packagingCondition: data.packagingCondition || "compliant",
       storageArea: data.storageArea || undefined,
@@ -385,99 +440,107 @@ export default function InventoryLotForm({
     onSuccess?.(saved);
   };
 
+  const isCompliant = (packCond || "compliant") !== "non-compliant";
+
   return (
     <form
       onSubmit={handleSubmit(onSubmit)}
-      className="bg-white rounded-lg p-4 shadow-sm flex flex-col gap-6"
+      className="relative flex flex-col gap-2"
     >
-      {/* Ligne réception associée */}
-      <div className="flex gap-3 midTablet:flex-row flex-col">
-        <div className="flex-1">
-          <label className="text-sm font-medium">Réception associée</label>
-          <select
-            {...register("receptionId")}
-            className="border rounded p-2 h-[44px] w-full"
-          >
-            <option value="">Aucune réception liée</option>
-            {receptionOptions.map((reception) => (
-              <option key={reception._id} value={String(reception._id)}>
-                {formatReceptionLabel(reception)}
+      {/* Réception associée */}
+      <div className="grid grid-cols-1 gap-2">
+        <div className={fieldWrap}>
+          <label className={labelCls}>Réception associée</label>
+          <div className="relative">
+            <select
+              {...register("receptionId")}
+              className={`${selectBase} ${okBorder}`}
+            >
+              <option value="">
+                {receptionsLoading ? "Chargement…" : "Aucune réception liée"}
               </option>
-            ))}
-          </select>
+              {receptionOptions.map((reception) => (
+                <option key={reception._id} value={String(reception._id)}>
+                  {formatReceptionLabel(reception)}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className={selectChevron} />
+          </div>
           {receptionsError && (
-            <p className="text-xs text-red mt-1">
+            <p className="mt-1 text-xs text-red">
               Erreur lors du chargement des réceptions.
             </p>
           )}
         </div>
       </div>
 
-      {/* Produit : input texte (sans réception) OU select (avec réception) */}
-      <div className="flex flex-col gap-4 midTablet:flex-row">
-        <div className="flex-1">
-          <label className="text-sm font-medium">Produit *</label>
+      {/* Produit & Fournisseur */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <PackageIcon className="size-4" />
+            Produit *
+          </label>
 
           {!selectedReception ? (
-            <>
-              <input
-                type="text"
-                placeholder="Désignation"
-                {...register("productName", { required: "Requis" })}
-                className="border rounded p-2 h-[44px] w-full"
-                autoComplete="off"
-                spellCheck={false}
-                autoCorrect="off"
-              />
-              {errors.productName && (
-                <p className="text-xs text-red mt-1">
-                  {errors.productName.message}
-                </p>
-              )}
-            </>
+            <input
+              type="text"
+              placeholder="Désignation"
+              {...register("productName", { required: true })}
+              className={`${inputCls} ${errors.productName ? errCls : okBorder}`}
+              autoComplete="off"
+              spellCheck={false}
+              autoCorrect="off"
+            />
           ) : (
             <>
-              <select
-                value={selectedProductKey}
-                onChange={(e) => {
-                  const key = e.target.value;
-                  setSelectedProductKey(key);
-                  const opt = productOptions.find((o) => o.key === key);
-                  if (opt)
-                    prefillFromReceptionLine(opt.line, selectedReception);
-                }}
-                className={`border rounded p-2 h-[44px] w-full ${
-                  errors.productName ? "border-red ring-1 ring-red" : ""
-                }`}
-              >
-                <option value="">Choisir un produit…</option>
-                {productOptions.map((opt) => (
-                  <option key={opt.key} value={opt.key}>
-                    {formatLineOptionLabel(opt.line)}
-                  </option>
-                ))}
-              </select>
-              {/* on garde la contrainte "required" sur productName via RHF */}
+              <div className="relative">
+                <select
+                  value={selectedProductKey}
+                  onChange={(e) => {
+                    const key = e.target.value;
+                    setSelectedProductKey(key);
+                    const opt = productOptions.find((o) => o.key === key);
+                    if (opt)
+                      prefillFromReceptionLine(opt.line, selectedReception);
+                    setValue("productName", opt?.line?.productName || "", {
+                      shouldValidate: true,
+                      shouldDirty: true,
+                    });
+                  }}
+                  className={`${selectBase} ${errors.productName ? errCls : okBorder}`}
+                >
+                  <option value="">Choisir un produit…</option>
+                  {productOptions.map((opt) => (
+                    <option key={opt.key} value={opt.key}>
+                      {formatLineOptionLabel(opt.line)}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className={selectChevron} />
+              </div>
+              {/* contrainte "required" via hidden */}
               <input
                 type="hidden"
-                {...register("productName", { required: "Requis" })}
+                {...register("productName", { required: true })}
               />
-              {errors.productName && (
-                <p className="text-xs text-red mt-1">
-                  {errors.productName.message}
-                </p>
-              )}
             </>
           )}
         </div>
 
-        <div className="flex-1">
-          <label className="text-sm font-medium">Fournisseur</label>
+        <div className={fieldWrap}>
+          <label className={labelCls}>Fournisseur</label>
           <input
             type="text"
             placeholder="Nom du fournisseur"
             {...register("supplier")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={`${inputCls} ${okBorder} ${
+              isPrefilledLock ? "opacity-60 pointer-events-none" : ""
+            }`}
+            readOnly={isPrefilledLock}
+            aria-readonly={isPrefilledLock}
+            tabIndex={isPrefilledLock ? -1 : undefined}
             autoComplete="off"
             spellCheck={false}
             autoCorrect="off"
@@ -486,232 +549,387 @@ export default function InventoryLotForm({
       </div>
 
       {/* Traçabilité */}
-      <div className="flex flex-col gap-4 midTablet:flex-row">
-        <div className="flex-1">
-          <label className="text-sm font-medium">N° lot *</label>
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <Hash className="size-4" />
+            N° lot *
+          </label>
           <input
             type="text"
             placeholder="Lot"
-            {...register("lotNumber", { required: "Requis" })}
-            className="border rounded p-2 h-[44px] w-full"
+            {...register("lotNumber", { required: true })}
+            className={`${inputCls} ${
+              errors.lotNumber ? errCls : okBorder
+            } ${isPrefilledLock ? "opacity-60 pointer-events-none" : ""}`}
+            readOnly={isPrefilledLock}
+            aria-readonly={isPrefilledLock}
+            tabIndex={isPrefilledLock ? -1 : undefined}
             autoComplete="off"
             spellCheck={false}
             autoCorrect="off"
           />
-          {errors.lotNumber && (
-            <p className="text-xs text-red mt-1">{errors.lotNumber.message}</p>
-          )}
         </div>
-        <div className="flex-1">
-          <label className="text-sm font-medium">DLC</label>
+
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <CalendarDays className="size-4" />
+            DLC
+          </label>
           <input
             type="date"
             {...register("dlc")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={`${selectBase} ${okBorder} ${
+              isPrefilledLock ? "opacity-60 pointer-events-none" : ""
+            }`}
+            aria-disabled={isPrefilledLock}
+            tabIndex={isPrefilledLock ? -1 : undefined}
+            onFocus={(e) => {
+              if (isPrefilledLock) e.target.blur();
+            }}
           />
         </div>
-        <div className="flex-1">
-          <label className="text-sm font-medium">DDM</label>
+
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <CalendarDays className="size-4" />
+            DDM
+          </label>
           <input
             type="date"
             {...register("ddm")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={`${selectBase} ${okBorder} ${
+              isPrefilledLock ? "opacity-60 pointer-events-none" : ""
+            }`}
+            aria-disabled={isPrefilledLock}
+            tabIndex={isPrefilledLock ? -1 : undefined}
+            onFocus={(e) => {
+              if (isPrefilledLock) e.target.blur();
+            }}
           />
         </div>
       </div>
 
       {/* Quantités */}
-      <div className="flex gap-3 midTablet:flex-row flex-col">
-        <div className="flex-1">
-          <label className="text-sm font-medium">Qté reçue *</label>
-          <input
-            type="number"
-            step="0.001"
-            onWheel={(e) => e.currentTarget.blur()}
-            placeholder="ex: 5"
-            {...register("qtyReceived", { required: "Requis" })}
-            className="border rounded p-2 h-[44px] w-full"
-          />
-          {errors.qtyReceived && (
-            <p className="text-xs text-red mt-1">
-              {errors.qtyReceived.message}
-            </p>
-          )}
-        </div>
-        {initial?._id && (
-          <div className="flex-1">
-            <label className="text-sm font-medium">Qté restante</label>
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
+        <div className={fieldWrap}>
+          <label className={labelCls}>Quantité *</label>
+
+          {showCombinedQty ? (
+            <>
+              {/* combiné en lecture seule */}
+              <input
+                type="text"
+                readOnly
+                value={`${qtyReceivedWatch || ""}${
+                  unitWatch ? ` ${unitWatch}` : ""
+                }`}
+                className={`${inputCls} ${okBorder} opacity-80`}
+                title={
+                  isEditing
+                    ? "Non modifiable en édition"
+                    : "Prérempli depuis la réception"
+                }
+              />
+              {/* cachés */}
+              <input type="hidden" {...register("qtyReceived")} />
+              <input type="hidden" {...register("unit")} />
+            </>
+          ) : (
             <input
               type="number"
               step="0.001"
               onWheel={(e) => e.currentTarget.blur()}
-              placeholder="ex: 3"
-              {...register("qtyRemaining")}
-              className="border rounded p-2 h-[44px] w-full"
+              placeholder="ex: 5"
+              {...register("qtyReceived", {
+                validate: (v) => v !== "" && v != null, // requis seulement si pas combiné
+              })}
+              className={`${inputCls} ${errors.qtyReceived ? errCls : okBorder}`}
             />
-          </div>
-        )}
-        <div className="w-36">
-          <label className="text-sm font-medium">Unité *</label>
-          <select
-            {...register("unit", { required: "Requis" })}
-            className="border rounded p-2 h-[44px] w-full"
-          >
-            <option value="">—</option>
-            <option value="kg">kg</option>
-            <option value="g">g</option>
-            <option value="L">L</option>
-            <option value="mL">mL</option>
-            <option value="unit">unité</option>
-          </select>
-          {errors.unit && (
-            <p className="text-xs text-red mt-1">{errors.unit.message}</p>
           )}
         </div>
+
+        {/* Unité (masquée si combiné) */}
+        {!showCombinedQty ? (
+          <div className={fieldWrap}>
+            <label className={labelCls}>Unité *</label>
+            <div className="relative">
+              <select
+                {...register("unit", {
+                  validate: (v) => !!v, // requis seulement si pas combiné
+                })}
+                className={`${selectBase} ${errors.unit ? errCls : okBorder}`}
+              >
+                <option value="">—</option>
+                <option value="kg">kg</option>
+                <option value="g">g</option>
+                <option value="L">L</option>
+                <option value="mL">mL</option>
+                <option value="unit">unité</option>
+              </select>
+              <ChevronDown className={selectChevron} />
+            </div>
+          </div>
+        ) : (
+          <div className="h-0 midTablet:h-[80px]" />
+        )}
+
+        {/* Qté restante (édition) — même unité que "Quantité" */}
+        {isEditing ? (
+          <div className={fieldWrap}>
+            <label className={labelCls}>Qté restante</label>
+            <div className="relative">
+              <input
+                type="number"
+                step="0.001"
+                onWheel={(e) => e.currentTarget.blur()}
+                placeholder="ex: 3"
+                {...register("qtyRemaining")}
+                className={`${inputCls} ${okBorder} pr-6 text-right`}
+              />
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-darkBlue/50">
+                {unitWatch || "—"}
+              </span>
+            </div>
+            
+          </div>
+        ) : (
+          <div className="h-0 midTablet:h-[80px]" />
+        )}
       </div>
 
-      {/* Conditions & Allergènes */}
-      <div className="flex gap-3 midTablet:flex-row flex-col">
-        <div className="flex-1">
-          <label className="text-sm font-medium">T° à l’arrivée</label>
-          <input
-            type="number"
-            step="0.1"
-            placeholder="ex: 4.5"
-            onWheel={(e) => e.currentTarget.blur()}
-            {...register("tempOnArrival")}
-            className="border rounded p-2 h-[44px] w-full"
-          />
+      {/* Conditions & Allergènes & Toggle emballage */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <Thermometer className="size-4" />
+            T° à l’arrivée
+          </label>
+          <div className="relative">
+            <input
+              type="number"
+              step="0.1"
+              placeholder="ex: 4.5"
+              onWheel={(e) => e.currentTarget.blur()}
+              {...register("tempOnArrival")}
+              className={`${inputCls} ${okBorder} pr-8 text-right ${
+                isPrefilledLock ? "opacity-60 pointer-events-none" : ""
+              }`}
+              readOnly={isPrefilledLock}
+              aria-readonly={isPrefilledLock}
+              tabIndex={isPrefilledLock ? -1 : undefined}
+            />
+            {/* Toggle °C/°F au clic */}
+            <button
+              type="button"
+              onClick={toggleTempUnit}
+              className={`absolute right-3 top-1/2 -translate-y-1/2 select-none rounded-md bg-darkBlue/10 px-2 py-1 text-xs text-darkBlue/60 hover:bg-darkBlue/15 ${
+                isPrefilledLock ? "opacity-50 pointer-events-none" : ""
+              }`}
+              aria-disabled={isPrefilledLock}
+              tabIndex={isPrefilledLock ? -1 : undefined}
+              title="Changer l’unité"
+            >
+              {tempUnitWatch === "F" ? "°F" : "°C"}
+            </button>
+            {/* champ caché pour soumettre l’unité */}
+            <input type="hidden" {...register("tempOnArrivalUnit")} />
+          </div>
         </div>
-        <div className="flex-1">
-          <label className="text-sm font-medium">Allergènes</label>
+
+        <div className={fieldWrap}>
+          <label className={labelCls}>Allergènes</label>
           <input
             type="text"
             placeholder="séparés par virgules (ex: gluten, lait)"
             {...register("allergens")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={`${inputCls} ${okBorder} ${
+              isPrefilledLock ? "opacity-60 pointer-events-none" : ""
+            }`}
+            readOnly={isPrefilledLock}
+            aria-readonly={isPrefilledLock}
+            tabIndex={isPrefilledLock ? -1 : undefined}
             autoComplete="off"
             spellCheck={false}
             autoCorrect="off"
           />
         </div>
-        <div className="w-48">
-          <label className="text-sm font-medium">Emballage</label>
-          <select
-            {...register("packagingCondition")}
-            className="border rounded p-2 h-[44px] w-full"
+
+        {/* Switch Emballage */}
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <PackageIcon className="size-4" />
+            Emballage
+          </label>
+
+          <label
+            role="switch"
+            aria-checked={isCompliant}
+            className={`group inline-flex justify-between h-11 w-full items-center gap-3 rounded-xl border border-darkBlue/20 bg-white px-3 py-2 select-none ${
+              isPrefilledLock ? "opacity-60 pointer-events-none" : "cursor-pointer"
+            }`}
           >
-            <option value="compliant">conforme</option>
-            <option value="non-compliant">non conforme</option>
-          </select>
+            <span className="text-sm text-darkBlue/70">
+              {isCompliant ? "Conforme" : "Non conforme"}
+            </span>
+
+            <input
+              type="checkbox"
+              className="sr-only"
+              checked={isCompliant}
+              tabIndex={isPrefilledLock ? -1 : undefined}
+              onChange={(e) => {
+                if (isPrefilledLock) return;
+                setValue(
+                  "packagingCondition",
+                  e.target.checked ? "compliant" : "non-compliant",
+                  { shouldDirty: true }
+                );
+              }}
+            />
+
+            <span className="relative inline-flex h-6 w-11 items-center rounded-full bg-darkBlue/20 transition-colors group-aria-checked:bg-darkBlue/80">
+              <span className="absolute left-1 top-1/2 -translate-y-1/2 size-4 rounded-full bg-white shadow transition-transform will-change-transform translate-x-0 group-aria-checked:translate-x-5" />
+            </span>
+          </label>
         </div>
       </div>
 
       {/* Stockage & dates d’ouverture */}
-      <div className="flex gap-3 midTablet:flex-row flex-col">
-        <div className="flex-1">
-          <label className="text-sm font-medium">Zone de stockage</label>
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
+        <div className={fieldWrap}>
+          <label className={labelCls}>Zone de stockage</label>
           <input
             type="text"
             placeholder="ex: fridge-1, dry, freezer-2"
             {...register("storageArea")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={`${inputCls} ${okBorder}`}
             autoComplete="off"
             spellCheck={false}
             autoCorrect="off"
           />
         </div>
-        <div className="flex-1">
-          <label className="text-sm font-medium">Ouvert le</label>
+
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <CalendarDays className="size-4" />
+            Ouvert le
+          </label>
           <input
             type="date"
             {...register("openedAt")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={`${selectBase} ${okBorder}`}
           />
         </div>
-        <div className="flex-1">
-          <label className="text-sm font-medium">DLU après ouverture</label>
+
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <CalendarDays className="size-4" />
+            DLU après ouverture
+          </label>
           <input
             type="date"
             {...register("internalUseBy")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={`${selectBase} ${okBorder}`}
           />
         </div>
       </div>
 
-      {/* Statut */}
-      <div className="flex gap-3 midTablet:flex-row flex-col">
-        <div className="w-60">
-          <label className="text-sm font-medium">Statut</label>
-          <select
-            {...register("status")}
-            className="border rounded p-2 h-[44px] w-full"
-          >
-            <option value="in_stock">En stock</option>
-            <option value="used">Utilisé</option>
-            <option value="expired">Périmé</option>
-            <option value="discarded">Jeté</option>
-            <option value="returned">Retourné</option>
-            <option value="recalled">Rappel</option>
-          </select>
+      {/* Statut & Motif */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
+        <div className={fieldWrap}>
+          <label className={labelCls}>Statut</label>
+          <div className="relative">
+            <select
+              {...register("status")}
+              className={`${selectBase} ${okBorder}`}
+            >
+              <option value="in_stock">En stock</option>
+              <option value="used">Utilisé</option>
+              <option value="expired">Périmé</option>
+              <option value="discarded">Jeté</option>
+              <option value="returned">Retourné</option>
+              <option value="recalled">Rappel</option>
+            </select>
+            <ChevronDown className={selectChevron} />
+          </div>
         </div>
-        <div className="flex-1">
-          <label className="text-sm font-medium">
-            Motif (si jeté/retourné/rappel)
-          </label>
+
+        <div className={`${fieldWrap} midTablet:col-span-2`}>
+          <label className={labelCls}>Motif (si jeté/retourné/rappel)</label>
           <input
             type="text"
             placeholder="motif"
             {...register("disposalReason")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={`${inputCls} ${okBorder}`}
             autoComplete="off"
             spellCheck={false}
             autoCorrect="off"
           />
-          {["discarded", "returned", "recalled"].includes(watch("status")) && (
-            <p className="text-xs opacity-70 mt-1">
+          {["discarded", "returned", "recalled"].includes(statusWatch) && (
+            <p className="mt-1 text-xs text-darkBlue/60">
               Recommandé : renseigner le motif lorsque le statut est{" "}
-              {watch("status")}.
+              {statusWatch}.
             </p>
           )}
         </div>
       </div>
 
-      {/* Liens & notes */}
-      <div className="flex gap-3 midTablet:flex-row flex-col">
-        <div className="flex-1">
-          <label className="text-sm font-medium">Code étiquette</label>
+      {/* Code étiquette & Notes */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
+        <div className={fieldWrap}>
+          <label className={labelCls}>Code étiquette</label>
           <input
             type="text"
             placeholder="ex: QR-ABC123"
             {...register("labelCode")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={`${inputCls} ${okBorder}`}
             autoComplete="off"
             spellCheck={false}
             autoCorrect="off"
           />
         </div>
-      </div>
 
-      <div>
-        <label className="text-sm font-medium">Notes</label>
-        <textarea
-          rows={4}
-          {...register("notes")}
-          className="border rounded p-2 resize-none w-full min-h-[96px]"
-          placeholder="Observations, info d’étiquette interne…"
-        />
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <FileText className="size-4" />
+            Notes
+          </label>
+          <div className="relative">
+            <textarea
+              rows={1}
+              {...register("notes")}
+              className="w-full resize-none rounded-lg border border-darkBlue/20 bg-white p-[10px] pr-16 text-[15px] outline-none transition placeholder:text-darkBlue/40"
+              placeholder="Observations, info d’étiquette interne…"
+            />
+            <span className="pointer-events-none absolute bottom-2 right-3 select-none text-[11px] text-darkBlue/40">
+              {(notesVal?.length ?? 0).toString()}
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* Actions */}
-      <div className="flex gap-2">
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="px-4 py-2 rounded bg-blue text-white disabled:opacity-50"
-        >
-          {initial?._id ? "Mettre à jour" : "Enregistrer"}
+      <div className="flex flex-col gap-2 mt-3 mobile:flex-row">
+        <button type="submit" disabled={isSubmitting} className={btnPrimary}>
+          {isSubmitting ? (
+            <>
+              <Loader2 className="size-4 animate-spin" />
+              Enregistrement…
+            </>
+          ) : initial?._id ? (
+            <>
+              <FileText className="size-4" />
+              Mettre à jour
+            </>
+          ) : (
+            <>
+              <FileText className="size-4" />
+              Enregistrer
+            </>
+          )}
         </button>
+
         {initial?._id && (
           <button
             type="button"
@@ -722,7 +940,7 @@ export default function InventoryLotForm({
               setSelectedProductKey("");
               onCancel?.();
             }}
-            className="px-4 py-2 rounded text-white bg-red"
+            className={btnSecondary}
           >
             Annuler
           </button>

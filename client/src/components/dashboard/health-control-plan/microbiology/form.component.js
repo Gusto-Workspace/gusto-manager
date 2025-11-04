@@ -2,6 +2,14 @@
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import axios from "axios";
+import {
+  CalendarClock,
+  FileText,
+  Hash,
+  Link as LinkIcon,
+  ChevronDown,
+  Loader2,
+} from "lucide-react";
 
 function toDatetimeLocal(value) {
   if (!value) return "";
@@ -54,6 +62,8 @@ export default function MicrobiologyForm({
     register,
     handleSubmit,
     reset,
+    setValue,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm({ defaultValues: buildDefaults(initial) });
 
@@ -114,81 +124,119 @@ export default function MicrobiologyForm({
     onSuccess?.(saved);
   };
 
+  // Helpers
+  const setNow = (field) =>
+    setValue(field, toDatetimeLocal(new Date()), {
+      shouldDirty: true,
+      shouldTouch: true,
+    });
+
+  // Styles
+  const fieldWrap =
+    "group relative rounded-xl bg-white/50 backdrop-blur-sm px-3 py-2 h-[80px] transition-shadow";
+  const labelCls =
+    "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
+  const inputCls =
+    "h-11 w-full rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition placeholder:text-darkBlue/40";
+  const selectCls =
+    "h-11 w-full appearance-none rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition";
+  const btnBase =
+    "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition active:scale-[0.98]";
+
+  const notesVal = watch("notes");
+  const passed = watch("passed"); // boolean
+
   return (
     <form
       onSubmit={handleSubmit(onSubmit)}
-      className="bg-white rounded-lg p-4 shadow-sm flex flex-col gap-6"
+      className="relative flex flex-col gap-2"
     >
       {/* Ligne 1 : Échantillon */}
-      <div className="flex flex-col gap-4 mobile:flex-row flex-wrap">
-        <div className="w-full mobile:w-56">
-          <label className="text-sm font-medium">Type d’échantillon *</label>
-          <select
-            {...register("sampleType", { required: "Requis" })}
-            className="border rounded p-2 h-[44px] w-full"
-          >
-            <option value="surface">Surface</option>
-            <option value="food">Aliment</option>
-            <option value="water">Eau</option>
-          </select>
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
+        {/* Type d’échantillon */}
+        <div className={fieldWrap}>
+          <label className={labelCls}>Type d’échantillon *</label>
+          <div className="relative">
+            <select
+              {...register("sampleType", { required: "Requis" })}
+              className={selectCls}
+            >
+              <option value="surface">Surface</option>
+              <option value="food">Aliment</option>
+              <option value="water">Eau</option>
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40" />
+          </div>
           {errors.sampleType && (
-            <p className="text-xs text-red mt-1">{errors.sampleType.message}</p>
+            <p className="mt-1 text-xs text-red">{errors.sampleType.message}</p>
           )}
         </div>
-        <div className="w-full mobile:w-72">
-          <label className="text-sm font-medium">Prélevé le *</label>
-          <input
-            type="datetime-local"
-            {...register("sampledAt", { required: "Requis" })}
-            className="border rounded p-2 h-[44px] w-full"
-          />
+
+        {/* Prélevé le */}
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <CalendarClock className="size-4" /> Prélevé le *
+          </label>
+          <div className="relative flex items-center gap-2">
+            <input
+              type="datetime-local"
+              {...register("sampledAt", { required: "Requis" })}
+              className={selectCls}
+            />
+          </div>
           {errors.sampledAt && (
-            <p className="text-xs text-red mt-1">{errors.sampledAt.message}</p>
+            <p className="mt-1 text-xs text-red">{errors.sampledAt.message}</p>
           )}
         </div>
-        <div className="w-full mobile:w-72">
-          <label className="text-sm font-medium">Analysé le</label>
-          <input
-            type="datetime-local"
-            {...register("analysedAt")}
-            className="border rounded p-2 h-[44px] w-full"
-          />
+
+        {/* Analysé le */}
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <CalendarClock className="size-4" /> Analysé le
+          </label>
+          <div className="relative flex items-center gap-2">
+            <input
+              type="datetime-local"
+              {...register("analysedAt")}
+              className={selectCls}
+            />
+          </div>
         </div>
       </div>
 
       {/* Ligne 2 : Identification / Contexte */}
-      <div className="flex flex-col gap-4 mobile:flex-row flex-wrap">
-        <div className="flex-1 min-w-[200px]">
-          <label className="text-sm font-medium">
-            Point de prélèvement / Surface
-          </label>
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
+        <div className={fieldWrap}>
+          <label className={labelCls}>Point de prélèvement / Surface</label>
           <input
             type="text"
             {...register("samplingPoint")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
             autoComplete="off"
             spellCheck={false}
             autoCorrect="off"
           />
         </div>
-        <div className="flex-1 min-w-[200px]">
-          <label className="text-sm font-medium">Produit (si Aliment)</label>
+        <div className={fieldWrap}>
+          <label className={labelCls}>Produit (si Aliment)</label>
           <input
             type="text"
             {...register("productName")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
             placeholder="Ex: Tiramisu"
             autoComplete="off"
             spellCheck={false}
             autoCorrect="off"
           />
         </div>
-        <div className="w-full mobile:w-48">
-          <label className="text-sm font-medium">Lot</label>
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <Hash className="size-4" /> Lot
+          </label>
           <input
             type="text"
             {...register("lotNumber")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
             autoComplete="off"
             spellCheck={false}
             autoCorrect="off"
@@ -197,24 +245,24 @@ export default function MicrobiologyForm({
       </div>
 
       {/* Ligne 3 : Labo */}
-      <div className="flex flex-col gap-4 mobile:flex-row flex-wrap">
-        <div className="flex-1 min-w-[200px]">
-          <label className="text-sm font-medium">Laboratoire</label>
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
+        <div className={fieldWrap}>
+          <label className={labelCls}>Laboratoire</label>
           <input
             type="text"
             {...register("labName")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
             autoComplete="off"
             spellCheck={false}
             autoCorrect="off"
           />
         </div>
-        <div className="flex-1 min-w-[200px]">
-          <label className="text-sm font-medium">Référence labo</label>
+        <div className={fieldWrap}>
+          <label className={labelCls}>Référence labo</label>
           <input
             type="text"
             {...register("labReference")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
             autoComplete="off"
             spellCheck={false}
             autoCorrect="off"
@@ -223,37 +271,37 @@ export default function MicrobiologyForm({
       </div>
 
       {/* Ligne 4 : Méthode / Critère */}
-      <div className="flex flex-col gap-4 mobile:flex-row flex-wrap">
-        <div className="flex-1 min-w-[200px]">
-          <label className="text-sm font-medium">Méthode</label>
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
+        <div className={fieldWrap}>
+          <label className={labelCls}>Méthode</label>
           <input
             type="text"
             {...register("method")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
             placeholder="Ex: ISO 6579-1"
             autoComplete="off"
             spellCheck={false}
             autoCorrect="off"
           />
         </div>
-        <div className="w-full mobile:w-48">
-          <label className="text-sm font-medium">Limite de détection</label>
+        <div className={fieldWrap}>
+          <label className={labelCls}>Limite de détection</label>
           <input
             type="text"
             {...register("detectionLimit")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
             placeholder="<10"
             autoComplete="off"
             spellCheck={false}
             autoCorrect="off"
           />
         </div>
-        <div className="flex-1 min-w-[200px]">
-          <label className="text-sm font-medium">Critère de conformité</label>
+        <div className={fieldWrap}>
+          <label className={labelCls}>Critère de conformité</label>
           <input
             type="text"
             {...register("criterion")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
             placeholder="Ex: Absence/25g"
             autoComplete="off"
             spellCheck={false}
@@ -263,84 +311,146 @@ export default function MicrobiologyForm({
       </div>
 
       {/* Ligne 5 : Paramètre & Résultat */}
-      <div className="flex flex-col gap-4 mobile:flex-row flex-wrap">
-        <div className="flex-1 min-w-[200px]">
-          <label className="text-sm font-medium">Paramètre</label>
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-4">
+        <div className={fieldWrap}>
+          <label className={labelCls}>Paramètre</label>
           <input
             type="text"
             {...register("parameter")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
             placeholder="Ex: Listeria monocytogenes"
             autoComplete="off"
             spellCheck={false}
             autoCorrect="off"
           />
         </div>
-        <div className="w-full mobile:w-56">
-          <label className="text-sm font-medium">Résultat</label>
+        <div className={fieldWrap}>
+          <label className={labelCls}>Résultat</label>
           <input
             type="text"
             {...register("result")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
             placeholder="<10 / absent"
             autoComplete="off"
             spellCheck={false}
             autoCorrect="off"
           />
         </div>
-        <div className="w-full mobile:w-48">
-          <label className="text-sm font-medium">Unité</label>
+        <div className={fieldWrap}>
+          <label className={labelCls}>Unité</label>
           <input
             type="text"
             {...register("unit")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
             placeholder="CFU/g, abs/25g, …"
             autoComplete="off"
             spellCheck={false}
             autoCorrect="off"
           />
         </div>
-        <div className="w-full mobile:w-56 flex items-center gap-2">
-          <input id="passed" type="checkbox" {...register("passed")} />
-          <label htmlFor="passed" className="text-sm font-medium">
-            Conforme
+
+        {/* Toggle Conforme (style ARIA + peer fallback) */}
+        <div className={fieldWrap}>
+          <label className={labelCls}>Conformité</label>
+
+          <label
+            role="switch"
+            aria-checked={!!passed}
+            className="group inline-flex justify-between h-11 w-full items-center gap-3 rounded-xl border border-darkBlue/20 bg-white px-3 py-2 cursor-pointer select-none"
+          >
+            <span className="text-sm text-darkBlue/70">
+              {passed ? "Conforme" : "Non conforme"}
+            </span>
+
+            {/* Checkbox cachée (RHF) + peer pour un feedback instantané */}
+            <input
+              type="checkbox"
+              {...register("passed")}
+              className="sr-only peer"
+            />
+
+            {/* rail + knob animé (ARIA + peer) */}
+            <span
+              className="
+                relative inline-flex h-6 w-11 items-center rounded-full
+                bg-darkBlue/20 transition-colors
+                group-aria-checked:bg-blue
+                peer-checked:bg-blue
+              "
+            >
+              <span
+                className="
+                  absolute left-1 top-1/2 -translate-y-1/2
+                  size-4 rounded-full bg-white shadow
+                  transition-transform will-change-transform translate-x-0
+                  group-aria-checked:translate-x-5
+                  peer-checked:translate-x-5
+                "
+              />
+            </span>
           </label>
         </div>
       </div>
 
       {/* Rapport / Notes */}
-      <div className="flex flex-col gap-4 mobile:flex-row flex-wrap">
-        <div className="flex-1 min-w-[200px]">
-          <label className="text-sm font-medium">Rapport (URL)</label>
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <LinkIcon className="size-4" /> Rapport (URL)
+          </label>
           <input
             type="url"
             {...register("reportUrl")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
             placeholder="https://…/rapport.pdf"
             autoComplete="off"
             spellCheck={false}
             autoCorrect="off"
           />
         </div>
-        <div className="flex-1 min-w-[200px]">
-          <label className="text-sm font-medium">Notes</label>
-          <textarea
-            rows={4}
-            {...register("notes")}
-            className="border rounded p-2 resize-none w-full min-h-[96px]"
-          />
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <FileText className="size-4" /> Notes
+          </label>
+          <div className="relative">
+            <textarea
+              rows={1}
+              {...register("notes")}
+              className="w-full resize-none rounded-lg border border-darkBlue/20 bg-white p-[10px] pr-16 text-[15px] outline-none transition placeholder:text-darkBlue/40"
+              placeholder="Observations complémentaires…"
+            />
+            <span className="pointer-events-none absolute bottom-2 right-3 select-none text-[11px] text-darkBlue/40">
+              {(notesVal?.length ?? 0).toString()}
+            </span>
+          </div>
         </div>
       </div>
 
       {/* Actions */}
-      <div className="flex gap-2">
+      <div className="flex flex-col items-center gap-2 mt-3 mobile:flex-row">
         <button
           type="submit"
           disabled={isSubmitting}
-          className="px-4 py-2 rounded bg-blue text-white disabled:opacity-50"
+          className="text-nowrap inline-flex items-center justify-center  gap-2 h-[38px] rounded-lg bg-blue px-4 py-2 text-sm font-medium text-white shadow disabled:opacity-60"
         >
-          {initial?._id ? "Mettre à jour" : "Enregistrer"}
+          {isSubmitting ? (
+            <>
+              <Loader2 className="size-4 animate-spin" />
+              Enregistrement…
+            </>
+          ) : initial?._id ? (
+            <>
+              <FileText className="size-4" />
+              Mettre à jour
+            </>
+          ) : (
+            <>
+              <FileText className="size-4" />
+              Enregistrer
+            </>
+          )}
         </button>
+
         {initial?._id && (
           <button
             type="button"
@@ -348,7 +458,7 @@ export default function MicrobiologyForm({
               reset(buildDefaults(null));
               onCancel?.();
             }}
-            className="px-4 py-2 rounded text-white bg-red"
+            className="inline-flex h-[38px] items-center justify-center gap-2 rounded-lg border border-red bg-white px-4 py-2 text-sm font-medium text-red"
           >
             Annuler
           </button>

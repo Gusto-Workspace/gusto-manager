@@ -202,7 +202,7 @@ export default function FridgeManagerModal({
 
       {/* Sheet */}
       <div className="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
-        <div className="pointer-events-auto w-full max-w-[980px] rounded-2xl border border-darkBlue/10 bg-white p-4 midTablet:p-5 shadow-2xl">
+        <div className="pointer-events-auto w-full max-w-[980px] rounded-2xl border border-darkBlue/10 bg-white p-4  midTablet:p-5 shadow">
           {/* Header */}
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-2">

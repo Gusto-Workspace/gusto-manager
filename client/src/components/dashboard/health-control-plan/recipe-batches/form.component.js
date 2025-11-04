@@ -3,7 +3,19 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import axios from "axios";
+import {
+  Tag,
+  Hash,
+  Package,
+  PlusCircle,
+  Trash2,
+  Loader2,
+  X,
+  ChevronDown,
+  FileText,
+} from "lucide-react";
 
+/* ---------------- Utils dates & defaults ---------------- */
 function toDatetimeLocalValue(value) {
   const base = value ? new Date(value) : new Date();
   if (Number.isNaN(base.getTime())) {
@@ -19,7 +31,6 @@ function toDateValue(value) {
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
 }
-
 function buildFormDefaults(record) {
   return {
     recipeId: record?.recipeId ?? "",
@@ -40,7 +51,7 @@ function buildFormDefaults(record) {
   };
 }
 
-/* ---------- conversions & unités autorisées ---------- */
+/* ---------------- Unités & conversions ---------------- */
 const ALL_UNITS = ["kg", "g", "L", "mL", "unit"];
 const UNIT_GROUP = {
   MASS: new Set(["kg", "g"]),
@@ -78,6 +89,7 @@ function allowedUnitsForLotUnit(lotUnit) {
   return [lotUnit]; // g, mL, unit -> figé
 }
 
+/* ---------------- Format labels lots ---------------- */
 function fmtShortDate(d) {
   if (!d) return null;
   try {
@@ -100,6 +112,23 @@ function formatLotLabel(l) {
   return `${l.productName || "Produit"} — Lot ${l.lotNumber || "?"}${qty}${mhd}`;
 }
 
+/* ---------------- Helpers lignes ---------------- */
+const isRowEmpty = (row) =>
+  !row?.name &&
+  !row?.qty &&
+  !row?.unit &&
+  !row?.lotNumber &&
+  !row?.inventoryLotId;
+
+// Désormais, une ligne est "valable" UNIQUEMENT si le nom est saisi
+const isRowValidByName = (row) => !!row?.name?.trim();
+
+// Pour l’UI : y a-t-il des données SAUF le nom ?
+const hasOtherDataWithoutName = (row) =>
+  !isRowValidByName(row) &&
+  (row?.qty || row?.unit || row?.lotNumber || row?.inventoryLotId);
+
+/* ---------------- Composant ---------------- */
 export default function RecipeBatchesForm({
   restaurantId,
   initial = null,
@@ -111,35 +140,51 @@ export default function RecipeBatchesForm({
     handleSubmit,
     reset,
     control,
-    formState: { errors, isSubmitting },
-    setValue,
     watch,
-    getValues,
+    setValue,
     setError,
     clearErrors,
+    setFocus,
+    formState: { errors, isSubmitting },
   } = useForm({ defaultValues: buildFormDefaults(initial) });
-
-  const initialSnapshot = useMemo(
-    () => (Array.isArray(initial?.ingredients) ? initial.ingredients : []),
-    [initial]
-  );
 
   const { fields, append, remove } = useFieldArray({
     control,
     name: "ingredients",
   });
+  const ingredients = watch("ingredients");
 
-  // ---- Lots (select)
+  // --- Snapshot initial pour calcul de stock virtuel (édition)
+  const initialSnapshot = useMemo(
+    () => (Array.isArray(initial?.ingredients) ? initial.ingredients : []),
+    [initial]
+  );
+
+  // --- Styles (identiques au composant réception)
+  const fieldWrap =
+    "group relative rounded-xl bg-white/50 backdrop-blur-sm py-2 h-[80px] transition-shadow";
+  const labelCls =
+    "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
+  const inputCls =
+    "h-11 w-full rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition placeholder:text-darkBlue/40";
+  const selectCls =
+    "h-11 w-full appearance-none rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition";
+  const btnBase =
+    "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition active:scale-[0.98]";
+  const chip =
+    "rounded-md bg-darkBlue/10 px-2 py-0.5 text-[11px] text-darkBlue/70";
+
+  // --- Lots (select)
   const [lots, setLots] = useState([]);
   const [lotsLoading, setLotsLoading] = useState(false);
   const [lotsError, setLotsError] = useState(false);
-
   const isMountedRef = useRef(true);
-  useEffect(() => {
-    return () => {
+  useEffect(
+    () => () => {
       isMountedRef.current = false;
-    };
-  }, []);
+    },
+    []
+  );
 
   const fetchLots = useCallback(async () => {
     if (!restaurantId) {
@@ -162,9 +207,8 @@ export default function RecipeBatchesForm({
         headers: { Authorization: `Bearer ${token}` },
         params: { limit: 300 },
       });
-      if (isMountedRef.current) {
+      if (isMountedRef.current)
         setLots(Array.isArray(data?.items) ? data.items : []);
-      }
     } catch (e) {
       if (isMountedRef.current) {
         console.error(e);
@@ -202,9 +246,7 @@ export default function RecipeBatchesForm({
     });
   }, [lots]);
 
-  // observe les ingrédients pour déduire la sélection en édition
-  const ingredientsWatch = watch("ingredients") || [];
-
+  // --- Helpers lots
   function findLotByIdOrNumber({ lotId, lotNumber }) {
     if (lotId) {
       const byId = sortedLots.find((l) => String(l._id) === String(lotId));
@@ -218,53 +260,40 @@ export default function RecipeBatchesForm({
     }
     return null;
   }
-
   function getSelectedLotIdForIndex(idx) {
-    const row = ingredientsWatch[idx] || {};
+    const row = ingredients?.[idx] || {};
     const curLotId = row.inventoryLotId ? String(row.inventoryLotId) : "";
     if (curLotId) return curLotId;
-
-    // déduire via lotNumber (édition)
     const curLotNumber = row.lotNumber ? String(row.lotNumber) : "";
     if (!curLotNumber) return "";
     const found = sortedLots.find((l) => String(l.lotNumber) === curLotNumber);
     return found?._id ? String(found._id) : "";
   }
-
   function handlePickLot(idx, lotId) {
     const lot = sortedLots.find((x) => String(x._id) === String(lotId));
     if (!lot) {
-      // retour à “—”
       setValue(`ingredients.${idx}.inventoryLotId`, "", { shouldDirty: true });
       return;
     }
-
-    // 1) stocke l'id pour piloter le select
     setValue(`ingredients.${idx}.inventoryLotId`, String(lot._id), {
       shouldDirty: true,
       shouldValidate: false,
     });
-
-    // 2) met à jour les champs liés au lot
     setValue(`ingredients.${idx}.lotNumber`, lot.lotNumber || "", {
       shouldDirty: true,
       shouldValidate: true,
     });
-
     setValue(`ingredients.${idx}.name`, lot.productName || "", {
       shouldDirty: true,
       shouldValidate: true,
     });
-
-    // ⚠️ unité = unité du lot
     setValue(`ingredients.${idx}.unit`, lot.unit || "", {
       shouldDirty: true,
       shouldValidate: true,
     });
   }
 
-  /* ---------- Stock virtuel & Max autorisé par ligne ---------- */
-  // Somme des quantités de l'ANCIEN batch par lot (unité du lot)
+  // --- Stock virtuel & max autorisé
   function prevTotalForLotInLotUnit(lot) {
     if (!lot) return 0;
     let sum = 0;
@@ -284,10 +313,8 @@ export default function RecipeBatchesForm({
     });
     return sum;
   }
-
-  // retourne le max autorisé pour la ligne idx dans l’unité de la ligne
   function allowedMaxForRow(idx) {
-    const row = ingredientsWatch[idx] || {};
+    const row = ingredients?.[idx] || {};
     const lotId = row?.inventoryLotId ? String(row.inventoryLotId) : "";
     const lotNumber = row?.lotNumber ? String(row.lotNumber) : "";
     const lot = findLotByIdOrNumber({ lotId, lotNumber });
@@ -296,12 +323,9 @@ export default function RecipeBatchesForm({
     const rowUnit = row?.unit || lot.unit;
     if (!rowUnit) return null;
 
-    // *** Stock virtuel pour l’édition ***
-    // qtyRemaining(BDD) + somme des quantités de l'ancien batch pour CE lot
     const virtualRemainLotUnit =
       Number(lot.qtyRemaining || 0) + prevTotalForLotInLotUnit(lot);
 
-    // capacité en unité de la ligne
     const virtualRemainInRowUnit = convertQty(
       virtualRemainLotUnit,
       lot.unit,
@@ -309,16 +333,20 @@ export default function RecipeBatchesForm({
     );
     if (virtualRemainInRowUnit == null) return null;
 
-    // somme des autres lignes du même lot (form en cours)
     let usedByOthers = 0;
-    (ingredientsWatch || []).forEach((r, j) => {
+    (ingredients || []).forEach((r, j) => {
       if (j === idx) return;
+
+      // ⚠️ Ne compter les AUTRES lignes que si le NOM est saisi
+      if (!isRowValidByName(r)) return;
+
       const same =
         (r?.inventoryLotId && String(r.inventoryLotId) === String(lot._id)) ||
         (!r?.inventoryLotId &&
           r?.lotNumber &&
           String(r.lotNumber) === String(lot.lotNumber));
       if (!same) return;
+
       const q = Number(r?.qty);
       if (!Number.isFinite(q) || q <= 0) return;
       const fromUnit = r?.unit || lot.unit;
@@ -329,39 +357,68 @@ export default function RecipeBatchesForm({
     return Math.max(0, virtualRemainInRowUnit - usedByOthers);
   }
 
-  // Sur changement d’une ligne (lot/quantité/unité), on recape automatiquement si besoin
-  useEffect(() => {
-    (ingredientsWatch || []).forEach((row, idx) => {
-      const allowed = allowedMaxForRow(idx);
-      const n = Number(row?.qty);
-      if (allowed != null && Number.isFinite(n) && n > allowed) {
-        setValue(`ingredients.${idx}.qty`, String(allowed), {
-          shouldDirty: true,
-          shouldValidate: true,
-        });
-      }
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    JSON.stringify(
-      (ingredientsWatch || []).map((r) => [
-        r.inventoryLotId,
-        r.lotNumber,
-        r.qty,
-        r.unit,
-      ])
-    ),
-    JSON.stringify(sortedLots.map((l) => [l._id, l.qtyRemaining, l.unit])),
-    JSON.stringify(
-      (initialSnapshot || []).map((r) => [
-        r.inventoryLotId,
-        r.lotNumber,
-        r.qty,
-        r.unit,
-      ])
-    ),
-  ]);
+  /* ---------------- Lignes pliables & validation style réception ---------------- */
+  const [openById, setOpenById] = useState({});
+  const contentRefs = useRef({});
+  const openNewLineRef = useRef(false);
 
+  // Aligne l'état d'ouverture sur le contenu des lignes
+  useEffect(() => {
+    setOpenById((prev) => {
+      const next = { ...prev };
+      fields.forEach((f, idx) => {
+        if (next[f.id] == null) {
+          const l = (ingredients && ingredients[idx]) || {};
+          next[f.id] = isRowEmpty(l); // lignes vides => ouvertes
+        }
+      });
+      Object.keys(next).forEach((k) => {
+        if (!fields.find((f) => f.id === k)) delete next[k];
+      });
+      return next;
+    });
+  }, [fields, ingredients]);
+
+  // 1ère ligne ouverte si tout est vide au premier rendu
+  useEffect(() => {
+    if (!fields.length) return;
+    const allEmpty =
+      fields.length > 0 &&
+      fields.every((f, i) => isRowEmpty((ingredients && ingredients[i]) || {}));
+    if (allEmpty) {
+      setOpenById((s) => ({ ...s, [fields[0].id]: true }));
+    }
+  }, [fields, ingredients]);
+
+  // Ouvre la nouvelle ligne juste après append
+  useEffect(() => {
+    if (!openNewLineRef.current) return;
+    const last = fields[fields.length - 1];
+    if (last) {
+      setOpenById((s) => ({ ...s, [last.id]: true }));
+      setTimeout(() => setFocus(`ingredients.${fields.length - 1}.name`), 0);
+    }
+    openNewLineRef.current = false;
+  }, [fields, setFocus]);
+
+  const toggleOpen = (id) => setOpenById((s) => ({ ...s, [id]: !s[id] }));
+
+  // ✅ Valide la ligne : exige "Nom" non vide
+  const validateLine = (id, idx) => {
+    const value = (ingredients?.[idx]?.name || "").trim();
+    if (!value) {
+      setOpenById((s) => ({ ...s, [id]: true }));
+      setError(`ingredients.${idx}.name`, {
+        type: "manual",
+        message: "Requis",
+      });
+      setFocus(`ingredients.${idx}.name`);
+      return;
+    }
+    setOpenById((s) => ({ ...s, [id]: false }));
+  };
+
+  // --- Soumission
   const onSubmit = async (data) => {
     const token = localStorage.getItem("token");
     if (!token) return;
@@ -379,6 +436,18 @@ export default function RecipeBatchesForm({
       }
     }
 
+    // Garder UNIQUEMENT les lignes qui ont un nom saisi
+    const mapped = (
+      Array.isArray(data.ingredients) ? data.ingredients : []
+    ).map((l) => ({
+      name: l.name || undefined,
+      lotNumber: l.lotNumber || undefined,
+      qty: l.qty !== "" && l.qty != null ? Number(l.qty) : undefined,
+      unit: l.unit || undefined,
+      inventoryLotId: l.inventoryLotId || undefined,
+    }));
+    const ingredientsFiltered = mapped.filter((x) => isRowValidByName(x));
+
     const payload = {
       recipeId: data.recipeId || undefined,
       batchId: data.batchId || undefined,
@@ -387,17 +456,7 @@ export default function RecipeBatchesForm({
         ? new Date(data.usedByServiceDate)
         : undefined,
       notes: data.notes || undefined,
-      ingredients: (Array.isArray(data.ingredients) ? data.ingredients : [])
-        .map((l) => ({
-          name: l.name || undefined,
-          lotNumber: l.lotNumber || undefined,
-          qty: l.qty !== "" && l.qty != null ? Number(l.qty) : undefined,
-          unit: l.unit || undefined,
-          inventoryLotId: l.inventoryLotId || undefined,
-        }))
-        .filter((x) =>
-          Object.values(x).some((v) => v !== undefined && v !== "")
-        ),
+      ingredients: ingredientsFiltered,
     };
 
     const url = initial?._id
@@ -409,282 +468,417 @@ export default function RecipeBatchesForm({
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    // ➜ re-fetch des lots pour refléter immédiatement les nouvelles quantités restantes
+    // Répercuter immédiatement les restants
     await fetchLots();
 
     reset(buildFormDefaults(null));
     onSuccess?.(saved);
   };
 
+  // --- Petits helpers UI
+  const fmtMax = (v) => (v == null ? null : Number.isFinite(v) ? v : null);
+
   return (
     <form
       onSubmit={handleSubmit(onSubmit)}
-      className="bg-white rounded-lg p-4 shadow-sm flex flex-col gap-6"
+      className="relative flex flex-col gap-5"
     >
       {/* En-tête batch */}
-      <div className="flex flex-col gap-4 midTablet:flex-row">
-        <div className="flex-1">
-          <label className="text-sm font-medium">ID Recette *</label>
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
+        <div className={`${fieldWrap} px-3`}>
+          <label className={labelCls}>
+            <FileText className="size-4" /> ID Recette *
+          </label>
           <input
             type="text"
             placeholder="ex: recette-123"
-            {...register("recipeId", { required: "Requis" })}
-            className="border rounded p-2 h-[44px] w-full"
             autoComplete="off"
             spellCheck={false}
-            autoCorrect="off"
+            {...register("recipeId", { required: "Requis" })}
+            className={inputCls}
           />
           {errors.recipeId && (
-            <p className="text-xs text-red mt-1">{errors.recipeId.message}</p>
+            <p className="mt-1 text-xs text-red">{errors.recipeId.message}</p>
           )}
         </div>
-        <div className="flex-1">
-          <label className="text-sm font-medium">ID Batch *</label>
+
+        <div className={`${fieldWrap} px-3`}>
+          <label className={labelCls}>
+            <FileText className="size-4" /> ID Batch *
+          </label>
           <input
             type="text"
             placeholder="ex: BOLO-2025-10-02-A"
-            {...register("batchId", { required: "Requis" })}
-            className="border rounded p-2 h-[44px] w-full"
             autoComplete="off"
             spellCheck={false}
-            autoCorrect="off"
+            {...register("batchId", { required: "Requis" })}
+            className={inputCls}
           />
           {errors.batchId && (
-            <p className="text-xs text-red mt-1">{errors.batchId.message}</p>
+            <p className="mt-1 text-xs text-red">{errors.batchId.message}</p>
           )}
         </div>
       </div>
 
       {/* Dates */}
-      <div className="flex flex-col gap-4 midTablet:flex-row">
-        <div className="flex-1">
-          <label className="text-sm font-medium">Préparé le *</label>
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
+        <div className={`${fieldWrap} px-3`}>
+          <label className={labelCls}>
+            <FileText className="size-4" /> Préparé le *
+          </label>
           <input
             type="datetime-local"
             {...register("preparedAt")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={selectCls}
           />
         </div>
-        <div className="flex-1">
-          <label className="text-sm font-medium">
-            À utiliser pour le service
+
+        <div className={`${fieldWrap} px-3`}>
+          <label className={labelCls}>
+            <FileText className="size-4" /> À utiliser pour le service
           </label>
           <input
             type="date"
             {...register("usedByServiceDate")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={selectCls}
           />
         </div>
       </div>
 
       {/* Ingrédients */}
-      <div className="flex flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-base font-semibold">Ingrédients</h3>
+      <div className="rounded-2xl bg-white/50 p-3 pb-0">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-darkBlue flex items-center gap-2">
+            <FileText className="size-4" /> Ingrédients
+          </h3>
+
           <button
             type="button"
-            onClick={() =>
+            onClick={() => {
+              openNewLineRef.current = true;
               append({
                 name: "",
                 lotNumber: "",
                 qty: "",
                 unit: "",
                 inventoryLotId: "",
-              })
-            }
-            className="px-3 py-1 rounded bg-blue text-white"
+              });
+            }}
+            className={`${btnBase} border border-violet/20 bg-white text-violet hover:bg-violet/5`}
           >
-            Ajouter un ingrédient
+            <PlusCircle className="size-4" /> Ajouter un ingrédient
           </button>
         </div>
 
-        {fields.map((field, idx) => {
-          const selectedLotId = getSelectedLotIdForIndex(idx);
-          const row = ingredientsWatch[idx] || {};
-          const lot =
-            findLotByIdOrNumber({
-              lotId: row?.inventoryLotId ? String(row.inventoryLotId) : "",
-              lotNumber: row?.lotNumber ? String(row.lotNumber) : "",
-            }) || null;
-          const allowedUnits = lot
-            ? allowedUnitsForLotUnit(lot.unit)
-            : ALL_UNITS;
+        <div className="space-y-3 mb-3">
+          {fields.map((field, idx) => {
+            const id = field.id;
+            const isOpen = !!openById[id];
+            const row = (ingredients && ingredients[idx]) || {};
+            const selectedLotId = getSelectedLotIdForIndex(idx);
 
-          // corrige l’unité si non autorisée
-          const curUnit = row?.unit || (lot ? lot.unit : "");
-          const safeUnit = allowedUnits.includes(curUnit)
-            ? curUnit
-            : lot?.unit || allowedUnits[0] || "";
-          if (safeUnit !== curUnit) {
-            setTimeout(() => {
-              setValue(`ingredients.${idx}.unit`, safeUnit, {
-                shouldDirty: true,
-                shouldValidate: true,
-              });
-            }, 0);
-          }
+            const lot =
+              findLotByIdOrNumber({
+                lotId: row?.inventoryLotId ? String(row.inventoryLotId) : "",
+                lotNumber: row?.lotNumber ? String(row.lotNumber) : "",
+              }) || null;
 
-          const allowed = allowedMaxForRow(idx);
+            const allowedUnits = lot
+              ? allowedUnitsForLotUnit(lot.unit)
+              : ALL_UNITS;
+            const curUnit = row?.unit || (lot ? lot.unit : "");
+            const safeUnit = allowedUnits.includes(curUnit)
+              ? curUnit
+              : lot
+                ? lot.unit || allowedUnits[0] || ""
+                : "";
 
-          return (
-            <div
-              key={field.id}
-              className="border rounded p-3 flex flex-col gap-3"
-            >
-              {/* ligne 1 : sélection d’un lot + nom */}
-              <div className="flex gap-3 midTablet:flex-row flex-col">
-                <div className="flex-1">
-                  <label className="text-sm font-medium">
-                    Choisir un lot existant
-                  </label>
-                  <select
-                    value={selectedLotId}
-                    onChange={(e) => handlePickLot(idx, e.target.value)}
-                    className="border rounded p-2 h-[44px] w-full"
-                    disabled={lotsLoading}
+            if (safeUnit !== curUnit) {
+              setTimeout(() => {
+                setValue(`ingredients.${idx}.unit`, safeUnit, {
+                  shouldDirty: true,
+                  shouldValidate: true,
+                });
+              }, 0);
+            }
+
+            const allowed = fmtMax(allowedMaxForRow(idx));
+            const nameReg = register(`ingredients.${idx}.name`);
+
+            // 👉 surlignage rouge si données sans nom
+            const needsNameNow = hasOtherDataWithoutName(row);
+            const hasNameErr =
+              needsNameNow ||
+              !!(errors?.ingredients && errors.ingredients[idx]?.name);
+
+            return (
+              <div
+                key={id}
+                className="rounded-xl border border-darkBlue/10 bg-white"
+              >
+                {/* Header ligne */}
+                <div className="flex items-center justify-between gap-3 px-3 py-2">
+                  <button
+                    type="button"
+                    onClick={() => toggleOpen(id)}
+                    className="flex items-center gap-2 text-left"
+                    title={isOpen ? "Replier" : "Déplier"}
                   >
-                    <option value="">—</option>
-                    {sortedLots.map((l) => (
-                      <option key={l._id} value={String(l._id)}>
-                        {formatLotLabel(l)}
-                      </option>
-                    ))}
-                  </select>
-                  {lotsError && (
-                    <p className="text-xs text-red mt-1">
-                      Erreur lors du chargement des lots.
-                    </p>
-                  )}
-                </div>
-
-                <div className="flex-1">
-                  <label className="text-sm font-medium">Nom *</label>
-                  <input
-                    type="text"
-                    placeholder="ex: Sauce bolognaise"
-                    {...register(`ingredients.${idx}.name`)}
-                    className="border rounded p-2 h-[44px] w-full"
-                    autoComplete="off"
-                    spellCheck={false}
-                    autoCorrect="off"
-                  />
-                </div>
-              </div>
-
-              {/* ligne 2 : lotNumber + qty + unit */}
-              <div className="flex gap-3 midTablet:flex-row flex-col">
-                <div className="flex-1">
-                  <label className="text-sm font-medium">
-                    N° lot (ingrédient)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="ex: LOT-ABC123"
-                    {...register(`ingredients.${idx}.lotNumber`)}
-                    className="border rounded p-2 h-[44px] w-full"
-                    autoComplete="off"
-                    spellCheck={false}
-                    autoCorrect="off"
-                  />
-                </div>
-                <div className="flex-1">
-                  <label className="text-sm font-medium">Qté</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    onWheel={(e) => e.currentTarget.blur()}
-                    placeholder="ex: 2.5"
-                    max={allowed != null ? allowed : undefined}
-                    {...register(`ingredients.${idx}.qty`, {
-                      validate: (val) => {
-                        if (val === "" || val == null) return true;
-                        const n = Number(val);
-                        if (!Number.isFinite(n) || n < 0)
-                          return "Valeur invalide";
-                        const a = allowedMaxForRow(idx);
-                        if (a != null && n > a) return `Max autorisé: ${a}`;
-                        return true;
-                      },
-                    })}
-                    onBlur={(e) => {
-                      const a = allowedMaxForRow(idx);
-                      const n = Number(e.target.value);
-                      if (a != null && Number.isFinite(n) && n > a) {
-                        setValue(`ingredients.${idx}.qty`, String(a), {
-                          shouldDirty: true,
-                          shouldValidate: true,
-                        });
-                      }
-                    }}
-                    className="border rounded p-2 h-[44px] w-full"
-                  />
-                  {allowed != null && (
-                    <div className="text-xs opacity-60 mt-1">
-                      Max restant : {allowed} {safeUnit || ""}
+                    <ChevronDown
+                      className={`size-4 shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`}
+                    />
+                    <div className="flex flex-col">
+                      <span className="text-sm font-medium text-darkBlue">
+                        {row?.name?.trim() || "Nouvel ingrédient"}
+                      </span>
+                      {!isOpen && (
+                        <span className="text-[11px] text-darkBlue/60">
+                          Cliquez pour voir/modifier le détail
+                        </span>
+                      )}
                     </div>
-                  )}
-                  {errors.ingredients?.[idx]?.qty && (
-                    <p className="text-xs text-red mt-1">
-                      {errors.ingredients[idx].qty.message}
-                    </p>
-                  )}
-                </div>
-                <div className="w-36">
-                  <label className="text-sm font-medium">Unité</label>
-                  <select
-                    value={safeUnit}
-                    onChange={(e) =>
-                      setValue(`ingredients.${idx}.unit`, e.target.value, {
-                        shouldDirty: true,
-                        shouldValidate: true,
-                      })
-                    }
-                    className="border rounded p-2 h-[44px] w-full"
-                    disabled={lot ? allowedUnits.length === 1 : false}
-                  >
-                    {allowedUnits.map((u) => (
-                      <option key={u} value={u}>
-                        {u}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+                  </button>
 
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => remove(idx)}
-                  className="px-3 py-1 rounded bg-red text-white"
+                  {/* Résumé compact quand replié */}
+                  <div className="flex flex-wrap items-center justify-end gap-1">
+                    {!!row?.qty && (
+                      <span className={chip}>
+                        {row.qty} {row.unit || ""}
+                      </span>
+                    )}
+                    {!!row?.lotNumber && (
+                      <span className={chip}>Lot {row.lotNumber}</span>
+                    )}
+                    {!!lot?.productName && (
+                      <span className={chip}>{lot.productName}</span>
+                    )}
+                    {allowed != null && (
+                      <span className={chip}>
+                        Max {allowed}
+                        {row.unit || ""}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Contenu collapsible */}
+                <div
+                  ref={(el) => (contentRefs.current[id] = el)}
+                  style={{
+                    maxHeight: isOpen
+                      ? contentRefs.current[id]?.scrollHeight || 9999
+                      : 0,
+                  }}
+                  className="overflow-hidden transition-[max-height] duration-300 ease-in-out"
                 >
-                  Supprimer
-                </button>
+                  <div className="p-3 border-t border-darkBlue/10">
+                    {/* Ligne 1 : lot existant + nom */}
+                    <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
+                      <div className={fieldWrap}>
+                        <label className={labelCls}>
+                          <Package className="size-4" /> Choisir un lot existant
+                        </label>
+                        <select
+                          value={selectedLotId}
+                          onChange={(e) => handlePickLot(idx, e.target.value)}
+                          className={selectCls}
+                          disabled={lotsLoading}
+                        >
+                          <option value="">—</option>
+                          {sortedLots.map((l) => (
+                            <option key={l._id} value={String(l._id)}>
+                              {formatLotLabel(l)}
+                            </option>
+                          ))}
+                        </select>
+                        {lotsError && (
+                          <p className="mt-1 text-xs text-red">
+                            Erreur lors du chargement des lots.
+                          </p>
+                        )}
+                      </div>
+
+                      <div className={fieldWrap}>
+                        <label className={labelCls}>
+                          <Tag className="size-4" /> Nom *
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="ex: Sauce bolognaise"
+                          autoComplete="off"
+                          spellCheck={false}
+                          {...nameReg}
+                          onChange={(e) => {
+                            nameReg.onChange(e);
+                            if (e.target.value.trim()) {
+                              clearErrors(`ingredients.${idx}.name`);
+                            }
+                          }}
+                          className={`${inputCls} ${hasNameErr ? "border-red focus:ring-red/20" : ""}`}
+                          aria-invalid={hasNameErr ? "true" : "false"}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Ligne 2 : lotNumber + qty + unit */}
+                    <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
+                      <div className={fieldWrap}>
+                        <label className={labelCls}>
+                          <Hash className="size-4" /> N° lot (ingrédient)
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="ex: LOT-ABC123"
+                          autoComplete="off"
+                          spellCheck={false}
+                          {...register(`ingredients.${idx}.lotNumber`)}
+                          className={inputCls}
+                        />
+                      </div>
+
+                      <div className={fieldWrap}>
+                        <label className={labelCls}>
+                          <Package className="size-4" /> Qté
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="ex: 2.5"
+                          onWheel={(e) => e.currentTarget.blur()}
+                          max={allowed != null ? allowed : undefined}
+                          {...register(`ingredients.${idx}.qty`, {
+                            validate: (val) => {
+                              if (val === "" || val == null) return true;
+                              const n = Number(val);
+                              if (!Number.isFinite(n) || n < 0)
+                                return "Valeur invalide";
+                              const a = allowedMaxForRow(idx);
+                              if (a != null && n > a)
+                                return `Max autorisé: ${a}`;
+                              return true;
+                            },
+                          })}
+                          onBlur={(e) => {
+                            const a = allowedMaxForRow(idx);
+                            const n = Number(e.target.value);
+                            if (a != null && Number.isFinite(n) && n > a) {
+                              setValue(`ingredients.${idx}.qty`, String(a), {
+                                shouldDirty: true,
+                                shouldValidate: true,
+                              });
+                            }
+                          }}
+                          className={`${inputCls} pr-2 text-left`}
+                        />
+                        {allowed != null && (
+                          <div className="text-[11px] text-darkBlue/60 mt-1">
+                            Max restant : {allowed} {row.unit || ""}
+                          </div>
+                        )}
+                        {errors.ingredients?.[idx]?.qty && (
+                          <p className="text-xs text-red mt-1">
+                            {errors.ingredients[idx].qty.message}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className={fieldWrap}>
+                        <label className={labelCls}>Unité</label>
+                        <select
+                          value={row.unit || ""}
+                          onChange={(e) =>
+                            setValue(
+                              `ingredients.${idx}.unit`,
+                              e.target.value,
+                              {
+                                shouldDirty: true,
+                                shouldValidate: true,
+                              }
+                            )
+                          }
+                          className={selectCls}
+                          disabled={lot ? allowedUnits.length === 1 : false}
+                        >
+                          {(lot ? allowedUnits : ["", ...ALL_UNITS]).map(
+                            (u, i) => (
+                              <option key={`${u}-${i}`} value={u}>
+                                {u || "—"}
+                              </option>
+                            )
+                          )}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Actions ligne */}
+                    <div className="flex justify-between mt-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => remove(idx)}
+                        className={`${btnBase} border border-red bg-white text-red hover:border-red/80`}
+                      >
+                        <Trash2 className="size-4" /> Supprimer la ligne
+                      </button>
+
+                      {isOpen && (
+                        <button
+                          type="button"
+                          onClick={() => validateLine(id, idx)}
+                          className={`${btnBase} border border-blue bg-white text-blue hover:border-darkBlue/30`}
+                          title="Valider la ligne"
+                        >
+                          Valider la ligne
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
       {/* Notes */}
-      <div>
-        <label className="text-sm font-medium">Notes</label>
-        <textarea
-          rows={4}
-          {...register("notes")}
-          className="border rounded p-2 resize-none w-full min-h-[96px]"
-          placeholder="Observations, numéro de fournée, etc."
-        />
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-1">
+        <div className={`${fieldWrap} px-3`}>
+          <label className={labelCls}>
+            <FileText className="size-4" /> Notes
+          </label>
+          <textarea
+            rows={1}
+            {...register("notes")}
+            className="w-full resize-none rounded-lg border border-darkBlue/20 bg-white p-[10px] pr-16 text-[15px] outline-none transition placeholder:text-darkBlue/40"
+            placeholder="Observations, numéro de fournée, etc."
+          />
+        </div>
       </div>
 
-      {/* Actions */}
-      <div className="flex gap-2">
+      {/* Actions form */}
+      <div className="flex flex-col gap-2 mobile:flex-row">
         <button
           type="submit"
           disabled={isSubmitting}
-          className="px-4 py-2 rounded bg-blue text-white disabled:opacity-50"
+          className="text-nowrap inline-flex items-center justify-center gap-2 rounded-lg bg-blue px-4 py-2 text-sm font-medium text-white shadow disabled:opacity-60"
         >
-          {initial?._id ? "Mettre à jour" : "Enregistrer"}
+          {isSubmitting ? (
+            <>
+              <Loader2 className="size-4 animate-spin" />
+              Enregistrement…
+            </>
+          ) : initial?._id ? (
+            <>
+              <FileText className="size-4" />
+              Mettre à jour
+            </>
+          ) : (
+            <>
+              <FileText className="size-4" />
+              Enregistrer
+            </>
+          )}
         </button>
+
         {initial?._id && (
           <button
             type="button"
@@ -692,9 +886,9 @@ export default function RecipeBatchesForm({
               reset(buildFormDefaults(null));
               onCancel?.();
             }}
-            className="px-4 py-2 rounded text-white bg-red"
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-red bg-white px-4 py-2 text-sm font-medium text-red"
           >
-            Annuler
+            <X className="size-4" /> Annuler
           </button>
         )}
       </div>
