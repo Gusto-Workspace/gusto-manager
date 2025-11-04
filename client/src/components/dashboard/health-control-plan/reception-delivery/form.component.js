@@ -185,13 +185,13 @@ export default function ReceptionDeliveryForm({
 
   // Styles
   const fieldWrap =
-    "group relative rounded-xl bg-white/50 backdrop-blur-sm px-3 py-2 h-[80px] transition-shadow";
+    "group relative rounded-xl bg-white/50 backdrop-blur-sm py-2 h-[80px] transition-shadow";
   const labelCls =
     "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
   const inputCls =
     "h-11 w-full rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition placeholder:text-darkBlue/40";
   const selectCls =
-    "h-11 w-full appearance-none rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition";
+    "h-11 w-full appearance-none rounded-lg border border-darkBlue/20 bg-white px-1 text-[15px] outline-none transition";
   const btnBase =
     "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition active:scale-[0.98]";
   const chip =
@@ -209,7 +209,7 @@ export default function ReceptionDeliveryForm({
     <form onSubmit={handleSubmit(onSubmit)} className="relative flex flex-col gap-5">
       {/* En-tête réception */}
       <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
-        <div className={fieldWrap}>
+        <div className={`${fieldWrap} px-3`}>
           <label className={labelCls}>
             <FileText className="size-4" /> Fournisseur *
           </label>
@@ -226,7 +226,7 @@ export default function ReceptionDeliveryForm({
           )}
         </div>
 
-        <div className={fieldWrap}>
+        <div className={`${fieldWrap} px-3`}>
           <label className={labelCls}>
             <CalendarClock className="size-4" /> Date / heure réception *
           </label>
@@ -525,7 +525,7 @@ export default function ReceptionDeliveryForm({
 
       {/* Pièce jointe simple + Note */}
       <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
-        <div className={fieldWrap}>
+        <div className={`${fieldWrap} px-3`}>
           <label className={labelCls}>
             <LinkIcon className="size-4" /> Lien du bon de livraison (URL)
           </label>
@@ -539,7 +539,7 @@ export default function ReceptionDeliveryForm({
           />
         </div>
 
-        <div className={fieldWrap}>
+        <div className={`${fieldWrap} px-3`}>
           <label className={labelCls}>
             <FileText className="size-4" /> Note
           </label>

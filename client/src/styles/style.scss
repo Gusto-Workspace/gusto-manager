@@ -43,6 +43,7 @@ input[type="month"] {
   box-sizing: border-box;
   height: 44px; /* cible principale */
   padding: 0 12px;
+  min-width: 216px;
   font: inherit;
 }
 
