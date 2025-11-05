@@ -1,8 +1,22 @@
+// app/(components)/health/RecallForm.jsx
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import axios from "axios";
+import {
+  CalendarClock,
+  FileText,
+  Link as LinkIcon,
+  Package as PackageIcon,
+  Tag,
+  Hash,
+  Building2,
+  Search,
+  Loader2,
+  ShieldCheck,
+} from "lucide-react";
 
+/* ---------- Utils dates ---------- */
 function toDateValue(value) {
   if (!value) return "";
   const d = new Date(value);
@@ -53,7 +67,6 @@ function allowedUnitsForLotUnit(lotUnit) {
   if (lotUnit === "L") return ["L", "mL"];
   return [lotUnit]; // g, mL, unit -> figé
 }
-// ✨ alignement arrondi côté front avec le serveur
 function decimalsForUnit(u) {
   return String(u || "").trim() === "unit" ? 0 : 3;
 }
@@ -64,6 +77,7 @@ function roundByUnit(val, unit) {
   return Math.round(n * f) / f;
 }
 
+/* ---------- Defaults ---------- */
 function buildDefaults(rec) {
   const it = rec?.item || {};
   return {
@@ -75,10 +89,10 @@ function buildDefaults(rec) {
     closed: !!rec?.closedAt,
     closedAt: toDatetimeLocal(rec?.closedAt),
 
-    // champs produit (un seul)
+    // produit/lot
     inventoryLotId: it?.inventoryLotId ? String(it.inventoryLotId) : "",
-    productSearch: it?.productName ?? "", // préremplir à l’édition
-    lotMaxRemaining: "", // hydraté après fetch du lot
+    productSearch: it?.productName ?? "",
+    lotMaxRemaining: "",
     lotBaseUnit: it?.unit ?? "",
 
     productName: it?.productName ?? "",
@@ -93,6 +107,24 @@ function buildDefaults(rec) {
     note: it?.note ?? "",
   };
 }
+
+/* ---------- STYLES (alignés) ---------- */
+const fieldWrap =
+  "group relative rounded-xl bg-white/50 backdrop-blur-sm px-3 py-2 min-h-[80px] transition-shadow";
+const labelCls =
+  "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
+const inputCls =
+  "h-11 w-full rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition placeholder:text-darkBlue/40";
+const selectCls =
+  "h-11 w-full appearance-none rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition";
+const textareaCls =
+  "w-full resize-none rounded-lg border border-darkBlue/20 bg-white p-[10px] text-[15px] outline-none transition placeholder:text-darkBlue/40";
+const btnBase =
+  "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition active:scale-[0.98]";
+
+/* ---------- Autocomplete config ---------- */
+const MIN_CHARS = 1; // dès le 1er caractère
+const DEBOUNCE_MS = 250;
 
 export default function RecallForm({
   restaurantId,
@@ -123,7 +155,7 @@ export default function RecallForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial]);
 
-  // Auto date closedAt
+  /* ---------- Auto date de clôture via switch ---------- */
   const closedWatch = watch("closed");
   useEffect(() => {
     if (closedWatch && !watch("closedAt")) {
@@ -136,43 +168,115 @@ export default function RecallForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [closedWatch]);
 
-  /* ---------- Autocomplete via input Produit ---------- */
+  /* ---------- Autocomplete lots ---------- */
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [options, setOptions] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
   const searchTimer = useRef(null);
+  const reqCtrlRef = useRef(null);
+  const lastQueryRef = useRef("");
+  const cacheRef = useRef(new Map()); // Map<query, items[]>
 
   async function fetchLots(query) {
+    const q = (query || "").trim();
+    lastQueryRef.current = q;
+
+    // Cache hit → pas d'appel API
+    if (cacheRef.current.has(q)) {
+      setIsLoading(false);
+      setOptions(cacheRef.current.get(q) || []);
+      return;
+    }
+
     try {
+      if (reqCtrlRef.current) reqCtrlRef.current.abort();
+      const ctrl = new AbortController();
+      reqCtrlRef.current = ctrl;
+
+      setIsLoading(true);
+
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/recalls/select/inventory-lots`;
       const { data } = await axios.get(url, {
         headers: { Authorization: `Bearer ${token}` },
-        params: { q: query || "", limit: 12, status: "in_stock" },
+        params: { q, limit: 12, status: "in_stock" },
+        signal: ctrl.signal,
       });
-      setOptions(Array.isArray(data?.items) ? data.items : []);
+
+      if (lastQueryRef.current !== q) return; // réponse périmée
+
+      const items = Array.isArray(data?.items) ? data.items : [];
+      cacheRef.current.set(q, items);
+
+      setOptions(items);
+      setIsLoading(false);
     } catch (e) {
+      if (e?.name === "CanceledError" || e?.code === "ERR_CANCELED") return;
       console.error("fetch lot options:", e);
+      cacheRef.current.set(q, []);
       setOptions([]);
+      setIsLoading(false);
     }
   }
 
   function onProductInputChange(val) {
+    const q = (val || "").trim();
+
     setValue("productSearch", val, { shouldDirty: true });
+    setValue("productName", val, { shouldDirty: true, shouldValidate: true });
     setValue("inventoryLotId", "", { shouldDirty: true, shouldValidate: true });
     setValue("lotMaxRemaining", "", { shouldDirty: true });
     setValue("lotBaseUnit", "", { shouldDirty: true });
-    setDropdownOpen(true);
 
+    // Ouverture conditionnelle
+    const allowOpen = q.length >= MIN_CHARS;
+    setDropdownOpen(allowOpen);
+
+    // Annule l'ancienne recherche
     clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => fetchLots(val), 250);
+
+    if (!allowOpen) {
+      // Pas assez de caractères : on ne montre rien et on arrête
+      if (reqCtrlRef.current) reqCtrlRef.current.abort();
+      setIsLoading(false);
+      setOptions([]);
+      return;
+    }
+
+    // Cache immédiat si dispo, sinon spinner + fetch
+    if (cacheRef.current.has(q)) {
+      setIsLoading(false);
+      setOptions(cacheRef.current.get(q) || []);
+    } else {
+      setIsLoading(true);
+      setOptions([]); // on n'affiche pas "Aucun résultat" pendant le chargement
+    }
+
+    searchTimer.current = setTimeout(() => fetchLots(q), DEBOUNCE_MS);
   }
 
   function onProductFocus() {
-    setDropdownOpen(true);
-    fetchLots((getValues("productSearch") || "").trim());
+    const q = (getValues("productSearch") || "").trim();
+    const allowOpen = q.length >= MIN_CHARS;
+    setDropdownOpen(allowOpen);
+
+    // Si on a déjà le cache → affiche direct ; sinon lance la recherche
+    if (allowOpen) {
+      if (cacheRef.current.has(q)) {
+        setIsLoading(false);
+        setOptions(cacheRef.current.get(q) || []);
+      } else {
+        setIsLoading(true);
+        setOptions([]);
+        clearTimeout(searchTimer.current);
+        searchTimer.current = setTimeout(() => fetchLots(q), 0);
+      }
+    }
   }
 
   function onProductBlur() {
+    // Laisse le temps au click sur la liste (onMouseDown preventDefault)
     setTimeout(() => setDropdownOpen(false), 120);
+    if (reqCtrlRef.current) reqCtrlRef.current.abort();
     clearErrors(["productSearch", "inventoryLotId"]);
   }
 
@@ -189,14 +293,12 @@ export default function RecallForm({
   }
 
   function pickLot(lot) {
-    // id + libellé
     setValue("inventoryLotId", lot?._id || "", {
       shouldDirty: true,
       shouldValidate: true,
     });
     setValue("productSearch", lot?.productName || "", { shouldDirty: true });
 
-    // champs liés
     setValue("productName", lot?.productName || "", { shouldDirty: true });
     setValue("supplierName", lot?.supplier || "", { shouldDirty: true });
     setValue("lotNumber", lot?.lotNumber || "", { shouldDirty: true });
@@ -213,7 +315,6 @@ export default function RecallForm({
       shouldDirty: true,
     });
 
-    // Si quantité vide → propose le restant (dans l’unité du lot)
     const curQ = (getValues("quantity") || "").trim();
     if (!curQ && Number.isFinite(lotMax)) {
       setValue("quantity", String(lotMax), {
@@ -221,7 +322,6 @@ export default function RecallForm({
         shouldValidate: true,
       });
     } else {
-      // sinon, laisse la quantité existante, juste clip si > max
       const a = allowedMax();
       const n = Number(curQ);
       if (a != null && Number.isFinite(n) && n > a) {
@@ -237,12 +337,10 @@ export default function RecallForm({
   }
 
   function clearPickedLot() {
-    // meta lot
     setValue("inventoryLotId", "", { shouldDirty: true, shouldValidate: true });
     setValue("lotMaxRemaining", "", { shouldDirty: true });
     setValue("lotBaseUnit", "", { shouldDirty: true });
 
-    // champs “métier” liés au produit/lot
     setValue("productSearch", "", { shouldDirty: true, shouldValidate: true });
     setValue("productName", "", { shouldDirty: true, shouldValidate: true });
     setValue("supplierName", "", { shouldDirty: true });
@@ -258,12 +356,14 @@ export default function RecallForm({
       shouldValidate: true,
     });
 
-    // UI
+    setOptions([]);
+    setIsLoading(false);
     setDropdownOpen(false);
+    if (reqCtrlRef.current) reqCtrlRef.current.abort();
     clearErrors(["productSearch", "productName", "inventoryLotId", "quantity"]);
   }
 
-  // Sécurité : si l’unité choisie n’est pas compatible avec le lot, on corrige
+  // Sécurité unité
   const lotBaseUnit = watch("lotBaseUnit") || "";
   const unitOpts = allowedUnitsForLotUnit(lotBaseUnit);
   const curUnit = watch("unit") || lotBaseUnit || "";
@@ -279,9 +379,9 @@ export default function RecallForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lotBaseUnit, JSON.stringify(unitOpts), curUnit]);
 
-  /* --- HYDRATATION : reconstituer le “max restant” réel uniquement si un lot est sélectionné actuellement --- */
+  /* --- HYDRATATION “max restant” si un lot est sélectionné --- */
   useEffect(() => {
-    const curLotId = getValues("inventoryLotId"); // <- seulement la valeur du form
+    const curLotId = getValues("inventoryLotId");
     if (!restaurantId || !token || !curLotId) return;
 
     let cancelled = false;
@@ -293,7 +393,6 @@ export default function RecallForm({
         });
         if (cancelled || !lot) return;
 
-        // si on est en édition avec une qté déjà saisie, on reconstruit le “remain”
         const myQty = Number(initial?.item?.quantity);
         const myUnit = initial?.item?.unit || lot.unit;
         const addBack =
@@ -313,7 +412,6 @@ export default function RecallForm({
           shouldDirty: false,
         });
 
-        // ne pré-remplir que si vide
         if (!(getValues("bestBefore") || "").trim()) {
           const bb = lot?.dlc || lot?.ddm || "";
           setValue("bestBefore", toDateValue(bb), { shouldDirty: false });
@@ -329,7 +427,6 @@ export default function RecallForm({
     return () => {
       cancelled = true;
     };
-    // dépendre de la valeur COURANTE (et non de initial.item)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId, token, watch("inventoryLotId")]);
 
@@ -338,16 +435,14 @@ export default function RecallForm({
     const token = localStorage.getItem("token");
     if (!token) return;
 
-    // productName requis (champ caché + mirroring de productSearch)
     const pname =
       (data.productName || "").trim() || (data.productSearch || "").trim();
     if (!pname) {
-      setError("productName", { type: "manual", message: "Requis" });
+      setError("productName", { type: "manual" }); // pas de message "Requis"
       return;
     }
     clearErrors("productName");
 
-    // Si lot sélectionné : clip final
     const a = allowedMax();
     const n = Number(data.quantity);
     if (data.inventoryLotId && a != null && Number.isFinite(n) && n > a) {
@@ -359,8 +454,7 @@ export default function RecallForm({
     }
 
     const attachments =
-      typeof data.attachmentsText === "string" &&
-      data.attachmentsText.trim().length
+      typeof data.attachmentsText === "string" && data.attachmentsText.trim()
         ? data.attachmentsText
             .split(/[\n,;]+/g)
             .map((s) => s.trim())
@@ -408,127 +502,129 @@ export default function RecallForm({
     onSuccess?.(saved);
   };
 
+  /* ---------- Render ---------- */
+  const productQ = (watch("productSearch") || "").trim();
+  const hasSearch = productQ.length > 0;
+  const hasCacheForQ = cacheRef.current.has(productQ);
+  const shouldShowList =
+    dropdownOpen && productQ.length >= MIN_CHARS && (isLoading || hasCacheForQ || options.length > 0);
+
   return (
     <form
       onSubmit={handleSubmit(onSubmit)}
-      className="bg-white rounded-lg p-4 shadow-sm flex flex-col gap-6"
+      className="relative flex flex-col gap-2"
     >
-      {/* 1) Déclaré le */}
-      <div className="w-full mobile:w-72">
-        <label className="text-sm font-medium">Déclaré le *</label>
-        <input
-          type="datetime-local"
-          {...register("initiatedAt", { required: "Requis" })}
-          className="border rounded p-2 h-[44px] w-full"
-        />
-        {errors.initiatedAt && (
-          <p className="text-xs text-red mt-1">{errors.initiatedAt.message}</p>
-        )}
+      {/* Ligne 1 : Déclaré le */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <CalendarClock className="size-4" /> Déclaré le *
+          </label>
+          <input
+            type="datetime-local"
+            {...register("initiatedAt", { required: true })}
+            className={`${selectCls} ${errors.initiatedAt ? "border-red focus:ring-red/20" : ""}`}
+          />
+          {/* pas de message "Requis" */}
+        </div>
       </div>
 
-      {/* 2) Produit (autocomplete sur lots) */}
-      <div className="w-full mobile:w-[520px]">
-        <label className="text-sm font-medium">Produit *</label>
-        <div className="relative">
+      {/* Ligne 2 : Produit (autocomplete lots) */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
+        <div className={`${fieldWrap} relative z-[50]`}>
+          <label className={labelCls}>
+            <PackageIcon className="size-4" /> Produit *
+          </label>
+          <div className="relative">
+            <input
+              type="text"
+              {...register("productSearch")}
+              onFocus={onProductFocus}
+              onBlur={onProductBlur}
+              autoComplete="off"
+              spellCheck={false}
+              autoCorrect="off"
+              onChange={(e) => onProductInputChange(e.target.value)}
+              className={`${inputCls} pr-10 ${errors?.productName ? "border-red ring-1 ring-red/30" : ""}`}
+              placeholder="Rechercher un produit/lot…"
+            />
+            {/* Loupe : à droite quand vide, reculée quand du texte (croix visible) */}
+            <Search
+              className={`pointer-events-none absolute top-1/2 -translate-y-1/2 size-4 text-darkBlue/40 ${
+                hasSearch ? "right-10" : "right-2"
+              }`}
+            />
+            {hasSearch && (
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={clearPickedLot}
+                className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 bg-black/30 text-white rounded-full grid place-items-center"
+                title="Effacer"
+              >
+                &times;
+              </button>
+            )}
+
+            {shouldShowList && (
+              <ul
+                className="absolute z-[60] left-0 right-0 mt-1 bg-white border border-darkBlue/20 rounded shadow-xl max-h-56 overflow-auto"
+                onMouseDown={(e) => e.preventDefault()}
+              >
+                {isLoading ? (
+                  <li className="px-3 py-2 text-sm flex items-center gap-2 text-darkBlue/70">
+                    <Loader2 className="size-4 animate-spin" />
+                    Recherche…
+                  </li>
+                ) : options.length === 0 && hasCacheForQ ? (
+                  <li className="px-3 py-2 text-sm opacity-70 italic">
+                    Aucun résultat
+                  </li>
+                ) : (
+                  options.map((lot) => (
+                    <li
+                      key={lot._id}
+                      onClick={() => pickLot(lot)}
+                      className="px-3 py-[8px] cursor-pointer text-darkBlue/80 border-b border-b-darkBlue/10 last:border-none hover:bg-lightGrey"
+                    >
+                      <div className="font-medium">{lot.productName}</div>
+                      <div className="text-xs opacity-70">
+                        Lot: {lot.lotNumber || "—"} • {lot.qtyRemaining ?? "?"} {lot.unit || ""} • {lot.supplier || "—"}
+                      </div>
+                    </li>
+                  ))
+                )}
+              </ul>
+            )}
+          </div>
+          <input type="hidden" {...register("productName", { required: true })} />
+          <input type="hidden" {...register("inventoryLotId")} />
+          <input type="hidden" {...register("lotMaxRemaining")} />
+          <input type="hidden" {...register("lotBaseUnit")} />
+          {/* pas de message "Requis" */}
+        </div>
+
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <Building2 className="size-4" /> Fournisseur
+          </label>
           <input
             type="text"
-            {...register("productSearch")}
-            onFocus={onProductFocus}
-            onBlur={onProductBlur}
+            {...register("supplierName")}
+            className={inputCls}
+            placeholder="Prérempli si sélection d’un lot"
             autoComplete="off"
             spellCheck={false}
-            autoCorrect="off"
-            onChange={(e) => {
-              onProductInputChange(e.target.value);
-              // miroir -> productName pour la validation
-              setValue("productName", e.target.value, {
-                shouldDirty: true,
-                shouldValidate: true,
-              });
-            }}
-            className={`w-full border rounded p-2 h-[44px] pr-8 ${
-              errors?.productName ? "border-red ring-1 ring-red" : ""
-            }`}
-            placeholder="Rechercher un produit/lot…"
-          />
-          {(watch("productSearch") || "") && (
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={clearPickedLot}
-              className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 bg-black/30 text-white rounded-full flex items-center justify-center"
-              title="Effacer"
-            >
-              &times;
-            </button>
-          )}
-          {dropdownOpen && (watch("productSearch") || "").trim() !== "" && (
-            <ul
-              className="absolute z-10 left-0 right-0 mt-1 bg-white border rounded shadow max-h-56 overflow-auto"
-              onMouseDown={(e) => e.preventDefault()}
-            >
-              {options.length === 0 && (
-                <li className="px-3 py-2 text-sm opacity-70 italic">
-                  Aucun résultat
-                </li>
-              )}
-              {options.map((lot) => (
-                <li
-                  key={lot._id}
-                  onClick={() => pickLot(lot)}
-                  className="px-3 py-[8px] cursor-pointer hover:bg-lightGrey"
-                >
-                  <div className="font-medium">{lot.productName}</div>
-                  <div className="text-xs opacity-70">
-                    Lot: {lot.lotNumber || "—"} • {lot.qtyRemaining ?? "?"}{" "}
-                    {lot.unit || ""} • {lot.supplier || "—"}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        <input
-          type="hidden"
-          {...register("productName", { required: "Requis" })}
-        />
-        <input type="hidden" {...register("inventoryLotId")} />
-        <input type="hidden" {...register("lotMaxRemaining")} />
-        <input type="hidden" {...register("lotBaseUnit")} />
-        {errors.productName && (
-          <p className="text-xs text-red mt-1">{errors.productName.message}</p>
-        )}
-      </div>
-
-      {/* 3) Fournisseur */}
-      <div className="w-full mobile:w-[420px]">
-        <label className="text-sm font-medium">Fournisseur</label>
-        <input
-          type="text"
-          {...register("supplierName")}
-          className="border rounded p-2 h-[44px] w-full"
-          placeholder="Prérempli s’il provient d’un lot"
-          autoComplete="off"
-          spellCheck={false}
-          autoCorrect="off"
-        />
-      </div>
-
-      {/* 4) Lot / quantité / unité / DLC-DDM */}
-      <div className="flex gap-3 midTablet:flex-row flex-col">
-        <div className="w-full mobile:w-56">
-          <label className="text-sm font-medium">N° lot</label>
-          <input
-            type="text"
-            {...register("lotNumber")}
-            className="border rounded p-2 h-[44px] w-full"
-            autoComplete="off"
-            spellCheck={false}
-            autoCorrect="off"
           />
         </div>
-        <div className="w-full mobile:w-40">
-          <label className="text-sm font-medium">Quantité</label>
+      </div>
+
+      {/* Ligne 3 : Lot / quantité / unité / DLC-DDM */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2 ultraWild:grid-cols-4">
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <PackageIcon className="size-4" /> Quantité
+          </label>
           <input
             type="number"
             step="any"
@@ -554,111 +650,175 @@ export default function RecallForm({
                 });
               }
             }}
-            className="border rounded p-2 h-[44px] w-full"
+            className={`${inputCls} ${errors.quantity ? "border-red focus:ring-red/20" : ""}`}
           />
           {allowedMax() != null && (
             <div className="text-xs opacity-60 mt-1">
               Max restant : {allowedMax()} {safeUnit || ""}
             </div>
           )}
-          {errors.quantity && (
+          {errors.quantity?.message && (
             <p className="text-xs text-red mt-1">{errors.quantity.message}</p>
           )}
         </div>
-        <div className="w-full mobile:w-40">
-          <label className="text-sm font-medium">Unité</label>
-          <select
-            value={safeUnit}
-            onChange={(e) =>
-              setValue("unit", e.target.value, {
-                shouldDirty: true,
-                shouldValidate: true,
-              })
-            }
-            className="border rounded p-2 h-[44px] w-full"
-            disabled={lotBaseUnit ? unitOpts.length === 1 : false}
-          >
-            {(lotBaseUnit ? unitOpts : ALL_UNITS).map((u) => (
-              <option key={u} value={u}>
-                {u}
-              </option>
-            ))}
-          </select>
+
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <Hash className="size-4" /> Unité
+          </label>
+          <div className="relative">
+            <select
+              value={safeUnit}
+              onChange={(e) =>
+                setValue("unit", e.target.value, {
+                  shouldDirty: true,
+                  shouldValidate: true,
+                })
+              }
+              className={selectCls}
+              disabled={lotBaseUnit ? unitOpts.length === 1 : false}
+            >
+              {(lotBaseUnit ? unitOpts : ALL_UNITS).map((u) => (
+                <option key={u} value={u}>
+                  {u}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
-        <div className="w-full mobile:w-48">
-          <label className="text-sm font-medium">DLC/DDM</label>
+
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <Tag className="size-4" /> N° lot
+          </label>
+          <input
+            type="text"
+            {...register("lotNumber")}
+            className={inputCls}
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </div>
+
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <CalendarClock className="size-4" /> DLC/DDM
+          </label>
           <input
             type="date"
             {...register("bestBefore")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={selectCls}
           />
         </div>
       </div>
 
-      {/* 5) Note */}
-      <div>
-        <label className="text-sm font-medium">Note</label>
-        <input
-          type="text"
-          {...register("note")}
-          className="border rounded p-2 h-[44px] w-full"
-          autoComplete="off"
-          spellCheck={false}
-          autoCorrect="off"
-        />
+      {/* Ligne 4 : Note */}
+      <div className="grid grid-cols-1">
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <FileText className="size-4" /> Note
+          </label>
+          <input
+            type="text"
+            {...register("note")}
+            className={inputCls}
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </div>
       </div>
 
-      {/* 6) Actions / pièces */}
-      <div className="flex flex-col gap-4 mobile:flex-row flex-wrap">
-        <div className="flex-1">
-          <label className="text-sm font-medium">Actions menées</label>
+      {/* Ligne 5 : Actions / Pièces */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
+        <div className={`${fieldWrap} h-auto`}>
+          <label className={labelCls}>
+            <FileText className="size-4" /> Actions menées
+          </label>
           <textarea
             rows={4}
             {...register("actionsTaken")}
-            className="border rounded p-2 resize-none w-full min-h-[96px]"
+            className={`${textareaCls} min-h-[96px]`}
           />
         </div>
-        <div className="flex-1">
-          <label className="text-sm font-medium">
-            Pièces (URLs, 1 par ligne)
+        <div className={`${fieldWrap} h-auto`}>
+          <label className={labelCls}>
+            <LinkIcon className="size-4" /> Pièces (URLs, 1 par ligne)
           </label>
           <textarea
             rows={4}
             {...register("attachmentsText")}
-            className="border rounded p-2 resize-none w-full min-h-[96px]"
+            className={`${textareaCls} min-h-[96px]`}
             placeholder={"https://…/bon-retour.pdf\nhttps://…/photos.jpg"}
           />
         </div>
       </div>
 
-      {/* 7) Clôture */}
-      <div className="flex gap-4 items-center">
-        <div className="flex items-center gap-2">
-          <input id="closed" type="checkbox" {...register("closed")} />
-          <label htmlFor="closed" className="text-sm font-medium">
-            Clôturé
+      {/* Ligne 6 : Clôture (switch) */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <ShieldCheck className="size-4" /> Clôture
           </label>
+          <div className="flex items-center h-11">
+            <label
+              role="switch"
+              aria-checked={!!closedWatch}
+              className="group inline-flex justify-between h-11 w-full items-center gap-3 rounded-xl border border-darkBlue/20 bg-white px-3 py-2 cursor-pointer select-none"
+              title="Basculer Clôturé / Ouvert"
+            >
+              <span className="text-sm text-darkBlue/70">
+                {closedWatch ? "Clôturé" : "Ouvert"}
+              </span>
+              <input
+                type="checkbox"
+                {...register("closed")}
+                className="sr-only peer"
+              />
+              <span className="relative inline-flex h-6 w-11 items-center rounded-full bg-darkBlue/20 transition-colors peer-checked:bg-darkBlue/80 group-aria-checked:bg-darkBlue/80">
+                <span className="absolute left-1 top-1/2 -translate-y-1/2 size-4 rounded-full bg-white shadow transition-transform will-change-transform translate-x-0 peer-checked:translate-x-5 group-aria-checked:translate-x-5" />
+              </span>
+            </label>
+          </div>
         </div>
-        <div className="w-72">
-          <label className="text-sm font-medium">Clôturé le</label>
+
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <CalendarClock className="size-4" /> Clôturé le
+          </label>
           <input
             type="datetime-local"
             {...register("closedAt")}
-            className="border rounded p-2 h-[44px] w-full"
-            disabled={!watch("closed")}
+            className={`${selectCls} ${!closedWatch ? "opacity-60 cursor-not-allowed" : ""}`}
+            disabled={!closedWatch}
           />
         </div>
       </div>
 
-      {/* Actions */}
-      <div className="flex gap-2">
+      {/* Actions form */}
+      <div className="flex flex-col gap-2 mobile:flex-row">
         <button
           type="submit"
           disabled={isSubmitting}
-          className="px-4 py-2 rounded bg-blue text-white disabled:opacity-50"
+          className={`text-nowrap ${btnBase} h-[38px] text-white shadow ${isSubmitting ? "bg-darkBlue/40" : "bg-blue"}`}
         >
-          {initial?._id ? "Mettre à jour" : "Enregistrer"}
+          {isSubmitting ? (
+            <>
+              <Loader2 className="size-4 animate-spin" />
+              Enregistrement…
+            </>
+          ) : initial?._id ? (
+            <>
+              <FileText className="size-4" />
+              Mettre à jour
+            </>
+          ) : (
+            <>
+              <FileText className="size-4" />
+              Enregistrer
+            </>
+          )}
         </button>
+
         {initial?._id && (
           <button
             type="button"
@@ -666,7 +826,7 @@ export default function RecallForm({
               reset(buildDefaults(null));
               onCancel?.();
             }}
-            className="px-4 py-2 rounded text-white bg-red"
+            className={`${btnBase} h-[38px] border border-red bg-white text-red`}
           >
             Annuler
           </button>

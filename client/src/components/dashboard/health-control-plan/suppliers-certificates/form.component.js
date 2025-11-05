@@ -1,8 +1,19 @@
+// app/(components)/haccp/suppliers/SupplierCertificateForm.jsx
 "use client";
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import axios from "axios";
+import {
+  FileText,
+  X,
+  Link as LinkIcon,
+  Hash,
+  Building2,
+  Tag,
+  CalendarDays,
+} from "lucide-react";
 
+/* ---------- Utils ---------- */
 function toDateValue(value) {
   if (!value) return "";
   const d = new Date(value);
@@ -33,6 +44,18 @@ export default function SupplierCertificateForm({
     reset,
     formState: { errors, isSubmitting },
   } = useForm({ defaultValues: buildDefaults(initial) });
+
+  /* ---------- Styles alignés ---------- */
+  const fieldWrap =
+    "group relative rounded-xl bg-white/50 backdrop-blur-sm py-2 min-h-[80px] transition-shadow";
+  const labelCls =
+    "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
+  const inputCls =
+    "h-11 w-full rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition placeholder:text-darkBlue/40";
+  const selectCls =
+    "h-11 w-full appearance-none rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition";
+  const btnBase =
+    "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition active:scale-[0.98]";
 
   useEffect(() => {
     reset(buildDefaults(initial));
@@ -74,110 +97,138 @@ export default function SupplierCertificateForm({
   return (
     <form
       onSubmit={handleSubmit(onSubmit)}
-      className="bg-white rounded-lg p-4 shadow-sm flex flex-col gap-6"
+      className="relative flex flex-col gap-5"
     >
       {/* Ligne 1 : Fournisseur / Type */}
-      <div className="flex flex-col gap-4 mobile:flex-row flex-wrap">
-        <div className="flex-1 min-w-[220px]">
-          <label className="text-sm font-medium">Fournisseur *</label>
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
+        <div className={`${fieldWrap} px-3`}>
+          <label className={labelCls}>
+            <Building2 className="size-4" />
+            Fournisseur *
+          </label>
           <input
             type="text"
-            {...register("supplierName", { required: "Requis" })}
-            className={`border rounded p-2 h-[44px] w-full ${errors.supplierName ? "border-red ring-1 ring-red" : ""}`}
             placeholder="Nom du fournisseur"
             autoComplete="off"
             spellCheck={false}
-            autoCorrect="off"
+            {...register("supplierName", { required: "Requis" })}
+            className={`${inputCls} ${errors.supplierName ? "border-red focus:ring-red/20" : ""}`}
           />
-          {errors.supplierName && (
-            <p className="text-xs text-red mt-1">
-              {errors.supplierName.message}
-            </p>
-          )}
         </div>
-        <div className="w-full mobile:w-72">
-          <label className="text-sm font-medium">Type *</label>
+
+        <div className={`${fieldWrap} px-3`}>
+          <label className={labelCls}>
+            <Tag className="size-4" />
+            Type *
+          </label>
           <input
             type="text"
-            {...register("type", { required: "Requis" })}
-            className={`border rounded p-2 h-[44px] w-full ${errors.type ? "border-red ring-1 ring-red" : ""}`}
             placeholder="Ex: IFS/BRC, Allergènes, HACCP…"
             autoComplete="off"
             spellCheck={false}
-            autoCorrect="off"
+            {...register("type", { required: "Requis" })}
+            className={`${inputCls} ${errors.type ? "border-red focus:ring-red/20" : ""}`}
           />
-          {errors.type && (
-            <p className="text-xs text-red mt-1">{errors.type.message}</p>
-          )}
         </div>
       </div>
 
       {/* Ligne 2 : Référence / URL */}
-      <div className="flex flex-col gap-4 mobile:flex-row flex-wrap">
-        <div className="w-full mobile:w-64">
-          <label className="text-sm font-medium">N° Certificat</label>
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
+        <div className={`${fieldWrap} px-3`}>
+          <label className={labelCls}>
+            <Hash className="size-4" />
+            N° Certificat
+          </label>
           <input
             type="text"
-            {...register("certificateNumber")}
-            className="border rounded p-2 h-[44px] w-full"
             autoComplete="off"
             spellCheck={false}
-            autoCorrect="off"
+            {...register("certificateNumber")}
+            className={inputCls}
           />
         </div>
-        <div className="flex-1 min-w-[240px]">
-          <label className="text-sm font-medium">URL du document</label>
+
+        <div className={`${fieldWrap} px-3`}>
+          <label className={labelCls}>
+            <LinkIcon className="size-4" />
+            URL du document
+          </label>
           <input
             type="url"
-            {...register("fileUrl")}
-            className="border rounded p-2 h-[44px] w-full"
             placeholder="https://…/certificate.pdf"
             autoComplete="off"
             spellCheck={false}
-            autoCorrect="off"
+            {...register("fileUrl")}
+            className={inputCls}
           />
         </div>
       </div>
 
       {/* Ligne 3 : Validité */}
-      <div className="flex flex-col gap-4 mobile:flex-row flex-wrap">
-        <div className="w-full mobile:w-48">
-          <label className="text-sm font-medium">Valide du</label>
-          <input
-            type="date"
-            {...register("validFrom")}
-            className="border rounded p-2 h-[44px] w-full"
-          />
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
+        <div className={`${fieldWrap} px-3`}>
+          <label className={labelCls}>
+            <CalendarDays className="size-4" />
+            Valide du
+          </label>
+          <input type="date" {...register("validFrom")} className={selectCls} />
         </div>
-        <div className="w-full mobile:w-48">
-          <label className="text-sm font-medium">Au</label>
+
+        <div className={`${fieldWrap} px-3`}>
+          <label className={labelCls}>
+            <CalendarDays className="size-4" />
+            Au
+          </label>
           <input
             type="date"
             {...register("validUntil")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={selectCls}
           />
         </div>
       </div>
 
       {/* Notes */}
-      <div>
-        <label className="text-sm font-medium">Notes</label>
+      <div className={`${fieldWrap} px-3`}>
+        <label className={labelCls}>
+          <FileText className="size-4" />
+          Notes
+        </label>
         <textarea
           rows={3}
           {...register("notes")}
-          className="border rounded p-2 resize-none w-full"
+          className="w-full resize-none rounded-lg border border-darkBlue/20 bg-white p-[10px] text-[15px] outline-none transition placeholder:text-darkBlue/40"
+          placeholder="Observations, portée du certificat, etc."
         />
       </div>
 
       {/* Actions */}
-      <div className="flex gap-2">
+      <div className="flex flex-col gap-2 mobile:flex-row items-start">
         <button
           type="submit"
           disabled={isSubmitting}
-          className="px-4 py-2 rounded bg-blue text-white disabled:opacity-50"
+          aria-disabled={isSubmitting}
+          className={`${btnBase} text-nowrap text-white shadow ${
+            isSubmitting ? "bg-darkBlue/40" : "bg-blue border border-blue"
+          } disabled:opacity-60`}
         >
-          {initial?._id ? "Mettre à jour" : "Enregistrer"}
+          {isSubmitting ? (
+            <>
+              <FileText className="size-4 animate-spin" />
+              Enregistrement…
+            </>
+          ) : initial?._id ? (
+            <>
+              <FileText className="size-4" />
+              Mettre à jour
+            </>
+          ) : (
+            <>
+              <FileText className="size-4" />
+              Enregistrer
+            </>
+          )}
         </button>
+
         {initial?._id && (
           <button
             type="button"
@@ -185,8 +236,9 @@ export default function SupplierCertificateForm({
               reset(buildDefaults(null));
               onCancel?.();
             }}
-            className="px-4 py-2 rounded text-white bg-red"
+            className={`${btnBase} border border-red bg-white text-red`}
           >
+            <X className="size-4" />
             Annuler
           </button>
         )}

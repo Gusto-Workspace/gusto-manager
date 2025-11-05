@@ -4,7 +4,23 @@ import { useEffect, useMemo, useContext, useState } from "react";
 import { useForm } from "react-hook-form";
 import axios from "axios";
 import { GlobalContext } from "@/contexts/global.context";
-import { ChevronDown, FileText, Loader2 } from "lucide-react";
+import {
+  ChevronDown,
+  FileText,
+  Loader2,
+  CalendarClock,
+  MapPin,
+  RefreshCcw,
+  AlertTriangle,
+  UserRound,
+  FlaskConical,
+  Link as LinkIcon,
+  Timer,
+  ListTodo,
+  Image as ImageIcon,
+  CheckSquare,
+  ShieldCheck,
+} from "lucide-react";
 
 function toDatetimeLocalValue(value) {
   const base = value ? new Date(value) : new Date();
@@ -80,11 +96,8 @@ export default function CleaningTaskForm({
   );
 
   const normalize = (str) =>
-    str
-      ?.normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .trim() ?? "";
+    str?.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim() ??
+    "";
 
   const [empQuery, setEmpQuery] = useState("");
   const [isEmpOpen, setIsEmpOpen] = useState(false);
@@ -126,8 +139,7 @@ export default function CleaningTaskForm({
 
   const doneWatch = watch("done");
   useEffect(() => {
-    if (doneWatch && !watch("doneAt"))
-      setValue("doneAt", toDatetimeLocalValue());
+    if (doneWatch && !watch("doneAt")) setValue("doneAt", toDatetimeLocalValue());
     if (!doneWatch) {
       setValue("doneAt", "");
       setValue("verified", false);
@@ -222,7 +234,7 @@ export default function CleaningTaskForm({
 
   const assignedInvalid = !!errors.assignedTo;
 
-  /* ---------- STYLES (alignés sur MicrobiologyForm) ---------- */
+  /* ---------- STYLES (alignés) ---------- */
   const fieldWrap =
     "group relative rounded-xl bg-white/50 backdrop-blur-sm px-3 py-2 h-[80px] transition-shadow";
   const labelCls =
@@ -235,14 +247,13 @@ export default function CleaningTaskForm({
     "w-full resize-none rounded-lg border border-darkBlue/20 bg-white p-[10px] text-[15px] outline-none transition placeholder:text-darkBlue/40";
 
   return (
-    <form
-      onSubmit={handleSubmit(onSubmit)}
-      className="relative flex flex-col gap-2"
-    >
+    <form onSubmit={handleSubmit(onSubmit)} className="relative flex flex-col gap-2">
       {/* Ligne 1 : Zone / Fréquence / Priorité */}
       <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
         <div className={fieldWrap}>
-          <label className={labelCls}>Zone *</label>
+          <label className={labelCls}>
+            <MapPin className="size-4" /> Zone *
+          </label>
           <input
             type="text"
             placeholder="ex: Plonge, Sol cuisine, Plan de travail froid…"
@@ -258,7 +269,9 @@ export default function CleaningTaskForm({
         </div>
 
         <div className={fieldWrap}>
-          <label className={labelCls}>Fréquence</label>
+          <label className={labelCls}>
+            <RefreshCcw className="size-4" /> Fréquence
+          </label>
           <div className="relative">
             <select {...register("frequency")} className={selectCls}>
               <option value="daily">Quotidienne</option>
@@ -271,7 +284,9 @@ export default function CleaningTaskForm({
         </div>
 
         <div className={fieldWrap}>
-          <label className={labelCls}>Priorité</label>
+          <label className={labelCls}>
+            <AlertTriangle className="size-4" /> Priorité
+          </label>
           <div className="relative">
             <select {...register("riskLevel")} className={selectCls}>
               <option value="low">Basse</option>
@@ -286,7 +301,9 @@ export default function CleaningTaskForm({
       {/* Ligne 2 : Description / Prévue le / Assignée à */}
       <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
         <div className={fieldWrap}>
-          <label className={labelCls}>Description</label>
+          <label className={labelCls}>
+            <FileText className="size-4" /> Description
+          </label>
           <input
             type="text"
             placeholder="Détails de l’intervention"
@@ -299,17 +316,17 @@ export default function CleaningTaskForm({
         </div>
 
         <div className={fieldWrap}>
-          <label className={labelCls}>Prévue le</label>
-          <input
-            type="datetime-local"
-            {...register("dueAt")}
-            className={selectCls}
-          />
+          <label className={labelCls}>
+            <CalendarClock className="size-4" /> Prévue le
+          </label>
+          <input type="datetime-local" {...register("dueAt")} className={selectCls} />
         </div>
 
         {/* Assignée à (autocomplete) */}
         <div className={`${fieldWrap} h-auto relative z-[60]`}>
-          <label className={labelCls}>Assignée à *</label>
+          <label className={labelCls}>
+            <UserRound className="size-4" /> Assignée à *
+          </label>
           <div className="relative">
             <input
               type="text"
@@ -378,8 +395,7 @@ export default function CleaningTaskForm({
             type="hidden"
             {...register("assignedTo", {
               required: true,
-              validate: (val) =>
-                allEmployees.some((e) => e._id === String(val)),
+              validate: (val) => allEmployees.some((e) => e._id === String(val)),
             })}
           />
         </div>
@@ -388,7 +404,9 @@ export default function CleaningTaskForm({
       {/* Ligne 3 : Produit / FDS / Temps contact */}
       <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
         <div className={fieldWrap}>
-          <label className={labelCls}>Produit utilisé</label>
+          <label className={labelCls}>
+            <FlaskConical className="size-4" /> Produit utilisé
+          </label>
           <input
             type="text"
             {...register("productUsed")}
@@ -399,7 +417,9 @@ export default function CleaningTaskForm({
           />
         </div>
         <div className={fieldWrap}>
-          <label className={labelCls}>FDS (URL)</label>
+          <label className={labelCls}>
+            <LinkIcon className="size-4" /> FDS (URL)
+          </label>
           <input
             type="url"
             {...register("productFDSUrl")}
@@ -410,7 +430,9 @@ export default function CleaningTaskForm({
           />
         </div>
         <div className={fieldWrap}>
-          <label className={labelCls}>Temps contact (min)</label>
+          <label className={labelCls}>
+            <Timer className="size-4" /> Temps contact (min)
+          </label>
           <input
             type="number"
             step="1"
@@ -422,10 +444,12 @@ export default function CleaningTaskForm({
         </div>
       </div>
 
-      {/* Ligne 4 : Étapes & Preuves (hauteur augmentée) */}
+      {/* Ligne 4 : Étapes & Preuves */}
       <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
         <div className={`${fieldWrap} h-auto`}>
-          <label className={labelCls}>Étapes du protocole (1 par ligne)</label>
+          <label className={labelCls}>
+            <ListTodo className="size-4" /> Étapes du protocole (1 par ligne)
+          </label>
           <textarea
             rows={8}
             {...register("protocolStepsText")}
@@ -436,7 +460,9 @@ export default function CleaningTaskForm({
           />
         </div>
         <div className={`${fieldWrap} h-auto`}>
-          <label className={labelCls}>Preuves (URLs, 1 par ligne)</label>
+          <label className={labelCls}>
+            <ImageIcon className="size-4" /> Preuves (URLs, 1 par ligne)
+          </label>
           <textarea
             rows={8}
             {...register("proofUrlsText")}
@@ -449,7 +475,9 @@ export default function CleaningTaskForm({
       {/* Ligne 5A : Statut "À faire" + Date exécution */}
       <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
         <div className={fieldWrap}>
-          <label className={labelCls}>Statut</label>
+          <label className={labelCls}>
+            <CheckSquare className="size-4" /> Statut
+          </label>
           <div className="flex items-center h-11">
             <label
               role="switch"
@@ -459,12 +487,8 @@ export default function CleaningTaskForm({
               <span className="text-sm text-darkBlue/70">
                 {doneWatch ? "Fait" : "À faire"}
               </span>
-              <input
-                type="checkbox"
-                {...register("done")}
-                className="sr-only peer"
-              />
-              <span className="relative inline-flex h-6 w-11 items-center rounded-full bg-darkBlue/20 transition-colors group-aria-checked:bg-blue peer-checked:bg-blue">
+              <input type="checkbox" {...register("done")} className="sr-only peer" />
+              <span className="relative inline-flex h-6 w-11 items-center rounded-full bg-darkBlue/20 transition-colors group-aria-checked:bg-darkBlue peer-checked:bg-darkBlue">
                 <span className="absolute left-1 top-1/2 -translate-y-1/2 size-4 rounded-full bg-white shadow transition-transform will-change-transform translate-x-0 group-aria-checked:translate-x-5 peer-checked:translate-x-5" />
               </span>
             </label>
@@ -472,27 +496,25 @@ export default function CleaningTaskForm({
         </div>
 
         <div className={fieldWrap}>
-          <label className={labelCls}>Date/heure exécution</label>
-          <input
-            type="datetime-local"
-            {...register("doneAt")}
-            className={selectCls}
-          />
+          <label className={labelCls}>
+            <CalendarClock className="size-4" /> Date/heure exécution
+          </label>
+          <input type="datetime-local" {...register("doneAt")} className={selectCls} />
         </div>
       </div>
 
-      {/* Ligne 5B : Statut "Vérifiée" + Date vérif */}
+      {/* Ligne 5B : Vérifiée + Date vérif */}
       <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
         <div className={fieldWrap}>
-          <label className={labelCls}>Vérification</label>
+          <label className={labelCls}>
+            <ShieldCheck className="size-4" /> Vérification
+          </label>
           <div className="flex items-center h-11">
             <label
               role="switch"
               aria-checked={!!verifiedWatch}
               className={`group inline-flex justify-between h-11 w-full items-center gap-3 rounded-xl border bg-white px-3 py-2 cursor-pointer select-none ${
-                !doneWatch
-                  ? "border-darkBlue/10 opacity-50"
-                  : "border-darkBlue/20"
+                !doneWatch ? "border-darkBlue/10 opacity-50" : "border-darkBlue/20"
               }`}
             >
               <span className="text-sm text-darkBlue/70">
@@ -504,7 +526,7 @@ export default function CleaningTaskForm({
                 className="sr-only peer"
                 disabled={!doneWatch}
               />
-              <span className="relative inline-flex h-6 w-11 items-center rounded-full bg-darkBlue/20 transition-colors group-aria-checked:bg-blue peer-checked:bg-blue">
+              <span className="relative inline-flex h-6 w-11 items-center rounded-full bg-darkBlue/20 transition-colors group-aria-checked:bg-darkBlue peer-checked:bg-darkBlue">
                 <span className="absolute left-1 top-1/2 -translate-y-1/2 size-4 rounded-full bg-white shadow transition-transform will-change-transform translate-x-0 group-aria-checked:translate-x-5 peer-checked:translate-x-5" />
               </span>
             </label>
@@ -512,7 +534,9 @@ export default function CleaningTaskForm({
         </div>
 
         <div className={fieldWrap}>
-          <label className={labelCls}>Date/heure vérif</label>
+          <label className={labelCls}>
+            <CalendarClock className="size-4" /> Date/heure vérif
+          </label>
           <input
             type="datetime-local"
             {...register("verifiedAt")}
@@ -522,7 +546,7 @@ export default function CleaningTaskForm({
         </div>
       </div>
 
-      {/* Actions (style MicrobiologyForm) */}
+      {/* Actions */}
       <div className="flex flex-col items-center gap-2 mt-3 mobile:flex-row">
         <button
           type="submit"

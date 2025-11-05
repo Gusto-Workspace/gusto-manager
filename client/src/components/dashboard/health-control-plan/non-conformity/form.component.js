@@ -140,7 +140,7 @@ export default function NonConformityForm({
     [allEmployees]
   );
 
-  /* ---------- Dropdown "Effectué par" par ligne ---------- */
+  /* ---------- Dropdown "Effectué par" ---------- */
   const [actionDropdownOpen, setActionDropdownOpen] = useState({});
   const setActionOpen = (idx, open) =>
     setActionDropdownOpen((m) => ({ ...m, [idx]: open }));
@@ -222,14 +222,16 @@ export default function NonConformityForm({
     return !!txt && !id;
   };
 
-  /* ---------- Auto dates sur "Fait" ---------- */
+  /* ---------- Auto dates sur "Fait" (garde-fou) ---------- */
   const caWatch = watch("correctiveActions") || [];
   useEffect(() => {
     caWatch.forEach((row, idx) => {
       const path = `correctiveActions.${idx}.doneAt`;
       const val = getValues(path);
-      if (row?.done && !val) setValue(path, nowLocal(), { shouldDirty: true });
-      if (!row?.done && val) setValue(path, "", { shouldDirty: true });
+      if (row?.done && !val)
+        setValue(path, nowLocal(), { shouldDirty: true });
+      if (!row?.done && val)
+        setValue(path, "", { shouldDirty: true });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caWatch]);
@@ -680,7 +682,19 @@ export default function NonConformityForm({
                               type="checkbox"
                               className="sr-only peer"
                               {...register(`correctiveActions.${idx}.done`, {
-                                onChange: () => {
+                                onChange: (e) => {
+                                  const checked = e.target.checked;
+                                  // logique immédiate : set/unset la date exécution
+                                  setValue(
+                                    `correctiveActions.${idx}.done`,
+                                    checked,
+                                    { shouldDirty: true }
+                                  );
+                                  setValue(
+                                    `correctiveActions.${idx}.doneAt`,
+                                    checked ? nowLocal() : "",
+                                    { shouldDirty: true, shouldValidate: true }
+                                  );
                                   setValidatedById((s) =>
                                     s[id] ? { ...s, [id]: false } : s
                                   );

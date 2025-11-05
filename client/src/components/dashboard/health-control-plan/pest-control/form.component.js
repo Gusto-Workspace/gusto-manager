@@ -10,6 +10,20 @@ import {
   Trash2,
   Loader2,
   ChevronDown,
+  CalendarClock,
+  RefreshCcw,
+  UserRound,
+  Phone,
+  Mail,
+  Hash,
+  Package as PackageIcon,
+  Bug,
+  Activity,
+  ShieldCheck,
+  MapPin,
+  AlertTriangle,
+  ListChecks,
+  Wrench,
 } from "lucide-react";
 
 /* ---------- Utils ---------- */
@@ -137,7 +151,7 @@ const missingZone = (row) => !row?.zone?.trim();
 const isLineValidatedByFields = (row) =>
   !!row?.date && !!row?.action?.trim() && !!row?.zone?.trim();
 
-/* ---------- Styles (alignés sur RecipeBatchesForm) ---------- */
+/* ---------- Styles (alignés) ---------- */
 const fieldWrap =
   "group relative rounded-xl bg-white/50 backdrop-blur-sm py-2 h-[80px] transition-shadow";
 const labelCls =
@@ -387,13 +401,13 @@ export default function PestControlForm({
   return (
     <form
       onSubmit={handleSubmit(onSubmit)}
-      className="relative flex flex-col gap-5"
+      className="relative flex flex-col gap-2"
     >
       {/* Ligne 1 : Prestataire / Fréquence */}
       <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
         <div className={`${fieldWrap} px-3`}>
           <label className={labelCls}>
-            <FileText className="size-4" /> Prestataire *
+            <UserRound className="size-4" /> Prestataire *
           </label>
           <input
             type="text"
@@ -407,7 +421,7 @@ export default function PestControlForm({
 
         <div className={`${fieldWrap} px-3`}>
           <label className={labelCls}>
-            <FileText className="size-4" /> Fréquence
+            <RefreshCcw className="size-4" /> Fréquence
           </label>
           <select {...register("visitFrequency")} className={selectCls}>
             <option value="monthly">Mensuelle</option>
@@ -420,11 +434,11 @@ export default function PestControlForm({
         </div>
       </div>
 
-      {/* Ligne 2 : Début & Fin contrat (sur la même ligne, en dessous) */}
+      {/* Ligne 2 : Début & Fin contrat */}
       <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
         <div className={`${fieldWrap} px-3`}>
           <label className={labelCls}>
-            <FileText className="size-4" /> Début contrat
+            <CalendarClock className="size-4" /> Début contrat
           </label>
           <input
             type="date"
@@ -435,7 +449,7 @@ export default function PestControlForm({
 
         <div className={`${fieldWrap} px-3`}>
           <label className={labelCls}>
-            <FileText className="size-4" /> Fin contrat
+            <CalendarClock className="size-4" /> Fin contrat
           </label>
           <input
             type="date"
@@ -448,7 +462,9 @@ export default function PestControlForm({
       {/* Ligne 3 : contacts & ID prestataire */}
       <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-4">
         <div className={`${fieldWrap} px-3`}>
-          <label className={labelCls}>Contact</label>
+          <label className={labelCls}>
+            <UserRound className="size-4" /> Contact
+          </label>
           <input
             type="text"
             {...register("providerContactName")}
@@ -458,7 +474,9 @@ export default function PestControlForm({
           />
         </div>
         <div className={`${fieldWrap} px-3`}>
-          <label className={labelCls}>Téléphone</label>
+          <label className={labelCls}>
+            <Phone className="size-4" /> Téléphone
+          </label>
           <input
             type="text"
             {...register("providerPhone")}
@@ -468,7 +486,9 @@ export default function PestControlForm({
           />
         </div>
         <div className={`${fieldWrap} px-3`}>
-          <label className={labelCls}>Email</label>
+          <label className={labelCls}>
+            <Mail className="size-4" /> Email
+          </label>
           <input
             type="email"
             {...register("providerEmail")}
@@ -478,7 +498,9 @@ export default function PestControlForm({
           />
         </div>
         <div className={`${fieldWrap} px-3`}>
-          <label className={labelCls}>ID Prestataire</label>
+          <label className={labelCls}>
+            <Hash className="size-4" /> ID Prestataire
+          </label>
           <input
             type="text"
             {...register("providerId")}
@@ -492,7 +514,9 @@ export default function PestControlForm({
       {/* Ligne 4 : parc & statut */}
       <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-4">
         <div className={`${fieldWrap} px-3`}>
-          <label className={labelCls}>Postes appâts</label>
+          <label className={labelCls}>
+            <PackageIcon className="size-4" /> Postes appâts
+          </label>
           <input
             type="number"
             {...register("baitStationsCount")}
@@ -500,7 +524,9 @@ export default function PestControlForm({
           />
         </div>
         <div className={`${fieldWrap} px-3`}>
-          <label className={labelCls}>Pièges</label>
+          <label className={labelCls}>
+            <Bug className="size-4" /> Pièges
+          </label>
           <input
             type="number"
             {...register("trapsCount")}
@@ -509,7 +535,9 @@ export default function PestControlForm({
           />
         </div>
         <div className={`${fieldWrap} px-3`}>
-          <label className={labelCls}>Niveau activité</label>
+          <label className={labelCls}>
+            <Activity className="size-4" /> Niveau activité
+          </label>
           <select {...register("activityLevel")} className={selectCls}>
             <option value="none">Nulle</option>
             <option value="low">Faible</option>
@@ -518,7 +546,9 @@ export default function PestControlForm({
           </select>
         </div>
         <div className={`${fieldWrap} px-3`}>
-          <label className={labelCls}>Conformité</label>
+          <label className={labelCls}>
+            <ShieldCheck className="size-4" /> Conformité
+          </label>
           <select {...register("complianceStatus")} className={selectCls}>
             <option value="pending">En attente</option>
             <option value="compliant">Conforme</option>
@@ -531,7 +561,7 @@ export default function PestControlForm({
       <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
         <div className={`${fieldWrap} px-3`}>
           <label className={labelCls}>
-            <FileText className="size-4" /> Dernière visite
+            <CalendarClock className="size-4" /> Dernière visite
           </label>
           <input
             type="datetime-local"
@@ -541,7 +571,7 @@ export default function PestControlForm({
         </div>
         <div className={`${fieldWrap} px-3`}>
           <label className={labelCls}>
-            <FileText className="size-4" /> Prochaine prévue
+            <CalendarClock className="size-4" /> Prochaine prévue
           </label>
           <input
             type="datetime-local"
@@ -582,7 +612,7 @@ export default function PestControlForm({
       <div className="rounded-2xl bg-white/50 p-3 pb-0">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-darkBlue flex items-center gap-2">
-            <FileText className="size-4" /> Journal d’intervention
+            <ListChecks className="size-4" /> Journal d’intervention
           </h3>
 
           <button
@@ -694,7 +724,9 @@ export default function PestControlForm({
                     {/* Ligne 1 */}
                     <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
                       <div className={fieldWrap}>
-                        <label className={labelCls}>Date *</label>
+                        <label className={labelCls}>
+                          <CalendarClock className="size-4" /> Date *
+                        </label>
                         <input
                           type="datetime-local"
                           {...register(`actions.${idx}.date`, {
@@ -709,7 +741,9 @@ export default function PestControlForm({
                       </div>
 
                       <div className={`midTablet:col-span-2 ${fieldWrap}`}>
-                        <label className={labelCls}>Action *</label>
+                        <label className={labelCls}>
+                          <Wrench className="size-4" /> Action *
+                        </label>
                         <input
                           type="text"
                           placeholder="Inspection / Pose / Relevé…"
@@ -730,7 +764,9 @@ export default function PestControlForm({
                     {/* Ligne 2 */}
                     <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-4">
                       <div className={`${fieldWrap} midTablet:col-span-2`}>
-                        <label className={labelCls}>Zone *</label>
+                        <label className={labelCls}>
+                          <MapPin className="size-4" /> Zone *
+                        </label>
                         <input
                           type="text"
                           autoComplete="off"
@@ -747,7 +783,9 @@ export default function PestControlForm({
                       </div>
 
                       <div className={fieldWrap}>
-                        <label className={labelCls}>Technicien</label>
+                        <label className={labelCls}>
+                          <UserRound className="size-4" /> Technicien
+                        </label>
                         <input
                           type="text"
                           autoComplete="off"
@@ -758,7 +796,9 @@ export default function PestControlForm({
                       </div>
 
                       <div className={fieldWrap}>
-                        <label className={labelCls}>Gravité</label>
+                        <label className={labelCls}>
+                          <AlertTriangle className="size-4" /> Gravité
+                        </label>
                         <select
                           {...register(`actions.${idx}.severity`, {
                             onChange: () =>
@@ -779,7 +819,9 @@ export default function PestControlForm({
                     {/* Ligne 3 */}
                     <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-4">
                       <div className={fieldWrap}>
-                        <label className={labelCls}>Appâts rechargés</label>
+                        <label className={labelCls}>
+                          <PackageIcon className="size-4" /> Appâts rechargés
+                        </label>
                         <input
                           type="number"
                           onWheel={(e) => e.currentTarget.blur()}
@@ -796,7 +838,9 @@ export default function PestControlForm({
                       </div>
 
                       <div className={`midTablet:col-span-3 ${fieldWrap}`}>
-                        <label className={labelCls}>Constats</label>
+                        <label className={labelCls}>
+                          <ListChecks className="size-4" /> Constats
+                        </label>
                         <input
                           type="text"
                           autoComplete="off"
@@ -822,7 +866,9 @@ export default function PestControlForm({
                       </div>
 
                       <div className={`${fieldWrap} h-auto`}>
-                        <label className={labelCls}>Notes</label>
+                        <label className={labelCls}>
+                          <FileText className="size-4" /> Notes
+                        </label>
                         <textarea
                           rows={3}
                           {...register(`actions.${idx}.notes`)}

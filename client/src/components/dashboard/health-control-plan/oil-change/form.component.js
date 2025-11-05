@@ -9,6 +9,14 @@ import {
   Hash,
   Link as LinkIcon,
   Loader2,
+  Wrench,
+  Droplet,
+  Building2,
+  Percent,
+  Filter,
+  Palette,
+  Wind,
+  Tag,
 } from "lucide-react";
 
 function toDatetimeLocalValue(value) {
@@ -125,7 +133,7 @@ export default function OilChangeForm({
     onSuccess?.(saved);
   };
 
-  // --- Styles (comme MicrobiologyForm)
+  // --- Styles (comme Microbiology/SupplierCertificateForm)
   const fieldWrap =
     "group relative rounded-xl bg-white/50 backdrop-blur-sm px-3 py-2 h-[80px] transition-shadow";
   const labelCls =
@@ -138,6 +146,7 @@ export default function OilChangeForm({
     "text-nowrap inline-flex items-center justify-center gap-2 h-[38px] rounded-lg bg-blue px-4 py-2 text-sm font-medium text-white shadow disabled:opacity-60";
   const btnSecondary =
     "inline-flex items-center justify-center gap-2 rounded-lg border border-red bg-white px-4 py-2 text-sm font-medium text-red";
+
   const notesVal = watch("qualityNotes");
   const filtered = watch("filteredBeforeChange");
 
@@ -146,7 +155,10 @@ export default function OilChangeForm({
       {/* Ligne 1 : Matériel / Date */}
       <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
         <div className={fieldWrap}>
-          <label className={labelCls}>Friteuse / Équipement</label>
+          <label className={labelCls}>
+            <Wrench className="size-4" />
+            Friteuse / Équipement
+          </label>
           <input
             type="text"
             placeholder="ex: fryer-1 / cuisine"
@@ -177,7 +189,10 @@ export default function OilChangeForm({
       {/* Ligne 2 : Volume retiré / Lot / Fournisseur */}
       <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
         <div className={fieldWrap}>
-          <label className={labelCls}>Litres retirés</label>
+          <label className={labelCls}>
+            <Droplet className="size-4" />
+            Litres retirés
+          </label>
           <input
             type="number"
             step="0.1"
@@ -205,7 +220,10 @@ export default function OilChangeForm({
         </div>
 
         <div className={fieldWrap}>
-          <label className={labelCls}>Fournisseur</label>
+          <label className={labelCls}>
+            <Building2 className="size-4" />
+            Fournisseur
+          </label>
           <input
             type="text"
             placeholder="Nom du fournisseur"
@@ -221,7 +239,10 @@ export default function OilChangeForm({
       {/* Ligne 3 : TPM + Filtrage (switch) */}
       <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
         <div className={fieldWrap}>
-          <label className={labelCls}>% TPM</label>
+          <label className={labelCls}>
+            <Percent className="size-4" />
+            % TPM
+          </label>
           <input
             type="number"
             step="0.1"
@@ -235,7 +256,10 @@ export default function OilChangeForm({
         </div>
 
         <div className={`${fieldWrap} midTablet:col-span-2`}>
-          <label className={labelCls}>Filtrage (service)</label>
+          <label className={labelCls}>
+            <Filter className="size-4" />
+            Filtrage (service)
+          </label>
 
           <label
             role="switch"
@@ -283,7 +307,10 @@ export default function OilChangeForm({
       {/* Ligne 4 : Couleur / Odeur / Marque */}
       <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
         <div className={fieldWrap}>
-          <label className={labelCls}>Couleur / Indice</label>
+          <label className={labelCls}>
+            <Palette className="size-4" />
+            Couleur / Indice
+          </label>
           <input
             type="text"
             placeholder="ex: dorée / ambrée / foncée…"
@@ -296,7 +323,10 @@ export default function OilChangeForm({
         </div>
 
         <div className={fieldWrap}>
-          <label className={labelCls}>Odeur</label>
+          <label className={labelCls}>
+            <Wind className="size-4" />
+            Odeur
+          </label>
           <input
             type="text"
             placeholder="ex: neutre, ok, rance…"
@@ -309,7 +339,10 @@ export default function OilChangeForm({
         </div>
 
         <div className={fieldWrap}>
-          <label className={labelCls}>Marque d’huile</label>
+          <label className={labelCls}>
+            <Tag className="size-4" />
+            Marque d’huile
+          </label>
           <input
             type="text"
             placeholder="ex: XYZ ProFry"
