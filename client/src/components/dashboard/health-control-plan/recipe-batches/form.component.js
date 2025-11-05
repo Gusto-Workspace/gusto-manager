@@ -114,19 +114,10 @@ function formatLotLabel(l) {
 
 /* ---------------- Helpers lignes ---------------- */
 const isRowEmpty = (row) =>
-  !row?.name &&
-  !row?.qty &&
-  !row?.unit &&
-  !row?.lotNumber &&
-  !row?.inventoryLotId;
+  !row?.name && !row?.qty && !row?.unit && !row?.lotNumber && !row?.inventoryLotId;
 
-// Désormais, une ligne est "valable" UNIQUEMENT si le nom est saisi
+// Une ligne est “valide” si le Nom est saisi
 const isRowValidByName = (row) => !!row?.name?.trim();
-
-// Pour l’UI : y a-t-il des données SAUF le nom ?
-const hasOtherDataWithoutName = (row) =>
-  !isRowValidByName(row) &&
-  (row?.qty || row?.unit || row?.lotNumber || row?.inventoryLotId);
 
 /* ---------------- Composant ---------------- */
 export default function RecipeBatchesForm({
@@ -135,6 +126,8 @@ export default function RecipeBatchesForm({
   onSuccess,
   onCancel,
 }) {
+  const isEdit = !!initial?._id;
+
   const {
     register,
     handleSubmit,
@@ -154,13 +147,7 @@ export default function RecipeBatchesForm({
   });
   const ingredients = watch("ingredients");
 
-  // --- Snapshot initial pour calcul de stock virtuel (édition)
-  const initialSnapshot = useMemo(
-    () => (Array.isArray(initial?.ingredients) ? initial.ingredients : []),
-    [initial]
-  );
-
-  // --- Styles (identiques au composant réception)
+  // --- Styles
   const fieldWrap =
     "group relative rounded-xl bg-white/50 backdrop-blur-sm py-2 h-[80px] transition-shadow";
   const labelCls =
@@ -222,6 +209,9 @@ export default function RecipeBatchesForm({
 
   useEffect(() => {
     reset(buildFormDefaults(initial));
+    // reset des états de validation à chaque changement de "initial"
+    setShowReqErrById({});
+    setValidatedById({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial]);
 
@@ -291,9 +281,15 @@ export default function RecipeBatchesForm({
       shouldDirty: true,
       shouldValidate: true,
     });
+    clearErrors(`ingredients.${idx}.name`);
   }
 
   // --- Stock virtuel & max autorisé
+  const initialSnapshot = useMemo(
+    () => (Array.isArray(initial?.ingredients) ? initial.ingredients : []),
+    [initial]
+  );
+
   function prevTotalForLotInLotUnit(lot) {
     if (!lot) return 0;
     let sum = 0;
@@ -336,10 +332,7 @@ export default function RecipeBatchesForm({
     let usedByOthers = 0;
     (ingredients || []).forEach((r, j) => {
       if (j === idx) return;
-
-      // ⚠️ Ne compter les AUTRES lignes que si le NOM est saisi
-      if (!isRowValidByName(r)) return;
-
+      if (!isRowValidByName(r)) return; // ne compte que les lignes valides
       const same =
         (r?.inventoryLotId && String(r.inventoryLotId) === String(lot._id)) ||
         (!r?.inventoryLotId &&
@@ -357,12 +350,19 @@ export default function RecipeBatchesForm({
     return Math.max(0, virtualRemainInRowUnit - usedByOthers);
   }
 
-  /* ---------------- Lignes pliables & validation style réception ---------------- */
+  const fmtMax = (v) => (v == null ? null : Number.isFinite(v) ? v : null);
+
+  /* -------- Pliage + états de validation (comme réception) -------- */
   const [openById, setOpenById] = useState({});
   const contentRefs = useRef({});
   const openNewLineRef = useRef(false);
 
-  // Aligne l'état d'ouverture sur le contenu des lignes
+  // Affichage des bordures rouges après clic "Valider la ligne"
+  const [showReqErrById, setShowReqErrById] = useState({});
+  // État “ligne validée explicitement”
+  const [validatedById, setValidatedById] = useState({});
+
+  // Aligne les maps avec les champs existants
   useEffect(() => {
     setOpenById((prev) => {
       const next = { ...prev };
@@ -372,14 +372,40 @@ export default function RecipeBatchesForm({
           next[f.id] = isRowEmpty(l); // lignes vides => ouvertes
         }
       });
-      Object.keys(next).forEach((k) => {
+      for (const k of Object.keys(next)) {
         if (!fields.find((f) => f.id === k)) delete next[k];
-      });
+      }
       return next;
     });
-  }, [fields, ingredients]);
 
-  // 1ère ligne ouverte si tout est vide au premier rendu
+    setShowReqErrById((prev) => {
+      const next = { ...prev };
+      fields.forEach((f) => {
+        if (next[f.id] == null) next[f.id] = false;
+      });
+      for (const k of Object.keys(next)) {
+        if (!fields.find((f) => f.id === k)) delete next[k];
+      }
+      return next;
+    });
+
+    // En EDIT : considérer les lignes existantes comme validées si le nom est présent
+    setValidatedById((prev) => {
+      const next = { ...prev };
+      fields.forEach((f, idx) => {
+        if (next[f.id] == null) {
+          const row = (ingredients && ingredients[idx]) || {};
+          next[f.id] = isEdit && isRowValidByName(row) ? true : false;
+        }
+      });
+      for (const k of Object.keys(next)) {
+        if (!fields.find((f) => f.id === k)) delete next[k];
+      }
+      return next;
+    });
+  }, [fields, ingredients, isEdit]);
+
+  // 1ère ligne ouverte si tout vide
   useEffect(() => {
     if (!fields.length) return;
     const allEmpty =
@@ -403,19 +429,21 @@ export default function RecipeBatchesForm({
 
   const toggleOpen = (id) => setOpenById((s) => ({ ...s, [id]: !s[id] }));
 
-  // ✅ Valide la ligne : exige "Nom" non vide
+  // Valider une ligne : exige "Nom" non vide
   const validateLine = (id, idx) => {
     const value = (ingredients?.[idx]?.name || "").trim();
     if (!value) {
+      setShowReqErrById((s) => ({ ...s, [id]: true }));
+      setValidatedById((s) => ({ ...s, [id]: false }));
       setOpenById((s) => ({ ...s, [id]: true }));
-      setError(`ingredients.${idx}.name`, {
-        type: "manual",
-        message: "Requis",
-      });
+      setError(`ingredients.${idx}.name`, { type: "manual" });
       setFocus(`ingredients.${idx}.name`);
       return;
     }
+    setShowReqErrById((s) => ({ ...s, [id]: false }));
+    setValidatedById((s) => ({ ...s, [id]: true }));
     setOpenById((s) => ({ ...s, [id]: false }));
+    clearErrors(`ingredients.${idx}.name`);
   };
 
   // --- Soumission
@@ -425,6 +453,8 @@ export default function RecipeBatchesForm({
 
     // Sécurité: respecte le max par lot (après conversions)
     for (let idx = 0; idx < (data.ingredients || []).length; idx++) {
+      const fid = fields[idx]?.id;
+      if (!fid || !validatedById[fid]) continue; // ne valide que les lignes validées
       const max = allowedMaxForRow(idx);
       const n = Number(data.ingredients[idx]?.qty);
       if (max != null && Number.isFinite(n) && n > max) {
@@ -432,21 +462,28 @@ export default function RecipeBatchesForm({
           type: "manual",
           message: `Max autorisé : ${max}`,
         });
+        setOpenById((s) => ({ ...s, [fid]: true }));
         return;
       }
     }
 
-    // Garder UNIQUEMENT les lignes qui ont un nom saisi
-    const mapped = (
-      Array.isArray(data.ingredients) ? data.ingredients : []
-    ).map((l) => ({
-      name: l.name || undefined,
-      lotNumber: l.lotNumber || undefined,
-      qty: l.qty !== "" && l.qty != null ? Number(l.qty) : undefined,
-      unit: l.unit || undefined,
-      inventoryLotId: l.inventoryLotId || undefined,
-    }));
-    const ingredientsFiltered = mapped.filter((x) => isRowValidByName(x));
+    // Garder UNIQUEMENT les lignes validées explicitement
+    const mapped = (Array.isArray(data.ingredients) ? data.ingredients : []).map(
+      (l) => ({
+        name: l.name || undefined,
+        lotNumber: l.lotNumber || undefined,
+        qty: l.qty !== "" && l.qty != null ? Number(l.qty) : undefined,
+        unit: l.unit || undefined,
+        inventoryLotId: l.inventoryLotId || undefined,
+      })
+    );
+
+    const ingredientsFiltered = mapped.filter((_, idx) => {
+      const fid = fields[idx]?.id;
+      return fid && validatedById[fid];
+    });
+
+    if (!ingredientsFiltered.length) return;
 
     const payload = {
       recipeId: data.recipeId || undefined,
@@ -472,17 +509,25 @@ export default function RecipeBatchesForm({
     await fetchLots();
 
     reset(buildFormDefaults(null));
+    setShowReqErrById({});
+    setValidatedById({});
     onSuccess?.(saved);
   };
 
-  // --- Petits helpers UI
-  const fmtMax = (v) => (v == null ? null : Number.isFinite(v) ? v : null);
+  // Bouton Enregistrer désactivé tant qu’aucune ligne validée explicitement
+  const hasValidatedLine =
+    Array.isArray(fields) && fields.some((f) => validatedById[f.id]);
+  const submitDisabled = isSubmitting || !hasValidatedLine;
+
+  // Désactiver "Ajouter un ingrédient" si la dernière ligne n'a PAS été validée explicitement
+  // En EDIT, les lignes existantes sont initialisées comme validées si complètes,
+  // donc l’ajout est possible immédiatement. Dès qu’une nouvelle ligne est ajoutée,
+  // elle n’est pas validée -> il faudra la valider pour pouvoir en ajouter une autre.
+  const lastField = fields.length ? fields[fields.length - 1] : null;
+  const addDisabled = lastField ? !validatedById[lastField.id] : false;
 
   return (
-    <form
-      onSubmit={handleSubmit(onSubmit)}
-      className="relative flex flex-col gap-5"
-    >
+    <form onSubmit={handleSubmit(onSubmit)} className="relative flex flex-col gap-5">
       {/* En-tête batch */}
       <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
         <div className={`${fieldWrap} px-3`}>
@@ -494,12 +539,9 @@ export default function RecipeBatchesForm({
             placeholder="ex: recette-123"
             autoComplete="off"
             spellCheck={false}
-            {...register("recipeId", { required: "Requis" })}
-            className={inputCls}
+            {...register("recipeId", { required: true })}
+            className={`${inputCls} ${errors.recipeId ? "border-red focus:ring-red/20" : ""}`}
           />
-          {errors.recipeId && (
-            <p className="mt-1 text-xs text-red">{errors.recipeId.message}</p>
-          )}
         </div>
 
         <div className={`${fieldWrap} px-3`}>
@@ -511,12 +553,9 @@ export default function RecipeBatchesForm({
             placeholder="ex: BOLO-2025-10-02-A"
             autoComplete="off"
             spellCheck={false}
-            {...register("batchId", { required: "Requis" })}
-            className={inputCls}
+            {...register("batchId", { required: true })}
+            className={`${inputCls} ${errors.batchId ? "border-red focus:ring-red/20" : ""}`}
           />
-          {errors.batchId && (
-            <p className="mt-1 text-xs text-red">{errors.batchId.message}</p>
-          )}
         </div>
       </div>
 
@@ -526,22 +565,14 @@ export default function RecipeBatchesForm({
           <label className={labelCls}>
             <FileText className="size-4" /> Préparé le *
           </label>
-          <input
-            type="datetime-local"
-            {...register("preparedAt")}
-            className={selectCls}
-          />
+          <input type="datetime-local" {...register("preparedAt")} className={selectCls} />
         </div>
 
         <div className={`${fieldWrap} px-3`}>
           <label className={labelCls}>
             <FileText className="size-4" /> À utiliser pour le service
           </label>
-          <input
-            type="date"
-            {...register("usedByServiceDate")}
-            className={selectCls}
-          />
+          <input type="date" {...register("usedByServiceDate")} className={selectCls} />
         </div>
       </div>
 
@@ -554,7 +585,10 @@ export default function RecipeBatchesForm({
 
           <button
             type="button"
+            disabled={addDisabled}
+            aria-disabled={addDisabled}
             onClick={() => {
+              if (addDisabled) return;
               openNewLineRef.current = true;
               append({
                 name: "",
@@ -564,7 +598,12 @@ export default function RecipeBatchesForm({
                 inventoryLotId: "",
               });
             }}
-            className={`${btnBase} border border-violet/20 bg-white text-violet hover:bg-violet/5`}
+            className={`${btnBase} border border-violet/20 bg-white text-violet hover:bg-violet/5 disabled:opacity-60 disabled:cursor-not-allowed`}
+            title={
+              addDisabled
+                ? "Validez la ligne précédente pour ajouter un ingrédient"
+                : undefined
+            }
           >
             <PlusCircle className="size-4" /> Ajouter un ingrédient
           </button>
@@ -590,8 +629,8 @@ export default function RecipeBatchesForm({
             const safeUnit = allowedUnits.includes(curUnit)
               ? curUnit
               : lot
-                ? lot.unit || allowedUnits[0] || ""
-                : "";
+              ? lot.unit || allowedUnits[0] || ""
+              : "";
 
             if (safeUnit !== curUnit) {
               setTimeout(() => {
@@ -603,19 +642,23 @@ export default function RecipeBatchesForm({
             }
 
             const allowed = fmtMax(allowedMaxForRow(idx));
-            const nameReg = register(`ingredients.${idx}.name`);
+            const nameReg = register(`ingredients.${idx}.name`, {
+              onChange: (e) => {
+                // si on modifie un champ requis après validation => la ligne redevient non validée
+                setValidatedById((s) => (s[id] ? { ...s, [id]: false } : s));
+                if (e.target.value.trim()) {
+                  clearErrors(`ingredients.${idx}.name`);
+                }
+              },
+            });
 
-            // 👉 surlignage rouge si données sans nom
-            const needsNameNow = hasOtherDataWithoutName(row);
-            const hasNameErr =
-              needsNameNow ||
-              !!(errors?.ingredients && errors.ingredients[idx]?.name);
+            // Bordures rouges seulement si on a cliqué "Valider la ligne" et que le nom manque
+            const showErr = !!showReqErrById[id];
+            const needName = !row?.name?.trim();
+            const hasNameErr = showErr && needName;
 
             return (
-              <div
-                key={id}
-                className="rounded-xl border border-darkBlue/10 bg-white"
-              >
+              <div key={id} className="rounded-xl border border-darkBlue/10 bg-white">
                 {/* Header ligne */}
                 <div className="flex items-center justify-between gap-3 px-3 py-2">
                   <button
@@ -708,12 +751,6 @@ export default function RecipeBatchesForm({
                           autoComplete="off"
                           spellCheck={false}
                           {...nameReg}
-                          onChange={(e) => {
-                            nameReg.onChange(e);
-                            if (e.target.value.trim()) {
-                              clearErrors(`ingredients.${idx}.name`);
-                            }
-                          }}
                           className={`${inputCls} ${hasNameErr ? "border-red focus:ring-red/20" : ""}`}
                           aria-invalid={hasNameErr ? "true" : "false"}
                         />
@@ -753,21 +790,15 @@ export default function RecipeBatchesForm({
                               if (!Number.isFinite(n) || n < 0)
                                 return "Valeur invalide";
                               const a = allowedMaxForRow(idx);
-                              if (a != null && n > a)
-                                return `Max autorisé: ${a}`;
+                              if (a != null && n > a) return `Max autorisé: ${a}`;
                               return true;
                             },
+                            onChange: () => {
+                              setValidatedById((s) =>
+                                s[id] ? { ...s, [id]: false } : s
+                              );
+                            },
                           })}
-                          onBlur={(e) => {
-                            const a = allowedMaxForRow(idx);
-                            const n = Number(e.target.value);
-                            if (a != null && Number.isFinite(n) && n > a) {
-                              setValue(`ingredients.${idx}.qty`, String(a), {
-                                shouldDirty: true,
-                                shouldValidate: true,
-                              });
-                            }
-                          }}
                           className={`${inputCls} pr-2 text-left`}
                         />
                         {allowed != null && (
@@ -787,25 +818,19 @@ export default function RecipeBatchesForm({
                         <select
                           value={row.unit || ""}
                           onChange={(e) =>
-                            setValue(
-                              `ingredients.${idx}.unit`,
-                              e.target.value,
-                              {
-                                shouldDirty: true,
-                                shouldValidate: true,
-                              }
-                            )
+                            setValue(`ingredients.${idx}.unit`, e.target.value, {
+                              shouldDirty: true,
+                              shouldValidate: true,
+                            })
                           }
                           className={selectCls}
                           disabled={lot ? allowedUnits.length === 1 : false}
                         >
-                          {(lot ? allowedUnits : ["", ...ALL_UNITS]).map(
-                            (u, i) => (
-                              <option key={`${u}-${i}`} value={u}>
-                                {u || "—"}
-                              </option>
-                            )
-                          )}
+                          {(lot ? allowedUnits : ["", ...ALL_UNITS]).map((u, i) => (
+                            <option key={`${u}-${i}`} value={u}>
+                              {u || "—"}
+                            </option>
+                          ))}
                         </select>
                       </div>
                     </div>
@@ -814,7 +839,19 @@ export default function RecipeBatchesForm({
                     <div className="flex justify-between mt-2 gap-2">
                       <button
                         type="button"
-                        onClick={() => remove(idx)}
+                        onClick={() => {
+                          setShowReqErrById((s) => {
+                            const n = { ...s };
+                            delete n[id];
+                            return n;
+                          });
+                          setValidatedById((s) => {
+                            const n = { ...s };
+                            delete n[id];
+                            return n;
+                          });
+                          remove(idx);
+                        }}
                         className={`${btnBase} border border-red bg-white text-red hover:border-red/80`}
                       >
                         <Trash2 className="size-4" /> Supprimer la ligne
@@ -824,7 +861,7 @@ export default function RecipeBatchesForm({
                         <button
                           type="button"
                           onClick={() => validateLine(id, idx)}
-                          className={`${btnBase} border border-blue bg-white text-blue hover:border-darkBlue/30`}
+                          className={`${btnBase} border border-blue bg-blue text-white hover:border-darkBlue/30`}
                           title="Valider la ligne"
                         >
                           Valider la ligne
@@ -858,8 +895,16 @@ export default function RecipeBatchesForm({
       <div className="flex flex-col gap-2 mobile:flex-row">
         <button
           type="submit"
-          disabled={isSubmitting}
-          className="text-nowrap inline-flex items-center justify-center gap-2 rounded-lg bg-blue px-4 py-2 text-sm font-medium text-white shadow disabled:opacity-60"
+          disabled={submitDisabled}
+          aria-disabled={submitDisabled}
+          className={`text-nowrap inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white shadow disabled:opacity-60 ${
+            submitDisabled ? "bg-darkBlue/40" : "bg-blue"
+          }`}
+          title={
+            submitDisabled
+              ? "Validez au moins une ligne (Nom*)"
+              : undefined
+          }
         >
           {isSubmitting ? (
             <>
@@ -884,6 +929,8 @@ export default function RecipeBatchesForm({
             type="button"
             onClick={() => {
               reset(buildFormDefaults(null));
+              setShowReqErrById({});
+              setValidatedById({});
               onCancel?.();
             }}
             className="inline-flex items-center justify-center gap-2 rounded-lg border border-red bg-white px-4 py-2 text-sm font-medium text-red"

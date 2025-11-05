@@ -3,6 +3,8 @@ const router = express.Router();
 
 const authenticateToken = require("../../middleware/authentificate-token");
 const InventoryLot = require("../../models/logs/inventory-lot.model");
+// NOUVEAU : pour synchroniser la qtyRemaining de la ligne de réception
+const ReceptionDelivery = require("../../models/logs/reception-delivery.model");
 
 /* --------- ARRONDI (helper local au fichier) --------- */
 function decimalsForUnit(u) {
@@ -60,6 +62,64 @@ function clampQtyRemaining(qtyRemaining, qtyReceived) {
   return Math.max(0, Math.min(q, r));
 }
 
+// new: sync helper
+async function syncReceptionLineRemaining({
+  restaurantId,
+  receptionId,
+  receptionLineId,
+  productName,
+  lotNumber,
+  unit,
+  newRemaining,
+}) {
+  if (!receptionId) return;
+  try {
+    // 1) si on a un lineId -> update via arrayFilters
+    if (receptionLineId) {
+      await ReceptionDelivery.updateOne(
+        { _id: receptionId, restaurantId },
+        {
+          $set: {
+            "lines.$[ln].qtyRemaining": roundByUnit(newRemaining, unit),
+          },
+        },
+        {
+          arrayFilters: [{ "ln._id": receptionLineId }],
+        }
+      );
+      return;
+    }
+
+    // 2) fallback : on retrouve la ligne par (lotNumber + productName + unit)
+    const doc = await ReceptionDelivery.findOne({
+      _id: receptionId,
+      restaurantId,
+    });
+    if (!doc) return;
+
+    const idx = (doc.lines || []).findIndex((ln) => {
+      const sameLot = String(ln?.lotNumber || "") === String(lotNumber || "");
+      const sameProd =
+        String(ln?.productName || "") === String(productName || "");
+      const sameUnit = String(ln?.unit || "") === String(unit || "");
+      return sameLot && sameProd && sameUnit;
+    });
+    if (idx === -1) return;
+
+    const baseQty = Number.isFinite(Number(doc.lines[idx].qty))
+      ? Number(doc.lines[idx].qty)
+      : 0;
+    const bounded = clampQtyRemaining(
+      roundByUnit(newRemaining, unit),
+      roundByUnit(baseQty, unit)
+    );
+    doc.lines[idx].qtyRemaining = bounded;
+    await doc.save();
+  } catch (e) {
+    console.error("syncReceptionLineRemaining error:", e);
+  }
+}
+
 const PACKAGING = new Set(["compliant", "non-compliant"]);
 const STATUS = new Set([
   "in_stock",
@@ -108,6 +168,9 @@ router.post(
       const doc = new InventoryLot({
         restaurantId,
         receptionId: inData.receptionId ? inData.receptionId : undefined,
+        receptionLineId: inData.receptionLineId
+          ? inData.receptionLineId
+          : undefined,
 
         productName,
         supplier: normalizeStr(inData.supplier),
@@ -140,6 +203,18 @@ router.post(
       });
 
       await doc.save();
+
+      // SYNC : répercuter qtyRemaining sur la ligne de réception si liée
+      await syncReceptionLineRemaining({
+        restaurantId,
+        receptionId: doc.receptionId,
+        receptionLineId: doc.receptionLineId,
+        productName: doc.productName,
+        lotNumber: doc.lotNumber,
+        unit: doc.unit,
+        newRemaining: doc.qtyRemaining,
+      });
+
       return res.status(201).json(doc);
     } catch (err) {
       console.error("POST /inventory-lots:", err);
@@ -275,6 +350,13 @@ router.put(
           inData.receptionId !== undefined
             ? inData.receptionId
             : prev.receptionId,
+
+        // NOUVEAU : stocker lineId si fourni
+        receptionLineId:
+          inData.receptionLineId !== undefined
+            ? inData.receptionLineId
+            : prev.receptionLineId,
+
         productName:
           inData.productName !== undefined
             ? normalizeStr(inData.productName)
@@ -310,7 +392,7 @@ router.put(
             : prev.tempOnArrival,
         packagingCondition:
           inData.packagingCondition !== undefined
-            ? PACKAGING.has(inData.packagingCondition)
+            ? ["compliant", "non-compliant"].includes(inData.packagingCondition)
               ? inData.packagingCondition
               : prev.packagingCondition
             : prev.packagingCondition,
@@ -329,7 +411,14 @@ router.put(
 
         status:
           inData.status !== undefined
-            ? STATUS.has(inData.status)
+            ? [
+                "in_stock",
+                "used",
+                "expired",
+                "discarded",
+                "returned",
+                "recalled",
+              ].includes(inData.status)
               ? inData.status
               : prev.status
             : prev.status,
@@ -356,6 +445,18 @@ router.put(
 
       Object.assign(prev, next);
       await prev.save();
+
+      // SYNC : répercuter qtyRemaining sur la ligne de réception si liée
+      await syncReceptionLineRemaining({
+        restaurantId,
+        receptionId: prev.receptionId,
+        receptionLineId: prev.receptionLineId,
+        productName: prev.productName,
+        lotNumber: prev.lotNumber,
+        unit: prev.unit,
+        newRemaining: prev.qtyRemaining,
+      });
+
       return res.json(prev);
     } catch (err) {
       console.error("PUT /inventory-lots/:lotId:", err);

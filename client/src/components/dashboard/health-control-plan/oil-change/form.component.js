@@ -1,7 +1,15 @@
+// app/(components)/oil/OilChangeForm.jsx
 "use client";
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import axios from "axios";
+import {
+  CalendarClock,
+  FileText,
+  Hash,
+  Link as LinkIcon,
+  Loader2,
+} from "lucide-react";
 
 function toDatetimeLocalValue(value) {
   const base = value ? new Date(value) : new Date();
@@ -18,6 +26,7 @@ function buildFormDefaults(record) {
   return {
     fryerId: record?.fryerId ?? "",
     performedAt: toDatetimeLocalValue(record?.performedAt),
+
     litersRemoved:
       record?.litersRemoved !== undefined && record?.litersRemoved !== null
         ? String(record.litersRemoved)
@@ -54,8 +63,9 @@ export default function OilChangeForm({
     register,
     handleSubmit,
     reset,
-    formState: { errors, isSubmitting },
     setValue,
+    watch,
+    formState: { errors, isSubmitting },
   } = useForm({ defaultValues: buildFormDefaults(initial) });
 
   useEffect(() => {
@@ -70,9 +80,10 @@ export default function OilChangeForm({
     const payload = {
       fryerId: data.fryerId || undefined,
       performedAt: data.performedAt ? new Date(data.performedAt) : undefined,
+
       litersRemoved:
         data.litersRemoved !== "" && data.litersRemoved != null
-          ? Number(data.litersRemoved)
+          ? Number(String(data.litersRemoved).replace(",", "."))
           : undefined,
 
       newOilBatch:
@@ -85,8 +96,9 @@ export default function OilChangeForm({
 
       tpmPercent:
         data.tpmPercent !== "" && data.tpmPercent != null
-          ? Number(data.tpmPercent)
+          ? Number(String(data.tpmPercent).replace(",", "."))
           : undefined,
+
       filteredBeforeChange: !!data.filteredBeforeChange,
       colorIndex: data.colorIndex || undefined,
       odorCheck: data.odorCheck || undefined,
@@ -105,7 +117,6 @@ export default function OilChangeForm({
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    // event live (si la page parent ne le fait pas déjà)
     window.dispatchEvent(
       new CustomEvent("oil-change:upsert", { detail: { doc: saved } })
     );
@@ -114,65 +125,92 @@ export default function OilChangeForm({
     onSuccess?.(saved);
   };
 
+  // --- Styles (comme MicrobiologyForm)
+  const fieldWrap =
+    "group relative rounded-xl bg-white/50 backdrop-blur-sm px-3 py-2 h-[80px] transition-shadow";
+  const labelCls =
+    "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
+  const inputCls =
+    "h-11 w-full rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition placeholder:text-darkBlue/40";
+  const selectCls =
+    "h-11 w-full appearance-none rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition";
+  const btnPrimary =
+    "text-nowrap inline-flex items-center justify-center gap-2 h-[38px] rounded-lg bg-blue px-4 py-2 text-sm font-medium text-white shadow disabled:opacity-60";
+  const btnSecondary =
+    "inline-flex items-center justify-center gap-2 rounded-lg border border-red bg-white px-4 py-2 text-sm font-medium text-red";
+  const notesVal = watch("qualityNotes");
+  const filtered = watch("filteredBeforeChange");
+
   return (
-    <form
-      onSubmit={handleSubmit(onSubmit)}
-      className="bg-white rounded-lg p-4 shadow-sm flex flex-col gap-6"
-    >
-      <div className="flex flex-col gap-4 midTablet:flex-row">
-        <div className="flex-1">
-          <label className="text-sm font-medium">Friteuse / Équipement</label>
+    <form onSubmit={handleSubmit(onSubmit)} className="relative flex flex-col gap-2">
+      {/* Ligne 1 : Matériel / Date */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
+        <div className={fieldWrap}>
+          <label className={labelCls}>Friteuse / Équipement</label>
           <input
             type="text"
             placeholder="ex: fryer-1 / cuisine"
             {...register("fryerId")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
             autoComplete="off"
             spellCheck={false}
             autoCorrect="off"
           />
         </div>
-        <div className="flex-1">
-          <label className="text-sm font-medium">Date/heure *</label>
+
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <CalendarClock className="size-4" />
+            Date / heure *
+          </label>
           <input
             type="datetime-local"
-            {...register("performedAt")}
-            className="border rounded p-2 h-[44px] w-full"
+            {...register("performedAt", { required: "Requis" })}
+            className={selectCls}
           />
+          {errors.performedAt && (
+            <p className="mt-1 text-xs text-red">{errors.performedAt.message}</p>
+          )}
         </div>
       </div>
 
-      <div className="flex flex-col gap-4 midTablet:flex-row">
-        <div className="w-48">
-          <label className="text-sm font-medium">Litres retirés</label>
+      {/* Ligne 2 : Volume retiré / Lot / Fournisseur */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
+        <div className={fieldWrap}>
+          <label className={labelCls}>Litres retirés</label>
           <input
             type="number"
             step="0.1"
             placeholder="ex: 12.5"
             onWheel={(e) => e.currentTarget.blur()}
             {...register("litersRemoved")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
           />
         </div>
-        <div className="flex-1">
-          <label className="text-sm font-medium">N° lot (huile neuve)</label>
+
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <Hash className="size-4" />
+            N° lot (huile neuve)
+          </label>
           <input
             type="text"
             placeholder="ex: OIL-2025-07-18-A"
             {...register("batchNumber")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
             autoComplete="off"
             spellCheck={false}
             autoCorrect="off"
           />
         </div>
-        <div className="flex-1">
-          <label className="text-sm font-medium">Fournisseur</label>
+
+        <div className={fieldWrap}>
+          <label className={labelCls}>Fournisseur</label>
           <input
             type="text"
             placeholder="Nom du fournisseur"
             {...register("supplier")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
             autoComplete="off"
             spellCheck={false}
             autoCorrect="off"
@@ -180,9 +218,10 @@ export default function OilChangeForm({
         </div>
       </div>
 
-      <div className="flex flex-col items-end gap-4 midTablet:flex-row">
-        <div className="w-40">
-          <label className="text-sm font-medium">% TPM</label>
+      {/* Ligne 3 : TPM + Filtrage (switch) */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
+        <div className={fieldWrap}>
+          <label className={labelCls}>% TPM</label>
           <input
             type="number"
             step="0.1"
@@ -191,54 +230,91 @@ export default function OilChangeForm({
             onWheel={(e) => e.currentTarget.blur()}
             placeholder="ex: 22.5"
             {...register("tpmPercent")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
           />
         </div>
-        <div className="flex items-center gap-2 h-[44px]">
-          <input
-            id="filteredBeforeChange"
-            type="checkbox"
-            {...register("filteredBeforeChange")}
-            className="border rounded"
-          />
-          <label htmlFor="filteredBeforeChange" className="text-sm font-medium">
-            Filtrée avant / pendant le service
+
+        <div className={`${fieldWrap} midTablet:col-span-2`}>
+          <label className={labelCls}>Filtrage (service)</label>
+
+          <label
+            role="switch"
+            aria-checked={!!filtered}
+            className="group inline-flex justify-between h-11 w-full items-center gap-3 rounded-xl border border-darkBlue/20 bg-white px-3 py-2 cursor-pointer select-none"
+          >
+            <span className="text-sm text-darkBlue/70">
+              {filtered ? "Filtrée avant/pendant" : "Non filtrée"}
+            </span>
+
+            {/* RHF checkbox masquée + peer */}
+            <input
+              type="checkbox"
+              {...register("filteredBeforeChange")}
+              className="sr-only peer"
+              onChange={(e) =>
+                setValue("filteredBeforeChange", e.target.checked, {
+                  shouldDirty: true,
+                })
+              }
+            />
+
+            <span
+              className="
+                relative inline-flex h-6 w-11 items-center rounded-full
+                bg-darkBlue/20 transition-colors
+                group-aria-checked:bg-darkBlue/80
+                peer-checked:bg-darkBlue/80
+              "
+            >
+              <span
+                className="
+                  absolute left-1 top-1/2 -translate-y-1/2
+                  size-4 rounded-full bg-white shadow
+                  transition-transform will-change-transform translate-x-0
+                  group-aria-checked:translate-x-5
+                  peer-checked:translate-x-5
+                "
+              />
+            </span>
           </label>
         </div>
       </div>
 
-      <div className="flex flex-col gap-4 midTablet:flex-row">
-        <div className="flex-1">
-          <label className="text-sm font-medium">Couleur / Indice</label>
+      {/* Ligne 4 : Couleur / Odeur / Marque */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
+        <div className={fieldWrap}>
+          <label className={labelCls}>Couleur / Indice</label>
           <input
             type="text"
             placeholder="ex: dorée / ambrée / foncée…"
             {...register("colorIndex")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
             autoComplete="off"
             spellCheck={false}
             autoCorrect="off"
           />
         </div>
-        <div className="flex-1">
-          <label className="text-sm font-medium">Odeur</label>
+
+        <div className={fieldWrap}>
+          <label className={labelCls}>Odeur</label>
           <input
             type="text"
             placeholder="ex: neutre, ok, rance…"
             {...register("odorCheck")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
             autoComplete="off"
             spellCheck={false}
             autoCorrect="off"
           />
         </div>
-        <div className="flex-1">
-          <label className="text-sm font-medium">Marque d’huile</label>
+
+        <div className={fieldWrap}>
+          <label className={labelCls}>Marque d’huile</label>
           <input
             type="text"
             placeholder="ex: XYZ ProFry"
             {...register("oilBrand")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
             autoComplete="off"
             spellCheck={false}
             autoCorrect="off"
@@ -246,25 +322,36 @@ export default function OilChangeForm({
         </div>
       </div>
 
-      <div className="flex flex-col midTablet:flex-row gap-4">
-        <div className="flex-1">
-          <label className="text-sm font-medium">Observations qualité</label>
-          <textarea
-            rows={4}
-            {...register("qualityNotes")}
-            className="border rounded p-2 resize-none w-full min-h-[96px]"
-            placeholder="Couleur, odeur, particules, filtrage, seuil TPM, etc."
-          />
+      {/* Ligne 5 : Observations / Lien doc */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <FileText className="size-4" />
+            Observations qualité
+          </label>
+          <div className="relative">
+            <textarea
+              rows={1}
+              {...register("qualityNotes")}
+              className="w-full resize-none rounded-lg border border-darkBlue/20 bg-white p-[10px] pr-16 text-[15px] outline-none transition placeholder:text-darkBlue/40"
+              placeholder="Couleur, odeur, particules, filtrage, seuil TPM, etc."
+            />
+            <span className="pointer-events-none absolute bottom-2 right-3 select-none text-[11px] text-darkBlue/40">
+              {(notesVal?.length ?? 0).toString()}
+            </span>
+          </div>
         </div>
-        <div className="flex-1">
-          <label className="text-sm font-medium">
+
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <LinkIcon className="size-4" />
             Lien doc. élimination (URL)
           </label>
           <input
             type="url"
             placeholder="https://… (BSDA, ticket collecte, etc.)"
             {...register("disposalDocumentUrl")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
             autoComplete="off"
             spellCheck={false}
             autoCorrect="off"
@@ -273,14 +360,26 @@ export default function OilChangeForm({
       </div>
 
       {/* Actions */}
-      <div className="flex gap-2">
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="px-4 py-2 rounded bg-blue text-white disabled:opacity-50"
-        >
-          {initial?._id ? "Mettre à jour" : "Enregistrer"}
+      <div className="flex flex-col gap-2 mt-3 mobile:flex-row">
+        <button type="submit" disabled={isSubmitting} className={btnPrimary}>
+          {isSubmitting ? (
+            <>
+              <Loader2 className="size-4 animate-spin" />
+              Enregistrement…
+            </>
+          ) : initial?._id ? (
+            <>
+              <FileText className="size-4" />
+              Mettre à jour
+            </>
+          ) : (
+            <>
+              <FileText className="size-4" />
+              Enregistrer
+            </>
+          )}
         </button>
+
         {initial?._id && (
           <button
             type="button"
@@ -288,7 +387,7 @@ export default function OilChangeForm({
               reset(buildFormDefaults(null));
               onCancel?.();
             }}
-            className="px-4 py-2 rounded text-white bg-red"
+            className={btnSecondary}
           >
             Annuler
           </button>

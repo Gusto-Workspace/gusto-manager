@@ -4,6 +4,7 @@ import { useEffect, useMemo, useContext, useState } from "react";
 import { useForm } from "react-hook-form";
 import axios from "axios";
 import { GlobalContext } from "@/contexts/global.context";
+import { ChevronDown, FileText, Loader2 } from "lucide-react";
 
 function toDatetimeLocalValue(value) {
   const base = value ? new Date(value) : new Date();
@@ -168,7 +169,6 @@ export default function CleaningTaskForm({
       description: data.description || undefined,
       frequency: data.frequency || "daily",
       dueAt: data.dueAt ? new Date(data.dueAt) : undefined,
-      // requis et doit correspondre à un employé existant
       assignedTo: data.assignedTo,
       done: !!data.done,
       doneAt: data.done
@@ -213,7 +213,7 @@ export default function CleaningTaskForm({
   // clavier dans l'input employé
   function onEmpKeyDown(e) {
     if (e.key === "Enter") {
-      e.preventDefault(); // ne pas soumettre
+      e.preventDefault();
       if (employeeOptions.length > 0) pickEmployee(employeeOptions[0]);
     } else if (e.key === "Escape") {
       setIsEmpOpen(false);
@@ -222,81 +222,94 @@ export default function CleaningTaskForm({
 
   const assignedInvalid = !!errors.assignedTo;
 
+  /* ---------- STYLES (alignés sur MicrobiologyForm) ---------- */
+  const fieldWrap =
+    "group relative rounded-xl bg-white/50 backdrop-blur-sm px-3 py-2 h-[80px] transition-shadow";
+  const labelCls =
+    "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
+  const inputCls =
+    "h-11 w-full rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition placeholder:text-darkBlue/40";
+  const selectCls =
+    "h-11 w-full appearance-none rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition";
+  const textareaCls =
+    "w-full resize-none rounded-lg border border-darkBlue/20 bg-white p-[10px] text-[15px] outline-none transition placeholder:text-darkBlue/40";
+
   return (
     <form
       onSubmit={handleSubmit(onSubmit)}
-      className="bg-white rounded-lg p-4 shadow-sm flex flex-col gap-6"
+      className="relative flex flex-col gap-2"
     >
-      {/* Ligne 1 */}
-      <div className="flex flex-col gap-4 midTablet:flex-row">
-        <div className="flex-1">
-          <label className="text-sm font-medium">Zone *</label>
+      {/* Ligne 1 : Zone / Fréquence / Priorité */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
+        <div className={fieldWrap}>
+          <label className={labelCls}>Zone *</label>
           <input
             type="text"
             placeholder="ex: Plonge, Sol cuisine, Plan de travail froid…"
             autoComplete="off"
             spellCheck={false}
-             
             autoCorrect="off"
             {...register("zone", { required: "Requis" })}
-            className="border rounded p-2 h-[44px] w-full"
+            className={`${inputCls} ${errors.zone ? "border-red ring-1 ring-red/30" : ""}`}
           />
           {errors.zone && (
-            <p className="text-xs text-red mt-1">{errors.zone.message}</p>
+            <p className="mt-1 text-xs text-red">{errors.zone.message}</p>
           )}
         </div>
-        <div className="w-56">
-          <label className="text-sm font-medium">Fréquence</label>
-          <select
-            {...register("frequency")}
-            className="border rounded p-2 h-[44px] w-full"
-          >
-            <option value="daily">Quotidienne</option>
-            <option value="weekly">Hebdomadaire</option>
-            <option value="monthly">Mensuelle</option>
-            <option value="on_demand">À la demande</option>
-          </select>
+
+        <div className={fieldWrap}>
+          <label className={labelCls}>Fréquence</label>
+          <div className="relative">
+            <select {...register("frequency")} className={selectCls}>
+              <option value="daily">Quotidienne</option>
+              <option value="weekly">Hebdomadaire</option>
+              <option value="monthly">Mensuelle</option>
+              <option value="on_demand">À la demande</option>
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40" />
+          </div>
         </div>
-        <div className="w-48">
-          <label className="text-sm font-medium">Priorité</label>
-          <select
-            {...register("riskLevel")}
-            className="border rounded p-2 h-[44px] w-full"
-          >
-            <option value="low">Basse</option>
-            <option value="medium">Moyenne</option>
-            <option value="high">Élevée</option>
-          </select>
+
+        <div className={fieldWrap}>
+          <label className={labelCls}>Priorité</label>
+          <div className="relative">
+            <select {...register("riskLevel")} className={selectCls}>
+              <option value="low">Basse</option>
+              <option value="medium">Moyenne</option>
+              <option value="high">Élevée</option>
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40" />
+          </div>
         </div>
       </div>
 
-      {/* Ligne 2 */}
-      <div className="flex flex-col gap-4 midTablet:flex-row">
-        <div className="flex-1">
-          <label className="text-sm font-medium">Description</label>
+      {/* Ligne 2 : Description / Prévue le / Assignée à */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
+        <div className={fieldWrap}>
+          <label className={labelCls}>Description</label>
           <input
             type="text"
             placeholder="Détails de l’intervention"
             autoComplete="off"
             spellCheck={false}
-             
             autoCorrect="off"
             {...register("description")}
-            className="border rounded p-2 h-[44px] w-full"
-          />
-        </div>
-        <div className="w-72">
-          <label className="text-sm font-medium">Prévue le</label>
-          <input
-            type="datetime-local"
-            {...register("dueAt")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
           />
         </div>
 
-        {/* Assignée à */}
-        <div className="w-[360px]">
-          <label className="text-sm font-medium">Assignée à *</label>
+        <div className={fieldWrap}>
+          <label className={labelCls}>Prévue le</label>
+          <input
+            type="datetime-local"
+            {...register("dueAt")}
+            className={selectCls}
+          />
+        </div>
+
+        {/* Assignée à (autocomplete) */}
+        <div className={`${fieldWrap} h-auto relative z-[60]`}>
+          <label className={labelCls}>Assignée à *</label>
           <div className="relative">
             <input
               type="text"
@@ -313,10 +326,13 @@ export default function CleaningTaskForm({
               onBlur={() => setTimeout(() => setIsEmpOpen(false), 120)}
               onKeyDown={onEmpKeyDown}
               placeholder="Rechercher un employé"
-              className={`w-full border rounded p-2 h-[44px] pr-10 ${assignedInvalid ? "border-red ring-1 ring-red" : ""}`}
+              className={`${inputCls} pr-10 ${assignedInvalid ? "border-red ring-1 ring-red/30" : ""}`}
+              autoComplete="off"
+              spellCheck={false}
+              autoCorrect="off"
             />
 
-            {/* Croix pour vider */}
+            {/* Clear */}
             {empQuery?.length > 0 && (
               <button
                 onMouseDown={(e) => e.preventDefault()}
@@ -324,16 +340,17 @@ export default function CleaningTaskForm({
                   e.preventDefault();
                   clearEmployee();
                 }}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 w-6 h-6 bg-black bg-opacity-30 text-white rounded-full flex items-center justify-center"
+                className="absolute right-3 top-1/2 -translate-y-1/2 size-6 rounded-full bg-black/30 text-white grid place-items-center"
+                title="Effacer"
               >
                 &times;
               </button>
             )}
 
-            {/* Dropdown : max height + scroll, pas de overflow hidden sur le parent */}
+            {/* Dropdown */}
             {isEmpOpen && empQuery.trim() !== "" && (
-              <div className="absolute z-10 left-0 right-0 mt-1 bg-white border rounded shadow">
-                <ul className="max-h-56 overflow-auto">
+              <div className="absolute z-[90] left-0 right-0 mt-1 bg-white border border-darkBlue/20 rounded-lg shadow-xl">
+                <ul className="max-h-60 overflow-auto">
                   {employeeOptions.length === 0 && (
                     <li className="px-3 py-2 text-sm opacity-70 italic">
                       Aucun résultat
@@ -356,7 +373,7 @@ export default function CleaningTaskForm({
             )}
           </div>
 
-          {/* Validation silencieuse (obligatoire & existant) */}
+          {/* Validation silencieuse */}
           <input
             type="hidden"
             {...register("assignedTo", {
@@ -365,130 +382,171 @@ export default function CleaningTaskForm({
                 allEmployees.some((e) => e._id === String(val)),
             })}
           />
-          {/* Pas de message d’erreur affiché */}
         </div>
       </div>
 
-      {/* Ligne 3 : produit & protocole */}
-      <div className="flex flex-col gap-4 midTablet:flex-row">
-        <div className="flex-1">
-          <label className="text-sm font-medium">Produit utilisé</label>
+      {/* Ligne 3 : Produit / FDS / Temps contact */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
+        <div className={fieldWrap}>
+          <label className={labelCls}>Produit utilisé</label>
           <input
             type="text"
             {...register("productUsed")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
             autoComplete="off"
             spellCheck={false}
-             
             autoCorrect="off"
           />
         </div>
-        <div className="flex-1">
-          <label className="text-sm font-medium">FDS (URL)</label>
+        <div className={fieldWrap}>
+          <label className={labelCls}>FDS (URL)</label>
           <input
             type="url"
             {...register("productFDSUrl")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
             autoComplete="off"
             spellCheck={false}
-             
             autoCorrect="off"
           />
         </div>
-        <div className="w-48">
-          <label className="text-sm font-medium">Temps contact (min)</label>
+        <div className={fieldWrap}>
+          <label className={labelCls}>Temps contact (min)</label>
           <input
             type="number"
             step="1"
             onWheel={(e) => e.currentTarget.blur()}
             min="0"
             {...register("dwellTimeMin")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
           />
         </div>
       </div>
 
-      <div className="flex flex-col gap-4 midTablet:flex-row">
-        <div className="flex-1">
-          <label className="text-sm font-medium">
-            Étapes du protocole (1 par ligne)
-          </label>
+      {/* Ligne 4 : Étapes & Preuves (hauteur augmentée) */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
+        <div className={`${fieldWrap} h-auto`}>
+          <label className={labelCls}>Étapes du protocole (1 par ligne)</label>
           <textarea
-            rows={4}
+            rows={8}
             {...register("protocolStepsText")}
-            className="border rounded p-2 resize-none w-full min-h-[96px]"
+            className={`${textareaCls} min-h-[220px]`}
             placeholder={
               "1) Balayer\n2) Détergent\n3) Rinçage\n4) Désinfection\n5) Temps de contact\n6) Rinçage final"
             }
           />
         </div>
-        <div className="flex-1">
-          <label className="text-sm font-medium">
-            Preuves (URLs, 1 par ligne)
-          </label>
+        <div className={`${fieldWrap} h-auto`}>
+          <label className={labelCls}>Preuves (URLs, 1 par ligne)</label>
           <textarea
-            rows={4}
+            rows={8}
             {...register("proofUrlsText")}
-            className="border rounded p-2 resize-none w-full min-h-[96px]"
+            className={`${textareaCls} min-h-[220px]`}
             placeholder={"https://…/photo1.jpg\nhttps://…/photo2.jpg"}
           />
         </div>
       </div>
 
-      {/* Ligne 4 : statut */}
-      <div className="flex flex-col items-center gap-4 midTablet:flex-row">
-        <div className="flex items-center gap-2 pt-6">
-          <input
-            id="done"
-            type="checkbox"
-            {...register("done")}
-            className="border rounded"
-          />
-          <label htmlFor="done" className="text-sm font-medium">
-            Fait
-          </label>
+      {/* Ligne 5A : Statut "À faire" + Date exécution */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
+        <div className={fieldWrap}>
+          <label className={labelCls}>Statut</label>
+          <div className="flex items-center h-11">
+            <label
+              role="switch"
+              aria-checked={!!doneWatch}
+              className="w-full group inline-flex justify-between h-11 items-center gap-3 rounded-xl border border-darkBlue/20 bg-white px-3 py-2 cursor-pointer select-none"
+            >
+              <span className="text-sm text-darkBlue/70">
+                {doneWatch ? "Fait" : "À faire"}
+              </span>
+              <input
+                type="checkbox"
+                {...register("done")}
+                className="sr-only peer"
+              />
+              <span className="relative inline-flex h-6 w-11 items-center rounded-full bg-darkBlue/20 transition-colors group-aria-checked:bg-blue peer-checked:bg-blue">
+                <span className="absolute left-1 top-1/2 -translate-y-1/2 size-4 rounded-full bg-white shadow transition-transform will-change-transform translate-x-0 group-aria-checked:translate-x-5 peer-checked:translate-x-5" />
+              </span>
+            </label>
+          </div>
         </div>
-        <div className="w-72">
-          <label className="text-sm font-medium">Date/heure exécution</label>
+
+        <div className={fieldWrap}>
+          <label className={labelCls}>Date/heure exécution</label>
           <input
             type="datetime-local"
             {...register("doneAt")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={selectCls}
           />
+        </div>
+      </div>
+
+      {/* Ligne 5B : Statut "Vérifiée" + Date vérif */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
+        <div className={fieldWrap}>
+          <label className={labelCls}>Vérification</label>
+          <div className="flex items-center h-11">
+            <label
+              role="switch"
+              aria-checked={!!verifiedWatch}
+              className={`group inline-flex justify-between h-11 w-full items-center gap-3 rounded-xl border bg-white px-3 py-2 cursor-pointer select-none ${
+                !doneWatch
+                  ? "border-darkBlue/10 opacity-50"
+                  : "border-darkBlue/20"
+              }`}
+            >
+              <span className="text-sm text-darkBlue/70">
+                {verifiedWatch ? "Vérifiée" : "Non vérifiée"}
+              </span>
+              <input
+                type="checkbox"
+                {...register("verified")}
+                className="sr-only peer"
+                disabled={!doneWatch}
+              />
+              <span className="relative inline-flex h-6 w-11 items-center rounded-full bg-darkBlue/20 transition-colors group-aria-checked:bg-blue peer-checked:bg-blue">
+                <span className="absolute left-1 top-1/2 -translate-y-1/2 size-4 rounded-full bg-white shadow transition-transform will-change-transform translate-x-0 group-aria-checked:translate-x-5 peer-checked:translate-x-5" />
+              </span>
+            </label>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2 pt-6">
-          <input
-            id="verified"
-            type="checkbox"
-            {...register("verified")}
-            className="border rounded"
-            disabled={!doneWatch}
-          />
-          <label htmlFor="verified" className="text-sm font-medium">
-            Vérifiée
-          </label>
-        </div>
-        <div className="w-72">
-          <label className="text-sm font-medium">Date/heure vérif</label>
+        <div className={fieldWrap}>
+          <label className={labelCls}>Date/heure vérif</label>
           <input
             type="datetime-local"
             {...register("verifiedAt")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={selectCls}
             disabled={!doneWatch}
           />
         </div>
       </div>
 
-      {/* Actions */}
-      <div className="flex gap-2">
+      {/* Actions (style MicrobiologyForm) */}
+      <div className="flex flex-col items-center gap-2 mt-3 mobile:flex-row">
         <button
           type="submit"
           disabled={isSubmitting}
-          className="px-4 py-2 rounded bg-blue text-white disabled:opacity-50"
+          className="text-nowrap inline-flex items-center justify-center gap-2 h-[38px] rounded-lg bg-blue px-4 py-2 text-sm font-medium text-white shadow disabled:opacity-60"
         >
-          {initial?._id ? "Mettre à jour" : "Enregistrer"}
+          {isSubmitting ? (
+            <>
+              <Loader2 className="size-4 animate-spin" />
+              Enregistrement…
+            </>
+          ) : initial?._id ? (
+            <>
+              <FileText className="size-4" />
+              Mettre à jour
+            </>
+          ) : (
+            <>
+              <FileText className="size-4" />
+              Enregistrer
+            </>
+          )}
         </button>
+
         {initial?._id && (
           <button
             type="button"
@@ -496,7 +554,7 @@ export default function CleaningTaskForm({
               reset(buildFormDefaults(null));
               onCancel?.();
             }}
-            className="px-4 py-2 rounded text-white bg-red"
+            className="inline-flex h-[38px] items-center justify-center gap-2 rounded-lg border border-red bg-white px-4 py-2 text-sm font-medium text-red"
           >
             Annuler
           </button>

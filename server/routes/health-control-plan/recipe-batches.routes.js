@@ -5,6 +5,8 @@ const mongoose = require("mongoose");
 const authenticateToken = require("../../middleware/authentificate-token");
 const RecipeBatch = require("../../models/logs/recipe-batch.model");
 const InventoryLot = require("../../models/logs/inventory-lot.model");
+// NEW: on synchronise aussi la qtyRemaining sur les lignes de réception
+const ReceptionDelivery = require("../../models/logs/reception-delivery.model");
 
 /* ---------- ARRONDI (helper local au fichier) ---------- */
 function decimalsForUnit(u) {
@@ -18,6 +20,16 @@ function roundByUnit(val, unit) {
   const d = decimalsForUnit(unit);
   const f = Math.pow(10, d);
   return Math.round(n * f) / f;
+}
+function clampQtyRemaining(qtyRemaining, qtyReceived, unit) {
+  const rounded = roundByUnit(qtyRemaining, unit);
+  const capBase =
+    qtyReceived != null ? roundByUnit(qtyReceived, unit) : rounded;
+  return Math.max(
+    // on autorise négatif côté inventaire, donc pas de floor 0 ici
+    Number.NEGATIVE_INFINITY,
+    Math.min(rounded, capBase)
+  );
 }
 
 /* ---------- helpers ---------- */
@@ -104,15 +116,63 @@ function convertQty(qty, from, to) {
   return null;
 }
 
+/* ---------- Sync Reception Line qtyRemaining ---------- */
+async function syncReceptionLineRemaining({ restaurantId, lot, session }) {
+  if (!lot?.receptionId) return;
+
+  // 1) si on a un lineId -> update via arrayFilters
+  if (lot.receptionLineId) {
+    await ReceptionDelivery.updateOne(
+      { _id: lot.receptionId, restaurantId },
+      {
+        $set: {
+          "lines.$[ln].qtyRemaining": roundByUnit(lot.qtyRemaining, lot.unit),
+        },
+      },
+      {
+        arrayFilters: [{ "ln._id": lot.receptionLineId }],
+        session,
+      }
+    );
+    return;
+  }
+
+  // 2) fallback : on retrouve la ligne par (lotNumber + productName + unit)
+  const doc = await ReceptionDelivery.findOne(
+    { _id: lot.receptionId, restaurantId },
+    null,
+    { session }
+  );
+  if (!doc) return;
+
+  const idx = (doc.lines || []).findIndex((ln) => {
+    const sameLot = String(ln?.lotNumber || "") === String(lot.lotNumber || "");
+    const sameProd =
+      String(ln?.productName || "") === String(lot.productName || "");
+    const sameUnit = String(ln?.unit || "") === String(lot.unit || "");
+    return sameLot && sameProd && sameUnit;
+  });
+  if (idx === -1) return;
+
+  const baseQty = Number.isFinite(Number(doc.lines[idx].qty))
+    ? Number(doc.lines[idx].qty)
+    : 0;
+  const roundedRemaining = roundByUnit(lot.qtyRemaining, lot.unit);
+  const boundedRemaining = Math.max(
+    0,
+    Math.min(roundedRemaining, roundByUnit(baseQty, lot.unit))
+  );
+
+  doc.lines[idx].qtyRemaining = boundedRemaining;
+  await doc.save({ session });
+}
+
 /* ---------- moteur d'ajustement inventaire ---------- */
 /**
  * direction: "consume" | "restore"
  * - consume  : décrémente qtyRemaining (autorise négatif)
- * - restore  : incrémente qtyRemaining (⚠️ plafonné au qtyReceived)
- * Arrondi: toujours arrondir qtyRemaining à l’unité du lot après $inc
- * Statut:
- *  - qtyRemaining <= 0  -> used
- *  - qtyRemaining  > 0  -> in_stock
+ * - restore  : incrémente qtyRemaining (⚠️ plafonné à qtyReceived)
+ * Retourne la liste finale des lots modifiés (objets minimaux pour mise à jour front)
  */
 async function applyInventoryAdjustments(
   restaurantId,
@@ -120,7 +180,9 @@ async function applyInventoryAdjustments(
   direction,
   session
 ) {
-  if (!Array.isArray(ingredients) || !ingredients.length) return;
+  if (!Array.isArray(ingredients) || !ingredients.length) return [];
+
+  const touchedIds = new Set();
 
   for (const ing of ingredients) {
     if (ing.qty == null || !ing.unit) continue;
@@ -151,36 +213,65 @@ async function applyInventoryAdjustments(
     }
     const delta = direction === "consume" ? -Math.abs(adj) : Math.abs(adj);
 
-    // 1) $inc
-    const updated = await InventoryLot.findOneAndUpdate(
+    // 1) $inc qtyRemaining
+    const afterInc = await InventoryLot.findOneAndUpdate(
       { _id: lot._id, restaurantId },
       { $inc: { qtyRemaining: delta } },
       { new: true, session }
     );
-    if (!updated) continue;
+    if (!afterInc) continue;
 
-    // 2) Arrondi + plafonnement upper-bound (pas de floor à 0 ici: négatif autorisé)
-    const rounded = roundByUnit(updated.qtyRemaining, updated.unit);
-    const capped =
-      updated.qtyReceived != null
-        ? Math.min(rounded, Number(updated.qtyReceived))
-        : rounded;
-
-    if (capped !== updated.qtyRemaining) {
-      updated.qtyRemaining = capped;
-      await updated.save({ session });
+    // 2) arrondi + cap upper-bound (pas de floor 0 ici)
+    const capped = clampQtyRemaining(
+      afterInc.qtyRemaining,
+      afterInc.qtyReceived,
+      afterInc.unit
+    );
+    if (capped !== afterInc.qtyRemaining) {
+      afterInc.qtyRemaining = capped;
+      await afterInc.save({ session });
     }
 
     // 3) statut
-    const nextStatus = updated.qtyRemaining <= 0 ? "used" : "in_stock";
-    if (updated.status !== nextStatus) {
+    const nextStatus = afterInc.qtyRemaining <= 0 ? "used" : "in_stock";
+    if (afterInc.status !== nextStatus) {
       await InventoryLot.updateOne(
-        { _id: updated._id, restaurantId },
+        { _id: afterInc._id, restaurantId },
         { $set: { status: nextStatus } },
         { session }
       );
+      afterInc.status = nextStatus;
     }
+
+    // 4) sync ligne de réception liée
+    await syncReceptionLineRemaining({
+      restaurantId,
+      lot: afterInc,
+      session,
+    });
+
+    touchedIds.add(String(afterInc._id));
   }
+
+  if (!touchedIds.size) return [];
+
+  // Retourner l'état FINAL des lots touchés
+  const finalLots = await InventoryLot.find(
+    { _id: { $in: [...touchedIds] }, restaurantId },
+    "_id productName lotNumber unit qtyRemaining qtyReceived status receptionId receptionLineId"
+  ).session(session);
+
+  return finalLots.map((it) => ({
+    _id: String(it._id),
+    productName: it.productName,
+    lotNumber: it.lotNumber,
+    unit: it.unit,
+    qtyRemaining: roundByUnit(it.qtyRemaining, it.unit),
+    qtyReceived: roundByUnit(it.qtyReceived, it.unit),
+    status: it.status,
+    receptionId: it.receptionId || null,
+    receptionLineId: it.receptionLineId || null,
+  }));
 }
 
 /* ------------------ CREATE ------------------ */
@@ -209,8 +300,10 @@ router.post(
       const notes = normalizeStr(inData.notes);
       const ingredients = normalizeIngredients(inData.ingredients);
 
+      let inventoryLotsUpdates = [];
+
       await session.withTransaction(async () => {
-        await applyInventoryAdjustments(
+        inventoryLotsUpdates = await applyInventoryAdjustments(
           restaurantId,
           ingredients,
           "consume",
@@ -229,7 +322,12 @@ router.post(
         });
 
         await doc.save({ session });
-        res.status(201).json(doc);
+
+        // Réponse: batch + lots mis à jour pour rafraîchir le front
+        res.status(201).json({
+          ...doc.toObject(),
+          inventoryLotsUpdates,
+        });
       });
     } catch (err) {
       console.error("POST /recipe-batches:", err);
@@ -370,25 +468,55 @@ router.put(
       if (!next.batchId)
         return res.status(400).json({ error: "batchId est requis" });
 
+      let inventoryLotsUpdates = [];
+
       await session.withTransaction(async () => {
         // 1) restituer l'ancien stock
-        await applyInventoryAdjustments(
+        const ups1 = await applyInventoryAdjustments(
           restaurantId,
           prev.ingredients || [],
           "restore",
           session
         );
         // 2) consommer le nouveau
-        await applyInventoryAdjustments(
+        const ups2 = await applyInventoryAdjustments(
           restaurantId,
           next.ingredients || [],
           "consume",
           session
         );
+
+        // Recalcule l'état final de tous les lots touchés (union des 2)
+        const touched = new Set([
+          ...ups1.map((x) => x._id),
+          ...ups2.map((x) => x._id),
+        ]);
+        if (touched.size) {
+          const finals = await InventoryLot.find(
+            { _id: { $in: [...touched] }, restaurantId },
+            "_id productName lotNumber unit qtyRemaining qtyReceived status receptionId receptionLineId"
+          ).session(session);
+          inventoryLotsUpdates = finals.map((it) => ({
+            _id: String(it._id),
+            productName: it.productName,
+            lotNumber: it.lotNumber,
+            unit: it.unit,
+            qtyRemaining: roundByUnit(it.qtyRemaining, it.unit),
+            qtyReceived: roundByUnit(it.qtyReceived, it.unit),
+            status: it.status,
+            receptionId: it.receptionId || null,
+            receptionLineId: it.receptionLineId || null,
+          }));
+        }
+
         // 3) sauvegarder
         Object.assign(prev, next);
         await prev.save({ session });
-        res.json(prev);
+
+        res.json({
+          ...prev.toObject(),
+          inventoryLotsUpdates,
+        });
       });
     } catch (err) {
       console.error("PUT /recipe-batches/:batchId:", err);
@@ -412,18 +540,42 @@ router.delete(
       const doc = await RecipeBatch.findOne({ _id: batchId, restaurantId });
       if (!doc) return res.status(404).json({ error: "Batch introuvable" });
 
+      let inventoryLotsUpdates = [];
+
       await session.withTransaction(async () => {
-        await applyInventoryAdjustments(
+        const ups = await applyInventoryAdjustments(
           restaurantId,
           doc.ingredients || [],
           "restore",
           session
         );
+
+        // État final des lots restaurés
+        const touched = new Set(ups.map((x) => x._id));
+        if (touched.size) {
+          const finals = await InventoryLot.find(
+            { _id: { $in: [...touched] }, restaurantId },
+            "_id productName lotNumber unit qtyRemaining qtyReceived status receptionId receptionLineId"
+          ).session(session);
+          inventoryLotsUpdates = finals.map((it) => ({
+            _id: String(it._id),
+            productName: it.productName,
+            lotNumber: it.lotNumber,
+            unit: it.unit,
+            qtyRemaining: roundByUnit(it.qtyRemaining, it.unit),
+            qtyReceived: roundByUnit(it.qtyReceived, it.unit),
+            status: it.status,
+            receptionId: it.receptionId || null,
+            receptionLineId: it.receptionLineId || null,
+          }));
+        }
+
         await RecipeBatch.deleteOne(
           { _id: batchId, restaurantId },
           { session }
         );
-        res.json({ success: true });
+
+        res.json({ success: true, inventoryLotsUpdates });
       });
     } catch (err) {
       console.error("DELETE /recipe-batches/:batchId:", err);
@@ -464,7 +616,6 @@ router.get(
           "_id productName lotNumber qtyRemaining unit dlc ddm createdAt status supplier"
         );
 
-      // sortie propre: qtyRemaining arrondi à l’unité du lot
       const items = rows.map((it) => {
         const obj = it.toObject();
         obj.qtyRemaining = roundByUnit(obj.qtyRemaining, obj.unit);

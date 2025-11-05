@@ -17,8 +17,9 @@ const receptionDeliveryLineSchema = new Schema(
       enum: ["compliant", "non-compliant"],
       default: "compliant",
     },
+    qtyRemaining: Number,
   },
-  { _id: false }
+  { _id: true }
 );
 
 const receptionDeliverySchema = new Schema(

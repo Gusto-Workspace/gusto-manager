@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import axios from "axios";
 import {
-  Package,
   CalendarClock,
   Thermometer,
   Tag,
@@ -28,6 +27,8 @@ function toDatetimeLocalValue(value) {
   const offset = base.getTimezoneOffset() * 60000;
   return new Date(base.getTime() - offset).toISOString().slice(0, 16);
 }
+
+// Ligne totalement vide ?
 const isLineEmpty = (row) =>
   !row?.productName &&
   !row?.supplierProductId &&
@@ -38,8 +39,21 @@ const isLineEmpty = (row) =>
   !row?.unit &&
   !row?.tempOnArrival &&
   !(typeof row?.allergens === "string" && row.allergens.trim().length > 0);
+
+// Manque produit alors que d’autres champs sont saisis
 const hasOtherDataWithoutProduct = (row) =>
   !row?.productName?.trim() && !isLineEmpty(row);
+
+// Champs requis manquants
+const missingQty = (row) => row?.qty === "" || row?.qty == null;
+const missingUnit = (row) => !row?.unit;
+
+// Une ligne est “validée” si (Produit + Qté + Unité) sont présents
+const isLineValidatedByFields = (row) =>
+  !!row?.productName?.trim() &&
+  row?.qty !== "" &&
+  row?.qty != null &&
+  !!row?.unit;
 
 const cToF = (c) => (c * 9) / 5 + 32;
 const fToC = (f) => ((f - 32) * 5) / 9;
@@ -63,8 +77,10 @@ function buildFormDefaults(record) {
             qty: l?.qty ?? "",
             unit: l?.unit ?? "",
             tempOnArrival: l?.tempOnArrival ?? "",
-            tempOnArrivalUnit: l?.tempOnArrivalUnit === "F" ? "F" : "C", // default C
-            allergens: Array.isArray(l?.allergens) ? l.allergens.join(", ") : "",
+            tempOnArrivalUnit: l?.tempOnArrivalUnit === "F" ? "F" : "C",
+            allergens: Array.isArray(l?.allergens)
+              ? l.allergens.join(", ")
+              : "",
             packagingCondition: l?.packagingCondition ?? "compliant",
           }))
         : [
@@ -91,6 +107,8 @@ export default function ReceptionDeliveryForm({
   onSuccess,
   onCancel,
 }) {
+  const isEdit = !!initial?._id;
+
   const {
     register,
     handleSubmit,
@@ -98,8 +116,6 @@ export default function ReceptionDeliveryForm({
     control,
     watch,
     setValue,
-    setError,
-    clearErrors,
     setFocus,
     formState: { errors, isSubmitting },
   } = useForm({ defaultValues: buildFormDefaults(initial) });
@@ -107,15 +123,24 @@ export default function ReceptionDeliveryForm({
   const { fields, append, remove } = useFieldArray({ control, name: "lines" });
   const lines = watch("lines");
 
-  // --- Collapsible state per line
+  // --- Collapsible state par ligne
   const [openById, setOpenById] = useState({});
   const contentRefs = useRef({});
   const openNewLineRef = useRef(false);
 
+  // Affichage des erreurs “requis” par ligne (uniquement après clic “Valider la ligne”)
+  const [showReqErrById, setShowReqErrById] = useState({});
+
+  // État “ligne validée explicitement”
+  const [validatedById, setValidatedById] = useState({});
+
   useEffect(() => {
     reset(buildFormDefaults(initial));
+    setShowReqErrById({});
+    setValidatedById({});
   }, [initial, reset]);
 
+  // Sync des maps avec la liste courante des lignes
   useEffect(() => {
     setOpenById((prev) => {
       const next = { ...prev };
@@ -125,12 +150,39 @@ export default function ReceptionDeliveryForm({
           next[f.id] = isLineEmpty(l); // lignes vides => ouvertes
         }
       });
-      Object.keys(next).forEach((k) => {
+      for (const k of Object.keys(next)) {
         if (!fields.find((f) => f.id === k)) delete next[k];
-      });
+      }
       return next;
     });
-  }, [fields, lines]);
+
+    setShowReqErrById((prev) => {
+      const next = { ...prev };
+      fields.forEach((f) => {
+        if (next[f.id] == null) next[f.id] = false;
+      });
+      for (const k of Object.keys(next)) {
+        if (!fields.find((f) => f.id === k)) delete next[k];
+      }
+      return next;
+    });
+
+    // ⚠️ En EDIT : marquer les lignes existantes comme validées
+    // AU PREMIER passage pour chaque id (ne pas écraser les changements utilisateur)
+    setValidatedById((prev) => {
+      const next = { ...prev };
+      fields.forEach((f, idx) => {
+        if (next[f.id] == null) {
+          const row = (lines && lines[idx]) || {};
+          next[f.id] = isEdit && isLineValidatedByFields(row) ? true : false;
+        }
+      });
+      for (const k of Object.keys(next)) {
+        if (!fields.find((f) => f.id === k)) delete next[k];
+      }
+      return next;
+    });
+  }, [fields, lines, isEdit]);
 
   useEffect(() => {
     if (!openNewLineRef.current) return;
@@ -144,65 +196,72 @@ export default function ReceptionDeliveryForm({
 
   const toggleOpen = (id) => setOpenById((s) => ({ ...s, [id]: !s[id] }));
 
-  // Valider une ligne : produit requis si autres données présentes
+  // Valider une ligne (affiche les bordures rouges si manques ; sinon valide + replie)
   const validateLine = (id, idx) => {
     const row = (lines && lines[idx]) || {};
-    const val = (row.productName || "").trim();
-    if (!val) {
-      if (hasOtherDataWithoutProduct(row)) {
-        setError(`lines.${idx}.productName`, { type: "manual" });
-      }
+    const needProduct = !row?.productName?.trim();
+    const needQty = missingQty(row);
+    const needUnit = missingUnit(row);
+
+    if (needProduct || needQty || needUnit) {
+      setShowReqErrById((s) => ({ ...s, [id]: true }));
+      setValidatedById((s) => ({ ...s, [id]: false }));
       setOpenById((s) => ({ ...s, [id]: true }));
-      setFocus(`lines.${idx}.productName`);
+      const firstMissing =
+        (needProduct && `lines.${idx}.productName`) ||
+        (needQty && `lines.${idx}.qty`) ||
+        (needUnit && `lines.${idx}.unit`) ||
+        null;
+      if (firstMissing) setFocus(firstMissing);
       return;
     }
+    setShowReqErrById((s) => ({ ...s, [id]: false }));
+    setValidatedById((s) => ({ ...s, [id]: true }));
     setOpenById((s) => ({ ...s, [id]: false }));
   };
 
-  // Submit
+  // Submit : n’envoie QUE les lignes validées explicitement
   const onSubmit = async (data) => {
     const token = localStorage.getItem("token");
     if (!token) return;
 
-    (data.lines || []).forEach((row, idx) => {
-      if (hasOtherDataWithoutProduct(row)) {
-        setError(`lines.${idx}.productName`, { type: "manual" });
-        setOpenById((s) => ({ ...s, [fields[idx]?.id]: true }));
-      }
+    const payloadLines = [];
+    (Array.isArray(data.lines) ? data.lines : []).forEach((l, idx) => {
+      const fid = fields[idx]?.id;
+      if (!fid || !validatedById[fid]) return;
+
+      payloadLines.push({
+        productName: l.productName || undefined,
+        supplierProductId: l.supplierProductId || undefined,
+        lotNumber: l.lotNumber || undefined,
+        dlc: l.dlc ? new Date(l.dlc) : undefined,
+        ddm: l.ddm ? new Date(l.ddm) : undefined,
+        qty: l.qty !== "" && l.qty != null ? Number(l.qty) : undefined,
+        unit: l.unit || undefined,
+        tempOnArrival:
+          l.tempOnArrival !== "" && l.tempOnArrival != null
+            ? Number(l.tempOnArrival)
+            : undefined,
+        tempOnArrivalUnit: l.tempOnArrivalUnit === "F" ? "F" : "C",
+        allergens:
+          typeof l.allergens === "string" && l.allergens.trim().length
+            ? l.allergens
+                .split(/[;,]/g)
+                .map((s) => s.trim())
+                .filter(Boolean)
+            : [],
+        packagingCondition: l.packagingCondition || "compliant",
+      });
     });
 
-    const mapped = (Array.isArray(data.lines) ? data.lines : []).map((l) => ({
-      productName: l.productName || undefined,
-      supplierProductId: l.supplierProductId || undefined,
-      lotNumber: l.lotNumber || undefined,
-      dlc: l.dlc ? new Date(l.dlc) : undefined,
-      ddm: l.ddm ? new Date(l.ddm) : undefined,
-      qty: l.qty !== "" && l.qty != null ? Number(l.qty) : undefined,
-      unit: l.unit || undefined,
-      tempOnArrival:
-        l.tempOnArrival !== "" && l.tempOnArrival != null
-          ? Number(l.tempOnArrival)
-          : undefined,
-      tempOnArrivalUnit: l.tempOnArrivalUnit === "F" ? "F" : "C",
-      allergens:
-        typeof l.allergens === "string" && l.allergens.trim().length
-          ? l.allergens
-              .split(/[;,]/g)
-              .map((s) => s.trim())
-              .filter(Boolean)
-          : [],
-      packagingCondition: l.packagingCondition || "compliant",
-    }));
-
-    // garder uniquement les lignes avec un produit
-    const linesFiltered = mapped.filter((x) => !!x.productName);
+    if (!payloadLines.length) return;
 
     const payload = {
       supplier: data.supplier,
       receivedAt: data.receivedAt ? new Date(data.receivedAt) : undefined,
       note: data.note || undefined,
       billUrl: data.billUrl || undefined,
-      lines: linesFiltered,
+      lines: payloadLines,
     };
 
     const url = initial?._id
@@ -215,6 +274,8 @@ export default function ReceptionDeliveryForm({
     });
 
     reset(buildFormDefaults(null));
+    setShowReqErrById({});
+    setValidatedById({});
     onSuccess?.(saved);
   };
 
@@ -259,8 +320,23 @@ export default function ReceptionDeliveryForm({
     });
   };
 
+  // Bouton Enregistrer désactivé tant qu’aucune ligne validée explicitement
+  const hasValidatedLine =
+    Array.isArray(fields) && fields.some((f) => validatedById[f.id]);
+  const submitDisabled = isSubmitting || !hasValidatedLine;
+
+  // Désactiver "Ajouter un produit" si la dernière ligne n'a PAS été validée explicitement
+  // En EDIT, les lignes existantes sont initialisées comme validées si complètes,
+  // donc l’ajout est possible immédiatement. Dès qu’une nouvelle ligne est ajoutée,
+  // elle n’est pas validée -> il faudra la valider pour pouvoir en ajouter une autre.
+  const lastField = fields.length ? fields[fields.length - 1] : null;
+  const addDisabled = lastField ? !validatedById[lastField.id] : false;
+
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="relative flex flex-col gap-5">
+    <form
+      onSubmit={handleSubmit(onSubmit)}
+      className="relative flex flex-col gap-5"
+    >
       {/* En-tête réception */}
       <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
         <div className={`${fieldWrap} px-3`}>
@@ -272,19 +348,20 @@ export default function ReceptionDeliveryForm({
             placeholder="Nom du fournisseur"
             autoComplete="off"
             spellCheck={false}
-            {...register("supplier", { required: "Requis" })}
-            className={inputCls}
+            {...register("supplier", { required: true })}
+            className={`${inputCls} ${errors.supplier ? "border-red focus:ring-red/20" : ""}`}
           />
-          {errors.supplier && (
-            <p className="mt-1 text-xs text-red">{errors.supplier.message}</p>
-          )}
         </div>
 
         <div className={`${fieldWrap} px-3`}>
           <label className={labelCls}>
             <CalendarClock className="size-4" /> Date / heure réception *
           </label>
-          <input type="datetime-local" {...register("receivedAt")} className={selectCls} />
+          <input
+            type="datetime-local"
+            {...register("receivedAt")}
+            className={selectCls}
+          />
         </div>
       </div>
 
@@ -297,7 +374,10 @@ export default function ReceptionDeliveryForm({
 
           <button
             type="button"
+            disabled={addDisabled}
+            aria-disabled={addDisabled}
             onClick={() => {
+              if (addDisabled) return;
               openNewLineRef.current = true;
               append({
                 productName: "",
@@ -313,7 +393,12 @@ export default function ReceptionDeliveryForm({
                 packagingCondition: "compliant",
               });
             }}
-            className={`${btnBase} border border-violet/20 bg-white text-violet hover:bg-violet/5`}
+            className={`${btnBase} border border-violet/20 bg-white text-violet hover:bg-violet/5 disabled:opacity-60 disabled:cursor-not-allowed`}
+            title={
+              addDisabled
+                ? "Validez la ligne précédente pour ajouter un produit"
+                : undefined
+            }
           >
             <PlusCircle className="size-4" /> Ajouter un produit
           </button>
@@ -327,14 +412,22 @@ export default function ReceptionDeliveryForm({
             const pkg = l?.packagingCondition || "compliant";
             const tempUnit = l?.tempOnArrivalUnit === "F" ? "F" : "C";
 
-            const productReg = register(`lines.${idx}.productName`);
-            const needsProductNow = hasOtherDataWithoutProduct(l);
-            const hasProdErr =
-              needsProductNow ||
-              !!(errors?.lines && errors.lines[idx]?.productName);
+            // Manquements pour la ligne courante
+            const needProduct = !l?.productName?.trim();
+            const needQty = missingQty(l);
+            const needUnit = missingUnit(l);
+
+            // Afficher bordures rouges SEULEMENT si la ligne a été “validée” manuellement et qu'il manque quelque chose
+            const showErr = !!showReqErrById[id];
+            const hasProdErr = showErr && needProduct;
+            const hasQtyErr = showErr && needQty;
+            const hasUnitErr = showErr && needUnit;
 
             return (
-              <div key={id} className="rounded-xl border border-darkBlue/10 bg-white">
+              <div
+                key={id}
+                className="rounded-xl border border-darkBlue/10 bg-white"
+              >
                 {/* Header ligne */}
                 <div className="flex items-center justify-between gap-3 px-3 py-2">
                   <button
@@ -360,17 +453,28 @@ export default function ReceptionDeliveryForm({
 
                   {/* Résumé compact quand replié */}
                   <div className="flex flex-wrap items-center justify-end gap-1">
-                    {!!l?.qty && <span className={chip}>{l.qty} {l.unit || ""}</span>}
-                    {!!l?.lotNumber && <span className={chip}>Lot {l.lotNumber}</span>}
-                    {!!l?.dlc && <span className={chip}>DLC {fmtDate(l.dlc)}</span>}
+                    {!!l?.qty && (
+                      <span className={chip}>
+                        {l.qty} {l.unit || ""}
+                      </span>
+                    )}
+                    {!!l?.lotNumber && (
+                      <span className={chip}>Lot {l.lotNumber}</span>
+                    )}
+                    {!!l?.dlc && (
+                      <span className={chip}>DLC {fmtDate(l.dlc)}</span>
+                    )}
                     {!!l?.tempOnArrival && (
                       <span className={chip}>
-                        {l.tempOnArrival}{tempUnit === "F" ? "°F" : "°C"}
+                        {l.tempOnArrival}
+                        {tempUnit === "F" ? "°F" : "°C"}
                       </span>
                     )}
                     <span
                       className={`rounded-md px-2 py-0.5 text-[11px] ${
-                        pkg === "compliant" ? "bg-green/10 text-green" : "bg-red/10 text-red"
+                        pkg === "compliant"
+                          ? "bg-green/10 text-green"
+                          : "bg-red/10 text-red"
                       }`}
                     >
                       {pkg === "compliant" ? "Conforme" : "Non conforme"}
@@ -400,13 +504,14 @@ export default function ReceptionDeliveryForm({
                           placeholder="Désignation"
                           autoComplete="off"
                           spellCheck={false}
-                          {...productReg}
-                          onChange={(e) => {
-                            productReg.onChange(e);
-                            if (e.target.value.trim()) {
-                              clearErrors(`lines.${idx}.productName`);
-                            }
-                          }}
+                          {...register(`lines.${idx}.productName`, {
+                            onChange: () => {
+                              // si on modifie un champ requis après validation => la ligne redevient non validée
+                              setValidatedById((s) =>
+                                s[id] ? { ...s, [id]: false } : s
+                              );
+                            },
+                          })}
                           className={`${inputCls} ${hasProdErr ? "border-red focus:ring-red/20" : ""}`}
                           aria-invalid={hasProdErr ? "true" : "false"}
                         />
@@ -445,29 +550,54 @@ export default function ReceptionDeliveryForm({
                     <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
                       <div className={fieldWrap}>
                         <label className={labelCls}>DLC</label>
-                        <input type="date" {...register(`lines.${idx}.dlc`)} className={selectCls} />
+                        <input
+                          type="date"
+                          {...register(`lines.${idx}.dlc`)}
+                          className={selectCls}
+                        />
                       </div>
 
                       <div className={fieldWrap}>
                         <label className={labelCls}>DDM</label>
-                        <input type="date" {...register(`lines.${idx}.ddm`)} className={selectCls} />
+                        <input
+                          type="date"
+                          {...register(`lines.${idx}.ddm`)}
+                          className={selectCls}
+                        />
                       </div>
 
                       <div className="grid grid-cols-5 gap-2">
                         <div className={`col-span-3 ${fieldWrap}`}>
-                          <label className={labelCls}>Qté</label>
+                          <label className={labelCls}>Qté *</label>
                           <input
                             type="number"
                             step="0.01"
                             placeholder="ex: 5"
                             onWheel={(e) => e.currentTarget.blur()}
-                            {...register(`lines.${idx}.qty`)}
-                            className={inputCls}
+                            {...register(`lines.${idx}.qty`, {
+                              onChange: () => {
+                                setValidatedById((s) =>
+                                  s[id] ? { ...s, [id]: false } : s
+                                );
+                              },
+                            })}
+                            className={`${inputCls} ${hasQtyErr ? "border-red focus:ring-red/20" : ""}`}
+                            aria-invalid={hasQtyErr ? "true" : "false"}
                           />
                         </div>
                         <div className={`col-span-2 ${fieldWrap}`}>
-                          <label className={labelCls}>Unité</label>
-                          <select {...register(`lines.${idx}.unit`)} className={selectCls}>
+                          <label className={labelCls}>Unité *</label>
+                          <select
+                            {...register(`lines.${idx}.unit`, {
+                              onChange: () => {
+                                setValidatedById((s) =>
+                                  s[id] ? { ...s, [id]: false } : s
+                                );
+                              },
+                            })}
+                            className={`${selectCls} ${hasUnitErr ? "border-red focus:ring-red/20" : ""}`}
+                            aria-invalid={hasUnitErr ? "true" : "false"}
+                          >
                             <option value="">—</option>
                             <option value="kg">kg</option>
                             <option value="g">g</option>
@@ -539,7 +669,6 @@ export default function ReceptionDeliveryForm({
                             {pkg === "compliant" ? "Conforme" : "Non conforme"}
                           </span>
 
-                          {/* Checkbox visuelle (non enregistrée) */}
                           <input
                             type="checkbox"
                             className="sr-only peer"
@@ -547,13 +676,14 @@ export default function ReceptionDeliveryForm({
                             onChange={() =>
                               setValue(
                                 `lines.${idx}.packagingCondition`,
-                                pkg === "compliant" ? "non-compliant" : "compliant",
+                                pkg === "compliant"
+                                  ? "non-compliant"
+                                  : "compliant",
                                 { shouldDirty: true, shouldTouch: true }
                               )
                             }
                           />
 
-                          {/* Rail + knob */}
                           <span
                             className="
                               relative inline-flex h-6 w-11 items-center rounded-full
@@ -587,7 +717,19 @@ export default function ReceptionDeliveryForm({
                     <div className="flex justify-between mt-2 gap-2">
                       <button
                         type="button"
-                        onClick={() => remove(idx)}
+                        onClick={() => {
+                          setShowReqErrById((s) => {
+                            const n = { ...s };
+                            delete n[id];
+                            return n;
+                          });
+                          setValidatedById((s) => {
+                            const n = { ...s };
+                            delete n[id];
+                            return n;
+                          });
+                          remove(idx);
+                        }}
                         className={`${btnBase} border border-red bg-white text-red hover:border-red/80`}
                       >
                         <Trash2 className="size-4" /> Supprimer la ligne
@@ -597,7 +739,7 @@ export default function ReceptionDeliveryForm({
                         <button
                           type="button"
                           onClick={() => validateLine(id, idx)}
-                          className={`${btnBase} border border-blue bg-white text-blue hover:border-darkBlue/30`}
+                          className={`${btnBase} border border-blue bg-blue text-white hover:border-darkBlue/30`}
                           title="Valider la ligne"
                         >
                           Valider la ligne
@@ -642,11 +784,19 @@ export default function ReceptionDeliveryForm({
       </div>
 
       {/* Actions */}
-      <div className="flex flex-col gap-2 mobile:flex-row">
+      <div className="flex flex-col gap-2 mobile:flex-row items-start">
         <button
           type="submit"
-          disabled={isSubmitting}
-          className="text-nowrap inline-flex items-center justify-center gap-2 rounded-lg bg-blue px-4 py-2 text-sm font-medium text-white shadow disabled:opacity-60"
+          disabled={submitDisabled}
+          aria-disabled={submitDisabled}
+          className={`text-nowrap inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white shadow disabled:opacity-60 ${
+            submitDisabled ? "bg-darkBlue/40" : "bg-blue"
+          }`}
+          title={
+            submitDisabled
+              ? "Validez au moins une ligne (Produit, Qté, Unité)"
+              : undefined
+          }
         >
           {isSubmitting ? (
             <>
@@ -671,6 +821,8 @@ export default function ReceptionDeliveryForm({
             type="button"
             onClick={() => {
               reset(buildFormDefaults(null));
+              setShowReqErrById({});
+              setValidatedById({});
               onCancel?.();
             }}
             className="inline-flex items-center justify-center gap-2 rounded-lg border border-red bg-white px-4 py-2 text-sm font-medium text-red"
