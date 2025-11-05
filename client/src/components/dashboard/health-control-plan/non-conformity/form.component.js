@@ -1,10 +1,19 @@
 // app/(components)/haccp/non-conformity/NonConformityForm.jsx
 "use client";
-import { useContext, useEffect, useMemo, useState } from "react";
+import {
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  useRef,
+  useCallback,
+} from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import axios from "axios";
 import { GlobalContext } from "@/contexts/global.context";
+import { PlusCircle, Trash2, ChevronDown, FileText } from "lucide-react";
 
+/* ---------- Utils ---------- */
 function toDatetimeLocal(value) {
   if (!value) return "";
   const d = new Date(value);
@@ -12,6 +21,14 @@ function toDatetimeLocal(value) {
   const offset = d.getTimezoneOffset() * 60000;
   return new Date(d.getTime() - offset).toISOString().slice(0, 16);
 }
+const nowLocal = () => toDatetimeLocal(new Date());
+const normalize = (s) =>
+  (s || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .toLowerCase()
+    .trim();
 
 function buildDefaults(rec) {
   return {
@@ -21,11 +38,9 @@ function buildDefaults(rec) {
     severity: rec?.severity ?? "medium",
     reportedAt: toDatetimeLocal(rec?.reportedAt ?? new Date()),
     status: rec?.status ?? "open",
-
     attachmentsText: Array.isArray(rec?.attachments)
       ? rec.attachments.join("\n")
       : "",
-
     correctiveActions:
       Array.isArray(rec?.correctiveActions) && rec.correctiveActions.length
         ? rec.correctiveActions.map((c) => ({
@@ -33,7 +48,7 @@ function buildDefaults(rec) {
             done: !!c?.done,
             doneAt: toDatetimeLocal(c?.doneAt),
             doneBy: c?.doneBy ? String(c.doneBy) : "",
-            doneByDisplay: "", // rempli après avec la liste employés
+            doneByDisplay: "",
             note: c?.note ?? "",
           }))
         : [
@@ -49,12 +64,19 @@ function buildDefaults(rec) {
   };
 }
 
+/* Helpers lignes */
+const isLineEmpty = (row) =>
+  !row?.action && !row?.done && !row?.doneAt && !row?.doneByDisplay && !row?.note;
+const isLineValidByAction = (row) => !!row?.action?.trim();
+
 export default function NonConformityForm({
   restaurantId,
   initial = null,
   onSuccess,
   onCancel,
 }) {
+  const isEdit = !!initial?._id;
+
   const {
     register,
     control,
@@ -65,6 +87,7 @@ export default function NonConformityForm({
     getValues,
     setError,
     clearErrors,
+    setFocus,
     formState: { errors, isSubmitting },
   } = useForm({ defaultValues: buildDefaults(initial) });
 
@@ -73,46 +96,57 @@ export default function NonConformityForm({
     name: "correctiveActions",
   });
 
-  /* ---------- employées (autocomplete) ---------- */
+  /* ---------- Styles (alignés) ---------- */
+  const fieldWrap =
+    "group relative rounded-xl bg-white/50 backdrop-blur-sm py-2 min-h-[80px] transition-shadow";
+  const labelCls =
+    "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
+  const inputCls =
+    "h-11 w-full rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition placeholder:text-darkBlue/40";
+  const selectCls =
+    "h-11 w-full appearance-none rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition";
+  const btnBase =
+    "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition active:scale-[0.98]";
+  const chip =
+    "rounded-md bg-darkBlue/10 px-2 py-0.5 text-[11px] text-darkBlue/70";
+
+  /* ---------- Employés (autocomplete) ---------- */
   const { restaurantContext } = useContext(GlobalContext);
-  const allEmployees = useMemo(
-    () =>
-      restaurantContext.restaurantData?.employees?.map((e) => ({
-        _id: String(e._id),
-        firstname: e.firstname,
-        lastname: e.lastname,
-        full: `${e.firstname ?? ""} ${e.lastname ?? ""}`.trim(),
-      })) || [],
-    [restaurantContext.restaurantData?.employees]
+  const allEmployees = useMemo(() => {
+    const list = restaurantContext.restaurantData?.employees || [];
+    return list.map((e) => {
+      const full = `${e.firstname ?? ""} ${e.lastname ?? ""}`.trim();
+      return { _id: String(e._id), full, nfull: normalize(full) };
+    });
+  }, [restaurantContext.restaurantData?.employees]);
+  const exactMap = useMemo(
+    () => new Map(allEmployees.map((e) => [e.nfull, e])),
+    [allEmployees]
+  );
+  const findExactByFull = useCallback(
+    (txt) => (txt ? exactMap.get(normalize(txt)) || null : null),
+    [exactMap]
+  );
+  const searchEmp = useCallback(
+    (q, limit) => {
+      const n = normalize(q);
+      if (!n) return allEmployees.slice(0, limit);
+      const out = [];
+      for (let i = 0; i < allEmployees.length && out.length < limit; i++) {
+        if (allEmployees[i].nfull.includes(n)) out.push(allEmployees[i]);
+      }
+      return out;
+    },
+    [allEmployees]
   );
 
-  const normalize = (s) =>
-    (s || "")
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/\s+/g, " ")
-      .toLowerCase()
-      .trim();
-
-  const findEmployeeByExactFull = (txt) => {
-    const n = normalize(txt);
-    if (!n) return null;
-    return allEmployees.find((e) => normalize(e.full) === n) || null;
-  };
-
-  /* ---------- état dropdown par ligne ---------- */
+  /* ---------- Dropdown "Effectué par" par ligne ---------- */
   const [actionDropdownOpen, setActionDropdownOpen] = useState({});
-  function setActionOpen(idx, open) {
+  const setActionOpen = (idx, open) =>
     setActionDropdownOpen((m) => ({ ...m, [idx]: open }));
-  }
-  function actionOptionsFor(idx) {
-    const q = normalize(watch(`correctiveActions.${idx}.doneByDisplay`) || "");
-    if (!q) return allEmployees.slice(0, 8);
-    return allEmployees
-      .filter((e) => normalize(e.full).includes(q))
-      .slice(0, 8);
-  }
-  function pickActionEmployee(idx, emp) {
+  const actionOptionsFor = (idx) =>
+    searchEmp(watch(`correctiveActions.${idx}.doneByDisplay`) || "", 8);
+  const pickActionEmployee = (idx, emp) => {
     setValue(`correctiveActions.${idx}.doneBy`, emp?._id || "", {
       shouldDirty: true,
       shouldValidate: true,
@@ -125,22 +159,20 @@ export default function NonConformityForm({
       `correctiveActions.${idx}.doneByDisplay`,
     ]);
     setActionOpen(idx, false);
-  }
-  function clearActionEmployee(idx) {
+  };
+  const clearActionEmployee = (idx) => {
     setValue(`correctiveActions.${idx}.doneBy`, "", {
       shouldDirty: true,
       shouldValidate: true,
     });
-    setValue(`correctiveActions.${idx}.doneByDisplay`, "", {
-      shouldDirty: true,
-    });
+    setValue(`correctiveActions.${idx}.doneByDisplay`, "", { shouldDirty: true });
     setActionOpen(idx, false);
     clearErrors([
       `correctiveActions.${idx}.doneBy`,
       `correctiveActions.${idx}.doneByDisplay`,
     ]);
-  }
-  function onActionKeyDown(idx, e) {
+  };
+  const onActionKeyDown = (idx, e) => {
     if (e.key === "Enter") {
       e.preventDefault();
       const opts = actionOptionsFor(idx);
@@ -148,22 +180,16 @@ export default function NonConformityForm({
     } else if (e.key === "Escape") {
       setActionOpen(idx, false);
     }
-  }
-  function onActionBlur(idx) {
-    setTimeout(() => setActionOpen(idx, false), 120);
-    const txt = (
-      getValues(`correctiveActions.${idx}.doneByDisplay`) || ""
-    ).trim();
-    const id = getValues(`correctiveActions.${idx}.doneBy`) || "";
-    if (!txt) {
-      clearErrors([
-        `correctiveActions.${idx}.doneBy`,
-        `correctiveActions.${idx}.doneByDisplay`,
-      ]);
-      return;
-    }
-    if (!id) {
-      const exact = findEmployeeByExactFull(txt);
+  };
+  const verifyActionAtIdx = useCallback(
+    (idx) => {
+      const txt = (
+        getValues(`correctiveActions.${idx}.doneByDisplay`) || ""
+      ).trim();
+      const id = getValues(`correctiveActions.${idx}.doneBy`) || "";
+      if (!txt) return true;
+      if (id) return true;
+      const exact = findExactByFull(txt);
       if (exact) {
         setValue(`correctiveActions.${idx}.doneBy`, exact._id, {
           shouldDirty: true,
@@ -173,109 +199,169 @@ export default function NonConformityForm({
           shouldDirty: true,
         });
         clearErrors([
-          `correctiveActions.${idx}.doneBy`,
           `correctiveActions.${idx}.doneByDisplay`,
+          `correctiveActions.${idx}.doneBy`,
         ]);
-      } else {
-        setError(`correctiveActions.${idx}.doneByDisplay`, {
-          type: "manual",
-          message: "Veuillez sélectionner un nom dans la liste",
-        });
+        return true;
       }
-    } else {
-      clearErrors([
-        `correctiveActions.${idx}.doneBy`,
-        `correctiveActions.${idx}.doneByDisplay`,
-      ]);
-    }
-  }
+      setError(`correctiveActions.${idx}.doneByDisplay`, {
+        type: "manual",
+        message: "Veuillez sélectionner un nom dans la liste",
+      });
+      return false;
+    },
+    [getValues, findExactByFull, setValue, clearErrors, setError]
+  );
+  const onActionBlur = (idx) => {
+    setTimeout(() => setActionOpen(idx, false), 120);
+    verifyActionAtIdx(idx);
+  };
   const actionInvalid = (idx) => {
     const txt = (watch(`correctiveActions.${idx}.doneByDisplay`) || "").trim();
     const id = watch(`correctiveActions.${idx}.doneBy`) || "";
-    return txt !== "" && !id;
+    return !!txt && !id;
   };
 
-  /* ---------- auto dates quand 'Fait' coche/décoche ---------- */
+  /* ---------- Auto dates sur "Fait" ---------- */
   const caWatch = watch("correctiveActions") || [];
   useEffect(() => {
     caWatch.forEach((row, idx) => {
-      if (row?.done && !row?.doneAt) {
-        const now = new Date();
-        const offset = now.getTimezoneOffset() * 60000;
-        const v = new Date(now.getTime() - offset).toISOString().slice(0, 16);
-        setValue(`correctiveActions.${idx}.doneAt`, v, { shouldDirty: true });
-      }
-      if (!row?.done) {
-        setValue(`correctiveActions.${idx}.doneAt`, "", { shouldDirty: true });
-      }
+      const path = `correctiveActions.${idx}.doneAt`;
+      const val = getValues(path);
+      if (row?.done && !val) setValue(path, nowLocal(), { shouldDirty: true });
+      if (!row?.done && val) setValue(path, "", { shouldDirty: true });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(caWatch.map((r) => [r.done, r.doneAt]))]);
+  }, [caWatch]);
 
-  /* ---------- reset + préremplir doneByDisplay à partir de la liste employés ---------- */
+  /* ---------- Reset + pré-remplissages ---------- */
   useEffect(() => {
     reset(buildDefaults(initial));
-    // préremplissage du display si on a déjà des ids
-    const rows = (initial?.correctiveActions || []).map((r) => ({
-      id: r?.doneBy ? String(r.doneBy) : "",
-    }));
-    rows.forEach((r, idx) => {
-      const disp = allEmployees.find((e) => e._id === r.id)?.full || "";
-      setValue(`correctiveActions.${idx}.doneBy`, r.id || "", {
-        shouldDirty: false,
-      });
+    (initial?.correctiveActions || []).forEach((r, idx) => {
+      const id = r?.doneBy ? String(r.doneBy) : "";
+      const disp = allEmployees.find((e) => e._id === id)?.full || "";
+      setValue(`correctiveActions.${idx}.doneBy`, id, { shouldDirty: false });
       setValue(`correctiveActions.${idx}.doneByDisplay`, disp, {
         shouldDirty: false,
       });
     });
+    // Reset états de lignes
+    setOpenById({});
+    setShowReqErrById({});
+    setValidatedById({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initial, reset, allEmployees.length]);
+  }, [initial, allEmployees.length]);
 
+  /* ---------- Pliage + validation explicite des lignes ---------- */
+  const [openById, setOpenById] = useState({});
+  const [showReqErrById, setShowReqErrById] = useState({});
+  const [validatedById, setValidatedById] = useState({});
+  const openNewLineRef = useRef(false);
+
+  // Aligne les maps avec les champs existants
+  useEffect(() => {
+    setOpenById((prev) => {
+      const next = { ...prev };
+      fields.forEach((f, idx) => {
+        if (next[f.id] == null) {
+          const row = (caWatch && caWatch[idx]) || {};
+          next[f.id] = isLineEmpty(row); // lignes vides => ouvertes
+        }
+      });
+      for (const k of Object.keys(next)) {
+        if (!fields.find((f) => f.id === k)) delete next[k];
+      }
+      return next;
+    });
+
+    setShowReqErrById((prev) => {
+      const next = { ...prev };
+      fields.forEach((f) => {
+        if (next[f.id] == null) next[f.id] = false;
+      });
+      for (const k of Object.keys(next)) {
+        if (!fields.find((f) => f.id === k)) delete next[k];
+      }
+      return next;
+    });
+
+    // En EDIT : lignes existantes => validées si "action" présente
+    setValidatedById((prev) => {
+      const next = { ...prev };
+      fields.forEach((f, idx) => {
+        if (next[f.id] == null) {
+          const row = (caWatch && caWatch[idx]) || {};
+          next[f.id] = isEdit && isLineValidByAction(row) ? true : false;
+        }
+      });
+      for (const k of Object.keys(next)) {
+        if (!fields.find((f) => f.id === k)) delete next[k];
+      }
+      return next;
+    });
+  }, [fields, caWatch, isEdit]);
+
+  // 1ère ligne ouverte si tout vide
+  useEffect(() => {
+    if (!fields.length) return;
+    const allEmpty =
+      fields.length > 0 &&
+      fields.every((f, i) => isLineEmpty((caWatch && caWatch[i]) || {}));
+    if (allEmpty) {
+      setOpenById((s) => ({ ...s, [fields[0].id]: true }));
+    }
+  }, [fields, caWatch]);
+
+  // Ouvre la nouvelle ligne juste après append
+  useEffect(() => {
+    if (!openNewLineRef.current) return;
+    const last = fields[fields.length - 1];
+    if (last) {
+      setOpenById((s) => ({ ...s, [last.id]: true }));
+      setTimeout(
+        () => setFocus(`correctiveActions.${fields.length - 1}.action`),
+        0
+      );
+    }
+    openNewLineRef.current = false;
+  }, [fields, setFocus]);
+
+  const toggleOpen = (id) => setOpenById((s) => ({ ...s, [id]: !s[id] }));
+
+  // Valider une ligne : exige "Action" non vide
+  const validateLine = (id, idx) => {
+    const value = (caWatch?.[idx]?.action || "").trim();
+    if (!value) {
+      setShowReqErrById((s) => ({ ...s, [id]: true }));
+      setValidatedById((s) => ({ ...s, [id]: false }));
+      setOpenById((s) => ({ ...s, [id]: true }));
+      setError(`correctiveActions.${idx}.action`, { type: "manual" });
+      setFocus(`correctiveActions.${idx}.action`);
+      return;
+    }
+    setShowReqErrById((s) => ({ ...s, [id]: false }));
+    setValidatedById((s) => ({ ...s, [id]: true }));
+    setOpenById((s) => ({ ...s, [id]: false }));
+    clearErrors(`correctiveActions.${idx}.action`);
+  };
+
+  /* ---------- Submit ---------- */
   const onSubmit = async (data) => {
     const token = localStorage.getItem("token");
     if (!token) return;
 
-    const attachments =
-      typeof data.attachmentsText === "string" &&
-      data.attachmentsText.trim().length
-        ? data.attachmentsText
-            .split(/[\n,;]+/g)
-            .map((s) => s.trim())
-            .filter(Boolean)
-        : [];
+    // Vérifier "effectué par" seulement sur lignes validées
+    for (let i = 0; i < (data.correctiveActions || []).length; i++) {
+      const fid = fields[i]?.id;
+      if (!fid || !validatedById[fid]) continue;
+      if (!verifyActionAtIdx(i)) return;
+    }
 
-    // validation texte vs id pour chaque action
     const rows = Array.isArray(data.correctiveActions)
       ? data.correctiveActions
       : [];
-    for (let idx = 0; idx < rows.length; idx++) {
-      const display = (
-        getValues(`correctiveActions.${idx}.doneByDisplay`) || ""
-      ).trim();
-      if (display && !rows[idx].doneBy) {
-        const exact = findEmployeeByExactFull(display);
-        if (exact) {
-          rows[idx].doneBy = exact._id;
-          setValue(`correctiveActions.${idx}.doneBy`, exact._id, {
-            shouldDirty: true,
-          });
-          setValue(`correctiveActions.${idx}.doneByDisplay`, exact.full, {
-            shouldDirty: true,
-          });
-          clearErrors([
-            `correctiveActions.${idx}.doneByDisplay`,
-            `correctiveActions.${idx}.doneBy`,
-          ]);
-        } else {
-          setError(`correctiveActions.${idx}.doneByDisplay`, {
-            type: "manual",
-            message: "Veuillez sélectionner un nom dans la liste",
-          });
-          return;
-        }
-      }
-    }
 
+    // Garder uniquement les lignes validées explicitement
     const correctiveActions = rows
       .map((c) => ({
         action: c.action || undefined,
@@ -288,7 +374,21 @@ export default function NonConformityForm({
         doneBy: c.doneBy || undefined,
         note: c.note || undefined,
       }))
+      .filter((_, i) => {
+        const fid = fields[i]?.id;
+        return fid && validatedById[fid];
+      })
       .filter((x) => x.action);
+
+    if (!correctiveActions.length) return;
+
+    const attachments =
+      typeof data.attachmentsText === "string" && data.attachmentsText.trim()
+        ? data.attachmentsText
+            .split(/[\n,;]+/g)
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [];
 
     const payload = {
       type: data.type || "other",
@@ -306,29 +406,39 @@ export default function NonConformityForm({
       : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/non-conformities`;
     const method = initial?._id ? "put" : "post";
 
-    const { data: saved } = await axios[method](url, payload, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const { data: saved } = await axios[method](
+      url,
+      { ...payload },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
 
     window.dispatchEvent(
       new CustomEvent("non-conformity:upsert", { detail: { doc: saved } })
     );
     reset(buildDefaults(null));
+    setOpenById({});
+    setShowReqErrById({});
+    setValidatedById({});
     onSuccess?.(saved);
   };
 
+  /* ---------- Boutons désactivés ---------- */
+  const hasValidatedLine =
+    Array.isArray(fields) && fields.some((f) => validatedById[f.id]);
+  const submitDisabled = isSubmitting || !hasValidatedLine;
+  const lastField = fields.length ? fields[fields.length - 1] : null;
+  const addDisabled = lastField ? !validatedById[lastField.id] : false;
+
+  /* ---------- Render ---------- */
   return (
-    <form
-      onSubmit={handleSubmit(onSubmit)}
-      className="bg-white rounded-lg p-4 shadow-sm flex flex-col gap-6"
-    >
+    <form onSubmit={handleSubmit(onSubmit)} className="relative flex flex-col gap-5">
       {/* Ligne 1 : type / statut / sévérité / date */}
-      <div className="flex flex-col gap-4 mobile:flex-row flex-wrap">
-        <div className="w-full mobile:w-56">
-          <label className="text-sm font-medium">Type *</label>
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2 ultraWild:grid-cols-4">
+        <div className={`${fieldWrap} px-3`}>
+          <label className={labelCls}>Type *</label>
           <select
             {...register("type", { required: "Requis" })}
-            className="border rounded p-2 h-[44px] w-full"
+            className={`${selectCls} ${errors.type ? "border-red focus:ring-red/20" : ""}`}
           >
             <option value="temperature">Température</option>
             <option value="hygiene">Hygiène</option>
@@ -341,11 +451,11 @@ export default function NonConformityForm({
           )}
         </div>
 
-        <div className="w-full mobile:w-56">
-          <label className="text-sm font-medium">Statut *</label>
+        <div className={`${fieldWrap} px-3`}>
+          <label className={labelCls}>Statut *</label>
           <select
             {...register("status", { required: "Requis" })}
-            className="border rounded p-2 h-[44px] w-full"
+            className={`${selectCls} ${errors.status ? "border-red focus:ring-red/20" : ""}`}
           >
             <option value="open">Ouverte</option>
             <option value="in_progress">En cours</option>
@@ -356,11 +466,11 @@ export default function NonConformityForm({
           )}
         </div>
 
-        <div className="w-full mobile:w-56">
-          <label className="text-sm font-medium">Gravité *</label>
+        <div className={`${fieldWrap} px-3`}>
+          <label className={labelCls}>Gravité *</label>
           <select
             {...register("severity", { required: "Requis" })}
-            className="border rounded p-2 h-[44px] w-full"
+            className={`${selectCls} ${errors.severity ? "border-red focus:ring-red/20" : ""}`}
           >
             <option value="low">Faible</option>
             <option value="medium">Moyenne</option>
@@ -371,12 +481,12 @@ export default function NonConformityForm({
           )}
         </div>
 
-        <div className="w-full mobile:w-72">
-          <label className="text-sm font-medium">Déclarée le *</label>
+        <div className={`${fieldWrap} px-3`}>
+          <label className={labelCls}>Déclarée le *</label>
           <input
             type="datetime-local"
             {...register("reportedAt", { required: "Requis" })}
-            className="border rounded p-2 h-[44px] w-full"
+            className={`${selectCls} ${errors.reportedAt ? "border-red focus:ring-red/20" : ""}`}
           />
           {errors.reportedAt && (
             <p className="text-xs text-red mt-1">{errors.reportedAt.message}</p>
@@ -385,26 +495,26 @@ export default function NonConformityForm({
       </div>
 
       {/* Ligne 2 : ref / description */}
-      <div className="flex flex-col gap-4 mobile:flex-row flex-wrap">
-        <div className="w-full mobile:w-64">
-          <label className="text-sm font-medium">Référence</label>
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
+        <div className={`${fieldWrap} px-3`}>
+          <label className={labelCls}>Référence</label>
           <input
             type="text"
             {...register("referenceId")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
             placeholder="Ex: BON-RECEP-0425"
             autoComplete="off"
             spellCheck={false}
             autoCorrect="off"
           />
         </div>
-        <div className="flex-1 min-w-[220px]">
-          <label className="text-sm font-medium">Description</label>
+        <div className={`${fieldWrap} px-3 midTablet:col-span-2`}>
+          <label className={labelCls}>Description</label>
           <input
             type="text"
             {...register("description")}
-            className="border rounded p-2 h-[44px] w-full"
-            placeholder="Détail de la NC"
+            className={inputCls}
+            placeholder="Détail de la non-conformité"
             autoComplete="off"
             spellCheck={false}
             autoCorrect="off"
@@ -413,27 +523,32 @@ export default function NonConformityForm({
       </div>
 
       {/* Ligne 3 : pièces */}
-      <div className="flex flex-col gap-4 mobile:flex-row flex-wrap">
-        <div className="flex-1">
-          <label className="text-sm font-medium">
-            Pièces (URLs, 1 par ligne)
-          </label>
+      <div className="grid grid-cols-1 gap-2">
+        <div className={`${fieldWrap} px-3`}>
+          <label className={labelCls}>Pièces (URLs, 1 par ligne)</label>
           <textarea
-            rows={4}
+            rows={3}
             {...register("attachmentsText")}
-            className="border rounded p-2 resize-none w-full min-h-[96px]"
+            className="w-full resize-none rounded-lg border border-darkBlue/20 bg-white p-[10px] text-[15px] outline-none transition placeholder:text-darkBlue/40 min-h-[96px]"
             placeholder={"https://…/photo1.jpg\nhttps://…/rapport.pdf"}
           />
         </div>
       </div>
 
       {/* Actions correctives */}
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-base font-semibold">Actions correctives</h3>
+      <div className="rounded-2xl bg-white/50 p-3 pb-0">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-darkBlue flex items-center gap-2">
+            <FileText className="size-4" /> Actions correctives
+          </h3>
+
           <button
             type="button"
-            onClick={() =>
+            disabled={addDisabled}
+            aria-disabled={addDisabled}
+            onClick={() => {
+              if (addDisabled) return;
+              openNewLineRef.current = true;
               append({
                 action: "",
                 done: false,
@@ -441,185 +556,381 @@ export default function NonConformityForm({
                 doneBy: "",
                 doneByDisplay: "",
                 note: "",
-              })
+              });
+            }}
+            className={`${btnBase} border border-violet/20 bg-white text-violet hover:bg-violet/5 disabled:opacity-60 disabled:cursor-not-allowed`}
+            title={
+              addDisabled
+                ? "Validez la ligne précédente pour ajouter une action"
+                : undefined
             }
-            className="px-3 py-1 rounded bg-blue text-white"
           >
-            Ajouter une action
+            <PlusCircle className="size-4" /> Ajouter une action
           </button>
         </div>
 
-        {fields.map((f, idx) => (
-          <div key={f.id} className="border rounded p-3 flex flex-col gap-3">
-            <div className="flex gap-3 midTablet:flex-row flex-col">
-              <div className="flex-1">
-                <label className="text-sm font-medium">Action *</label>
-                <input
-                  type="text"
-                  {...register(`correctiveActions.${idx}.action`, {
-                    required: "Requis",
-                  })}
-                  placeholder="Ex: Corriger l'étiquetage, Former le personnel…"
-                  className="border rounded p-2 h-[44px] w-full"
-                  autoComplete="off"
-                  spellCheck={false}
-                  autoCorrect="off"
-                />
-                {errors.correctiveActions?.[idx]?.action && (
-                  <p className="text-xs text-red mt-1">
-                    {errors.correctiveActions[idx].action.message}
-                  </p>
+        <div className="space-y-3 mb-3">
+          {fields.map((f, idx) => {
+            const id = f.id;
+            const isOpen = !!openById[id];
+            const row = (caWatch && caWatch[idx]) || {};
+            const hasReqErr = !!showReqErrById[id] && !row?.action?.trim();
+
+            const summary = (
+              <div className="flex flex-wrap items-center justify-end gap-1">
+                {!!row?.done && <span className={chip}>Fait</span>}
+                {!!row?.doneAt && (
+                  <span className={chip}>
+                    {new Date(row.doneAt).toLocaleString("fr-FR", {
+                      day: "2-digit",
+                      month: "2-digit",
+                      year: "2-digit",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
+                )}
+                {!!row?.doneByDisplay && (
+                  <span className={chip}>{row.doneByDisplay}</span>
                 )}
               </div>
-              <div className="w-full mobile:w-40 flex items-center gap-2">
-                <input
-                  id={`ca_done_${idx}`}
-                  type="checkbox"
-                  {...register(`correctiveActions.${idx}.done`)}
-                />
-                <label
-                  htmlFor={`ca_done_${idx}`}
-                  className="text-sm font-medium"
-                >
-                  Fait
-                </label>
-              </div>
-              <div className="w-full mobile:w-64">
-                <label className="text-sm font-medium">Fait le</label>
-                <input
-                  type="datetime-local"
-                  {...register(`correctiveActions.${idx}.doneAt`)}
-                  className="border rounded p-2 h-[44px] w-full"
-                />
-              </div>
-            </div>
+            );
 
-            <div className="flex gap-3 midTablet:flex-row flex-col">
-              {/* doneBy (recherche employé) */}
-              <div className="w-full mobile:w-[360px]">
-                <label className="text-sm font-medium">Effectué par</label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    {...register(`correctiveActions.${idx}.doneByDisplay`)}
-                    autoComplete="off"
-                    spellCheck={false}
-                    autoCorrect="off"
-                    onFocus={() => setActionOpen(idx, true)}
-                    onBlur={() => onActionBlur(idx)}
-                    onChange={(e) => {
-                      setValue(
-                        `correctiveActions.${idx}.doneByDisplay`,
-                        e.target.value,
-                        { shouldDirty: true }
-                      );
-                      setActionOpen(idx, true);
-                      setValue(`correctiveActions.${idx}.doneBy`, "", {
-                        shouldDirty: true,
-                        shouldValidate: true,
-                      });
-                    }}
-                    onKeyDown={(e) => onActionKeyDown(idx, e)}
-                    className={`w-full border rounded p-2 h-[44px] pr-8 ${actionInvalid(idx) || errors?.correctiveActions?.[idx]?.doneByDisplay ? "border-red ring-1 ring-red" : ""}`}
-                    placeholder="Rechercher un employé…"
-                  />
-                  {(watch(`correctiveActions.${idx}.doneByDisplay`) || "") && (
-                    <button
-                      type="button"
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => clearActionEmployee(idx)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 bg-black bg-opacity-30 text-white rounded-full flex items-center justify-center"
-                      title="Effacer"
-                    >
-                      &times;
-                    </button>
-                  )}
-                  {actionDropdownOpen[idx] &&
-                    (
-                      watch(`correctiveActions.${idx}.doneByDisplay`) || ""
-                    ).trim() !== "" && (
-                      <ul
-                        className="absolute z-10 left-0 right-0 mt-1 bg-white border rounded shadow max-h-56 overflow-auto"
-                        onMouseDown={(e) => e.preventDefault()}
-                      >
-                        {actionOptionsFor(idx).length === 0 && (
-                          <li className="px-3 py-2 text-sm opacity-70 italic">
-                            Aucun résultat
-                          </li>
-                        )}
-                        {actionOptionsFor(idx).map((emp) => (
-                          <li
-                            key={emp._id}
-                            onClick={() => pickActionEmployee(idx, emp)}
-                            className={`px-3 py-[8px] cursor-pointer hover:bg-lightGrey ${
-                              (watch(`correctiveActions.${idx}.doneBy`) ||
-                                "") === emp._id
-                                ? "bg-gray-100"
-                                : ""
-                            }`}
-                          >
-                            {emp.full}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+            return (
+              <div key={id} className="rounded-xl border border-darkBlue/10 bg-white">
+                {/* Header ligne */}
+                <div className="flex items-center justify-between gap-3 px-3 py-2">
+                  <button
+                    type="button"
+                    onClick={() => toggleOpen(id)}
+                    className="flex items-center gap-2 text-left"
+                    title={isOpen ? "Replier" : "Déplier"}
+                  >
+                    <ChevronDown
+                      className={`size-4 shrink-0 transition-transform ${
+                        isOpen ? "rotate-180" : ""
+                      }`}
+                    />
+                    <div className="flex flex-col">
+                      <span className="text-sm font-medium text-darkBlue">
+                        {row?.action?.trim() || "Nouvelle action corrective"}
+                      </span>
+                      {!isOpen && (
+                        <span className="text-[11px] text-darkBlue/60">
+                          Cliquez pour voir/modifier le détail
+                        </span>
+                      )}
+                    </div>
+                  </button>
+
+                  {!isOpen && summary}
                 </div>
-                <input
-                  type="hidden"
-                  {...register(`correctiveActions.${idx}.doneBy`)}
-                />
-                {(actionInvalid(idx) ||
-                  errors?.correctiveActions?.[idx]?.doneByDisplay) && (
-                  <p className="text-xs text-red mt-1">
-                    {errors?.correctiveActions?.[idx]?.doneByDisplay?.message ||
-                      "Veuillez sélectionner un nom dans la liste"}
-                  </p>
-                )}
-              </div>
 
-              <div className="flex-1">
-                <label className="text-sm font-medium">Note</label>
-                <input
-                  type="text"
-                  {...register(`correctiveActions.${idx}.note`)}
-                  className="border rounded p-2 h-[44px] w-full"
-                  autoComplete="off"
-                  spellCheck={false}
-                  autoCorrect="off"
-                />
-              </div>
-            </div>
+                {/* Contenu collapsible - 100% CSS (grid 0fr/1fr) */}
+                <div
+                  className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${
+                    isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+                  }`}
+                >
+                  <div className="overflow-hidden">
+                    <div className="p-3 border-t border-darkBlue/10">
+                      {/* Ligne A : Action + Fait (switch) + Fait le */}
+                      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
+                        <div className={fieldWrap}>
+                          <label className={labelCls}>Action *</label>
+                          <input
+                            type="text"
+                            placeholder="Ex: Corriger l’étiquetage, Former le personnel…"
+                            autoComplete="off"
+                            spellCheck={false}
+                            autoCorrect="off"
+                            {...register(`correctiveActions.${idx}.action`, {
+                              onChange: (e) => {
+                                setValidatedById((s) =>
+                                  s[id] ? { ...s, [id]: false } : s
+                                );
+                                if (e.target.value.trim()) {
+                                  clearErrors(
+                                    `correctiveActions.${idx}.action`
+                                  );
+                                }
+                              },
+                            })}
+                            className={`${inputCls} ${
+                              hasReqErr ? "border-red focus:ring-red/20" : ""
+                            }`}
+                            aria-invalid={hasReqErr ? "true" : "false"}
+                          />
+                        </div>
 
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => remove(idx)}
-                className="px-3 py-1 rounded bg-red text-white"
-              >
-                Supprimer
-              </button>
-            </div>
-          </div>
-        ))}
+                        {/* SWITCH "Fait" */}
+                        <div className={fieldWrap}>
+                          <label className={labelCls}>Fait</label>
+                          <label
+                            role="switch"
+                            aria-checked={!!row?.done}
+                            className="group inline-flex justify-between h-11 w-full items-center gap-3 rounded-xl border border-darkBlue/20 bg-white px-3 py-2 cursor-pointer select-none"
+                            title="Basculer Fait / Non fait"
+                          >
+                            <span className="text-sm text-darkBlue/70">
+                              {row?.done ? "Oui" : "Non"}
+                            </span>
+
+                            <input
+                              type="checkbox"
+                              className="sr-only peer"
+                              {...register(`correctiveActions.${idx}.done`, {
+                                onChange: () => {
+                                  setValidatedById((s) =>
+                                    s[id] ? { ...s, [id]: false } : s
+                                  );
+                                },
+                              })}
+                            />
+
+                            <span
+                              className="
+                                relative inline-flex h-6 w-11 items-center rounded-full
+                                bg-darkBlue/20 transition-colors
+                                peer-checked:bg-darkBlue/80 group-aria-checked:bg-darkBlue/80
+                              "
+                            >
+                              <span
+                                className="
+                                  absolute left-1 top-1/2 -translate-y-1/2
+                                  size-4 rounded-full bg-white shadow
+                                  transition-transform will-change-transform translate-x-0
+                                  peer-checked:translate-x-5 group-aria-checked:translate-x-5
+                                "
+                              />
+                            </span>
+                          </label>
+                        </div>
+
+                        <div className={fieldWrap}>
+                          <label className={labelCls}>Fait le</label>
+                          <input
+                            type="datetime-local"
+                            disabled={!row?.done}
+                            {...register(`correctiveActions.${idx}.doneAt`, {
+                              onChange: () =>
+                                setValidatedById((s) =>
+                                  s[id] ? { ...s, [id]: false } : s
+                                ),
+                            })}
+                            className={`${selectCls} ${
+                              !row?.done ? "opacity-60 cursor-not-allowed" : ""
+                            }`}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Ligne B : Effectué par + Note */}
+                      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
+                        <div className={fieldWrap}>
+                          <label className={labelCls}>
+                            Effectué par{" "}
+                            {(actionInvalid(idx) ||
+                              errors?.correctiveActions?.[idx]?.doneByDisplay) && (
+                              <span className="text-xs hidden mobile:block text-red italic">
+                                &nbsp;— Veuillez sélectionner un nom dans la
+                                liste —
+                              </span>
+                            )}
+                          </label>
+                          <div className="relative">
+                            <input
+                              type="text"
+                              {...register(
+                                `correctiveActions.${idx}.doneByDisplay`
+                              )}
+                              autoComplete="off"
+                              spellCheck={false}
+                              autoCorrect="off"
+                              onFocus={() => setActionOpen(idx, true)}
+                              onBlur={() => onActionBlur(idx)}
+                              onChange={(e) => {
+                                setValue(
+                                  `correctiveActions.${idx}.doneByDisplay`,
+                                  e.target.value,
+                                  { shouldDirty: true }
+                                );
+                                setActionOpen(idx, true);
+                                setValue(
+                                  `correctiveActions.${idx}.doneBy`,
+                                  "",
+                                  {
+                                    shouldDirty: true,
+                                    shouldValidate: true,
+                                  }
+                                );
+                                setValidatedById((s) =>
+                                  s[id] ? { ...s, [id]: false } : s
+                                );
+                              }}
+                              onKeyDown={(e) => onActionKeyDown(idx, e)}
+                              className={`${inputCls} pr-8 ${
+                                actionInvalid(idx) ||
+                                errors?.correctiveActions?.[idx]?.doneByDisplay
+                                  ? "border-red focus:ring-red/20"
+                                  : ""
+                              }`}
+                              placeholder="Rechercher un employé…"
+                            />
+                            {(watch(
+                              `correctiveActions.${idx}.doneByDisplay`
+                            ) || "") && (
+                              <button
+                                type="button"
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => clearActionEmployee(idx)}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 bg-black/30 text-white rounded-full flex items-center justify-center"
+                                title="Effacer"
+                              >
+                                &times;
+                              </button>
+                            )}
+                            {actionDropdownOpen[idx] &&
+                              (
+                                watch(
+                                  `correctiveActions.${idx}.doneByDisplay`
+                                ) || ""
+                              ).trim() !== "" && (
+                                <ul
+                                  className="absolute z-10 left-0 right-0 bottom-[115%] mt-1 bg-white border border-darkBlue/20 rounded shadow max-h-56 overflow-auto"
+                                  onMouseDown={(e) => e.preventDefault()}
+                                >
+                                  {actionOptionsFor(idx).length === 0 && (
+                                    <li className="px-3 py-2 text-sm text-darkBlue/50 italic">
+                                      Aucun résultat
+                                    </li>
+                                  )}
+                                  {actionOptionsFor(idx).map((emp) => (
+                                    <li
+                                      key={emp._id}
+                                      onClick={() =>
+                                        pickActionEmployee(idx, emp)
+                                      }
+                                      className={`px-3 py-[8px] cursor-pointer text-darkBlue/70 text-sm border-b border-b-darkBlue/10 last:border-none hover:bg-lightGrey ${
+                                        (watch(
+                                          `correctiveActions.${idx}.doneBy`
+                                        ) || "") === emp._id
+                                          ? "bg-darkBlue/10"
+                                          : ""
+                                      }`}
+                                    >
+                                      {emp.full}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                          </div>
+                          <input
+                            type="hidden"
+                            {...register(`correctiveActions.${idx}.doneBy`)}
+                          />
+                        </div>
+
+                        <div className={fieldWrap}>
+                          <label className={labelCls}>Note</label>
+                          <input
+                            type="text"
+                            {...register(`correctiveActions.${idx}.note`, {
+                              onChange: () =>
+                                setValidatedById((s) =>
+                                  s[id] ? { ...s, [id]: false } : s
+                                ),
+                            })}
+                            className={inputCls}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Actions de ligne */}
+                      <div className="flex flex-col-reverse mobile:flex-row justify-between pt-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowReqErrById((s) => {
+                              const n = { ...s };
+                              delete n[id];
+                              return n;
+                            });
+                            setValidatedById((s) => {
+                              const n = { ...s };
+                              delete n[id];
+                              return n;
+                            });
+                            remove(idx);
+                          }}
+                          className={`${btnBase} h-11 border border-red bg-white text-red hover:border-red/80`}
+                        >
+                          <Trash2 className="size-4" /> Supprimer la ligne
+                        </button>
+
+                        {isOpen && (
+                          <button
+                            type="button"
+                            onClick={() => validateLine(id, idx)}
+                            className={`${btnBase} h-11 border border-blue bg-blue text-white hover:border-darkBlue/30`}
+                            title="Valider la ligne"
+                          >
+                            Valider la ligne
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                {/* /Contenu collapsible */}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Actions */}
-      <div className="flex gap-2">
+      {/* Actions form */}
+      <div className="flex flex-col gap-2 mobile:flex-row">
         <button
           type="submit"
-          disabled={isSubmitting}
-          className="px-4 py-2 rounded bg-blue text-white disabled:opacity-50"
+          disabled={submitDisabled}
+          aria-disabled={submitDisabled}
+          className={`text-nowrap inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white shadow disabled:opacity-60 ${
+            submitDisabled ? "bg-darkBlue/40" : "bg-blue"
+          }`}
+          title={
+            submitDisabled ? "Validez au moins une ligne (Action*)" : undefined
+          }
         >
-          {initial?._id ? "Mettre à jour" : "Enregistrer"}
+          {isSubmitting ? (
+            <>
+              <FileText className="size-4 animate-spin" />
+              Enregistrement…
+            </>
+          ) : initial?._id ? (
+            <>
+              <FileText className="size-4" />
+              Mettre à jour
+            </>
+          ) : (
+            <>
+              <FileText className="size-4" />
+              Enregistrer
+            </>
+          )}
         </button>
+
         {initial?._id && (
           <button
             type="button"
             onClick={() => {
               reset(buildDefaults(null));
+              setOpenById({});
+              setShowReqErrById({});
+              setValidatedById({});
               onCancel?.();
             }}
-            className="px-4 py-2 rounded text-white bg-red"
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-red bg-white px-4 py-2 text-sm font-medium text-red"
           >
             Annuler
           </button>

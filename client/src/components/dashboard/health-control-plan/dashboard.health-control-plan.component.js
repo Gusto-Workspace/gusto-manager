@@ -97,14 +97,14 @@ const tiles = [
     href: "/dashboard/health-control-plan/pest-control",
     tone: "352 75% 54%",
   },
-  {
-    key: "allergens",
-    label: "Allergènes",
-    icon: "🥜",
-    note: "Gestion & étiquetage",
-    href: "/dashboard/health-control-plan/allergen-incidents",
-    tone: "30 92% 50%",
-  },
+  // {
+  //   key: "allergens",
+  //   label: "Allergènes",
+  //   icon: "🥜",
+  //   note: "Gestion & étiquetage",
+  //   href: "/dashboard/health-control-plan/allergen-incidents",
+  //   tone: "30 92% 50%",
+  // },
   {
     key: "micro",
     label: "Microbiologie",

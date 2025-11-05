@@ -238,7 +238,7 @@ export default function PestControlForm({
       fields.every((f, i) => isLineEmpty((actions && actions[i]) || {}));
     if (allEmpty) {
       setOpenById((s) => ({ ...s, [fields[0].id]: true }));
-      setTimeout(() => setFocus(`actions.0.date`), 0);
+      setTimeout(() => setFocus(`provider`), 0);
     }
   }, [fields, actions, setFocus]);
 
