@@ -3,7 +3,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import axios from "axios";
-import { X, Search, Edit3, Trash2, Save, Loader2, Check } from "lucide-react";
+import {
+  X,
+  Search,
+  Edit3,
+  Trash2,
+  Save,
+  Loader2,
+  Check,
+  HardDrive, // 👈 NEW
+} from "lucide-react";
 
 export default function CookingEquipmentManagerModal({
   restaurantId,
@@ -138,7 +147,9 @@ export default function CookingEquipmentManagerModal({
     try {
       setDeleteLoading(true);
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/cooking-equipments/${id}`;
-      await axios.delete(url, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.delete(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       removeLocal(id);
       if (editingId === id) resetDraft();
     } finally {
@@ -169,18 +180,25 @@ export default function CookingEquipmentManagerModal({
       {/* Sheet container */}
       <div className="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
         {/* ✅ max-h mobile + scroll interne */}
-        <div className="pointer-events-auto w-full max-w-[980px] rounded-2xl border border-darkBlue/10 bg-white p-4 midTablet:p-5 shadow
-                        max-h-[90vh] midTablet:max-h-none flex flex-col">
+        <div
+          className="pointer-events-auto w-full max-w-[980px] rounded-2xl border border-darkBlue/10 bg-white p-4 midTablet:p-5 shadow
+                        max-h-[90vh] midTablet:max-h-none flex flex-col"
+        >
           {/* Header (fixe) */}
           <div className="mb-3 flex items-center justify-between shrink-0">
-            <h2 className="text-base midTablet:text-lg font-semibold text-darkBlue">
-              Appareils — gestion
-            </h2>
+            <div className="flex items-center gap-2">
+              <div className="grid size-9 place-items-center rounded-xl bg-blue/10 text-blue">
+                <HardDrive className="size-5" /> {/* 👈 Picto */}
+              </div>
+              <h2 className="text-base midTablet:text-lg font-semibold text-darkBlue">
+                Appareils — gestion
+              </h2>
+            </div>
             <button
-              className={`${btnBase} border border-darkBlue/20 bg-white text-darkBlue hover:border-darkBlue/30`}
+              className={`${btnBase} border border-red bg-white text-red hover:border-red/30`}
               onClick={onClose}
             >
-              <X className="size-4" /> Fermer
+              <X className="size-4" />
             </button>
           </div>
 
@@ -329,7 +347,11 @@ export default function CookingEquipmentManagerModal({
                         </>
                       ) : (
                         <>
-                          {editingId ? <Save className="size-4" /> : <Check className="size-4" />}
+                          {editingId ? (
+                            <Save className="size-4" />
+                          ) : (
+                            <Check className="size-4" />
+                          )}
                           {editingId ? "Mettre à jour" : "Ajouter"}
                         </>
                       )}
@@ -345,18 +367,33 @@ export default function CookingEquipmentManagerModal({
                 <table className="w-full text-[13px]">
                   <thead>
                     <tr className="sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
-                      <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Nom</th>
-                      <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Identifiant</th>
-                      <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Emplacement</th>
-                      <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Unité</th>
-                      <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Actif</th>
-                      <th className="py-2 pr-3 text-right font-medium text-darkBlue/70">Actions</th>
+                      <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                        Nom
+                      </th>
+                      <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                        Identifiant
+                      </th>
+                      <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                        Emplacement
+                      </th>
+                      <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                        Unité
+                      </th>
+                      <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                        Actif
+                      </th>
+                      <th className="py-2 pr-3 text-right font-medium text-darkBlue/70">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {items.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="py-8 text-center text-darkBlue/50">
+                        <td
+                          colSpan={6}
+                          className="py-8 text-center text-darkBlue/50"
+                        >
                           Aucun appareil
                         </td>
                       </tr>
@@ -365,15 +402,31 @@ export default function CookingEquipmentManagerModal({
                     {items.map((f) => {
                       const isPending = pendingDeleteId === f._id;
                       return (
-                        <tr key={f._id} className="border-b border-darkBlue/10 text-nowrap">
-                          <td className="py-2 pr-3 font-medium text-darkBlue">{f.name}</td>
-                          <td className="py-2 pr-3 text-darkBlue/80">{f.equipmentCode || "—"}</td>
+                        <tr
+                          key={f._id}
+                          className="border-b border-darkBlue/10 text-nowrap"
+                        >
+                          <td className="py-2 pr-3 font-medium text-darkBlue">
+                            {f.name}
+                          </td>
+                          <td className="py-2 pr-3 text-darkBlue/80">
+                            {f.equipmentCode || "—"}
+                          </td>
                           <td className="py-2 pr-3 text-darkBlue/80">
                             {f.location || "—"}
-                            {f.locationCode ? <span className="text-darkBlue/50"> • {f.locationCode}</span> : null}
+                            {f.locationCode ? (
+                              <span className="text-darkBlue/50">
+                                {" "}
+                                • {f.locationCode}
+                              </span>
+                            ) : null}
                           </td>
-                          <td className="py-2 pr-3 text-darkBlue/80">{f.unit}</td>
-                          <td className="py-2 pr-3 text-darkBlue/80">{f.isActive ? "Oui" : "Non"}</td>
+                          <td className="py-2 pr-3 text-darkBlue/80">
+                            {f.unit}
+                          </td>
+                          <td className="py-2 pr-3 text-darkBlue/80">
+                            {f.isActive ? "Oui" : "Non"}
+                          </td>
                           <td className="py-2 pr-0">
                             <div className="flex items-center justify-end gap-2">
                               {isPending ? (
@@ -385,7 +438,8 @@ export default function CookingEquipmentManagerModal({
                                   >
                                     {deleteLoading ? (
                                       <>
-                                        <Loader2 className="size-4 animate-spin" /> Suppression…
+                                        <Loader2 className="size-4 animate-spin" />{" "}
+                                        Suppression…
                                       </>
                                     ) : (
                                       <>
@@ -415,8 +469,10 @@ export default function CookingEquipmentManagerModal({
                                         unit: f.unit || "°C",
                                         isActive: !!f.isActive,
                                       });
-                                      // pas nécessaire de scroll en mobile (wrapper scrollable)
-                                      window.scrollTo({ top: 0, behavior: "smooth" });
+                                      window.scrollTo({
+                                        top: 0,
+                                        behavior: "smooth",
+                                      });
                                     }}
                                     title="Éditer"
                                   >

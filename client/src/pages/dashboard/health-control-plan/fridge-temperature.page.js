@@ -120,7 +120,7 @@ export default function FridgeTemperaturePage() {
                 </div>
                 <button
                   onClick={() => setIsFridgeModalOpen(true)}
-                  className="bg-blue px-6 py-2 rounded-lg text-white h-fit"
+                  className="bg-blue px-6 py-2 rounded-lg text-white h-fit disabled:opacity-60"
                   disabled={fridgesLoading}
                   title={fridgesLoading ? "Chargement des enceintes…" : ""}
                 >

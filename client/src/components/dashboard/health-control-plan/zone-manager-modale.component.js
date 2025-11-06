@@ -1,3 +1,4 @@
+// components/dashboard/health-control-plan/zone-manager-modale.component.jsx
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -5,93 +6,77 @@ import axios from "axios";
 import {
   X,
   Search,
-  Snowflake,
   Edit3,
   Trash2,
   Save,
   Loader2,
   Check,
+  MapPin,
 } from "lucide-react";
 
-export default function FridgeManagerModal({
+export default function ZoneManagerModal({
   restaurantId,
   onClose,
   onChanged,
-  initialFridges = [],
+  initialZones = [],
 }) {
-  const token = useMemo(() => localStorage.getItem("token"), []);
+  const token = useMemo(
+    () => (typeof window !== "undefined" ? localStorage.getItem("token") : ""),
+    []
+  );
 
-  // Dataset local (source de vérité dans la modale)
-  const [allItems, setAllItems] = useState(() => initialFridges);
+  // Source locale (aucun fetch ici)
+  const [allItems, setAllItems] = useState(() => initialZones || []);
+  useEffect(() => {
+    setAllItems(initialZones || []);
+  }, [initialZones]);
+
   const [q, setQ] = useState("");
   const [onlyActive, setOnlyActive] = useState(true);
   const [nameError, setNameError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
-  // Flag pour savoir si le changement vient de la modale (et non d'un props update)
+  // Eviter les boucles quand on notifie le parent
   const localChangeRef = useRef(false);
-
-  // si le parent change la liste (ex: revalidation), on la répercute
+  const onChangedRef = useRef(onChanged);
   useEffect(() => {
-    setAllItems(initialFridges || []);
-  }, [initialFridges]);
+    onChangedRef.current = onChanged;
+  }, [onChanged]);
 
   const byName = (a, b) =>
     String(a?.name || "").localeCompare(String(b?.name || ""), "fr");
 
-  // Liste affichée (filtrée), mais on ne remonte JAMAIS cette liste filtrée au parent
   const items = useMemo(() => {
     const qx = (q || "").trim().toLowerCase();
     return (allItems || [])
       .filter((it) => (onlyActive ? it.isActive : true))
       .filter((it) => {
         if (!qx) return true;
-        const hay = [
-          it.name,
-          it.fridgeCode,
-          it.location,
-          it.locationCode,
-          it.sensorIdentifier,
-          it.unit,
-        ]
-          .join(" ")
-          .toLowerCase();
+        const hay = [it.name, it.zoneCode, it.unit].join(" ").toLowerCase();
         return hay.includes(qx);
       })
       .sort(byName);
   }, [allItems, q, onlyActive]);
 
-  // édition / création (form du haut)
+  // Formulaire du haut
   const [draft, setDraft] = useState({
     name: "",
-    fridgeCode: "",
-    location: "",
-    locationCode: "",
-    sensorIdentifier: "",
+    zoneCode: "",
     unit: "°C",
     isActive: true,
   });
   const [editingId, setEditingId] = useState(null);
 
-  // suppression en 2 temps
+  // Suppression en 2 temps
   const [pendingDeleteId, setPendingDeleteId] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   const resetDraft = () => {
     setEditingId(null);
-    setDraft({
-      name: "",
-      fridgeCode: "",
-      location: "",
-      locationCode: "",
-      sensorIdentifier: "",
-      unit: "°C",
-      isActive: true,
-    });
+    setDraft({ name: "", zoneCode: "", unit: "°C", isActive: true });
     setNameError("");
   };
 
-  // Upsert local — ne NOTIFIE PAS le parent ici ; on le fera après commit via useEffect
   const upsertLocal = (doc) => {
     setAllItems((prev) => {
       const idx = prev.findIndex((x) => String(x._id) === String(doc._id));
@@ -105,56 +90,46 @@ export default function FridgeManagerModal({
     localChangeRef.current = true;
   };
 
-  // Remove local — idem, la notif parent se fait après commit
   const removeLocal = (id) => {
     setAllItems((prev) => prev.filter((x) => String(x._id) !== String(id)));
     localChangeRef.current = true;
   };
 
-  // Notifie le parent UNIQUEMENT après un changement local et après commit React
   useEffect(() => {
     if (localChangeRef.current) {
-      onChanged?.(allItems);
+      onChangedRef.current?.(allItems);
       localChangeRef.current = false;
     }
-  }, [allItems, onChanged]);
+  }, [allItems]);
 
-  const saveFridge = async () => {
+  const saveItem = async () => {
     const trimmedName = (draft.name || "").trim();
-
-    // validation côté client
     if (!trimmedName) {
-      setNameError("Le nom de l’enceinte est obligatoire");
+      setNameError("Le nom de la zone est obligatoire");
       return;
     }
 
     setIsSaving(true);
     setNameError("");
-
     try {
       const url = editingId
-        ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/fridges/${editingId}`
-        : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/fridges`;
+        ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/zones/${editingId}`
+        : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/zones`;
       const method = editingId ? "put" : "post";
-
-      // On envoie le name trimé pour éviter les doublons invisibles
       const payload = { ...draft, name: trimmedName };
 
       const { data: saved } = await axios[method](url, payload, {
         headers: { Authorization: `Bearer ${token}` },
       });
-
       upsertLocal(saved);
       resetDraft();
       setPendingDeleteId(null);
     } catch (err) {
-      // Duplicate (côté serveur: code 409 sur 11000)
       if (err?.response?.status === 409) {
-        setNameError("Enceinte déjà existante");
-        return;
+        setNameError("Zone déjà existante");
+      } else {
+        setNameError("Erreur lors de l’enregistrement");
       }
-      // autre erreur
-      setNameError("Erreur lors de l’enregistrement");
     } finally {
       setIsSaving(false);
     }
@@ -168,7 +143,7 @@ export default function FridgeManagerModal({
   const confirmDelete = async (id) => {
     try {
       setDeleteLoading(true);
-      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/fridges/${id}`;
+      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/zones/${id}`;
       await axios.delete(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -180,7 +155,7 @@ export default function FridgeManagerModal({
     }
   };
 
-  // Styles partagés
+  // Styles
   const fieldWrap =
     "group relative rounded-xl bg-white/50 backdrop-blur-sm transition-shadow";
   const labelCls = "text-xs font-medium text-darkBlue/60 mb-1";
@@ -199,36 +174,32 @@ export default function FridgeManagerModal({
         onClick={onClose}
       />
 
-      {/* Sheet */}
+      {/* Container */}
       <div className="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
-        {/* ✅ max-h mobile + scroll interne */}
-        <div
-          className="pointer-events-auto w-full max-w-[980px] rounded-2xl border border-darkBlue/10 bg-white p-4  midTablet:p-5 shadow
-                        max-h-[90vh] midTablet:max-h-none flex flex-col"
-        >
-          {/* Header (fixe) */}
+        <div className="pointer-events-auto w-full max-w-[980px] rounded-2xl border border-darkBlue/10 bg-white p-4 midTablet:p-5 shadow max-h-[90vh] flex flex-col">
+          {/* Header */}
           <div className="mb-3 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2">
               <div className="grid size-9 place-items-center rounded-xl bg-blue/10 text-blue">
-                <Snowflake className="size-5" />
+                <MapPin className="size-5" />
               </div>
               <h2 className="text-base midTablet:text-lg font-semibold text-darkBlue">
-                Enceintes frigorifiques — gestion
+                Zones — gestion
               </h2>
             </div>
             <button
               className={`${btnBase} border border-red bg-white text-red hover:border-red/30`}
               onClick={onClose}
+              type="button"
             >
               <X className="size-4" />
             </button>
           </div>
 
-          {/* ✅ Zone scrollable */}
+          {/* Scrollable */}
           <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-4 pr-1">
-            {/* Search + filters */}
+            {/* Search + toggle */}
             <div className="flex items-end gap-4">
-              {/* Search */}
               <div className={`${fieldWrap} w-full`}>
                 <label className={labelCls}>Recherche</label>
                 <div className="relative">
@@ -242,7 +213,6 @@ export default function FridgeManagerModal({
                 </div>
               </div>
 
-              {/* Only active toggle */}
               <div className="shrink-0 pb-[9px]">
                 <label className="inline-flex items-center gap-3 rounded-xl">
                   <span className="text-xs text-darkBlue/70 text-nowrap">
@@ -254,31 +224,22 @@ export default function FridgeManagerModal({
                     onChange={(e) => setOnlyActive(e.target.checked)}
                     className="peer sr-only"
                   />
-                  {/* Track */}
-                  <span
-                    className="
-                      inline-flex h-6 w-11 items-center rounded-full
-                      bg-darkBlue/20 transition-colors duration-300
-                      justify-start px-1 peer-checked:bg-blue peer-checked:justify-end
-                    "
-                  >
-                    {/* Knob */}
+                  <span className="inline-flex h-6 w-11 items-center rounded-full bg-darkBlue/20 transition-colors duration-300 justify-start px-1 peer-checked:bg-blue peer-checked:justify-end">
                     <span className="h-4 w-4 rounded-full bg-white shadow transition-transform duration-300" />
                   </span>
                 </label>
               </div>
             </div>
 
-            {/* Formulaire add/edit */}
+            {/* Form add/edit — grille alignée sur la modale Frigos */}
             <div className="rounded-2xl border border-darkBlue/10 bg-white p-3">
               <div className="grid grid-cols-1 gap-3 midTablet:grid-cols-3">
                 <div className={fieldWrap}>
                   <label className={labelCls}>Nom *</label>
                   <input
                     className={`${inputCls} ${nameError ? "border-red focus:ring-red/20" : ""}`}
-                    placeholder="Ex: Frigo pâtisserie"
+                    placeholder="Ex: Cuisine, Réserve, Camion"
                     value={draft.name}
-                    aria-invalid={!!nameError}
                     onChange={(e) => {
                       setDraft((d) => ({ ...d, name: e.target.value }));
                       if (nameError) setNameError("");
@@ -290,10 +251,10 @@ export default function FridgeManagerModal({
                   <label className={labelCls}>Identifiant (optionnel)</label>
                   <input
                     className={inputCls}
-                    placeholder="Code interne"
-                    value={draft.fridgeCode}
+                    placeholder="Code interne (ex: CUI-01)"
+                    value={draft.zoneCode}
                     onChange={(e) =>
-                      setDraft((d) => ({ ...d, fridgeCode: e.target.value }))
+                      setDraft((d) => ({ ...d, zoneCode: e.target.value }))
                     }
                   />
                 </div>
@@ -312,45 +273,7 @@ export default function FridgeManagerModal({
                   </select>
                 </div>
 
-                <div className={fieldWrap}>
-                  <label className={labelCls}>Emplacement</label>
-                  <input
-                    className={inputCls}
-                    placeholder="Ex: Cuisine / Arrière"
-                    value={draft.location}
-                    onChange={(e) =>
-                      setDraft((d) => ({ ...d, location: e.target.value }))
-                    }
-                  />
-                </div>
-
-                <div className={fieldWrap}>
-                  <label className={labelCls}>ID emplacement</label>
-                  <input
-                    className={inputCls}
-                    placeholder="Ex: CUI-01"
-                    value={draft.locationCode}
-                    onChange={(e) =>
-                      setDraft((d) => ({ ...d, locationCode: e.target.value }))
-                    }
-                  />
-                </div>
-
-                <div className={fieldWrap}>
-                  <label className={labelCls}>Capteur</label>
-                  <input
-                    className={inputCls}
-                    placeholder="Ex: Probe-12A"
-                    value={draft.sensorIdentifier}
-                    onChange={(e) =>
-                      setDraft((d) => ({
-                        ...d,
-                        sensorIdentifier: e.target.value,
-                      }))
-                    }
-                  />
-                </div>
-
+                {/* Switch Active sur sa propre cellule */}
                 <div className="flex items-end">
                   <label className="inline-flex items-center gap-3 rounded-xl border border-darkBlue/20 bg-white px-3 py-2">
                     <span className="text-sm text-darkBlue/70">Active</span>
@@ -362,20 +285,13 @@ export default function FridgeManagerModal({
                       }
                       className="peer sr-only"
                     />
-                    {/* Track */}
-                    <span
-                      className="
-                        inline-flex h-6 w-11 items-center rounded-full
-                        bg-darkBlue/20 transition-colors duration-300
-                        justify-start px-1 peer-checked:bg-blue peer-checked:justify-end
-                      "
-                    >
-                      {/* Knob */}
+                    <span className="inline-flex h-6 w-11 items-center rounded-full bg-darkBlue/20 transition-colors duration-300 justify-start px-1 peer-checked:bg-blue peer-checked:justify-end">
                       <span className="h-4 w-4 rounded-full bg-white shadow transition-transform duration-300" />
                     </span>
                   </label>
                 </div>
 
+                {/* Barre d’actions alignée avec le switch */}
                 <div className="midTablet:col-span-2 flex items-center justify-between">
                   <div className="min-h-[20px] text-xs text-red">
                     {nameError || null}
@@ -393,7 +309,7 @@ export default function FridgeManagerModal({
                     )}
                     <button
                       className={`${btnBase} bg-blue text-white disabled:opacity-60`}
-                      onClick={saveFridge}
+                      onClick={saveItem}
                       type="button"
                       disabled={isSaving}
                     >
@@ -403,11 +319,7 @@ export default function FridgeManagerModal({
                         </>
                       ) : (
                         <>
-                          {editingId ? (
-                            <Save className="size-4" />
-                          ) : (
-                            <Check className="size-4" />
-                          )}
+                          {editingId ? <Save className="size-4" /> : <Check className="size-4" />}
                           {editingId ? "Mettre à jour" : "Ajouter"}
                         </>
                       )}
@@ -417,7 +329,7 @@ export default function FridgeManagerModal({
               </div>
             </div>
 
-            {/* Liste (filtrée localement) */}
+            {/* Liste */}
             <div className="rounded-2xl border border-darkBlue/10 bg-white p-3">
               <div className="overflow-x-auto overflow-y-auto h-[250px]">
                 <table className="w-full text-[13px]">
@@ -428,12 +340,6 @@ export default function FridgeManagerModal({
                       </th>
                       <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
                         Identifiant
-                      </th>
-                      <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                        Emplacement
-                      </th>
-                      <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                        Capteur
                       </th>
                       <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
                         Unité
@@ -449,42 +355,27 @@ export default function FridgeManagerModal({
                   <tbody>
                     {items.length === 0 && (
                       <tr>
-                        <td
-                          colSpan={7}
-                          className="py-8 text-center text-darkBlue/50"
-                        >
-                          Aucune enceinte
+                        <td colSpan={5} className="py-8 text-center text-darkBlue/50">
+                          Aucune zone
                         </td>
                       </tr>
                     )}
 
-                    {items.map((f) => {
-                      const isPending = pendingDeleteId === f._id;
+                    {items.map((z) => {
+                      const isPending = pendingDeleteId === z._id;
                       return (
-                        <tr key={f._id} className="border-b border-darkBlue/10">
+                        <tr key={z._id} className="border-b border-darkBlue/10 text-nowrap">
                           <td className="py-2 pr-3 font-medium text-darkBlue">
-                            {f.name}
+                            {z.name}
                           </td>
                           <td className="py-2 pr-3 text-darkBlue/80">
-                            {f.fridgeCode || "—"}
+                            {z.zoneCode || "—"}
                           </td>
                           <td className="py-2 pr-3 text-darkBlue/80">
-                            {f.location || "—"}
-                            {f.locationCode ? (
-                              <span className="text-darkBlue/50">
-                                {" "}
-                                • {f.locationCode}
-                              </span>
-                            ) : null}
+                            {z.unit}
                           </td>
                           <td className="py-2 pr-3 text-darkBlue/80">
-                            {f.sensorIdentifier || "—"}
-                          </td>
-                          <td className="py-2 pr-3 text-darkBlue/80">
-                            {f.unit}
-                          </td>
-                          <td className="py-2 pr-3 text-darkBlue/80">
-                            {f.isActive ? "Oui" : "Non"}
+                            {z.isActive ? "Oui" : "Non"}
                           </td>
                           <td className="py-2 pr-0">
                             <div className="flex items-center justify-end gap-2">
@@ -492,13 +383,12 @@ export default function FridgeManagerModal({
                                 <>
                                   <button
                                     className={`${btnBase} border border-red bg-white text-red hover:border-red/80`}
-                                    onClick={() => confirmDelete(f._id)}
+                                    onClick={() => confirmDelete(z._id)}
                                     disabled={deleteLoading}
                                   >
                                     {deleteLoading ? (
                                       <>
-                                        <Loader2 className="size-4 animate-spin" />{" "}
-                                        Suppression…
+                                        <Loader2 className="size-4 animate-spin" /> Suppression…
                                       </>
                                     ) : (
                                       <>
@@ -519,18 +409,13 @@ export default function FridgeManagerModal({
                                   <button
                                     className={`${btnBase} border border-darkBlue/20 bg-white text-darkBlue hover:border-darkBlue/30`}
                                     onClick={() => {
-                                      setEditingId(f._id);
+                                      setEditingId(z._id);
                                       setDraft({
-                                        name: f.name || "",
-                                        fridgeCode: f.fridgeCode || "",
-                                        location: f.location || "",
-                                        locationCode: f.locationCode || "",
-                                        sensorIdentifier:
-                                          f.sensorIdentifier || "",
-                                        unit: f.unit || "°C",
-                                        isActive: !!f.isActive,
+                                        name: z.name || "",
+                                        zoneCode: z.zoneCode || "",
+                                        unit: z.unit || "°C",
+                                        isActive: !!z.isActive,
                                       });
-                                      // pas nécessaire de scroll la page : la modale gère le scroll interne
                                       window.scrollTo({
                                         top: 0,
                                         behavior: "smooth",
@@ -542,7 +427,7 @@ export default function FridgeManagerModal({
                                   </button>
                                   <button
                                     className={`${btnBase} border border-red bg-white text-red hover:border-red/80`}
-                                    onClick={() => requestDelete(f._id)}
+                                    onClick={() => requestDelete(z._id)}
                                     title="Supprimer"
                                   >
                                     <Trash2 className="size-4" /> Supprimer
@@ -558,7 +443,7 @@ export default function FridgeManagerModal({
                 </table>
               </div>
             </div>
-            {/* /Zone scrollable */}
+            {/* /scrollable */}
           </div>
         </div>
       </div>

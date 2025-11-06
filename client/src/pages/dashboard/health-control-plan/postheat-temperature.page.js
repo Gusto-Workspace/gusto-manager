@@ -128,7 +128,7 @@ export default function PostHeatTemperaturePage(props) {
                   {/* Bouton pour ouvrir la modale des appareils (même UX que preheat) */}
                   <button
                     onClick={() => setIsEquipmentModalOpen(true)}
-                    className="bg-blue px-6 py-2 rounded-lg text-white h-fit"
+                    className="bg-blue px-6 py-2 rounded-lg text-white h-fit disabled:opacity-60"
                     disabled={equipmentsLoading}
                     title={equipmentsLoading ? "Chargement des appareils…" : ""}
                   >

@@ -113,7 +113,7 @@ export default function PreheatTemperaturePage(props) {
 
                 <button
                   onClick={() => setIsEquipmentModalOpen(true)}
-                  className="bg-blue px-6 py-2 rounded-lg text-white h-fit"
+                  className="bg-blue px-6 py-2 rounded-lg text-white h-fit disabled:opacity-60"
                   disabled={equipmentsLoading}
                   title={equipmentsLoading ? "Chargement des appareils…" : ""}
                 >
