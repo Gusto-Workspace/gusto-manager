@@ -308,7 +308,7 @@ export default function ZoneManagerModal({
                       </button>
                     )}
                     <button
-                      className={`${btnBase} bg-blue text-white disabled:opacity-60`}
+                      className={`${btnBase} bg-blue border border-blue text-white disabled:opacity-60`}
                       onClick={saveItem}
                       type="button"
                       disabled={isSaving}

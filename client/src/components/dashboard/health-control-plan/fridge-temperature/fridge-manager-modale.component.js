@@ -392,7 +392,7 @@ export default function FridgeManagerModal({
                       </button>
                     )}
                     <button
-                      className={`${btnBase} bg-blue text-white disabled:opacity-60`}
+                      className={`${btnBase} bg-blue border border-blue text-white disabled:opacity-60`}
                       onClick={saveFridge}
                       type="button"
                       disabled={isSaving}
