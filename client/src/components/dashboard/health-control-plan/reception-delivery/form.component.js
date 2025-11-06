@@ -1,5 +1,7 @@
+// components/dashboard/health-control-plan/reception-delivery/form.component.jsx
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useForm, useFieldArray } from "react-hook-form";
 import axios from "axios";
 import {
@@ -28,7 +30,13 @@ function toDatetimeLocalValue(value) {
   return new Date(base.getTime() - offset).toISOString().slice(0, 16);
 }
 
-// Ligne totalement vide ?
+// Normalisation simple pour les comparaisons (insensible à la casse/espaces)
+const normalize = (s) =>
+  String(s || "")
+    .trim()
+    .toLowerCase();
+
+/* Ligne totalement vide ? */
 const isLineEmpty = (row) =>
   !row?.productName &&
   !row?.supplierProductId &&
@@ -40,15 +48,15 @@ const isLineEmpty = (row) =>
   !row?.tempOnArrival &&
   !(typeof row?.allergens === "string" && row.allergens.trim().length > 0);
 
-// Manque produit alors que d’autres champs sont saisis
+/* Manque produit alors que d’autres champs sont saisis */
 const hasOtherDataWithoutProduct = (row) =>
   !row?.productName?.trim() && !isLineEmpty(row);
 
-// Champs requis manquants
+/* Champs requis manquants */
 const missingQty = (row) => row?.qty === "" || row?.qty == null;
 const missingUnit = (row) => !row?.unit;
 
-// Une ligne est “validée” si (Produit + Qté + Unité) sont présents
+/* Une ligne est “validée” si (Produit + Qté + Unité) sont présents */
 const isLineValidatedByFields = (row) =>
   !!row?.productName?.trim() &&
   row?.qty !== "" &&
@@ -101,6 +109,22 @@ function buildFormDefaults(record) {
   };
 }
 
+// Helpers pour méta produits (dernière occurrence pour préremplir)
+const stringifyAllergens = (val) =>
+  Array.isArray(val) ? val.filter(Boolean).join(", ") : String(val || "");
+
+const applyLatestMeta = (rec, line, at) => {
+  const meta = {
+    supplierProductId: line?.supplierProductId || "",
+    lotNumber: line?.lotNumber || "",
+    allergens: stringifyAllergens(line?.allergens),
+    at: at ? new Date(at).getTime() : 0,
+  };
+  if (!rec.last || meta.at >= (rec.last.at || 0)) {
+    rec.last = meta;
+  }
+};
+
 export default function ReceptionDeliveryForm({
   restaurantId,
   initial = null,
@@ -122,6 +146,7 @@ export default function ReceptionDeliveryForm({
 
   const { fields, append, remove } = useFieldArray({ control, name: "lines" });
   const lines = watch("lines");
+  const supplierValue = watch("supplier");
 
   // --- Collapsible state par ligne
   const [openById, setOpenById] = useState({});
@@ -134,11 +159,128 @@ export default function ReceptionDeliveryForm({
   // État “ligne validée explicitement”
   const [validatedById, setValidatedById] = useState({});
 
+  // ----------- INDEX SUGGESTIONS (fournisseur + produits) ----------------
+  const token = useMemo(
+    () =>
+      typeof window !== "undefined" ? localStorage.getItem("token") : null,
+    []
+  );
+  const suggestLoadedRef = useRef(false);
+  const [suggestLoading, setSuggestLoading] = useState(false);
+
+  // Maps en refs (évite des re-renders)
+  // suppliers: Map<lowerName, { label: originalCase, count }>
+  const suppliersRef = useRef(new Map());
+  // productsBySupplier: Map<lowerSupplier, Map<lowerProduct, { label, count, last:{supplierProductId,lotNumber,allergens,at} }>>
+  const productsBySupplierRef = useRef(new Map());
+  // productsGlobal: Map<lowerProduct, { label, count, last } >
+  const productsGlobalRef = useRef(new Map());
+
+  // Helpers index
+  const bumpCount = (map, key, label) => {
+    const rec = map.get(key);
+    if (rec) {
+      rec.count += 1;
+    } else {
+      map.set(key, { label: label || key, count: 1 });
+    }
+  };
+  const bumpProduct = (map, key, label, line, at) => {
+    const rec = map.get(key);
+    if (rec) {
+      rec.count += 1;
+      applyLatestMeta(rec, line, at);
+    } else {
+      const base = { label: label || key, count: 1 };
+      applyLatestMeta(base, line, at);
+      map.set(key, base);
+    }
+  };
+
+  const indexFromDoc = (doc) => {
+    const sup = (doc?.supplier || "").trim();
+    if (!sup) return;
+    const supKey = normalize(sup);
+    bumpCount(suppliersRef.current, supKey, sup);
+
+    const lines = Array.isArray(doc?.lines) ? doc.lines : [];
+    if (!productsBySupplierRef.current.has(supKey)) {
+      productsBySupplierRef.current.set(supKey, new Map());
+    }
+    const mapForSup = productsBySupplierRef.current.get(supKey);
+
+    for (const l of lines) {
+      const pname = (l?.productName || "").trim();
+      if (!pname) continue;
+      const pkey = normalize(pname);
+      // on stocke la dernière occurrence (ref/lot/allergènes) + fréquence
+      bumpProduct(mapForSup, pkey, pname, l, doc?.receivedAt);
+      bumpProduct(productsGlobalRef.current, pkey, pname, l, doc?.receivedAt);
+    }
+  };
+
+  const fetchSuggestions = async () => {
+    if (!restaurantId || !token) return;
+    setSuggestLoading(true);
+    try {
+      suppliersRef.current = new Map();
+      productsBySupplierRef.current = new Map();
+      productsGlobalRef.current = new Map();
+
+      // On pagine quelques pages pour construire un cache utile sans tout aspirer.
+      const limit = 100;
+      let page = 1;
+      let pages = 1;
+      const maxPages = 5; // sécurité
+
+      while (page <= pages && page <= maxPages) {
+        const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-reception-deliveries`;
+        const { data } = await axios.get(url, {
+          headers: { Authorization: `Bearer ${token}` },
+          params: { page, limit },
+        });
+
+        const items = Array.isArray(data?.items) ? data.items : [];
+        for (const it of items) indexFromDoc(it);
+
+        pages = Math.max(1, Number(data?.meta?.pages || 1));
+        page += 1;
+      }
+      suggestLoadedRef.current = true;
+    } catch (e) {
+      // en cas d'erreur, on laisse juste les suggestions vides
+      console.error("suggestions load error", e);
+    } finally {
+      setSuggestLoading(false);
+    }
+  };
+
+  // Mise à jour du cache sur upsert
+  useEffect(() => {
+    const onUpsert = (e) => {
+      const doc = e?.detail?.doc;
+      if (!doc) return;
+      if (restaurantId && String(doc.restaurantId) !== String(restaurantId))
+        return;
+      indexFromDoc(doc);
+    };
+    window.addEventListener("reception-delivery:upsert", onUpsert);
+    return () =>
+      window.removeEventListener("reception-delivery:upsert", onUpsert);
+  }, [restaurantId]);
+
   useEffect(() => {
     reset(buildFormDefaults(initial));
     setShowReqErrById({});
     setValidatedById({});
-  }, [initial, reset]);
+    // reset guards suggestions (pas d'ouverture auto)
+    supplierUserTypedRef.current = false;
+    Object.keys(productUserTypedRef.current).forEach((k) => {
+      productUserTypedRef.current[k] = false;
+    });
+    // Charge le cache si besoin
+    if (!suggestLoadedRef.current) fetchSuggestions();
+  }, [initial, reset]); // eslint-disable-line
 
   // Sync des maps avec la liste courante des lignes
   useEffect(() => {
@@ -167,8 +309,6 @@ export default function ReceptionDeliveryForm({
       return next;
     });
 
-    // ⚠️ En EDIT : marquer les lignes existantes comme validées
-    // AU PREMIER passage pour chaque id (ne pas écraser les changements utilisateur)
     setValidatedById((prev) => {
       const next = { ...prev };
       fields.forEach((f, idx) => {
@@ -276,6 +416,8 @@ export default function ReceptionDeliveryForm({
     reset(buildFormDefaults(null));
     setShowReqErrById({});
     setValidatedById({});
+    // Met à jour l’index local (évite d’attendre l’event du parent)
+    indexFromDoc(saved);
     onSuccess?.(saved);
   };
 
@@ -320,15 +462,219 @@ export default function ReceptionDeliveryForm({
     });
   };
 
+  // ----------------- Suggestions: Supplier -----------------
+  const [supplierOpen, setSupplierOpen] = useState(false);
+  const [supplierItems, setSupplierItems] = useState([]);
+  const supplierBoxRef = useRef(null);
+  const supplierUserTypedRef = useRef(false);
+  const supplierDebounceRef = useRef(null);
+
+  const computeSupplierMatches = (q) => {
+    const qn = normalize(q);
+    if (!qn) return [];
+    const list = [];
+    suppliersRef.current.forEach((v, key) => {
+      if (key.includes(qn)) list.push(v);
+    });
+    list.sort((a, b) => b.count - a.count);
+    return list.slice(0, 8).map((x) => x.label);
+  };
+
+  useEffect(() => {
+    const onClickOutside = (e) => {
+      if (!supplierBoxRef.current) return;
+      if (!supplierBoxRef.current.contains(e.target)) setSupplierOpen(false);
+    };
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (!supplierUserTypedRef.current) {
+      setSupplierOpen(false);
+      return;
+    }
+    const q = String(supplierValue || "");
+    if (supplierDebounceRef.current) clearTimeout(supplierDebounceRef.current);
+    if (q.trim().length < 2) {
+      setSupplierItems([]);
+      setSupplierOpen(false);
+      return;
+    }
+    supplierDebounceRef.current = setTimeout(() => {
+      const matches = computeSupplierMatches(q);
+      setSupplierItems(matches);
+      setSupplierOpen(matches.length > 0);
+    }, 180);
+    // cleanup handled by next run
+  }, [supplierValue]);
+
+  const pickSupplier = (name) => {
+    setValue("supplier", name, { shouldDirty: true, shouldTouch: true });
+    setSupplierOpen(false);
+    supplierUserTypedRef.current = false;
+  };
+
+  // ----------------- Suggestions: Product per line (PORTAL) -----------------
+  const [productOpenById, setProductOpenById] = useState({});
+  const productUserTypedRef = useRef({}); // id -> bool
+  const productDebounceRef = useRef({}); // id -> timeout
+  const productBoxRefs = useRef({}); // id -> element (wrapper)
+  const productAnchorRefs = useRef({}); // id -> element (ancre)
+  // id -> Array<{ label: string, meta?: { supplierProductId, lotNumber, allergens, at } }>
+  const [productItemsById, setProductItemsById] = useState({});
+
+  // portal container ref + guards
+  const productPortalRef = useRef(null);
+  const [isClient, setIsClient] = useState(false);
+  useEffect(() => setIsClient(true), []);
+
+  // rerender pour suivre scroll/resize et repositionner le menu
+  const [, setDropdownRerender] = useState(0);
+  useEffect(() => {
+    const onScrollOrResize = () => setDropdownRerender((v) => v + 1);
+    window.addEventListener("resize", onScrollOrResize);
+    // capture true: écoute les scrolls des parents scrollables
+    window.addEventListener("scroll", onScrollOrResize, true);
+    return () => {
+      window.removeEventListener("resize", onScrollOrResize);
+      window.removeEventListener("scroll", onScrollOrResize, true);
+    };
+  }, []);
+
+  // clic dans le portal -> ne pas fermer sur blur immédiat
+  const pointerInPortalRef = useRef(false);
+  useEffect(() => {
+    const down = (e) => {
+      if (productPortalRef.current?.contains(e.target))
+        pointerInPortalRef.current = true;
+    };
+    const up = () => {
+      // petit délai pour laisser le onClick des items se déclencher
+      setTimeout(() => (pointerInPortalRef.current = false), 0);
+    };
+    document.addEventListener("mousedown", down, true);
+    document.addEventListener("mouseup", up, true);
+    return () => {
+      document.removeEventListener("mousedown", down, true);
+      document.removeEventListener("mouseup", up, true);
+    };
+  }, []);
+
+  // fermer si clic ailleurs (en dehors des anchors ET du portal)
+  useEffect(() => {
+    const onClickOutside = (e) => {
+      if (productPortalRef.current?.contains(e.target)) return;
+      const refs = productBoxRefs.current;
+      for (const key of Object.keys(refs)) {
+        const el = refs[key];
+        if (el && el.contains(e.target)) return; // clic dans un input/boîte -> on laisse gérer
+      }
+      setProductOpenById({});
+    };
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
+
+  const openProductDropdownFor = (fid, open) =>
+    setProductOpenById((s) => ({ ...s, [fid]: !!open }));
+
+  const setProductItemsFor = (fid, items) =>
+    setProductItemsById((s) => ({ ...s, [fid]: items }));
+
+  // matches enrichis (label + meta)
+  const computeProductMatches = (supplier, q) => {
+    const qn = normalize(q);
+    if (!qn) return [];
+    const supKey = normalize(supplier);
+    const bag =
+      (supKey && productsBySupplierRef.current.get(supKey)) ||
+      productsGlobalRef.current;
+
+    const list = [];
+    bag.forEach((v, key) => {
+      if (key.includes(qn)) list.push(v);
+    });
+    list.sort((a, b) => b.count - a.count);
+    return list
+      .slice(0, 8)
+      .map((x) => ({ label: x.label, meta: x.last || null }));
+  };
+
+  const handleProductTyping = (fid, idx) => {
+    productUserTypedRef.current[fid] = true;
+
+    const row = (lines && lines[idx]) || {};
+    const q = String(row?.productName || "").trim();
+    if (productDebounceRef.current[fid])
+      clearTimeout(productDebounceRef.current[fid]);
+
+    if (q.length < 2) {
+      setProductItemsFor(fid, []);
+      openProductDropdownFor(fid, false);
+      return;
+    }
+
+    productDebounceRef.current[fid] = setTimeout(() => {
+      const supplier = supplierValue;
+      const matches = computeProductMatches(supplier, q);
+      setProductItemsFor(fid, matches);
+      openProductDropdownFor(fid, matches.length > 0);
+      setDropdownRerender((v) => v + 1); // reposition immédiat
+    }, 160);
+  };
+
+  const pickProduct = (fid, idx, suggestion) => {
+  const name =
+    typeof suggestion === "string" ? suggestion : suggestion?.label || "";
+  const meta = suggestion && typeof suggestion === "object" ? suggestion.meta : null;
+
+  // 1) Met à jour le nom du produit
+  setValue(`lines.${idx}.productName`, name, {
+    shouldDirty: true,
+    shouldTouch: true,
+  });
+
+  // 2) ÉCRASE toujours les métadonnées pour coller au produit choisi
+  //    (si la suggestion n'a pas de meta, on vide pour éviter de garder l'ancienne valeur)
+  setValue(`lines.${idx}.supplierProductId`, meta?.supplierProductId || "", {
+    shouldDirty: true,
+    shouldTouch: true,
+  });
+  setValue(`lines.${idx}.lotNumber`, meta?.lotNumber || "", {
+    shouldDirty: true,
+    shouldTouch: true,
+  });
+  setValue(`lines.${idx}.allergens`, meta?.allergens || "", {
+    shouldDirty: true,
+    shouldTouch: true,
+  });
+
+  // 3) Optionnel: on invalide la validation manuelle si la ligne était "validée"
+  //    (reste cohérent avec le onChange du champ qui fait la même chose)
+  setValidatedById((s) => (s[fid] ? { ...s, [fid]: false } : s));
+
+  // 4) Ferme le menu déroulant proprement
+  openProductDropdownFor(fid, false);
+  productUserTypedRef.current[fid] = false;
+};
+
+
+  // Fermeture sur Esc global
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") setProductOpenById({});
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
   // Bouton Enregistrer désactivé tant qu’aucune ligne validée explicitement
   const hasValidatedLine =
     Array.isArray(fields) && fields.some((f) => validatedById[f.id]);
   const submitDisabled = isSubmitting || !hasValidatedLine;
 
   // Désactiver "Ajouter un produit" si la dernière ligne n'a PAS été validée explicitement
-  // En EDIT, les lignes existantes sont initialisées comme validées si complètes,
-  // donc l’ajout est possible immédiatement. Dès qu’une nouvelle ligne est ajoutée,
-  // elle n’est pas validée -> il faudra la valider pour pouvoir en ajouter une autre.
   const lastField = fields.length ? fields[fields.length - 1] : null;
   const addDisabled = lastField ? !validatedById[lastField.id] : false;
 
@@ -339,18 +685,62 @@ export default function ReceptionDeliveryForm({
     >
       {/* En-tête réception */}
       <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
-        <div className={`${fieldWrap} px-3`}>
+        <div className={`${fieldWrap} px-3`} ref={supplierBoxRef}>
           <label className={labelCls}>
             <FileText className="size-4" /> Fournisseur *
           </label>
-          <input
-            type="text"
-            placeholder="Nom du fournisseur"
-            autoComplete="off"
-            spellCheck={false}
-            {...register("supplier", { required: true })}
-            className={`${inputCls} ${errors.supplier ? "border-red focus:ring-red/20" : ""}`}
-          />
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Nom du fournisseur"
+              autoComplete="off"
+              spellCheck={false}
+              {...register("supplier", {
+                required: true,
+                onChange: () => {
+                  supplierUserTypedRef.current = true;
+                },
+              })}
+              className={`${inputCls} ${errors.supplier ? "border-red focus:ring-red/20" : ""}`}
+              onFocus={() => {
+                const q = String(supplierValue || "");
+                if (q.trim().length >= 2) {
+                  const matches = computeSupplierMatches(q);
+                  setSupplierItems(matches);
+                  setSupplierOpen(matches.length > 0);
+                }
+              }}
+              onBlur={() => setTimeout(() => setSupplierOpen(false), 0)}
+            />
+            {/* Suggestions fournisseur (non portal, pas de conflit ici) */}
+            {supplierOpen && (
+              <div className="absolute left-0 right-0 top-full mt-1 z-50 rounded-lg border border-darkBlue/15 bg-white shadow max-h-64 overflow-auto">
+                {suggestLoading && (
+                  <div className="px-3 py-2 text-sm text-darkBlue/60">
+                    Chargement…
+                  </div>
+                )}
+                {!suggestLoading && supplierItems.length === 0 && (
+                  <div className="px-3 py-2 text-sm text-darkBlue/40">
+                    Aucun fournisseur
+                  </div>
+                )}
+                {!suggestLoading &&
+                  supplierItems.map((name) => (
+                    <button
+                      key={name}
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => pickSupplier(name)}
+                      className="w-full text-left px-3 py-2 hover:bg-blue/5 text-sm"
+                      title="Choisir ce fournisseur"
+                    >
+                      {name}
+                    </button>
+                  ))}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className={`${fieldWrap} px-3`}>
@@ -423,10 +813,13 @@ export default function ReceptionDeliveryForm({
             const hasQtyErr = showErr && needQty;
             const hasUnitErr = showErr && needUnit;
 
+            const rowZ =
+              productOpenById[id] || false ? "z-40 relative" : "relative";
+
             return (
               <div
                 key={id}
-                className="rounded-xl border border-darkBlue/10 bg-white"
+                className={`rounded-xl border border-darkBlue/10 bg-white ${rowZ}`}
               >
                 {/* Header ligne */}
                 <div className="flex items-center justify-between gap-3 px-3 py-2">
@@ -495,26 +888,132 @@ export default function ReceptionDeliveryForm({
                   <div className="p-3 border-t border-darkBlue/10">
                     {/* Ligne 1 */}
                     <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
-                      <div className={fieldWrap}>
+                      <div
+                        className={fieldWrap}
+                        ref={(el) => {
+                          productBoxRefs.current[id] = el;
+                          productAnchorRefs.current[id] = el;
+                        }}
+                      >
                         <label className={labelCls}>
                           <Tag className="size-4" /> Produit *
                         </label>
-                        <input
-                          type="text"
-                          placeholder="Désignation"
-                          autoComplete="off"
-                          spellCheck={false}
-                          {...register(`lines.${idx}.productName`, {
-                            onChange: () => {
-                              // si on modifie un champ requis après validation => la ligne redevient non validée
-                              setValidatedById((s) =>
-                                s[id] ? { ...s, [id]: false } : s
-                              );
-                            },
-                          })}
-                          className={`${inputCls} ${hasProdErr ? "border-red focus:ring-red/20" : ""}`}
-                          aria-invalid={hasProdErr ? "true" : "false"}
-                        />
+                        <div className="relative">
+                          <input
+                            type="text"
+                            placeholder="Désignation"
+                            autoComplete="off"
+                            spellCheck={false}
+                            {...register(`lines.${idx}.productName`, {
+                              onChange: () => {
+                                setValidatedById((s) =>
+                                  s[id] ? { ...s, [id]: false } : s
+                                );
+                                handleProductTyping(id, idx);
+                              },
+                            })}
+                            className={`${inputCls} ${hasProdErr ? "border-red focus:ring-red/20" : ""}`}
+                            aria-invalid={hasProdErr ? "true" : "false"}
+                            onFocus={() => {
+                              const row = (lines && lines[idx]) || {};
+                              const q = String(row?.productName || "").trim();
+                              if (q.length >= 2) {
+                                const matches = computeProductMatches(
+                                  supplierValue,
+                                  q
+                                );
+                                setProductItemsFor(id, matches);
+                                openProductDropdownFor(id, matches.length > 0);
+                                setDropdownRerender((v) => v + 1);
+                              }
+                            }}
+                            onBlur={() =>
+                              setTimeout(() => {
+                                // si le blur vient d'un clic dans le portal -> ne pas fermer ici
+                                if (!pointerInPortalRef.current) {
+                                  openProductDropdownFor(id, false);
+                                }
+                              }, 0)
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === "ArrowDown") {
+                                // on laisse la navigation au focus menu si besoin (optionnel)
+                              }
+                              if (e.key === "Escape") {
+                                openProductDropdownFor(id, false);
+                              }
+                            }}
+                          />
+                          {/* Dropdown suggestions produit (PORTAL) */}
+                          {isClient &&
+                            productOpenById[id] &&
+                            createPortal(
+                              (() => {
+                                const anchor = productAnchorRefs.current[id];
+                                if (!anchor) return null;
+                                const rect = anchor.getBoundingClientRect();
+                                const style = {
+                                  position: "fixed",
+                                  left: rect.left,
+                                  top: rect.bottom - 4,
+                                  width: rect.width,
+                                  zIndex: 1000,
+                                  maxHeight: "16rem",
+                                  overflow: "auto",
+                                };
+                                const items = productItemsById[id] || [];
+                                return (
+                                  <div
+                                    ref={productPortalRef}
+                                    style={style}
+                                    className="rounded-lg border border-darkBlue/15 bg-white shadow"
+                                    role="listbox"
+                                    aria-label="Suggestions produits"
+                                  >
+                                    {items.length === 0 ? (
+                                      <div className="px-3 py-2 text-sm text-darkBlue/40">
+                                        Aucun produit
+                                      </div>
+                                    ) : (
+                                      items.map((sug) => (
+                                        <button
+                                          key={sug.label}
+                                          type="button"
+                                          onMouseDown={(e) => {
+                                            // empêcher le blur immédiat de l'input
+                                            e.preventDefault();
+                                          }}
+                                          onClick={() =>
+                                            pickProduct(id, idx, sug)
+                                          }
+                                          className="w-full text-left px-3 py-2 hover:bg-blue/5 text-sm"
+                                          role="option"
+                                          title="Choisir ce produit"
+                                        >
+                                          <div className="flex flex-col">
+                                            <span>{sug.label}</span>
+                                            {sug.meta &&
+                                              (sug.meta.supplierProductId ||
+                                                sug.meta.lotNumber) && (
+                                                <span className="text-[11px] text-darkBlue/50">
+                                                  {sug.meta.supplierProductId
+                                                    ? `Ref: ${sug.meta.supplierProductId} `
+                                                    : ""}
+                                                  {sug.meta.lotNumber
+                                                    ? `Lot: ${sug.meta.lotNumber} `
+                                                    : ""}
+                                                </span>
+                                              )}
+                                          </div>
+                                        </button>
+                                      ))
+                                    )}
+                                  </div>
+                                );
+                              })(),
+                              document.body
+                            )}
+                        </div>
                       </div>
 
                       <div className={fieldWrap}>
@@ -605,6 +1104,7 @@ export default function ReceptionDeliveryForm({
                             <option value="mL">mL</option>
                             <option value="unit">unité</option>
                           </select>
+                          <ChevronDown className="pointer-events-none absolute right-4 top-[58px] -translate-y-1/2 size-4 text-darkBlue/40" />
                         </div>
                       </div>
                     </div>
@@ -756,7 +1256,7 @@ export default function ReceptionDeliveryForm({
 
       {/* Pièce jointe + Note */}
       <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
-        <div className={`${fieldWrap} px-3`}>
+        <div className={fieldWrap}>
           <label className={labelCls}>
             <LinkIcon className="size-4" /> Lien du bon de livraison (URL)
           </label>
@@ -770,7 +1270,7 @@ export default function ReceptionDeliveryForm({
           />
         </div>
 
-        <div className={`${fieldWrap} px-3`}>
+        <div className={fieldWrap}>
           <label className={labelCls}>
             <FileText className="size-4" /> Note
           </label>
@@ -803,7 +1303,7 @@ export default function ReceptionDeliveryForm({
               <Loader2 className="size-4 animate-spin" />
               Enregistrement…
             </>
-          ) : initial?._id ? (
+          ) : isEdit ? (
             <>
               <FileText className="size-4" />
               Mettre à jour
@@ -816,13 +1316,19 @@ export default function ReceptionDeliveryForm({
           )}
         </button>
 
-        {initial?._id && (
+        {isEdit && (
           <button
             type="button"
             onClick={() => {
               reset(buildFormDefaults(null));
               setShowReqErrById({});
               setValidatedById({});
+              setSupplierOpen(false);
+              setProductOpenById({});
+              supplierUserTypedRef.current = false;
+              Object.keys(productUserTypedRef.current).forEach((k) => {
+                productUserTypedRef.current[k] = false;
+              });
               onCancel?.();
             }}
             className="inline-flex items-center justify-center gap-2 rounded-lg border border-red bg-white px-4 py-2 text-sm font-medium text-red"
