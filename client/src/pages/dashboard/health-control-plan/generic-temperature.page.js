@@ -15,8 +15,8 @@ import { HealthSvg } from "@/components/_shared/_svgs/health.svg";
 import GenericTemperatureForm from "@/components/dashboard/health-control-plan/generic-temperature/form.component";
 import GenericTemperatureList from "@/components/dashboard/health-control-plan/generic-temperature/list.component";
 
-// ⚠️ même nommage que tes autres fichiers (modale)
 import ZoneManagerModal from "@/components/dashboard/health-control-plan/zone-manager-modale.component";
+import { List } from "lucide-react";
 
 export default function GenericTemperaturePage() {
   const { t } = useTranslation("");
@@ -122,12 +122,13 @@ export default function GenericTemperaturePage() {
                 <button
                   type="button"
                   onClick={() => setIsZoneModalOpen(true)}
-                  className="bg-blue px-6 py-2 rounded-lg text-white h-fit disabled:opacity-60"
+                  className="bg-blue px-4 py-2 rounded-lg text-white h-fit disabled:opacity-60 inline-flex items-center gap-2"
                   disabled={zonesLoading}
                   title={
                     zonesLoading ? "Chargement des zones…" : "Gérer les zones"
                   }
                 >
+                  <List className="size-4" />
                   Liste des zones
                 </button>
               </div>

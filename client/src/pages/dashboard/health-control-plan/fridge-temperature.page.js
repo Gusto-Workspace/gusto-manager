@@ -14,6 +14,7 @@ import { HealthSvg } from "@/components/_shared/_svgs/health.svg";
 import FridgeTemperatureForm from "@/components/dashboard/health-control-plan/fridge-temperature/form.component";
 import FridgeTemperatureList from "@/components/dashboard/health-control-plan/fridge-temperature/list.component";
 import FridgeManagerModal from "@/components/dashboard/health-control-plan/fridge-temperature/fridge-manager-modale.component";
+import { List } from "lucide-react";
 
 export default function FridgeTemperaturePage() {
   const { t } = useTranslation("");
@@ -33,7 +34,7 @@ export default function FridgeTemperaturePage() {
     []
   );
 
-    useEffect(() => {
+  useEffect(() => {
     if (isFridgeModalOpen) {
       document.body.classList.add("overflow-hidden");
     } else {
@@ -120,10 +121,15 @@ export default function FridgeTemperaturePage() {
                 </div>
                 <button
                   onClick={() => setIsFridgeModalOpen(true)}
-                  className="bg-blue px-6 py-2 rounded-lg text-white h-fit disabled:opacity-60"
+                  className="bg-blue px-4 py-2 rounded-lg text-white h-fit disabled:opacity-60 inline-flex items-center gap-2"
                   disabled={fridgesLoading}
-                  title={fridgesLoading ? "Chargement des enceintes…" : ""}
+                  title={
+                    fridgesLoading
+                      ? "Chargement des enceintes…"
+                      : "Gérer les enceintes"
+                  }
                 >
+                  <List className="size-4" />
                   Liste des enceintes
                 </button>
               </div>
@@ -131,9 +137,8 @@ export default function FridgeTemperaturePage() {
               <div className="flex flex-col gap-6">
                 <FridgeTemperatureForm
                   restaurantId={restaurantId}
-                  fridges={fridges} // ← injecté
+                  fridges={fridges}
                   onCreated={(doc) => {
-                    // on conserve l’event bus pour la List
                     window.dispatchEvent(
                       new CustomEvent("fridge-temperature:upsert", {
                         detail: { doc },
@@ -144,7 +149,7 @@ export default function FridgeTemperaturePage() {
 
                 <FridgeTemperatureList
                   restaurantId={restaurantId}
-                  fridges={fridges} // ← injecté
+                  fridges={fridges}
                 />
               </div>
             </section>

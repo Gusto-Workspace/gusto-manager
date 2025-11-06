@@ -11,7 +11,7 @@ import {
   Save,
   Loader2,
   Check,
-  HardDrive, // 👈 NEW
+  HardDrive,
 } from "lucide-react";
 
 export default function CookingEquipmentManagerModal({
@@ -179,16 +179,12 @@ export default function CookingEquipmentManagerModal({
 
       {/* Sheet container */}
       <div className="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
-        {/* ✅ max-h mobile + scroll interne */}
-        <div
-          className="pointer-events-auto w-full max-w-[980px] rounded-2xl border border-darkBlue/10 bg-white p-4 midTablet:p-5 shadow
-                        max-h-[90vh] midTablet:max-h-none flex flex-col"
-        >
-          {/* Header (fixe) */}
+        <div className="pointer-events-auto w-full max-w-[980px] rounded-2xl border border-darkBlue/10 bg-white p-4 midTablet:p-5 shadow max-h-[90vh] midTablet:max-h-none flex flex-col">
+          {/* Header */}
           <div className="mb-3 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2">
               <div className="grid size-9 place-items-center rounded-xl bg-blue/10 text-blue">
-                <HardDrive className="size-5" /> {/* 👈 Picto */}
+                <HardDrive className="size-5" />
               </div>
               <h2 className="text-base midTablet:text-lg font-semibold text-darkBlue">
                 Appareils — gestion
@@ -197,12 +193,13 @@ export default function CookingEquipmentManagerModal({
             <button
               className={`${btnBase} border border-red bg-white text-red hover:border-red/30`}
               onClick={onClose}
+              type="button"
             >
               <X className="size-4" />
             </button>
           </div>
 
-          {/* ✅ Zone scrollable */}
+          {/* Scrollable */}
           <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-4 pr-1">
             {/* Search + Toggle */}
             <div className="flex items-end gap-4">
@@ -240,7 +237,8 @@ export default function CookingEquipmentManagerModal({
             {/* Formulaire add/edit */}
             <div className="rounded-2xl border border-darkBlue/10 bg-white p-3">
               <div className="grid grid-cols-1 gap-3 midTablet:grid-cols-3">
-                <div className={fieldWrap}>
+                {/* Ligne 1 : Nom (span 2) | Identifiant */}
+                <div className={`${fieldWrap} midTablet:col-span-2`}>
                   <label className={labelCls}>Nom *</label>
                   <input
                     className={`${inputCls} ${nameError ? "border-red focus:ring-red/20" : ""}`}
@@ -265,6 +263,7 @@ export default function CookingEquipmentManagerModal({
                   />
                 </div>
 
+                {/* Ligne 2 : Unité | Emplacement | ID emplacement */}
                 <div className={fieldWrap}>
                   <label className={labelCls}>Unité</label>
                   <select
@@ -303,6 +302,7 @@ export default function CookingEquipmentManagerModal({
                   />
                 </div>
 
+                {/* Ligne 3 : Switch (col 1) | Actions (col-span-2) */}
                 <div className="flex items-end">
                   <label className="inline-flex items-center gap-3 rounded-xl border border-darkBlue/20 bg-white px-3 py-2">
                     <span className="text-sm text-darkBlue/70">Actif</span>
@@ -320,7 +320,7 @@ export default function CookingEquipmentManagerModal({
                   </label>
                 </div>
 
-                <div className="midTablet:col-span-3 flex items-center justify-between">
+                <div className="midTablet:col-span-2 flex items-center justify-between">
                   <div className="min-h-[20px] text-xs text-red">
                     {nameError || null}
                   </div>
@@ -496,7 +496,6 @@ export default function CookingEquipmentManagerModal({
                 </table>
               </div>
             </div>
-            {/* /Zone scrollable */}
           </div>
         </div>
       </div>

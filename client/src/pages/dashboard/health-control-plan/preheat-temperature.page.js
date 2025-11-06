@@ -5,6 +5,7 @@ import { useRouter } from "next/router";
 import { useTranslation } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import axios from "axios";
+import { List } from "lucide-react";
 
 import { GlobalContext } from "@/contexts/global.context";
 import NavComponent from "@/components/_shared/nav/nav.component";
@@ -113,10 +114,15 @@ export default function PreheatTemperaturePage(props) {
 
                 <button
                   onClick={() => setIsEquipmentModalOpen(true)}
-                  className="bg-blue px-6 py-2 rounded-lg text-white h-fit disabled:opacity-60"
+                  className="bg-blue px-4 py-2 rounded-lg text-white h-fit disabled:opacity-60 inline-flex items-center gap-2"
                   disabled={equipmentsLoading}
-                  title={equipmentsLoading ? "Chargement des appareils…" : ""}
+                  title={
+                    equipmentsLoading
+                      ? "Chargement des appareils…"
+                      : "Gérer les appareils"
+                  }
                 >
+                  <List className="size-4" />
                   Liste des appareils
                 </button>
               </div>
@@ -125,7 +131,7 @@ export default function PreheatTemperaturePage(props) {
                 <PreheatTemperatureForm
                   restaurantId={restaurantId}
                   initial={editing}
-                  equipments={equipments} // ← injecté
+                  equipments={equipments}
                   onSuccess={(doc) => {
                     setEditing(null);
                     window.dispatchEvent(
@@ -139,8 +145,7 @@ export default function PreheatTemperaturePage(props) {
 
                 <PreheatTemperatureList
                   restaurantId={restaurantId}
-                  equipments={equipments} // ← utile pour affichage/filtre
-                  onEdit={(doc) => setEditing(doc)}
+                  equipments={equipments}
                   editingId={editing?._id || null}
                   onDeleted={(doc) => {
                     if (editing?._id && doc?._id === editing._id)

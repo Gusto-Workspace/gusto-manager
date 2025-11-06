@@ -21,7 +21,8 @@ import { HealthSvg } from "@/components/_shared/_svgs/health.svg";
 // COMPONENTS
 import PostheatTemperatureForm from "@/components/dashboard/health-control-plan/postheat-temperature/form.component";
 import PostheatTemperatureList from "@/components/dashboard/health-control-plan/postheat-temperature/list.component";
-import CookingEquipmentManagerModal from "@/components/dashboard/health-control-plan/cooking-manager-modale.component"
+import CookingEquipmentManagerModal from "@/components/dashboard/health-control-plan/cooking-manager-modale.component";
+import { List } from "lucide-react";
 
 export default function PostHeatTemperaturePage(props) {
   const { t } = useTranslation("");
@@ -32,7 +33,10 @@ export default function PostHeatTemperaturePage(props) {
   const [editing, setEditing] = useState(null);
 
   // --- Appareils (même logique que la page preheat)
-  const token = useMemo(() => (typeof window !== "undefined" ? localStorage.getItem("token") : ""), []);
+  const token = useMemo(
+    () => (typeof window !== "undefined" ? localStorage.getItem("token") : ""),
+    []
+  );
   const restaurantId = restaurantContext?.restaurantData?._id;
 
   const [equipments, setEquipments] = useState([]);
@@ -125,13 +129,17 @@ export default function PostHeatTemperaturePage(props) {
                     </h1>
                   </div>
 
-                  {/* Bouton pour ouvrir la modale des appareils (même UX que preheat) */}
                   <button
                     onClick={() => setIsEquipmentModalOpen(true)}
-                    className="bg-blue px-6 py-2 rounded-lg text-white h-fit disabled:opacity-60"
+                    className="bg-blue px-4 py-2 rounded-lg text-white h-fit disabled:opacity-60 inline-flex items-center gap-2"
                     disabled={equipmentsLoading}
-                    title={equipmentsLoading ? "Chargement des appareils…" : ""}
+                    title={
+                      equipmentsLoading
+                        ? "Chargement des appareils…"
+                        : "Gérer les appareils"
+                    }
                   >
+                    <List className="size-4" />
                     Liste des appareils
                   </button>
                 </div>
@@ -140,7 +148,7 @@ export default function PostHeatTemperaturePage(props) {
                   <PostheatTemperatureForm
                     restaurantId={restaurantId}
                     initial={editing}
-                    equipments={equipments} 
+                    equipments={equipments}
                     onSuccess={(doc) => {
                       setEditing(null);
                       window.dispatchEvent(
