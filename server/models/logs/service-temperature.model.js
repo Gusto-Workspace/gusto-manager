@@ -11,11 +11,12 @@ const serviceTemperatureSchema = new Schema(
     },
 
     // --- Contexte service / plat ---
-    serviceArea: { type: String, required: true },       // ex: "Pass 1", "Salle"
-    serviceId: { type: String, index: true },            // identifiant interne du service (batch, horaire…)
-    plateId: { type: String, index: true },              // identifiant plat/assiette/lot
-    dishName: { type: String },                          // nom du plat (nouveau)
-    servingMode: {                                       // comment c'est servi (nouveau)
+    serviceArea: { type: String, required: true }, // ex: "Pass 1", "Salle"
+    serviceId: { type: String, index: true }, // identifiant interne du service (batch, horaire…)
+    plateId: { type: String, index: true }, // identifiant plat/assiette/lot
+    dishName: { type: String }, // nom du plat (nouveau)
+    servingMode: {
+      // comment c'est servi (nouveau)
       type: String,
       enum: [
         "pass",
@@ -30,15 +31,12 @@ const serviceTemperatureSchema = new Schema(
       ],
       default: "pass",
     },
-    serviceType: {                                       // chaud ou froid (nouveau)
+    serviceType: {
+      // chaud ou froid (nouveau)
       type: String,
       enum: ["hot", "cold", "unknown"],
       default: "unknown",
     },
-
-    // --- Emplacement ---
-    location: { type: String },
-    locationId: { type: String, index: true },
 
     // --- Mesure ---
     value: { type: Number, required: true },
