@@ -264,7 +264,7 @@ export default function OilChangeForm({
           <label
             role="switch"
             aria-checked={!!filtered}
-            className="group inline-flex justify-between h-11 w-full items-center gap-3 rounded-xl border border-darkBlue/20 bg-white px-3 py-2 cursor-pointer select-none"
+            className="group inline-flex justify-between h-11 w-full items-center gap-3 rounded-lg border border-darkBlue/20 bg-white px-3 py-2 cursor-pointer select-none"
           >
             <span className="text-sm text-darkBlue/70">
               {filtered ? "Filtrée avant/pendant" : "Non filtrée"}

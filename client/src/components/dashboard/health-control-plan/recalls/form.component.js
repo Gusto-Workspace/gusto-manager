@@ -763,7 +763,7 @@ export default function RecallForm({
             <label
               role="switch"
               aria-checked={!!closedWatch}
-              className="group inline-flex justify-between h-11 w-full items-center gap-3 rounded-xl border border-darkBlue/20 bg-white px-3 py-2 cursor-pointer select-none"
+              className="group inline-flex justify-between h-11 w-full items-center gap-3 rounded-lg border border-darkBlue/20 bg-white px-3 py-2 cursor-pointer select-none"
               title="Basculer Clôturé / Ouvert"
             >
               <span className="text-sm text-darkBlue/70">
@@ -795,7 +795,7 @@ export default function RecallForm({
       </div>
 
       {/* Actions form */}
-      <div className="flex flex-col gap-2 mobile:flex-row">
+      <div className="flex flex-col mt-3 gap-2 mobile:flex-row">
         <button
           type="submit"
           disabled={isSubmitting}

@@ -482,7 +482,7 @@ export default function CleaningTaskForm({
             <label
               role="switch"
               aria-checked={!!doneWatch}
-              className="w-full group inline-flex justify-between h-11 items-center gap-3 rounded-xl border border-darkBlue/20 bg-white px-3 py-2 cursor-pointer select-none"
+              className="w-full group inline-flex justify-between h-11 items-center gap-3 rounded-lg border border-darkBlue/20 bg-white px-3 py-2 cursor-pointer select-none"
             >
               <span className="text-sm text-darkBlue/70">
                 {doneWatch ? "Fait" : "À faire"}
@@ -513,7 +513,7 @@ export default function CleaningTaskForm({
             <label
               role="switch"
               aria-checked={!!verifiedWatch}
-              className={`group inline-flex justify-between h-11 w-full items-center gap-3 rounded-xl border bg-white px-3 py-2 cursor-pointer select-none ${
+              className={`group inline-flex justify-between h-11 w-full items-center gap-3 rounded-lg border bg-white px-3 py-2 cursor-pointer select-none ${
                 !doneWatch ? "border-darkBlue/10 opacity-50" : "border-darkBlue/20"
               }`}
             >

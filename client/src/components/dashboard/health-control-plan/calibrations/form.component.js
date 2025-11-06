@@ -1,8 +1,21 @@
+// app/(components)/health/CalibrationsForm.jsx
 "use client";
 import { useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import axios from "axios";
+import {
+  Hash,
+  Thermometer,
+  CalendarClock,
+  CalendarDays,
+  FlaskConical,
+  Link as LinkIcon,
+  Building2,
+  FileText,
+  Loader2,
+} from "lucide-react";
 
+/* ---------- Utils ---------- */
 function toDatetimeLocal(value) {
   const d = value ? new Date(value) : new Date();
   if (Number.isNaN(d.getTime())) return "";
@@ -15,6 +28,7 @@ function toDateValue(value) {
   return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
 }
 
+/* ---------- Defaults ---------- */
 function buildDefaults(rec) {
   return {
     deviceIdentifier: rec?.deviceIdentifier ?? "",
@@ -27,6 +41,20 @@ function buildDefaults(rec) {
     notes: rec?.notes ?? "",
   };
 }
+
+/* ---------- STYLES alignés ---------- */
+const fieldWrap =
+  "group relative rounded-xl bg-white/50 backdrop-blur-sm px-3 py-2 min-h-[80px] transition-shadow";
+const labelCls =
+  "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
+const inputCls =
+  "h-11 w-full rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition placeholder:text-darkBlue/40";
+const selectCls =
+  "h-11 w-full appearance-none rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition";
+const textareaCls =
+  "w-full resize-none rounded-lg border border-darkBlue/20 bg-white p-[10px] text-[15px] outline-none transition placeholder:text-darkBlue/40";
+const btnBase =
+  "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition active:scale-[0.98]";
 
 export default function CalibrationsForm({
   restaurantId,
@@ -75,11 +103,11 @@ export default function CalibrationsForm({
       : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/calibrations`;
     const method = initial?._id ? "put" : "post";
 
-    const { data: saved } = await axios[method](url, payload, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const { data: saved } = await axios[method](url, {
+      ...payload,
+      _id: undefined,
+    }, { headers: { Authorization: `Bearer ${token}` } });
 
-    // live update
     window.dispatchEvent(
       new CustomEvent("calibrations:upsert", { detail: { doc: saved } })
     );
@@ -89,131 +117,153 @@ export default function CalibrationsForm({
   };
 
   return (
-    <form
-      onSubmit={handleSubmit(onSubmit)}
-      className="bg-white rounded-lg p-4 shadow-sm flex flex-col gap-6"
-    >
-      <div className="flex flex-col gap-4 midTablet:flex-row">
-        <div className="flex-1">
-          <label className="text-sm font-medium">Identifiant appareil *</label>
+    <form onSubmit={handleSubmit(onSubmit)} className="relative flex flex-col gap-2">
+      {/* Ligne 1 : Identifiant + Type */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <Hash className="size-4" /> Identifiant appareil *
+          </label>
           <input
             type="text"
-            {...register("deviceIdentifier", { required: "Requis" })}
-            className="border rounded p-2 h-[44px] w-full"
+            {...register("deviceIdentifier", { required: true })}
+            className={`${inputCls} ${errors.deviceIdentifier ? "border-red focus:ring-red/20" : ""}`}
             placeholder="ex: THERMO-001 / SONDE-12A"
             autoComplete="off"
             spellCheck={false}
-             
-            autoCorrect="off"
           />
-          {errors.deviceIdentifier && (
-            <p className="text-xs text-red mt-1">
-              {errors.deviceIdentifier.message}
-            </p>
-          )}
+          {/* pas de message "Requis" */}
         </div>
-        <div className="w-full midTablet:w-64">
-          <label className="text-sm font-medium">Type</label>
+
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <Thermometer className="size-4" /> Type
+          </label>
           <input
             type="text"
             {...register("deviceType")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
             placeholder='ex: "thermometer"'
             autoComplete="off"
             spellCheck={false}
-             
-            autoCorrect="off"
           />
         </div>
       </div>
 
-      <div className="flex flex-col gap-4 midTablet:flex-row">
-        <div className="w-full midTablet:w-72">
-          <label className="text-sm font-medium">Calibré le *</label>
+      {/* Ligne 2 : Dates */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <CalendarClock className="size-4" /> Calibré le *
+          </label>
           <input
             type="datetime-local"
-            {...register("calibratedAt", { required: "Requis" })}
-            className="border rounded p-2 h-[44px] w-full"
+            {...register("calibratedAt", { required: true })}
+            className={`${selectCls} ${errors.calibratedAt ? "border-red focus:ring-red/20" : ""}`}
           />
-          {errors.calibratedAt && (
-            <p className="text-xs text-red mt-1">
-              {errors.calibratedAt.message}
-            </p>
-          )}
+          {/* pas de message "Requis" */}
         </div>
-        <div className="w-full midTablet:w-72">
-          <label className="text-sm font-medium">Prochaine échéance</label>
+
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <CalendarDays className="size-4" /> Prochaine échéance
+          </label>
           <input
             type="date"
             {...register("nextCalibrationDue")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={selectCls}
           />
         </div>
       </div>
 
-      <div className="flex flex-col gap-4 midTablet:flex-row">
-        <div className="flex-1">
-          <label className="text-sm font-medium">Méthode</label>
+      {/* Ligne 3 : Méthode + Fournisseur */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <FlaskConical className="size-4" /> Méthode
+          </label>
           <input
             type="text"
             {...register("method")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
             placeholder='ex: "ice point", "wet bath"'
             autoComplete="off"
             spellCheck={false}
-             
-            autoCorrect="off"
           />
         </div>
-        <div className="flex-1">
-          <label className="text-sm font-medium">Fournisseur</label>
+
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <Building2 className="size-4" /> Fournisseur
+          </label>
           <input
             type="text"
             {...register("provider")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
             placeholder="ex: Acme Labs"
             autoComplete="off"
             spellCheck={false}
-             
-            autoCorrect="off"
           />
         </div>
       </div>
 
-      <div className="flex flex-col gap-4 midTablet:flex-row">
-        <div className="flex-1">
-          <label className="text-sm font-medium">Certificat (URL)</label>
+      {/* Ligne 4 : Certificat */}
+      <div className="grid grid-cols-1">
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <LinkIcon className="size-4" /> Certificat (URL)
+          </label>
           <input
             type="url"
             {...register("certificateUrl")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
             placeholder="https://…/certificat.pdf"
             autoComplete="off"
             spellCheck={false}
-             
-            autoCorrect="off"
           />
         </div>
       </div>
 
-      <div>
-        <label className="text-sm font-medium">Notes</label>
-        <textarea
-          rows={4}
-          {...register("notes")}
-          className="border rounded p-2 resize-none w-full min-h-[96px]"
-          placeholder="Observations, numéro de certificat, etc."
-        />
+      {/* Ligne 5 : Notes */}
+      <div className="grid grid-cols-1">
+        <div className={`${fieldWrap} h-auto`}>
+          <label className={labelCls}>
+            <FileText className="size-4" /> Notes
+          </label>
+          <textarea
+            rows={4}
+            {...register("notes")}
+            className={`${textareaCls} min-h-[96px]`}
+            placeholder="Observations, numéro de certificat, etc."
+          />
+        </div>
       </div>
 
-      <div className="flex gap-2">
+      {/* Actions form */}
+      <div className="flex mt-3 flex-col  gap-2 mobile:flex-row">
         <button
           type="submit"
           disabled={isSubmitting}
-          className="px-4 py-2 rounded bg-blue text-white disabled:opacity-50"
+          className={`text-nowrap ${btnBase} h-[38px] text-white shadow ${isSubmitting ? "bg-darkBlue/40" : "bg-blue"}`}
         >
-          {initial?._id ? "Mettre à jour" : "Enregistrer"}
+          {isSubmitting ? (
+            <>
+              <Loader2 className="size-4 animate-spin" />
+              Enregistrement…
+            </>
+          ) : initial?._id ? (
+            <>
+              <FileText className="size-4" />
+              Mettre à jour
+            </>
+          ) : (
+            <>
+              <FileText className="size-4" />
+              Enregistrer
+            </>
+          )}
         </button>
+
         {initial?._id && (
           <button
             type="button"
@@ -221,7 +271,7 @@ export default function CalibrationsForm({
               reset(buildDefaults(null));
               onCancel?.();
             }}
-            className="px-4 py-2 rounded text-white bg-red"
+            className={`${btnBase} h-[38px] border border-red bg-white text-red`}
           >
             Annuler
           </button>
