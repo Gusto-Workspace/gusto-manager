@@ -1,6 +1,17 @@
+// components/dashboard/health-control-plan/postheat-temperature/form.component.jsx
 "use client";
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
+import {
+  Thermometer,
+  CalendarClock,
+  ChevronDown,
+  Loader2,
+  HardDrive,
+  Flame,
+  Ruler,
+  FileText,
+} from "lucide-react";
 import axios from "axios";
 
 function toDatetimeLocalValue(value) {
@@ -16,30 +27,60 @@ function toDatetimeLocalValue(value) {
 
 function buildFormDefaults(record) {
   return {
+    deviceRef: "",
     equipmentName: record?.equipmentName ?? "",
     equipmentId: record?.equipmentId ?? "",
-    equipmentType: record?.equipmentType ?? "other",
-
     location: record?.location ?? "",
     locationId: record?.locationId ?? "",
-
     value: record?.value ?? "",
     unit: record?.unit ?? "°C",
-
-    setpoint: record?.setpoint ?? "",
-    setpointUnit: record?.setpointUnit ?? "°C",
-
     probeType: record?.probeType ?? "core",
     phase: record?.phase ?? "postheat",
-
     note: record?.note ?? "",
     createdAt: toDatetimeLocalValue(record?.createdAt),
   };
 }
 
+function resolveDeviceRefFromInitial(initial, equipments) {
+  if (!initial || !Array.isArray(equipments) || equipments.length === 0)
+    return "";
+  if (initial.equipmentId) {
+    const byCode = equipments.find(
+      (e) =>
+        e?.equipmentCode &&
+        String(e.equipmentCode) === String(initial.equipmentId)
+    );
+    if (byCode) return String(byCode._id);
+  }
+  if (initial.equipmentName && initial.locationId) {
+    const byNameLocCode = equipments.find(
+      (e) =>
+        (e?.name || "") === (initial.equipmentName || "") &&
+        (e?.locationCode || "") === (initial.locationId || "")
+    );
+    if (byNameLocCode) return String(byNameLocCode._id);
+  }
+  if (initial.equipmentName && initial.location) {
+    const byNameLoc = equipments.find(
+      (e) =>
+        (e?.name || "") === (initial.equipmentName || "") &&
+        (e?.location || "") === (initial.location || "")
+    );
+    if (byNameLoc) return String(byNameLoc._id);
+  }
+  if (initial.equipmentName) {
+    const byName = equipments.find(
+      (e) => (e?.name || "") === (initial.equipmentName || "")
+    );
+    if (byName) return String(byName._id);
+  }
+  return "";
+}
+
 export default function PostheatTemperatureForm({
   restaurantId,
   initial = null,
+  equipments = [],
   onSuccess,
   onCancel,
 }) {
@@ -47,37 +88,69 @@ export default function PostheatTemperatureForm({
     register,
     handleSubmit,
     reset,
+    watch,
     formState: { errors, isSubmitting },
+    setValue,
   } = useForm({ defaultValues: buildFormDefaults(initial) });
+
+  const deviceRef = watch("deviceRef");
+  const selected =
+    equipments.find((e) => String(e._id) === String(deviceRef)) || null;
+
+  const selectedUnit = selected?.unit || watch("unit") || "°C";
 
   useEffect(() => {
     reset(buildFormDefaults(initial));
   }, [initial, reset]);
 
+  useEffect(() => {
+    if (!initial) return;
+    const guessId = resolveDeviceRefFromInitial(initial, equipments);
+    if (guessId) {
+      setValue("deviceRef", guessId, {
+        shouldDirty: false,
+        shouldTouch: false,
+      });
+    }
+  }, [initial, equipments, setValue]);
+
+  useEffect(() => {
+    if (!selected) return;
+    setValue("equipmentName", selected.name || "", { shouldDirty: true });
+    setValue("equipmentId", selected.equipmentCode || "", {
+      shouldDirty: true,
+    });
+    setValue("location", selected.location || "", { shouldDirty: true });
+    setValue("locationId", selected.locationCode || "", { shouldDirty: true });
+    setValue("unit", selected.unit || "°C", { shouldDirty: true });
+  }, [selected, setValue]);
+
+  // Styles (alignés à preheat)
+  const fieldWrap =
+    "group relative rounded-xl bg-white/50 backdrop-blur-sm px-3 py-2 h-[80px] transition-shadow";
+  const labelCls =
+    "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
+  const inputCls =
+    "h-11 w-full rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition placeholder:text-darkBlue/40";
+  const selectCls =
+    "h-11 w-full appearance-none rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition";
+  const btnBase =
+    "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition active:scale-[0.98]";
+
   const onSubmit = async (data) => {
-    const token = localStorage.getItem("token");
+    const token =
+      (typeof window !== "undefined" && localStorage.getItem("token")) || "";
     if (!token) return;
 
     const payload = {
       equipmentName: data.equipmentName,
       equipmentId: data.equipmentId || undefined,
-      equipmentType: data.equipmentType || undefined,
-
       location: data.location || undefined,
       locationId: data.locationId || undefined,
-
       value: Number(data.value),
       unit: data.unit,
-
-      setpoint:
-        data.setpoint === "" || data.setpoint === null
-          ? undefined
-          : Number(data.setpoint),
-      setpointUnit: data.setpointUnit || undefined,
-
       probeType: data.probeType || undefined,
       phase: data.phase || undefined,
-
       note: data.note || undefined,
       createdAt: data.createdAt ? new Date(data.createdAt) : undefined,
     };
@@ -98,185 +171,143 @@ export default function PostheatTemperatureForm({
   return (
     <form
       onSubmit={handleSubmit(onSubmit)}
-      className="bg-white rounded-lg p-4 shadow-sm flex flex-col gap-6"
+      className="relative flex flex-col gap-2"
     >
-      <div className="flex flex-col midTablet:flex-row justify-between gap-4">
-        {/* Bloc gauche */}
-        <div className="flex flex-col gap-4 w-full">
-          {/* Ligne 1: Équipement */}
-          <div className="flex flex-col gap-2 midTablet:flex-row">
-            <div className="flex-1 flex flex-col">
-              <label className="text-sm font-medium">Équipement *</label>
-              <input
-                type="text"
-                placeholder='ex: "Four 1", "Combi 2", "Friteuse 1"…'
-                {...register("equipmentName", { required: "Requis" })}
-                className="border rounded p-2 h-[44px]"
-                autoComplete="off"
-                spellCheck={false}
-                autoCorrect="off"
-              />
-              {errors.equipmentName && (
-                <p className="text-xs text-red mt-1">
-                  {errors.equipmentName.message}
-                </p>
-              )}
-            </div>
-
-            <div className="flex-1 flex flex-col">
-              <label className="text-sm font-medium">Type</label>
-              <select
-                {...register("equipmentType")}
-                className="border rounded p-2 h-[44px]"
-              >
-                <option value="oven">oven</option>
-                <option value="combi-oven">combi-oven</option>
-                <option value="fryer">fryer</option>
-                <option value="plancha">plancha</option>
-                <option value="grill">grill</option>
-                <option value="hob">hob</option>
-                <option value="microwave">microwave</option>
-                <option value="water-bath">water-bath</option>
-                <option value="salamander">salamander</option>
-                <option value="steam-oven">steam-oven</option>
-                <option value="other">other</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Ligne 2: Identifiants & Emplacement */}
-          <div className="flex flex-col gap-2 midTablet:flex-row">
-            <div className="flex-1 flex flex-col">
-              <label className="text-sm font-medium">
-                Identifiant équipement
-              </label>
-              <input
-                type="text"
-                placeholder="ID interne (optionnel)"
-                {...register("equipmentId")}
-                className="border rounded p-2 h-[44px]"
-                autoComplete="off"
-                spellCheck={false}
-                autoCorrect="off"
-              />
-            </div>
-            <div className="flex-1 flex flex-col">
-              <label className="text-sm font-medium">Emplacement</label>
-              <input
-                type="text"
-                placeholder="ex: Cuisine chaude, Poste grill…"
-                {...register("location")}
-                className="border rounded p-2 h-[44px]"
-                autoComplete="off"
-                spellCheck={false}
-                autoCorrect="off"
-              />
-            </div>
-          </div>
-
-          {/* Ligne 3: Identifiant emplacement */}
-          <div className="flex flex-col gap-2 midTablet:flex-row">
-            <div className="flex-1 flex flex-col">
-              <label className="text-sm font-medium">
-                Identifiant emplacement
-              </label>
-              <input
-                type="text"
-                placeholder="ID emplacement (optionnel)"
-                {...register("locationId")}
-                className="border rounded p-2 h-[44px]"
-                autoComplete="off"
-                spellCheck={false}
-                autoCorrect="off"
-              />
-            </div>
-
-            <div className="flex-1 flex flex-col">
-              <label className="text-sm font-medium">Phase</label>
-              <select
-                {...register("phase")}
-                className="border rounded p-2 h-[44px]"
-              >
-                <option value="postheat">postheat</option>
-                <option value="reheat">reheat</option>
-                <option value="hot-holding">hot-holding</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Ligne 4: Mesure & Consigne */}
-          <div className="flex flex-wrap gap-2 items-end">
-            <div className="flex flex-col w-28">
-              <label className="text-sm font-medium">Température *</label>
-              <input
-                type="number"
-                step="0.1"
-                placeholder="ex: 75.0"
-                onWheel={(e) => e.currentTarget.blur()}
-                {...register("value", { required: "Requis" })}
-                className="border rounded p-2 h-[44px]"
-              />
-              {errors.value && (
-                <p className="text-xs text-red mt-1">{errors.value.message}</p>
-              )}
-            </div>
-            <div className="flex flex-col w-fit">
-              <label className="text-sm font-medium">Unité</label>
-              <select
-                {...register("unit")}
-                className="border rounded p-2 h-[44px]"
-              >
-                <option value="°C">°C</option>
-                <option value="°F">°F</option>
-              </select>
-            </div>
-
-            <div className="flex flex-col">
-              <label className="text-sm font-medium">Type de mesure</label>
-              <select
-                {...register("probeType")}
-                className="border rounded p-2 h-[44px]"
-              >
-                <option value="core">core</option>
-                <option value="surface">surface</option>
-                <option value="ambient">ambient</option>
-                <option value="oil">oil</option>
-                <option value="other">other</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Date/heure */}
-          <div className="flex flex-col w-fit">
-            <label className="text-sm font-medium">Date/heure mesure</label>
-            <input
-              type="datetime-local"
-              {...register("createdAt")}
-              className="border rounded p-2 h-[44px]"
-            />
+      {/* Ligne 1 : Appareil / Température / Phase */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
+        {/* Appareil */}
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <HardDrive className="size-4" /> Appareil *
+          </label>
+          <div className="relative">
+            <select
+              {...register("deviceRef", { required: "Requis" })}
+              className={`${selectCls} ${errors.deviceRef ? "border-red focus:ring-red/20" : ""}`}
+              disabled={!!initial?._id}
+            >
+              <option value="">— Sélectionner —</option>
+              {equipments.map((d) => (
+                <option key={d._id} value={d._id}>
+                  {d.name}
+                  {d.location ? ` — ${d.location}` : ""}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40" />
           </div>
         </div>
 
-        {/* Bloc droit: Note */}
-        <div className="flex flex-col w-full">
-          <label className="text-sm font-medium">Note</label>
-          <textarea
-            rows={4}
-            {...register("note")}
-            className="border rounded p-2 resize-none h-full min-h-[96px]"
-            placeholder="Informations complémentaires…"
+        {/* Température */}
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <Thermometer className="size-4" /> Température *
+          </label>
+          <div className="relative">
+            <input
+              type="number"
+              step="0.1"
+              placeholder="ex: 75.0"
+              onWheel={(e) => e.currentTarget.blur()}
+              aria-invalid={!!errors.value}
+              {...register("value", {
+                required: "Requis",
+                validate: (v) =>
+                  Number.isFinite(Number(v)) ? true : "Invalide",
+              })}
+              className={`${inputCls} text-right pr-12 ${errors.value ? "border-red focus:ring-red/20" : ""}`}
+            />
+            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 select-none rounded-md bg-darkBlue/10 px-2 py-1 text-xs text-darkBlue/60">
+              {selectedUnit}
+            </span>
+          </div>
+        </div>
+
+        {/* Phase */}
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <Flame className="size-4" /> Phase
+          </label>
+          <div className="relative">
+            <select {...register("phase")} className={selectCls}>
+              <option value="postheat">Fin de cuisson</option>
+              <option value="reheat">Remise en T°</option>
+              <option value="hot-holding">Maintien chaud</option>
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40" />
+          </div>
+        </div>
+      </div>
+
+      {/* Ligne 2 : Type de mesure + Date/heure */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <Ruler className="size-4" /> Type de mesure
+          </label>
+          <div className="relative">
+            <select {...register("probeType")} className={selectCls}>
+              <option value="core">Cœur (noyau)</option>
+              <option value="surface">Surface</option>
+              <option value="ambient">Air (enceinte)</option>
+              <option value="oil">Huile</option>
+              <option value="other">Autre</option>
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40" />
+          </div>
+        </div>
+
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <CalendarClock className="size-4" /> Date / heure mesure
+          </label>
+          <input
+            type="datetime-local"
+            {...register("createdAt")}
+            className={selectCls}
           />
         </div>
       </div>
 
-      <div className="flex gap-2 ">
+      {/* Note */}
+      <div className={fieldWrap}>
+        <label className={labelCls}>
+          <FileText className="size-4" /> Note
+        </label>
+        <textarea
+          rows={1}
+          {...register("note")}
+          className="w-full resize-none rounded-lg border border-darkBlue/20 bg-white p-2 pr-16 text-[15px] outline-none transition placeholder:text-darkBlue/40"
+          placeholder="Informations complémentaires…"
+        />
+      </div>
+
+      {/* Champs cachés pour l’API post-heat */}
+      <input type="hidden" {...register("equipmentName", { required: true })} />
+      <input type="hidden" {...register("equipmentId")} />
+      <input type="hidden" {...register("location")} />
+      <input type="hidden" {...register("locationId")} />
+      <input type="hidden" {...register("unit")} />
+
+      {/* Actions */}
+      <div className="mt-3 flex flex-col gap-2 mobile:flex-row">
         <button
           type="submit"
           disabled={isSubmitting}
-          className="px-4 py-2 rounded bg-blue text-white disabled:opacity-50"
+          className={`${btnBase} bg-blue border border-blue text-white disabled:opacity-60`}
         >
-          {initial?._id ? "Mettre à jour" : "Enregistrer"}
+          {isSubmitting ? (
+            <>
+              <Loader2 className="size-4 animate-spin" /> Enregistrement…
+            </>
+          ) : (
+            <>
+              <Thermometer className="size-4" />
+              {initial?._id ? "Mettre à jour" : "Enregistrer"}
+            </>
+          )}
         </button>
+
         {initial?._id && (
           <button
             type="button"
@@ -284,7 +315,7 @@ export default function PostheatTemperatureForm({
               reset(buildFormDefaults(null));
               onCancel?.();
             }}
-            className="px-4 py-2 rounded text-white bg-red"
+            className={`${btnBase} border border-red bg-white text-red`}
           >
             Annuler
           </button>

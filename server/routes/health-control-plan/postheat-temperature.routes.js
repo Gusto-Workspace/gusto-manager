@@ -30,7 +30,6 @@ function hasBusinessChanges(prev, next) {
   const fields = [
     "equipmentName",
     "equipmentId",
-    "equipmentType",
     "location",
     "locationId",
     "value",
@@ -76,22 +75,6 @@ router.post(
 
         equipmentName,
         equipmentId: normalizeStr(inData.equipmentId),
-        equipmentType: [
-          "oven",
-          "combi-oven",
-          "fryer",
-          "plancha",
-          "grill",
-          "hob",
-          "microwave",
-          "water-bath",
-          "salamander",
-          "steam-oven",
-          "other",
-        ].includes(inData.equipmentType)
-          ? inData.equipmentType
-          : "other",
-
         location: normalizeStr(inData.location),
         locationId: normalizeStr(inData.locationId),
 
@@ -152,7 +135,6 @@ router.get(
         query.$or = [
           { equipmentName: rx },
           { equipmentId: rx },
-          { equipmentType: rx },
           { location: rx },
           { locationId: rx },
           { unit: rx },
@@ -239,25 +221,6 @@ router.put(
           inData.equipmentId !== undefined
             ? normalizeStr(inData.equipmentId)
             : prev.equipmentId,
-        equipmentType:
-          inData.equipmentType !== undefined
-            ? [
-                "oven",
-                "combi-oven",
-                "fryer",
-                "plancha",
-                "grill",
-                "hob",
-                "microwave",
-                "water-bath",
-                "salamander",
-                "steam-oven",
-                "other",
-              ].includes(inData.equipmentType)
-              ? inData.equipmentType
-              : prev.equipmentType
-            : prev.equipmentType,
-
         location:
           inData.location !== undefined
             ? normalizeStr(inData.location)
@@ -311,7 +274,6 @@ router.put(
       // apply
       prev.equipmentName = next.equipmentName;
       prev.equipmentId = next.equipmentId;
-      prev.equipmentType = next.equipmentType;
       prev.location = next.location;
       prev.locationId = next.locationId;
       prev.value = next.value;
@@ -368,7 +330,6 @@ router.get(
             _id: {
               equipmentName: "$equipmentName",
               equipmentId: "$equipmentId",
-              equipmentType: "$equipmentType",
               location: "$location",
               locationId: "$locationId",
             },
@@ -381,7 +342,6 @@ router.get(
       const items = rows.map((r) => ({
         equipmentName: r._id.equipmentName || "",
         equipmentId: r._id.equipmentId || "",
-        equipmentType: r._id.equipmentType || "other",
         location: r._id.location || "",
         locationId: r._id.locationId || "",
         count: r.count,
