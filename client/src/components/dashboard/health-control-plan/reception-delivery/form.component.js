@@ -30,13 +30,11 @@ function toDatetimeLocalValue(value) {
   return new Date(base.getTime() - offset).toISOString().slice(0, 16);
 }
 
-// Normalisation simple pour les comparaisons (insensible à la casse/espaces)
 const normalize = (s) =>
   String(s || "")
     .trim()
     .toLowerCase();
 
-/* Ligne totalement vide ? */
 const isLineEmpty = (row) =>
   !row?.productName &&
   !row?.supplierProductId &&
@@ -48,11 +46,9 @@ const isLineEmpty = (row) =>
   !row?.tempOnArrival &&
   !(typeof row?.allergens === "string" && row.allergens.trim().length > 0);
 
-/* Champs requis manquants */
 const missingQty = (row) => row?.qty === "" || row?.qty == null;
 const missingUnit = (row) => !row?.unit;
 
-/* Une ligne est “validée” si (Produit + Qté + Unité) sont présents */
 const isLineValidatedByFields = (row) =>
   !!row?.productName?.trim() &&
   row?.qty !== "" &&
@@ -105,7 +101,6 @@ function buildFormDefaults(record) {
   };
 }
 
-// Helpers pour méta produits (dernière occurrence pour préremplir)
 const stringifyAllergens = (val) =>
   Array.isArray(val) ? val.filter(Boolean).join(", ") : String(val || "");
 
@@ -116,9 +111,7 @@ const applyLatestMeta = (rec, line, at) => {
     allergens: stringifyAllergens(line?.allergens),
     at: at ? new Date(at).getTime() : 0,
   };
-  if (!rec.last || meta.at >= (rec.last.at || 0)) {
-    rec.last = meta;
-  }
+  if (!rec.last || meta.at >= (rec.last.at || 0)) rec.last = meta;
 };
 
 export default function ReceptionDeliveryForm({
@@ -144,17 +137,13 @@ export default function ReceptionDeliveryForm({
   const lines = watch("lines");
   const supplierValue = watch("supplier");
 
-  // --- Collapsible state par ligne
   const [openById, setOpenById] = useState({});
   const contentRefs = useRef({});
   const openNewLineRef = useRef(false);
 
-  // Affichage des erreurs “requis” par ligne (uniquement après clic “Valider la ligne”)
   const [showReqErrById, setShowReqErrById] = useState({});
-  // État “ligne validée explicitement”
   const [validatedById, setValidatedById] = useState({});
 
-  // ----------- INDEX SUGGESTIONS (fournisseur + produits) ----------------
   const token = useMemo(
     () =>
       typeof window !== "undefined" ? localStorage.getItem("token") : null,
@@ -163,10 +152,7 @@ export default function ReceptionDeliveryForm({
   const suggestLoadedRef = useRef(false);
   const [suggestLoading, setSuggestLoading] = useState(false);
 
-  // Maps en refs (évite des re-renders)
-  // suppliers: Map<lowerName, { label, count }>
   const suppliersRef = useRef(new Map());
-  // productsBySupplier: Map<lowerSupplier, Map<lowerProduct, { label, count, last:{supplierProductId,lotNumber,allergens,at} }>>
   const productsBySupplierRef = useRef(new Map());
 
   const bumpCount = (map, key, label) => {
@@ -239,7 +225,6 @@ export default function ReceptionDeliveryForm({
     }
   };
 
-  // Mise à jour du cache sur upsert
   useEffect(() => {
     const onUpsert = (e) => {
       const doc = e?.detail?.doc;
@@ -264,14 +249,13 @@ export default function ReceptionDeliveryForm({
     if (!suggestLoadedRef.current) fetchSuggestions();
   }, [initial, reset]); // eslint-disable-line
 
-  // Sync des maps avec la liste courante des lignes
   useEffect(() => {
     setOpenById((prev) => {
       const next = { ...prev };
       fields.forEach((f, idx) => {
         if (next[f.id] == null) {
           const l = (lines && lines[idx]) || {};
-          next[f.id] = isLineEmpty(l); // lignes vides => ouvertes
+          next[f.id] = isLineEmpty(l);
         }
       });
       for (const k of Object.keys(next)) {
@@ -318,7 +302,6 @@ export default function ReceptionDeliveryForm({
 
   const toggleOpen = (id) => setOpenById((s) => ({ ...s, [id]: !s[id] }));
 
-  // Valider une ligne (affiche les bordures rouges si manques ; sinon valide + replie)
   const validateLine = (id, idx) => {
     const row = (lines && lines[idx]) || {};
     const needProduct = !row?.productName?.trim();
@@ -342,7 +325,6 @@ export default function ReceptionDeliveryForm({
     setOpenById((s) => ({ ...s, [id]: false }));
   };
 
-  // Submit : n’envoie QUE les lignes validées explicitement
   const onSubmit = async (data) => {
     const token = localStorage.getItem("token");
     if (!token) return;
@@ -424,7 +406,6 @@ export default function ReceptionDeliveryForm({
     }
   };
 
-  // Toggle °C/°F pour une ligne donnée (avec conversion)
   const toggleTempUnit = (idx) => {
     const row = (lines && lines[idx]) || {};
     const curU = row?.tempOnArrivalUnit === "F" ? "F" : "C";
@@ -443,32 +424,29 @@ export default function ReceptionDeliveryForm({
     });
   };
 
-  // ----------------- Suggestions: Supplier (PORTAL) -----------------
+  /* ----------------- DROPDOWNS (Supplier / Product) ----------------- */
+
+  // Supplier dropdown
   const [supplierOpen, setSupplierOpen] = useState(false);
   const [supplierItems, setSupplierItems] = useState([]);
-  const supplierBoxRef = useRef(null);
-  const supplierUserTypedRef = useRef(false);
-  const supplierDebounceRef = useRef(null);
-  const supplierPortalRef = useRef(null);
+  const supplierBoxRef = useRef(null); // wrapper (pour outside click)
+  const supplierPortalRef = useRef(null); // portal node
+  const supplierInputRef = useRef(null); // ⬅️ ancre = INPUT exact
 
-  // ----------------- Suggestions: Product per line (PORTAL) -----------------
+  // Product dropdowns (par ligne)
   const [productOpenById, setProductOpenById] = useState({});
-  const productUserTypedRef = useRef({}); // id -> bool
-  const productDebounceRef = useRef({}); // id -> timeout
-  const productBoxRefs = useRef({}); // id -> element (wrapper)
-  const productAnchorRefs = useRef({}); // id -> element (ancre)
-  // id -> Array<{ label: string, meta?: { supplierProductId, lotNumber, allergens, at } }>
+  const productUserTypedRef = useRef({});
+  const productDebounceRef = useRef({});
+  const productBoxRefs = useRef({});
+  const productAnchorRefs = useRef({});
   const [productItemsById, setProductItemsById] = useState({});
-
-  // portal container ref + guards
   const productPortalRef = useRef(null);
+
   const [isClient, setIsClient] = useState(false);
   useEffect(() => setIsClient(true), []);
-
-  // état pour forcer un petit rerender sur scroll/resize
   const [, setDropdownRerender] = useState(0);
 
-  // ---- VisualViewport tracking (mobile keyboard safe)
+  // visualViewport tracking
   const vvRef = useRef({
     offsetTop: 0,
     offsetLeft: 0,
@@ -481,7 +459,6 @@ export default function ReceptionDeliveryForm({
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return;
-
     const sync = () => {
       vvRef.current = {
         offsetTop: vv.offsetTop || 0,
@@ -492,7 +469,6 @@ export default function ReceptionDeliveryForm({
       };
       bumpVvTick((n) => n + 1);
     };
-
     sync();
     vv.addEventListener("scroll", sync);
     vv.addEventListener("resize", sync);
@@ -502,13 +478,11 @@ export default function ReceptionDeliveryForm({
     };
   }, []);
 
-  // fonction de style commune pour les portals
   function getDropdownStyle(anchorEl, { margin = 4, maxListPx = 256 } = {}) {
     if (!anchorEl) return null;
     const rect = anchorEl.getBoundingClientRect();
     const { offsetTop, offsetLeft, height: vvH } = vvRef.current;
 
-    // par défaut en-dessous
     let top = rect.bottom + offsetTop - margin;
     let left = rect.left + offsetLeft;
     const width = rect.width;
@@ -517,7 +491,6 @@ export default function ReceptionDeliveryForm({
     const willFlip = spaceBelow < 120;
 
     if (willFlip) {
-      // au-dessus
       top = rect.top + offsetTop - Math.min(maxListPx, rect.top - margin);
     }
 
@@ -529,7 +502,7 @@ export default function ReceptionDeliveryForm({
       position: "fixed",
       left,
       top,
-      width,
+      width, // ⬅️ largeur exacte de l'ancre
       zIndex: 1000,
       maxHeight: Math.max(120, maxHeight),
       overflow: "auto",
@@ -540,7 +513,6 @@ export default function ReceptionDeliveryForm({
     };
   }
 
-  // rerender pour suivre scroll/resize (page) et repositionner les menus
   useEffect(() => {
     const onScrollOrResize = () => setDropdownRerender((v) => v + 1);
     window.addEventListener("resize", onScrollOrResize);
@@ -551,7 +523,6 @@ export default function ReceptionDeliveryForm({
     };
   }, []);
 
-  // clic dans un portal -> ne pas fermer sur blur immédiat
   const pointerInPortalRef = useRef(false);
   useEffect(() => {
     const down = (e) => {
@@ -573,10 +544,9 @@ export default function ReceptionDeliveryForm({
     };
   }, []);
 
-  // fermer si clic ailleurs (en dehors des anchors ET des portals)
   useEffect(() => {
     const onClickOutside = (e) => {
-      // produits
+      // products
       if (productPortalRef.current?.contains(e.target)) return;
       const pRefs = productBoxRefs.current;
       for (const key of Object.keys(pRefs)) {
@@ -584,7 +554,7 @@ export default function ReceptionDeliveryForm({
         if (el && el.contains(e.target)) return;
       }
       setProductOpenById({});
-      // fournisseur
+      // supplier
       if (supplierPortalRef.current?.contains(e.target)) return;
       if (supplierBoxRef.current?.contains(e.target)) return;
       setSupplierOpen(false);
@@ -595,22 +565,21 @@ export default function ReceptionDeliveryForm({
 
   const openProductDropdownFor = (fid, open) =>
     setProductOpenById((s) => ({ ...s, [fid]: !!open }));
-
   const setProductItemsFor = (fid, items) =>
     setProductItemsById((s) => ({ ...s, [fid]: items }));
 
-  // --- IMPORTANT: suggestions produits restreintes AU fournisseur sélectionné ---
+  // Suggestions produits filtrées par fournisseur
   const computeProductMatches = (supplier, q) => {
     const qn = normalize(q);
     if (!qn) return [];
     const supKey = normalize(supplier);
-    if (!supKey) return []; // pas de fournisseur -> pas de suggestions
+    if (!supKey) return [];
     const bag = productsBySupplierRef.current.get(supKey);
-    if (!bag) return []; // fournisseur non indexé -> pas de suggestions
+    if (!bag) return [];
 
     const list = [];
     bag.forEach((v, key) => {
-      if (key.includes(qn)) list.push(v); // v = { label, count, last }
+      if (key.includes(qn)) list.push(v);
     });
 
     list.sort((a, b) =>
@@ -652,13 +621,10 @@ export default function ReceptionDeliveryForm({
     const meta =
       suggestion && typeof suggestion === "object" ? suggestion.meta : null;
 
-    // 1) Nom du produit
     setValue(`lines.${idx}.productName`, name, {
       shouldDirty: true,
       shouldTouch: true,
     });
-
-    // 2) Ecrase toujours les métas pour correspondre au produit choisi
     setValue(`lines.${idx}.supplierProductId`, meta?.supplierProductId || "", {
       shouldDirty: true,
       shouldTouch: true,
@@ -672,21 +638,16 @@ export default function ReceptionDeliveryForm({
       shouldTouch: true,
     });
 
-    // 3) Invalide la validation manuelle si nécessaire
     setValidatedById((s) => (s[fid] ? { ...s, [fid]: false } : s));
-
-    // 4) Fermer proprement
     openProductDropdownFor(fid, false);
     productUserTypedRef.current[fid] = false;
   };
 
-  // ✅ Quand le fournisseur change, on ferme/efface les suggestions produits
   useEffect(() => {
     setProductOpenById({});
     setProductItemsById({});
   }, [supplierValue]);
 
-  // matches fournisseurs (par fréquence — inchangé)
   const computeSupplierMatches = (q) => {
     const qn = normalize(q);
     if (!qn) return [];
@@ -698,7 +659,9 @@ export default function ReceptionDeliveryForm({
     return list.slice(0, 8).map((x) => x.label);
   };
 
-  // ✅ Effet qui ouvre/actualise les suggestions fournisseur à chaque frappe
+  const supplierUserTypedRef = useRef(false);
+  const supplierDebounceRef = useRef(null);
+
   useEffect(() => {
     if (!supplierUserTypedRef.current) {
       setSupplierOpen(false);
@@ -726,7 +689,6 @@ export default function ReceptionDeliveryForm({
     };
   }, [supplierValue]);
 
-  // ---- Couper le scroll-chaining global quand un menu est ouvert
   const anyDropdownOpen =
     supplierOpen || Object.values(productOpenById).some(Boolean);
   useEffect(() => {
@@ -746,12 +708,10 @@ export default function ReceptionDeliveryForm({
     };
   }, [anyDropdownOpen]);
 
-  // Bouton Enregistrer désactivé tant qu’aucune ligne validée explicitement
   const hasValidatedLine =
     Array.isArray(fields) && fields.some((f) => validatedById[f.id]);
   const submitDisabled = isSubmitting || !hasValidatedLine;
 
-  // Désactiver "Ajouter un produit" si la dernière ligne n'a PAS été validée explicitement
   const lastField = fields.length ? fields[fields.length - 1] : null;
   const addDisabled = lastField ? !validatedById[lastField.id] : false;
 
@@ -767,43 +727,53 @@ export default function ReceptionDeliveryForm({
             <FileText className="size-4" /> Fournisseur *
           </label>
           <div className="relative">
-            <input
-              type="text"
-              placeholder="Nom du fournisseur"
-              autoComplete="off"
-              spellCheck={false}
-              {...register("supplier", {
+            {(() => {
+              // chaîner la ref RHF + notre ref input
+              const supplierReg = register("supplier", {
                 required: true,
                 onChange: () => {
                   supplierUserTypedRef.current = true;
                 },
-              })}
-              className={`${inputCls} ${errors.supplier ? "border-red focus:ring-red/20" : ""}`}
-              onFocus={() => {
-                const q = String(supplierValue || "");
-                if (q.trim().length >= 2) {
-                  const matches = computeSupplierMatches(q);
-                  setSupplierItems(matches);
-                  setSupplierOpen(matches.length > 0);
-                  setDropdownRerender((v) => v + 1);
-                }
-              }}
-              onBlur={() =>
-                setTimeout(() => {
-                  if (!pointerInPortalRef.current) setSupplierOpen(false);
-                }, 0)
-              }
-            />
+              });
+              return (
+                <input
+                  type="text"
+                  placeholder="Nom du fournisseur"
+                  autoComplete="off"
+                  spellCheck={false}
+                  {...supplierReg}
+                  ref={(el) => {
+                    supplierInputRef.current = el; // ⬅️ ancre exacte
+                    supplierReg.ref(el); // garder la ref RHF
+                  }}
+                  className={`${inputCls} ${errors.supplier ? "border-red focus:ring-red/20" : ""}`}
+                  onFocus={() => {
+                    const q = String(supplierValue || "");
+                    if (q.trim().length >= 2) {
+                      const matches = computeSupplierMatches(q);
+                      setSupplierItems(matches);
+                      setSupplierOpen(matches.length > 0);
+                      setDropdownRerender((v) => v + 1);
+                    }
+                  }}
+                  onBlur={() =>
+                    setTimeout(() => {
+                      if (!pointerInPortalRef.current) setSupplierOpen(false);
+                    }, 0)
+                  }
+                />
+              );
+            })()}
 
-            {/* Suggestions fournisseur via PORTAL */}
+            {/* Suggestions fournisseur via PORTAL — ancre = INPUT */}
             {isClient &&
               supplierOpen &&
               createPortal(
                 (() => {
-                  const anchor = supplierBoxRef.current;
+                  const anchor = supplierInputRef.current;
                   if (!anchor) return null;
                   const style = getDropdownStyle(anchor, {
-                    margin: 4,
+                    margin: -4,
                     maxListPx: 256,
                   });
                   return (
@@ -910,7 +880,6 @@ export default function ReceptionDeliveryForm({
             const pkg = l?.packagingCondition || "compliant";
             const tempUnit = l?.tempOnArrivalUnit === "F" ? "F" : "C";
 
-            // Manquements pour la ligne courante
             const needProduct = !l?.productName?.trim();
             const needQty = missingQty(l);
             const needUnit = missingUnit(l);
@@ -951,7 +920,6 @@ export default function ReceptionDeliveryForm({
                     </div>
                   </button>
 
-                  {/* Résumé compact quand replié */}
                   <div className="flex flex-wrap items-center justify-end gap-1">
                     {!!l?.qty && (
                       <span className={chip}>
@@ -1076,9 +1044,9 @@ export default function ReceptionDeliveryForm({
                                         <button
                                           key={sug.label}
                                           type="button"
-                                          onMouseDown={(e) => {
-                                            e.preventDefault();
-                                          }}
+                                          onMouseDown={(e) =>
+                                            e.preventDefault()
+                                          }
                                           onClick={() =>
                                             pickProduct(id, idx, sug)
                                           }
@@ -1220,7 +1188,6 @@ export default function ReceptionDeliveryForm({
                             {...register(`lines.${idx}.tempOnArrival`)}
                             className={`${inputCls} pr-16 text-right`}
                           />
-                          {/* Toggle °C/°F */}
                           <button
                             type="button"
                             onClick={() => toggleTempUnit(idx)}
@@ -1229,7 +1196,6 @@ export default function ReceptionDeliveryForm({
                           >
                             {tempUnit === "F" ? "°F" : "°C"}
                           </button>
-                          {/* champ caché pour stocker l’unité */}
                           <input
                             type="hidden"
                             {...register(`lines.${idx}.tempOnArrivalUnit`)}
@@ -1251,7 +1217,6 @@ export default function ReceptionDeliveryForm({
                         />
                       </div>
 
-                      {/* Toggle Emballage (conforme / non conforme) */}
                       <div className={fieldWrap}>
                         <label className={labelCls}>Emballage</label>
 
@@ -1280,25 +1245,11 @@ export default function ReceptionDeliveryForm({
                             }
                           />
 
-                          <span
-                            className="
-                              relative inline-flex h-6 w-11 items-center rounded-full
-                              bg-darkBlue/20 transition-colors
-                              peer-checked:bg-darkBlue/80 group-aria-checked:bg-darkBlue/80
-                            "
-                          >
-                            <span
-                              className="
-                                absolute left-1 top-1/2 -translate-y-1/2
-                                size-4 rounded-full bg-white shadow
-                                transition-transform will-change-transform translate-x-0
-                                peer-checked:translate-x-5 group-aria-checked:translate-x-5
-                              "
-                            />
+                          <span className="relative inline-flex h-6 w-11 items-center rounded-full bg-darkBlue/20 transition-colors peer-checked:bg-darkBlue/80">
+                            <span className="absolute left-1 top-1/2 -translate-y-1/2 size-4 rounded-full bg-white shadow transition-transform will-change-transform translate-x-0 peer-checked:translate-x-5" />
                           </span>
                         </label>
 
-                        {/* Champ RHF caché pour conserver la valeur string */}
                         <select
                           {...register(`lines.${idx}.packagingCondition`)}
                           className="hidden"
