@@ -451,18 +451,6 @@ export default function ReceptionDeliveryForm({
   const supplierDebounceRef = useRef(null);
   const supplierPortalRef = useRef(null);
 
-  // matches fournisseurs (par fréquence — inchangé)
-  const computeSupplierMatches = (q) => {
-    const qn = normalize(q);
-    if (!qn) return [];
-    const list = [];
-    suppliersRef.current.forEach((v, key) => {
-      if (key.includes(qn)) list.push(v);
-    });
-    list.sort((a, b) => b.count - a.count);
-    return list.slice(0, 8).map((x) => x.label);
-  };
-
   // ----------------- Suggestions: Product per line (PORTAL) -----------------
   const [productOpenById, setProductOpenById] = useState({});
   const productUserTypedRef = useRef({}); // id -> bool
@@ -477,7 +465,82 @@ export default function ReceptionDeliveryForm({
   const [isClient, setIsClient] = useState(false);
   useEffect(() => setIsClient(true), []);
 
-  // rerender pour suivre scroll/resize et repositionner les menus
+  // état pour forcer un petit rerender sur scroll/resize
+  const [, setDropdownRerender] = useState(0);
+
+  // ---- VisualViewport tracking (mobile keyboard safe)
+  const vvRef = useRef({
+    offsetTop: 0,
+    offsetLeft: 0,
+    width: 0,
+    height: 0,
+    scale: 1,
+  });
+  const [, bumpVvTick] = useState(0);
+
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    const sync = () => {
+      vvRef.current = {
+        offsetTop: vv.offsetTop || 0,
+        offsetLeft: vv.offsetLeft || 0,
+        width: vv.width || window.innerWidth,
+        height: vv.height || window.innerHeight,
+        scale: vv.scale || 1,
+      };
+      bumpVvTick((n) => n + 1);
+    };
+
+    sync();
+    vv.addEventListener("scroll", sync);
+    vv.addEventListener("resize", sync);
+    return () => {
+      vv.removeEventListener("scroll", sync);
+      vv.removeEventListener("resize", sync);
+    };
+  }, []);
+
+  // fonction de style commune pour les portals
+  function getDropdownStyle(anchorEl, { margin = 4, maxListPx = 256 } = {}) {
+    if (!anchorEl) return null;
+    const rect = anchorEl.getBoundingClientRect();
+    const { offsetTop, offsetLeft, height: vvH } = vvRef.current;
+
+    // par défaut en-dessous
+    let top = rect.bottom + offsetTop - margin;
+    let left = rect.left + offsetLeft;
+    const width = rect.width;
+
+    const spaceBelow = vvH - (rect.bottom + margin);
+    const willFlip = spaceBelow < 120;
+
+    if (willFlip) {
+      // au-dessus
+      top = rect.top + offsetTop - Math.min(maxListPx, rect.top - margin);
+    }
+
+    const maxHeight = willFlip
+      ? Math.min(maxListPx, rect.top - margin)
+      : Math.min(maxListPx, vvH - (rect.bottom + margin));
+
+    return {
+      position: "fixed",
+      left,
+      top,
+      width,
+      zIndex: 1000,
+      maxHeight: Math.max(120, maxHeight),
+      overflow: "auto",
+      WebkitOverflowScrolling: "touch",
+      overscrollBehavior: "contain",
+      willChange: "transform",
+      transform: "translateZ(0)",
+    };
+  }
+
+  // rerender pour suivre scroll/resize (page) et repositionner les menus
   useEffect(() => {
     const onScrollOrResize = () => setDropdownRerender((v) => v + 1);
     window.addEventListener("resize", onScrollOrResize);
@@ -550,7 +613,6 @@ export default function ReceptionDeliveryForm({
       if (key.includes(qn)) list.push(v); // v = { label, count, last }
     });
 
-    // Tri alphabétique (insensible à la casse, locale fr)
     list.sort((a, b) =>
       String(a.label).localeCompare(String(b.label), "fr", {
         sensitivity: "base",
@@ -580,7 +642,7 @@ export default function ReceptionDeliveryForm({
       const matches = computeProductMatches(supplierValue, q);
       setProductItemsFor(fid, matches);
       openProductDropdownFor(fid, matches.length > 0);
-      setDropdownRerender((v) => v + 1); // reposition immédiat
+      setDropdownRerender((v) => v + 1);
     }, 160);
   };
 
@@ -618,14 +680,25 @@ export default function ReceptionDeliveryForm({
     productUserTypedRef.current[fid] = false;
   };
 
-  // ✅ Quand le fournisseur change, on ferme/efface les suggestions produits (anti-confusion)
+  // ✅ Quand le fournisseur change, on ferme/efface les suggestions produits
   useEffect(() => {
     setProductOpenById({});
     setProductItemsById({});
   }, [supplierValue]);
 
+  // matches fournisseurs (par fréquence — inchangé)
+  const computeSupplierMatches = (q) => {
+    const qn = normalize(q);
+    if (!qn) return [];
+    const list = [];
+    suppliersRef.current.forEach((v, key) => {
+      if (key.includes(qn)) list.push(v);
+    });
+    list.sort((a, b) => b.count - a.count);
+    return list.slice(0, 8).map((x) => x.label);
+  };
+
   // ✅ Effet qui ouvre/actualise les suggestions fournisseur à chaque frappe
-  const [, setDropdownRerender] = useState(0); // pour forcer le repositionnement du portal
   useEffect(() => {
     if (!supplierUserTypedRef.current) {
       setSupplierOpen(false);
@@ -652,6 +725,26 @@ export default function ReceptionDeliveryForm({
         clearTimeout(supplierDebounceRef.current);
     };
   }, [supplierValue]);
+
+  // ---- Couper le scroll-chaining global quand un menu est ouvert
+  const anyDropdownOpen =
+    supplierOpen || Object.values(productOpenById).some(Boolean);
+  useEffect(() => {
+    const html = document.documentElement;
+    const prevY = html.style.overscrollBehaviorY;
+    const prevX = html.style.overscrollBehaviorX;
+    if (anyDropdownOpen) {
+      html.style.overscrollBehaviorY = "contain";
+      html.style.overscrollBehaviorX = "none";
+    } else {
+      html.style.overscrollBehaviorY = prevY || "";
+      html.style.overscrollBehaviorX = prevX || "";
+    }
+    return () => {
+      html.style.overscrollBehaviorY = prevY || "";
+      html.style.overscrollBehaviorX = prevX || "";
+    };
+  }, [anyDropdownOpen]);
 
   // Bouton Enregistrer désactivé tant qu’aucune ligne validée explicitement
   const hasValidatedLine =
@@ -709,16 +802,10 @@ export default function ReceptionDeliveryForm({
                 (() => {
                   const anchor = supplierBoxRef.current;
                   if (!anchor) return null;
-                  const rect = anchor.getBoundingClientRect();
-                  const style = {
-                    position: "fixed",
-                    left: rect.left + 12,
-                    top: rect.bottom - 4,
-                    width: rect.width - 24,
-                    zIndex: 1000,
-                    maxHeight: "16rem",
-                    overflow: "auto",
-                  };
+                  const style = getDropdownStyle(anchor, {
+                    margin: 4,
+                    maxListPx: 256,
+                  });
                   return (
                     <div
                       ref={supplierPortalRef}
@@ -828,7 +915,6 @@ export default function ReceptionDeliveryForm({
             const needQty = missingQty(l);
             const needUnit = missingUnit(l);
 
-            // Afficher bordures rouges SEULEMENT si la ligne a été “validée” manuellement et qu'il manque quelque chose
             const showErr = !!showReqErrById[id];
             const hasProdErr = showErr && needProduct;
             const hasQtyErr = showErr && needQty;
@@ -968,16 +1054,10 @@ export default function ReceptionDeliveryForm({
                               (() => {
                                 const anchor = productAnchorRefs.current[id];
                                 if (!anchor) return null;
-                                const rect = anchor.getBoundingClientRect();
-                                const style = {
-                                  position: "fixed",
-                                  left: rect.left,
-                                  top: rect.bottom - 4,
-                                  width: rect.width,
-                                  zIndex: 1000,
-                                  maxHeight: "16rem",
-                                  overflow: "auto",
-                                };
+                                const style = getDropdownStyle(anchor, {
+                                  margin: 4,
+                                  maxListPx: 256,
+                                });
                                 const items = productItemsById[id] || [];
                                 return (
                                   <div
@@ -997,7 +1077,6 @@ export default function ReceptionDeliveryForm({
                                           key={sug.label}
                                           type="button"
                                           onMouseDown={(e) => {
-                                            // empêcher le blur immédiat de l'input
                                             e.preventDefault();
                                           }}
                                           onClick={() =>
