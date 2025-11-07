@@ -12,6 +12,7 @@ import {
   Loader2,
   FileText,
 } from "lucide-react";
+import { createPortal } from "react-dom";
 
 /* ------- Utils ------- */
 const cToF = (c) => (c * 9) / 5 + 32;
@@ -34,7 +35,6 @@ function buildFormDefaults(record) {
       if (typeof raw === "object" && raw !== null) return raw._id || "";
       return "";
     })(),
-    // NOUVEAU : garder l'ID de la ligne de réception si on l'a
     receptionLineId: record?.receptionLineId
       ? String(record.receptionLineId)
       : "",
@@ -80,14 +80,24 @@ function buildFormDefaults(record) {
 }
 
 function formatReceptionLabel(r) {
-  if (!r) return "Réception enregistrée";
-  let dateLabel = "Date inconnue";
-  if (r.receivedAt) {
-    const date = new Date(r.receivedAt);
-    if (!Number.isNaN(date.getTime())) dateLabel = date.toLocaleString();
-  }
-  const supplierInfo = r.supplier ? ` • ${r.supplier}` : "";
-  return `${dateLabel}${supplierInfo}`;
+  if (!r || !r.receivedAt) return "—";
+  const d = new Date(r.receivedAt);
+  if (Number.isNaN(d.getTime())) return "—";
+
+  const dateStr = new Intl.DateTimeFormat("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(d);
+
+  const timeStr = new Intl.DateTimeFormat("fr-FR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(d);
+
+  const supplier = r.supplier ? ` ${r.supplier}` : "";
+  return `${dateStr} ${timeStr}${supplier}`;
 }
 
 function formatLineLabelFull(line) {
@@ -103,7 +113,6 @@ function formatLineLabelFull(line) {
 }
 
 function lineKey(line, idx) {
-  // Utiliser l'_id s'il existe pour assurer l'unicité et le lien direct
   if (line && line._id) return String(line._id);
   const n = String(line?.productName || "");
   const l = String(line?.lotNumber || "");
@@ -112,7 +121,6 @@ function lineKey(line, idx) {
   return `${n}::${l}::${u}::${q}::${idx}`;
 }
 
-// Helpers de matching
 const norm = (s) =>
   String(s || "")
     .trim()
@@ -120,15 +128,12 @@ const norm = (s) =>
 
 function findMatchingOptionKey(productOptions, initial) {
   if (!initial) return "";
-  // prioritaire : par lineId si dispo
   if (initial.receptionLineId) {
     const byId = productOptions.find(
       (o) => String(o?.line?._id || "") === String(initial.receptionLineId)
     );
     if (byId) return byId.key;
   }
-
-  // sinon : par name + lot
   const targetName = norm(initial.productName);
   const targetLot = norm(initial.lotNumber);
   if (!productOptions?.length || !targetName) return "";
@@ -138,7 +143,6 @@ function findMatchingOptionKey(productOptions, initial) {
       norm(o?.line?.lotNumber) === targetLot
   );
   if (byNameLot) return byNameLot.key;
-
   const byName = productOptions.find(
     (o) => norm(o?.line?.productName) === targetName
   );
@@ -179,11 +183,6 @@ export default function InventoryLotForm({
   const okBorder = "border-darkBlue/20";
 
   // ---- Réceptions & produits
-  const [receptions, setReceptions] = useState([]);
-  const [receptionsLoading, setReceptionsLoading] = useState(false);
-  const [receptionsError, setReceptionsError] = useState(false);
-  const [receptionsLoaded, setReceptionsLoaded] = useState(false);
-
   const [selectedReception, setSelectedReception] = useState(null);
   const [productOptions, setProductOptions] = useState([]); // [{key, line}]
   const [selectedProductKey, setSelectedProductKey] = useState("");
@@ -215,80 +214,146 @@ export default function InventoryLotForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial]);
 
-  // Charger la liste des réceptions
+  // --------- Réception associée : faux select avec infinite scroll ----------
+  const [recOpen, setRecOpen] = useState(false);
+  const [recItems, setRecItems] = useState([]); // pages cumulées
+  const [recError, setRecError] = useState(false);
+  const [recLoading, setRecLoading] = useState(false);
+  const recPageRef = useRef(0); // page courante chargée
+  const recPagesRef = useRef(1); // total pages côté API
+  const recLoadingRef = useRef(false);
+  const recAnchorRef = useRef(null); // ancre visuelle
+  const recPortalRef = useRef(null); // container portal
+  const recScrollerRef = useRef(null);
+
+  // --------- Produit : faux select ----------
+  const [prodOpen, setProdOpen] = useState(false);
+  const prodAnchorRef = useRef(null);
+  const prodPortalRef = useRef(null);
+  const prodScrollerRef = useRef(null);
+
+  // force re-render pour repositionner les portals (scroll/resize)
+  const [, forceTick] = useState(0);
   useEffect(() => {
-    if (!restaurantId) {
-      setReceptions([]);
-      setReceptionsLoaded(true);
-      return;
-    }
-    let cancelled = false;
-    const loadReceptions = async () => {
-      setReceptionsLoading(true);
-      setReceptionsError(false);
+    const onScrollOrResize = () => forceTick((v) => v + 1);
+    window.addEventListener("resize", onScrollOrResize, true);
+    window.addEventListener("scroll", onScrollOrResize, true);
+    return () => {
+      window.removeEventListener("resize", onScrollOrResize, true);
+      window.removeEventListener("scroll", onScrollOrResize, true);
+    };
+  }, []);
+
+  // Fermeture au clic à l’extérieur (réception + produit)
+  useEffect(() => {
+    const onClickOutside = (e) => {
+      const t = e.target;
+      const clickInRec =
+        recPortalRef.current?.contains(t) || recAnchorRef.current?.contains(t);
+      const clickInProd =
+        prodPortalRef.current?.contains(t) ||
+        prodAnchorRef.current?.contains(t);
+      if (!clickInRec) setRecOpen(false);
+      if (!clickInProd) setProdOpen(false);
+    };
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
+
+  const loadReceptionPage = useCallback(
+    async (page = 1) => {
+      if (!restaurantId) return;
+      if (recLoadingRef.current) return;
+      const token = localStorage.getItem("token");
+      if (!token) return;
+
+      recLoadingRef.current = true;
+      setRecLoading(true);
+      setRecError(false);
       try {
-        const token = localStorage.getItem("token");
-        if (!token) {
-          if (!cancelled) {
-            setReceptions([]);
-            setReceptionsLoading(false);
-            setReceptionsLoaded(true);
-          }
-          return;
-        }
         const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-reception-deliveries`;
         const { data } = await axios.get(url, {
           headers: { Authorization: `Bearer ${token}` },
-          params: { limit: 100 },
+          params: { page, limit: 25 },
         });
-        if (!cancelled) {
-          const items = Array.isArray(data?.items) ? data.items : [];
-          setReceptions(items);
-        }
-      } catch (_) {
-        if (!cancelled) {
-          setReceptions([]);
-          setReceptionsError(true);
-        }
+
+        const items = Array.isArray(data?.items) ? data.items : [];
+        const pages = Math.max(1, Number(data?.meta?.pages || 1));
+
+        setRecItems((prev) => {
+          const seen = new Set(prev.map((x) => String(x?._id || "")));
+          const next = page === 1 ? [] : [...prev];
+          for (const it of items) {
+            const id = String(it?._id || "");
+            if (!id || seen.has(id)) continue;
+            seen.add(id);
+            next.push(it);
+          }
+          return next;
+        });
+
+        recPageRef.current = page;
+        recPagesRef.current = pages;
+      } catch (e) {
+        setRecError(true);
       } finally {
-        if (!cancelled) {
-          setReceptionsLoading(false);
-          setReceptionsLoaded(true);
-        }
+        recLoadingRef.current = false;
+        setRecLoading(false);
       }
-    };
-    loadReceptions();
-    return () => {
-      cancelled = true;
-    };
-  }, [restaurantId]);
+    },
+    [restaurantId]
+  );
 
-  const receptionOptions = useMemo(() => {
-    const list = Array.isArray(receptions) ? [...receptions] : [];
-    const seen = new Set();
-    const uniq = [];
-    for (const r of list) {
-      if (!r || !r._id) continue;
-      const k = String(r._id);
-      if (seen.has(k)) continue;
-      seen.add(k);
-      uniq.push(r);
-    }
-    return uniq.sort((a, b) => {
-      const ta = a?.receivedAt ? new Date(a.receivedAt).getTime() : 0;
-      const tb = b?.receivedAt ? new Date(b.receivedAt).getTime() : 0;
-      return tb - ta;
+  const maybeOpenReceptionMenu = () => {
+    setRecOpen((o) => {
+      const willOpen = !o;
+      if (willOpen && recPageRef.current === 0) {
+        loadReceptionPage(1);
+      }
+      return willOpen;
     });
-  }, [receptions]);
+  };
 
-  // Fetch détail d'une réception (avec lignes + qtyRemaining)
+  const onReceptionScroll = (e) => {
+    const el = e.currentTarget;
+    if (!el) return;
+    const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 16;
+    const hasMore = recPageRef.current < recPagesRef.current;
+    if (nearBottom && hasMore && !recLoadingRef.current) {
+      loadReceptionPage(recPageRef.current + 1);
+    }
+  };
+
+  const pickReception = (rec) => {
+    setValue("receptionId", String(rec._id), {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+    setRecOpen(false);
+    // Le détail sera fetch par l’effet sur receptionIdWatch
+  };
+
+  const selectedReceptionLabel = useMemo(() => {
+    if (receptionIdWatch) {
+      const found = recItems.find(
+        (r) => String(r?._id) === String(receptionIdWatch)
+      );
+      if (found) return formatReceptionLabel(found);
+      if (selectedReception) return formatReceptionLabel(selectedReception);
+    }
+    return "";
+  }, [receptionIdWatch, recItems, selectedReception]);
+
+  // ---------------- Détail d'une réception (pour les lignes) ---------------
   const fetchReception = useCallback(
     async (receptionId) => {
+      if (!receptionId) return;
       try {
         const token = localStorage.getItem("token");
         if (!token) {
           setSelectedReception(null);
           setProductOptions([]);
+          setSelectedProductKey("");
           return;
         }
         const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/reception-deliveries/${receptionId}`;
@@ -307,10 +372,12 @@ export default function InventoryLotForm({
 
         setSelectedReception(data);
         setProductOptions(opts);
+        setSelectedProductKey(""); // reset choix produit quand la réception change
         setReceptionMissing(false);
       } catch (e) {
         setSelectedReception(null);
         setProductOptions([]);
+        setSelectedProductKey("");
         if (e?.response?.status === 404) {
           setReceptionMissing(true);
           setValue("receptionId", "", {
@@ -323,7 +390,6 @@ export default function InventoryLotForm({
     [restaurantId, setValue]
   );
 
-  // Ne fetch que si l'ID existe côté serveur
   useEffect(() => {
     if (!receptionIdWatch) {
       setSelectedReception(null);
@@ -332,21 +398,8 @@ export default function InventoryLotForm({
       setReceptionMissing(false);
       return;
     }
-    if (!receptionsLoaded) return;
-    const existsOnServer = (receptions || []).some(
-      (r) => String(r?._id) === String(receptionIdWatch)
-    );
-    if (!existsOnServer) {
-      setReceptionMissing(true);
-      setValue("receptionId", "", { shouldDirty: true, shouldValidate: true });
-      setSelectedReception(null);
-      setProductOptions([]);
-      setSelectedProductKey("");
-      return;
-    }
     fetchReception(receptionIdWatch);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [receptionIdWatch, receptionsLoaded, receptions]);
+  }, [receptionIdWatch, fetchReception]);
 
   // Auto-sélection de la ligne produit en édition
   useEffect(() => {
@@ -374,7 +427,6 @@ export default function InventoryLotForm({
   ]);
 
   // Pré-remplir depuis une ligne de réception
-  // - updateRemaining : si true (changement manuel), on place qtyRemaining = line.qtyRemaining || line.qty
   function prefillFromReceptionLine(
     line,
     reception,
@@ -405,7 +457,6 @@ export default function InventoryLotForm({
       shouldValidate: true,
     });
 
-    // >>> NOUVEAU : stocker l'id de la ligne
     if (line._id) {
       setValue("receptionLineId", String(line._id), {
         shouldDirty: true,
@@ -418,7 +469,6 @@ export default function InventoryLotForm({
       });
     }
 
-    // >>> NOUVEAU : en changement manuel de produit (ou en création), aligner la qty restante
     if (updateRemaining) {
       const remaining =
         line.qtyRemaining != null ? line.qtyRemaining : line.qty;
@@ -497,7 +547,6 @@ export default function InventoryLotForm({
           ? Number(String(data.qtyReceived).replace(",", "."))
           : undefined,
 
-      // Qté restante
       qtyRemaining:
         (isEditing || true) &&
         data.qtyRemaining !== "" &&
@@ -550,38 +599,139 @@ export default function InventoryLotForm({
 
   const isCompliant = (packCond || "compliant") !== "non-compliant";
 
+  // ----- Helpers d’affichage (produit sélectionné : nom seul)
+  const selectedProductName = useMemo(() => {
+    if (!selectedProductKey) return "";
+    const opt = productOptions.find((o) => o.key === selectedProductKey);
+    return opt?.line?.productName || "";
+  }, [selectedProductKey, productOptions]);
+
   return (
     <form
       onSubmit={handleSubmit(onSubmit)}
       className="relative flex flex-col gap-2"
     >
-      {/* Réception associée */}
+      {/* Réception associée (FAUX SELECT + PORTAL) */}
       <div className="grid grid-cols-1 gap-2">
         <div className={fieldWrap}>
           <label className={labelCls}>Réception associée</label>
-          <div className="relative">
-            <select
-              {...register("receptionId")}
-              className={`${selectBase} ${okBorder}`}
-            >
-              <option value="">
-                {receptionsLoading
+
+          {/* Champ masqué RHF pour la valeur */}
+          <input type="hidden" {...register("receptionId")} />
+
+          <div
+            ref={recAnchorRef}
+            className={`${selectBase} ${okBorder} cursor-pointer flex items-center justify-between`}
+            onClick={maybeOpenReceptionMenu}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                maybeOpenReceptionMenu();
+              }
+              if (e.key === "Escape") setRecOpen(false);
+            }}
+            aria-expanded={recOpen}
+            aria-haspopup="listbox"
+            title="Choisir une réception"
+          >
+            <span className="truncate">
+              {receptionIdWatch
+                ? selectedReceptionLabel || "Réception sélectionnée"
+                : recLoading
                   ? "Chargement…"
                   : "Aucune réception associée"}
-              </option>
-              {receptionOptions.map((reception) => (
-                <option key={reception._id} value={String(reception._id)}>
-                  {formatReceptionLabel(reception)}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className={selectChevron} />
+            </span>
+            <ChevronDown className="size-4 text-darkBlue/40" />
           </div>
-          {receptionsError && (
-            <p className="text-xs text-red">
-              Erreur lors du chargement des réceptions.
-            </p>
-          )}
+
+          {/* Menu en portal */}
+          {recOpen &&
+            createPortal(
+              (() => {
+                const a = recAnchorRef.current;
+                if (!a) return null;
+                const rect = a.getBoundingClientRect();
+                const style = {
+                  position: "fixed",
+                  left: rect.left,
+                  top: rect.bottom + 4,
+                  width: rect.width,
+                  zIndex: 1000,
+                };
+                return (
+                  <div
+                    ref={recPortalRef}
+                    style={style}
+                    className="rounded-lg border border-darkBlue/15 bg-white shadow"
+                  >
+                    <div
+                      ref={recScrollerRef}
+                      className="max-h-56 overflow-auto"
+                      onScroll={onReceptionScroll}
+                      role="listbox"
+                      aria-label="Réceptions"
+                    >
+                      {/* Première ligne "aucune" */}
+                      <button
+                        type="button"
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-blue/5"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          setValue("receptionId", "", {
+                            shouldDirty: true,
+                            shouldValidate: true,
+                          });
+                          setRecOpen(false);
+                          setSelectedReception(null);
+                          setProductOptions([]);
+                          setSelectedProductKey("");
+                          setReceptionMissing(false);
+                        }}
+                      >
+                        Aucune réception associée
+                      </button>
+
+                      {/* Items */}
+                      {recItems.map((rec) => {
+                        const id = String(rec?._id || "");
+                        const active =
+                          id &&
+                          String(receptionIdWatch || "") === String(id || "");
+                        return (
+                          <button
+                            key={id}
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => pickReception(rec)}
+                            className={`w-full px-3 py-2 text-left text-sm hover:bg-blue/5 ${active ? "bg-blue/5" : ""}`}
+                            role="option"
+                            aria-selected={active}
+                            title={formatReceptionLabel(rec)}
+                          >
+                            <span className="block truncate">
+                              {formatReceptionLabel(rec)}
+                            </span>
+                          </button>
+                        );
+                      })}
+
+                      {/* Etat de chargement / fin / erreur */}
+                      {recLoading ||
+                        (recError && (
+                          <div className="px-3 py-2 text-xs text-darkBlue/60">
+                            {recLoading && "Chargement…"}
+                            {recError && "Erreur de chargement"}
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                );
+              })(),
+              document.body
+            )}
+
           {receptionMissing && (
             <p className="text-xs text-orange-600 mt-1">
               La réception liée à cette saisie n’existe plus. Association
@@ -599,6 +749,7 @@ export default function InventoryLotForm({
             Produit *
           </label>
 
+          {/* Sans réception : input libre */}
           {!selectedReception ? (
             <input
               type="text"
@@ -611,47 +762,107 @@ export default function InventoryLotForm({
             />
           ) : (
             <>
-              <div className="relative">
-                <select
-                  value={selectedProductKey}
-                  onChange={(e) => {
-                    const key = e.target.value;
-                    setSelectedProductKey(key);
-                    const opt = productOptions.find((o) => o.key === key);
-                    if (opt) {
-                      // mettre à jour le form + qtyRemaining depuis la ligne
-                      prefillFromReceptionLine(opt.line, selectedReception, {
-                        updateRemaining: true,
-                      });
-                      // Dans le champ "Produit" on veut seulement le nom
-                      setValue("productName", opt?.line?.productName || "", {
-                        shouldValidate: true,
-                        shouldDirty: true,
-                      });
-                    }
-                  }}
-                  className={`${selectBase} ${errors.productName ? errCls : okBorder}`}
-                >
-                  <option value="">Choisir un produit…</option>
-                  {productOptions.map((opt) => {
-                    const isSelected = opt.key === selectedProductKey;
-                    const nameOnly = opt?.line?.productName || "Produit";
-                    const full = formatLineLabelFull(opt.line);
-                    return (
-                      <option key={opt.key} value={opt.key}>
-                        {isSelected ? nameOnly : full}
-                      </option>
-                    );
-                  })}
-                </select>
-                <ChevronDown className={selectChevron} />
-              </div>
-              {/* contraintes hidden */}
+              {/* Champ masqué obligatoire */}
               <input
                 type="hidden"
                 {...register("productName", { required: true })}
               />
               <input type="hidden" {...register("receptionLineId")} />
+
+              {/* Faux select produit */}
+              <div
+                ref={prodAnchorRef}
+                className={`${selectBase} ${errors.productName ? errCls : okBorder} cursor-pointer flex items-center justify-between`}
+                onClick={() => setProdOpen((v) => !v)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setProdOpen((v) => !v);
+                  }
+                  if (e.key === "Escape") setProdOpen(false);
+                }}
+                aria-expanded={prodOpen}
+                aria-haspopup="listbox"
+                title="Choisir un produit"
+              >
+                <span className="truncate">
+                  {selectedProductKey
+                    ? selectedProductName
+                    : "Choisir un produit…"}
+                </span>
+                <ChevronDown className="size-4 text-darkBlue/40" />
+              </div>
+
+              {prodOpen &&
+                createPortal(
+                  (() => {
+                    const a = prodAnchorRef.current;
+                    if (!a) return null;
+                    const rect = a.getBoundingClientRect();
+                    const style = {
+                      position: "fixed",
+                      left: rect.left,
+                      top: rect.bottom + 4,
+                      width: rect.width,
+                      zIndex: 1000,
+                    };
+                    return (
+                      <div
+                        ref={prodPortalRef}
+                        style={style}
+                        className="rounded-lg border border-darkBlue/15 bg-white shadow"
+                      >
+                        <div
+                          ref={prodScrollerRef}
+                          className="max-h-56 overflow-auto"
+                          role="listbox"
+                          aria-label="Produits"
+                        >
+                          {productOptions.map((opt) => {
+                            const active = opt.key === selectedProductKey;
+                            const full = formatLineLabelFull(opt.line);
+                            return (
+                              <button
+                                key={opt.key}
+                                type="button"
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => {
+                                  setSelectedProductKey(opt.key);
+                                  prefillFromReceptionLine(
+                                    opt.line,
+                                    selectedReception,
+                                    { updateRemaining: true }
+                                  );
+                                  setValue(
+                                    "productName",
+                                    opt?.line?.productName || "",
+                                    { shouldValidate: true, shouldDirty: true }
+                                  );
+                                  setProdOpen(false);
+                                }}
+                                className={`w-full px-3 py-2 text-left text-sm hover:bg-blue/5 ${active ? "bg-blue/5" : ""}`}
+                                role="option"
+                                aria-selected={active}
+                                title={full}
+                              >
+                                <span className="block truncate">{full}</span>
+                              </button>
+                            );
+                          })}
+
+                          {!productOptions.length && (
+                            <div className="px-3 py-2 text-xs text-darkBlue/60">
+                              Aucun produit dans cette réception.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })(),
+                  document.body
+                )}
             </>
           )}
         </div>
