@@ -1261,7 +1261,7 @@ export default function ReceptionDeliveryForm({
                       </div>
                     </div>
 
-                    <div className="flex justify-between mt-2 gap-2">
+                    <div className="flex flex-col mobile:flex-row justify-between mt-2 gap-2">
                       <button
                         type="button"
                         onClick={() => {
@@ -1303,7 +1303,7 @@ export default function ReceptionDeliveryForm({
 
       {/* Pièce jointe + Note */}
       <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
-        <div className={fieldWrap}>
+        <div className={`${fieldWrap} px-3`}>
           <label className={labelCls}>
             <LinkIcon className="size-4" /> Lien du bon de livraison (URL)
           </label>
@@ -1317,7 +1317,7 @@ export default function ReceptionDeliveryForm({
           />
         </div>
 
-        <div className={fieldWrap}>
+        <div className={`${fieldWrap} px-3`}>
           <label className={labelCls}>
             <FileText className="size-4" /> Note
           </label>
