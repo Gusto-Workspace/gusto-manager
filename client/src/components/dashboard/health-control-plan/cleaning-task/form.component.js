@@ -15,7 +15,7 @@ import {
   History,
   FlaskConical,
   X as XIcon, // pour Annuler (éditeur de note)
-  XCircle,    // petite croix rouge (ouvrir confirmation)
+  XCircle, // petite croix rouge (ouvrir confirmation)
   Check as CheckIcon,
 } from "lucide-react";
 import { GlobalContext } from "@/contexts/global.context";
@@ -32,7 +32,9 @@ function buildFormDefaults(record) {
       record?.dwellTimeMin !== undefined && record?.dwellTimeMin !== null
         ? String(record.dwellTimeMin)
         : "",
-    productsText: Array.isArray(record?.products) ? record.products.join("\n") : "",
+    productsText: Array.isArray(record?.products)
+      ? record.products.join("\n")
+      : "",
     protocolStepsText: Array.isArray(record?.protocolSteps)
       ? record.protocolSteps.join("\n")
       : "",
@@ -122,10 +124,16 @@ export default function CleaningTaskForm({
     if (!token) return;
 
     const products = data.productsText
-      ? data.productsText.split(/\n+/g).map((s) => s.trim()).filter(Boolean)
+      ? data.productsText
+          .split(/\n+/g)
+          .map((s) => s.trim())
+          .filter(Boolean)
       : [];
     const protocolSteps = data.protocolStepsText
-      ? data.protocolStepsText.split(/\n+/g).map((s) => s.trim()).filter(Boolean)
+      ? data.protocolStepsText
+          .split(/\n+/g)
+          .map((s) => s.trim())
+          .filter(Boolean)
       : [];
 
     const payload = {
@@ -244,7 +252,10 @@ export default function CleaningTaskForm({
     .reverse();
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="relative flex flex-col gap-2">
+    <form
+      onSubmit={handleSubmit(onSubmit)}
+      className="relative flex flex-col gap-2"
+    >
       {/* Zone / Fréquence / Priorité */}
       <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
         <div className={fieldWrap}>
@@ -378,7 +389,10 @@ export default function CleaningTaskForm({
                     : 0;
 
                   return (
-                    <li key={`${idx}-${h?.doneAt || "na"}`} className="mb-4 last:mb-0 pl-4">
+                    <li
+                      key={`${idx}-${h?.doneAt || "na"}`}
+                      className="mb-4 last:mb-0 pl-4"
+                    >
                       {/* Puce timeline */}
                       <span className="absolute -left-[9px] mt-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-blue/90 ring-4 ring-white">
                         <span className="h-1.5 w-1.5 rounded-full bg-white" />
@@ -409,8 +423,12 @@ export default function CleaningTaskForm({
                               );
                             })()}
                             <div className="leading-tight">
-                              <div className="text-[13px] text-darkBlue/60">Fait le</div>
-                              <div className="text-sm font-medium">{fmtFRDate(h?.doneAt)}</div>
+                              <div className="text-[13px] text-darkBlue/60">
+                                Fait le
+                              </div>
+                              <div className="text-sm font-medium">
+                                {fmtFRDate(h?.doneAt)}
+                              </div>
                             </div>
                           </div>
 
@@ -475,7 +493,9 @@ export default function CleaningTaskForm({
                                 {h?.note ? (
                                   <span>{h.note}</span>
                                 ) : (
-                                  <span className="italic text-darkBlue/60">—</span>
+                                  <span className="italic text-darkBlue/60">
+                                    —
+                                  </span>
                                 )}
                               </div>
                               <button
@@ -486,9 +506,15 @@ export default function CleaningTaskForm({
                                   setConfirmIdx(null); // fermer une éventuelle confirmation ouverte
                                 }}
                                 className="text-xs text-blue underline underline-offset-2"
-                                title={h?.note ? "Éditer la note" : "Ajouter une note"}
+                                title={
+                                  h?.note
+                                    ? "Éditer la note"
+                                    : "Ajouter une note"
+                                }
                               >
-                                {h?.note ? "Éditer la note" : "Ajouter une note"}
+                                {h?.note
+                                  ? "Éditer la note"
+                                  : "Ajouter une note"}
                               </button>
                             </div>
                           ) : (

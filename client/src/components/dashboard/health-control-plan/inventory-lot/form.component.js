@@ -219,12 +219,25 @@ export default function InventoryLotForm({
   const [recItems, setRecItems] = useState([]); // pages cumulées
   const [recError, setRecError] = useState(false);
   const [recLoading, setRecLoading] = useState(false);
+  const [recSlowLoading, setRecSlowLoading] = useState(false); // indicateur retardé (1s)
+
   const recPageRef = useRef(0); // page courante chargée
   const recPagesRef = useRef(1); // total pages côté API
   const recLoadingRef = useRef(false);
   const recAnchorRef = useRef(null); // ancre visuelle
   const recPortalRef = useRef(null); // container portal
   const recScrollerRef = useRef(null);
+
+  // Afficher "Chargement…" seulement si recLoading > 1s d’affilée
+  useEffect(() => {
+    let t;
+    if (recLoading) {
+      t = setTimeout(() => setRecSlowLoading(true), 1000);
+    } else {
+      setRecSlowLoading(false);
+    }
+    return () => t && clearTimeout(t);
+  }, [recLoading]);
 
   // --------- Produit : faux select ----------
   const [prodOpen, setProdOpen] = useState(false);
@@ -639,14 +652,12 @@ export default function InventoryLotForm({
             <span className="truncate">
               {receptionIdWatch
                 ? selectedReceptionLabel || "Réception sélectionnée"
-                : recLoading
-                  ? "Chargement…"
-                  : "Aucune réception associée"}
+                : "Aucune réception associée"}
             </span>
             <ChevronDown className="size-4 text-darkBlue/40" />
           </div>
 
-          {/* Menu en portal */}
+          {/* Menu en portal (même largeur que l’input) */}
           {recOpen &&
             createPortal(
               (() => {
@@ -656,7 +667,7 @@ export default function InventoryLotForm({
                 const style = {
                   position: "fixed",
                   left: rect.left,
-                  top: rect.bottom + 4,
+                  top: rect.bottom + 4, // petit espace
                   width: rect.width,
                   zIndex: 1000,
                 };
@@ -705,7 +716,9 @@ export default function InventoryLotForm({
                             type="button"
                             onMouseDown={(e) => e.preventDefault()}
                             onClick={() => pickReception(rec)}
-                            className={`w-full px-3 py-2 text-left text-sm hover:bg-blue/5 ${active ? "bg-blue/5" : ""}`}
+                            className={`w-full px-3 py-2 text-left text-sm hover:bg-blue/5 ${
+                              active ? "bg-blue/5" : ""
+                            }`}
                             role="option"
                             aria-selected={active}
                             title={formatReceptionLabel(rec)}
@@ -717,14 +730,13 @@ export default function InventoryLotForm({
                         );
                       })}
 
-                      {/* Etat de chargement / fin / erreur */}
-                      {recLoading ||
-                        (recError && (
-                          <div className="px-3 py-2 text-xs text-darkBlue/60">
-                            {recLoading && "Chargement…"}
-                            {recError && "Erreur de chargement"}
-                          </div>
-                        ))}
+                      {/* États (chargement lent / erreur) — uniquement dans le menu */}
+                      {(recSlowLoading || recError) && (
+                        <div className="px-3 py-2 text-xs text-darkBlue/60">
+                          {recSlowLoading && "Chargement…"}
+                          {recError && "Erreur de chargement"}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -772,7 +784,9 @@ export default function InventoryLotForm({
               {/* Faux select produit */}
               <div
                 ref={prodAnchorRef}
-                className={`${selectBase} ${errors.productName ? errCls : okBorder} cursor-pointer flex items-center justify-between`}
+                className={`${selectBase} ${
+                  errors.productName ? errCls : okBorder
+                } cursor-pointer flex items-center justify-between`}
                 onClick={() => setProdOpen((v) => !v)}
                 role="button"
                 tabIndex={0}
@@ -833,16 +847,23 @@ export default function InventoryLotForm({
                                   prefillFromReceptionLine(
                                     opt.line,
                                     selectedReception,
-                                    { updateRemaining: true }
+                                    {
+                                      updateRemaining: true,
+                                    }
                                   );
                                   setValue(
                                     "productName",
                                     opt?.line?.productName || "",
-                                    { shouldValidate: true, shouldDirty: true }
+                                    {
+                                      shouldValidate: true,
+                                      shouldDirty: true,
+                                    }
                                   );
                                   setProdOpen(false);
                                 }}
-                                className={`w-full px-3 py-2 text-left text-sm hover:bg-blue/5 ${active ? "bg-blue/5" : ""}`}
+                                className={`w-full px-3 py-2 text-left text-sm hover:bg-blue/5 ${
+                                  active ? "bg-blue/5" : ""
+                                }`}
                                 role="option"
                                 aria-selected={active}
                                 title={full}
@@ -897,9 +918,9 @@ export default function InventoryLotForm({
             type="text"
             placeholder="Lot"
             {...register("lotNumber", { required: true })}
-            className={`${inputCls} ${
-              errors.lotNumber ? errCls : okBorder
-            } ${isPrefilledLock ? "opacity-60 pointer-events-none" : ""}`}
+            className={`${inputCls} ${errors.lotNumber ? errCls : okBorder} ${
+              isPrefilledLock ? "opacity-60 pointer-events-none" : ""
+            }`}
             readOnly={isPrefilledLock}
             aria-readonly={isPrefilledLock}
             tabIndex={isPrefilledLock ? -1 : undefined}
@@ -1197,12 +1218,6 @@ export default function InventoryLotForm({
             spellCheck={false}
             autoCorrect="off"
           />
-          {["discarded", "returned", "recalled"].includes(statusWatch) && (
-            <p className="mt-1 text-xs text-darkBlue/60">
-              Recommandé : renseigner le motif lorsque le statut est{" "}
-              {statusWatch}.
-            </p>
-          )}
         </div>
       </div>
 

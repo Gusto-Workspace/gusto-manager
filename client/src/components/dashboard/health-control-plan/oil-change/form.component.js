@@ -153,15 +153,17 @@ export default function OilChangeForm({
   const filtered = watch("filteredBeforeChange");
   const fryerVal = watch("fryerId") || "";
 
-  /* ------------------ SUGGESTIONS FRITEUSE / ÉQUIPEMENT (à la frappe) ------------------ */
+  /* ------------------ SUGGESTIONS FRITEUSE / ÉQUIPEMENT ------------------ */
 
-  // normalisation
-  const norm = (s) => String(s || "").trim().toLowerCase();
+  const norm = (s) =>
+    String(s || "")
+      .trim()
+      .toLowerCase();
 
-  // container + portal + scroller
-  const eqBoxRef = useRef(null);
-  const eqPortalRef = useRef(null);
-  const eqScrollerRef = useRef(null);
+  // container + portal + ANCHOR INPUT
+  const eqBoxRef = useRef(null); // wrapper (pour outside click)
+  const eqPortalRef = useRef(null); // portal node
+  const eqInputRef = useRef(null); // ⬅️ ancre exacte = INPUT
 
   // état
   const [eqOpen, setEqOpen] = useState(false);
@@ -209,7 +211,80 @@ export default function OilChangeForm({
     return () => document.removeEventListener("mousedown", onClickOutside);
   }, []);
 
-  // repositionnement du portal
+  // --- visualViewport (stabilise la position du portal sur mobile/tablette)
+  const vvRef = useRef({
+    offsetTop: 0,
+    offsetLeft: 0,
+    width: 0,
+    height: 0,
+    scale: 1,
+  });
+  const [, bumpVvTick] = useState(0);
+  const [isClient, setIsClient] = useState(false);
+  useEffect(() => setIsClient(true), []);
+
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const sync = () => {
+      vvRef.current = {
+        offsetTop: vv.offsetTop || 0,
+        offsetLeft: vv.offsetLeft || 0,
+        width: vv.width || window.innerWidth,
+        height: vv.height || window.innerHeight,
+        scale: vv.scale || 1,
+      };
+      bumpVvTick((n) => n + 1);
+    };
+    sync();
+    vv.addEventListener("scroll", sync);
+    vv.addEventListener("resize", sync);
+    window.addEventListener("orientationchange", sync);
+    return () => {
+      vv.removeEventListener("scroll", sync);
+      vv.removeEventListener("resize", sync);
+      window.removeEventListener("orientationchange", sync);
+    };
+  }, []);
+
+  // helper de positionnement (même largeur que l'INPUT, petit espace entre les deux)
+  function getDropdownStyle(anchorEl, { margin = -4, maxListPx = 256 } = {}) {
+    if (!anchorEl) return null;
+    const rect = anchorEl.getBoundingClientRect();
+    const { offsetTop, offsetLeft, height: vvH } = vvRef.current;
+
+    // place 4px SOUS l'input (margin = -4 => +4px)
+    let top = rect.bottom + offsetTop - margin;
+    let left = rect.left + offsetLeft;
+    const width = rect.width;
+
+    // flip si peu de place en bas
+    const spaceBelow = vvH - (rect.bottom + 0);
+    const willFlip = spaceBelow < 140;
+    if (willFlip) {
+      top = rect.top + offsetTop - Math.min(maxListPx, rect.top - 4);
+    }
+
+    const maxHeight = willFlip
+      ? Math.min(maxListPx, rect.top - 4)
+      : Math.min(maxListPx, vvH - (rect.bottom + 4));
+
+    return {
+      position: "fixed",
+      left,
+      top,
+      width, // ⬅️ même largeur que l'input
+      zIndex: 1000,
+      maxHeight: Math.max(120, maxHeight),
+      overflow: "auto",
+      WebkitOverflowScrolling: "touch",
+      overscrollBehavior: "contain",
+      willChange: "transform",
+      transform: "translateZ(0)",
+    };
+  }
+
+  // repositionnement du portal sur scroll/resize (document & containers)
   const [, forceTick] = useState(0);
   useEffect(() => {
     const onScrollOrResize = () => forceTick((v) => v + 1);
@@ -221,7 +296,17 @@ export default function OilChangeForm({
     };
   }, []);
 
-  // merge distincts
+  // scroll infini (si tu veux explorer davantage l'historique des valeurs)
+  const onEqScroll = async (e) => {
+    const el = e.currentTarget;
+    if (!el) return;
+    const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 16;
+    const hasMore = eqPageRef.current < eqPagesRef.current;
+    if (nearBottom && hasMore && !eqLoadingRef.current) {
+      await loadEquipPage(eqPageRef.current + 1);
+    }
+  };
+
   const addDistinct = (prev, arr) => {
     const seen = new Set(prev.map((x) => norm(x)));
     const out = [...prev];
@@ -236,7 +321,7 @@ export default function OilChangeForm({
     return out;
   };
 
-  // charge une page d’“oil-changes” et ajoute les fryerId uniques
+  // charge une page et ajoute les fryerId uniques
   const loadEquipPage = useCallback(
     async (page = 1) => {
       if (!restaurantId) return;
@@ -271,17 +356,6 @@ export default function OilChangeForm({
     [restaurantId]
   );
 
-  // scroll infini dans la liste des suggestions (si on veut explorer davantage)
-  const onEqScroll = (e) => {
-    const el = e.currentTarget;
-    if (!el) return;
-    const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 16;
-    const hasMore = eqPageRef.current < eqPagesRef.current;
-    if (nearBottom && hasMore && !eqLoadingRef.current) {
-      loadEquipPage(eqPageRef.current + 1);
-    }
-  };
-
   // met à jour la liste filtrée et l’ouverture du menu
   const updateFiltered = useCallback(
     (q) => {
@@ -294,7 +368,9 @@ export default function OilChangeForm({
       }
       const matches = eqItems
         .filter((v) => norm(v).includes(query))
-        .sort((a, b) => String(a).localeCompare(String(b), "fr", { sensitivity: "base" }))
+        .sort((a, b) =>
+          String(a).localeCompare(String(b), "fr", { sensitivity: "base" })
+        )
         .slice(0, 8);
 
       setEqFiltered(matches);
@@ -304,7 +380,7 @@ export default function OilChangeForm({
     [eqItems]
   );
 
-  // ouverture uniquement à la FRAPPE (comme “fournisseur” demandé)
+  // ouverture uniquement à la FRAPPE
   useEffect(() => {
     if (!eqUserTypedRef.current) {
       setEqOpen(false);
@@ -321,7 +397,6 @@ export default function OilChangeForm({
     }
 
     eqDebounceRef.current = setTimeout(async () => {
-      // si pas encore chargé, prendre la première page pour avoir une base
       if (eqPageRef.current === 0) {
         await loadEquipPage(1);
       }
@@ -341,7 +416,7 @@ export default function OilChangeForm({
   };
 
   const onEqKeyDown = (e) => {
-    if (!eqOpen) return; // n’ouvre pas au clavier : seulement à la frappe
+    if (!eqOpen) return;
     if (e.key === "Escape") {
       e.preventDefault();
       setEqOpen(false);
@@ -369,10 +444,32 @@ export default function OilChangeForm({
     }
   };
 
+  // Empêcher le “sur-scroll” de la page quand un dropdown est ouvert (clavier mobile)
+  const anyDropdownOpen = eqOpen;
+  useEffect(() => {
+    const html = document.documentElement;
+    const prevY = html.style.overscrollBehaviorY;
+    const prevX = html.style.overscrollBehaviorX;
+    if (anyDropdownOpen) {
+      html.style.overscrollBehaviorY = "contain";
+      html.style.overscrollBehaviorX = "none";
+    } else {
+      html.style.overscrollBehaviorY = prevY || "";
+      html.style.overscrollBehaviorX = prevX || "";
+    }
+    return () => {
+      html.style.overscrollBehaviorY = prevY || "";
+      html.style.overscrollBehaviorX = prevX || "";
+    };
+  }, [anyDropdownOpen]);
+
   // ---------------------------------- JSX ----------------------------------
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="relative flex flex-col gap-2">
+    <form
+      onSubmit={handleSubmit(onSubmit)}
+      className="relative flex flex-col gap-2"
+    >
       {/* Ligne 1 : Matériel / Date */}
       <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
         <div className={fieldWrap} ref={eqBoxRef}>
@@ -382,45 +479,50 @@ export default function OilChangeForm({
           </label>
 
           <div className="relative">
-            <input
-              type="text"
-              placeholder="ex: fryer-1 / cuisine"
-              autoComplete="off"
-              spellCheck={false}
-              autoCorrect="off"
-              {...register("fryerId", {
+            {(() => {
+              // Chaîner RHF + notre ref pour l'ancre exacte (INPUT)
+              const fryerReg = register("fryerId", {
                 onChange: () => {
                   eqUserTypedRef.current = true; // n’ouvre que si l’utilisateur tape
                 },
-              })}
-              className={`${inputCls} ${okBorder}`}
-              onKeyDown={onEqKeyDown}
-              onBlur={() =>
-                setTimeout(() => {
-                  if (!pointerInPortalRef.current) {
-                    setEqOpen(false);
-                    setEqActiveIndex(-1);
+              });
+              return (
+                <input
+                  type="text"
+                  placeholder="ex: fryer-1 / cuisine"
+                  autoComplete="off"
+                  spellCheck={false}
+                  autoCorrect="off"
+                  {...fryerReg}
+                  ref={(el) => {
+                    eqInputRef.current = el; // ⬅️ ancre exacte
+                    fryerReg.ref(el); // garder la ref RHF
+                  }}
+                  className={`${inputCls} ${okBorder}`}
+                  onKeyDown={onEqKeyDown}
+                  onBlur={() =>
+                    setTimeout(() => {
+                      if (!pointerInPortalRef.current) {
+                        setEqOpen(false);
+                        setEqActiveIndex(-1);
+                      }
+                    }, 0)
                   }
-                }, 0)
-              }
-            />
+                />
+              );
+            })()}
 
-            {/* Suggestions ÉQUIPEMENT — apparait SEULEMENT quand on tape */}
-            {eqOpen &&
+            {/* Suggestions ÉQUIPEMENT — via PORTAL, largeur = input, marge -4 */}
+            {isClient &&
+              eqOpen &&
               createPortal(
                 (() => {
-                  const anchor = eqBoxRef.current;
+                  const anchor = eqInputRef.current;
                   if (!anchor) return null;
-                  const rect = anchor.getBoundingClientRect();
-                  const style = {
-                    position: "fixed",
-                    left: rect.left + 12,
-                    top: rect.bottom - 4,
-                    width: rect.width - 24,
-                    zIndex: 1000,
-                    maxHeight: "16rem",
-                    overflow: "auto",
-                  };
+                  const style = getDropdownStyle(anchor, {
+                    margin: -4,
+                    maxListPx: 256,
+                  });
                   return (
                     <div
                       ref={eqPortalRef}
@@ -439,7 +541,9 @@ export default function OilChangeForm({
                             onMouseDown={(e) => e.preventDefault()}
                             onMouseEnter={() => setEqActiveIndex(idx)}
                             onClick={() => pickEq(name)}
-                            className={`w-full text-left px-3 py-2 text-sm hover:bg-blue/5 ${active ? "bg-blue/5" : ""}`}
+                            className={`w-full text-left px-3 py-2 text-sm hover:bg-blue/5 ${
+                              active ? "bg-blue/5" : ""
+                            }`}
                             role="option"
                             aria-selected={active}
                             title={name}
@@ -449,7 +553,7 @@ export default function OilChangeForm({
                         );
                       })}
 
-                      {/* états discrets */}
+                      {/* états */}
                       {eqLoading && (
                         <div className="px-3 py-2 text-xs text-darkBlue/60">
                           Chargement…
@@ -458,6 +562,11 @@ export default function OilChangeForm({
                       {eqError && (
                         <div className="px-3 py-2 text-xs text-red">
                           Erreur de chargement
+                        </div>
+                      )}
+                      {eqFiltered.length === 0 && !eqLoading && !eqError && (
+                        <div className="px-3 py-2 text-xs text-darkBlue/40">
+                          Aucun résultat
                         </div>
                       )}
                     </div>
@@ -479,7 +588,9 @@ export default function OilChangeForm({
             className={selectCls}
           />
           {errors.performedAt && (
-            <p className="mt-1 text-xs text-red">{errors.performedAt.message}</p>
+            <p className="mt-1 text-xs text-red">
+              {errors.performedAt.message}
+            </p>
           )}
         </div>
       </div>
@@ -538,8 +649,7 @@ export default function OilChangeForm({
       <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
         <div className={fieldWrap}>
           <label className={labelCls}>
-            <Percent className="size-4" />
-            % TPM
+            <Percent className="size-4" />% TPM
           </label>
           <input
             type="number"
@@ -644,7 +754,7 @@ export default function OilChangeForm({
             <FileText className="size-4" />
             Observations qualité
           </label>
-        <div className="relative">
+          <div className="relative">
             <textarea
               rows={1}
               {...register("qualityNotes")}
