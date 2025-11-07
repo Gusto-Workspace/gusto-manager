@@ -9,6 +9,7 @@ import {
   Trash2,
   Loader2,
   X,
+  Check,
 } from "lucide-react";
 
 function fmtDate(d) {
@@ -26,10 +27,38 @@ function fmtDate(d) {
     return d || "—";
   }
 }
-function statusBadge(it) {
-  if (it?.done) return "Fait";
-  if (it?.dueAt && new Date(it.dueAt) < new Date()) return "En retard";
-  return "À faire";
+
+// Détermine si la tâche est "faite" pour la période courante selon la fréquence
+function isDoneForPeriod(item) {
+  const last = item?.lastDoneAt ? new Date(item.lastDoneAt) : null;
+  const freq = item?.frequency || "daily";
+  if (!last) return false;
+  const now = new Date();
+
+  const startOfToday = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate()
+  );
+  const startOfWeek = (() => {
+    const day = (now.getDay() + 6) % 7; // lundi = 0
+    const d = new Date(now);
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - day);
+    return d;
+  })();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  if (freq === "daily") return last >= startOfToday;
+  if (freq === "weekly") return last >= startOfWeek;
+  if (freq === "monthly") return last >= startOfMonth;
+  // on_demand : jamais "exigible" => on le considère "à faire" par défaut
+  return false;
+}
+
+function statusBadge(item) {
+  if (item?.frequency === "on_demand") return "À la demande";
+  return isDoneForPeriod(item) ? "Fait" : "À faire";
 }
 
 export default function CleaningTaskList({
@@ -46,7 +75,7 @@ export default function CleaningTaskList({
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [q, setQ] = useState("");
-  const [status, setStatus] = useState("all"); // all|done|todo
+  const [status, setStatus] = useState("all"); // all|done|todo (client-side désormais)
   const [freq, setFreq] = useState(""); // ''
 
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -68,16 +97,12 @@ export default function CleaningTaskList({
 
   const sortLogic = (list) =>
     [...list].sort((a, b) => {
-      const ak = a?.done
-        ? new Date(a.doneAt || 0).getTime()
-        : a?.dueAt
-          ? new Date(a.dueAt).getTime()
-          : new Date(a.createdAt || 0).getTime();
-      const bk = b?.done
-        ? new Date(b.doneAt || 0).getTime()
-        : b?.dueAt
-          ? new Date(b.dueAt).getTime()
-          : new Date(b.createdAt || 0).getTime();
+      const ak = a?.lastDoneAt
+        ? new Date(a.lastDoneAt).getTime()
+        : new Date(a.createdAt || 0).getTime();
+      const bk = b?.lastDoneAt
+        ? new Date(b.lastDoneAt).getTime()
+        : new Date(b.createdAt || 0).getTime();
       return bk - ak;
     });
 
@@ -94,7 +119,7 @@ export default function CleaningTaskList({
         q: overrides.q ?? q,
         dateFrom: overrides.dateFrom ?? dateFrom,
         dateTo: overrides.dateTo ?? dateTo,
-        status: overrides.status ?? status,
+        status: overrides.status ?? status, // volontairement ignoré par le back
         freq: overrides.freq ?? freq,
       };
 
@@ -102,7 +127,6 @@ export default function CleaningTaskList({
       if (cur.dateFrom) params.date_from = new Date(cur.dateFrom).toISOString();
       if (cur.dateTo) params.date_to = new Date(cur.dateTo).toISOString();
       if (cur.q) params.q = cur.q;
-      if (cur.status && cur.status !== "all") params.status = cur.status;
       if (cur.freq) params.freq = cur.freq;
 
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-cleaning-tasks`;
@@ -136,12 +160,12 @@ export default function CleaningTaskList({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
 
-  // Auto-fetch quand Statut / Fréquence changent
+  // Auto-fetch quand Fréquence change (status=client-side now)
   useEffect(() => {
     if (!restaurantId) return;
     fetchData(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, freq]);
+  }, [freq]);
 
   // Upserts live
   useEffect(() => {
@@ -194,27 +218,38 @@ export default function CleaningTaskList({
       window.removeEventListener("cleaning-task:upsert", handleUpsert);
   }, [restaurantId]);
 
-  // Recherche locale
+  // Recherche + statut côté client
   const filtered = useMemo(() => {
-    if (!q) return items;
-    const qq = q.toLowerCase();
-    return items.filter((it) =>
-      [
-        it?.zone,
-        it?.description,
-        it?.frequency,
-        it?.productUsed,
-        it?.riskLevel,
-        ...(Array.isArray(it?.protocolSteps) ? it.protocolSteps : []),
-        ...(Array.isArray(it?.proofUrls) ? it.proofUrls : []),
-        it?.recordedBy?.firstName,
-        it?.recordedBy?.lastName,
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(qq)
-    );
-  }, [items, q]);
+    let base = items;
+
+    if (q) {
+      const qq = q.toLowerCase();
+      base = base.filter((it) =>
+        [
+          it?.zone,
+          it?.description,
+          it?.frequency,
+          ...(Array.isArray(it?.products) ? it.products : []),
+          ...(Array.isArray(it?.protocolSteps) ? it.protocolSteps : []),
+          it?.riskLevel,
+          it?.recordedBy?.firstName,
+          it?.recordedBy?.lastName,
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(qq)
+      );
+    }
+
+    if (status !== "all") {
+      base = base.filter((it) => {
+        const doneNow = isDoneForPeriod(it);
+        return status === "done" ? doneNow : !doneNow;
+      });
+    }
+
+    return base;
+  }, [items, q, status]);
 
   const askDelete = (item) => {
     setDeleteTarget(item);
@@ -223,12 +258,13 @@ export default function CleaningTaskList({
 
   const onConfirmDelete = async () => {
     if (!deleteTarget) return;
-
     const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/cleaning-tasks/${deleteTarget._id}`;
 
     try {
       setDeleteLoading(true);
-      await axios.delete(url, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.delete(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
       const deleted = deleteTarget;
       const updatedItems = (items || []).filter(
@@ -249,19 +285,30 @@ export default function CleaningTaskList({
         return nextMeta;
       });
     } catch (err) {
-      console.error("Erreur lors de la suppression de la tâche:", err);
+      console.error("Erreur lors de la suppression du plan:", err);
     } finally {
       setDeleteLoading(false);
     }
   };
 
-  const closeDeleteModal = () => {
-    if (deleteLoading) return;
-    setIsDeleteModalOpen(false);
-    setDeleteTarget(null);
-  };
+  async function markDone(item) {
+    try {
+      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/cleaning-tasks/${item._id}/mark-done`;
+      const { data: saved } = await axios.post(
+        url,
+        {}, // tu pourras envoyer { proofUrls, note } ici plus tard si besoin
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      window.dispatchEvent(
+        new CustomEvent("cleaning-task:upsert", { detail: { doc: saved } })
+      );
+    } catch (e) {
+      console.error("mark-done error:", e);
+      alert("Impossible d'enregistrer le 'Fait'.");
+    }
+  }
 
-  // Styles (alignés sur InventoryLotList / RecipeBatchesList / OilChangeList)
+  // Styles
   const fieldWrap =
     "group relative rounded-xl bg-white/50 backdrop-blur-sm transition-shadow";
   const labelCls =
@@ -274,10 +321,9 @@ export default function CleaningTaskList({
     "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition active:scale-[0.98]";
 
   return (
-    <div className="rounded-2xl border border-darkBlue/10 bg-white p-4  midTablet:p-5 shadow">
+    <div className="rounded-2xl border border-darkBlue/10 bg-white p-4 midTablet:p-5 shadow">
       {/* Filtres */}
       <div className="flex flex-col midTablet:flex-row midTablet:flex-wrap gap-2 mb-2">
-        {/* Recherche */}
         <div className={`${fieldWrap} flex-1 midTablet:min-w-[220px]`}>
           <label className={labelCls}>
             <Search className="size-4" /> Recherche
@@ -285,19 +331,17 @@ export default function CleaningTaskList({
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Zone, produit, protocole, note…"
+            placeholder="Zone, produit, protocole…"
             className={inputCls}
           />
         </div>
 
-        {/* Statut */}
         <div className={`${fieldWrap} w-full midTablet:w-[200px]`}>
-          <label className={labelCls}>Statut</label>
+          <label className={labelCls}>Statut (période)</label>
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value)}
             className={selectCls}
-            title="Statut"
           >
             <option value="all">Tous</option>
             <option value="todo">À faire</option>
@@ -305,14 +349,12 @@ export default function CleaningTaskList({
           </select>
         </div>
 
-        {/* Fréquence */}
         <div className={`${fieldWrap} w-full midTablet:w-[220px]`}>
           <label className={labelCls}>Fréquence</label>
           <select
             value={freq}
             onChange={(e) => setFreq(e.target.value)}
             className={selectCls}
-            title="Fréquence"
           >
             <option value="">Toutes</option>
             <option value="daily">Quotidienne</option>
@@ -322,8 +364,7 @@ export default function CleaningTaskList({
           </select>
         </div>
 
-        {/* Du */}
-        <div className={`${fieldWrap}`}>
+        <div className={fieldWrap}>
           <label className={labelCls}>
             <CalendarClock className="size-4" /> Du
           </label>
@@ -336,8 +377,7 @@ export default function CleaningTaskList({
           />
         </div>
 
-        {/* Au */}
-        <div className={`${fieldWrap}`}>
+        <div className={fieldWrap}>
           <label className={labelCls}>
             <CalendarClock className="size-4" /> Au
           </label>
@@ -393,29 +433,43 @@ export default function CleaningTaskList({
         <table className="w-full text-[13px]">
           <thead className="whitespace-nowrap">
             <tr className="sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Statut</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Zone</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Fréquence</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Prévue</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Fait le</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Priorité</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Produit</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Preuves</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Opérateur</th>
-              <th className="py-2 pr-0 text-right font-medium text-darkBlue/70">Actions</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Statut
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Zone
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Fréquence
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Dernière fois
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Priorité
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Produits
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Dernier opérateur
+              </th>
+              <th className="py-2 pr-0 text-right font-medium text-darkBlue/70">
+                Actions
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-darkBlue/10 [&>tr:last-child>td]:!pb-0">
             {!loading && filtered.length === 0 && (
               <tr>
-                <td colSpan={10} className="py-8 text-center text-darkBlue/50">
-                  Aucune tâche
+                <td colSpan={9} className="py-8 text-center text-darkBlue/50">
+                  Aucun plan
                 </td>
               </tr>
             )}
             {loading && (
               <tr>
-                <td colSpan={10} className="py-8 text-center text-darkBlue/50">
+                <td colSpan={9} className="py-8 text-center text-darkBlue/50">
                   <span className="inline-flex items-center gap-2">
                     <Loader2 className="size-4 animate-spin" /> Chargement…
                   </span>
@@ -425,57 +479,69 @@ export default function CleaningTaskList({
             {!loading &&
               filtered.map((it) => {
                 const badge = statusBadge(it);
-                const overdue = badge === "En retard";
+                const doneNow = badge === "Fait";
                 return (
                   <tr
                     key={it._id}
                     className={`transition-colors hover:bg-darkBlue/[0.03] ${
-                      editingId === it._id ? "bg-blue/5 ring-1 ring-blue/20" : ""
+                      editingId === it._id
+                        ? "bg-blue/5 ring-1 ring-blue/20"
+                        : ""
                     }`}
                   >
                     <td className="py-2 pr-3 whitespace-nowrap">
                       <span
                         className={`px-2 py-0.5 rounded text-xs ${
-                          it.done
-                            ? "bg-green text-white"
-                            : overdue
-                              ? "bg-red text-white"
-                              : "bg-orange text-white"
+                          it.frequency === "on_demand"
+                            ? "bg-orange text-white"
+                            : doneNow
+                              ? "bg-green text-white"
+                              : "bg-red text-white"
                         }`}
                       >
                         {badge}
                       </span>
-                      {it.verified && (
-                        <span className="ml-1 px-2 py-0.5 rounded text-xs bg-blue text-white">
-                          Vérifié
-                        </span>
-                      )}
                     </td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{it.zone || "—"}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{it.frequency || "—"}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{fmtDate(it.dueAt)}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{fmtDate(it.doneAt)}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{it.riskLevel || "—"}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{it.productUsed || "—"}</td>
                     <td className="py-2 pr-3 whitespace-nowrap">
-                      {Array.isArray(it.proofUrls) && it.proofUrls.length
-                        ? `${it.proofUrls.length} preuve(s)`
+                      {it.zone || "—"}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it.frequency || "—"}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {fmtDate(it.lastDoneAt)}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it.riskLevel || "—"}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {Array.isArray(it.products) && it.products.length
+                        ? it.products.join(", ")
                         : "—"}
                     </td>
+
                     <td className="py-2 pr-3 whitespace-nowrap">
-                      {it?.recordedBy
-                        ? `${it.recordedBy.firstName || ""} ${it.recordedBy.lastName || ""}`.trim()
+                      {it?.lastDoneBy
+                        ? `${it.lastDoneBy.firstName || ""} ${it.lastDoneBy.lastName || ""}`.trim()
                         : "—"}
                     </td>
                     <td className="py-2 pr-0">
                       <div className="flex items-center justify-end gap-2">
                         <button
+                          onClick={() => markDone(it)}
+                          className={`${btnBase} border border-green/60 bg-white text-green`}
+                          type="button"
+                          title="Marquer comme fait maintenant"
+                        >
+                          <Check className="size-4" /> Fait
+                        </button>
+                        <button
                           onClick={() => onEdit?.(it)}
-                          className={`${btnBase} border border-green/50 bg-white text-green`}
-                          aria-label="Éditer"
+                          className={`${btnBase} border text-nowrap border-blue/60 bg-white text-blue`}
+                          aria-label="Voir/Éditer"
                           type="button"
                         >
-                          <Edit3 className="size-4" /> Éditer
+                          <Edit3 className="size-4" /> Voir / Éditer
                         </button>
                         <button
                           onClick={() => askDelete(it)}
@@ -498,7 +564,7 @@ export default function CleaningTaskList({
       {meta?.pages > 1 && (
         <div className="mt-4 flex items-center justify-between">
           <div className="text-xs text-darkBlue/60">
-            Page {meta.page}/{meta.pages} — {meta.total} tâches
+            Page {meta.page}/{meta.pages} — {meta.total} plan(s)
           </div>
           <div className="flex gap-2">
             <button
@@ -525,18 +591,23 @@ export default function CleaningTaskList({
       {isDeleteModalOpen &&
         isClient &&
         createPortal(
-          <div className="fixed inset-0 z-[1000]" aria-modal="true" role="dialog">
+          <div
+            className="fixed inset-0 z-[1000]"
+            aria-modal="true"
+            role="dialog"
+          >
             <div
-              onClick={closeDeleteModal}
+              onClick={() => !deleteLoading && setIsDeleteModalOpen(false)}
               className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"
             />
             <div className="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
               <div className="pointer-events-auto w-full max-w-[480px] rounded-2xl border border-darkBlue/10 bg-white p-5 shadow-2xl">
                 <h2 className="mb-2 text-center text-lg font-semibold text-darkBlue">
-                  Supprimer cette tâche ?
+                  Supprimer ce plan ?
                 </h2>
                 <p className="mb-5 text-center text-sm text-darkBlue/70">
-                  Cette action est définitive. La tâche sera retirée de l’historique.
+                  Cette action est définitive. Le plan sera retiré ainsi que son
+                  historique.
                 </p>
                 <div className="flex items-center justify-center gap-2">
                   <button
@@ -555,7 +626,9 @@ export default function CleaningTaskList({
                   </button>
                   <button
                     type="button"
-                    onClick={closeDeleteModal}
+                    onClick={() =>
+                      !deleteLoading && setIsDeleteModalOpen(false)
+                    }
                     className={`${btnBase} border border-red bg-red text-white`}
                   >
                     <X className="size-4" /> Annuler

@@ -1,5 +1,30 @@
+// server/models/logs/cleaning-task.model.js
 const mongoose = require("mongoose");
 const { Schema } = mongoose;
+
+const userRefSchema = new Schema(
+  {
+    userId: { type: Schema.Types.ObjectId, index: true },
+    role: { type: String, enum: ["owner", "employee"] },
+    firstName: String,
+    lastName: String,
+    avatarUrl: String, // <-- NEW: URL photo de profil (dénormalisée)
+  },
+  { _id: false }
+);
+
+const historySchema = new Schema(
+  {
+    doneAt: { type: Date, default: Date.now, index: true },
+    doneBy: userRefSchema,
+    proofUrls: { type: [String], default: [] },
+    note: String,
+    verified: { type: Boolean, default: false },
+    verifiedAt: Date,
+    verifiedBy: userRefSchema,
+  },
+  { _id: false }
+);
 
 const cleaningTaskSchema = new Schema(
   {
@@ -10,10 +35,9 @@ const cleaningTaskSchema = new Schema(
       index: true,
     },
 
-    // Cible
-    zone: { type: String, required: true },
+    // === Plan (configuration) ===
+    zone: { type: String, required: true, index: true },
     zoneId: { type: String },
-
     description: { type: String },
 
     frequency: {
@@ -23,46 +47,34 @@ const cleaningTaskSchema = new Schema(
       index: true,
     },
 
-    // Planification
-    dueAt: { type: Date, index: true }, // quand c’est prévu
-    assignedTo: { type: Schema.Types.ObjectId, ref: "Employee" },
-
-    // Exécution
-    done: { type: Boolean, default: false, index: true },
-    doneAt: Date,
-
-    // Preuves
-    proofUrls: { type: [String], default: [] }, // plusieurs preuves possibles (photos/URLs)
-
-    // Produits/protocoles
-    productUsed: String,
-    productFDSUrl: String,
-    protocolSteps: { type: [String], default: [] }, // étapes/checklist
-    dwellTimeMin: Number, // temps de contact en minutes
-
-    // Qualité/risque
     riskLevel: {
       type: String,
       enum: ["low", "medium", "high"],
       default: "low",
+      index: true,
     },
 
-    // Vérification (optionnelle)
-    verified: { type: Boolean, default: false },
-    verifiedAt: Date,
-    verifiedBy: {
-      userId: { type: Schema.Types.ObjectId, index: true },
-      role: { type: String, enum: ["owner", "employee"] },
-      firstName: { type: String },
-      lastName: { type: String },
-    },
+    protocolSteps: { type: [String], default: [] },
+    dwellTimeMin: Number,
 
-    // Traçabilité auteur création
+    // Produits
+    products: { type: [String], default: [] },
+    productFDSUrls: { type: [String], default: [] },
+
+    // === Historique des exécutions ===
+    history: { type: [historySchema], default: [] },
+
+    // Dénormalisation pour la liste
+    lastDoneAt: { type: Date, index: true },
+    lastDoneBy: userRefSchema,
+    lastProofCount: { type: Number, default: 0 },
+
+    // Traçabilité création
     recordedBy: {
       userId: { type: Schema.Types.ObjectId, required: true, index: true },
       role: { type: String, enum: ["owner", "employee"], required: true },
-      firstName: { type: String },
-      lastName: { type: String },
+      firstName: String,
+      lastName: String,
     },
 
     createdAt: { type: Date, default: Date.now, index: true },
@@ -72,8 +84,8 @@ const cleaningTaskSchema = new Schema(
 
 // Index utiles
 cleaningTaskSchema.index({ restaurantId: 1, createdAt: -1 });
-cleaningTaskSchema.index({ restaurantId: 1, dueAt: -1 });
-cleaningTaskSchema.index({ restaurantId: 1, done: 1, doneAt: -1 });
+cleaningTaskSchema.index({ restaurantId: 1, lastDoneAt: -1 });
+cleaningTaskSchema.index({ restaurantId: 1, zone: 1 });
 
 module.exports =
   mongoose.models.CleaningTask ||

@@ -1,3 +1,4 @@
+// server/routes/health-control-plan/cleaning-tasks.routes.js
 const express = require("express");
 const router = express.Router();
 
@@ -6,6 +7,7 @@ const { Types } = mongoose;
 
 const authenticateToken = require("../../middleware/authentificate-token");
 const CleaningTask = require("../../models/logs/cleaning-task.model");
+const Employee = require("../../models/employee.model");
 
 /* ---------- helpers ---------- */
 function currentUserFromToken(req) {
@@ -13,7 +15,7 @@ function currentUserFromToken(req) {
   const role = (u.role || "").toLowerCase();
   if (!["owner", "employee"].includes(role) || !u.id) return null;
   return {
-    userId: u.id,
+    userId: new Types.ObjectId(String(u.id)),
     role,
     firstName: u.firstname || u.firstName || "",
     lastName: u.lastname || u.lastName || "",
@@ -34,90 +36,26 @@ function normalizeNumber(v) {
   const n = Number(v);
   return Number.isNaN(n) ? null : n;
 }
-function normalizeBool(v) {
-  if (typeof v === "boolean") return v;
-  const s = String(v).toLowerCase().trim();
-  if (["1", "true", "on", "yes", "oui"].includes(s)) return true;
-  if (["0", "false", "off", "no", "non"].includes(s)) return false;
-  return null;
-}
-function normalizeObjectId(v) {
-  if (!v) return null;
-  const s = String(v);
-  return Types.ObjectId.isValid(s) ? s : null;
-}
 function normalizeStringArray(input) {
   if (!input) return [];
   if (Array.isArray(input)) {
     return input
-      .map((x) => normalizeStr(x))
+      .map((x) => String(x).trim())
       .filter(Boolean)
-      .slice(0, 50);
+      .slice(0, 100);
   }
-  // string -> split , ; \n
-  const parts = String(input)
+  return String(input)
     .split(/[\n,;]+/g)
     .map((s) => s.trim())
-    .filter(Boolean);
-  return parts.slice(0, 50);
+    .filter(Boolean)
+    .slice(0, 100);
 }
-/** tri logique: doneAt desc si done, sinon dueAt desc, sinon createdAt desc */
 function listSortExpr() {
-  return {
-    done: -1, // faits d'abord
-    doneAt: -1,
-    dueAt: -1,
-    createdAt: -1,
-    _id: -1,
-  };
-}
-function hasBusinessChanges(prev, next) {
-  const fields = [
-    "zone",
-    "zoneId",
-    "description",
-    "frequency",
-    "assignedTo",
-    "done",
-    "productUsed",
-    "productFDSUrl",
-    "riskLevel",
-    "verified",
-    "dwellTimeMin",
-  ];
-  for (const f of fields)
-    if ((prev?.[f] ?? null) !== (next?.[f] ?? null)) return true;
-
-  const t1 = prev?.dueAt?.getTime?.() ?? null;
-  const t2 = next?.dueAt?.getTime?.() ?? null;
-  if (t1 !== t2) return true;
-
-  const d1 = prev?.doneAt?.getTime?.() ?? null;
-  const d2 = next?.doneAt?.getTime?.() ?? null;
-  if (d1 !== d2) return true;
-
-  const v1 = prev?.verifiedAt?.getTime?.() ?? null;
-  const v2 = next?.verifiedAt?.getTime?.() ?? null;
-  if (v1 !== v2) return true;
-
-  // arrays
-  const a = (prev?.proofUrls || []).join("||");
-  const b = (next?.proofUrls || []).join("||");
-  if (a !== b) return true;
-
-  const p1 = (prev?.protocolSteps || []).join("||");
-  const p2 = (next?.protocolSteps || []).join("||");
-  if (p1 !== p2) return true;
-
-  // verifiedBy
-  const vb1 = JSON.stringify(prev?.verifiedBy || null);
-  const vb2 = JSON.stringify(next?.verifiedBy || null);
-  if (vb1 !== vb2) return true;
-
-  return false;
+  // Dernière exécution descendante, puis création
+  return { lastDoneAt: -1, createdAt: -1, _id: -1 };
 }
 
-/* ------------------ CREATE ------------------ */
+/* ------------------ CREATE (Plan) ------------------ */
 router.post(
   "/restaurants/:restaurantId/cleaning-tasks",
   authenticateToken,
@@ -125,7 +63,6 @@ router.post(
     try {
       const { restaurantId } = req.params;
       const inData = { ...req.body };
-
       const currentUser = currentUserFromToken(req);
       if (!currentUser)
         return res.status(400).json({ error: "Utilisateur non reconnu" });
@@ -133,55 +70,23 @@ router.post(
       const zone = normalizeStr(inData.zone);
       if (!zone) return res.status(400).json({ error: "zone est requise" });
 
-      const zoneId = normalizeStr(inData.zoneId);
-      const description = normalizeStr(inData.description);
-      const frequency = normalizeStr(inData.frequency) || "daily";
-      const dueAt = normalizeDate(inData.dueAt);
-      const assignedTo = normalizeObjectId(inData.assignedTo);
-
-      const done = normalizeBool(inData.done) ?? false;
-      const doneAt =
-        normalizeDate(inData.doneAt) || (done ? new Date() : undefined);
-
-      const proofUrls = normalizeStringArray(inData.proofUrls);
-      const productUsed = normalizeStr(inData.productUsed);
-      const productFDSUrl = normalizeStr(inData.productFDSUrl);
-
-      const protocolSteps = normalizeStringArray(inData.protocolSteps);
-      const dwellTimeMin = normalizeNumber(inData.dwellTimeMin);
-
-      const riskLevel = ["low", "medium", "high"].includes(
-        String(inData.riskLevel)
-      )
-        ? String(inData.riskLevel)
-        : "low";
-
-      const verified = normalizeBool(inData.verified) ?? false;
-      const verifiedAt =
-        normalizeDate(inData.verifiedAt) || (verified ? new Date() : undefined);
-      const verifiedBy = verified
-        ? currentUser // par défaut, celui qui enregistre peut vérifier
-        : undefined;
-
       const doc = new CleaningTask({
         restaurantId,
         zone,
-        zoneId: zoneId ?? undefined,
-        description: description ?? undefined,
-        frequency,
-        dueAt: dueAt ?? undefined,
-        assignedTo: assignedTo ?? undefined,
-        done,
-        doneAt: doneAt ?? undefined,
-        proofUrls,
-        productUsed: productUsed ?? undefined,
-        productFDSUrl: productFDSUrl ?? undefined,
-        protocolSteps,
-        dwellTimeMin: dwellTimeMin ?? undefined,
-        riskLevel,
-        verified,
-        verifiedAt: verifiedAt ?? undefined,
-        verifiedBy,
+        zoneId: normalizeStr(inData.zoneId) ?? undefined,
+        description: normalizeStr(inData.description) ?? undefined,
+        frequency: ["daily", "weekly", "monthly", "on_demand"].includes(
+          String(inData.frequency)
+        )
+          ? String(inData.frequency)
+          : "daily",
+        riskLevel: ["low", "medium", "high"].includes(String(inData.riskLevel))
+          ? String(inData.riskLevel)
+          : "low",
+        protocolSteps: normalizeStringArray(inData.protocolSteps),
+        dwellTimeMin: normalizeNumber(inData.dwellTimeMin) ?? undefined,
+        products: normalizeStringArray(inData.products),
+        productFDSUrls: normalizeStringArray(inData.productFDSUrls),
         recordedBy: currentUser,
       });
 
@@ -191,12 +96,12 @@ router.post(
       console.error("POST /cleaning-tasks:", err);
       return res
         .status(500)
-        .json({ error: "Erreur lors de la création de la tâche de nettoyage" });
+        .json({ error: "Erreur lors de la création du plan de nettoyage" });
     }
   }
 );
 
-/* ------------------ LIST ------------------ */
+/* ------------------ LIST (Plans) ------------------ */
 router.get(
   "/restaurants/:restaurantId/list-cleaning-tasks",
   authenticateToken,
@@ -206,21 +111,15 @@ router.get(
       const {
         page = 1,
         limit = 20,
+        q,
+        freq, // daily|weekly|monthly|on_demand
+        zone, // texte (RegExp)
         date_from,
         date_to,
-        q,
-        status, // "all" | "done" | "todo"
-        freq, // daily | weekly | monthly | on_demand
-        zone, // text filter
       } = req.query;
 
       const query = { restaurantId };
 
-      // status
-      if (status === "done") query.done = true;
-      else if (status === "todo") query.done = false;
-
-      // frequency
       if (
         freq &&
         ["daily", "weekly", "monthly", "on_demand"].includes(String(freq))
@@ -228,12 +127,25 @@ router.get(
         query.frequency = String(freq);
       }
 
-      // zone text
       if (zone && String(zone).trim()) {
         query.zone = new RegExp(String(zone).trim(), "i");
       }
 
-      // date range — on cherche dans doneAt si done, sinon dueAt, sinon createdAt
+      // Recherche texte simple
+      if (q && String(q).trim()) {
+        const rx = new RegExp(String(q).trim(), "i");
+        (query.$or ||= []).push(
+          { zone: rx },
+          { description: rx },
+          { products: rx },
+          { protocolSteps: rx },
+          { riskLevel: rx },
+          { "recordedBy.firstName": rx },
+          { "recordedBy.lastName": rx }
+        );
+      }
+
+      // Filtre date
       if (date_from || date_to) {
         const from = date_from ? new Date(date_from) : null;
         const to = date_to ? new Date(date_to) : null;
@@ -241,50 +153,21 @@ router.get(
           to.setDate(to.getDate() + 1);
           to.setMilliseconds(to.getMilliseconds() - 1);
         }
-
         query.$or = [
           {
-            done: true,
-            ...(from || to
-              ? {
-                  doneAt: {
-                    ...(from ? { $gte: from } : {}),
-                    ...(to ? { $lte: to } : {}),
-                  },
-                }
-              : {}),
-          },
-          {
-            done: false,
-            dueAt: {
+            lastDoneAt: {
               ...(from ? { $gte: from } : {}),
               ...(to ? { $lte: to } : {}),
             },
           },
           {
-            done: false,
-            dueAt: { $exists: false },
+            lastDoneAt: { $exists: false },
             createdAt: {
               ...(from ? { $gte: from } : {}),
               ...(to ? { $lte: to } : {}),
             },
           },
         ];
-      }
-
-      // recherche texte
-      if (q && String(q).trim().length) {
-        const rx = new RegExp(String(q).trim(), "i");
-        (query.$or ||= []).push(
-          { zone: rx },
-          { description: rx },
-          { productUsed: rx },
-          { productFDSUrl: rx },
-          { protocolSteps: rx },
-          { riskLevel: rx },
-          { "recordedBy.firstName": rx },
-          { "recordedBy.lastName": rx }
-        );
       }
 
       const skip = (Number(page) - 1) * Number(limit);
@@ -310,7 +193,7 @@ router.get(
       console.error("GET /list-cleaning-tasks:", err);
       return res
         .status(500)
-        .json({ error: "Erreur lors de la récupération des tâches" });
+        .json({ error: "Erreur lors de la récupération des plans" });
     }
   }
 );
@@ -323,18 +206,18 @@ router.get(
     try {
       const { restaurantId, taskId } = req.params;
       const doc = await CleaningTask.findOne({ _id: taskId, restaurantId });
-      if (!doc) return res.status(404).json({ error: "Tâche introuvable" });
+      if (!doc) return res.status(404).json({ error: "Plan introuvable" });
       return res.json(doc);
     } catch (err) {
       console.error("GET /cleaning-tasks/:taskId:", err);
       return res
         .status(500)
-        .json({ error: "Erreur lors de la récupération de la tâche" });
+        .json({ error: "Erreur lors de la récupération du plan" });
     }
   }
 );
 
-/* ------------------ UPDATE ------------------ */
+/* ------------------ UPDATE (Plan) ------------------ */
 router.put(
   "/restaurants/:restaurantId/cleaning-tasks/:taskId",
   authenticateToken,
@@ -342,12 +225,12 @@ router.put(
     try {
       const { restaurantId, taskId } = req.params;
       const inData = { ...req.body };
-
       delete inData.recordedBy;
       delete inData.restaurantId;
+      delete inData.history; // l'historique ne se modifie pas ici
 
       const prev = await CleaningTask.findOne({ _id: taskId, restaurantId });
-      if (!prev) return res.status(404).json({ error: "Tâche introuvable" });
+      if (!prev) return res.status(404).json({ error: "Plan introuvable" });
 
       const next = {
         zone: inData.zone !== undefined ? normalizeStr(inData.zone) : prev.zone,
@@ -360,80 +243,34 @@ router.put(
             ? normalizeStr(inData.description)
             : prev.description,
         frequency:
-          inData.frequency !== undefined
-            ? normalizeStr(inData.frequency) || prev.frequency
+          inData.frequency !== undefined &&
+          ["daily", "weekly", "monthly", "on_demand"].includes(
+            String(inData.frequency)
+          )
+            ? String(inData.frequency)
             : prev.frequency,
-        dueAt:
-          inData.dueAt !== undefined ? normalizeDate(inData.dueAt) : prev.dueAt,
-        assignedTo:
-          inData.assignedTo !== undefined
-            ? normalizeObjectId(inData.assignedTo)
-            : prev.assignedTo,
-
-        done:
-          inData.done !== undefined ? normalizeBool(inData.done) : prev.done,
-        doneAt:
-          inData.doneAt !== undefined
-            ? normalizeDate(inData.doneAt)
-            : prev.doneAt,
-
-        proofUrls:
-          inData.proofUrls !== undefined
-            ? normalizeStringArray(inData.proofUrls)
-            : prev.proofUrls || [],
-
-        productUsed:
-          inData.productUsed !== undefined
-            ? normalizeStr(inData.productUsed)
-            : prev.productUsed,
-        productFDSUrl:
-          inData.productFDSUrl !== undefined
-            ? normalizeStr(inData.productFDSUrl)
-            : prev.productFDSUrl,
-
-        protocolSteps:
-          inData.protocolSteps !== undefined
-            ? normalizeStringArray(inData.protocolSteps)
-            : prev.protocolSteps || [],
-        dwellTimeMin:
-          inData.dwellTimeMin !== undefined
-            ? normalizeNumber(inData.dwellTimeMin)
-            : prev.dwellTimeMin,
-
         riskLevel:
           inData.riskLevel !== undefined &&
           ["low", "medium", "high"].includes(String(inData.riskLevel))
             ? String(inData.riskLevel)
             : prev.riskLevel,
-
-        verified:
-          inData.verified !== undefined
-            ? normalizeBool(inData.verified)
-            : prev.verified,
-        verifiedAt:
-          inData.verifiedAt !== undefined
-            ? normalizeDate(inData.verifiedAt)
-            : prev.verifiedAt,
-        verifiedBy:
-          inData.verified !== undefined
-            ? normalizeBool(inData.verified)
-              ? prev.verifiedBy || currentUserFromToken(req)
-              : undefined
-            : prev.verifiedBy,
+        protocolSteps:
+          inData.protocolSteps !== undefined
+            ? normalizeStringArray(inData.protocolSteps)
+            : prev.protocolSteps,
+        dwellTimeMin:
+          inData.dwellTimeMin !== undefined
+            ? normalizeNumber(inData.dwellTimeMin)
+            : prev.dwellTimeMin,
+        products:
+          inData.products !== undefined
+            ? normalizeStringArray(inData.products)
+            : prev.products,
+        productFDSUrls:
+          inData.productFDSUrls !== undefined
+            ? normalizeStringArray(inData.productFDSUrls)
+            : prev.productFDSUrls,
       };
-
-      // auto-compléter dates si flags changent
-      if (next.done && !next.doneAt) next.doneAt = new Date();
-      if (!next.done) next.doneAt = undefined;
-
-      if (next.verified && !next.verifiedAt) next.verifiedAt = new Date();
-      if (!next.verified) {
-        next.verifiedAt = undefined;
-        next.verifiedBy = undefined;
-      }
-
-      const changed = hasBusinessChanges(prev, next);
-      if (!changed) return res.json(prev);
 
       Object.assign(prev, next);
       await prev.save();
@@ -442,12 +279,156 @@ router.put(
       console.error("PUT /cleaning-tasks/:taskId:", err);
       return res
         .status(500)
-        .json({ error: "Erreur lors de la mise à jour de la tâche" });
+        .json({ error: "Erreur lors de la mise à jour du plan" });
     }
   }
 );
 
-/* ------------------ DELETE ------------------ */
+/* ------------------ MARK DONE (append history + avatar) ------------------ */
+router.post(
+  "/restaurants/:restaurantId/cleaning-tasks/:taskId/mark-done",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { restaurantId, taskId } = req.params;
+      const inData = { ...req.body }; // { proofUrls, note, verified, doneAt? }
+
+      const currentUserRaw = currentUserFromToken(req);
+      if (!currentUserRaw)
+        return res.status(400).json({ error: "Utilisateur non reconnu" });
+
+      // hydrate avatarUrl si employee
+      let avatarUrl;
+      if (currentUserRaw.role === "employee") {
+        try {
+          const emp = await Employee.findById(currentUserRaw.userId).select(
+            "profilePicture.url"
+          );
+          avatarUrl = emp?.profilePicture?.url || undefined;
+        } catch {}
+      }
+      const currentUser = { ...currentUserRaw, avatarUrl };
+
+      const doc = await CleaningTask.findOne({ _id: taskId, restaurantId });
+      if (!doc) return res.status(404).json({ error: "Plan introuvable" });
+
+      const entry = {
+        doneAt: normalizeDate(inData.doneAt) || new Date(),
+        doneBy: currentUser,
+        proofUrls: normalizeStringArray(inData.proofUrls),
+        note: normalizeStr(inData.note) ?? undefined,
+        verified: inData.verified === true,
+        verifiedAt: inData.verified === true ? new Date() : undefined,
+        verifiedBy: inData.verified === true ? currentUser : undefined,
+      };
+
+      doc.history.push(entry);
+      doc.lastDoneAt = entry.doneAt;
+      doc.lastDoneBy = currentUser;
+      doc.lastProofCount = entry.proofUrls?.length || 0;
+
+      await doc.save();
+      return res.json(doc);
+    } catch (err) {
+      console.error("POST /cleaning-tasks/:taskId/mark-done:", err);
+      return res
+        .status(500)
+        .json({ error: "Erreur lors de l’enregistrement du 'Fait'" });
+    }
+  }
+);
+
+/* ------------------ UPDATE NOTE (history by index, atomique) ------------------ */
+router.put(
+  "/restaurants/:restaurantId/cleaning-tasks/:taskId/history/:index/note",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { restaurantId, taskId, index } = req.params;
+      const idx = Number.parseInt(index, 10);
+      if (!Number.isInteger(idx) || idx < 0) {
+        return res.status(400).json({ error: "Index historique invalide" });
+      }
+
+      const doc = await CleaningTask.findOne({ _id: taskId, restaurantId });
+      if (!doc) return res.status(404).json({ error: "Plan introuvable" });
+      if (!Array.isArray(doc.history) || idx >= doc.history.length) {
+        return res.status(400).json({ error: "Index historique hors limites" });
+      }
+
+      const note = (req.body?.note ?? "").toString().trim();
+      const update =
+        note.length > 0
+          ? { $set: { [`history.${idx}.note`]: note } }
+          : { $unset: { [`history.${idx}.note`]: "" } };
+
+      const updated = await CleaningTask.findOneAndUpdate(
+        { _id: taskId, restaurantId },
+        update,
+        { new: true }
+      );
+
+      return res.json(updated);
+    } catch (err) {
+      console.error("PUT /cleaning-tasks/:taskId/history/:index/note:", err);
+      return res
+        .status(500)
+        .json({ error: "Erreur lors de la mise à jour de la note" });
+    }
+  }
+);
+
+/* ------------------ DELETE ONE HISTORY ENTRY (by index) ------------------ */
+router.delete(
+  "/restaurants/:restaurantId/cleaning-tasks/:taskId/history/:index",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { restaurantId, taskId, index } = req.params;
+      const idx = Number.parseInt(index, 10);
+      if (!Number.isInteger(idx) || idx < 0) {
+        return res.status(400).json({ error: "Index historique invalide" });
+      }
+
+      const doc = await CleaningTask.findOne({ _id: taskId, restaurantId });
+      if (!doc) return res.status(404).json({ error: "Plan introuvable" });
+
+      if (!Array.isArray(doc.history) || idx >= doc.history.length) {
+        return res.status(400).json({ error: "Index historique hors limites" });
+      }
+
+      // Supprime l'entrée à l'index
+      doc.history.splice(idx, 1);
+
+      // Recalcule lastDone* en fonction du dernier doneAt restant
+      if (doc.history.length > 0) {
+        const latest = doc.history.reduce((acc, cur) => {
+          if (!acc) return cur;
+          return new Date(cur.doneAt) > new Date(acc.doneAt) ? cur : acc;
+        }, null);
+        doc.lastDoneAt = latest?.doneAt || undefined;
+        doc.lastDoneBy = latest?.doneBy || undefined;
+        doc.lastProofCount = Array.isArray(latest?.proofUrls)
+          ? latest.proofUrls.length
+          : 0;
+      } else {
+        doc.lastDoneAt = undefined;
+        doc.lastDoneBy = undefined;
+        doc.lastProofCount = 0;
+      }
+
+      await doc.save();
+      return res.json(doc);
+    } catch (err) {
+      console.error("DELETE /cleaning-tasks/:taskId/history/:index:", err);
+      return res
+        .status(500)
+        .json({ error: "Erreur lors de la suppression de l’exécution" });
+    }
+  }
+);
+
+/* ------------------ DELETE (Plan) ------------------ */
 router.delete(
   "/restaurants/:restaurantId/cleaning-tasks/:taskId",
   authenticateToken,
@@ -458,18 +439,18 @@ router.delete(
         _id: taskId,
         restaurantId,
       });
-      if (!doc) return res.status(404).json({ error: "Tâche introuvable" });
+      if (!doc) return res.status(404).json({ error: "Plan introuvable" });
       return res.json({ success: true });
     } catch (err) {
       console.error("DELETE /cleaning-tasks/:taskId:", err);
       return res
         .status(500)
-        .json({ error: "Erreur lors de la suppression de la tâche" });
+        .json({ error: "Erreur lors de la suppression du plan" });
     }
   }
 );
 
-/* ------------------ DISTINCT ZONES (optionnel) ------------------ */
+/* ------------------ DISTINCT ZONES ------------------ */
 router.get(
   "/restaurants/:restaurantId/cleaning-tasks/distinct/zones",
   authenticateToken,

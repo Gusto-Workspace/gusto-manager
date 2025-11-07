@@ -570,7 +570,7 @@ export default function ReceptionDeliveryForm({
     if (productDebounceRef.current[fid])
       clearTimeout(productDebounceRef.current[fid]);
 
-    if (q.length < 2) {
+    if (q.length < 1) {
       setProductItemsFor(fid, []);
       openProductDropdownFor(fid, false);
       return;
@@ -634,7 +634,7 @@ export default function ReceptionDeliveryForm({
     if (supplierDebounceRef.current) clearTimeout(supplierDebounceRef.current);
 
     const q = String(supplierValue || "");
-    if (q.trim().length < 2) {
+    if (q.trim().length < 1) {
       setSupplierItems([]);
       setSupplierOpen(false);
       return;
