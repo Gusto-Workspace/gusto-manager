@@ -48,10 +48,6 @@ const isLineEmpty = (row) =>
   !row?.tempOnArrival &&
   !(typeof row?.allergens === "string" && row.allergens.trim().length > 0);
 
-/* Manque produit alors que d’autres champs sont saisis */
-const hasOtherDataWithoutProduct = (row) =>
-  !row?.productName?.trim() && !isLineEmpty(row);
-
 /* Champs requis manquants */
 const missingQty = (row) => row?.qty === "" || row?.qty == null;
 const missingUnit = (row) => !row?.unit;
@@ -155,7 +151,6 @@ export default function ReceptionDeliveryForm({
 
   // Affichage des erreurs “requis” par ligne (uniquement après clic “Valider la ligne”)
   const [showReqErrById, setShowReqErrById] = useState({});
-
   // État “ligne validée explicitement”
   const [validatedById, setValidatedById] = useState({});
 
@@ -169,21 +164,15 @@ export default function ReceptionDeliveryForm({
   const [suggestLoading, setSuggestLoading] = useState(false);
 
   // Maps en refs (évite des re-renders)
-  // suppliers: Map<lowerName, { label: originalCase, count }>
+  // suppliers: Map<lowerName, { label, count }>
   const suppliersRef = useRef(new Map());
   // productsBySupplier: Map<lowerSupplier, Map<lowerProduct, { label, count, last:{supplierProductId,lotNumber,allergens,at} }>>
   const productsBySupplierRef = useRef(new Map());
-  // productsGlobal: Map<lowerProduct, { label, count, last } >
-  const productsGlobalRef = useRef(new Map());
 
-  // Helpers index
   const bumpCount = (map, key, label) => {
     const rec = map.get(key);
-    if (rec) {
-      rec.count += 1;
-    } else {
-      map.set(key, { label: label || key, count: 1 });
-    }
+    if (rec) rec.count += 1;
+    else map.set(key, { label: label || key, count: 1 });
   };
   const bumpProduct = (map, key, label, line, at) => {
     const rec = map.get(key);
@@ -203,19 +192,17 @@ export default function ReceptionDeliveryForm({
     const supKey = normalize(sup);
     bumpCount(suppliersRef.current, supKey, sup);
 
-    const lines = Array.isArray(doc?.lines) ? doc.lines : [];
+    const ls = Array.isArray(doc?.lines) ? doc.lines : [];
     if (!productsBySupplierRef.current.has(supKey)) {
       productsBySupplierRef.current.set(supKey, new Map());
     }
     const mapForSup = productsBySupplierRef.current.get(supKey);
 
-    for (const l of lines) {
+    for (const l of ls) {
       const pname = (l?.productName || "").trim();
       if (!pname) continue;
       const pkey = normalize(pname);
-      // on stocke la dernière occurrence (ref/lot/allergènes) + fréquence
       bumpProduct(mapForSup, pkey, pname, l, doc?.receivedAt);
-      bumpProduct(productsGlobalRef.current, pkey, pname, l, doc?.receivedAt);
     }
   };
 
@@ -225,13 +212,11 @@ export default function ReceptionDeliveryForm({
     try {
       suppliersRef.current = new Map();
       productsBySupplierRef.current = new Map();
-      productsGlobalRef.current = new Map();
 
-      // On pagine quelques pages pour construire un cache utile sans tout aspirer.
       const limit = 100;
       let page = 1;
       let pages = 1;
-      const maxPages = 5; // sécurité
+      const maxPages = 5;
 
       while (page <= pages && page <= maxPages) {
         const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-reception-deliveries`;
@@ -248,7 +233,6 @@ export default function ReceptionDeliveryForm({
       }
       suggestLoadedRef.current = true;
     } catch (e) {
-      // en cas d'erreur, on laisse juste les suggestions vides
       console.error("suggestions load error", e);
     } finally {
       setSuggestLoading(false);
@@ -273,12 +257,10 @@ export default function ReceptionDeliveryForm({
     reset(buildFormDefaults(initial));
     setShowReqErrById({});
     setValidatedById({});
-    // reset guards suggestions (pas d'ouverture auto)
     supplierUserTypedRef.current = false;
     Object.keys(productUserTypedRef.current).forEach((k) => {
       productUserTypedRef.current[k] = false;
     });
-    // Charge le cache si besoin
     if (!suggestLoadedRef.current) fetchSuggestions();
   }, [initial, reset]); // eslint-disable-line
 
@@ -416,7 +398,6 @@ export default function ReceptionDeliveryForm({
     reset(buildFormDefaults(null));
     setShowReqErrById({});
     setValidatedById({});
-    // Met à jour l’index local (évite d’attendre l’event du parent)
     indexFromDoc(saved);
     onSuccess?.(saved);
   };
@@ -462,13 +443,15 @@ export default function ReceptionDeliveryForm({
     });
   };
 
-  // ----------------- Suggestions: Supplier -----------------
+  // ----------------- Suggestions: Supplier (PORTAL) -----------------
   const [supplierOpen, setSupplierOpen] = useState(false);
   const [supplierItems, setSupplierItems] = useState([]);
   const supplierBoxRef = useRef(null);
   const supplierUserTypedRef = useRef(false);
   const supplierDebounceRef = useRef(null);
+  const supplierPortalRef = useRef(null);
 
+  // matches fournisseurs (par fréquence — inchangé)
   const computeSupplierMatches = (q) => {
     const qn = normalize(q);
     if (!qn) return [];
@@ -478,41 +461,6 @@ export default function ReceptionDeliveryForm({
     });
     list.sort((a, b) => b.count - a.count);
     return list.slice(0, 8).map((x) => x.label);
-  };
-
-  useEffect(() => {
-    const onClickOutside = (e) => {
-      if (!supplierBoxRef.current) return;
-      if (!supplierBoxRef.current.contains(e.target)) setSupplierOpen(false);
-    };
-    document.addEventListener("mousedown", onClickOutside);
-    return () => document.removeEventListener("mousedown", onClickOutside);
-  }, []);
-
-  useEffect(() => {
-    if (!supplierUserTypedRef.current) {
-      setSupplierOpen(false);
-      return;
-    }
-    const q = String(supplierValue || "");
-    if (supplierDebounceRef.current) clearTimeout(supplierDebounceRef.current);
-    if (q.trim().length < 2) {
-      setSupplierItems([]);
-      setSupplierOpen(false);
-      return;
-    }
-    supplierDebounceRef.current = setTimeout(() => {
-      const matches = computeSupplierMatches(q);
-      setSupplierItems(matches);
-      setSupplierOpen(matches.length > 0);
-    }, 180);
-    // cleanup handled by next run
-  }, [supplierValue]);
-
-  const pickSupplier = (name) => {
-    setValue("supplier", name, { shouldDirty: true, shouldTouch: true });
-    setSupplierOpen(false);
-    supplierUserTypedRef.current = false;
   };
 
   // ----------------- Suggestions: Product per line (PORTAL) -----------------
@@ -529,12 +477,10 @@ export default function ReceptionDeliveryForm({
   const [isClient, setIsClient] = useState(false);
   useEffect(() => setIsClient(true), []);
 
-  // rerender pour suivre scroll/resize et repositionner le menu
-  const [, setDropdownRerender] = useState(0);
+  // rerender pour suivre scroll/resize et repositionner les menus
   useEffect(() => {
     const onScrollOrResize = () => setDropdownRerender((v) => v + 1);
     window.addEventListener("resize", onScrollOrResize);
-    // capture true: écoute les scrolls des parents scrollables
     window.addEventListener("scroll", onScrollOrResize, true);
     return () => {
       window.removeEventListener("resize", onScrollOrResize);
@@ -542,15 +488,18 @@ export default function ReceptionDeliveryForm({
     };
   }, []);
 
-  // clic dans le portal -> ne pas fermer sur blur immédiat
+  // clic dans un portal -> ne pas fermer sur blur immédiat
   const pointerInPortalRef = useRef(false);
   useEffect(() => {
     const down = (e) => {
-      if (productPortalRef.current?.contains(e.target))
+      if (
+        productPortalRef.current?.contains(e.target) ||
+        supplierPortalRef.current?.contains(e.target)
+      ) {
         pointerInPortalRef.current = true;
+      }
     };
     const up = () => {
-      // petit délai pour laisser le onClick des items se déclencher
       setTimeout(() => (pointerInPortalRef.current = false), 0);
     };
     document.addEventListener("mousedown", down, true);
@@ -561,16 +510,21 @@ export default function ReceptionDeliveryForm({
     };
   }, []);
 
-  // fermer si clic ailleurs (en dehors des anchors ET du portal)
+  // fermer si clic ailleurs (en dehors des anchors ET des portals)
   useEffect(() => {
     const onClickOutside = (e) => {
+      // produits
       if (productPortalRef.current?.contains(e.target)) return;
-      const refs = productBoxRefs.current;
-      for (const key of Object.keys(refs)) {
-        const el = refs[key];
-        if (el && el.contains(e.target)) return; // clic dans un input/boîte -> on laisse gérer
+      const pRefs = productBoxRefs.current;
+      for (const key of Object.keys(pRefs)) {
+        const el = pRefs[key];
+        if (el && el.contains(e.target)) return;
       }
       setProductOpenById({});
+      // fournisseur
+      if (supplierPortalRef.current?.contains(e.target)) return;
+      if (supplierBoxRef.current?.contains(e.target)) return;
+      setSupplierOpen(false);
     };
     document.addEventListener("mousedown", onClickOutside);
     return () => document.removeEventListener("mousedown", onClickOutside);
@@ -582,20 +536,27 @@ export default function ReceptionDeliveryForm({
   const setProductItemsFor = (fid, items) =>
     setProductItemsById((s) => ({ ...s, [fid]: items }));
 
-  // matches enrichis (label + meta)
+  // --- IMPORTANT: suggestions produits restreintes AU fournisseur sélectionné ---
   const computeProductMatches = (supplier, q) => {
     const qn = normalize(q);
     if (!qn) return [];
     const supKey = normalize(supplier);
-    const bag =
-      (supKey && productsBySupplierRef.current.get(supKey)) ||
-      productsGlobalRef.current;
+    if (!supKey) return []; // pas de fournisseur -> pas de suggestions
+    const bag = productsBySupplierRef.current.get(supKey);
+    if (!bag) return []; // fournisseur non indexé -> pas de suggestions
 
     const list = [];
     bag.forEach((v, key) => {
-      if (key.includes(qn)) list.push(v);
+      if (key.includes(qn)) list.push(v); // v = { label, count, last }
     });
-    list.sort((a, b) => b.count - a.count);
+
+    // Tri alphabétique (insensible à la casse, locale fr)
+    list.sort((a, b) =>
+      String(a.label).localeCompare(String(b.label), "fr", {
+        sensitivity: "base",
+      })
+    );
+
     return list
       .slice(0, 8)
       .map((x) => ({ label: x.label, meta: x.last || null }));
@@ -616,8 +577,7 @@ export default function ReceptionDeliveryForm({
     }
 
     productDebounceRef.current[fid] = setTimeout(() => {
-      const supplier = supplierValue;
-      const matches = computeProductMatches(supplier, q);
+      const matches = computeProductMatches(supplierValue, q);
       setProductItemsFor(fid, matches);
       openProductDropdownFor(fid, matches.length > 0);
       setDropdownRerender((v) => v + 1); // reposition immédiat
@@ -625,49 +585,73 @@ export default function ReceptionDeliveryForm({
   };
 
   const pickProduct = (fid, idx, suggestion) => {
-  const name =
-    typeof suggestion === "string" ? suggestion : suggestion?.label || "";
-  const meta = suggestion && typeof suggestion === "object" ? suggestion.meta : null;
+    const name =
+      typeof suggestion === "string" ? suggestion : suggestion?.label || "";
+    const meta =
+      suggestion && typeof suggestion === "object" ? suggestion.meta : null;
 
-  // 1) Met à jour le nom du produit
-  setValue(`lines.${idx}.productName`, name, {
-    shouldDirty: true,
-    shouldTouch: true,
-  });
+    // 1) Nom du produit
+    setValue(`lines.${idx}.productName`, name, {
+      shouldDirty: true,
+      shouldTouch: true,
+    });
 
-  // 2) ÉCRASE toujours les métadonnées pour coller au produit choisi
-  //    (si la suggestion n'a pas de meta, on vide pour éviter de garder l'ancienne valeur)
-  setValue(`lines.${idx}.supplierProductId`, meta?.supplierProductId || "", {
-    shouldDirty: true,
-    shouldTouch: true,
-  });
-  setValue(`lines.${idx}.lotNumber`, meta?.lotNumber || "", {
-    shouldDirty: true,
-    shouldTouch: true,
-  });
-  setValue(`lines.${idx}.allergens`, meta?.allergens || "", {
-    shouldDirty: true,
-    shouldTouch: true,
-  });
+    // 2) Ecrase toujours les métas pour correspondre au produit choisi
+    setValue(`lines.${idx}.supplierProductId`, meta?.supplierProductId || "", {
+      shouldDirty: true,
+      shouldTouch: true,
+    });
+    setValue(`lines.${idx}.lotNumber`, meta?.lotNumber || "", {
+      shouldDirty: true,
+      shouldTouch: true,
+    });
+    setValue(`lines.${idx}.allergens`, meta?.allergens || "", {
+      shouldDirty: true,
+      shouldTouch: true,
+    });
 
-  // 3) Optionnel: on invalide la validation manuelle si la ligne était "validée"
-  //    (reste cohérent avec le onChange du champ qui fait la même chose)
-  setValidatedById((s) => (s[fid] ? { ...s, [fid]: false } : s));
+    // 3) Invalide la validation manuelle si nécessaire
+    setValidatedById((s) => (s[fid] ? { ...s, [fid]: false } : s));
 
-  // 4) Ferme le menu déroulant proprement
-  openProductDropdownFor(fid, false);
-  productUserTypedRef.current[fid] = false;
-};
+    // 4) Fermer proprement
+    openProductDropdownFor(fid, false);
+    productUserTypedRef.current[fid] = false;
+  };
 
-
-  // Fermeture sur Esc global
+  // ✅ Quand le fournisseur change, on ferme/efface les suggestions produits (anti-confusion)
   useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === "Escape") setProductOpenById({});
+    setProductOpenById({});
+    setProductItemsById({});
+  }, [supplierValue]);
+
+  // ✅ Effet qui ouvre/actualise les suggestions fournisseur à chaque frappe
+  const [, setDropdownRerender] = useState(0); // pour forcer le repositionnement du portal
+  useEffect(() => {
+    if (!supplierUserTypedRef.current) {
+      setSupplierOpen(false);
+      return;
+    }
+    if (supplierDebounceRef.current) clearTimeout(supplierDebounceRef.current);
+
+    const q = String(supplierValue || "");
+    if (q.trim().length < 2) {
+      setSupplierItems([]);
+      setSupplierOpen(false);
+      return;
+    }
+
+    supplierDebounceRef.current = setTimeout(() => {
+      const matches = computeSupplierMatches(q);
+      setSupplierItems(matches);
+      setSupplierOpen(matches.length > 0);
+      setDropdownRerender((v) => v + 1);
+    }, 180);
+
+    return () => {
+      if (supplierDebounceRef.current)
+        clearTimeout(supplierDebounceRef.current);
     };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, []);
+  }, [supplierValue]);
 
   // Bouton Enregistrer désactivé tant qu’aucune ligne validée explicitement
   const hasValidatedLine =
@@ -708,38 +692,75 @@ export default function ReceptionDeliveryForm({
                   const matches = computeSupplierMatches(q);
                   setSupplierItems(matches);
                   setSupplierOpen(matches.length > 0);
+                  setDropdownRerender((v) => v + 1);
                 }
               }}
-              onBlur={() => setTimeout(() => setSupplierOpen(false), 0)}
+              onBlur={() =>
+                setTimeout(() => {
+                  if (!pointerInPortalRef.current) setSupplierOpen(false);
+                }, 0)
+              }
             />
-            {/* Suggestions fournisseur (non portal, pas de conflit ici) */}
-            {supplierOpen && (
-              <div className="absolute left-0 right-0 top-full mt-1 z-50 rounded-lg border border-darkBlue/15 bg-white shadow max-h-64 overflow-auto">
-                {suggestLoading && (
-                  <div className="px-3 py-2 text-sm text-darkBlue/60">
-                    Chargement…
-                  </div>
-                )}
-                {!suggestLoading && supplierItems.length === 0 && (
-                  <div className="px-3 py-2 text-sm text-darkBlue/40">
-                    Aucun fournisseur
-                  </div>
-                )}
-                {!suggestLoading &&
-                  supplierItems.map((name) => (
-                    <button
-                      key={name}
-                      type="button"
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => pickSupplier(name)}
-                      className="w-full text-left px-3 py-2 hover:bg-blue/5 text-sm"
-                      title="Choisir ce fournisseur"
+
+            {/* Suggestions fournisseur via PORTAL */}
+            {isClient &&
+              supplierOpen &&
+              createPortal(
+                (() => {
+                  const anchor = supplierBoxRef.current;
+                  if (!anchor) return null;
+                  const rect = anchor.getBoundingClientRect();
+                  const style = {
+                    position: "fixed",
+                    left: rect.left + 12,
+                    top: rect.bottom - 4,
+                    width: rect.width - 24,
+                    zIndex: 1000,
+                    maxHeight: "16rem",
+                    overflow: "auto",
+                  };
+                  return (
+                    <div
+                      ref={supplierPortalRef}
+                      style={style}
+                      className="rounded-lg border border-darkBlue/15 bg-white shadow"
+                      role="listbox"
+                      aria-label="Suggestions fournisseurs"
                     >
-                      {name}
-                    </button>
-                  ))}
-              </div>
-            )}
+                      {suggestLoading ? (
+                        <div className="px-3 py-2 text-sm text-darkBlue/60">
+                          Chargement…
+                        </div>
+                      ) : supplierItems.length === 0 ? (
+                        <div className="px-3 py-2 text-sm text-darkBlue/40">
+                          Aucun fournisseur
+                        </div>
+                      ) : (
+                        supplierItems.map((name) => (
+                          <button
+                            key={name}
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                              setValue("supplier", name, {
+                                shouldDirty: true,
+                                shouldTouch: true,
+                              });
+                              setSupplierOpen(false);
+                              supplierUserTypedRef.current = false;
+                            }}
+                            className="w-full text-left px-3 py-2 hover:bg-blue/5 text-sm"
+                            title="Choisir ce fournisseur"
+                          >
+                            {name}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  );
+                })(),
+                document.body
+              )}
           </div>
         </div>
 
@@ -929,16 +950,12 @@ export default function ReceptionDeliveryForm({
                             }}
                             onBlur={() =>
                               setTimeout(() => {
-                                // si le blur vient d'un clic dans le portal -> ne pas fermer ici
                                 if (!pointerInPortalRef.current) {
                                   openProductDropdownFor(id, false);
                                 }
                               }, 0)
                             }
                             onKeyDown={(e) => {
-                              if (e.key === "ArrowDown") {
-                                // on laisse la navigation au focus menu si besoin (optionnel)
-                              }
                               if (e.key === "Escape") {
                                 openProductDropdownFor(id, false);
                               }
