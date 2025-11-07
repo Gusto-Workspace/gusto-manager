@@ -12,7 +12,6 @@ import {
   Loader2,
   Trash2,
   X,
-  Info,
 } from "lucide-react";
 
 function toDatetimeLocalValue(value) {
@@ -48,9 +47,9 @@ function buildDefaults(doc = null) {
 
 export default function FridgeTemperatureForm({
   restaurantId,
-  fridges = [], // ← injecté par la page
-  onSaved, // optionnel
-  onCreated, // optionnel (compat avec ton code existant)
+  fridges = [],
+  onSaved,
+  onCreated,
 }) {
   const {
     register,
@@ -63,6 +62,7 @@ export default function FridgeTemperatureForm({
 
   const noteValue = watch("note");
   const doorState = watch("doorState");
+  const isClosed = doorState === "closed";
 
   const [editingId, setEditingId] = useState(null);
   const [recordedBy, setRecordedBy] = useState(null);
@@ -142,7 +142,6 @@ export default function FridgeTemperatureForm({
     };
 
     if (!editingId) {
-      // CREATE
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/fridge-temperatures`;
       const { data: saved } = await axios.post(url, payload, {
         headers: { Authorization: `Bearer ${token}` },
@@ -157,7 +156,6 @@ export default function FridgeTemperatureForm({
         createdAt: toDatetimeLocalValue(),
       });
     } else {
-      // UPDATE
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/fridge-temperatures/${editingId}`;
       const { data: saved } = await axios.put(url, payload, {
         headers: { Authorization: `Bearer ${token}` },
@@ -184,7 +182,6 @@ export default function FridgeTemperatureForm({
 
   // UI helpers
   const setNow = () => setValue("createdAt", toDatetimeLocalValue());
-  const selectDoor = (state) => setValue("doorState", state);
 
   const fieldWrap =
     "group relative rounded-xl bg-white/50 backdrop-blur-sm px-3 py-2 h-[80px] transition-shadow";
@@ -258,41 +255,64 @@ export default function FridgeTemperatureForm({
           )}
         </div>
 
-        {/* Door state segmented */}
+        {/* Door state — switch accessible */}
         <div className="w-full">
           <div className={fieldWrap}>
             <label className={labelCls}>
-              <DoorOpen className="size-4" />
-              Porte
+              <DoorOpen className="size-4" /> Porte
             </label>
 
-            <div className="flex h-11 w-full items-center gap-2 rounded-lg border border-darkBlue/20 p-1">
-              <button
-                type="button"
-                onClick={() => selectDoor("closed")}
-                className={`flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1 text-xs transition ${
-                  doorState === "closed"
-                    ? "bg-darkBlue/80 text-white shadow"
-                    : "text-darkBlue/60 hover:bg-darkBlue/10 bg-white"
-                }`}
-              >
-                <Lock className="size-3.5" /> fermée
-              </button>
+            <label
+              role="switch"
+              aria-checked={isClosed}
+              className="group inline-flex justify-between h-11 w-full items-center gap-3 rounded-lg border border-darkBlue/20 bg-white px-3 py-2 cursor-pointer select-none"
+              title="Basculer fermée / ouverte"
+            >
+              <span className="text-sm text-darkBlue/70 flex items-center gap-1">
+                {isClosed ? (
+                  <>
+                    <Lock className="size-3.5" /> Fermée
+                  </>
+                ) : (
+                  <>
+                    <DoorOpen className="size-3.5" /> Ouverte
+                  </>
+                )}
+              </span>
 
-              <button
-                type="button"
-                onClick={() => selectDoor("open")}
-                className={`flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1 text-xs transition ${
-                  doorState === "open"
-                    ? "bg-darkBlue/80 text-white shadow"
-                    : "text-darkBlue/60 hover:bg-darkBlue/10 bg-white"
-                }`}
-              >
-                <DoorOpen className="size-3.5" /> ouverte
-              </button>
-            </div>
+              {/* Checkbox visuelle */}
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={isClosed}
+                onChange={() =>
+                  setValue("doorState", isClosed ? "open" : "closed", {
+                    shouldDirty: true,
+                    shouldTouch: true,
+                  })
+                }
+              />
 
-            {/* champ réel (caché) géré par RHF */}
+              {/* Rail + knob en darkBlue quand actif */}
+              <span
+                className="
+                  relative inline-flex h-6 w-11 items-center rounded-full
+                  bg-darkBlue/20 transition-colors
+                  peer-checked:bg-darkBlue/80 group-aria-checked:bg-darkBlue/80
+                "
+              >
+                <span
+                  className="
+                    absolute left-1 top-1/2 -translate-y-1/2
+                    size-4 rounded-full bg-white shadow
+                    transition-transform will-change-transform translate-x-0
+                    peer-checked:translate-x-5 group-aria-checked:translate-x-5
+                  "
+                />
+              </span>
+            </label>
+
+            {/* champ RHF (valeur string) */}
             <select {...register("doorState")} className="hidden">
               <option value="closed">fermée</option>
               <option value="open">ouverte</option>
@@ -314,14 +334,6 @@ export default function FridgeTemperatureForm({
                 {...register("createdAt")}
                 className={selectCls}
               />
-              <button
-                type="button"
-                onClick={setNow}
-                className="inline-flex h-11 items-center rounded-lg border border-darkBlue/20 bg-white px-3 text-xs font-medium text-darkBlue/70 transition  hover:text-blue/70"
-                title="Maintenant"
-              >
-                Maintenant
-              </button>
             </div>
           </div>
         </div>
@@ -345,6 +357,7 @@ export default function FridgeTemperatureForm({
           </div>
         </div>
       </div>
+
       {/* Meta */}
       {editingId && recordedBy && (
         <div className="mt-2 text-xs text-slate-500">
@@ -357,7 +370,7 @@ export default function FridgeTemperatureForm({
         <button
           type="submit"
           disabled={isSubmitting}
-          className="text-nowrap inline-flex items-center justify-center gap-2 rounded-lg bg-blue px-4 py-2 text-sm font-medium text-white shadow"
+          className="text-nowrap inline-flex items-center justify-center gap-2 rounded-lg bg-blue px-4 py-2 text-sm font-medium text-white shadow disabled:opacity-60"
         >
           {isSubmitting ? (
             <>

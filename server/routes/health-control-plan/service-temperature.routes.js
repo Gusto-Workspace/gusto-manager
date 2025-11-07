@@ -34,8 +34,6 @@ function hasBusinessChanges(prev, next) {
     "dishName",
     "servingMode",
     "serviceType",
-    "location",
-    "locationId",
     "value",
     "unit",
     "note",
@@ -98,9 +96,6 @@ router.post(
           ? inData.serviceType
           : "unknown",
 
-        location: normalizeStr(inData.location),
-        locationId: normalizeStr(inData.locationId),
-
         value: numVal,
         unit: inData.unit === "°F" ? "°F" : "°C",
 
@@ -152,8 +147,6 @@ router.get(
           { dishName: rx },
           { servingMode: rx },
           { serviceType: rx },
-          { location: rx },
-          { locationId: rx },
           { unit: rx },
           { note: rx },
           { "recordedBy.firstName": rx },
@@ -267,15 +260,6 @@ router.put(
               : prev.serviceType
             : prev.serviceType,
 
-        location:
-          inData.location !== undefined
-            ? normalizeStr(inData.location)
-            : prev.location,
-        locationId:
-          inData.locationId !== undefined
-            ? normalizeStr(inData.locationId)
-            : prev.locationId,
-
         value: inData.value !== undefined ? Number(inData.value) : prev.value,
         unit:
           inData.unit !== undefined
@@ -308,8 +292,6 @@ router.put(
       prev.dishName = next.dishName;
       prev.servingMode = next.servingMode;
       prev.serviceType = next.serviceType;
-      prev.location = next.location;
-      prev.locationId = next.locationId;
       prev.value = next.value;
       prev.unit = next.unit;
       prev.note = next.note;

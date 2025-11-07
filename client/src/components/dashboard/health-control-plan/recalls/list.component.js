@@ -1,8 +1,11 @@
+// components/dashboard/health-control-plan/recalls/recall-list.component.jsx
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import axios from "axios";
+import { Search, CalendarClock, Edit3, Trash2, Loader2, X } from "lucide-react";
 
+/* ----------------------------- Utils ----------------------------- */
 function fmtDate(d, withTime = true) {
   try {
     if (!d) return "—";
@@ -17,7 +20,8 @@ function fmtDate(d, withTime = true) {
     return d || "—";
   }
 }
-const statusBadge = (closedAt) => {
+
+const StatusPill = ({ closedAt }) => {
   const isClosed = Boolean(closedAt);
   const cls = isClosed ? "bg-green text-white" : "bg-red text-white";
   return (
@@ -27,6 +31,7 @@ const statusBadge = (closedAt) => {
   );
 };
 
+/* --------------------------- Component --------------------------- */
 export default function RecallList({
   restaurantId,
   onEdit,
@@ -42,6 +47,13 @@ export default function RecallList({
   const [status, setStatus] = useState("all"); // all|open|closed
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  const [isClient, setIsClient] = useState(false);
+  useEffect(() => setIsClient(true), []);
 
   const token = useMemo(() => localStorage.getItem("token"), []);
   const metaRef = useRef(meta);
@@ -75,6 +87,19 @@ export default function RecallList({
     [dateFrom, dateTo]
   );
 
+  /* ------------------------------ Styles ------------------------------ */
+  const fieldWrap =
+    "group relative rounded-xl bg-white/50 backdrop-blur-sm transition-shadow";
+  const labelCls =
+    "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
+  const inputCls =
+    "h-11 w-full rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition placeholder:text-darkBlue/40";
+  const selectCls =
+    "h-11 w-full appearance-none rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition";
+  const btnBase =
+    "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition active:scale-[0.98]";
+
+  /* ------------------------------ Fetch ------------------------------ */
   const fetchData = async (page = 1, overrides = {}) => {
     setLoading(true);
     try {
@@ -84,8 +109,8 @@ export default function RecallList({
         dateTo: overrides.dateTo ?? dateTo,
       };
       const params = { page, limit: meta.limit || 20 };
-      // Recherche serveur: seulement statut + dates (pas de q → filtrage local)
-      if (cur.status && cur.status !== "all") params.closed = cur.status; // backend: 'closed' = 'open' | 'closed'
+      // Backend attend 'closed' = 'open' | 'closed'
+      if (cur.status && cur.status !== "all") params.closed = cur.status;
       if (cur.dateFrom) params.date_from = new Date(cur.dateFrom).toISOString();
       if (cur.dateTo) params.date_to = new Date(cur.dateTo).toISOString();
 
@@ -110,11 +135,7 @@ export default function RecallList({
   // Initial fetch
   useEffect(() => {
     if (restaurantId)
-      fetchData(1, {
-        status: "all",
-        dateFrom: "",
-        dateTo: "",
-      });
+      fetchData(1, { status: "all", dateFrom: "", dateTo: "" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
 
@@ -173,7 +194,7 @@ export default function RecallList({
     return () => window.removeEventListener("recall:upsert", handleUpsert);
   }, [restaurantId]);
 
-  // Filtrage client sur q (sans scintillement)
+  /* ----------------------- Recherche locale (q) ----------------------- */
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();
     if (!qq) return items;
@@ -186,7 +207,6 @@ export default function RecallList({
         item.lotNumber,
         String(item.quantity ?? ""),
         item.unit,
-        // on peut inclure d'autres champs si présents côté API
       ]
         .filter(Boolean)
         .join(" ")
@@ -196,10 +216,11 @@ export default function RecallList({
     });
   }, [items, q]);
 
-  // Suppression
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState(null);
-  const [deleteLoading, setDeleteLoading] = useState(false);
+  /* ----------------------------- Delete ----------------------------- */
+  const askDelete = (it) => {
+    setDeleteTarget(it);
+    setIsDeleteModalOpen(true);
+  };
 
   const onConfirmDelete = async () => {
     if (!deleteTarget) return;
@@ -232,6 +253,7 @@ export default function RecallList({
       setDeleteLoading(false);
     }
   };
+
   const closeDeleteModal = () => {
     if (!deleteLoading) {
       setIsDeleteModalOpen(false);
@@ -239,159 +261,162 @@ export default function RecallList({
     }
   };
 
+  /* ------------------------------ Render ------------------------------ */
   return (
-    <div className="bg-white rounded-lg drop-shadow-sm p-4">
-      {/* Filtres */}
-      <div className="flex flex-col gap-3 mb-4">
-        <div className="flex flex-col gap-3 midTablet:flex-row midTablet:flex-wrap midTablet:items-end">
+    <div className="rounded-2xl border border-darkBlue/10 bg-white p-4 midTablet:p-5 shadow">
+      {/* Filtres (alignés aux autres listes) */}
+      <div className="mb-4 grid grid-cols-[repeat(auto-fit,minmax(220px,_1fr))] gap-2">
+        {/* Recherche */}
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <Search className="size-4" /> Recherche
+          </label>
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Rechercher produit, lot, fournisseur, action…"
-            className="w-full border rounded p-2 midTablet:flex-1 min-w-[220px]"
+            placeholder="Produit, lot, fournisseur…"
+            className={inputCls}
           />
+        </div>
 
+        {/* Statut */}
+        <div className={fieldWrap}>
+          <label className={labelCls}>Statut</label>
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value)}
-            className="border rounded p-2 h-[44px] w-full midTablet:w-48"
+            className={selectCls}
           >
             <option value="all">Tous statuts</option>
             <option value="open">Ouverts</option>
             <option value="closed">Fermés</option>
           </select>
+        </div>
 
-          <div className="flex flex-col gap-1 w-full midTablet:flex-row midTablet:items-center midTablet:gap-2 midTablet:w-auto">
-            <label className="text-sm font-medium">Déclarés du</label>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="w-full border rounded p-2 midTablet:w-auto"
-              max={dateTo || undefined}
-            />
-          </div>
-          <div className="flex flex-col gap-1 w-full midTablet:flex-row midTablet:items-center midTablet:gap-2 midTablet:w-auto">
-            <label className="text-sm font-medium">Au</label>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="w-full border rounded p-2 midTablet:w-auto"
-              min={dateFrom || undefined}
-            />
-          </div>
+        {/* Du */}
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <CalendarClock className="size-4" /> Déclarés du
+          </label>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className={selectCls}
+            max={dateTo || undefined}
+          />
+        </div>
 
-          <div className="flex flex-col gap-2 w-full mobile:flex-row mobile:w-auto mobile:items-center">
-            <button
-              onClick={() => fetchData(1)}
-              disabled={invalidRange || !hasFullDateRange}
-              title={
-                invalidRange
-                  ? "Intervalle invalide : 'Du' doit être ≤ 'Au'."
-                  : !hasFullDateRange
-                    ? "Sélectionnez 'Du' ET 'Au'"
-                    : undefined
-              }
-              className={`px-4 py-2 rounded bg-blue text-white w-full mobile:w-32 ${
-                invalidRange || !hasFullDateRange
-                  ? "opacity-30 cursor-not-allowed"
-                  : ""
-              }`}
-            >
-              Filtrer
-            </button>
-            <button
-              onClick={() => {
-                setQ("");
-                setStatus("all");
-                setDateFrom("");
-                setDateTo("");
-                fetchData(1, {
-                  status: "all",
-                  dateFrom: "",
-                  dateTo: "",
-                });
-              }}
-              disabled={!hasActiveFilters}
-              className={`px-4 py-2 rounded bg-blue text-white ${
-                hasActiveFilters ? "" : "opacity-30 cursor-not-allowed"
-              }`}
-            >
-              Réinitialiser
-            </button>
-          </div>
+        {/* Au */}
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <CalendarClock className="size-4" /> Au
+          </label>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className={selectCls}
+            min={dateFrom || undefined}
+          />
+        </div>
+
+        {/* Actions filtres */}
+        <div className="col-span-full flex flex-col gap-2 mobile:flex-row">
+          <button
+            onClick={() => fetchData(1)}
+            disabled={invalidRange || !hasFullDateRange}
+            title={
+              invalidRange
+                ? "Intervalle invalide : 'Du' doit être ≤ 'Au'"
+                : !hasFullDateRange
+                  ? "Sélectionnez 'Du' ET 'Au' pour filtrer"
+                  : undefined
+            }
+            className={`${btnBase} bg-blue text-white disabled:opacity-40`}
+            type="button"
+          >
+            Filtrer
+          </button>
+
+          <button
+            onClick={() => {
+              setQ("");
+              setStatus("all");
+              setDateFrom("");
+              setDateTo("");
+              fetchData(1, { status: "all", dateFrom: "", dateTo: "" });
+            }}
+            disabled={!hasActiveFilters}
+            className={`${btnBase} border border-darkBlue/20 bg-white text-darkBlue hover:border-darkBlue/30 disabled:opacity-40`}
+            type="button"
+          >
+            Réinitialiser
+          </button>
         </div>
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto max-w-[calc(100vw-80px)] tablet:max-w-[calc(100vw-350px)]">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto max-w-[calc(100vw-83px)] midTablet:max-w-[calc(100vw-92px)] tablet:max-w-[calc(100vw-360px)] rounded-xl border border-darkBlue/10 p-2">
+        <table className="w-full text-[13px]">
           <thead className="whitespace-nowrap">
-            <tr className="text-left border-b">
-              <th className="py-2 pr-3">Déclaré le</th>
-              <th className="py-2 pr-3">Produit</th>
-              <th className="py-2 pr-3">Fournisseur</th>
-              <th className="py-2 pr-3">N° lot</th>
-              <th className="py-2 pr-3">Qté</th>
-              <th className="py-2 pr-3">DLC/DDM</th>
-              <th className="py-2 pr-3">Statut</th>
-              <th className="py-2 pr-3">Clôturé le</th>
-              <th className="py-2 pr-3">Pièces</th>
-              <th className="py-2 pr-3">Opérateur</th>
-              <th className="py-2 pr-3 text-right">Actions</th>
+            <tr className="sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Déclaré le</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Produit</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Fournisseur</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">N° lot</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Qté</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">DLC/DDM</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Statut</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Clôturé le</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Pièces</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Opérateur</th>
+              <th className="py-2 pr-3 text-right font-medium text-darkBlue/70">Actions</th>
             </tr>
           </thead>
-          <tbody>
+
+          <tbody className="divide-y divide-darkBlue/10 [&>tr:last-child>td]:!pb-0">
             {!loading && filtered.length === 0 && (
               <tr>
-                <td colSpan={11} className="py-6 text-center opacity-60">
+                <td colSpan={11} className="py-8 text-center text-darkBlue/50">
                   Aucun retour NC
                 </td>
               </tr>
             )}
+
             {loading && (
               <tr>
-                <td colSpan={11} className="py-6 text-center opacity-60">
-                  Chargement…
+                <td colSpan={11} className="py-8 text-center text-darkBlue/50">
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="size-4 animate-spin" /> Chargement…
+                  </span>
                 </td>
               </tr>
             )}
+
             {!loading &&
               filtered.map((it) => {
                 const item = it?.item || {};
                 return (
                   <tr
                     key={it._id}
-                    className={`border-b ${
-                      editingId === it._id ? "bg-lightGrey" : ""
+                    className={`transition-colors hover:bg-darkBlue/[0.03] ${
+                      editingId === it._id ? "bg-blue/5 ring-1 ring-blue/20" : ""
                     }`}
                   >
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      {fmtDate(it.initiatedAt)}
-                    </td>
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      {item.productName || "—"}
-                    </td>
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      {item.supplierName || "—"}
-                    </td>
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      {item.lotNumber || "—"}
-                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">{fmtDate(it.initiatedAt)}</td>
+                    <td className="py-2 pr-3 whitespace-nowrap">{item.productName || "—"}</td>
+                    <td className="py-2 pr-3 whitespace-nowrap">{item.supplierName || "—"}</td>
+                    <td className="py-2 pr-3 whitespace-nowrap">{item.lotNumber || "—"}</td>
                     <td className="py-2 pr-3 whitespace-nowrap">
                       {item.quantity ?? "—"}
                       {item.unit ? ` ${item.unit}` : ""}
                     </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">{fmtDate(item.bestBefore, false)}</td>
                     <td className="py-2 pr-3 whitespace-nowrap">
-                      {fmtDate(item.bestBefore, false)}
+                      <StatusPill closedAt={it.closedAt} />
                     </td>
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      {statusBadge(it.closedAt)}
-                    </td>
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      {fmtDate(it.closedAt)}
-                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">{fmtDate(it.closedAt)}</td>
                     <td className="py-2 pr-3 whitespace-nowrap">
                       {Array.isArray(it.attachments) && it.attachments.length
                         ? `${it.attachments.length} doc(s)`
@@ -399,26 +424,27 @@ export default function RecallList({
                     </td>
                     <td className="py-2 pr-3 whitespace-nowrap">
                       {it?.recordedBy
-                        ? `${it.recordedBy.firstName || ""} ${
-                            it.recordedBy.lastName || ""
-                          }`.trim() || "—"
+                        ? `${it.recordedBy.firstName || ""} ${it.recordedBy.lastName || ""}`.trim() ||
+                          "—"
                         : "—"}
                     </td>
                     <td className="py-2 pr-0">
-                      <div className="flex gap-2 justify-end">
+                      <div className="flex items-center justify-end gap-2">
                         <button
                           onClick={() => onEdit?.(it)}
-                          className="px-3 py-1 rounded bg-green text-white"
+                          className={`${btnBase} border border-green/50 bg-white text-green`}
+                          aria-label="Éditer"
+                          type="button"
                         >
-                          Éditer
+                          <Edit3 className="size-4" /> Éditer
                         </button>
                         <button
-                          onClick={() => (
-                            setIsDeleteModalOpen(true), setDeleteTarget(it)
-                          )}
-                          className="px-3 py-1 rounded bg-red text-white"
+                          onClick={() => askDelete(it)}
+                          className={`${btnBase} border border-red bg-white text-red hover:border-red/80`}
+                          aria-label="Supprimer"
+                          type="button"
                         >
-                          Supprimer
+                          <Trash2 className="size-4" /> Supprimer
                         </button>
                       </div>
                     </td>
@@ -431,22 +457,24 @@ export default function RecallList({
 
       {/* Pagination */}
       {meta?.pages > 1 && (
-        <div className="flex items-center justify-between mt-4">
-          <div className="text-xs opacity-70">
+        <div className="mt-4 flex items-center justify-between">
+          <div className="text-xs text-darkBlue/60">
             Page {meta.page}/{meta.pages} — {meta.total} retours
           </div>
           <div className="flex gap-2">
             <button
               disabled={meta.page <= 1}
               onClick={() => fetchData(meta.page - 1)}
-              className="px-3 py-1 rounded border border-blue text-blue disabled:opacity-40"
+              className={`${btnBase} border border-darkBlue/20 bg-white text-darkBlue hover:border-darkBlue/30 disabled:opacity-40`}
+              type="button"
             >
               Précédent
             </button>
             <button
               disabled={meta.page >= meta.pages}
               onClick={() => fetchData(meta.page + 1)}
-              className="px-3 py-1 rounded border border-blue text-blue disabled:opacity-40"
+              className={`${btnBase} border border-darkBlue/20 bg-white text-darkBlue hover:border-darkBlue/30 disabled:opacity-40`}
+              type="button"
             >
               Suivant
             </button>
@@ -456,38 +484,42 @@ export default function RecallList({
 
       {/* Modale suppression */}
       {isDeleteModalOpen &&
+        isClient &&
         createPortal(
-          <div
-            className="fixed inset-0 z-[1000]"
-            aria-modal="true"
-            role="dialog"
-          >
+          <div className="fixed inset-0 z-[1000]" aria-modal="true" role="dialog">
             <div
               onClick={closeDeleteModal}
-              className="absolute inset-0 bg-black/20"
+              className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"
             />
             <div className="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
-              <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-[450px] pointer-events-auto">
-                <h2 className="text-xl font-semibold mb-6 text-center">
+              <div className="pointer-events-auto w-full max-w-[480px] rounded-2xl border border-darkBlue/10 bg-white p-5 shadow-2xl">
+                <h2 className="mb-2 text-center text-lg font-semibold text-darkBlue">
                   Supprimer ce retour ?
                 </h2>
-                <p className="text-sm text-center mb-6">
+                <p className="mb-5 text-center text-sm text-darkBlue/70">
                   Cette action est définitive.
                 </p>
-                <div className="flex gap-4 mx-auto justify-center">
+                <div className="flex items-center justify-center gap-2">
                   <button
                     onClick={onConfirmDelete}
                     disabled={deleteLoading}
-                    className="px-4 py-2 rounded-lg bg-blue text-white disabled:opacity-50"
+                    className={`${btnBase} bg-blue text-white disabled:opacity-50`}
+                    type="button"
                   >
-                    {deleteLoading ? "Suppression…" : "Confirmer"}
+                    {deleteLoading ? (
+                      <>
+                        <Loader2 className="size-4 animate-spin" /> Suppression…
+                      </>
+                    ) : (
+                      "Confirmer"
+                    )}
                   </button>
                   <button
                     type="button"
                     onClick={closeDeleteModal}
-                    className="px-4 py-2 rounded-lg text-white bg-red"
+                    className={`${btnBase} border border-red bg-red text-white`}
                   >
-                    Annuler
+                    <X className="size-4" /> Annuler
                   </button>
                 </div>
               </div>

@@ -24,6 +24,8 @@ const inventoryLotSchema = new Schema(
     },
     receptionId: { type: Schema.Types.ObjectId, ref: "ReceptionDelivery" },
 
+    receptionLineId: { type: Schema.Types.ObjectId },
+
     productName: { type: String, required: true },
     supplier: String,
 
@@ -100,6 +102,7 @@ inventoryLotSchema.index({ restaurantId: 1, dlc: 1 });
 inventoryLotSchema.index({ restaurantId: 1, ddm: 1 });
 inventoryLotSchema.index({ restaurantId: 1, internalUseBy: 1 });
 inventoryLotSchema.index({ receptionId: 1 });
+inventoryLotSchema.index({ receptionId: 1, receptionLineId: 1 });
 
 module.exports =
   mongoose.models.InventoryLot ||

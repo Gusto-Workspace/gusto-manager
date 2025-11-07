@@ -116,6 +116,8 @@ const training_sessions = require("./routes/health-control-plan/training-session
 const maintenance = require("./routes/health-control-plan/maintenance.routes");
 const waste_entries = require("./routes/health-control-plan/waste-entries.routes");
 const health_mesures = require("./routes/health-control-plan/health-mesures.routes");
+const cooking_equipments = require("./routes/health-control-plan/cooking-equipments.routes");
+const zones = require("./routes/health-control-plan/zone.routes")
 
 app.use(apiRoutes, fridge_temperature);
 app.use(apiRoutes, preheat_temperature);
@@ -138,8 +140,8 @@ app.use(apiRoutes, training_sessions);
 app.use(apiRoutes, maintenance);
 app.use(apiRoutes, waste_entries);
 app.use(apiRoutes, health_mesures);
-
-
+app.use(apiRoutes, cooking_equipments);
+app.use(apiRoutes, zones);
 
 // ÉCOUTE DU PORT
 server.listen(PORT, () => {

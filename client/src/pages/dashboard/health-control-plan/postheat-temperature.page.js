@@ -1,6 +1,7 @@
-import { useContext, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
+import axios from "axios";
 
 // I18N
 import { i18n, useTranslation } from "next-i18next";
@@ -16,8 +17,12 @@ import NoAvailableComponent from "@/components/_shared/options/no-available.opti
 
 // SVG
 import { HealthSvg } from "@/components/_shared/_svgs/health.svg";
+
+// COMPONENTS
 import PostheatTemperatureForm from "@/components/dashboard/health-control-plan/postheat-temperature/form.component";
 import PostheatTemperatureList from "@/components/dashboard/health-control-plan/postheat-temperature/list.component";
+import CookingEquipmentManagerModal from "@/components/dashboard/health-control-plan/cooking-manager-modale.component";
+import { List } from "lucide-react";
 
 export default function PostHeatTemperaturePage(props) {
   const { t } = useTranslation("");
@@ -26,6 +31,45 @@ export default function PostHeatTemperaturePage(props) {
   const { restaurantContext } = useContext(GlobalContext);
 
   const [editing, setEditing] = useState(null);
+
+  // --- Appareils (même logique que la page preheat)
+  const token = useMemo(
+    () => (typeof window !== "undefined" ? localStorage.getItem("token") : ""),
+    []
+  );
+  const restaurantId = restaurantContext?.restaurantData?._id;
+
+  const [equipments, setEquipments] = useState([]);
+  const [equipmentsLoading, setEquipmentsLoading] = useState(false);
+  const [isEquipmentModalOpen, setIsEquipmentModalOpen] = useState(false);
+
+  useEffect(() => {
+    const fetchEquipments = async () => {
+      if (!restaurantId) return;
+      setEquipmentsLoading(true);
+      try {
+        const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/cooking-equipments`;
+        const { data } = await axios.get(url, {
+          headers: { Authorization: `Bearer ${token}` },
+          params: { active: 1 },
+        });
+        const items = (data?.items || []).sort((a, b) =>
+          String(a.name).localeCompare(String(b.name), "fr")
+        );
+        setEquipments(items);
+      } finally {
+        setEquipmentsLoading(false);
+      }
+    };
+    fetchEquipments();
+  }, [restaurantId, token]);
+
+  const handleEquipmentsChanged = (next) => {
+    const sorted = [...(next || [])].sort((a, b) =>
+      String(a.name).localeCompare(String(b.name), "fr")
+    );
+    setEquipments(sorted);
+  };
 
   let title;
   let description;
@@ -46,22 +90,6 @@ export default function PostHeatTemperaturePage(props) {
     <>
       <Head>
         <title>{title}</title>
-
-        {/* <>
-          {description && <meta name="description" content={description} />}
-          {title && <meta property="og:title" content={title} />}
-          {description && (
-            <meta property="og:description" content={description} />
-          )}
-          <meta
-            property="og:url"
-            content="https://lespetitsbilingues-newham.com/"
-          />
-          <meta property="og:type" content="website" />
-          <meta property="og:image" content="/img/open-graph.jpg" />
-          <meta property="og:image:width" content="1200" />
-          <meta property="og:image:height" content="630" />
-        </> */}
       </Head>
 
       <div>
@@ -80,7 +108,7 @@ export default function PostHeatTemperaturePage(props) {
             {restaurantContext?.restaurantData?.options?.health_control_plan ? (
               <section className="flex flex-col gap-6">
                 <hr className="opacity-20" />
-                <div className="flex justify-between  gap-4">
+                <div className="flex justify-between flex-wrap gap-4">
                   <div className="flex items-center gap-2 min-h-[40px]">
                     <HealthSvg width={30} height={30} fillColor="#131E3690" />
 
@@ -100,11 +128,27 @@ export default function PostHeatTemperaturePage(props) {
                       </>
                     </h1>
                   </div>
+
+                  <button
+                    onClick={() => setIsEquipmentModalOpen(true)}
+                    className="bg-blue px-4 py-2 rounded-lg text-white h-fit disabled:opacity-60 inline-flex items-center gap-2"
+                    disabled={equipmentsLoading}
+                    title={
+                      equipmentsLoading
+                        ? "Chargement des appareils…"
+                        : "Gérer les appareils"
+                    }
+                  >
+                    <List className="size-4" />
+                    Liste des appareils
+                  </button>
                 </div>
+
                 <div className="flex flex-col gap-6">
                   <PostheatTemperatureForm
-                    restaurantId={restaurantContext.restaurantData?._id}
+                    restaurantId={restaurantId}
                     initial={editing}
+                    equipments={equipments}
                     onSuccess={(doc) => {
                       setEditing(null);
                       window.dispatchEvent(
@@ -117,7 +161,7 @@ export default function PostHeatTemperaturePage(props) {
                   />
 
                   <PostheatTemperatureList
-                    restaurantId={restaurantContext.restaurantData?._id}
+                    restaurantId={restaurantId}
                     onEdit={(doc) => setEditing(doc)}
                     editingId={editing?._id || null}
                     onDeleted={(doc) => {
@@ -125,7 +169,7 @@ export default function PostHeatTemperaturePage(props) {
                         setEditing(null);
                     }}
                   />
-                </div>{" "}
+                </div>
               </section>
             ) : (
               <NoAvailableComponent
@@ -135,6 +179,16 @@ export default function PostHeatTemperaturePage(props) {
           </div>
         </div>
       </div>
+
+      {/* Modale réutilisée (identique à preheat) */}
+      {isEquipmentModalOpen ? (
+        <CookingEquipmentManagerModal
+          restaurantId={restaurantId}
+          initialEquipments={equipments}
+          onChanged={handleEquipmentsChanged}
+          onClose={() => setIsEquipmentModalOpen(false)}
+        />
+      ) : null}
     </>
   );
 }

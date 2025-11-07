@@ -1,7 +1,24 @@
+// app/(components)/oil/OilChangeForm.jsx
 "use client";
-import { useEffect } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import axios from "axios";
+import {
+  CalendarClock,
+  FileText,
+  Hash,
+  Link as LinkIcon,
+  Loader2,
+  Wrench,
+  Droplet,
+  Building2,
+  Percent,
+  Filter,
+  Palette,
+  Wind,
+  Tag,
+} from "lucide-react";
+import { createPortal } from "react-dom";
 
 function toDatetimeLocalValue(value) {
   const base = value ? new Date(value) : new Date();
@@ -18,6 +35,7 @@ function buildFormDefaults(record) {
   return {
     fryerId: record?.fryerId ?? "",
     performedAt: toDatetimeLocalValue(record?.performedAt),
+
     litersRemoved:
       record?.litersRemoved !== undefined && record?.litersRemoved !== null
         ? String(record.litersRemoved)
@@ -54,8 +72,9 @@ export default function OilChangeForm({
     register,
     handleSubmit,
     reset,
-    formState: { errors, isSubmitting },
     setValue,
+    watch,
+    formState: { errors, isSubmitting },
   } = useForm({ defaultValues: buildFormDefaults(initial) });
 
   useEffect(() => {
@@ -70,9 +89,10 @@ export default function OilChangeForm({
     const payload = {
       fryerId: data.fryerId || undefined,
       performedAt: data.performedAt ? new Date(data.performedAt) : undefined,
+
       litersRemoved:
         data.litersRemoved !== "" && data.litersRemoved != null
-          ? Number(data.litersRemoved)
+          ? Number(String(data.litersRemoved).replace(",", "."))
           : undefined,
 
       newOilBatch:
@@ -85,8 +105,9 @@ export default function OilChangeForm({
 
       tpmPercent:
         data.tpmPercent !== "" && data.tpmPercent != null
-          ? Number(data.tpmPercent)
+          ? Number(String(data.tpmPercent).replace(",", "."))
           : undefined,
+
       filteredBeforeChange: !!data.filteredBeforeChange,
       colorIndex: data.colorIndex || undefined,
       odorCheck: data.odorCheck || undefined,
@@ -105,7 +126,6 @@ export default function OilChangeForm({
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    // event live (si la page parent ne le fait pas déjà)
     window.dispatchEvent(
       new CustomEvent("oil-change:upsert", { detail: { doc: saved } })
     );
@@ -114,65 +134,399 @@ export default function OilChangeForm({
     onSuccess?.(saved);
   };
 
+  // --- Styles
+  const fieldWrap =
+    "group relative rounded-xl bg-white/50 backdrop-blur-sm px-3 py-2 h-[80px] transition-shadow";
+  const labelCls =
+    "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
+  const inputCls =
+    "h-11 w-full rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition placeholder:text-darkBlue/40";
+  const selectCls =
+    "h-11 w-full appearance-none rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition";
+  const btnPrimary =
+    "text-nowrap inline-flex items-center justify-center gap-2 h-[38px] rounded-lg bg-blue px-4 py-2 text-sm font-medium text-white shadow disabled:opacity-60";
+  const btnSecondary =
+    "inline-flex items-center justify-center gap-2 rounded-lg border border-red bg-white px-4 py-2 text-sm font-medium text-red";
+  const okBorder = "border-darkBlue/20";
+
+  const notesVal = watch("qualityNotes");
+  const filtered = watch("filteredBeforeChange");
+  const fryerVal = watch("fryerId") || "";
+
+  /* ------------------ SUGGESTIONS FRITEUSE / ÉQUIPEMENT (à la frappe) ------------------ */
+
+  // normalisation
+  const norm = (s) => String(s || "").trim().toLowerCase();
+
+  // container + portal + scroller
+  const eqBoxRef = useRef(null);
+  const eqPortalRef = useRef(null);
+  const eqScrollerRef = useRef(null);
+
+  // état
+  const [eqOpen, setEqOpen] = useState(false);
+  const [eqItems, setEqItems] = useState([]); // valeurs uniques (strings)
+  const [eqFiltered, setEqFiltered] = useState([]);
+  const [eqLoading, setEqLoading] = useState(false);
+  const [eqError, setEqError] = useState(false);
+  const [eqActiveIndex, setEqActiveIndex] = useState(-1);
+
+  // pagination & guards
+  const eqPageRef = useRef(0);
+  const eqPagesRef = useRef(1);
+  const eqLoadingRef = useRef(false);
+
+  // debouncing + flag "l’utilisateur tape réellement"
+  const eqDebounceRef = useRef(null);
+  const eqUserTypedRef = useRef(false);
+
+  // éviter fermeture au clic dans le portal
+  const pointerInPortalRef = useRef(false);
+  useEffect(() => {
+    const down = (e) => {
+      if (eqPortalRef.current?.contains(e.target)) {
+        pointerInPortalRef.current = true;
+      }
+    };
+    const up = () => setTimeout(() => (pointerInPortalRef.current = false), 0);
+    document.addEventListener("mousedown", down, true);
+    document.addEventListener("mouseup", up, true);
+    return () => {
+      document.removeEventListener("mousedown", down, true);
+      document.removeEventListener("mouseup", up, true);
+    };
+  }, []);
+
+  // fermeture si clic à l’extérieur
+  useEffect(() => {
+    const onClickOutside = (e) => {
+      if (eqPortalRef.current?.contains(e.target)) return;
+      if (eqBoxRef.current?.contains(e.target)) return;
+      setEqOpen(false);
+      setEqActiveIndex(-1);
+    };
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
+
+  // repositionnement du portal
+  const [, forceTick] = useState(0);
+  useEffect(() => {
+    const onScrollOrResize = () => forceTick((v) => v + 1);
+    window.addEventListener("resize", onScrollOrResize, true);
+    window.addEventListener("scroll", onScrollOrResize, true);
+    return () => {
+      window.removeEventListener("resize", onScrollOrResize, true);
+      window.removeEventListener("scroll", onScrollOrResize, true);
+    };
+  }, []);
+
+  // merge distincts
+  const addDistinct = (prev, arr) => {
+    const seen = new Set(prev.map((x) => norm(x)));
+    const out = [...prev];
+    for (const it of arr) {
+      const v = String(it || "").trim();
+      if (!v) continue;
+      const n = norm(v);
+      if (seen.has(n)) continue;
+      seen.add(n);
+      out.push(v);
+    }
+    return out;
+  };
+
+  // charge une page d’“oil-changes” et ajoute les fryerId uniques
+  const loadEquipPage = useCallback(
+    async (page = 1) => {
+      if (!restaurantId) return;
+      if (eqLoadingRef.current) return;
+      const token = localStorage.getItem("token");
+      if (!token) return;
+
+      eqLoadingRef.current = true;
+      setEqLoading(true);
+      setEqError(false);
+      try {
+        const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-oil-changes`;
+        const { data } = await axios.get(url, {
+          headers: { Authorization: `Bearer ${token}` },
+          params: { page, limit: 50 },
+        });
+
+        const items = Array.isArray(data?.items) ? data.items : [];
+        const fryers = items.map((it) => it?.fryerId).filter(Boolean);
+        setEqItems((prev) => addDistinct(prev, fryers));
+
+        const pages = Math.max(1, Number(data?.meta?.pages || 1));
+        eqPageRef.current = page;
+        eqPagesRef.current = pages;
+      } catch {
+        setEqError(true);
+      } finally {
+        eqLoadingRef.current = false;
+        setEqLoading(false);
+      }
+    },
+    [restaurantId]
+  );
+
+  // scroll infini dans la liste des suggestions (si on veut explorer davantage)
+  const onEqScroll = (e) => {
+    const el = e.currentTarget;
+    if (!el) return;
+    const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 16;
+    const hasMore = eqPageRef.current < eqPagesRef.current;
+    if (nearBottom && hasMore && !eqLoadingRef.current) {
+      loadEquipPage(eqPageRef.current + 1);
+    }
+  };
+
+  // met à jour la liste filtrée et l’ouverture du menu
+  const updateFiltered = useCallback(
+    (q) => {
+      const query = norm(q);
+      if (!query || query.length < 1) {
+        setEqFiltered([]);
+        setEqOpen(false);
+        setEqActiveIndex(-1);
+        return;
+      }
+      const matches = eqItems
+        .filter((v) => norm(v).includes(query))
+        .sort((a, b) => String(a).localeCompare(String(b), "fr", { sensitivity: "base" }))
+        .slice(0, 8);
+
+      setEqFiltered(matches);
+      setEqOpen(matches.length > 0);
+      setEqActiveIndex(matches.length ? 0 : -1);
+    },
+    [eqItems]
+  );
+
+  // ouverture uniquement à la FRAPPE (comme “fournisseur” demandé)
+  useEffect(() => {
+    if (!eqUserTypedRef.current) {
+      setEqOpen(false);
+      return;
+    }
+    if (eqDebounceRef.current) clearTimeout(eqDebounceRef.current);
+
+    const q = String(fryerVal || "");
+    if (q.trim().length < 1) {
+      setEqFiltered([]);
+      setEqOpen(false);
+      setEqActiveIndex(-1);
+      return;
+    }
+
+    eqDebounceRef.current = setTimeout(async () => {
+      // si pas encore chargé, prendre la première page pour avoir une base
+      if (eqPageRef.current === 0) {
+        await loadEquipPage(1);
+      }
+      updateFiltered(q);
+    }, 160);
+
+    return () => {
+      if (eqDebounceRef.current) clearTimeout(eqDebounceRef.current);
+    };
+  }, [fryerVal, loadEquipPage, updateFiltered]);
+
+  const pickEq = (val) => {
+    setValue("fryerId", val, { shouldDirty: true, shouldValidate: true });
+    setEqOpen(false);
+    setEqActiveIndex(-1);
+    eqUserTypedRef.current = false;
+  };
+
+  const onEqKeyDown = (e) => {
+    if (!eqOpen) return; // n’ouvre pas au clavier : seulement à la frappe
+    if (e.key === "Escape") {
+      e.preventDefault();
+      setEqOpen(false);
+      setEqActiveIndex(-1);
+      return;
+    }
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setEqActiveIndex((i) => Math.min((eqFiltered?.length || 0) - 1, i + 1));
+      return;
+    }
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setEqActiveIndex((i) => Math.max(0, i - 1));
+      return;
+    }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (eqActiveIndex >= 0 && eqFiltered[eqActiveIndex]) {
+        pickEq(eqFiltered[eqActiveIndex]);
+      } else {
+        setEqOpen(false);
+        setEqActiveIndex(-1);
+      }
+    }
+  };
+
+  // ---------------------------------- JSX ----------------------------------
+
   return (
-    <form
-      onSubmit={handleSubmit(onSubmit)}
-      className="bg-white rounded-lg p-4 shadow-sm flex flex-col gap-6"
-    >
-      <div className="flex flex-col gap-4 midTablet:flex-row">
-        <div className="flex-1">
-          <label className="text-sm font-medium">Friteuse / Équipement</label>
-          <input
-            type="text"
-            placeholder="ex: fryer-1 / cuisine"
-            {...register("fryerId")}
-            className="border rounded p-2 h-[44px] w-full"
-            autoComplete="off"
-            spellCheck={false}
-            autoCorrect="off"
-          />
+    <form onSubmit={handleSubmit(onSubmit)} className="relative flex flex-col gap-2">
+      {/* Ligne 1 : Matériel / Date */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
+        <div className={fieldWrap} ref={eqBoxRef}>
+          <label className={labelCls}>
+            <Wrench className="size-4" />
+            Friteuse / Équipement
+          </label>
+
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="ex: fryer-1 / cuisine"
+              autoComplete="off"
+              spellCheck={false}
+              autoCorrect="off"
+              {...register("fryerId", {
+                onChange: () => {
+                  eqUserTypedRef.current = true; // n’ouvre que si l’utilisateur tape
+                },
+              })}
+              className={`${inputCls} ${okBorder}`}
+              onKeyDown={onEqKeyDown}
+              onBlur={() =>
+                setTimeout(() => {
+                  if (!pointerInPortalRef.current) {
+                    setEqOpen(false);
+                    setEqActiveIndex(-1);
+                  }
+                }, 0)
+              }
+            />
+
+            {/* Suggestions ÉQUIPEMENT — apparait SEULEMENT quand on tape */}
+            {eqOpen &&
+              createPortal(
+                (() => {
+                  const anchor = eqBoxRef.current;
+                  if (!anchor) return null;
+                  const rect = anchor.getBoundingClientRect();
+                  const style = {
+                    position: "fixed",
+                    left: rect.left + 12,
+                    top: rect.bottom - 4,
+                    width: rect.width - 24,
+                    zIndex: 1000,
+                    maxHeight: "16rem",
+                    overflow: "auto",
+                  };
+                  return (
+                    <div
+                      ref={eqPortalRef}
+                      style={style}
+                      className="rounded-lg border border-darkBlue/15 bg-white shadow"
+                      role="listbox"
+                      aria-label="Suggestions équipements"
+                      onScroll={onEqScroll}
+                    >
+                      {eqFiltered.map((name, idx) => {
+                        const active = idx === eqActiveIndex;
+                        return (
+                          <button
+                            key={`${name}-${idx}`}
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onMouseEnter={() => setEqActiveIndex(idx)}
+                            onClick={() => pickEq(name)}
+                            className={`w-full text-left px-3 py-2 text-sm hover:bg-blue/5 ${active ? "bg-blue/5" : ""}`}
+                            role="option"
+                            aria-selected={active}
+                            title={name}
+                          >
+                            {name}
+                          </button>
+                        );
+                      })}
+
+                      {/* états discrets */}
+                      {eqLoading && (
+                        <div className="px-3 py-2 text-xs text-darkBlue/60">
+                          Chargement…
+                        </div>
+                      )}
+                      {eqError && (
+                        <div className="px-3 py-2 text-xs text-red">
+                          Erreur de chargement
+                        </div>
+                      )}
+                    </div>
+                  );
+                })(),
+                document.body
+              )}
+          </div>
         </div>
-        <div className="flex-1">
-          <label className="text-sm font-medium">Date/heure *</label>
+
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <CalendarClock className="size-4" />
+            Date / heure *
+          </label>
           <input
             type="datetime-local"
-            {...register("performedAt")}
-            className="border rounded p-2 h-[44px] w-full"
+            {...register("performedAt", { required: "Requis" })}
+            className={selectCls}
           />
+          {errors.performedAt && (
+            <p className="mt-1 text-xs text-red">{errors.performedAt.message}</p>
+          )}
         </div>
       </div>
 
-      <div className="flex flex-col gap-4 midTablet:flex-row">
-        <div className="w-48">
-          <label className="text-sm font-medium">Litres retirés</label>
+      {/* Ligne 2 : Volume retiré / Lot / Fournisseur */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <Droplet className="size-4" />
+            Litres retirés
+          </label>
           <input
             type="number"
             step="0.1"
             placeholder="ex: 12.5"
             onWheel={(e) => e.currentTarget.blur()}
             {...register("litersRemoved")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
           />
         </div>
-        <div className="flex-1">
-          <label className="text-sm font-medium">N° lot (huile neuve)</label>
+
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <Hash className="size-4" />
+            N° lot (huile neuve)
+          </label>
           <input
             type="text"
             placeholder="ex: OIL-2025-07-18-A"
             {...register("batchNumber")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
             autoComplete="off"
             spellCheck={false}
             autoCorrect="off"
           />
         </div>
-        <div className="flex-1">
-          <label className="text-sm font-medium">Fournisseur</label>
+
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <Building2 className="size-4" />
+            Fournisseur
+          </label>
           <input
             type="text"
             placeholder="Nom du fournisseur"
             {...register("supplier")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
             autoComplete="off"
             spellCheck={false}
             autoCorrect="off"
@@ -180,9 +534,13 @@ export default function OilChangeForm({
         </div>
       </div>
 
-      <div className="flex flex-col items-end gap-4 midTablet:flex-row">
-        <div className="w-40">
-          <label className="text-sm font-medium">% TPM</label>
+      {/* Ligne 3 : TPM + Filtrage (switch) */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <Percent className="size-4" />
+            % TPM
+          </label>
           <input
             type="number"
             step="0.1"
@@ -191,54 +549,87 @@ export default function OilChangeForm({
             onWheel={(e) => e.currentTarget.blur()}
             placeholder="ex: 22.5"
             {...register("tpmPercent")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
           />
         </div>
-        <div className="flex items-center gap-2 h-[44px]">
-          <input
-            id="filteredBeforeChange"
-            type="checkbox"
-            {...register("filteredBeforeChange")}
-            className="border rounded"
-          />
-          <label htmlFor="filteredBeforeChange" className="text-sm font-medium">
-            Filtrée avant / pendant le service
+
+        <div className={`${fieldWrap} midTablet:col-span-2`}>
+          <label className={labelCls}>
+            <Filter className="size-4" />
+            Filtrage (service)
+          </label>
+
+          <label
+            role="switch"
+            aria-checked={!!filtered}
+            className="group inline-flex justify-between h-11 w-full items-center gap-3 rounded-lg border border-darkBlue/20 bg-white px-3 py-2 cursor-pointer select-none"
+          >
+            <span className="text-sm text-darkBlue/70">
+              {filtered ? "Filtrée avant/pendant" : "Non filtrée"}
+            </span>
+
+            <input
+              type="checkbox"
+              {...register("filteredBeforeChange")}
+              className="sr-only peer"
+              onChange={(e) =>
+                setValue("filteredBeforeChange", e.target.checked, {
+                  shouldDirty: true,
+                })
+              }
+            />
+
+            <span className="relative inline-flex h-6 w-11 items-center rounded-full bg-darkBlue/20 transition-colors peer-checked:bg-darkBlue/80">
+              <span className="absolute left-1 top-1/2 -translate-y-1/2 size-4 rounded-full bg-white shadow transition-transform will-change-transform translate-x-0 peer-checked:translate-x-5" />
+            </span>
           </label>
         </div>
       </div>
 
-      <div className="flex flex-col gap-4 midTablet:flex-row">
-        <div className="flex-1">
-          <label className="text-sm font-medium">Couleur / Indice</label>
+      {/* Ligne 4 : Couleur / Odeur / Marque */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <Palette className="size-4" />
+            Couleur / Indice
+          </label>
           <input
             type="text"
             placeholder="ex: dorée / ambrée / foncée…"
             {...register("colorIndex")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
             autoComplete="off"
             spellCheck={false}
             autoCorrect="off"
           />
         </div>
-        <div className="flex-1">
-          <label className="text-sm font-medium">Odeur</label>
+
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <Wind className="size-4" />
+            Odeur
+          </label>
           <input
             type="text"
             placeholder="ex: neutre, ok, rance…"
             {...register("odorCheck")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
             autoComplete="off"
             spellCheck={false}
             autoCorrect="off"
           />
         </div>
-        <div className="flex-1">
-          <label className="text-sm font-medium">Marque d’huile</label>
+
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <Tag className="size-4" />
+            Marque d’huile
+          </label>
           <input
             type="text"
             placeholder="ex: XYZ ProFry"
             {...register("oilBrand")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
             autoComplete="off"
             spellCheck={false}
             autoCorrect="off"
@@ -246,25 +637,36 @@ export default function OilChangeForm({
         </div>
       </div>
 
-      <div className="flex flex-col midTablet:flex-row gap-4">
-        <div className="flex-1">
-          <label className="text-sm font-medium">Observations qualité</label>
-          <textarea
-            rows={4}
-            {...register("qualityNotes")}
-            className="border rounded p-2 resize-none w-full min-h-[96px]"
-            placeholder="Couleur, odeur, particules, filtrage, seuil TPM, etc."
-          />
+      {/* Ligne 5 : Observations / Lien doc */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <FileText className="size-4" />
+            Observations qualité
+          </label>
+        <div className="relative">
+            <textarea
+              rows={1}
+              {...register("qualityNotes")}
+              className="w-full resize-none rounded-lg border border-darkBlue/20 bg-white p-[10px] pr-16 text-[15px] outline-none transition placeholder:text-darkBlue/40"
+              placeholder="Couleur, odeur, particules, filtrage, seuil TPM, etc."
+            />
+            <span className="pointer-events-none absolute bottom-2 right-3 select-none text-[11px] text-darkBlue/40">
+              {(notesVal?.length ?? 0).toString()}
+            </span>
+          </div>
         </div>
-        <div className="flex-1">
-          <label className="text-sm font-medium">
+
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <LinkIcon className="size-4" />
             Lien doc. élimination (URL)
           </label>
           <input
             type="url"
             placeholder="https://… (BSDA, ticket collecte, etc.)"
             {...register("disposalDocumentUrl")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
             autoComplete="off"
             spellCheck={false}
             autoCorrect="off"
@@ -273,14 +675,26 @@ export default function OilChangeForm({
       </div>
 
       {/* Actions */}
-      <div className="flex gap-2">
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="px-4 py-2 rounded bg-blue text-white disabled:opacity-50"
-        >
-          {initial?._id ? "Mettre à jour" : "Enregistrer"}
+      <div className="flex flex-col gap-2 mt-3 mobile:flex-row">
+        <button type="submit" disabled={isSubmitting} className={btnPrimary}>
+          {isSubmitting ? (
+            <>
+              <Loader2 className="size-4 animate-spin" />
+              Enregistrement…
+            </>
+          ) : initial?._id ? (
+            <>
+              <FileText className="size-4" />
+              Mettre à jour
+            </>
+          ) : (
+            <>
+              <FileText className="size-4" />
+              Enregistrer
+            </>
+          )}
         </button>
+
         {initial?._id && (
           <button
             type="button"
@@ -288,7 +702,7 @@ export default function OilChangeForm({
               reset(buildFormDefaults(null));
               onCancel?.();
             }}
-            className="px-4 py-2 rounded text-white bg-red"
+            className={btnSecondary}
           >
             Annuler
           </button>

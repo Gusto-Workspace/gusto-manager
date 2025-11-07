@@ -215,7 +215,17 @@ router.put(
         return res.status(400).json({ error: "value doit être un nombre" });
       }
 
-      const changed = hasBusinessChanges(prev, next);
+      const fields = ["location", "locationId", "value", "unit", "note"];
+      let changed = false;
+      for (const f of fields)
+        if (prev[f] !== next[f]) {
+          changed = true;
+          break;
+        }
+      const t1 = prev.createdAt?.getTime?.() ?? null;
+      const t2 = next.createdAt?.getTime?.() ?? null;
+      if (t1 !== t2) changed = true;
+
       if (!changed) return res.json(prev);
 
       prev.location = next.location;

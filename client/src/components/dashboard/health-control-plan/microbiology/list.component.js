@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import axios from "axios";
+import { Search, CalendarClock, Edit3, Trash2, Loader2, X } from "lucide-react";
 
 function fmtDate(d) {
   try {
@@ -31,14 +32,17 @@ export default function MicrobiologyList({
 
   // Filtres
   const [q, setQ] = useState("");
-  const [type, setType] = useState(""); // surface|food|water|''
-  const [passed, setPassed] = useState(""); // ''|true|false (string)
+  const [type, setType] = useState("");     // surface|food|water|''
+  const [passed, setPassed] = useState(""); // ''|'true'|'false'
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+
+  const [isClient, setIsClient] = useState(false);
+  useEffect(() => setIsClient(true), []);
 
   const token = useMemo(() => localStorage.getItem("token"), []);
   const metaRef = useRef(meta);
@@ -68,6 +72,18 @@ export default function MicrobiologyList({
   );
   const hasFullDateRange = Boolean(dateFrom && dateTo);
 
+  // Styles (alignés sur l'autre List)
+  const fieldWrap =
+    "group relative rounded-xl bg-white/50 backdrop-blur-sm transition-shadow";
+  const labelCls =
+    "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
+  const inputCls =
+    "h-11 w-full rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition placeholder:text-darkBlue/40";
+  const selectCls =
+    "h-11 w-full appearance-none rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition";
+  const btnBase =
+    "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition active:scale-[0.98]";
+
   const fetchData = async (page = 1, overrides = {}) => {
     setLoading(true);
     try {
@@ -78,6 +94,7 @@ export default function MicrobiologyList({
         dateFrom: overrides.dateFrom ?? dateFrom,
         dateTo: overrides.dateTo ?? dateTo,
       };
+
       const params = { page, limit: meta.limit || 20 };
       if (cur.q) params.q = cur.q;
       if (cur.type) params.type = cur.type;
@@ -194,18 +211,15 @@ export default function MicrobiologyList({
     setDeleteTarget(it);
     setIsDeleteModalOpen(true);
   };
+
   const onConfirmDelete = async () => {
     if (!deleteTarget) return;
     try {
       setDeleteLoading(true);
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/microbiology/${deleteTarget._id}`;
-      await axios.delete(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await axios.delete(url, { headers: { Authorization: `Bearer ${token}` } });
 
-      setItems((prev) =>
-        prev.filter((x) => String(x._id) !== String(deleteTarget._id))
-      );
+      setItems((prev) => prev.filter((x) => String(x._id) !== String(deleteTarget._id)));
       onDeleted?.(deleteTarget);
       setIsDeleteModalOpen(false);
       setDeleteTarget(null);
@@ -225,6 +239,7 @@ export default function MicrobiologyList({
       setDeleteLoading(false);
     }
   };
+
   const closeDeleteModal = () => {
     if (deleteLoading) return;
     setIsDeleteModalOpen(false);
@@ -232,151 +247,170 @@ export default function MicrobiologyList({
   };
 
   return (
-    <div className="bg-white rounded-lg drop-shadow-sm p-4">
+    <div className="rounded-2xl border border-darkBlue/10 bg-white p-4  midTablet:p-5 shadow">
       {/* Filtres */}
-      <div className="flex flex-col gap-3 mb-4">
-        <div className="flex flex-col gap-3 midTablet:flex-row midTablet:flex-wrap midTablet:items-end">
+      <div className="mb-4 grid grid-cols-[repeat(auto-fit,minmax(220px,_1fr))] gap-2">
+        {/* Recherche */}
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <Search className="size-4" /> Recherche
+          </label>
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Rechercher paramètre, labo, produit, lot, note…"
-            className="w-full border rounded p-2 midTablet:flex-1 min-w-[220px]"
+            placeholder="Paramètre, labo, produit, lot, note…"
+            className={inputCls}
           />
+        </div>
 
+        {/* Type */}
+        <div className={fieldWrap}>
+          <label className={labelCls}>Type</label>
           <select
             value={type}
             onChange={(e) => setType(e.target.value)}
-            className="border rounded p-2 h-[44px] w-full midTablet:w-48"
+            className={selectCls}
           >
             <option value="">Tous types</option>
             <option value="surface">Surface</option>
             <option value="food">Aliment</option>
             <option value="water">Eau</option>
           </select>
+        </div>
 
+        {/* Conformité */}
+        <div className={fieldWrap}>
+          <label className={labelCls}>Conformité</label>
           <select
             value={passed}
             onChange={(e) => setPassed(e.target.value)}
-            className="border rounded p-2 h-[44px] w-full midTablet:w-48"
+            className={selectCls}
           >
-            <option value="">Toutes conformités</option>
+            <option value="">Toutes</option>
             <option value="true">Conforme</option>
             <option value="false">Non conforme</option>
           </select>
+        </div>
 
-          <div className="flex flex-col gap-1 w-full midTablet:flex-row midTablet:items-center midTablet:gap-2 midTablet:w-auto">
-            <label className="text-sm font-medium">Prélevés du</label>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="w-full border rounded p-2 midTablet:w-auto"
-              max={dateTo || undefined}
-            />
-          </div>
+        {/* Du */}
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <CalendarClock className="size-4" /> Prélevés du
+          </label>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className={selectCls}
+            max={dateTo || undefined}
+          />
+        </div>
 
-          <div className="flex flex-col gap-1 w-full midTablet:flex-row midTablet:items-center midTablet:gap-2 midTablet:w-auto">
-            <label className="text-sm font-medium">Au</label>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="w-full border rounded p-2 midTablet:w-auto"
-              min={dateFrom || undefined}
-            />
-          </div>
+        {/* Au */}
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <CalendarClock className="size-4" /> Au
+          </label>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className={selectCls}
+            min={dateFrom || undefined}
+          />
+        </div>
 
-          <div className="flex flex-col gap-2 w-full mobile:flex-row mobile:w-auto mobile:items-center">
-            <button
-              onClick={() => hasFullDateRange && fetchData(1)}
-              disabled={!hasFullDateRange}
-              className={`px-4 py-2 rounded bg-blue text-white w-full mobile:w-32 ${
-                hasFullDateRange ? "" : "opacity-30 cursor-not-allowed"
-              }`}
-            >
-              Filtrer
-            </button>
+        {/* Actions filtres (ligne entière) */}
+        <div className="col-span-full flex flex-col gap-2 mobile:flex-row">
+          <button
+            onClick={() => hasFullDateRange && fetchData(1)}
+            disabled={!hasFullDateRange}
+            title={
+              !hasFullDateRange
+                ? "Sélectionnez 'Du' ET 'Au' pour filtrer par dates"
+                : undefined
+            }
+            className={`${btnBase} bg-blue text-white disabled:opacity-40`}
+            type="button"
+          >
+            Filtrer
+          </button>
 
-            <button
-              onClick={() => {
-                setQ("");
-                setType("");
-                setPassed("");
-                setDateFrom("");
-                setDateTo("");
-                fetchData(1, {
-                  q: "",
-                  type: "",
-                  passed: "",
-                  dateFrom: "",
-                  dateTo: "",
-                });
-              }}
-              disabled={!hasActiveFilters}
-              className={`px-4 py-2 rounded bg-blue text-white ${
-                hasActiveFilters ? "" : "opacity-30 cursor-not-allowed"
-              }`}
-            >
-              Réinitialiser
-            </button>
-          </div>
+          <button
+            onClick={() => {
+              setQ("");
+              setType("");
+              setPassed("");
+              setDateFrom("");
+              setDateTo("");
+              fetchData(1, { q: "", type: "", passed: "", dateFrom: "", dateTo: "" });
+            }}
+            disabled={!hasActiveFilters}
+            className={`${btnBase} border border-darkBlue/20 bg-white text-darkBlue hover:border-darkBlue/30 disabled:opacity-40`}
+            type="button"
+          >
+            Réinitialiser
+          </button>
         </div>
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto max-w-[calc(100vw-80px)] tablet:max-w-[calc(100vw-350px)]">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto max-w-[calc(100vw-83px)] midTablet:max-w-[calc(100vw-92px)] tablet:max-w-[calc(100vw-360px)] rounded-xl border border-darkBlue/10 p-2">
+        <table className="w-full text-[13px]">
           <thead className="whitespace-nowrap">
-            <tr className="text-left border-b">
-              <th className="py-2 pr-3">Prélevé le</th>
-              <th className="py-2 pr-3">Type</th>
-              <th className="py-2 pr-3">Paramètre</th>
-              <th className="py-2 pr-3">Résultat</th>
-              <th className="py-2 pr-3">Conformité</th>
-              <th className="py-2 pr-3">Labo</th>
-              <th className="py-2 pr-3">Produit / Lot</th>
-              <th className="py-2 pr-3">Rapport</th>
-              <th className="py-2 pr-3">Opérateur</th>
-              <th className="py-2 pr-3 text-right">Actions</th>
+            <tr className="sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Prélevé le</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Type</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Paramètre</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Résultat</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Conformité</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Labo</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Produit / Lot</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Rapport</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Opérateur</th>
+              <th className="py-2 pr-3 text-right font-medium text-darkBlue/70">Actions</th>
             </tr>
           </thead>
-          <tbody>
+
+          <tbody className="divide-y divide-darkBlue/10 [&>tr:last-child>td]:!pb-0">
             {!loading && filtered.length === 0 && (
               <tr>
-                <td colSpan={10} className="py-6 text-center opacity-60">
+                <td colSpan={10} className="py-8 text-center text-darkBlue/50">
                   Aucune analyse
                 </td>
               </tr>
             )}
+
             {loading && (
               <tr>
-                <td colSpan={10} className="py-6 text-center opacity-60">
-                  Chargement…
+                <td colSpan={10} className="py-8 text-center text-darkBlue/50">
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="size-4 animate-spin" /> Chargement…
+                  </span>
                 </td>
               </tr>
             )}
+
             {!loading &&
               filtered.map((it) => (
                 <tr
                   key={it._id}
-                  className={`border-b ${editingId === it._id ? "bg-lightGrey" : ""}`}
+                  className={`transition-colors hover:bg-darkBlue/[0.03] ${
+                    editingId === it._id ? "bg-blue/5 ring-1 ring-blue/20" : ""
+                  }`}
                 >
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {fmtDate(it.sampledAt)}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap capitalize">
-                    {it.sampleType || "—"}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {it.parameter || "—"}
-                  </td>
+                  <td className="py-2 pr-3 whitespace-nowrap">{fmtDate(it.sampledAt)}</td>
+                  <td className="py-2 pr-3 whitespace-nowrap capitalize">{it.sampleType || "—"}</td>
+                  <td className="py-2 pr-3 whitespace-nowrap">{it.parameter || "—"}</td>
                   <td className="py-2 pr-3 whitespace-nowrap">
                     {[it.result, it.unit].filter(Boolean).join(" ") || "—"}
                   </td>
                   <td className="py-2 pr-3 whitespace-nowrap">
                     {typeof it.passed === "boolean" ? (
                       <span
-                        className={`px-2 py-0.5 rounded text-xs ${it.passed ? "bg-green text-white" : "bg-red text-white"}`}
+                        className={`px-2 py-0.5 rounded text-xs ${
+                          it.passed ? "bg-green text-white" : "bg-red text-white"
+                        }`}
                       >
                         {it.passed ? "Conforme" : "Non conforme"}
                       </span>
@@ -386,9 +420,7 @@ export default function MicrobiologyList({
                       </span>
                     )}
                   </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {it.labName || "—"}
-                  </td>
+                  <td className="py-2 pr-3 whitespace-nowrap">{it.labName || "—"}</td>
                   <td className="py-2 pr-3 whitespace-nowrap">
                     {it.productName || it.samplingPoint || "—"}
                     {it.lotNumber ? ` • Lot ${it.lotNumber}` : ""}
@@ -414,20 +446,22 @@ export default function MicrobiologyList({
                       : "—"}
                   </td>
                   <td className="py-2 pr-0">
-                    <div className="flex gap-2 justify-end">
+                    <div className="flex items-center justify-end gap-2">
                       <button
                         onClick={() => onEdit?.(it)}
-                        className="px-3 py-1 rounded bg-green text-white"
+                        className={`${btnBase} border border-green/50 bg-white text-green`}
+                        aria-label="Éditer"
+                        type="button"
                       >
-                        Éditer
+                        <Edit3 className="size-4" /> Éditer
                       </button>
                       <button
-                        onClick={() =>
-                          setIsDeleteModalOpen(true) || setDeleteTarget(it)
-                        }
-                        className="px-3 py-1 rounded bg-red text-white"
+                        onClick={() => askDelete(it)}
+                        className={`${btnBase} border border-red bg-white text-red hover:border-red/80`}
+                        aria-label="Supprimer"
+                        type="button"
                       >
-                        Supprimer
+                        <Trash2 className="size-4" /> Supprimer
                       </button>
                     </div>
                   </td>
@@ -439,22 +473,24 @@ export default function MicrobiologyList({
 
       {/* Pagination */}
       {meta?.pages > 1 && (
-        <div className="flex items-center justify-between mt-4">
-          <div className="text-xs opacity-70">
+        <div className="mt-4 flex items-center justify-between">
+          <div className="text-xs text-darkBlue/60">
             Page {meta.page}/{meta.pages} — {meta.total} analyses
           </div>
           <div className="flex gap-2">
             <button
               disabled={meta.page <= 1}
               onClick={() => fetchData(meta.page - 1)}
-              className="px-3 py-1 rounded border border-blue text-blue disabled:opacity-40"
+              className={`${btnBase} border border-darkBlue/20 bg-white text-darkBlue hover:border-darkBlue/30 disabled:opacity-40`}
+              type="button"
             >
               Précédent
             </button>
             <button
               disabled={meta.page >= meta.pages}
               onClick={() => fetchData(meta.page + 1)}
-              className="px-3 py-1 rounded border border-blue text-blue disabled:opacity-40"
+              className={`${btnBase} border border-darkBlue/20 bg-white text-darkBlue hover:border-darkBlue/30 disabled:opacity-40`}
+              type="button"
             >
               Suivant
             </button>
@@ -464,38 +500,39 @@ export default function MicrobiologyList({
 
       {/* Modale suppression */}
       {isDeleteModalOpen &&
+        isClient &&
         createPortal(
-          <div
-            className="fixed inset-0 z-[1000]"
-            aria-modal="true"
-            role="dialog"
-          >
-            <div
-              onClick={closeDeleteModal}
-              className="absolute inset-0 bg-black/20"
-            />
+          <div className="fixed inset-0 z-[1000]" aria-modal="true" role="dialog">
+            <div onClick={closeDeleteModal} className="absolute inset-0 bg-black/40 backdrop-blur-[1px]" />
             <div className="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
-              <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-[450px] pointer-events-auto">
-                <h2 className="text-xl font-semibold mb-6 text-center">
+              <div className="pointer-events-auto w-full max-w-[480px] rounded-2xl border border-darkBlue/10 bg-white p-5 shadow-2xl">
+                <h2 className="mb-2 text-center text-lg font-semibold text-darkBlue">
                   Supprimer cette analyse ?
                 </h2>
-                <p className="text-sm text-center mb-6">
+                <p className="mb-5 text-center text-sm text-darkBlue/70">
                   Cette action est définitive.
                 </p>
-                <div className="flex gap-4 mx-auto justify-center">
+                <div className="flex items-center justify-center gap-2">
                   <button
                     onClick={onConfirmDelete}
                     disabled={deleteLoading}
-                    className="px-4 py-2 rounded-lg bg-blue text-white disabled:opacity-50"
+                    className={`${btnBase} bg-blue text-white disabled:opacity-50`}
+                    type="button"
                   >
-                    {deleteLoading ? "Suppression…" : "Confirmer"}
+                    {deleteLoading ? (
+                      <>
+                        <Loader2 className="size-4 animate-spin" /> Suppression…
+                      </>
+                    ) : (
+                      "Confirmer"
+                    )}
                   </button>
                   <button
                     type="button"
                     onClick={closeDeleteModal}
-                    className="px-4 py-2 rounded-lg text-white bg-red"
+                    className={`${btnBase} border border-red bg-red text-white`}
                   >
-                    Annuler
+                    <X className="size-4" /> Annuler
                   </button>
                 </div>
               </div>

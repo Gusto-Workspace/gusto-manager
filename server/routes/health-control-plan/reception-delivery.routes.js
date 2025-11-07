@@ -27,7 +27,6 @@ function normalizeDate(v) {
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? null : d;
 }
-
 function normalizeNumber(v) {
   if (v === undefined || v === null || v === "") return null;
   const n = Number(v);
@@ -35,6 +34,20 @@ function normalizeNumber(v) {
 }
 
 const ALLOWED_PACKAGING = new Set(["compliant", "non-compliant"]);
+
+function decimalsForUnit(u) {
+  const unit = String(u || "").trim();
+  if (unit === "unit") return 0;
+  return 3;
+}
+function roundByUnit(val, unit) {
+  const n = Number(val);
+  if (!Number.isFinite(n)) return n;
+  const d = decimalsForUnit(unit);
+  const f = Math.pow(10, d);
+  return Math.round(n * f) / f;
+}
+
 function normalizeLine(l = {}) {
   const productName = normalizeStr(l.productName);
   const supplierProductId = normalizeStr(l.supplierProductId);
@@ -53,7 +66,6 @@ function normalizeLine(l = {}) {
           .filter(Boolean)
       : [];
 
-  // sanitise allergens -> strings
   allergens = allergens
     .map((a) => normalizeStr(a))
     .filter((a) => a && a.length);
@@ -62,22 +74,34 @@ function normalizeLine(l = {}) {
     ? l.packagingCondition
     : "compliant";
 
+  // NOUVEAU : qtyRemaining normalisée et bornée à [0, qty]
+  let qtyRemaining = normalizeNumber(l.qtyRemaining);
+  if (qty != null) {
+    const qrRaw = qtyRemaining == null ? qty : qtyRemaining;
+    const roundedQty = roundByUnit(qty, unit);
+    const roundedRemaining = roundByUnit(qrRaw, unit);
+    qtyRemaining = Math.max(0, Math.min(roundedRemaining, roundedQty));
+  } else {
+    // si pas de qty, on ignore qtyRemaining (incohérent)
+    qtyRemaining = undefined;
+  }
+
   return {
     productName: productName ?? undefined,
     supplierProductId: supplierProductId ?? undefined,
     lotNumber: lotNumber ?? undefined,
     dlc: dlc ?? undefined,
     ddm: ddm ?? undefined,
-    qty: qty ?? undefined,
+    qty: qty != null ? roundByUnit(qty, unit) : undefined,
     unit: unit ?? undefined,
     tempOnArrival: tempOnArrival ?? undefined,
     allergens,
     packagingCondition,
+    qtyRemaining,
   };
 }
 
 function isMeaningfulLine(x = {}) {
-  // on retient la ligne si au moins un champ métier est présent
   return Boolean(
     x.productName ||
       x.supplierProductId ||
@@ -151,20 +175,17 @@ router.get(
 
       const query = { restaurantId };
 
-      // filtre par période (receivedAt)
       if (date_from || date_to) {
         query.receivedAt = {};
         if (date_from) query.receivedAt.$gte = new Date(date_from);
         if (date_to) {
           const end = new Date(date_to);
-          // inclusif : fin de journée
           end.setDate(end.getDate() + 1);
           end.setMilliseconds(end.getMilliseconds() - 1);
           query.receivedAt.$lte = end;
         }
       }
 
-      // recherche plein-texte simple
       if (q && String(q).trim().length) {
         const rx = new RegExp(String(q).trim(), "i");
         query.$or = [
@@ -239,7 +260,6 @@ router.put(
       const { restaurantId, receptionId } = req.params;
       const inData = { ...req.body };
 
-      // ne pas permettre d’écraser recordedBy depuis l’extérieur
       delete inData.recordedBy;
       delete inData.restaurantId;
 
@@ -276,7 +296,6 @@ router.put(
           ? normalizeLines(inData.lines)
           : prev.lines || [];
 
-      // appliquer
       prev.supplier = supplier;
       prev.receivedAt = receivedAt;
       prev.note = note ?? undefined;

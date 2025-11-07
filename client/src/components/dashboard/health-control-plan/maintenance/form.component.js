@@ -1,8 +1,18 @@
+// app/(components)/maintenance/MaintenanceForm.jsx
 "use client";
 import { useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import axios from "axios";
+import {
+  Wrench,
+  Hash,
+  CalendarClock,
+  Link as LinkIcon,
+  FileText,
+  Building2,
+} from "lucide-react";
 
+/* ---------- Utils ---------- */
 function toDatetimeLocal(value) {
   const d = value ? new Date(value) : new Date();
   if (Number.isNaN(d.getTime())) return "";
@@ -15,6 +25,7 @@ function toDateValue(value) {
   return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
 }
 
+/* ---------- Defaults ---------- */
 function buildDefaults(rec) {
   return {
     equipment: rec?.equipment ?? "",
@@ -31,6 +42,21 @@ function buildDefaults(rec) {
   };
 }
 
+/* ---------- Styles alignés (comme Training/NonConformity) ---------- */
+const fieldWrap =
+  "group relative rounded-xl bg-white/50 backdrop-blur-sm py-2 min-h-[80px] transition-shadow";
+const labelCls =
+  "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
+const inputCls =
+  "h-11 w-full rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition placeholder:text-darkBlue/40";
+const selectCls =
+  "h-11 w-full appearance-none rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition";
+const textareaCls =
+  "w-full resize-none rounded-lg border border-darkBlue/20 bg-white p-[10px] text-[15px] outline-none transition placeholder:text-darkBlue/40";
+const btnBase =
+  "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition active:scale-[0.98]";
+
+/* ---------- Component ---------- */
 export default function MaintenanceForm({
   restaurantId,
   initial = null,
@@ -43,6 +69,8 @@ export default function MaintenanceForm({
     reset,
     formState: { errors, isSubmitting },
   } = useForm({ defaultValues: buildDefaults(initial) });
+
+  const isEdit = !!initial?._id;
 
   const token = useMemo(
     () =>
@@ -80,16 +108,15 @@ export default function MaintenanceForm({
       proofUrls: proofs,
     };
 
-    const url = initial?._id
+    const url = isEdit
       ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/maintenance/${initial._id}`
       : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/maintenance`;
-    const method = initial?._id ? "put" : "post";
+    const method = isEdit ? "put" : "post";
 
     const { data: saved } = await axios[method](url, payload, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    // live update
     window.dispatchEvent(
       new CustomEvent("maintenance:upsert", { detail: { doc: saved } })
     );
@@ -99,17 +126,17 @@ export default function MaintenanceForm({
   };
 
   return (
-    <form
-      onSubmit={handleSubmit(onSubmit)}
-      className="bg-white rounded-lg p-4 shadow-sm flex flex-col gap-6"
-    >
-      <div className="flex flex-col gap-4 midTablet:flex-row">
-        <div className="flex-1">
-          <label className="text-sm font-medium">Équipement *</label>
+    <form onSubmit={handleSubmit(onSubmit)} className="relative flex flex-col gap-2">
+      {/* Ligne 1 : Équipement / ID interne */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
+        <div className={`${fieldWrap} px-3`}>
+          <label className={labelCls}>
+            <Wrench className="size-4" /> Équipement *
+          </label>
           <input
             type="text"
             {...register("equipment", { required: "Requis" })}
-            className="border rounded p-2 h-[44px] w-full"
+            className={`${inputCls} ${errors.equipment ? "border-red focus:ring-red/20" : ""}`}
             placeholder='ex: "Friteuse 1"'
             autoComplete="off"
             spellCheck={false}
@@ -119,12 +146,15 @@ export default function MaintenanceForm({
             <p className="text-xs text-red mt-1">{errors.equipment.message}</p>
           )}
         </div>
-        <div className="w-full midTablet:w-64">
-          <label className="text-sm font-medium">ID interne</label>
+
+        <div className={`${fieldWrap} px-3`}>
+          <label className={labelCls}>
+            <Hash className="size-4" /> ID interne
+          </label>
           <input
             type="text"
             {...register("equipmentId")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
             placeholder="ex: EQ-001"
             autoComplete="off"
             spellCheck={false}
@@ -133,96 +163,114 @@ export default function MaintenanceForm({
         </div>
       </div>
 
-      <div className="flex flex-col gap-4 midTablet:flex-row">
-        <div className="w-full midTablet:w-56">
-          <label className="text-sm font-medium">Type</label>
-          <select
-            {...register("type")}
-            className="border rounded p-2 h-[44px] w-full"
-          >
+      {/* Ligne 2 : Type / Effectué le / Prochaine échéance */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
+        <div className={`${fieldWrap} px-3`}>
+          <label className={labelCls}>
+            <Building2 className="size-4" /> Type
+          </label>
+          <select {...register("type")} className={selectCls}>
             <option value="filter_change">Changement filtre</option>
             <option value="inspection">Inspection</option>
             <option value="repair">Réparation</option>
             <option value="other">Autre</option>
           </select>
         </div>
-        <div className="w-full midTablet:w-72">
-          <label className="text-sm font-medium">Effectué le *</label>
+
+        <div className={`${fieldWrap} px-3`}>
+          <label className={labelCls}>
+            <CalendarClock className="size-4" /> Effectué le *
+          </label>
           <input
             type="datetime-local"
             {...register("performedAt", { required: "Requis" })}
-            className="border rounded p-2 h-[44px] w-full"
+            className={`${selectCls} ${errors.performedAt ? "border-red focus:ring-red/20" : ""}`}
           />
           {errors.performedAt && (
-            <p className="text-xs text-red mt-1">
-              {errors.performedAt.message}
-            </p>
+            <p className="text-xs text-red mt-1">{errors.performedAt.message}</p>
           )}
         </div>
-        <div className="w-full midTablet:w-72">
-          <label className="text-sm font-medium">Prochaine échéance</label>
-          <input
-            type="date"
-            {...register("nextDue")}
-            className="border rounded p-2 h-[44px] w-full"
-          />
+
+        <div className={`${fieldWrap} px-3`}>
+          <label className={labelCls}>
+            <CalendarClock className="size-4" /> Prochaine échéance
+          </label>
+          <input type="date" {...register("nextDue")} className={selectCls} />
         </div>
       </div>
 
-      {/* (retiré) ligne Batch / Quantité / Unité */}
-
-      <div className="flex flex-col gap-4 midTablet:flex-row">
-        <div className="flex-1">
-          <label className="text-sm font-medium">Prestataire</label>
+      {/* Ligne 3 : Prestataire / Preuves */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
+        <div className={`${fieldWrap} px-3 h-fit`}>
+          <label className={labelCls}>Prestataire</label>
           <input
             type="text"
             {...register("provider")}
-            className="border rounded p-2 h-[44px] w-full"
+            className={inputCls}
             placeholder="ex: Acme Services"
             autoComplete="off"
             spellCheck={false}
             autoCorrect="off"
           />
         </div>
-        <div className="flex-1">
-          <label className="text-sm font-medium">
-            Preuves (URLs, 1 par ligne)
+
+        <div className={`${fieldWrap} px-3`}>
+          <label className={labelCls}>
+            <LinkIcon className="size-4" /> Preuves (URLs, 1 par ligne)
           </label>
           <textarea
             rows={4}
             {...register("proofUrlsText")}
-            className="border rounded p-2 resize-none w-full min-h-[96px]"
+            className={`${textareaCls} min-h-[96px]`}
             placeholder={"https://…/rapport.pdf\nhttps://…/photo.jpg"}
           />
         </div>
       </div>
 
-      <div>
-        <label className="text-sm font-medium">Notes</label>
-        <textarea
-          rows={4}
-          {...register("notes")}
-          className="border rounded p-2 resize-none w-full min-h-[96px]"
-          placeholder="Observations, références des pièces, etc."
-        />
+      {/* Notes */}
+      <div className="grid grid-cols-1">
+        <div className={`${fieldWrap} px-3 h-auto`}>
+          <label className={labelCls}>
+            <FileText className="size-4" /> Notes
+          </label>
+          <textarea
+            rows={1}
+            {...register("notes")}
+            className={`${textareaCls}`}
+            placeholder="Observations, références des pièces, etc."
+          />
+        </div>
       </div>
 
-      <div className="flex gap-2">
+      {/* Actions */}
+      <div className="flex flex-col gap-2 mt-3 mobile:flex-row">
         <button
           type="submit"
           disabled={isSubmitting}
-          className="px-4 py-2 rounded bg-blue text-white disabled:opacity-50"
+          aria-disabled={isSubmitting}
+          className={`text-nowrap ${btnBase} text-white shadow disabled:opacity-60 ${
+            isSubmitting ? "bg-darkBlue/40" : "bg-blue border border-blue"
+          }`}
         >
-          {initial?._id ? "Mettre à jour" : "Enregistrer"}
+          {isEdit ? (
+            <>
+              <FileText className="size-4" /> Mettre à jour
+            </>
+          ) : (
+            <>
+              <FileText className="size-4" /> Enregistrer
+            </>
+          )}
         </button>
-        {initial?._id && (
+
+        {isEdit && (
           <button
             type="button"
             onClick={() => {
               reset(buildDefaults(null));
               onCancel?.();
             }}
-            className="px-4 py-2 rounded text-white bg-red"
+            className={`${btnBase} border border-red bg-white text-red`}
           >
             Annuler
           </button>

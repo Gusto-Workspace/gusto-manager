@@ -2,6 +2,7 @@
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import axios from "axios";
+import { MapPin, Thermometer, CalendarClock, Loader2, FileText, ChevronDown } from "lucide-react";
 
 function toDatetimeLocalValue(value) {
   const base = value ? new Date(value) : new Date();
@@ -16,6 +17,7 @@ function toDatetimeLocalValue(value) {
 
 function buildFormDefaults(record) {
   return {
+    zoneRef: "", // sélection zone
     location: record?.location ?? "",
     locationId: record?.locationId ?? "",
     value: record?.value ?? "",
@@ -25,8 +27,25 @@ function buildFormDefaults(record) {
   };
 }
 
+// essaie de retrouver la zone pour un doc existant
+function resolveZoneRefFromInitial(initial, zones = []) {
+  if (!initial || !Array.isArray(zones) || zones.length === 0) return "";
+  // 1) match sur zoneCode
+  if (initial.locationId) {
+    const byCode = zones.find((z) => (z?.zoneCode || "") === (initial.locationId || ""));
+    if (byCode) return String(byCode._id);
+  }
+  // 2) match sur nom
+  if (initial.location) {
+    const byName = zones.find((z) => (z?.name || "") === (initial.location || ""));
+    if (byName) return String(byName._id);
+  }
+  return "";
+}
+
 export default function GenericTemperatureForm({
   restaurantId,
+  zones = [],
   initial = null,
   onSuccess,
   onCancel,
@@ -35,22 +54,48 @@ export default function GenericTemperatureForm({
     register,
     handleSubmit,
     reset,
+    watch,
     formState: { errors, isSubmitting },
+    setValue,
   } = useForm({ defaultValues: buildFormDefaults(initial) });
+
+  const zoneRef = watch("zoneRef");
+  const selected = Array.isArray(zones)
+    ? zones.find((z) => String(z._id) === String(zoneRef))
+    : null;
+  const selectedUnit = selected?.unit || watch("unit") || "°C";
 
   useEffect(() => {
     reset(buildFormDefaults(initial));
   }, [initial, reset]);
 
+  // pré-sélection en édition
+  useEffect(() => {
+    if (!initial) return;
+    const id = resolveZoneRefFromInitial(initial, zones);
+    if (id) {
+      setValue("zoneRef", id, { shouldDirty: false, shouldTouch: false });
+    }
+  }, [initial, zones, setValue]);
+
+  // refléter zone -> location/locationId/unit (hidden)
+  useEffect(() => {
+    if (!selected) return;
+    setValue("location", selected.name || "", { shouldDirty: true });
+    setValue("locationId", selected.zoneCode || "", { shouldDirty: true });
+    setValue("unit", selected.unit || "°C", { shouldDirty: true });
+  }, [selected, setValue]);
+
   const onSubmit = async (data) => {
-    const token = localStorage.getItem("token");
+    const token =
+      (typeof window !== "undefined" && localStorage.getItem("token")) || "";
     if (!token) return;
 
     const payload = {
-      location: data.location,
-      locationId: data.locationId || undefined,
+      location: data.location,        // depuis zone
+      locationId: data.locationId || undefined, // depuis zone
       value: Number(data.value),
-      unit: data.unit,
+      unit: data.unit,                // depuis zone
       note: data.note || undefined,
       createdAt: data.createdAt ? new Date(data.createdAt) : undefined,
     };
@@ -68,113 +113,122 @@ export default function GenericTemperatureForm({
     onSuccess?.(saved);
   };
 
+  // Styles
+  const fieldWrap =
+    "group relative rounded-xl bg-white/50 backdrop-blur-sm px-3 py-2 h-[80px] transition-shadow";
+  const labelCls =
+    "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
+  const inputCls =
+    "h-11 w-full rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition placeholder:text-darkBlue/40";
+  const selectCls =
+    "h-11 w-full appearance-none rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition";
+  const btnBase =
+    "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition active:scale-[0.98]";
+
   return (
-    <form
-      onSubmit={handleSubmit(onSubmit)}
-      className="bg-white rounded-lg p-4 shadow-sm flex flex-col gap-6"
-    >
-      <div className="flex flex-col midTablet:flex-row justify-between gap-4">
-        {/* Bloc gauche */}
-        <div className="flex flex-col gap-4 w-full">
-          {/* Ligne 1: Emplacement */}
-          <div className="flex flex-col gap-2 midTablet:flex-row">
-            <div className="flex-1 flex flex-col">
-              <label className="text-sm font-medium">Emplacement *</label>
-              <input
-                type="text"
-                placeholder='ex: "Cuisine — ambiant", "Véhicule — coffre", "Évier — eau chaude"…'
-                {...register("location", { required: "Requis" })}
-                className="border rounded p-2 h-[44px]"
-                autoComplete="off"
-                spellCheck={false}
-                autoCorrect="off"
-              />
-              {errors.location && (
-                <p className="text-xs text-red mt-1">
-                  {errors.location.message}
-                </p>
-              )}
-            </div>
-
-            <div className="flex-1 flex flex-col">
-              <label className="text-sm font-medium">
-                Identifiant emplacement
-              </label>
-              <input
-                type="text"
-                placeholder="ID interne (optionnel)"
-                {...register("locationId")}
-                className="border rounded p-2 h-[44px]"
-                autoComplete="off"
-                spellCheck={false}
-                autoCorrect="off"
-              />
-            </div>
-          </div>
-
-          {/* Ligne 2: Mesure */}
-          <div className="flex flex-wrap justify-between gap-2">
-            <div className="flex gap-2">
-              <div className="flex flex-col w-28">
-                <label className="text-sm font-medium">Température *</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  placeholder="ex: 22.5"
-                  onWheel={(e) => e.currentTarget.blur()}
-                  {...register("value", { required: "Requis" })}
-                  className="border rounded p-2 h-[44px]"
-                />
-                {errors.value && (
-                  <p className="text-xs text-red mt-1">
-                    {errors.value.message}
-                  </p>
-                )}
-              </div>
-
-              <div className="flex flex-col w-fit">
-                <label className="text-sm font-medium">Unité</label>
-                <select
-                  {...register("unit")}
-                  className="border rounded p-2 h-[44px]"
-                >
-                  <option value="°C">°C</option>
-                  <option value="°F">°F</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="flex flex-col w-fit">
-              <label className="text-sm font-medium">Date/heure mesure</label>
-              <input
-                type="datetime-local"
-                {...register("createdAt")}
-                className="border rounded p-2 h-[44px]"
-              />
-            </div>
+    <form onSubmit={handleSubmit(onSubmit)} className="relative flex flex-col gap-2">
+      {/* Ligne 1 : Zone / Température */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
+        {/* Zone */}
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <MapPin className="size-4" /> Zone *
+          </label>
+          <div className="relative">
+            <select
+              {...register("zoneRef", { required: "Requis" })}
+              className={`${selectCls} ${errors.zoneRef ? "border-red focus:ring-red/20" : ""}`}
+              disabled={!!initial?._id}
+              aria-invalid={!!errors.zoneRef}
+            >
+              <option value="">— Sélectionner —</option>
+              {zones
+                .slice()
+                .sort((a, b) => String(a?.name || "").localeCompare(String(b?.name || ""), "fr"))
+                .map((z) => (
+                  <option key={z._id} value={z._id}>
+                    {z.name}{z.zoneCode ? ` — ${z.zoneCode}` : ""}
+                  </option>
+                ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40" />
           </div>
         </div>
 
-        {/* Bloc droit: Note */}
-        <div className="flex flex-col w-full">
-          <label className="text-sm font-medium">Note</label>
+        {/* Température */}
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <Thermometer className="size-4" /> Température *
+          </label>
+          <div className="relative">
+            <input
+              type="number"
+              step="0.1"
+              placeholder="ex: 22.5"
+              onWheel={(e) => e.currentTarget.blur()}
+              {...register("value", {
+                required: "Requis",
+                validate: (v) => (Number.isFinite(Number(v)) ? true : "Invalide"),
+              })}
+              className={`${inputCls} text-right pr-12 ${errors.value ? "border-red focus:ring-red/20" : ""}`}
+              aria-invalid={!!errors.value}
+            />
+            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 select-none rounded-md bg-darkBlue/10 px-2 py-1 text-xs text-darkBlue/60">
+              {selectedUnit}
+            </span>
+          </div>
+          {errors.value && (
+            <p className="mt-1 text-xs text-red">{errors.value.message}</p>
+          )}
+        </div>
+      </div>
+
+      {/* Ligne 2 : Date/heure / Note */}
+      <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-[1fr,2fr]">
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <CalendarClock className="size-4" /> Date / heure mesure
+          </label>
+          <input type="datetime-local" {...register("createdAt")} className={selectCls} />
+        </div>
+
+        <div className={fieldWrap}>
+          <label className={labelCls}>
+            <FileText className="size-4" /> Note
+          </label>
           <textarea
-            rows={4}
+            rows={1}
             {...register("note")}
-            className="border rounded p-2 resize-none h-full min-h-[96px]"
+            className="w-full resize-none rounded-lg border border-darkBlue/20 bg-white p-2 pr-16 text-[15px] outline-none transition placeholder:text-darkBlue/40"
             placeholder="Contexte, consigne attendue, action corrective…"
           />
         </div>
       </div>
 
-      <div className="flex gap-2 ">
+      {/* Champs cachés mappés depuis la zone */}
+      <input type="hidden" {...register("location", { required: true })} />
+      <input type="hidden" {...register("locationId")} />
+      <input type="hidden" {...register("unit")} />
+
+      {/* Actions */}
+      <div className="mt-3 flex flex-col gap-2 mobile:flex-row">
         <button
           type="submit"
           disabled={isSubmitting}
-          className="px-4 py-2 rounded bg-blue text-white disabled:opacity-50"
+          className={`${btnBase} bg-blue border border-blue text-white disabled:opacity-60`}
         >
-          {initial?._id ? "Mettre à jour" : "Enregistrer"}
+          {isSubmitting ? (
+            <>
+              <Loader2 className="size-4 animate-spin" /> Enregistrement…
+            </>
+          ) : (
+            <>
+              <Thermometer className="size-4" />
+              {initial?._id ? "Mettre à jour" : "Enregistrer"}
+            </>
+          )}
         </button>
+
         {initial?._id && (
           <button
             type="button"
@@ -182,7 +236,7 @@ export default function GenericTemperatureForm({
               reset(buildFormDefaults(null));
               onCancel?.();
             }}
-            className="px-4 py-2 rounded text-white bg-red"
+            className={`${btnBase} border border-red bg-white text-red`}
           >
             Annuler
           </button>

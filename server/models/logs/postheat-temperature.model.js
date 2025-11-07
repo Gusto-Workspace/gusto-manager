@@ -12,16 +12,7 @@ const postheatTemperatureSchema = new Schema(
 
     // --- Équipement (clarifié) ---
     equipmentName: { type: String, required: true, index: true }, // ex: "Four 1", "Combi Vapeur 2"
-    equipmentId: { type: String, index: true },                   // identifiant interne optionnel
-    equipmentType: {
-      type: String,
-      enum: [
-        "oven", "combi-oven", "fryer", "plancha", "grill", "hob",
-        "microwave", "water-bath", "salamander", "steam-oven", "other",
-      ],
-      default: "other",
-      index: true,
-    },
+    equipmentId: { type: String, index: true }, // identifiant interne optionnel
 
     // --- Emplacement (optionnel) ---
     location: { type: String },
@@ -64,7 +55,11 @@ const postheatTemperatureSchema = new Schema(
 );
 
 postheatTemperatureSchema.index({ restaurantId: 1, createdAt: -1 });
-postheatTemperatureSchema.index({ restaurantId: 1, equipmentName: 1, createdAt: -1 });
+postheatTemperatureSchema.index({
+  restaurantId: 1,
+  equipmentName: 1,
+  createdAt: -1,
+});
 
 module.exports =
   mongoose.models.PostheatTemperature ||
