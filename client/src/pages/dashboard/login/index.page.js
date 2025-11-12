@@ -1,61 +1,76 @@
+// pages/login.jsx
 import Head from "next/head";
 import { useEffect } from "react";
 import { useRouter } from "next/router";
-
-// I18N
 import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
-
-// COMPONENTS
 import FormLoginComponent from "@/components/dashboard/login/form.login.component";
 
-export default function LoginPage(props) {
+export default function LoginPage() {
   const router = useRouter();
 
+  // Redirection si déjà connecté
   useEffect(() => {
     const token = localStorage.getItem("token");
-
-    if (token) {
-      router.push("/dashboard");
-    }
+    if (token) router.push("/dashboard");
   }, [router]);
 
-  let title;
-  let description;
+  // 🔒 Lock du scroll + forcer top=0 (fixe la bande blanche sur Chrome iPad)
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
 
-  switch (i18n.language) {
-    case "en":
-      title = "Gusto Manager";
-      description = "";
-      break;
-    default:
-      title = "Gusto Manager";
-      description = "";
-  }
+    // on part en (0,0) et on empêche la restauration auto
+    const hadSR = "scrollRestoration" in window.history;
+    const prevSR = hadSR ? window.history.scrollRestoration : null;
+    if (hadSR) window.history.scrollRestoration = "manual";
+    window.scrollTo(0, 0);
+
+    const prev = {
+      overscroll: html.style.overscrollBehaviorY,
+      overflow: body.style.overflow,
+      position: body.style.position,
+      top: body.style.top,
+      width: body.style.width,
+    };
+
+    html.style.overscrollBehaviorY = "none";
+    body.style.overflow = "hidden";
+    body.style.position = "fixed";
+    body.style.top = "0";
+    body.style.width = "100%";
+
+    // si le viewport change (fermeture clavier/orientation), on reste en (0,0)
+    const keepTop = () => window.scrollTo(0, 0);
+    window.addEventListener("resize", keepTop, { passive: true });
+    window.addEventListener("orientationchange", keepTop, { passive: true });
+
+    return () => {
+      window.removeEventListener("resize", keepTop);
+      window.removeEventListener("orientationchange", keepTop);
+      html.style.overscrollBehaviorY = prev.overscroll;
+      body.style.overflow = prev.overflow;
+      body.style.position = prev.position;
+      body.style.top = prev.top;
+      body.style.width = prev.width;
+      if (hadSR && prevSR) window.history.scrollRestoration = prevSR;
+    };
+  }, []);
+
+  const title = "Gusto Manager";
 
   return (
     <>
       <Head>
         <title>{title}</title>
-
-        {/* <>
-          {description && <meta name="description" content={description} />}
-          {title && <meta property="og:title" content={title} />}
-          {description && (
-            <meta property="og:description" content={description} />
-          )}
-          <meta
-            property="og:url"
-            content="https://lespetitsbilingues-newham.com/"
-          />
-          <meta property="og:type" content="website" />
-          <meta property="og:image" content="/img/open-graph.jpg" />
-          <meta property="og:image:width" content="1200" />
-          <meta property="og:image:height" content="630" />
-        </> */}
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       </Head>
 
-      <div className="fixed overflow-hidden inset-0 bg-[url('/img/bg-1.webp')] bg-cover bg-center flex justify-center items-center"> 
+      {/* Plein écran, pas de scroll derrière, hauteur dynamique fiable */}
+      <div
+        className="fixed inset-0 flex items-center justify-center overscroll-none bg-cover bg-center"
+        style={{ height: "100dvh", backgroundImage: "url('/img/bg-1.webp')" }}
+      >
         <FormLoginComponent />
       </div>
     </>
@@ -64,8 +79,6 @@ export default function LoginPage(props) {
 
 export async function getStaticProps({ locale }) {
   return {
-    props: {
-      ...(await serverSideTranslations(locale, ["common", "login"])),
-    },
+    props: { ...(await serverSideTranslations(locale, ["common", "login"])) },
   };
 }
