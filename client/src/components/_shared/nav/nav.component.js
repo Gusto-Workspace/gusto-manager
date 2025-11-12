@@ -187,7 +187,7 @@ export default function NavComponent() {
         style={{ boxShadow: "3px 0 5px rgba(0,0,0,0.05)" }}
         className={`${
           menuOpen ? "translate-x-0" : "-translate-x-full"
-        } transition duration-200 ease-in-out custom-scrollbar tablet:translate-x-0 w-[270px] fixed bg-white h-[100dvh] overflow-y-auto flex flex-col py-6 px-4 gap-6 z-[90] tablet:z-10 text-darkBlue overscroll-contain`}
+        } transition duration-200 ease-in-out custom-scrollbar tablet:translate-x-0 w-[270px] fixed bg-white h-[100dvh] overflow-y-auto flex flex-col py-6 px-4 gap-3 z-[90] tablet:z-10 text-darkBlue overscroll-contain`}
       >
         <div className="z-10 h-[80px] flex items-center justify-center">
           <img
@@ -198,7 +198,7 @@ export default function NavComponent() {
           />
         </div>
 
-        <ul className="flex-1 flex flex-col gap-4">
+        <ul className="flex-1 flex flex-col gap-3">
           {sortedNavItems.map((item) => {
             const Icon = icons[item.icon];
             const active = isActive(item.href);
