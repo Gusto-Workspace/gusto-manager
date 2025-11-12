@@ -113,7 +113,7 @@ export default function ListEmployeesComponent() {
       </div>
 
       {/* Grille d’employés */}
-      <div className="my-6 grid grid-cols-1 tablet:grid-cols-3 desktop:grid-cols-4 ultraWild:grid-cols-5 gap-6">
+      <div className="my-6 grid grid-cols-1 midTablet:grid-cols-2 tablet:grid-cols-3 desktop:grid-cols-4 ultraWild:grid-cols-5 gap-12 midTablet:gap-6">
         {filtered.map((emp) => (
           <CardEmployeesComponent
             key={emp._id}
