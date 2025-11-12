@@ -55,7 +55,7 @@ export default function LoginPage(props) {
         </> */}
       </Head>
 
-      <div className="fixed inset-0 bg-[url('/img/bg-1.webp')] bg-cover bg-center flex justify-center items-center"> 
+      <div className="fixed overflow-hidden inset-0 bg-[url('/img/bg-1.webp')] bg-cover bg-center flex justify-center items-center"> 
         <FormLoginComponent />
       </div>
     </>
