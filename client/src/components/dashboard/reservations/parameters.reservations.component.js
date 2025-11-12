@@ -13,6 +13,9 @@ import { ReservationSvg } from "../../_shared/_svgs/reservation.svg";
 // REACT HOOK FORM
 import { useForm, useFieldArray } from "react-hook-form";
 
+// ICONS
+import { Loader2, X } from "lucide-react";
+
 // COMPONENTS
 import HoursRestaurantComponent from "../restaurant/hours.restaurant.component";
 
@@ -29,6 +32,7 @@ export default function ParametersReservationComponent(props) {
     handleSubmit,
     watch,
     setValue,
+    setFocus,
     control,
     reset,
     formState: { errors },
@@ -40,9 +44,10 @@ export default function ParametersReservationComponent(props) {
       auto_accept: true,
       interval: "30",
       manage_disponibilities: false,
+      // 👉 Par défaut 2 tables VIDES (pas de “1” automatique)
       tables: [
-        { name: "Table 1", seats: 4 },
-        { name: "Table 2", seats: 2 },
+        { name: "", seats: "" },
+        { name: "", seats: "" },
       ],
       reservation_duration_minutes: null,
       deletion_duration_minutes: 1440,
@@ -57,7 +62,12 @@ export default function ParametersReservationComponent(props) {
   const [reservationHours, setReservationHours] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // useEffect pour initialiser les valeurs du formulaire avec les données existantes
+  // État d'affichage d'erreurs UX (pas RHF)
+  const [submitted, setSubmitted] = useState(false);
+  const [tableErrors, setTableErrors] = useState({}); // { [index]: { name:bool, seats:bool } }
+  const [durationError, setDurationError] = useState(false);
+
+  // Init depuis le contexte
   useEffect(() => {
     if (restaurantContext?.restaurantData?.reservations) {
       const { parameters } = restaurantContext.restaurantData.reservations;
@@ -69,17 +79,180 @@ export default function ParametersReservationComponent(props) {
         auto_accept: parameters.auto_accept,
         interval: parameters.interval,
         manage_disponibilities: parameters.manage_disponibilities,
-        tables: parameters.tables,
-        reservation_duration_minutes: parameters.reservation_duration_minutes,
+        tables: parameters.tables?.length
+          ? // on map pour garantir string vide si manquant
+            parameters.tables.map((t) => ({
+              name: t?.name ?? "",
+              seats:
+                t?.seats === 0 || t?.seats === null || t?.seats === undefined
+                  ? ""
+                  : String(t.seats),
+            }))
+          : [
+              { name: "", seats: "" },
+              { name: "", seats: "" },
+            ],
+        reservation_duration_minutes:
+          parameters.reservation_duration_minutes ?? "",
         deletion_duration_minutes: parameters.deletion_duration_minutes ?? 1440,
       });
 
       setReservationHours(parameters.reservation_hours);
       setIsLoading(false);
+      setSubmitted(false);
+      setTableErrors({});
+      setDurationError(false);
     }
+    // On ne dépend que de l'ID et reset pour éviter d'écraser l'état local en cours d'édition
   }, [restaurantContext.restaurantData?._id, reset]);
 
+  const same_hours_as_restaurant = watch("same_hours_as_restaurant");
+  const manage_disponibilities = watch("manage_disponibilities");
+  const reservation_duration = watch("reservation_duration");
+  const deletion_duration = watch("deletion_duration");
+  const tablesWatch = watch("tables");
+
+  // Quand la gestion intelligente est activée :
+  // - forcer reservation_duration & auto_accept à true (déjà existant)
+  // - s'il n'y a pas de tables, injecter 2 lignes vides
+  useEffect(() => {
+    if (manage_disponibilities) {
+      setValue("reservation_duration", true);
+      setValue("auto_accept", true);
+      const hasAnyRow = Array.isArray(tablesWatch) && tablesWatch.length > 0;
+      if (!hasAnyRow) {
+        append({ name: "", seats: "" });
+        append({ name: "", seats: "" });
+      }
+    } else {
+      // on nettoie l'affichage des erreurs liées aux tables si on désactive le mode
+      setSubmitted(false);
+      setTableErrors({});
+      setDurationError(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manage_disponibilities]);
+
+  // Recalcule les erreurs visuelles des lignes si on a déjà tenté de soumettre
+  useEffect(() => {
+    if (!submitted) return;
+    const nextErrors = {};
+    (tablesWatch || []).forEach((row, i) => {
+      const name = (row?.name || "").trim();
+      const seatsRaw = row?.seats;
+      const seatsEmpty =
+        seatsRaw === "" || seatsRaw === null || seatsRaw === undefined;
+      const nameEmpty = name === "";
+      const bothEmpty = nameEmpty && seatsEmpty;
+      if (bothEmpty) return; // on ignore les lignes totalement vides
+      if (nameEmpty || seatsEmpty) {
+        nextErrors[i] = { name: nameEmpty, seats: seatsEmpty };
+      }
+    });
+    setTableErrors(nextErrors);
+  }, [tablesWatch, submitted]);
+
+  function handleBack() {
+    router.push("/dashboard/reservations");
+  }
+
+  function onReservationHoursChange(data) {
+    setReservationHours(data.hours);
+  }
+
+  // —— Sauvegarde immédiate des heures de réservation (appelée par l'enfant)
+  async function saveReservationHoursImmediate(newHours) {
+    try {
+      const token = localStorage.getItem("token");
+
+      // On repart des paramètres actuels persistés côté serveur
+      const currentParams =
+        restaurantContext?.restaurantData?.reservations?.parameters || {};
+
+      const payload = {
+        ...currentParams,
+        same_hours_as_restaurant: false, // l'utilisateur édite des heures dédiées
+        reservation_hours: newHours,
+      };
+
+      const response = await axios.put(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${props.restaurantData._id}/reservations/parameters`,
+        { parameters: payload },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      // Sync source de vérité
+      props.setRestaurantData(response.data.restaurant);
+      // Sync local
+      setReservationHours(newHours);
+    } catch (err) {
+      console.error(
+        "Erreur lors de l’enregistrement immédiat des heures :",
+        err
+      );
+      throw err;
+    }
+  }
+
+  // Ajout/Suppression de table avec bonnes valeurs par défaut
+  function handleAddTable() {
+    append({ name: "", seats: "" });
+  }
+  function handleRemoveTable(i) {
+    remove(i);
+  }
+
+  // Nettoyage + validation UX + soumission
   async function onSubmit(data) {
+    setSubmitted(true);
+
+    // ——— Validation "tables"
+    const rawTables = Array.isArray(data.tables) ? data.tables : [];
+
+    // on filtre les lignes totalement vides
+    const sanitizedTables = rawTables
+      .map((row) => ({
+        name: (row?.name || "").trim(),
+        seatsRaw: row?.seats,
+      }))
+      .filter(
+        (r) => !(r.name === "" && (r.seatsRaw === "" || r.seatsRaw == null))
+      )
+      .map((r) => ({
+        name: r.name,
+        seats:
+          r.seatsRaw === "" || r.seatsRaw == null
+            ? null
+            : Number.parseInt(r.seatsRaw, 10),
+      }));
+
+    // lignes partiellement remplies => erreur visuelle & on stop
+    const partialErrors = {};
+    rawTables.forEach((row, i) => {
+      const name = (row?.name || "").trim();
+      const seatsEmpty =
+        row?.seats === "" || row?.seats === null || row?.seats === undefined;
+      const nameEmpty = name === "";
+      const bothEmpty = nameEmpty && seatsEmpty;
+      if (!bothEmpty && (nameEmpty || seatsEmpty)) {
+        partialErrors[i] = { name: nameEmpty, seats: seatsEmpty };
+      }
+    });
+    if (Object.keys(partialErrors).length > 0) {
+      setTableErrors(partialErrors);
+      return;
+    }
+
+    // ——— Validation reservation_duration_minutes si gestion intelligente active
+    const duration = data.reservation_duration_minutes;
+    if (manage_disponibilities && (!duration || Number(duration) < 1)) {
+      setDurationError(true);
+      setFocus("reservation_duration_minutes");
+      return;
+    } else {
+      setDurationError(false);
+    }
+
     const formData = {
       same_hours_as_restaurant: data.same_hours_as_restaurant,
       auto_accept: data.auto_accept,
@@ -90,12 +263,16 @@ export default function ParametersReservationComponent(props) {
         ? restaurantContext.restaurantData?.opening_hours
         : reservationHours,
       manage_disponibilities: data.manage_disponibilities,
-      tables: data.tables,
+      // 👉 on envoie les tables nettoyées (lignes vides supprimées)
+      tables: sanitizedTables.map((t) => ({
+        name: t.name,
+        seats: t.seats, // nombre (ou null si jamais, mais ici on a déjà filtré)
+      })),
       reservation_duration_minutes: data.reservation_duration
-        ? data.reservation_duration_minutes
+        ? Number(data.reservation_duration_minutes)
         : null,
       deletion_duration_minutes: data.deletion_duration
-        ? data.deletion_duration_minutes
+        ? Number(data.deletion_duration_minutes)
         : 1440,
     };
 
@@ -121,26 +298,6 @@ export default function ParametersReservationComponent(props) {
       );
     }
   }
-
-  function handleBack() {
-    router.push("/dashboard/reservations");
-  }
-
-  function onReservationHoursChange(data) {
-    setReservationHours(data.hours);
-  }
-
-  const same_hours_as_restaurant = watch("same_hours_as_restaurant");
-  const manage_disponibilities = watch("manage_disponibilities");
-  const reservation_duration = watch("reservation_duration");
-  const deletion_duration = watch("deletion_duration");
-
-  useEffect(() => {
-    if (manage_disponibilities) {
-      setValue("reservation_duration", true);
-      setValue("auto_accept", true);
-    }
-  }, [manage_disponibilities, setValue]);
 
   if (isLoading) {
     return (
@@ -178,10 +335,8 @@ export default function ParametersReservationComponent(props) {
         </div>
       </div>
 
-      <form
-        onSubmit={handleSubmit(onSubmit)}
-        className="flex flex-col gap-12 mt-4"
-      >
+      <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-12">
+        {/* --- Heures --- */}
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-2">
             <input
@@ -202,12 +357,14 @@ export default function ParametersReservationComponent(props) {
               reservations={true}
               reservationHours={reservationHours}
               onChange={onReservationHoursChange}
+              onSaveReservationHours={saveReservationHoursImmediate}
             />
           )}
         </div>
 
+        {/* --- Auto accept --- */}
         <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-4">
             <input
               type="checkbox"
               id="auto_accept"
@@ -232,13 +389,16 @@ export default function ParametersReservationComponent(props) {
           </p>
         </div>
 
-        <div className="flex gap-2 items-center">
-          <label htmlFor="interval">{t("labels.interval")} :</label>
+        {/* --- Intervalle --- */}
+        <div className="flex gap-4 flex-wrap items-center">
+          <label htmlFor="interval" className="text-pretty">
+            Définir l'intervalle entre les créneaux de réservation :
+          </label>
 
           <select
             id="interval"
             {...register("interval", { required: true })}
-            className="border p-1 rounded-lg w-[200px]"
+            className="border p-1 rounded-lg w-full mobile:w-[200px]"
           >
             <option value="15">15 {t("labels.minutes")}</option>
             <option value="30">30 {t("labels.minutes")}</option>
@@ -252,27 +412,31 @@ export default function ParametersReservationComponent(props) {
           )}
         </div>
 
+        {/* --- Durée de réservation --- */}
         <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="reservation_duration"
-              {...register("reservation_duration")}
-              disabled={manage_disponibilities}
-            />
-            <label htmlFor="reservation_duration">
-              {t("labels.reservationDuration")} :
-            </label>
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-4 w-fit">
+              <input
+                type="checkbox"
+                id="reservation_duration"
+                {...register("reservation_duration")}
+                disabled={manage_disponibilities}
+              />
+              <label htmlFor="reservation_duration">
+                {t("labels.reservationDuration")} :
+              </label>
+            </div>
 
-            <div className="flex items-center gap-1">
+            <div className="flex w-full mobile:w-auto items-center gap-1">
               <input
                 type="number"
                 id="reservation_duration_minutes"
                 {...register("reservation_duration_minutes", {
-                  required: reservation_duration,
                   min: 1,
                 })}
-                className="border p-1 rounded-lg w-20 text-center"
+                className={`border p-1 rounded-lg w-full mobile:w-24 text-center ${
+                  durationError ? "border-red" : ""
+                }`}
                 placeholder="-"
                 disabled={!reservation_duration}
               />
@@ -282,45 +446,41 @@ export default function ParametersReservationComponent(props) {
 
           <p className="text-sm opacity-70 flex flex-col gap-2">
             Si cette option est cochée, alors la réservation passera
-            automatiquement en "Terminée" au bout du temps que vous avez choisi.
-            Exemple, si la réservation est à 20h, que vous avez choisi une durée
-            de 120mn alors à 22h00 la réservation passera en "Terminée" et la
-            table sera automatiquement disponible. Si l'option n'est pas cochée,
-            alors vous devrez passer manuellement la réservation en "Terminée"
-            dans la liste des réservations une fois celle-ci terminée pour
-            rendre la table disponible.
+            automatiquement en "Terminée" au bout du temps que vous avez choisi
             <span>
               <i>
                 <u>Information</u>
               </i>{" "}
               : Si vous activez l'option "Utiliser la gestion intelligente des
-              réservations", cette option sera activée par défaut et permettra
-              de gérer les disponibilités des tables.
+              réservations", cette option sera activée par défaut
             </span>
           </p>
         </div>
 
+        {/* --- Suppression automatique --- */}
         <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="deletion_duration"
-              {...register("deletion_duration", {
-                onChange: (e) => {
-                  if (!e.target.checked) {
-                    setValue("deletion_duration_minutes", 1440);
-                  }
-                },
-              })}
-            />
-            <label htmlFor="deletion_duration">
-              {t("labels.deletionDuration")} :
-            </label>
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-4 w-fit">
+              <input
+                type="checkbox"
+                id="deletion_duration"
+                {...register("deletion_duration", {
+                  onChange: (e) => {
+                    if (!e.target.checked) {
+                      setValue("deletion_duration_minutes", 1440);
+                    }
+                  },
+                })}
+              />
+              <label htmlFor="deletion_duration">
+                {t("labels.deletionDuration")} :
+              </label>
+            </div>
 
             <select
               id="deletion_duration_minutes"
               {...register("deletion_duration_minutes", { required: true })}
-              className="border p-1 rounded-lg w-[200px]"
+              className="border p-1 rounded-lg w-full mobile:w-[200px]"
               disabled={!deletion_duration}
             >
               <option value="1">1 {t("labels.minute")}</option>
@@ -337,14 +497,13 @@ export default function ParametersReservationComponent(props) {
 
           <p className="text-sm opacity-70">
             Si cette option est cochée, une réservation "Terminée" sera
-            automatiquement supprimée au bout du temps choisi. Sinon, par
-            défaut, la réservation est suppprimée automatiquement au bout de 24
-            heures.
+            automatiquement supprimée
           </p>
         </div>
 
+        {/* --- Gestion intelligente + Tables (nouvelle UI/UX) --- */}
         <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-4">
             <input
               type="checkbox"
               id="manage_disponibilities"
@@ -357,65 +516,66 @@ export default function ParametersReservationComponent(props) {
 
           <p className="text-sm opacity-70">
             Cette option permet de gérer vos réservations en fonction des
-            disponibilités des tables et des places. Exemple, si une réservation
-            pour 4 personnes est demandée, cette option permet de vérifier
-            qu'une table est disponible pour le créneau souhaité. Si ce n'est
-            pas le cas, le créneau est marqué comme indisponible sur la page de
-            réservation de votre site. Si cette option n'est pas cochée, tous
-            les créneaux seront marqués comme disponibles.
+            disponibilités des tables et des places
           </p>
 
           {manage_disponibilities && (
-            <div className="flex flex-col gap-12">
+            <div className="flex flex-col gap-6">
               <p className="text-sm opacity-70">
-                Si la case "accepter automatiquement les réservations" est
-                cochée, une table sera automatiquement attribuée lors d'une
-                réservation. Si la case n'est pas cochée, alors vous aurez la
-                possibilité d'attribuer manuellement une table lors de la
-                confirmation manuelle de la réservation.
+                Si l'option "accepter automatiquement les réservations" est
+                cochée, une table sera automatiquement attribuée
               </p>
 
-              <div className="grid grid-cols-1 desktop:grid-cols-2 gap-6">
-                {fields.map((field, index) => (
-                  <div
-                    key={field.id}
-                    className="flex mx-auto gap-4 items-center"
-                  >
-                    <input
-                      type="text"
-                      placeholder={t("labels.tableName")}
-                      {...register(`tables.${index}.name`, { required: true })}
-                      className="border p-2 rounded-lg"
-                    />
-                    <input
-                      type="number"
-                      placeholder={t("labels.seats")}
-                      {...register(`tables.${index}.seats`, {
-                        required: true,
-                        min: 1,
-                      })}
-                      className="border p-2 rounded-lg w-[100px]"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => remove(index)}
-                      className="bg-red text-white px-3 py-1 rounded-lg"
+              {/* Liste des tables : grille responsive, lignes propres */}
+              <div className="grid grid-cols-1 desktop:grid-cols-2 gap-2">
+                {fields.map((field, index) => {
+                  const nameError = !!tableErrors[index]?.name;
+                  const seatsError = !!tableErrors[index]?.seats;
+                  return (
+                    <div
+                      key={field.id}
+                      className="w-full bg-white/60 rounded-2xl shadow-sm p-4 border border-[#131E36]/10"
                     >
-                      {t("buttons.delete")}
-                    </button>
-                  </div>
-                ))}
+                      <div className="grid grid-cols-[minmax(0,1fr)_120px_auto] items-center gap-3">
+                        <input
+                          type="text"
+                          placeholder="nom / n° de table"
+                          {...register(`tables.${index}.name`)}
+                          className={`min-w-0 border p-2 rounded-lg placeholder:opacity-60 ${
+                            nameError ? "border-red" : "border-[#131E36]/30"
+                          }`}
+                        />
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          placeholder="nombre de sièges"
+                          {...register(`tables.${index}.seats`, {
+                            min: 1,
+                          })}
+                          className={`border p-2 rounded-lg text-center placeholder:opacity-60 ${
+                            seatsError ? "border-red" : "border-[#131E36]/30"
+                          }`}
+                        />
+
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveTable(index)}
+                          className="justify-self-end w-8 h-8 rounded-full bg-red flex items-center justify-center shadow-sm"
+                          aria-label={t("buttons.delete")}
+                          title={t("buttons.delete")}
+                        >
+                          <X className="w-4 h-4 text-white" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
 
-              {errors.tables && (
-                <span className="text-red">
-                  {t("reservations.errors.tables")}
-                </span>
-              )}
               <button
                 type="button"
-                onClick={() => append({ name: "", seats: 1 })}
-                className="bg-green mx-auto text-white px-4 py-2 rounded-lg w-fit"
+                onClick={handleAddTable}
+                className="bg-green text-white px-4 py-2 rounded-lg w-fit mx-auto"
               >
                 {t("buttons.addTable")}
               </button>
@@ -425,18 +585,27 @@ export default function ParametersReservationComponent(props) {
 
         <hr className="opacity-30" />
 
-        <div className="flex justify-center gap-4">
+        <div className="flex flex-col mobile:flex-row justify-center gap-2">
           <button
             type="submit"
-            className="bg-blue text-white px-4 py-2 rounded-lg w-[150px]"
+            disabled={isLoading}
+            className="bg-blue text-white px-4 py-2 rounded-lg mobile:w-[150px]"
           >
-            {t("buttons.validate")}
+            {isLoading ? (
+              <div className="flex gap-2">
+                <Loader2 className="size-6 animate-spin" />{" "}
+                <span>En cours…</span>
+              </div>
+            ) : (
+              t("buttons.validate")
+            )}
           </button>
 
           <button
             type="button"
             onClick={handleBack}
-            className="bg-red text-white px-4 py-2 rounded-lg w-[150px]"
+            disabled={isLoading}
+            className="bg-red text-white px-4 py-2 rounded-lg mobile:w-[150px]"
           >
             {t("buttons.back")}
           </button>

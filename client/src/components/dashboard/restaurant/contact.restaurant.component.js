@@ -110,7 +110,7 @@ export default function ContactRestaurantComponent(props) {
   }
 
   return (
-    <div className="bg-white p-6 pb-3 rounded-lg drop-shadow-sm w-full h-fit">
+    <div className="bg-white p-4 rounded-lg drop-shadow-sm w-full h-fit">
       <div className="flex gap-6 flex-wrap justify-between">
         <h1 className="font-bold text-lg">{t("contact.title")}</h1>
 

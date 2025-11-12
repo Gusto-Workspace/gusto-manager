@@ -16,14 +16,16 @@ import axios from "axios";
 
 // COMPONENTS
 import DoubleSkeletonComonent from "../../_shared/skeleton/double-skeleton.component";
+import { Loader2 } from "lucide-react";
 
 export default function HoursRestaurantComponent(props) {
   const { t } = useTranslation("restaurant");
 
   const [editing, setEditing] = useState(false);
   const [localHours, setLocalHours] = useState([]);
+  const [saving, setSaving] = useState(false);
 
-  // Initialisation des heures locales avec plusieurs plages horaires possibles
+  // Initialisation des heures locales (ouvre la voie aux multiples créneaux)
   useEffect(() => {
     const initialHours = daysOfWeeksData.map((day) => {
       const existingHour = props.reservations
@@ -42,19 +44,16 @@ export default function HoursRestaurantComponent(props) {
     setLocalHours(initialHours);
   }, [props.openingHours, props.reservationHours, props.reservations]);
 
-  // Basculer en mode édition
   function handleToggleEdit() {
     setEditing(!editing);
   }
 
-  // Fermer le mode édition si `closeEditing` est activé via les props
   useEffect(() => {
     if (props.closeEditing) {
       setEditing(false);
     }
   }, [props.closeEditing]);
 
-  // Gérer les changements dans les champs de temps
   function handleChange(day, index, field, value) {
     setLocalHours((prev) =>
       prev.map((item) => {
@@ -69,7 +68,6 @@ export default function HoursRestaurantComponent(props) {
     );
   }
 
-  // Gérer la fermeture d'un jour entier
   function handleClosedChange(day, isClosed) {
     setLocalHours((prev) =>
       prev.map((item) =>
@@ -89,7 +87,6 @@ export default function HoursRestaurantComponent(props) {
     );
   }
 
-  // Ajouter une nouvelle plage horaire à un jour spécifique
   function handleAddTimeSlot(day) {
     setLocalHours((prev) =>
       prev.map((item) =>
@@ -100,7 +97,6 @@ export default function HoursRestaurantComponent(props) {
     );
   }
 
-  // Supprimer une plage horaire spécifique d'un jour
   function handleRemoveTimeSlot(day, index) {
     setLocalHours((prev) =>
       prev.map((item) => {
@@ -117,17 +113,14 @@ export default function HoursRestaurantComponent(props) {
     );
   }
 
-  // Gérer la sauvegarde des données
-  function handleSave() {
-    // Nettoyage : on retire les plages horaires vides (open ET close vides)
+  // Enregistrement
+  async function handleSave() {
+    // Nettoyage : on supprime les créneaux vides
     const cleanedHours = localHours.map((dayHour) => {
       const filteredHours = dayHour.hours.filter(
         (hour) => hour.open !== "" || hour.close !== ""
       );
-
-      // Si après filtrage, il ne reste plus rien, on considère le jour fermé
       const isClosed = filteredHours.length === 0 ? true : dayHour.isClosed;
-
       return {
         ...dayHour,
         hours: filteredHours.length > 0 ? filteredHours : [],
@@ -136,50 +129,62 @@ export default function HoursRestaurantComponent(props) {
     });
 
     if (props.reservations) {
-      // Si c'est pour des réservations, on transmet au parent
-      if (props.onChange) {
-        props.onChange({ hours: cleanedHours });
+      // Sauvegarde immédiate côté back via le parent
+      try {
+        setSaving(true);
+        if (typeof props.onSaveReservationHours === "function") {
+          await props.onSaveReservationHours(cleanedHours);
+        } else if (typeof props.onChange === "function") {
+          // fallback possible pour compatibilité
+          props.onChange({ hours: cleanedHours });
+        }
+        setEditing(false);
+      } catch (e) {
+        // Erreur déjà loguée par le parent
+      } finally {
+        setSaving(false);
       }
-      setEditing(false);
-    } else {
-      // Sinon on sauvegarde via l'API
-      const token = localStorage.getItem("token");
+      return;
+    }
 
-      axios
-        .put(
-          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${props.restaurantId}/opening_hours`,
-          { openingHours: cleanedHours },
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        )
-        .then((response) => {
-          props.handleUpdateData(response.data.restaurant);
-        })
-        .catch((error) => {
-          console.error("Erreur lors de la mise à jour des horaires :", error);
-        })
-        .finally(() => {
-          setEditing(false);
-        });
+    // Mode horaires d'ouverture (non réservations) — comportement existant
+    const token = localStorage.getItem("token");
+
+    try {
+      setSaving(true);
+      const res = await axios.put(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${props.restaurantId}/opening_hours`,
+        { openingHours: cleanedHours },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      props.handleUpdateData?.(res.data.restaurant);
+      setEditing(false);
+    } catch (error) {
+      console.error("Erreur lors de la mise à jour des horaires :", error);
+    } finally {
+      setSaving(false);
     }
   }
 
   return (
     <div
-      className={`bg-white p-6 pb-4 rounded-lg drop-shadow-sm w-full text-darkBlue h-fit`}
+      className={`bg-white p-4 rounded-lg drop-shadow-sm w-full text-darkBlue `}
     >
-      <div className="flex gap-6 flex-wrap justify-between">
+      <div className="flex items-center flex-col mobile:flex-row justify-between flex-wrap gap-2">
         <h1 className="font-bold text-lg">
-          {props.reservations ? t("hours.reservationTitle") : t("hours.title")}
+          {props.reservations
+            ? "Horaires des réservations"
+            : "Horaires d'ouverture"}
         </h1>
 
         <div className="flex gap-2">
           {editing && (
-            <button onClick={() => setEditing(false)}>
-              <span className="text-white bg-red px-4 py-2 rounded-lg">
+            <button onClick={() => setEditing(false)} disabled={saving}>
+              <span className="hover:opacity-80 opacity-100 rounded-lg text-white disabled:cursor-none bg-red px-4 py-2 flex gap-2 items-center transition-opacity duration-150">
                 {t("cancel")}
               </span>
             </button>
@@ -188,31 +193,40 @@ export default function HoursRestaurantComponent(props) {
           <button
             type="button"
             onClick={editing ? handleSave : handleToggleEdit}
+            disabled={saving}
           >
             {editing ? (
-              <span className="text-white bg-blue px-4 py-2 rounded-lg">
-                {t("save")}
+              <span className="hover:opacity-80 opacity-100 rounded-lg text-white bg-blue px-4 py-2 flex gap-2 items-center transition-opacity duration-150">
+                {saving ? (
+                  <>
+                    <Loader2 className="size-6 animate-spin" />
+                    <span>En cours…</span>
+                  </>
+                ) : (
+                  <span>{t("save")}</span>
+                )}
               </span>
             ) : (
-              <div className="hover:opacity-100 opacity-20 rounded-full transition-opacity duration-300">
+              <div className="hover:opacity-80 opacity-100 rounded-lg text-white bg-blue px-4 py-2 flex gap-2 items-center transition-opacity duration-150">
                 <EditSvg
-                  width={24}
-                  height={24}
-                  strokeColor="#131E36"
-                  fillColor="#131E36"
-                />
+                  width={18}
+                  height={18}
+                  strokeColor="#FFFFFF"
+                  fillColor="#FFFFFF"
+                />{" "}
+                Éditer
               </div>
             )}
           </button>
         </div>
       </div>
 
-      <hr className="opacity-20 mt-6 mobile:mb-4" />
+      <hr className="opacity-20 my-4" />
 
-      <ul className="mt-0 flex flex-col gap-4">
+      <ul className="mt-0 flex flex-col gap-3">
         {localHours.map((dayHour, dayIndex) => (
           <Fragment key={dayHour.day}>
-            <li className="flex flex-col gap-4 mobile:flex-row justify-between items-center py-6 mobile:py-2 mobile:h-auto">
+            <li className="flex flex-col gap-4 midTablet:flex-row justify-between items-center py-6 midTablet:py-2 midTablet:h-auto">
               <span>{t(dayHour.day)}</span>
 
               <div className="w-full">
@@ -220,14 +234,14 @@ export default function HoursRestaurantComponent(props) {
                   <DoubleSkeletonComonent
                     justify={
                       props.reservations
-                        ? "justify-center mobile:justify-end"
+                        ? "justify-center midTablet:justify-end"
                         : "justify-center"
                     }
                   />
                 ) : editing ? (
                   <div className="flex flex-col midTablet:flex-row items-center justify-end gap-2 desktop:gap-6 ">
                     {dayHour.isClosed ? (
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-col midTablet:flex-row items-center gap-2">
                         <input
                           type="time"
                           value=""
@@ -244,12 +258,12 @@ export default function HoursRestaurantComponent(props) {
                         />
                       </div>
                     ) : (
-                      <div className="flex items-center gap-4">
-                        <div className="flex flex-col gap-2">
+                      <div className="flex flex-col midTablet:flex-row items-center gap-4">
+                        <div className="flex flex-col gap-12 midTablet:gap-2">
                           {dayHour.hours.map((hour, index) => (
                             <div
                               key={index}
-                              className="flex items-center gap-2 w-full"
+                              className="relative flex flex-col midTablet:flex-row items-center gap-1 midTablet:gap-2 w-full"
                             >
                               {dayHour.hours.length > 1 && (
                                 <button
@@ -257,12 +271,19 @@ export default function HoursRestaurantComponent(props) {
                                   onClick={() =>
                                     handleRemoveTimeSlot(dayHour.day, index)
                                   }
-                                  className="text-red ml-2 bg-red bg-opacity-40 min-w-6 h-6 rounded-full flex items-center justify-center"
+                                  className="
+              text-red bg-red bg-opacity-40 min-w-6 h-6 rounded-full
+              flex items-center justify-center ml-2
+              absolute -right-8 top-1/2 -translate-y-1/2
+              midTablet:static midTablet:right-auto midTablet:top-auto midTablet:translate-y-0
+            "
                                   aria-label={t("hours.removeTimeSlot")}
+                                  disabled={saving}
                                 >
                                   &times;
                                 </button>
                               )}
+
                               <input
                                 type="time"
                                 value={hour.open}
@@ -274,11 +295,12 @@ export default function HoursRestaurantComponent(props) {
                                     e.target.value
                                   )
                                 }
-                                disabled={dayHour.isClosed}
+                                disabled={dayHour.isClosed || saving}
                                 className={`border p-1 rounded-lg w-full ${
                                   dayHour.isClosed ? "opacity-50" : ""
                                 }`}
                               />
+
                               <span>{t("hours.to")}</span>
 
                               <input
@@ -292,7 +314,7 @@ export default function HoursRestaurantComponent(props) {
                                     e.target.value
                                   )
                                 }
-                                disabled={dayHour.isClosed}
+                                disabled={dayHour.isClosed || saving}
                                 className={`border p-1 rounded-lg w-full ${
                                   dayHour.isClosed ? "opacity-50" : ""
                                 }`}
@@ -305,8 +327,9 @@ export default function HoursRestaurantComponent(props) {
                         <button
                           type="button"
                           onClick={() => handleAddTimeSlot(dayHour.day)}
-                          className="text-violet mt-2 mobile:mt-0 bg-violet bg-opacity-40 min-w-6 h-6 rounded flex items-center justify-center"
+                          className="text-violet mt-2  bg-violet bg-opacity-40 min-w-6 h-6 rounded flex items-center justify-center"
                           aria-label={t("hours.addTimeSlot")}
+                          disabled={saving}
                         >
                           +
                         </button>
@@ -314,13 +337,14 @@ export default function HoursRestaurantComponent(props) {
                     )}
 
                     {/* Checkbox pour fermer le jour entier */}
-                    <label className="flex items-center gap-2 mt-2 mobile:mt-0">
+                    <label className="flex items-center gap-2 mt-2 ">
                       <input
                         type="checkbox"
                         checked={dayHour.isClosed}
                         onChange={(e) =>
                           handleClosedChange(dayHour.day, e.target.checked)
                         }
+                        disabled={saving}
                       />
                       {t("hours.close")}
                     </label>
@@ -328,7 +352,7 @@ export default function HoursRestaurantComponent(props) {
                 ) : (
                   <div className="flex flex-col items-center mobile:items-end gap-1">
                     {dayHour.isClosed ? (
-                      <span className="flex justify-end">
+                      <span className="flex justify-end opacity-60 italic">
                         {t("hours.close")}
                       </span>
                     ) : (
