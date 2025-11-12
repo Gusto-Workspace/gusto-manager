@@ -87,7 +87,7 @@ export default function GenericTemperaturePage() {
       <div className="flex">
         <NavComponent />
 
-        <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 p-6 flex flex-col gap-6 min-h-screen">
+          <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 min-h-screen">
           <SettingsComponent
             dataLoading={restaurantContext.dataLoading}
             setDataLoading={restaurantContext.setDataLoading}
@@ -100,7 +100,7 @@ export default function GenericTemperaturePage() {
             <section className="flex flex-col gap-6">
               <hr className="opacity-20" />
 
-              <div className="flex justify-between gap-4">
+              <div className="flex flex-wrap justify-between gap-4">
                 <div className="flex items-center gap-2 min-h-[40px]">
                   <HealthSvg width={30} height={30} fillColor="#131E3690" />
                   <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2 flex-wrap">
