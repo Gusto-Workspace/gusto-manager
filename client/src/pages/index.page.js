@@ -15,24 +15,19 @@ import HelpingLandingComponent from "@/components/landing/helping.landing.compon
 import FunctionalitiesLandingComponent from "@/components/landing/functionalities.landing.component";
 import PluginsLandingComponent from "@/components/landing/plugins.landing.component";
 import ForWhoLandingComponent from "@/components/landing/for-who.landing.component";
-import useForceScrollTop from "@/_assets/hooks/useForceScrollTop";
 
 export default function HomePage(props) {
-  useForceScrollTop();
-  
   let title;
   let description;
 
   switch (i18n.language) {
     case "en":
       title = "Gusto Manager";
-      description =
-        "Simplifiez vos opérations quotidiennes grâce à une plateforme intuitive qui centralise la gestion de votre restaurant.";
+      description = "Simplifiez vos opérations quotidiennes grâce à une plateforme intuitive qui centralise la gestion de votre restaurant.";
       break;
     default:
       title = "Gusto Manager";
-      description =
-        "Simplifiez vos opérations quotidiennes grâce à une plateforme intuitive qui centralise la gestion de votre restaurant.";
+      description = "Simplifiez vos opérations quotidiennes grâce à une plateforme intuitive qui centralise la gestion de votre restaurant.";
   }
 
   return (
