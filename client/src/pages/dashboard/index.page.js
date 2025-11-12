@@ -21,9 +21,54 @@ export default function DashboardPage(props) {
   const { t } = useTranslation("");
   const { restaurantContext } = useContext(GlobalContext);
 
+  // 🔝 Forcer la page en (0,0) à l’arrivée (Safari + Chrome iPad + desktop)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!restaurantContext?.isAuth) return;
+
+    // Désactive la restauration auto de scroll
+    const hadSR = "scrollRestoration" in window.history;
+    const prevSR = hadSR ? window.history.scrollRestoration : null;
+    if (hadSR) window.history.scrollRestoration = "manual";
+
+    const jumpTop = () =>
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+
+    // 1) tout de suite
+    jumpTop();
+    // 2) juste après peinture/hydratation (double raf = plus robuste iOS/Chrome)
+    const r1 = requestAnimationFrame(jumpTop);
+    const r2 = requestAnimationFrame(jumpTop);
+
+    // 3) si le viewport change (fermeture clavier, barre d’adresse, rotation)
+    const keepTop = () => jumpTop();
+    window.addEventListener("resize", keepTop, { passive: true });
+    window.addEventListener("orientationchange", keepTop, { passive: true });
+    window.addEventListener("focusout", keepTop);
+
+    // 4) Chrome iPad : visualViewport bouge lors de l’ouverture/fermeture clavier
+    const vv = window.visualViewport;
+    if (vv) {
+      vv.addEventListener("resize", keepTop);
+      vv.addEventListener("geometrychange", keepTop);
+    }
+
+    return () => {
+      cancelAnimationFrame(r1);
+      cancelAnimationFrame(r2);
+      window.removeEventListener("resize", keepTop);
+      window.removeEventListener("orientationchange", keepTop);
+      window.removeEventListener("focusout", keepTop);
+      if (vv) {
+        vv.removeEventListener("resize", keepTop);
+        vv.removeEventListener("geometrychange", keepTop);
+      }
+      if (hadSR && prevSR) window.history.scrollRestoration = prevSR;
+    };
+  }, [restaurantContext?.isAuth]);
+
   let title;
   let description;
-
   switch (i18n.language) {
     case "en":
       title = "Gusto Manager";
@@ -34,29 +79,12 @@ export default function DashboardPage(props) {
       description = "";
   }
 
-
   if (!restaurantContext.isAuth) return null;
 
   return (
     <>
       <Head>
         <title>{title}</title>
-
-        {/* <>
-          {description && <meta name="description" content={description} />}
-          {title && <meta property="og:title" content={title} />}
-          {description && (
-            <meta property="og:description" content={description} />
-          )}
-          <meta
-            property="og:url"
-            content="https://lespetitsbilingues-newham.com/"
-          />
-          <meta property="og:type" content="website" />
-          <meta property="og:image" content="/img/open-graph.jpg" />
-          <meta property="og:image:width" content="1200" />
-          <meta property="og:image:height" content="630" />
-        </> */}
       </Head>
 
       <div>
@@ -77,7 +105,6 @@ export default function DashboardPage(props) {
             <div className="flex justify-between">
               <div className="flex gap-2 items-center">
                 <AnalyticsSvg width={30} height={30} strokeColor="#131E3690" />
-
                 <h1 className="pl-2 text-2xl">{t("index:titles.main")}</h1>
               </div>
             </div>
