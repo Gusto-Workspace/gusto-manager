@@ -88,7 +88,8 @@ export default function ServiceTemperatureForm({
 
   // dropdown state + guard to avoid opening on edit
   const token = useMemo(
-    () => (typeof window !== "undefined" ? localStorage.getItem("token") : null),
+    () =>
+      typeof window !== "undefined" ? localStorage.getItem("token") : null,
     []
   );
   const dishName = watch("dishName");
@@ -207,9 +208,13 @@ export default function ServiceTemperatureForm({
       : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/service-temperatures`;
     const method = initial?._id ? "put" : "post";
 
-    const { data: saved } = await axios[method](url, {
-      ...payload,
-    }, { headers: { Authorization: `Bearer ${tk}` } });
+    const { data: saved } = await axios[method](
+      url,
+      {
+        ...payload,
+      },
+      { headers: { Authorization: `Bearer ${tk}` } }
+    );
 
     reset(buildFormDefaults(null));
     setBatchOpen(false);
@@ -218,7 +223,10 @@ export default function ServiceTemperatureForm({
   };
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="relative flex flex-col gap-2">
+    <form
+      onSubmit={handleSubmit(onSubmit)}
+      className="relative flex flex-col gap-2"
+    >
       {/* Ligne 1 : Zone / Température / Type */}
       <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
         {/* Zone (select) */}
@@ -303,7 +311,10 @@ export default function ServiceTemperatureForm({
         </div>
 
         {/* Plat / préparation (avec suggestions) */}
-        <div className={`${fieldWrap} ${batchOpen ? "z-40" : "z-auto"}`} ref={dishBoxRef}>
+        <div
+          className={`${fieldWrap} ${batchOpen ? "z-40" : "z-auto"}`}
+          ref={dishBoxRef}
+        >
           <label className={labelCls}>
             <UtensilsCrossed className="size-4" /> Plat / préparation
           </label>
@@ -328,8 +339,6 @@ export default function ServiceTemperatureForm({
                 role="listbox"
                 aria-label="Suggestions de batches"
               >
-               
-                
                 {!batchLoading &&
                   batchItems.map((it) => (
                     <button
@@ -343,7 +352,9 @@ export default function ServiceTemperatureForm({
                       <div className="font-medium text-darkBlue">
                         {it?.recipeId || "(recette sans nom)"}{" "}
                         {it?.batchId ? (
-                          <span className="text-darkBlue/60">• Lot {it.batchId}</span>
+                          <span className="text-darkBlue/60">
+                            • Lot {it.batchId}
+                          </span>
                         ) : null}
                       </div>
                       <div className="text-[12px] text-darkBlue/60">
@@ -380,7 +391,11 @@ export default function ServiceTemperatureForm({
             <CalendarClock className="size-4" /> Date / heure
           </label>
           <div className="relative">
-            <input type="datetime-local" {...register("createdAt")} className={selectCls} />
+            <input
+              type="datetime-local"
+              {...register("createdAt")}
+              className={selectCls}
+            />
             {/* Chevron masqué pour alignement visuel */}
             <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-4 opacity-0" />
           </div>
@@ -407,9 +422,10 @@ export default function ServiceTemperatureForm({
           className={`${btnBase} bg-blue border-blue border text-white disabled:opacity-60`}
         >
           {isSubmitting ? (
-            <>
-              <Loader2 className="size-4 animate-spin" /> Enregistrement…
-            </>
+            <div className="flex items-center gap-2">
+              <Loader2 className="size-4 animate-spin" />
+              <span>Enregistrement…</span>
+            </div>
           ) : (
             <>
               <Thermometer className="size-4" />

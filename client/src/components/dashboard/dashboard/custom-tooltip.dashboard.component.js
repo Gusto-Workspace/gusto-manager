@@ -7,7 +7,7 @@ export default function CustomTooltipComponent(props) {
   if (props.active && props.payload?.length) {
     return (
       <div className="custom-tooltip bg-white p-2 shadow-lg rounded-md z-20 whitespace-nowrap">
-        <p className="label font-semibold text-sm">{`${t(props.payload[0].name)}`}</p>
+        <p className="label text-sm">{`${t(props.payload[0].name)}`}</p>
       </div>
     );
   }

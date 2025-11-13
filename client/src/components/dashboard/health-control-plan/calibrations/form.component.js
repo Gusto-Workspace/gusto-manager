@@ -247,10 +247,10 @@ export default function CalibrationsForm({
           className={`text-nowrap ${btnBase} h-[38px] text-white shadow ${isSubmitting ? "bg-darkBlue/40" : "bg-blue"}`}
         >
           {isSubmitting ? (
-            <>
-              <Loader2 className="size-4 animate-spin" />
-              Enregistrement…
-            </>
+             <div className="flex items-center gap-2">
+                <Loader2 className="size-4 animate-spin" />
+                <span>Enregistrement…</span>
+              </div>
           ) : initial?._id ? (
             <>
               <FileText className="size-4" />

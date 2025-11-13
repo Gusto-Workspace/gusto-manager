@@ -349,8 +349,8 @@ export default function ServiceTemperatureList({
               invalidRange
                 ? "Intervalle invalide : 'Du' doit être ≤ 'Au'."
                 : !hasFullDateRange
-                ? "Sélectionnez 'Du' ET 'Au' pour filtrer par dates"
-                : undefined
+                  ? "Sélectionnez 'Du' ET 'Au' pour filtrer par dates"
+                  : undefined
             }
             className={`${btnBase} bg-blue text-white disabled:opacity-40`}
             type="button"
@@ -421,7 +421,7 @@ export default function ServiceTemperatureList({
             {loading && (
               <tr>
                 <td colSpan={10} className="py-8 text-center text-darkBlue/50">
-                  <span className="inline-flex items-center gap-2">
+                  <span className="flex items-center gap-2">
                     <Loader2 className="size-4 animate-spin" /> Chargement…
                   </span>
                 </td>
@@ -453,7 +453,9 @@ export default function ServiceTemperatureList({
                   </td>
 
                   <td className="py-2 pr-3 whitespace-nowrap">
-                    {typeof it.value === "number" ? it.value : (it.value ?? "—")}{" "}
+                    {typeof it.value === "number"
+                      ? it.value
+                      : (it.value ?? "—")}{" "}
                     {it.unit || ""}
                   </td>
 
@@ -556,9 +558,10 @@ export default function ServiceTemperatureList({
                     type="button"
                   >
                     {deleteLoading ? (
-                      <>
-                        <Loader2 className="size-4 animate-spin" /> Suppression…
-                      </>
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="size-4 animate-spin" />
+                        <span>Suppression…</span>
+                      </div>
                     ) : (
                       "Confirmer"
                     )}

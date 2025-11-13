@@ -314,12 +314,17 @@ export default function ZoneManagerModal({
                       disabled={isSaving}
                     >
                       {isSaving ? (
-                        <>
-                          <Loader2 className="size-4 animate-spin" /> En cours…
-                        </>
+                        <div className="flex items-center gap-2">
+                          <Loader2 className="size-4 animate-spin" />
+                          <span>En cours…</span>
+                        </div>
                       ) : (
                         <>
-                          {editingId ? <Save className="size-4" /> : <Check className="size-4" />}
+                          {editingId ? (
+                            <Save className="size-4" />
+                          ) : (
+                            <Check className="size-4" />
+                          )}
                           {editingId ? "Mettre à jour" : "Ajouter"}
                         </>
                       )}
@@ -355,7 +360,10 @@ export default function ZoneManagerModal({
                   <tbody>
                     {items.length === 0 && (
                       <tr>
-                        <td colSpan={5} className="py-8 text-center text-darkBlue/50">
+                        <td
+                          colSpan={5}
+                          className="py-8 text-center text-darkBlue/50"
+                        >
                           Aucune zone
                         </td>
                       </tr>
@@ -364,7 +372,10 @@ export default function ZoneManagerModal({
                     {items.map((z) => {
                       const isPending = pendingDeleteId === z._id;
                       return (
-                        <tr key={z._id} className="border-b border-darkBlue/10 text-nowrap">
+                        <tr
+                          key={z._id}
+                          className="border-b border-darkBlue/10 text-nowrap"
+                        >
                           <td className="py-2 pr-3 font-medium text-darkBlue">
                             {z.name}
                           </td>
@@ -387,9 +398,10 @@ export default function ZoneManagerModal({
                                     disabled={deleteLoading}
                                   >
                                     {deleteLoading ? (
-                                      <>
-                                        <Loader2 className="size-4 animate-spin" /> Suppression…
-                                      </>
+                                      <div className="flex items-center gap-2">
+                                        <Loader2 className="size-4 animate-spin" />
+                                        <span>Suppression…</span>
+                                      </div>
                                     ) : (
                                       <>
                                         <Trash2 className="size-4" /> Confirmer

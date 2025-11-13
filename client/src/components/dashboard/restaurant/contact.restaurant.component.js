@@ -18,10 +18,30 @@ import axios from "axios";
 
 // COMPONENTS
 import SimpleSkeletonComponent from "../../_shared/skeleton/simple-skeleton.component";
+import { Edit, Loader2, Save, XCircle } from "lucide-react";
 
 export default function ContactRestaurantComponent(props) {
   const { t } = useTranslation("restaurant");
   const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  function getDefaultValues(data) {
+    return {
+      address: {
+        line1: data?.address?.line1 || "",
+        zipCode: data?.address?.zipCode || "",
+        city: data?.address?.city || "",
+        country: data?.address?.country || "France",
+      },
+      email: data?.email || "",
+      phone: data?.phone || "",
+      facebook: data?.social_media?.facebook || "",
+      instagram: data?.social_media?.instagram || "",
+      youtube: data?.social_media?.youtube || "",
+      linkedIn: data?.social_media?.linkedIn || "",
+      twitter: data?.social_media?.twitter || "",
+    };
+  }
 
   const {
     register,
@@ -45,30 +65,12 @@ export default function ContactRestaurantComponent(props) {
   }, [props.closeEditing]);
 
   function handleToggleEdit() {
-    setEditing(!editing);
-  }
-
-  function getDefaultValues(data) {
-    return {
-      address: {
-        line1: data?.address?.line1 || "",
-        zipCode: data?.address?.zipCode || "",
-        city: data?.address?.city || "",
-        country: data?.address?.country || "France",
-      },
-      email: data?.email || "",
-      phone: data?.phone || "",
-      facebook: data?.social_media?.facebook || "",
-      instagram: data?.social_media?.instagram || "",
-      youtube: data?.social_media?.youtube || "",
-      linkedIn: data?.social_media?.linkedIn || "",
-      twitter: data?.social_media?.twitter || "",
-    };
+    setEditing((prev) => !prev);
   }
 
   async function onSubmit(data) {
     const token = localStorage.getItem("token");
-
+    setSaving(true);
     axios
       .put(
         `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${props.restaurantId}/contact`,
@@ -106,45 +108,100 @@ export default function ContactRestaurantComponent(props) {
       })
       .finally(() => {
         setEditing(false);
+        setSaving(false);
       });
   }
 
+  // styles communs
+  const sectionCls =
+    "bg-white/60 backdrop-blur-sm p-2 midTablet:p-6 rounded-2xl border border-darkBlue/10 shadow-sm flex flex-col gap-4 w-full h-fit";
+  const fieldCard =
+    "group rounded-xl bg-white/70 border border-darkBlue/10 px-4 py-3 flex flex-row items-center justify-between gap-2";
+  const labelWrap =
+    "flex items-center gap-3 midTablet:min-w-[160px] text-darkBlue";
+  const labelText = "font-semibold text-sm whitespace-nowrap";
+  const valueText = "text-right text-sm text-darkBlue truncate";
+  const inputCls =
+    "w-full midTablet:w-1/2 rounded-lg border bg-white px-3 py-2 text-[14px] text-right outline-none transition placeholder:text-darkBlue/40 border-darkBlue/20";
+  const inputErrorCls = `${inputCls} border-red`;
+
   return (
-    <div className="bg-white p-4 rounded-lg drop-shadow-sm w-full h-fit">
-      <div className="flex gap-6 flex-wrap justify-between">
-        <h1 className="font-bold text-lg">{t("contact.title")}</h1>
+    <section className={sectionCls}>
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex justify-between items-start w-full gap-6">
+          <div className="text-balance">
+            <h1 className="font-semibold text-lg text-darkBlue">
+              {t("contact.title")}
+            </h1>
+            <p className="text-xs text-darkBlue/60 max-w-md">
+              {t(
+                "contact.subtitle",
+                "Gérez les informations de contact affichées sur votre site."
+              )}
+            </p>
+          </div>
+          <div className="flex gap-2">
+            {editing && (
+              <button
+                type="button"
+                onClick={() => setEditing(false)}
+                disabled={saving}
+              >
+                {/* Version texte (desktop / mobile large) */}
+                <span className="hidden mobile:flex rounded-lg text-white disabled:cursor-none bg-red px-4 py-2 gap-2 items-center transition-opacity duration-150">
+                  {t("cancel")}
+                </span>
 
-        <div className="flex gap-2">
-          {editing && (
-            <button onClick={handleToggleEdit}>
-              <span className="text-white bg-red px-4 py-2 rounded-lg">
-                {t("cancel")}
-              </span>
-            </button>
-          )}
-
-          <button onClick={editing ? handleSubmit(onSubmit) : handleToggleEdit}>
-            {editing ? (
-              <span className="text-white bg-blue px-4 py-2 rounded-lg">
-                {t("save")}
-              </span>
-            ) : (
-              <div className="hover:opacity-100 opacity-20 rounded-full transition-opacity duration-300">
-                <EditSvg
-                  width={24}
-                  height={24}
-                  strokeColor="#131E36"
-                  fillColor="#131E36"
-                />
-              </div>
+                {/* Version icône seule (mobile) */}
+                <span className="mobile:hidden rounded-lg text-white disabled:cursor-none bg-red px-4 py-2 flex gap-2 items-center transition-opacity duration-150">
+                  <XCircle className="size-5" />
+                </span>
+              </button>
             )}
-          </button>
+
+            <button
+              type="button"
+              onClick={editing ? handleSubmit(onSubmit) : handleToggleEdit}
+              disabled={saving}
+            >
+              {editing ? (
+                <span className="rounded-lg text-white bg-blue px-4 py-2 flex gap-2 items-center transition-opacity duration-150">
+                  {saving ? (
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="size-5 mobile:size-4 animate-spin" />
+                      <span className="hidden mobile:flex">
+                        {t("saving", "En cours…")}
+                      </span>
+                    </div>
+                  ) : (
+                    <>
+                      <span className="hidden mobile:flex">{t("save")}</span>
+                      <span className="mobile:hidden flex">
+                        <Save className="size-5" />
+                      </span>
+                    </>
+                  )}
+                </span>
+              ) : (
+                <div className="rounded-lg text-white bg-blue px-4 py-2 flex gap-2 items-center transition-opacity duration-150">
+                  <Edit className="size-5" />
+                  <span className="hidden mobile:flex">
+                    {t("edit", "Éditer")}
+                  </span>
+                </div>
+              )}
+            </button>
+          </div>
         </div>
       </div>
 
-      <hr className="opacity-20 my-6" />
+      <hr className="opacity-10" />
 
-      <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-3">
+      <form
+        onSubmit={handleSubmit(onSubmit)}
+        className="flex flex-col gap-3 mt-1"
+      >
         {contactData.map((item) => {
           const IconComponent = icons[item.icon];
           const isRequired = item.required;
@@ -161,41 +218,47 @@ export default function ContactRestaurantComponent(props) {
           }
 
           return (
-            <div
-              className={`flex ${editing ? "flex-col midTablet:flex-row h-12" : "flex-row h-12 items-center"}  justify-between gap-2 midTablet:gap-12 `}
-              key={item.field}
-            >
-              <div className="flex items-center gap-3 midTablet:w-[150px]">
+            <div className={fieldCard} key={item.field}>
+              {/* Label + icone */}
+              <div className={labelWrap}>
                 {IconComponent && (
                   <IconComponent
-                    width={25}
-                    height={25}
+                    width={22}
+                    height={22}
                     fillColor="#131E3660"
                     strokeColor="#131E3660"
                   />
                 )}
-                <h3 className="flex items-center font-semibold whitespace-nowrap">
+                <h3 className={labelText}>
                   {t(item.label)}
+                  {isRequired && editing && (
+                    <span className="text-red text-[11px] ml-1">*</span>
+                  )}
                 </h3>
               </div>
 
+              {/* Valeur ou input */}
               {props.dataLoading ? (
-                <SimpleSkeletonComponent justify="justify-end" />
+                <div className="w-full midTablet:w-1/2 flex justify-end">
+                  <SimpleSkeletonComponent justify="justify-end" />
+                </div>
               ) : editing ? (
                 <input
                   type="text"
                   {...register(item.field, {
                     required: isRequired ? t("error.required") : false,
                   })}
-                  className={`border p-1 px-4 text-end rounded-lg w-full midTablet:w-1/2 ${
-                    errors[item.field] ? "border-red" : ""
-                  }`}
+                  className={errors[item.field] ? inputErrorCls : inputCls}
                   placeholder={!isRequired ? t("emptyInput") : ""}
                 />
               ) : (
-                <p className="text-right truncate max-w-[120px] mobile:min-w-[40%]">
-                  {fieldValue || (
-                    <span className="text-sm italic">{t("notUsed")}</span>
+                <p className={valueText}>
+                  {fieldValue ? (
+                    fieldValue
+                  ) : (
+                    <span className="text-xs italic text-darkBlue/50">
+                      {t("notUsed")}
+                    </span>
                   )}
                 </p>
               )}
@@ -203,6 +266,6 @@ export default function ContactRestaurantComponent(props) {
           );
         })}
       </form>
-    </div>
+    </section>
   );
 }

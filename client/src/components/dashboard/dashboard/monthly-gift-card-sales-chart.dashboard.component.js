@@ -14,15 +14,18 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-function CustomTooltip(props) {
-  if (props?.active && props?.payload?.length) {
+import { Loader2 } from "lucide-react";
+
+function SalesTooltip({ active, payload, label, currencySymbol }) {
+  if (active && payload && payload.length) {
     return (
-      <div className="bg-white p-2 border border-gray-300 rounded shadow-sm">
-        <p className="font-semibold">{props.label}</p>
-        <p>
-          <span className="text-darkBlue">
-            {props?.payload[0].value} {props.currencySymbol}
-          </span>
+      <div className="rounded-xl border border-darkBlue/10 bg-white/95 px-3 py-2 shadow-md text-xs">
+        <p className="mb-1 font-semibold text-darkBlue">{label}</p>
+        <p className="text-darkBlue/70">
+          <span className="font-semibold text-darkBlue">
+            {payload[0].value.toLocaleString("fr-FR")}
+          </span>{" "}
+          {currencySymbol}
         </p>
       </div>
     );
@@ -36,49 +39,144 @@ export default function MonthlyGiftCardSalesChart(props) {
   const { locale } = router;
   const currencySymbol = locale === "fr" ? "€" : "$";
 
-  return (
-    <div className="bg-white rounded-lg drop-shadow-sm flex flex-col py-6 pr-6 h-full justify-between">
-      <h2 className="text-xl font-semibold text-center mb-4">
-        {t("labels.monthlySold")}
-      </h2>
+  const data = props.monthlySales || [];
 
-      <div className="h-[400px] flex justify-center items-center">
+  const totalAmount = Array.isArray(data)
+    ? data.reduce((sum, d) => sum + (d.total || 0), 0)
+    : 0;
+
+  const lastPoint =
+    Array.isArray(data) && data.length > 0 ? data[data.length - 1] : null;
+
+  const height = 400;
+
+  return (
+    <section
+      className="
+        relative overflow-hidden
+        rounded-2xl border border-darkBlue/10
+        bg-white/50
+        backdrop-blur-sm
+        px-4 py-4 tablet:px-6 tablet:py-5
+        shadow-[0_18px_45px_rgba(19,30,54,0.08)]
+      "
+    >
+      {/* Header */}
+      <header className="relative z-10 mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-base tablet:text-lg font-semibold text-darkBlue">
+            {t("labels.monthlySold")}
+          </h2>
+          <p className="text-[11px] tablet:text-xs text-darkBlue/60">
+            {t(
+              "labels.monthlySoldSubtitle",
+              "Montant des cartes cadeaux vendues par mois."
+            )}
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2 text-xs">
+          <div className="inline-flex items-center gap-1 rounded-full bg-white/80 border border-darkBlue/10 px-3 py-1">
+            <span className="h-2 w-2 rounded-full bg-[#e66430]" />
+            <span className="text-darkBlue/70">
+              Total :{" "}
+              <span className="font-semibold text-darkBlue">
+                {totalAmount.toLocaleString("fr-FR")} {currencySymbol}
+              </span>
+            </span>
+          </div>
+
+          {lastPoint && (
+            <div className="inline-flex items-center gap-1 rounded-full bg-white/80 border border-darkBlue/10 px-3 py-1">
+              <span className="text-darkBlue/60">
+                Dernier mois :{" "}
+                <span className="font-semibold text-darkBlue">
+                  {lastPoint.total.toLocaleString("fr-FR")} {currencySymbol}
+                </span>
+              </span>
+            </div>
+          )}
+        </div>
+      </header>
+
+      {/* Chart */}
+      <div className="relative z-10">
         {props.monthlyDataLoading ? (
-          <p className="italic opacity-30 text-xl">Chargement...</p>
-        ) : props.monthlySales?.length > 0 ? (
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart
-              data={props.monthlySales}
-              margin={{ top: 20, right: 5, left: 0, bottom: 0 }}
-            >
-              <defs>
-                <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8} />
-                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="month" />
-              <YAxis type="number" domain={[0, "auto"]} />
-              <Tooltip
-                content={<CustomTooltip currencySymbol={currencySymbol} />}
-              />
-              <Area
-                type="monotone"
-                dataKey="total"
-                stroke="#3b82f6"
-                fill="url(#colorSales)"
-                fillOpacity={1}
-                activeDot={{ r: 6 }}
-                dot={{ r: 3, fill: "#3b82f6" }}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+          <div
+            className="flex flex-col items-center justify-center gap-2 text-darkBlue/40"
+            style={{ height }}
+          >
+            <Loader2 className="size-6 animate-spin" />
+            <span className="text-sm italic">Chargement…</span>
+          </div>
+        ) : !data.length ? (
+          <div
+            className="flex items-center justify-center text-sm italic text-darkBlue/40"
+            style={{ height }}
+          >
+            {t("labels.emptySold")}
+          </div>
         ) : (
-          // Cas : data chargées mais tableau vide
-          <p className="italic opacity-30 text-xl">{t("labels.emptySold")}</p>
+          <div style={{ width: "100%", height }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart
+                data={data}
+                // même principe que le graph des visites : on colle un peu à gauche
+                margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
+              >
+                <defs>
+                  <linearGradient id="giftSalesColor" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#e66430" stopOpacity={0.6} />
+                    <stop offset="95%" stopColor="#e66430" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="rgba(19,30,54,0.06)"
+                  vertical={false}
+                />
+                <XAxis
+                  dataKey="month"
+                  tick={{ fontSize: 11, fill: "rgba(19,30,54,0.6)" }}
+                  axisLine={false}
+                  tickLine={false}
+                  padding={{ left: 0, right: 10 }}
+                />
+                <YAxis
+                  type="number"
+                  domain={[0, "auto"]}
+                  tick={{ fontSize: 11, fill: "rgba(19,30,54,0.6)" }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={40}
+                />
+                <Tooltip
+                  content={
+                    <SalesTooltip currencySymbol={currencySymbol} />
+                  }
+                />
+                <Area
+                  type="monotone"
+                  dataKey="total"
+                  stroke="#e66430"
+                  strokeWidth={1.2}
+                  fill="url(#giftSalesColor)"
+                  fillOpacity={1}
+                  activeDot={{
+                    r: 5,
+                    stroke: "#ffffff",
+                    strokeWidth: 2,
+                  }}
+                  dot={{ r: 2, fill: "#e66430" }}
+                  isAnimationActive={true}
+                  animationDuration={1200}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
         )}
       </div>
-    </div>
+    </section>
   );
 }

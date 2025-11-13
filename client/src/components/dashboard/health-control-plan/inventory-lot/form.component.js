@@ -1259,10 +1259,10 @@ export default function InventoryLotForm({
       <div className="flex flex-col gap-2 mt-3 mobile:flex-row">
         <button type="submit" disabled={isSubmitting} className={btnPrimary}>
           {isSubmitting ? (
-            <>
-              <Loader2 className="size-4 animate-spin" />
-              Enregistrement…
-            </>
+             <div className="flex items-center gap-2">
+                <Loader2 className="size-4 animate-spin" />
+                <span>Enregistrementﬂ…</span>
+              </div>
           ) : initial?._id ? (
             <>
               <FileText className="size-4" />

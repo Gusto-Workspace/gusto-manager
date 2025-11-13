@@ -398,9 +398,10 @@ export default function FridgeManagerModal({
                       disabled={isSaving}
                     >
                       {isSaving ? (
-                        <>
-                          <Loader2 className="size-4 animate-spin" /> En cours…
-                        </>
+                        <div className="flex items-center gap-2">
+                          <Loader2 className="size-4 animate-spin" />
+                          <span>En cours…</span>
+                        </div>
                       ) : (
                         <>
                           {editingId ? (
@@ -496,10 +497,10 @@ export default function FridgeManagerModal({
                                     disabled={deleteLoading}
                                   >
                                     {deleteLoading ? (
-                                      <>
-                                        <Loader2 className="size-4 animate-spin" />{" "}
-                                        Suppression…
-                                      </>
+                                      <div className="flex items-center gap-2">
+                                        <Loader2 className="size-4 animate-spin" />
+                                        <span>Suppression…</span>
+                                      </div>
                                     ) : (
                                       <>
                                         <Trash2 className="size-4" /> Confirmer

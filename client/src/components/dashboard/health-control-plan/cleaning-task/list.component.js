@@ -470,9 +470,10 @@ export default function CleaningTaskList({
             {loading && (
               <tr>
                 <td colSpan={9} className="py-8 text-center text-darkBlue/50">
-                  <span className="inline-flex items-center gap-2">
-                    <Loader2 className="size-4 animate-spin" /> Chargement…
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="size-4 animate-spin" />
+                    <span>chargement…</span>
+                  </div>
                 </td>
               </tr>
             )}
@@ -617,9 +618,10 @@ export default function CleaningTaskList({
                     type="button"
                   >
                     {deleteLoading ? (
-                      <>
-                        <Loader2 className="size-4 animate-spin" /> Suppression…
-                      </>
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="size-4 animate-spin" />
+                        <span>Suppression…</span>
+                      </div>
                     ) : (
                       "Confirmer"
                     )}

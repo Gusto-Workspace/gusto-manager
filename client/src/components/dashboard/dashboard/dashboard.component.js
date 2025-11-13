@@ -226,8 +226,8 @@ export default function DashboardComponent(props) {
   );
 
   return (
-    <section className="flex flex-col gap-6">
-      <div className="grid grid-cols-1 tablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-3 gap-6">
+    <section className="flex flex-col gap-2 midTablet:gap-4">
+      <div className="grid grid-cols-1 tablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-3 gap-2 midTablet:gap-4">
         {mainDashboardCards.map(
           ({ title, IconComponent, getCounts, emptyLabel, noDonut }) => {
             const { visible, hidden, total } = getCounts(props.restaurantData);
@@ -275,7 +275,7 @@ export default function DashboardComponent(props) {
       )}
 
       {props.restaurantData?.options?.gift_card && (
-        <div className="flex flex-col desktop:flex-row gap-6">
+        <div className="flex flex-col desktop:flex-row gap-2 midTablet:gap-4">
           <div className="w-full">
             <MonthlyGiftCardSalesChart
               monthlyDataLoading={monthlyDataLoading}
@@ -283,7 +283,7 @@ export default function DashboardComponent(props) {
             />
           </div>
 
-          <div className="grid grid-cols-1 gap-6 w-full">
+          <div className="grid grid-cols-1 gap-2 midTablet:gap-4 w-full">
             {giftDashboardData.map(
               ({ title, IconComponent, getCounts, emptyLabel }) => {
                 const { total, data } = getCounts(props.restaurantData);

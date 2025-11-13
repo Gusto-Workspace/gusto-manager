@@ -67,7 +67,10 @@ export default function AllergenIncidentList({
     });
 
   const hasActiveFilters = useMemo(
-    () => Boolean(q || status !== "all" || severity || source || dateFrom || dateTo),
+    () =>
+      Boolean(
+        q || status !== "all" || severity || source || dateFrom || dateTo
+      ),
     [q, status, severity, source, dateFrom, dateTo]
   );
   const hasFullDateRange = Boolean(dateFrom && dateTo);
@@ -222,9 +225,13 @@ export default function AllergenIncidentList({
     try {
       setDeleteLoading(true);
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/allergen-incidents/${deleteTarget._id}`;
-      await axios.delete(url, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.delete(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
-      setItems((prev) => prev.filter((x) => String(x._id) !== String(deleteTarget._id)));
+      setItems((prev) =>
+        prev.filter((x) => String(x._id) !== String(deleteTarget._id))
+      );
       onDeleted?.(deleteTarget);
       setIsDeleteModalOpen(false);
       setDeleteTarget(null);
@@ -345,7 +352,11 @@ export default function AllergenIncidentList({
           <button
             onClick={() => hasFullDateRange && fetchData(1)}
             disabled={!hasFullDateRange}
-            title={!hasFullDateRange ? "Sélectionnez 'Du' ET 'Au' pour filtrer" : undefined}
+            title={
+              !hasFullDateRange
+                ? "Sélectionnez 'Du' ET 'Au' pour filtrer"
+                : undefined
+            }
             className={`${btnBase} bg-blue text-white disabled:opacity-40`}
             type="button"
           >
@@ -383,15 +394,33 @@ export default function AllergenIncidentList({
         <table className="w-full text-[13px]">
           <thead className="whitespace-nowrap">
             <tr className="sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Statut</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Détecté le</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Produit / Plat</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Allergènes</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Gravité</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Source</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Actions corr.</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Opérateur</th>
-              <th className="py-2 pr-3 text-right font-medium text-darkBlue/70">Actions</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Statut
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Détecté le
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Produit / Plat
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Allergènes
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Gravité
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Source
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Actions corr.
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Opérateur
+              </th>
+              <th className="py-2 pr-3 text-right font-medium text-darkBlue/70">
+                Actions
+              </th>
             </tr>
           </thead>
 
@@ -408,7 +437,10 @@ export default function AllergenIncidentList({
               <tr>
                 <td colSpan={9} className="py-8 text-center text-darkBlue/50">
                   <span className="inline-flex items-center gap-2">
-                    <Loader2 className="size-4 animate-spin" /> Chargement…
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="size-4 animate-spin" />
+                      <span>Chargement…</span>
+                    </div>
                   </span>
                 </td>
               </tr>
@@ -427,22 +459,30 @@ export default function AllergenIncidentList({
                   <tr
                     key={it._id}
                     className={`transition-colors hover:bg-darkBlue/[0.03] ${
-                      editingId === it._id ? "bg-blue/5 ring-1 ring-blue/20" : ""
+                      editingId === it._id
+                        ? "bg-blue/5 ring-1 ring-blue/20"
+                        : ""
                     }`}
                   >
                     <td className="py-2 pr-3 whitespace-nowrap">
                       <span
                         className={`px-2 py-0.5 rounded text-xs ${
-                          it.closed ? "bg-green text-white" : "bg-orange text-white"
+                          it.closed
+                            ? "bg-green text-white"
+                            : "bg-orange text-white"
                         }`}
                       >
                         {badge}
                       </span>
                     </td>
 
-                    <td className="py-2 pr-3 whitespace-nowrap">{fmtDate(it.detectedAt)}</td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {fmtDate(it.detectedAt)}
+                    </td>
 
-                    <td className="py-2 pr-3 whitespace-nowrap">{it.itemName || "—"}</td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it.itemName || "—"}
+                    </td>
 
                     <td className="py-2 pr-3 whitespace-nowrap">
                       {Array.isArray(it.allergens) && it.allergens.length
@@ -456,10 +496,14 @@ export default function AllergenIncidentList({
                       </span>
                     </td>
 
-                    <td className="py-2 pr-3 whitespace-nowrap">{it.source || "—"}</td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it.source || "—"}
+                    </td>
 
                     <td className="py-2 pr-3 whitespace-nowrap">
-                      {Array.isArray(it.correctiveActions) ? it.correctiveActions.length : 0}
+                      {Array.isArray(it.correctiveActions)
+                        ? it.correctiveActions.length
+                        : 0}
                     </td>
 
                     <td className="py-2 pr-3 whitespace-nowrap">
@@ -527,7 +571,11 @@ export default function AllergenIncidentList({
       {isDeleteModalOpen &&
         isClient &&
         createPortal(
-          <div className="fixed inset-0 z-[1000]" aria-modal="true" role="dialog">
+          <div
+            className="fixed inset-0 z-[1000]"
+            aria-modal="true"
+            role="dialog"
+          >
             <div
               onClick={closeDeleteModal}
               className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"
@@ -548,9 +596,10 @@ export default function AllergenIncidentList({
                     type="button"
                   >
                     {deleteLoading ? (
-                      <>
-                        <Loader2 className="size-4 animate-spin" /> Suppression…
-                      </>
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="size-4 animate-spin" />
+                        <span>Suppression…</span>
+                      </div>
                     ) : (
                       "Confirmer"
                     )}

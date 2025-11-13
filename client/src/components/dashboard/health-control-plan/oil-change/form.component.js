@@ -788,10 +788,10 @@ export default function OilChangeForm({
       <div className="flex flex-col gap-2 mt-3 mobile:flex-row">
         <button type="submit" disabled={isSubmitting} className={btnPrimary}>
           {isSubmitting ? (
-            <>
+            <div className="flex items-center gap-2">
               <Loader2 className="size-4 animate-spin" />
-              Enregistrement…
-            </>
+              <span>Enregistrement…</span>
+            </div>
           ) : initial?._id ? (
             <>
               <FileText className="size-4" />

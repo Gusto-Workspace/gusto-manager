@@ -134,8 +134,7 @@ export default function RecallList({
 
   // Initial fetch
   useEffect(() => {
-    if (restaurantId)
-      fetchData(1, { status: "all", dateFrom: "", dateTo: "" });
+    if (restaurantId) fetchData(1, { status: "all", dateFrom: "", dateTo: "" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
 
@@ -361,17 +360,39 @@ export default function RecallList({
         <table className="w-full text-[13px]">
           <thead className="whitespace-nowrap">
             <tr className="sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Déclaré le</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Produit</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Fournisseur</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">N° lot</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Qté</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">DLC/DDM</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Statut</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Clôturé le</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Pièces</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Opérateur</th>
-              <th className="py-2 pr-3 text-right font-medium text-darkBlue/70">Actions</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Déclaré le
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Produit
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Fournisseur
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                N° lot
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Qté
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                DLC/DDM
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Statut
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Clôturé le
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Pièces
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Opérateur
+              </th>
+              <th className="py-2 pr-3 text-right font-medium text-darkBlue/70">
+                Actions
+              </th>
             </tr>
           </thead>
 
@@ -401,22 +422,36 @@ export default function RecallList({
                   <tr
                     key={it._id}
                     className={`transition-colors hover:bg-darkBlue/[0.03] ${
-                      editingId === it._id ? "bg-blue/5 ring-1 ring-blue/20" : ""
+                      editingId === it._id
+                        ? "bg-blue/5 ring-1 ring-blue/20"
+                        : ""
                     }`}
                   >
-                    <td className="py-2 pr-3 whitespace-nowrap">{fmtDate(it.initiatedAt)}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{item.productName || "—"}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{item.supplierName || "—"}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{item.lotNumber || "—"}</td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {fmtDate(it.initiatedAt)}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {item.productName || "—"}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {item.supplierName || "—"}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {item.lotNumber || "—"}
+                    </td>
                     <td className="py-2 pr-3 whitespace-nowrap">
                       {item.quantity ?? "—"}
                       {item.unit ? ` ${item.unit}` : ""}
                     </td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{fmtDate(item.bestBefore, false)}</td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {fmtDate(item.bestBefore, false)}
+                    </td>
                     <td className="py-2 pr-3 whitespace-nowrap">
                       <StatusPill closedAt={it.closedAt} />
                     </td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{fmtDate(it.closedAt)}</td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {fmtDate(it.closedAt)}
+                    </td>
                     <td className="py-2 pr-3 whitespace-nowrap">
                       {Array.isArray(it.attachments) && it.attachments.length
                         ? `${it.attachments.length} doc(s)`
@@ -486,7 +521,11 @@ export default function RecallList({
       {isDeleteModalOpen &&
         isClient &&
         createPortal(
-          <div className="fixed inset-0 z-[1000]" aria-modal="true" role="dialog">
+          <div
+            className="fixed inset-0 z-[1000]"
+            aria-modal="true"
+            role="dialog"
+          >
             <div
               onClick={closeDeleteModal}
               className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"
@@ -507,9 +546,10 @@ export default function RecallList({
                     type="button"
                   >
                     {deleteLoading ? (
-                      <>
-                        <Loader2 className="size-4 animate-spin" /> Suppression…
-                      </>
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="size-4 animate-spin" />
+                        <span>Suppression…</span>
+                      </div>
                     ) : (
                       "Confirmer"
                     )}

@@ -2,7 +2,14 @@
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import axios from "axios";
-import { MapPin, Thermometer, CalendarClock, Loader2, FileText, ChevronDown } from "lucide-react";
+import {
+  MapPin,
+  Thermometer,
+  CalendarClock,
+  Loader2,
+  FileText,
+  ChevronDown,
+} from "lucide-react";
 
 function toDatetimeLocalValue(value) {
   const base = value ? new Date(value) : new Date();
@@ -32,12 +39,16 @@ function resolveZoneRefFromInitial(initial, zones = []) {
   if (!initial || !Array.isArray(zones) || zones.length === 0) return "";
   // 1) match sur zoneCode
   if (initial.locationId) {
-    const byCode = zones.find((z) => (z?.zoneCode || "") === (initial.locationId || ""));
+    const byCode = zones.find(
+      (z) => (z?.zoneCode || "") === (initial.locationId || "")
+    );
     if (byCode) return String(byCode._id);
   }
   // 2) match sur nom
   if (initial.location) {
-    const byName = zones.find((z) => (z?.name || "") === (initial.location || ""));
+    const byName = zones.find(
+      (z) => (z?.name || "") === (initial.location || "")
+    );
     if (byName) return String(byName._id);
   }
   return "";
@@ -92,10 +103,10 @@ export default function GenericTemperatureForm({
     if (!token) return;
 
     const payload = {
-      location: data.location,        // depuis zone
+      location: data.location, // depuis zone
       locationId: data.locationId || undefined, // depuis zone
       value: Number(data.value),
-      unit: data.unit,                // depuis zone
+      unit: data.unit, // depuis zone
       note: data.note || undefined,
       createdAt: data.createdAt ? new Date(data.createdAt) : undefined,
     };
@@ -126,7 +137,10 @@ export default function GenericTemperatureForm({
     "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition active:scale-[0.98]";
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="relative flex flex-col gap-2">
+    <form
+      onSubmit={handleSubmit(onSubmit)}
+      className="relative flex flex-col gap-2"
+    >
       {/* Ligne 1 : Zone / Température */}
       <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
         {/* Zone */}
@@ -144,10 +158,16 @@ export default function GenericTemperatureForm({
               <option value="">— Sélectionner —</option>
               {zones
                 .slice()
-                .sort((a, b) => String(a?.name || "").localeCompare(String(b?.name || ""), "fr"))
+                .sort((a, b) =>
+                  String(a?.name || "").localeCompare(
+                    String(b?.name || ""),
+                    "fr"
+                  )
+                )
                 .map((z) => (
                   <option key={z._id} value={z._id}>
-                    {z.name}{z.zoneCode ? ` — ${z.zoneCode}` : ""}
+                    {z.name}
+                    {z.zoneCode ? ` — ${z.zoneCode}` : ""}
                   </option>
                 ))}
             </select>
@@ -168,7 +188,8 @@ export default function GenericTemperatureForm({
               onWheel={(e) => e.currentTarget.blur()}
               {...register("value", {
                 required: "Requis",
-                validate: (v) => (Number.isFinite(Number(v)) ? true : "Invalide"),
+                validate: (v) =>
+                  Number.isFinite(Number(v)) ? true : "Invalide",
               })}
               className={`${inputCls} text-right pr-12 ${errors.value ? "border-red focus:ring-red/20" : ""}`}
               aria-invalid={!!errors.value}
@@ -189,7 +210,11 @@ export default function GenericTemperatureForm({
           <label className={labelCls}>
             <CalendarClock className="size-4" /> Date / heure mesure
           </label>
-          <input type="datetime-local" {...register("createdAt")} className={selectCls} />
+          <input
+            type="datetime-local"
+            {...register("createdAt")}
+            className={selectCls}
+          />
         </div>
 
         <div className={fieldWrap}>
@@ -218,9 +243,10 @@ export default function GenericTemperatureForm({
           className={`${btnBase} bg-blue border border-blue text-white disabled:opacity-60`}
         >
           {isSubmitting ? (
-            <>
-              <Loader2 className="size-4 animate-spin" /> Enregistrement…
-            </>
+            <div className="flex items-center gap-2">
+              <Loader2 className="size-4 animate-spin" />
+              <span>Enregistrement…</span>
+            </div>
           ) : (
             <>
               <Thermometer className="size-4" />

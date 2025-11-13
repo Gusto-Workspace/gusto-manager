@@ -33,7 +33,11 @@ function dueStatus(nextCalibrationDue, soonDays = DUE_SOON_DAYS) {
   const soon = new Date(now);
   soon.setDate(soon.getDate() + soonDays);
   if (due <= soon)
-    return { label: "Bientôt dû", key: "due_soon", cls: "bg-orange text-white" };
+    return {
+      label: "Bientôt dû",
+      key: "due_soon",
+      cls: "bg-orange text-white",
+    };
   return { label: "OK", key: "ok", cls: "bg-green text-white" };
 }
 
@@ -184,7 +188,8 @@ export default function CalibrationList({
     };
 
     window.addEventListener("calibrations:upsert", handleUpsert);
-    return () => window.removeEventListener("calibrations:upsert", handleUpsert);
+    return () =>
+      window.removeEventListener("calibrations:upsert", handleUpsert);
   }, [restaurantId]);
 
   // Filtrage client (q + statut sur page courante)
@@ -210,7 +215,9 @@ export default function CalibrationList({
     }
 
     if (status !== "all") {
-      base = base.filter((it) => dueStatus(it.nextCalibrationDue).key === status);
+      base = base.filter(
+        (it) => dueStatus(it.nextCalibrationDue).key === status
+      );
     }
 
     return base;
@@ -230,7 +237,9 @@ export default function CalibrationList({
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      setItems((prev) => prev.filter((x) => String(x._id) !== String(deleteTarget._id)));
+      setItems((prev) =>
+        prev.filter((x) => String(x._id) !== String(deleteTarget._id))
+      );
       onDeleted?.(deleteTarget);
       setIsDeleteModalOpen(false);
       setDeleteTarget(null);
@@ -335,7 +344,11 @@ export default function CalibrationList({
           <button
             onClick={() => hasFullDateRange && fetchData(1)}
             disabled={!hasFullDateRange}
-            title={!hasFullDateRange ? "Sélectionnez 'Du' ET 'Au' pour filtrer par dates" : undefined}
+            title={
+              !hasFullDateRange
+                ? "Sélectionnez 'Du' ET 'Au' pour filtrer par dates"
+                : undefined
+            }
             className={`${btnBase} bg-blue text-white disabled:opacity-40`}
             type="button"
           >
@@ -364,16 +377,36 @@ export default function CalibrationList({
         <table className="w-full text-[13px]">
           <thead className="whitespace-nowrap">
             <tr className="sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Calibré le</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Appareil</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Type</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Méthode</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Fournisseur</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Certificat</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Échéance</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Statut</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Opérateur</th>
-              <th className="py-2 pr-3 text-right font-medium text-darkBlue/70">Actions</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Calibré le
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Appareil
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Type
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Méthode
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Fournisseur
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Certificat
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Échéance
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Statut
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Opérateur
+              </th>
+              <th className="py-2 pr-3 text-right font-medium text-darkBlue/70">
+                Actions
+              </th>
             </tr>
           </thead>
 
@@ -389,9 +422,10 @@ export default function CalibrationList({
             {loading && (
               <tr>
                 <td colSpan={10} className="py-8 text-center text-darkBlue/50">
-                  <span className="inline-flex items-center gap-2">
-                    <Loader2 className="size-4 animate-spin" /> Chargement…
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="size-4 animate-spin" />
+                    <span>chargement…</span>
+                  </div>
                 </td>
               </tr>
             )}
@@ -403,14 +437,26 @@ export default function CalibrationList({
                   <tr
                     key={it._id}
                     className={`transition-colors hover:bg-darkBlue/[0.03] ${
-                      editingId === it._id ? "bg-blue/5 ring-1 ring-blue/20" : ""
+                      editingId === it._id
+                        ? "bg-blue/5 ring-1 ring-blue/20"
+                        : ""
                     }`}
                   >
-                    <td className="py-2 pr-3 whitespace-nowrap">{fmtDate(it.calibratedAt)}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{it.deviceIdentifier || "—"}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{it.deviceType || "—"}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{it.method || "—"}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{it.provider || "—"}</td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {fmtDate(it.calibratedAt)}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it.deviceIdentifier || "—"}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it.deviceType || "—"}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it.method || "—"}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it.provider || "—"}
+                    </td>
                     <td className="py-2 pr-3 whitespace-nowrap">
                       {it.certificateUrl ? (
                         <a
@@ -425,13 +471,18 @@ export default function CalibrationList({
                         "—"
                       )}
                     </td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{fmtDate(it.nextCalibrationDue, false)}</td>
                     <td className="py-2 pr-3 whitespace-nowrap">
-                      <span className={`px-2 py-0.5 rounded text-xs ${st.cls}`}>{st.label}</span>
+                      {fmtDate(it.nextCalibrationDue, false)}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      <span className={`px-2 py-0.5 rounded text-xs ${st.cls}`}>
+                        {st.label}
+                      </span>
                     </td>
                     <td className="py-2 pr-3 whitespace-nowrap">
                       {it?.recordedBy
-                        ? `${it.recordedBy.firstName || ""} ${it.recordedBy.lastName || ""}`.trim() || "—"
+                        ? `${it.recordedBy.firstName || ""} ${it.recordedBy.lastName || ""}`.trim() ||
+                          "—"
                         : "—"}
                     </td>
                     <td className="py-2 pr-0">
@@ -492,8 +543,15 @@ export default function CalibrationList({
       {isDeleteModalOpen &&
         isClient &&
         createPortal(
-          <div className="fixed inset-0 z-[1000]" aria-modal="true" role="dialog">
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px]" onClick={closeDeleteModal} />
+          <div
+            className="fixed inset-0 z-[1000]"
+            aria-modal="true"
+            role="dialog"
+          >
+            <div
+              className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"
+              onClick={closeDeleteModal}
+            />
             <div className="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
               <div className="pointer-events-auto w-full max-w-[480px] rounded-2xl border border-darkBlue/10 bg-white p-5 shadow-2xl">
                 <h2 className="mb-2 text-center text-lg font-semibold text-darkBlue">
@@ -510,9 +568,10 @@ export default function CalibrationList({
                     type="button"
                   >
                     {deleteLoading ? (
-                      <>
-                        <Loader2 className="size-4 animate-spin" /> Suppression…
-                      </>
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="size-4 animate-spin" />
+                        <span>Suppression…</span>
+                      </div>
                     ) : (
                       "Confirmer"
                     )}

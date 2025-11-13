@@ -90,7 +90,10 @@ export default function WasteEntriesList({
     });
 
   const hasActiveFilters = useMemo(
-    () => Boolean(q || wasteType !== "all" || method !== "all" || dateFrom || dateTo),
+    () =>
+      Boolean(
+        q || wasteType !== "all" || method !== "all" || dateFrom || dateTo
+      ),
     [q, wasteType, method, dateFrom, dateTo]
   );
   const hasFullDateRange = Boolean(dateFrom && dateTo);
@@ -107,7 +110,8 @@ export default function WasteEntriesList({
 
       const params = { page, limit: meta.limit || 20 };
       // q reste local (recherche client)
-      if (cur.wasteType && cur.wasteType !== "all") params.waste_type = cur.wasteType;
+      if (cur.wasteType && cur.wasteType !== "all")
+        params.waste_type = cur.wasteType;
       if (cur.method && cur.method !== "all") params.method = cur.method;
       if (cur.dateFrom) params.date_from = new Date(cur.dateFrom).toISOString();
       if (cur.dateTo) params.date_to = new Date(cur.dateTo).toISOString();
@@ -133,7 +137,12 @@ export default function WasteEntriesList({
   // Initial
   useEffect(() => {
     if (restaurantId) {
-      fetchData(1, { wasteType: "all", method: "all", dateFrom: "", dateTo: "" });
+      fetchData(1, {
+        wasteType: "all",
+        method: "all",
+        dateFrom: "",
+        dateTo: "",
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
@@ -150,7 +159,8 @@ export default function WasteEntriesList({
     const handleUpsert = (event) => {
       const doc = event?.detail?.doc;
       if (!doc || !doc._id) return;
-      if (restaurantId && String(doc.restaurantId) !== String(restaurantId)) return;
+      if (restaurantId && String(doc.restaurantId) !== String(restaurantId))
+        return;
 
       const currentMeta = metaRef.current || {};
       const limit = currentMeta.limit || 20;
@@ -222,9 +232,13 @@ export default function WasteEntriesList({
     try {
       setDeleteLoading(true);
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/waste-entries/${deleteTarget._id}`;
-      await axios.delete(url, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.delete(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
-      setItems((prev) => prev.filter((x) => String(x._id) !== String(deleteTarget._id)));
+      setItems((prev) =>
+        prev.filter((x) => String(x._id) !== String(deleteTarget._id))
+      );
       onDeleted?.(deleteTarget);
       setIsDeleteModalOpen(false);
       setDeleteTarget(null);
@@ -351,7 +365,11 @@ export default function WasteEntriesList({
           <button
             onClick={() => hasFullDateRange && fetchData(1)}
             disabled={!hasFullDateRange}
-            title={!hasFullDateRange ? "Sélectionnez 'Du' ET 'Au' pour filtrer par dates" : undefined}
+            title={
+              !hasFullDateRange
+                ? "Sélectionnez 'Du' ET 'Au' pour filtrer par dates"
+                : undefined
+            }
             className={`${btnBase} bg-blue text-white disabled:opacity-40`}
             type="button"
           >
@@ -365,7 +383,12 @@ export default function WasteEntriesList({
               setMethod("all");
               setDateFrom("");
               setDateTo("");
-              fetchData(1, { wasteType: "all", method: "all", dateFrom: "", dateTo: "" });
+              fetchData(1, {
+                wasteType: "all",
+                method: "all",
+                dateFrom: "",
+                dateTo: "",
+              });
             }}
             disabled={!hasActiveFilters}
             className={`${btnBase} border border-darkBlue/20 bg-white text-darkBlue hover:border-darkBlue/30 disabled:opacity-40`}
@@ -381,15 +404,33 @@ export default function WasteEntriesList({
         <table className="w-full text-[13px]">
           <thead className="whitespace-nowrap">
             <tr className="sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Date</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Type</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Poids (kg)</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Méthode</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Prestataire</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Bordereau</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Pièces</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Opérateur</th>
-              <th className="py-2 pr-3 text-right font-medium text-darkBlue/70">Actions</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Date
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Type
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Poids (kg)
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Méthode
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Prestataire
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Bordereau
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Pièces
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Opérateur
+              </th>
+              <th className="py-2 pr-3 text-right font-medium text-darkBlue/70">
+                Actions
+              </th>
             </tr>
           </thead>
 
@@ -405,7 +446,7 @@ export default function WasteEntriesList({
             {loading && (
               <tr>
                 <td colSpan={9} className="py-8 text-center text-darkBlue/50">
-                  <span className="inline-flex items-center gap-2">
+                  <span className="flex items-center gap-2">
                     <Loader2 className="size-4 animate-spin" /> Chargement…
                   </span>
                 </td>
@@ -420,7 +461,9 @@ export default function WasteEntriesList({
                     editingId === it._id ? "bg-blue/5 ring-1 ring-blue/20" : ""
                   }`}
                 >
-                  <td className="py-2 pr-3 whitespace-nowrap">{fmtDate(it.date)}</td>
+                  <td className="py-2 pr-3 whitespace-nowrap">
+                    {fmtDate(it.date)}
+                  </td>
                   <td className="py-2 pr-3 whitespace-nowrap">
                     {TYPE_LABELS[it.wasteType] || it.wasteType || "—"}
                   </td>
@@ -428,16 +471,25 @@ export default function WasteEntriesList({
                     {typeof it.weightKg === "number" ? it.weightKg : "—"}
                   </td>
                   <td className="py-2 pr-3 whitespace-nowrap">
-                    {METHOD_LABELS[it.disposalMethod] || it.disposalMethod || "—"}
+                    {METHOD_LABELS[it.disposalMethod] ||
+                      it.disposalMethod ||
+                      "—"}
                   </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">{it.contractor || "—"}</td>
-                  <td className="py-2 pr-3 whitespace-nowrap">{it.manifestNumber || "—"}</td>
                   <td className="py-2 pr-3 whitespace-nowrap">
-                    {Array.isArray(it.attachments) && it.attachments.length ? `${it.attachments.length} doc(s)` : "—"}
+                    {it.contractor || "—"}
+                  </td>
+                  <td className="py-2 pr-3 whitespace-nowrap">
+                    {it.manifestNumber || "—"}
+                  </td>
+                  <td className="py-2 pr-3 whitespace-nowrap">
+                    {Array.isArray(it.attachments) && it.attachments.length
+                      ? `${it.attachments.length} doc(s)`
+                      : "—"}
                   </td>
                   <td className="py-2 pr-3 whitespace-nowrap">
                     {it?.recordedBy
-                      ? `${it.recordedBy.firstName || ""} ${it.recordedBy.lastName || ""}`.trim() || "—"
+                      ? `${it.recordedBy.firstName || ""} ${it.recordedBy.lastName || ""}`.trim() ||
+                        "—"
                       : "—"}
                   </td>
                   <td className="py-2 pr-0">
@@ -497,14 +549,23 @@ export default function WasteEntriesList({
       {isDeleteModalOpen &&
         isClient &&
         createPortal(
-          <div className="fixed inset-0 z-[1000]" aria-modal="true" role="dialog">
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px]" onClick={closeDeleteModal} />
+          <div
+            className="fixed inset-0 z-[1000]"
+            aria-modal="true"
+            role="dialog"
+          >
+            <div
+              className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"
+              onClick={closeDeleteModal}
+            />
             <div className="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
               <div className="pointer-events-auto w-full max-w-[480px] rounded-2xl border border-darkBlue/10 bg-white p-5 shadow-2xl">
                 <h2 className="mb-2 text-center text-lg font-semibold text-darkBlue">
                   Supprimer cette entrée ?
                 </h2>
-                <p className="mb-5 text-center text-sm text-darkBlue/70">Cette action est définitive.</p>
+                <p className="mb-5 text-center text-sm text-darkBlue/70">
+                  Cette action est définitive.
+                </p>
                 <div className="flex items-center justify-center gap-2">
                   <button
                     onClick={onConfirmDelete}
@@ -513,9 +574,10 @@ export default function WasteEntriesList({
                     type="button"
                   >
                     {deleteLoading ? (
-                      <>
-                        <Loader2 className="size-4 animate-spin" /> Suppression…
-                      </>
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="size-4 animate-spin" />
+                        <span>Suppression…</span>
+                      </div>
                     ) : (
                       "Confirmer"
                     )}

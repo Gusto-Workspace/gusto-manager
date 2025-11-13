@@ -2,14 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import axios from "axios";
-import {
-  Search,
-  CalendarClock,
-  Edit3,
-  Trash2,
-  Loader2,
-  X,
-} from "lucide-react";
+import { Search, CalendarClock, Edit3, Trash2, Loader2, X } from "lucide-react";
 
 function fmtDate(d) {
   try {
@@ -322,16 +315,36 @@ export default function OilChangeList({
         <table className="w-full text-[13px]">
           <thead className="whitespace-nowrap">
             <tr className="sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Date</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Friteuse</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Litres retirés</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">TPM %</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Filtrée</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Marque</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Lot huile neuve</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Opérateur</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Notes</th>
-              <th className="py-2 pr-0 text-right font-medium text-darkBlue/70">Actions</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Date
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Friteuse
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Litres retirés
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                TPM %
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Filtrée
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Marque
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Lot huile neuve
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Opérateur
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Notes
+              </th>
+              <th className="py-2 pr-0 text-right font-medium text-darkBlue/70">
+                Actions
+              </th>
             </tr>
           </thead>
 
@@ -347,9 +360,10 @@ export default function OilChangeList({
             {loading && (
               <tr>
                 <td colSpan={10} className="py-8 text-center text-darkBlue/50">
-                  <span className="inline-flex items-center gap-2">
-                    <Loader2 className="size-4 animate-spin" /> Chargement…
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="size-4 animate-spin" />
+                    <span>Chargement…</span>
+                  </div>
                 </td>
               </tr>
             )}
@@ -466,7 +480,11 @@ export default function OilChangeList({
       {isDeleteModalOpen &&
         isClient &&
         createPortal(
-          <div className="fixed inset-0 z-[1000]" aria-modal="true" role="dialog">
+          <div
+            className="fixed inset-0 z-[1000]"
+            aria-modal="true"
+            role="dialog"
+          >
             <div
               onClick={closeDeleteModal}
               className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"
@@ -477,7 +495,8 @@ export default function OilChangeList({
                   Supprimer cette opération ?
                 </h2>
                 <p className="mb-5 text-center text-sm text-darkBlue/70">
-                  Cette action est définitive. L’opération sera retirée de l’historique.
+                  Cette action est définitive. L’opération sera retirée de
+                  l’historique.
                 </p>
                 <div className="flex items-center justify-center gap-2">
                   <button
@@ -487,9 +506,10 @@ export default function OilChangeList({
                     type="button"
                   >
                     {deleteLoading ? (
-                      <>
-                        <Loader2 className="size-4 animate-spin" /> Suppression…
-                      </>
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="size-4 animate-spin" />
+                        <span>Suppression…</span>
+                      </div>
                     ) : (
                       "Confirmer"
                     )}

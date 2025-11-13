@@ -2,14 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import axios from "axios";
-import {
-  Search,
-  CalendarClock,
-  Edit3,
-  Trash2,
-  Loader2,
-  X,
-} from "lucide-react";
+import { Search, CalendarClock, Edit3, Trash2, Loader2, X } from "lucide-react";
 
 function fmtDate(d) {
   try {
@@ -373,7 +366,7 @@ export default function RecipeBatchesList({
             {loading && (
               <tr>
                 <td colSpan={8} className="py-8 text-center text-darkBlue/50">
-                  <span className="inline-flex items-center gap-2">
+                  <span className="flex items-center gap-2">
                     <Loader2 className="size-4 animate-spin" /> Chargement…
                   </span>
                 </td>
@@ -470,7 +463,11 @@ export default function RecipeBatchesList({
       {isDeleteModalOpen &&
         isClient &&
         createPortal(
-          <div className="fixed inset-0 z-[1000]" aria-modal="true" role="dialog">
+          <div
+            className="fixed inset-0 z-[1000]"
+            aria-modal="true"
+            role="dialog"
+          >
             <div
               onClick={closeDeleteModal}
               className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"
@@ -481,7 +478,8 @@ export default function RecipeBatchesList({
                   Supprimer ce batch ?
                 </h2>
                 <p className="mb-5 text-center text-sm text-darkBlue/70">
-                  Cette action est définitive. Le batch sera retiré de l’historique.
+                  Cette action est définitive. Le batch sera retiré de
+                  l’historique.
                 </p>
                 <div className="flex items-center justify-center gap-2">
                   <button
@@ -491,9 +489,10 @@ export default function RecipeBatchesList({
                     type="button"
                   >
                     {deleteLoading ? (
-                      <>
-                        <Loader2 className="size-4 animate-spin" /> Suppression…
-                      </>
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="size-4 animate-spin" />
+                        <span>Suppression…</span>
+                      </div>
                     ) : (
                       "Confirmer"
                     )}

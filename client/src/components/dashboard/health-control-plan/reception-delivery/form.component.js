@@ -1346,10 +1346,10 @@ export default function ReceptionDeliveryForm({
           }
         >
           {isSubmitting ? (
-            <>
+            <div className="flex items-center gap-2">
               <Loader2 className="size-4 animate-spin" />
-              Enregistrement…
-            </>
+              <span>Enregistrement…</span>
+            </div>
           ) : isEdit ? (
             <>
               <FileText className="size-4" />

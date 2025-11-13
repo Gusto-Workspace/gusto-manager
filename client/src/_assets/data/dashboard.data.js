@@ -127,6 +127,7 @@ export const dashboardData = [
   {
     title: "labels.reservationsToday",
     optionKey: "reservations",
+    IconComponent: ReservationSvg,
     emptyLabel: "labels.emptyReservations",
     noDonut: true,
     getCounts: (restaurantData) => {

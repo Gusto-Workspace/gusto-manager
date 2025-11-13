@@ -24,13 +24,20 @@ function fmtDate(d, withTime = true) {
 const DUE_SOON_DAYS = 14;
 
 function validityStatus(validUntil, soonDays = DUE_SOON_DAYS) {
-  if (!validUntil) return { label: "—", key: "valid", cls: "bg-green text-white" };
+  if (!validUntil)
+    return { label: "—", key: "valid", cls: "bg-green text-white" };
   const now = new Date();
   const until = new Date(validUntil);
-  if (until < now) return { label: "Expiré", key: "expired", cls: "bg-red text-white" };
+  if (until < now)
+    return { label: "Expiré", key: "expired", cls: "bg-red text-white" };
   const soon = new Date(now);
   soon.setDate(soon.getDate() + soonDays);
-  if (until <= soon) return { label: "Bientôt dû", key: "due_soon", cls: "bg-orange text-white" };
+  if (until <= soon)
+    return {
+      label: "Bientôt dû",
+      key: "due_soon",
+      cls: "bg-orange text-white",
+    };
   return { label: "Valide", key: "valid", cls: "bg-green text-white" };
 }
 
@@ -140,7 +147,8 @@ export default function TrainingList({
     const handleUpsert = (event) => {
       const doc = event?.detail?.doc;
       if (!doc || !doc._id) return;
-      if (restaurantId && String(doc.restaurantId) !== String(restaurantId)) return;
+      if (restaurantId && String(doc.restaurantId) !== String(restaurantId))
+        return;
 
       const currentMeta = metaRef.current || {};
       const limit = currentMeta.limit || 20;
@@ -179,7 +187,8 @@ export default function TrainingList({
     };
 
     window.addEventListener("training-sessions:upsert", handleUpsert);
-    return () => window.removeEventListener("training-sessions:upsert", handleUpsert);
+    return () =>
+      window.removeEventListener("training-sessions:upsert", handleUpsert);
   }, [restaurantId]);
 
   // Filtrage client (q + statut) sur la page chargée
@@ -222,9 +231,13 @@ export default function TrainingList({
     try {
       setDeleteLoading(true);
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/training-sessions/${deleteTarget._id}`;
-      await axios.delete(url, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.delete(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
-      setItems((prev) => prev.filter((x) => String(x._id) !== String(deleteTarget._id)));
+      setItems((prev) =>
+        prev.filter((x) => String(x._id) !== String(deleteTarget._id))
+      );
       onDeleted?.(deleteTarget);
       setIsDeleteModalOpen(false);
       setDeleteTarget(null);
@@ -338,7 +351,11 @@ export default function TrainingList({
           <button
             onClick={() => hasFullDateRange && fetchData(1)}
             disabled={!hasFullDateRange}
-            title={!hasFullDateRange ? "Sélectionnez 'Du' ET 'Au' pour filtrer par dates" : undefined}
+            title={
+              !hasFullDateRange
+                ? "Sélectionnez 'Du' ET 'Au' pour filtrer par dates"
+                : undefined
+            }
             className={`${btnBase} bg-blue text-white disabled:opacity-40`}
             type="button"
           >
@@ -367,15 +384,33 @@ export default function TrainingList({
         <table className="w-full text-[13px]">
           <thead className="whitespace-nowrap">
             <tr className="sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Date</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Titre</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Thème</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Organisme</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Lieu</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Participants</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Validité</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Opérateur</th>
-              <th className="py-2 pr-3 text-right font-medium text-darkBlue/70">Actions</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Date
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Titre
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Thème
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Organisme
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Lieu
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Participants
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Validité
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Opérateur
+              </th>
+              <th className="py-2 pr-3 text-right font-medium text-darkBlue/70">
+                Actions
+              </th>
             </tr>
           </thead>
 
@@ -391,7 +426,7 @@ export default function TrainingList({
             {loading && (
               <tr>
                 <td colSpan={9} className="py-8 text-center text-darkBlue/50">
-                  <span className="inline-flex items-center gap-2">
+                  <span className="flex items-center gap-2">
                     <Loader2 className="size-4 animate-spin" /> Chargement…
                   </span>
                 </td>
@@ -406,21 +441,38 @@ export default function TrainingList({
                   <tr
                     key={it._id}
                     className={`transition-colors hover:bg-darkBlue/[0.03] ${
-                      editingId === it._id ? "bg-blue/5 ring-1 ring-blue/20" : ""
+                      editingId === it._id
+                        ? "bg-blue/5 ring-1 ring-blue/20"
+                        : ""
                     }`}
                   >
-                    <td className="py-2 pr-3 whitespace-nowrap">{fmtDate(it.date)}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{it.title || "—"}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{it.topic || "—"}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{it.provider || "—"}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{it.location || "—"}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{c.present}/{c.total}</td>
                     <td className="py-2 pr-3 whitespace-nowrap">
-                      <span className={`px-2 py-0.5 rounded text-xs ${st.cls}`}>{st.label}</span>
+                      {fmtDate(it.date)}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it.title || "—"}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it.topic || "—"}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it.provider || "—"}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it.location || "—"}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {c.present}/{c.total}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      <span className={`px-2 py-0.5 rounded text-xs ${st.cls}`}>
+                        {st.label}
+                      </span>
                     </td>
                     <td className="py-2 pr-3 whitespace-nowrap">
                       {it?.recordedBy
-                        ? `${it.recordedBy.firstName || ""} ${it.recordedBy.lastName || ""}`.trim() || "—"
+                        ? `${it.recordedBy.firstName || ""} ${it.recordedBy.lastName || ""}`.trim() ||
+                          "—"
                         : "—"}
                     </td>
                     <td className="py-2 pr-0">
@@ -481,8 +533,15 @@ export default function TrainingList({
       {isDeleteModalOpen &&
         isClient &&
         createPortal(
-          <div className="fixed inset-0 z-[1000]" aria-modal="true" role="dialog">
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px]" onClick={closeDeleteModal} />
+          <div
+            className="fixed inset-0 z-[1000]"
+            aria-modal="true"
+            role="dialog"
+          >
+            <div
+              className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"
+              onClick={closeDeleteModal}
+            />
             <div className="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
               <div className="pointer-events-auto w-full max-w-[480px] rounded-2xl border border-darkBlue/10 bg-white p-5 shadow-2xl">
                 <h2 className="mb-2 text-center text-lg font-semibold text-darkBlue">
@@ -499,9 +558,10 @@ export default function TrainingList({
                     type="button"
                   >
                     {deleteLoading ? (
-                      <>
-                        <Loader2 className="size-4 animate-spin" /> Suppression…
-                      </>
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="size-4 animate-spin" />
+                        <span>Suppression…</span>
+                      </div>
                     ) : (
                       "Confirmer"
                     )}

@@ -74,7 +74,8 @@ export default function PestControlList({
     });
 
   const hasActiveFilters = useMemo(
-    () => Boolean(q || status !== "all" || freq || activity || dateFrom || dateTo),
+    () =>
+      Boolean(q || status !== "all" || freq || activity || dateFrom || dateTo),
     [q, status, freq, activity, dateFrom, dateTo]
   );
   const hasFullDateRange = Boolean(dateFrom && dateTo);
@@ -238,7 +239,9 @@ export default function PestControlList({
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      setItems((prev) => prev.filter((x) => String(x._id) !== String(deleteTarget._id)));
+      setItems((prev) =>
+        prev.filter((x) => String(x._id) !== String(deleteTarget._id))
+      );
       onDeleted?.(deleteTarget);
       setIsDeleteModalOpen(false);
       setDeleteTarget(null);
@@ -358,7 +361,11 @@ export default function PestControlList({
           <button
             onClick={() => hasFullDateRange && fetchData(1)}
             disabled={!hasFullDateRange}
-            title={!hasFullDateRange ? "Sélectionnez 'Du' ET 'Au' pour filtrer" : undefined}
+            title={
+              !hasFullDateRange
+                ? "Sélectionnez 'Du' ET 'Au' pour filtrer"
+                : undefined
+            }
             className={`${btnBase} bg-blue text-white disabled:opacity-40`}
             type="button"
           >
@@ -396,17 +403,39 @@ export default function PestControlList({
         <table className="w-full text-[13px]">
           <thead className="whitespace-nowrap">
             <tr className="sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Prestataire</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Contrat</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Fréq.</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Dernière visite</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Prochaine</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Activité</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Conformité</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Parc</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Rapports</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Opérateur</th>
-              <th className="py-2 pr-3 text-right font-medium text-darkBlue/70">Actions</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Prestataire
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Contrat
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Fréq.
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Dernière visite
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Prochaine
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Activité
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Conformité
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Parc
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Rapports
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Opérateur
+              </th>
+              <th className="py-2 pr-3 text-right font-medium text-darkBlue/70">
+                Actions
+              </th>
             </tr>
           </thead>
 
@@ -422,9 +451,10 @@ export default function PestControlList({
             {loading && (
               <tr>
                 <td colSpan={11} className="py-8 text-center text-darkBlue/50">
-                  <span className="inline-flex items-center gap-2">
-                    <Loader2 className="size-4 animate-spin" /> Chargement…
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="size-4 animate-spin" />
+                    <span>Chargement…</span>
+                  </div>
                 </td>
               </tr>
             )}
@@ -437,12 +467,16 @@ export default function PestControlList({
                   <tr
                     key={it._id}
                     className={`transition-colors hover:bg-darkBlue/[0.03] ${
-                      editingId === it._id ? "bg-blue/5 ring-1 ring-blue/20" : ""
+                      editingId === it._id
+                        ? "bg-blue/5 ring-1 ring-blue/20"
+                        : ""
                     }`}
                   >
                     <td className="py-2 pr-3 whitespace-nowrap">
                       <div className="flex flex-col">
-                        <span className="font-medium">{it.provider || "—"}</span>
+                        <span className="font-medium">
+                          {it.provider || "—"}
+                        </span>
                         <span className="text-xs text-darkBlue/60">
                           {it.providerContactName || "—"}{" "}
                           {it.providerPhone ? `• ${it.providerPhone}` : ""}{" "}
@@ -455,26 +489,38 @@ export default function PestControlList({
                       <div className="flex flex-col gap-1">
                         <span
                           className={`w-fit px-2 py-0.5 rounded text-xs ${
-                            isExpired ? "bg-red text-white" : "bg-green text-white"
+                            isExpired
+                              ? "bg-red text-white"
+                              : "bg-green text-white"
                           }`}
                         >
                           {cBadge}
                         </span>
                         <div className="text-xs opacity-70">
                           {it.contractStart
-                            ? new Date(it.contractStart).toLocaleDateString("fr-FR")
+                            ? new Date(it.contractStart).toLocaleDateString(
+                                "fr-FR"
+                              )
                             : "—"}{" "}
                           →{" "}
                           {it.contractEnd
-                            ? new Date(it.contractEnd).toLocaleDateString("fr-FR")
+                            ? new Date(it.contractEnd).toLocaleDateString(
+                                "fr-FR"
+                              )
                             : "—"}
                         </div>
                       </div>
                     </td>
 
-                    <td className="py-2 pr-3 whitespace-nowrap">{it.visitFrequency || "—"}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{fmtDate(it.lastVisitAt)}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{fmtDate(it.nextPlannedVisit)}</td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it.visitFrequency || "—"}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {fmtDate(it.lastVisitAt)}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {fmtDate(it.nextPlannedVisit)}
+                    </td>
                     <td className="py-2 pr-3 whitespace-nowrap capitalize">
                       {it.activityLevel || "—"}
                     </td>
@@ -485,8 +531,8 @@ export default function PestControlList({
                           it.complianceStatus === "compliant"
                             ? "bg-green text-white"
                             : it.complianceStatus === "non_compliant"
-                            ? "bg-red text-white"
-                            : "bg-orange text-white"
+                              ? "bg-red text-white"
+                              : "bg-orange text-white"
                         }`}
                       >
                         {it.complianceStatus || "pending"}
@@ -494,7 +540,8 @@ export default function PestControlList({
                     </td>
 
                     <td className="py-2 pr-3 whitespace-nowrap">
-                      {it.baitStationsCount ?? 0} appâts / {it.trapsCount ?? 0} pièges
+                      {it.baitStationsCount ?? 0} appâts / {it.trapsCount ?? 0}{" "}
+                      pièges
                     </td>
 
                     <td className="py-2 pr-3 whitespace-nowrap">
@@ -568,7 +615,11 @@ export default function PestControlList({
       {isDeleteModalOpen &&
         isClient &&
         createPortal(
-          <div className="fixed inset-0 z-[1000]" aria-modal="true" role="dialog">
+          <div
+            className="fixed inset-0 z-[1000]"
+            aria-modal="true"
+            role="dialog"
+          >
             <div
               onClick={closeDeleteModal}
               className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"
@@ -589,9 +640,10 @@ export default function PestControlList({
                     type="button"
                   >
                     {deleteLoading ? (
-                      <>
-                        <Loader2 className="size-4 animate-spin" /> Suppression…
-                      </>
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="size-4 animate-spin" />
+                        <span>Suppression…</span>
+                      </div>
                     ) : (
                       "Confirmer"
                     )}

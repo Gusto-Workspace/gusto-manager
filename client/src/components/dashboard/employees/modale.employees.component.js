@@ -1,4 +1,5 @@
 // I18N
+import { Loader2 } from "lucide-react";
 import { useTranslation } from "next-i18next";
 
 export default function ModaleEmployeesComponent(props) {
@@ -22,7 +23,7 @@ export default function ModaleEmployeesComponent(props) {
           {isDuplicate
             ? t("modale.description.duplicateDocument")
             : t("modale.description.deleteDocument")}
-          {!isDuplicate && <> «{props.docToDelete.filename}» ?</>}
+          {!isDuplicate && <> « {props.docToDelete.title} » ?</>}
         </p>
 
         {/* Boutons */}
@@ -41,9 +42,14 @@ export default function ModaleEmployeesComponent(props) {
                 disabled={props.isDeletingDocId === props.docToDelete.public_id}
                 className="px-4 py-2 bg-blue text-white rounded-lg disabled:opacity-40"
               >
-                {props.isDeletingDocId === props.docToDelete.public_id
-                  ? t("buttons.loading")
-                  : t("buttons.confirm")}
+                {props.isDeletingDocId === props.docToDelete.public_id ? (
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="size-4 animate-spin" />
+                    <span>En cours…</span>
+                  </div>
+                ) : (
+                  t("buttons.confirm")
+                )}
               </button>
 
               <button

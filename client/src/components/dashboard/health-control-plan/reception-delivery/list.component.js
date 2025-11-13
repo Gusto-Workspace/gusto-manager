@@ -352,7 +352,7 @@ export default function ReceptionDeliveryList({
             {loading && (
               <tr>
                 <td colSpan={7} className="py-8 text-center text-darkBlue/50">
-                  <span className="inline-flex items-center gap-2">
+                  <span className="flex items-center gap-2">
                     <Loader2 className="size-4 animate-spin" /> Chargement…
                   </span>
                 </td>
@@ -469,9 +469,10 @@ export default function ReceptionDeliveryList({
                     type="button"
                   >
                     {deleteLoading ? (
-                      <>
-                        <Loader2 className="size-4 animate-spin" /> Suppression…
-                      </>
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="size-4 animate-spin" />
+                        <span>Suppression…</span>
+                      </div>
                     ) : (
                       "Confirmer"
                     )}

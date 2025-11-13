@@ -26,10 +26,16 @@ function dueStatus(nextDue, soonDays = DUE_SOON_DAYS) {
   if (!nextDue) return { label: "OK", key: "ok", cls: "bg-green text-white" };
   const now = new Date();
   const due = new Date(nextDue);
-  if (due < now) return { label: "En retard", key: "overdue", cls: "bg-red text-white" };
+  if (due < now)
+    return { label: "En retard", key: "overdue", cls: "bg-red text-white" };
   const soon = new Date(now);
   soon.setDate(soon.getDate() + soonDays);
-  if (due <= soon) return { label: "Bientôt dû", key: "due_soon", cls: "bg-orange text-white" };
+  if (due <= soon)
+    return {
+      label: "Bientôt dû",
+      key: "due_soon",
+      cls: "bg-orange text-white",
+    };
   return { label: "OK", key: "ok", cls: "bg-green text-white" };
 }
 
@@ -83,7 +89,8 @@ export default function MaintenanceList({
     });
 
   const hasActiveFilters = useMemo(
-    () => Boolean(q || type !== "all" || status !== "all" || dateFrom || dateTo),
+    () =>
+      Boolean(q || type !== "all" || status !== "all" || dateFrom || dateTo),
     [q, type, status, dateFrom, dateTo]
   );
   const hasFullDateRange = Boolean(dateFrom && dateTo);
@@ -146,7 +153,8 @@ export default function MaintenanceList({
     const handleUpsert = (event) => {
       const doc = event?.detail?.doc;
       if (!doc || !doc._id) return;
-      if (restaurantId && String(doc.restaurantId) !== String(restaurantId)) return;
+      if (restaurantId && String(doc.restaurantId) !== String(restaurantId))
+        return;
 
       const currentMeta = metaRef.current || {};
       const limit = currentMeta.limit || 20;
@@ -212,9 +220,13 @@ export default function MaintenanceList({
     try {
       setDeleteLoading(true);
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/maintenance/${deleteTarget._id}`;
-      await axios.delete(url, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.delete(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
-      setItems((prev) => prev.filter((x) => String(x._id) !== String(deleteTarget._id)));
+      setItems((prev) =>
+        prev.filter((x) => String(x._id) !== String(deleteTarget._id))
+      );
       onDeleted?.(deleteTarget);
       setIsDeleteModalOpen(false);
       setDeleteTarget(null);
@@ -335,7 +347,11 @@ export default function MaintenanceList({
           <button
             onClick={() => hasFullDateRange && fetchData(1)}
             disabled={!hasFullDateRange}
-            title={!hasFullDateRange ? "Sélectionnez 'Du' ET 'Au' pour filtrer par dates" : undefined}
+            title={
+              !hasFullDateRange
+                ? "Sélectionnez 'Du' ET 'Au' pour filtrer par dates"
+                : undefined
+            }
             className={`${btnBase} bg-blue text-white disabled:opacity-40`}
             type="button"
           >
@@ -349,7 +365,12 @@ export default function MaintenanceList({
               setStatus("all");
               setDateFrom("");
               setDateTo("");
-              fetchData(1, { type: "all", status: "all", dateFrom: "", dateTo: "" });
+              fetchData(1, {
+                type: "all",
+                status: "all",
+                dateFrom: "",
+                dateTo: "",
+              });
             }}
             disabled={!hasActiveFilters}
             className={`${btnBase} border border-darkBlue/20 bg-white text-darkBlue hover:border-darkBlue/30 disabled:opacity-40`}
@@ -365,15 +386,33 @@ export default function MaintenanceList({
         <table className="w-full text-[13px]">
           <thead className="whitespace-nowrap">
             <tr className="sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Effectué le</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Équipement</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Type</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Prestataire</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Échéance</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Statut</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Preuves</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Opérateur</th>
-              <th className="py-2 pr-3 text-right font-medium text-darkBlue/70">Actions</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Effectué le
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Équipement
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Type
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Prestataire
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Échéance
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Statut
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Preuves
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Opérateur
+              </th>
+              <th className="py-2 pr-3 text-right font-medium text-darkBlue/70">
+                Actions
+              </th>
             </tr>
           </thead>
 
@@ -389,9 +428,10 @@ export default function MaintenanceList({
             {loading && (
               <tr>
                 <td colSpan={9} className="py-8 text-center text-darkBlue/50">
-                  <span className="inline-flex items-center gap-2">
-                    <Loader2 className="size-4 animate-spin" /> Chargement…
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="size-4 animate-spin" />
+                    <span>Chargement…</span>
+                  </div>
                 </td>
               </tr>
             )}
@@ -411,23 +451,40 @@ export default function MaintenanceList({
                   <tr
                     key={it._id}
                     className={`transition-colors hover:bg-darkBlue/[0.03] ${
-                      editingId === it._id ? "bg-blue/5 ring-1 ring-blue/20" : ""
+                      editingId === it._id
+                        ? "bg-blue/5 ring-1 ring-blue/20"
+                        : ""
                     }`}
                   >
-                    <td className="py-2 pr-3 whitespace-nowrap">{fmtDate(it.performedAt)}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{it.equipment || "—"}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{typeLabel || "—"}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{it.provider || "—"}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{fmtDate(it.nextDue, false)}</td>
                     <td className="py-2 pr-3 whitespace-nowrap">
-                      <span className={`px-2 py-0.5 rounded text-xs ${st.cls}`}>{st.label}</span>
+                      {fmtDate(it.performedAt)}
                     </td>
                     <td className="py-2 pr-3 whitespace-nowrap">
-                      {Array.isArray(it.proofUrls) && it.proofUrls.length ? `${it.proofUrls.length} doc(s)` : "—"}
+                      {it.equipment || "—"}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {typeLabel || "—"}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it.provider || "—"}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {fmtDate(it.nextDue, false)}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      <span className={`px-2 py-0.5 rounded text-xs ${st.cls}`}>
+                        {st.label}
+                      </span>
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {Array.isArray(it.proofUrls) && it.proofUrls.length
+                        ? `${it.proofUrls.length} doc(s)`
+                        : "—"}
                     </td>
                     <td className="py-2 pr-3 whitespace-nowrap">
                       {it?.recordedBy
-                        ? `${it.recordedBy.firstName || ""} ${it.recordedBy.lastName || ""}`.trim() || "—"
+                        ? `${it.recordedBy.firstName || ""} ${it.recordedBy.lastName || ""}`.trim() ||
+                          "—"
                         : "—"}
                     </td>
                     <td className="py-2 pr-0">
@@ -488,8 +545,15 @@ export default function MaintenanceList({
       {isDeleteModalOpen &&
         isClient &&
         createPortal(
-          <div className="fixed inset-0 z-[1000]" aria-modal="true" role="dialog">
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px]" onClick={closeDeleteModal} />
+          <div
+            className="fixed inset-0 z-[1000]"
+            aria-modal="true"
+            role="dialog"
+          >
+            <div
+              className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"
+              onClick={closeDeleteModal}
+            />
             <div className="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
               <div className="pointer-events-auto w-full max-w-[480px] rounded-2xl border border-darkBlue/10 bg-white p-5 shadow-2xl">
                 <h2 className="mb-2 text-center text-lg font-semibold text-darkBlue">
@@ -506,9 +570,10 @@ export default function MaintenanceList({
                     type="button"
                   >
                     {deleteLoading ? (
-                      <>
-                        <Loader2 className="size-4 animate-spin" /> Suppression…
-                      </>
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="size-4 animate-spin" />
+                        <span>Suppression…</span>
+                      </div>
                     ) : (
                       "Confirmer"
                     )}

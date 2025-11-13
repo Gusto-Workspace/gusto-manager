@@ -1,4 +1,4 @@
-import { useState, useContext } from "react";
+import { useState, useContext, useRef } from "react";
 import { useRouter } from "next/router";
 
 // REACT HOOK FORM
@@ -14,12 +14,33 @@ import { GlobalContext } from "@/contexts/global.context";
 import { useTranslation } from "next-i18next";
 
 // SVG
-import { EmployeesSvg, WarningSvg } from "../../_shared/_svgs/_index";
+import { EmployeesSvg, RemoveSvg, UploadSvg } from "../../_shared/_svgs/_index";
+
+// ICONS LUCIDE
+import {
+  User,
+  Mail,
+  Phone,
+  Briefcase,
+  CalendarDays,
+  Shield,
+  Home,
+  PhoneCall,
+  Image as ImageIcon,
+} from "lucide-react";
 
 export default function AddEmployeesComponent() {
   const { t } = useTranslation("employees");
   const { restaurantContext } = useContext(GlobalContext);
   const [isLoading, setIsLoading] = useState(false);
+
+  // état pour la photo de profil
+  const [profilePreview, setProfilePreview] = useState(null);
+  const [profileFile, setProfileFile] = useState(null);
+  const [profileHasError, setProfileHasError] = useState(false);
+
+  const fileInputRef = useRef(null);
+
   const router = useRouter();
 
   const {
@@ -38,11 +59,12 @@ export default function AddEmployeesComponent() {
     formData.append("phone", data.phone);
     formData.append("post", data.post);
     formData.append("dateOnPost", data.dateOnPost);
-    formData.append("secuNumber", data.secuNumber);
-    formData.append("address", data.address);
-    formData.append("emergencyContact", data.emergencyContact);
-    if (data.profilePicture?.[0]) {
-      formData.append("profilePicture", data.profilePicture[0]);
+    formData.append("secuNumber", data.secuNumber || "");
+    formData.append("address", data.address || "");
+    formData.append("emergencyContact", data.emergencyContact || "");
+
+    if (profileFile) {
+      formData.append("profilePicture", profileFile);
     }
 
     setIsLoading(true);
@@ -50,16 +72,72 @@ export default function AddEmployeesComponent() {
       const response = await axios.post(url, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-       restaurantContext.setRestaurantData((prev) => ({
-          ...prev,
-          employees: response.data.restaurant.employees,
-        }));
+      restaurantContext.setRestaurantData((prev) => ({
+        ...prev,
+        employees: response.data.restaurant.employees,
+      }));
       reset();
+      setProfileFile(null);
+      setProfilePreview(null);
       router.replace("/dashboard/employees");
     } catch (err) {
       console.error("Error creating employee:", err);
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  // styles communs (mêmes vibes que FridgeTemperatureForm)
+  const fieldWrap =
+    "group relative rounded-xl bg-white/50 backdrop-blur-sm px-3 py-2 h-[80px] transition-shadow";
+  const labelCls =
+    "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
+  const inputBaseCls =
+    "h-11 w-full rounded-lg border bg-white px-3 text-[15px] outline-none transition placeholder:text-darkBlue/40";
+  const inputNormalCls = `${inputBaseCls} border-darkBlue/20`;
+  const inputErrorCls = `${inputBaseCls} border-red`;
+
+  // déstructuration spéciale pour brancher RHF + gestion custom du file
+  const {
+    ref: profileRHFRef,
+    onChange: profileRHFOnChange,
+    ...profileInputProps
+  } = register("profilePicture");
+
+  function handleProfileChange(e) {
+    profileRHFOnChange(e); // on laisse RHF suivre le champ
+
+    const file = e.target.files?.[0] || null;
+
+    if (file) {
+      // limite 10 Mo
+      if (file.size > 10 * 1024 * 1024) {
+        setProfileHasError(true);
+        setProfileFile(null);
+        setProfilePreview(null);
+        return;
+      }
+      setProfileHasError(false);
+      setProfileFile(file);
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        setProfilePreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setProfileFile(null);
+      setProfilePreview(null);
+      setProfileHasError(false);
+    }
+  }
+
+  function handleRemoveProfile() {
+    setProfileFile(null);
+    setProfilePreview(null);
+    setProfileHasError(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
   }
 
@@ -73,7 +151,7 @@ export default function AddEmployeesComponent() {
             <EmployeesSvg width={30} height={30} fillColor="#131E3690" />
 
             <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2 flex-wrap">
-              <span> {t("employees:titles.main")}</span>
+              <span>{t("employees:titles.main")}</span>
               <span>/</span>
               <span>Ajouter</span>
             </h1>
@@ -83,188 +161,258 @@ export default function AddEmployeesComponent() {
 
       <form
         onSubmit={handleSubmit(onSubmit)}
-        className="grid grid-cols-2 gap-4"
+        className="relative flex flex-col gap-3"
       >
-        {/* Nom */}
-        <div className="flex flex-col">
-          <label htmlFor="lastName" className="mb-1">
-            {t("labels.lastname")}
-          </label>
-          <div className="flex items-center gap-2">
-            <input
-              id="lastName"
-              type="text"
-              {...register("lastName", { required: true })}
-              className="w-full p-2 border border-darkBlue/50 rounded-lg"
-            />
-            {errors.lastName && isSubmitted && (
-              <WarningSvg fillColor="#FF7664" width={22} height={22} />
-            )}
+        {/* Grid des champs */}
+        <div className="grid grid-cols-1 midTablet:grid-cols-3 gap-2">
+          {/* Nom */}
+          <div className="w-full">
+            <div className={fieldWrap}>
+              <label htmlFor="lastName" className={labelCls}>
+                <User className="size-4" />
+                {t("labels.lastname")}
+              </label>
+              <input
+                id="lastName"
+                type="text"
+                {...register("lastName", { required: true })}
+                className={
+                  errors.lastName && isSubmitted ? inputErrorCls : inputNormalCls
+                }
+              />
+            </div>
+          </div>
+
+          {/* Prénom */}
+          <div className="w-full">
+            <div className={fieldWrap}>
+              <label htmlFor="firstName" className={labelCls}>
+                <User className="size-4" />
+                {t("labels.firstname")}
+              </label>
+              <input
+                id="firstName"
+                type="text"
+                {...register("firstName", { required: true })}
+                className={
+                  errors.firstName && isSubmitted
+                    ? inputErrorCls
+                    : inputNormalCls
+                }
+              />
+            </div>
+          </div>
+
+          {/* Email */}
+          <div className="w-full">
+            <div className={fieldWrap}>
+              <label htmlFor="email" className={labelCls}>
+                <Mail className="size-4" />
+                {t("labels.email")}
+              </label>
+              <input
+                id="email"
+                type="email"
+                {...register("email", { required: true })}
+                className={
+                  errors.email && isSubmitted ? inputErrorCls : inputNormalCls
+                }
+              />
+            </div>
+          </div>
+
+          {/* Téléphone */}
+          <div className="w-full">
+            <div className={fieldWrap}>
+              <label htmlFor="phone" className={labelCls}>
+                <Phone className="size-4" />
+                {t("labels.phone")}
+              </label>
+              <input
+                id="phone"
+                type="text"
+                {...register("phone", { required: true })}
+                className={
+                  errors.phone && isSubmitted ? inputErrorCls : inputNormalCls
+                }
+              />
+            </div>
+          </div>
+
+          {/* Poste */}
+          <div className="w-full">
+            <div className={fieldWrap}>
+              <label htmlFor="post" className={labelCls}>
+                <Briefcase className="size-4" />
+                {t("labels.post")}
+              </label>
+              <input
+                id="post"
+                type="text"
+                {...register("post", { required: true })}
+                className={
+                  errors.post && isSubmitted ? inputErrorCls : inputNormalCls
+                }
+              />
+            </div>
+          </div>
+
+          {/* Date de prise de poste */}
+          <div className="w-full">
+            <div className={fieldWrap}>
+              <label htmlFor="dateOnPost" className={labelCls}>
+                <CalendarDays className="size-4" />
+                {t("labels.dateOnPost")}
+              </label>
+              <input
+                id="dateOnPost"
+                type="date"
+                {...register("dateOnPost", { required: true })}
+                className={
+                  errors.dateOnPost && isSubmitted
+                    ? inputErrorCls
+                    : inputNormalCls
+                }
+              />
+            </div>
+          </div>
+
+          {/* Numéro de SS */}
+          <div className="w-full">
+            <div className={fieldWrap}>
+              <label htmlFor="secuNumber" className={labelCls}>
+                <Shield className="size-4" />
+                {t("labels.secuNumber")}
+              </label>
+              <input
+                id="secuNumber"
+                type="text"
+                {...register("secuNumber")}
+                className={
+                  errors.secuNumber && isSubmitted
+                    ? inputErrorCls
+                    : inputNormalCls
+                }
+              />
+            </div>
+          </div>
+
+          {/* Adresse */}
+          <div className="w-full">
+            <div className={fieldWrap}>
+              <label htmlFor="address" className={labelCls}>
+                <Home className="size-4" />
+                {t("labels.address")}
+              </label>
+              <input
+                id="address"
+                type="text"
+                {...register("address")}
+                className={
+                  errors.address && isSubmitted ? inputErrorCls : inputNormalCls
+                }
+              />
+            </div>
+          </div>
+
+          {/* Contact urgence */}
+          <div className="w-full">
+            <div className={fieldWrap}>
+              <label htmlFor="emergencyContact" className={labelCls}>
+                <PhoneCall className="size-4" />
+                {t("labels.emergencyContact")}
+              </label>
+              <input
+                id="emergencyContact"
+                type="text"
+                {...register("emergencyContact")}
+                className={
+                  errors.emergencyContact && isSubmitted
+                    ? inputErrorCls
+                    : inputNormalCls
+                }
+              />
+            </div>
+          </div>
+
+          {/* Photo de profil : input custom + preview */}
+          <div className="w-full">
+            <div
+              className={`${fieldWrap} h-auto ${
+                profileHasError ? "ring-1 ring-red/60" : ""
+              }`}
+            >
+              <label className={labelCls}>
+                <ImageIcon className="size-4" />
+                {t("labels.profilePicture")}
+              </label>
+
+              <div className="flex flex-col gap-3">
+                {/* zone cliquable */}
+                <label
+                  htmlFor="profilePicture"
+                  className={`flex flex-col justify-center items-center w-full h-[150px] p-3 border border-dashed rounded-lg cursor-pointer transition ${
+                    profileHasError
+                      ? "border-red bg-red/5"
+                      : "border-darkBlue/20 hover:border-darkBlue/40 bg-white/60"
+                  }`}
+                >
+                  <div className="flex flex-col items-center justify-center pt-2 pb-2 gap-2">
+                    <UploadSvg width={32} height={32} />
+                    <p className="text-sm text-center font-semibold text-darkBlue/80">
+                      {profileFile
+                        ? profileFile.name
+                        : "Choisir une photo ou prendre une photo"}
+                    </p>
+                    <p className="text-xs text-darkBlue/50">
+                      JPG, PNG, WEBP – 10 Mo max
+                    </p>
+                  </div>
+
+                  {/* vrai input file caché */}
+                  <input
+                    id="profilePicture"
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    {...profileInputProps}
+                    ref={(el) => {
+                      profileRHFRef(el);
+                      fileInputRef.current = el;
+                    }}
+                    className="hidden"
+                    onChange={handleProfileChange}
+                  />
+                </label>
+
+                {/* Preview + bouton supprimer */}
+                {profilePreview && (
+                  <div className="relative mx-auto max-w-[120px] rounded-lg overflow-hidden group">
+                    <img
+                      src={profilePreview}
+                      alt="Prévisualisation photo de profil"
+                      className="w-full h-auto object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleRemoveProfile}
+                      className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/50 transition"
+                    >
+                      <RemoveSvg width={40} height={40} fillColor="white" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Prénom */}
-        <div className="flex flex-col">
-          <label htmlFor="firstName" className="mb-1">
-            {t("labels.firstname")}
-          </label>
-          <div className="flex items-center gap-2">
-            <input
-              id="firstName"
-              type="text"
-              {...register("firstName", { required: true })}
-              className="w-full p-2 border border-darkBlue/50 rounded-lg"
-            />
-            {errors.firstName && isSubmitted && (
-              <WarningSvg fillColor="#FF7664" width={22} height={22} />
-            )}
-          </div>
-        </div>
-
-        {/* Email */}
-        <div className="flex flex-col">
-          <label htmlFor="email" className="mb-1">
-            {t("labels.email")}
-          </label>
-          <div className="flex items-center gap-2">
-            <input
-              id="email"
-              type="email"
-              {...register("email", { required: true })}
-              className="w-full p-2 border border-darkBlue/50 rounded-lg"
-            />
-            {errors.email && isSubmitted && (
-              <WarningSvg fillColor="#FF7664" width={22} height={22} />
-            )}
-          </div>
-        </div>
-
-        {/* Téléphone */}
-        <div className="flex flex-col">
-          <label htmlFor="phone" className="mb-1">
-            {t("labels.phone")}
-          </label>
-          <div className="flex items-center gap-2">
-            <input
-              id="phone"
-              type="text"
-              {...register("phone", { required: true })}
-              className="w-full p-2 border border-darkBlue/50 rounded-lg"
-            />
-            {errors.phone && isSubmitted && (
-              <WarningSvg fillColor="#FF7664" width={22} height={22} />
-            )}
-          </div>
-        </div>
-
-        {/* Poste */}
-        <div className="flex flex-col">
-          <label htmlFor="post" className="mb-1">
-            {t("labels.post")}
-          </label>
-          <div className="flex items-center gap-2">
-            <input
-              id="post"
-              type="text"
-              {...register("post", { required: true })}
-              className="w-full p-2 border border-darkBlue/50 rounded-lg"
-            />
-            {errors.post && isSubmitted && (
-              <WarningSvg fillColor="#FF7664" width={22} height={22} />
-            )}
-          </div>
-        </div>
-
-        {/* Date de prise de poste */}
-        <div className="flex flex-col">
-          <label htmlFor="dateOnPost" className="mb-1">
-            {t("labels.dateOnPost")}
-          </label>
-          <div className="flex items-center gap-2">
-            <input
-              id="dateOnPost"
-              type="date"
-              {...register("dateOnPost", { required: true })}
-              className="w-full p-2 border border-darkBlue/50 rounded-lg"
-            />
-            {errors.dateOnPost && isSubmitted && (
-              <WarningSvg fillColor="#FF7664" width={22} height={22} />
-            )}
-          </div>
-        </div>
-
-        {/* Numéro de SS */}
-        <div className="flex flex-col">
-          <label htmlFor="secuNumber" className="mb-1">
-            {t("labels.secuNumber")}
-          </label>
-          <div className="flex items-center gap-2">
-            <input
-              id="secuNumber"
-              type="text"
-              {...register("secuNumber")}
-              className="w-full p-2 border border-darkBlue/50 rounded-lg"
-            />
-            {errors.secuNumber && isSubmitted && (
-              <WarningSvg fillColor="#FF7664" width={22} height={22} />
-            )}
-          </div>
-        </div>
-
-        {/* Rue */}
-        <div className="flex flex-col">
-          <label htmlFor="address" className="mb-1">
-            {t("labels.address")}
-          </label>
-          <input
-            id="address"
-            type="text"
-            {...register("address")}
-            className="w-full p-2 border border-darkBlue/50 rounded-lg"
-          />
-          {errors.address && isSubmitted && (
-            <WarningSvg fillColor="#FF7664" width={22} height={22} />
-          )}
-        </div>
-
-        {/* Contact urgence */}
-        <div className="flex flex-col">
-          <label htmlFor="emergencyContact" className="mb-1">
-            {t("labels.emergencyContact")}
-          </label>
-          <input
-            id="emergencyContact"
-            type="text"
-            {...register("emergencyContact")}
-            className="w-full p-2 border border-darkBlue/50 rounded-lg"
-          />
-          {errors.emergencyContact && isSubmitted && (
-            <WarningSvg fillColor="#FF7664" width={22} height={22} />
-          )}
-        </div>
-
-        {/* Photo de profil */}
-        <div className="flex flex-col">
-          <label htmlFor="profilePicture" className="mb-1">
-            {t("labels.profilePicture")}
-          </label>
-          <input
-            id="profilePicture"
-            type="file"
-            accept=".jpg,.jpeg,.png,.gif,.bmp,.webp"
-            {...register("profilePicture")}
-            className="w-full p-2 border border-darkBlue/50 rounded-lg"
-          />
-          {errors.profilePicture && isSubmitted && (
-            <WarningSvg fillColor="#FF7664" width={22} height={22} />
-          )}
-        </div>
-
-        <div className="col-span-2 flex  gap-4 mt-4">
+        {/* Actions */}
+        <div className="mt-2 flex flex-col mobile:flex-row gap-2">
           <button
             type="submit"
             disabled={isLoading}
-            className="px-4 py-2 bg-blue text-white rounded-lg"
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue px-4 py-2 text-sm font-medium text-white shadow disabled:opacity-60"
           >
             {isLoading ? t("buttons.loading") : t("buttons.save")}
           </button>
@@ -273,7 +421,7 @@ export default function AddEmployeesComponent() {
             type="button"
             onClick={() => router.replace("/dashboard/employees")}
             disabled={isLoading}
-            className="px-4 py-2 bg-red text-white rounded-lg"
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-red bg-red px-4 py-2 text-sm font-medium text-white"
           >
             {t("buttons.cancel")}
           </button>

@@ -593,7 +593,7 @@ export default function ParametersReservationComponent(props) {
           >
             {isLoading ? (
               <div className="flex gap-2">
-                <Loader2 className="size-6 animate-spin" />{" "}
+                <Loader2 className="size-6 animate-spin" />
                 <span>En cours…</span>
               </div>
             ) : (

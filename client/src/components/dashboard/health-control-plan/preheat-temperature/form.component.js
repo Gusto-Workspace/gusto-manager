@@ -204,9 +204,10 @@ export default function PreheatTemperatureForm({
           className={`${btnBase} bg-blue border-blue border text-white disabled:opacity-60`}
         >
           {isSubmitting ? (
-            <>
-              <Loader2 className="size-4 animate-spin" /> Enregistrement…
-            </>
+            <div className="flex items-center gap-2">
+              <Loader2 className="size-4 animate-spin" />
+              <span>Enregistrement…</span>
+            </div>
           ) : (
             <>
               <Thermometer className="size-4" />

@@ -507,7 +507,9 @@ export default function RecallForm({
   const hasSearch = productQ.length > 0;
   const hasCacheForQ = cacheRef.current.has(productQ);
   const shouldShowList =
-    dropdownOpen && productQ.length >= MIN_CHARS && (isLoading || hasCacheForQ || options.length > 0);
+    dropdownOpen &&
+    productQ.length >= MIN_CHARS &&
+    (isLoading || hasCacheForQ || options.length > 0);
 
   return (
     <form
@@ -589,7 +591,8 @@ export default function RecallForm({
                     >
                       <div className="font-medium">{lot.productName}</div>
                       <div className="text-xs opacity-70">
-                        Lot: {lot.lotNumber || "—"} • {lot.qtyRemaining ?? "?"} {lot.unit || ""} • {lot.supplier || "—"}
+                        Lot: {lot.lotNumber || "—"} • {lot.qtyRemaining ?? "?"}{" "}
+                        {lot.unit || ""} • {lot.supplier || "—"}
                       </div>
                     </li>
                   ))
@@ -597,7 +600,10 @@ export default function RecallForm({
               </ul>
             )}
           </div>
-          <input type="hidden" {...register("productName", { required: true })} />
+          <input
+            type="hidden"
+            {...register("productName", { required: true })}
+          />
           <input type="hidden" {...register("inventoryLotId")} />
           <input type="hidden" {...register("lotMaxRemaining")} />
           <input type="hidden" {...register("lotBaseUnit")} />
@@ -802,10 +808,10 @@ export default function RecallForm({
           className={`text-nowrap ${btnBase} h-[38px] text-white shadow ${isSubmitting ? "bg-darkBlue/40" : "bg-blue"}`}
         >
           {isSubmitting ? (
-            <>
+            <div className="flex items-center gap-2">
               <Loader2 className="size-4 animate-spin" />
-              Enregistrement…
-            </>
+              <span>Enregistrement…</span>
+            </div>
           ) : initial?._id ? (
             <>
               <FileText className="size-4" />

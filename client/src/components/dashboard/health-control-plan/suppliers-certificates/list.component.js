@@ -34,9 +34,9 @@ function statusFrom(item) {
 
 const StatusPill = ({ status }) => {
   const map = {
-    "expiré": "bg-red text-white",
+    expiré: "bg-red text-white",
     "expire bientôt": "bg-orange text-white",
-    "actif": "bg-green text-white",
+    actif: "bg-green text-white",
     "sans date": "bg-darkBlue/15 text-darkBlue",
   };
   const cls = map[status] || "bg-darkBlue/15 text-darkBlue";
@@ -160,7 +160,8 @@ export default function SupplierCertificateList({
     const handleUpsert = (event) => {
       const doc = event?.detail?.doc;
       if (!doc || !doc._id) return;
-      if (restaurantId && String(doc.restaurantId) !== String(restaurantId)) return;
+      if (restaurantId && String(doc.restaurantId) !== String(restaurantId))
+        return;
 
       const currentMeta = metaRef.current || {};
       const limit = currentMeta.limit || 20;
@@ -235,9 +236,13 @@ export default function SupplierCertificateList({
     try {
       setDeleteLoading(true);
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/supplier-certificates/${deleteTarget._id}`;
-      await axios.delete(url, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.delete(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
-      setItems((prev) => prev.filter((x) => String(x._id) !== String(deleteTarget._id)));
+      setItems((prev) =>
+        prev.filter((x) => String(x._id) !== String(deleteTarget._id))
+      );
       onDeleted?.(deleteTarget);
       setIsDeleteModalOpen(false);
       setDeleteTarget(null);
@@ -273,7 +278,7 @@ export default function SupplierCertificateList({
           <label className={labelCls}>
             <Search className="size-4" /> Recherche
           </label>
-        <input
+          <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Fournisseur, type, n°, note, URL…"
@@ -328,7 +333,11 @@ export default function SupplierCertificateList({
           <button
             onClick={() => hasFullDateRange && fetchData(1)}
             disabled={!hasFullDateRange}
-            title={!hasFullDateRange ? "Sélectionnez 'Du' ET 'Au' pour filtrer" : undefined}
+            title={
+              !hasFullDateRange
+                ? "Sélectionnez 'Du' ET 'Au' pour filtrer"
+                : undefined
+            }
             className={`${btnBase} bg-blue text-white disabled:opacity-40`}
             type="button"
           >
@@ -357,15 +366,33 @@ export default function SupplierCertificateList({
         <table className="w-full text-[13px]">
           <thead className="whitespace-nowrap">
             <tr className="sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Fournisseur</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Type</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">N°</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Validité</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Statut</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Document</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Notes</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Opérateur</th>
-              <th className="py-2 pr-3 text-right font-medium text-darkBlue/70">Actions</th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Fournisseur
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Type
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                N°
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Validité
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Statut
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Document
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Notes
+              </th>
+              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                Opérateur
+              </th>
+              <th className="py-2 pr-3 text-right font-medium text-darkBlue/70">
+                Actions
+              </th>
             </tr>
           </thead>
 
@@ -381,7 +408,7 @@ export default function SupplierCertificateList({
             {loading && (
               <tr>
                 <td colSpan={9} className="py-8 text-center text-darkBlue/50">
-                  <span className="inline-flex items-center gap-2">
+                  <span className="flex items-center gap-2">
                     <Loader2 className="size-4 animate-spin" /> Chargement…
                   </span>
                 </td>
@@ -395,17 +422,27 @@ export default function SupplierCertificateList({
                   <tr
                     key={it._id}
                     className={`transition-colors hover:bg-darkBlue/[0.03] ${
-                      editingId === it._id ? "bg-blue/5 ring-1 ring-blue/20" : ""
+                      editingId === it._id
+                        ? "bg-blue/5 ring-1 ring-blue/20"
+                        : ""
                     }`}
                   >
                     <td className="py-2 pr-3 whitespace-nowrap">
                       <div className="flex flex-col gap-1">
-                        <span className="font-medium">{it.supplierName || "—"}</span>
-                        <span className="text-xs opacity-70">{it.supplierId || ""}</span>
+                        <span className="font-medium">
+                          {it.supplierName || "—"}
+                        </span>
+                        <span className="text-xs opacity-70">
+                          {it.supplierId || ""}
+                        </span>
                       </div>
                     </td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{it.type || "—"}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{it.certificateNumber || "—"}</td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it.type || "—"}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it.certificateNumber || "—"}
+                    </td>
                     <td className="py-2 pr-3 whitespace-nowrap">
                       {fmtDate(it.validFrom)} → {fmtDate(it.validUntil)}
                       <div className="text-[11px] opacity-60">
@@ -432,7 +469,8 @@ export default function SupplierCertificateList({
                     <td className="py-2 pr-3">{it.notes || "—"}</td>
                     <td className="py-2 pr-3 whitespace-nowrap">
                       {it?.recordedBy
-                        ? `${it.recordedBy.firstName || ""} ${it.recordedBy.lastName || ""}`.trim() || "—"
+                        ? `${it.recordedBy.firstName || ""} ${it.recordedBy.lastName || ""}`.trim() ||
+                          "—"
                         : "—"}
                     </td>
                     <td className="py-2 pr-0">
@@ -493,7 +531,11 @@ export default function SupplierCertificateList({
       {isDeleteModalOpen &&
         isClient &&
         createPortal(
-          <div className="fixed inset-0 z-[1000]" aria-modal="true" role="dialog">
+          <div
+            className="fixed inset-0 z-[1000]"
+            aria-modal="true"
+            role="dialog"
+          >
             <div
               onClick={closeDeleteModal}
               className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"
@@ -514,9 +556,10 @@ export default function SupplierCertificateList({
                     type="button"
                   >
                     {deleteLoading ? (
-                      <>
-                        <Loader2 className="size-4 animate-spin" /> Suppression…
-                      </>
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="size-4 animate-spin" />
+                        <span>Suppression…</span>
+                      </div>
                     ) : (
                       "Confirmer"
                     )}

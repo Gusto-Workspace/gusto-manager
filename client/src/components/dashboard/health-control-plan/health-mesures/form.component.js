@@ -215,10 +215,10 @@ export default function HealthMeasuresForm({
           className="text-nowrap inline-flex items-center justify-center gap-2 h-[38px] rounded-lg bg-blue px-4 py-2 text-sm font-medium text-white shadow disabled:opacity-60"
         >
           {isSubmitting ? (
-            <>
+            <div className="flex items-center gap-2">
               <Loader2 className="size-4 animate-spin" />
-              Enregistrement…
-            </>
+              <span>Enregistrement…</span>
+            </div>
           ) : initial?._id ? (
             <>Mettre à jour</>
           ) : (
