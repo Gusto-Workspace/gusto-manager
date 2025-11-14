@@ -145,7 +145,7 @@ export default function DaysOffEmployeesComponent() {
   };
 
   const sectionCard =
-    "rounded-2xl bg-white/60 backdrop-blur-sm border border-darkBlue/10 shadow-sm p-4 midTablet:p-5";
+    "rounded-2xl bg-white/60   border border-darkBlue/10 shadow-sm p-4 midTablet:p-5";
 
   return (
     <section className="flex flex-col gap-6 min-w-0">

@@ -25,7 +25,7 @@ export default function DataEmployeesComponent(props) {
 
   // styles communs (alignés avec les autres forms)
   const cardWrap =
-    "group relative rounded-xl bg-white/60 backdrop-blur-sm px-4 py-3 border border-darkBlue/10 transition-shadow";
+    "group relative rounded-xl bg-white/60   px-4 py-3 border border-darkBlue/10 transition-shadow";
   const labelCls =
     "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
   const valueCls = "text-sm text-darkBlue";
@@ -99,7 +99,7 @@ export default function DataEmployeesComponent(props) {
   ];
 
   return (
-    <section className="bg-white/60 backdrop-blur-sm p-2 midTablet:p-6 rounded-2xl border border-darkBlue/10 shadow-sm flex flex-col midTablet:flex-row justify-between items-start gap-6 relative">
+    <section className="bg-white/60   p-2 midTablet:p-6 rounded-2xl border border-darkBlue/10 shadow-sm flex flex-col midTablet:flex-row justify-between items-start gap-6 relative">
       {/* Bouton éditer (mode vue uniquement) */}
       {!isEditing && (
         <button

@@ -29,7 +29,7 @@ export default function DocumentsEmployeeComponent(props) {
 
   // styles communs (alignés avec les autres composants employés)
   const sectionCls =
-    "bg-white/60 backdrop-blur-sm p-2 mobile:p-6 rounded-2xl border border-darkBlue/10 shadow-sm flex flex-col gap-4";
+    "bg-white/60   p-2 mobile:p-6 rounded-2xl border border-darkBlue/10 shadow-sm flex flex-col gap-4";
   const cardWrap =
     "rounded-xl bg-white/70 border border-darkBlue/10 px-4 py-3 flex flex-col gap-2";
   const inputBaseCls =

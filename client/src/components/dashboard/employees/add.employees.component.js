@@ -89,7 +89,7 @@ export default function AddEmployeesComponent() {
 
   // styles communs (mêmes vibes que FridgeTemperatureForm)
   const fieldWrap =
-    "group relative rounded-xl bg-white/50 backdrop-blur-sm px-3 py-2 h-[80px] transition-shadow";
+    "group relative rounded-xl bg-white/50   px-3 py-2 h-[80px] transition-shadow";
   const labelCls =
     "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
   const inputBaseCls =

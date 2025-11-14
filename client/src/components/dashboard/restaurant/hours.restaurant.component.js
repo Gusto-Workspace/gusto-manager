@@ -169,7 +169,7 @@ export default function HoursRestaurantComponent(props) {
 
   // Styles communs alignés avec les autres cards
   const sectionCls =
-    "bg-white/60 backdrop-blur-sm p-2 midTablet:p-6 rounded-2xl border border-darkBlue/10 shadow-sm w-full text-darkBlue flex flex-col gap-4";
+    "bg-white/60 p-2 midTablet:p-6 rounded-2xl border border-darkBlue/10 shadow-sm w-full text-darkBlue flex flex-col gap-4";
   const rowCls =
     "group rounded-xl bg-white/70 border border-darkBlue/10 px-4 py-3 flex flex-row justify-between items-center gap-4";
   const dayLabelCls = "font-semibold text-sm text-darkBlue";

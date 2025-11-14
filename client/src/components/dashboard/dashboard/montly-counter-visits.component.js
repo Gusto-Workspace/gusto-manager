@@ -53,7 +53,7 @@ export default function MonthlyCounterVisits({
         relative overflow-hidden
         rounded-2xl border border-darkBlue/10
        bg-white/50
-        backdrop-blur-sm
+         
         px-4 py-4 tablet:px-6 tablet:py-5
         shadow-[0_18px_45px_rgba(19,30,54,0.08)]
       "

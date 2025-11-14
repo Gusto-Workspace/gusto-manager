@@ -232,7 +232,7 @@ export default function ListGiftsComponent(props) {
             <SortableContext
               items={giftCardsValue?.map((giftCard) => giftCard._id)}
             >
-              <div className="my-12 grid grid-cols-1 tablet:grid-cols-3 desktop:grid-cols-4 ultraWild:grid-cols-5 gap-6">
+              <div className="my-12 grid grid-cols-1 tablet:grid-cols-3 desktop:grid-cols-4 ultraWild:grid-cols-5 gap-4">
                 {giftCardsValue?.map((giftCard, i) => (
                   <CardGiftsComponent
                     key={giftCard._id}
@@ -267,7 +267,7 @@ export default function ListGiftsComponent(props) {
             <SortableContext
               items={giftCardsDescription?.map((giftCard) => giftCard._id)}
             >
-              <div className="my-12 grid grid-cols-1 tablet:grid-cols-3 desktop:grid-cols-4 ultraWild:grid-cols-5 gap-6">
+              <div className="my-12 grid grid-cols-1 tablet:grid-cols-3 desktop:grid-cols-4 ultraWild:grid-cols-5 gap-4">
                 {giftCardsDescription?.map((giftCard, i) => (
                   <CardGiftsComponent
                     key={giftCard._id}

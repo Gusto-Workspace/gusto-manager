@@ -12,7 +12,6 @@ export default function DataCardCompnent(props) {
         relative overflow-hidden
         rounded-2xl border border-darkBlue/10
        bg-white/50
-        backdrop-blur-sm
         px-4 py-4 midTablet:px-5 midTablet:py-5
         flex items-center gap-4
         ${hasChart ? "justify-between" : "justify-start"}

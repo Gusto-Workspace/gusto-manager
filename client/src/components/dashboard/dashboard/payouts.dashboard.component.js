@@ -27,7 +27,7 @@ export default function PayoutsDashboardComponent(props) {
 
   if (!props?.payouts?.length) {
     return (
-      <section className="rounded-2xl border border-darkBlue/10 bg-white/50 backdrop-blur-sm px-4 py-5 text-sm text-darkBlue/70">
+      <section className="rounded-2xl border border-darkBlue/10 bg-white/50   px-4 py-5 text-sm text-darkBlue/70">
         {t("payouts.empty")}
       </section>
     );
@@ -75,7 +75,7 @@ export default function PayoutsDashboardComponent(props) {
           <div key={payout.id} className={containerClasses}>
             <section
               className="
-                rounded-2xl border border-darkBlue/10 bg-white/50 backdrop-blur-sm
+                rounded-2xl border border-darkBlue/10 bg-white/50  
                 px-4 py-4 midTablet:px-6 midTablet:py-5
                 flex gap-4 flex-row items-center justify-between
                 shadow-[0_18px_45px_rgba(19,30,54,0.06)]

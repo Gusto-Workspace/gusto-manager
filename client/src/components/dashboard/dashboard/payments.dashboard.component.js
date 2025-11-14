@@ -105,7 +105,7 @@ export default function PaymentsDashboardComponent(props) {
               <section
                 key={index}
                 className="
-                  rounded-2xl border border-darkBlue/10 bg-white/50 backdrop-blur-sm
+                  rounded-2xl border border-darkBlue/10 bg-white/50
                   px-4 py-4 midTablet:px-6 midTablet:py-5
                   flex gap-4 flex-row items-center justify-between
                   shadow-[0_18px_45px_rgba(19,30,54,0.06)]
@@ -242,7 +242,7 @@ export default function PaymentsDashboardComponent(props) {
           )}
         </>
       ) : (
-        <section className="rounded-2xl border border-darkBlue/10 bg-white/50 backdrop-blur-sm px-4 py-5">
+        <section className="rounded-2xl border border-darkBlue/10 bg-white/50   px-4 py-5">
           {props.dataLoading ? (
             <SimpleSkeletonComponent />
           ) : (
@@ -253,7 +253,7 @@ export default function PaymentsDashboardComponent(props) {
 
       {/* Modale de confirmation */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40   px-4">
           <div className="max-w-[520px] w-full rounded-2xl border border-darkBlue/10 bg-white/95 px-6 py-5 shadow-[0_18px_45px_rgba(19,30,54,0.20)] flex flex-col gap-5">
             <div className="text-center">
               <h2 className="text-base tablet:text-lg font-semibold text-darkBlue">

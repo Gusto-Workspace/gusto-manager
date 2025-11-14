@@ -114,7 +114,7 @@ export default function ContactRestaurantComponent(props) {
 
   // styles communs
   const sectionCls =
-    "bg-white/60 backdrop-blur-sm p-2 midTablet:p-6 rounded-2xl border border-darkBlue/10 shadow-sm flex flex-col gap-4 w-full h-fit";
+    "bg-white/60 p-2 midTablet:p-6 rounded-2xl border border-darkBlue/10 shadow-sm flex flex-col gap-4 w-full h-fit";
   const fieldCard =
     "group rounded-xl bg-white/70 border border-darkBlue/10 px-4 py-3 flex flex-row items-center justify-between gap-2";
   const labelWrap =

@@ -182,7 +182,7 @@ export default function FridgeManagerModal({
 
   // Styles partagés
   const fieldWrap =
-    "group relative rounded-xl bg-white/50 backdrop-blur-sm transition-shadow";
+    "group relative rounded-xl bg-white/50   transition-shadow";
   const labelCls = "text-xs font-medium text-darkBlue/60 mb-1";
   const inputCls =
     "h-11 w-full rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition placeholder:text-darkBlue/40 focus:border-blue focus:ring-2 focus:ring-blue/20";

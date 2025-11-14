@@ -19,7 +19,7 @@ export default function InvoicesListComponent(props) {
     );
   }
 
-  const { invoices } = props?.subscriptionData;
+  const { invoices } = props?.subscriptionData || {};
 
   function formatDate(timestamp) {
     const date = new Date(timestamp * 1000);
@@ -29,7 +29,7 @@ export default function InvoicesListComponent(props) {
       year: "numeric",
     });
   }
-  
+
   return (
     <div className="flex flex-col gap-4">
       {invoices?.length > 0 ? (

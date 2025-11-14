@@ -27,6 +27,9 @@ export default function SubscriptionPage(props) {
   const [isLoading, setIsLoading] = useState(true);
   const [subscriptionData, setSubscriptionData] = useState({});
 
+  // 👉 dérive un restaurantId *safe* (peut être undefined)
+  const restaurantId = restaurantContext.restaurantData?._id;
+
   let title;
   let description;
 
@@ -41,7 +44,10 @@ export default function SubscriptionPage(props) {
   }
 
   function fetchSubscriptionData(restaurantId) {
-    const token = localStorage.getItem("token");
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    if (!token || !restaurantId) return;
+
     setIsLoading(true);
     axios
       .get(`${process.env.NEXT_PUBLIC_API_URL}/restaurant-subscription`, {
@@ -51,7 +57,7 @@ export default function SubscriptionPage(props) {
         },
       })
       .then((response) => {
-        setSubscriptionData(response.data.subscription);
+        setSubscriptionData(response.data.subscription || {});
         setIsLoading(false);
       })
       .catch((error) => {
@@ -64,40 +70,26 @@ export default function SubscriptionPage(props) {
   }
 
   useEffect(() => {
-    if (restaurantContext.isAuth && restaurantContext.restaurantData) {
-      fetchSubscriptionData(restaurantContext.restaurantData._id);
+    if (restaurantContext.isAuth && restaurantId) {
+      fetchSubscriptionData(restaurantId);
     }
-  }, [restaurantContext.restaurantData._id]);
+  }, [restaurantContext.isAuth, restaurantId]);
+  // 🔥 plus de `.restaurantData._id` direct ici
 
+  // Une fois que tu n’es plus auth, tu peux sortir de la page
   if (!restaurantContext.isAuth) return null;
 
   return (
     <>
       <Head>
         <title>{title}</title>
-
-        {/* <>
-          {description && <meta name="description" content={description} />}
-          {title && <meta property="og:title" content={title} />}
-          {description && (
-            <meta property="og:description" content={description} />
-          )}
-          <meta
-            property="og:url"
-            content="https://lespetitsbilingues-newham.com/"
-          />
-          <meta property="og:type" content="website" />
-          <meta property="og:image" content="/img/open-graph.jpg" />
-          <meta property="og:image:width" content="1200" />
-          <meta property="og:image:height" content="630" />
-        </> */}
       </Head>
 
       <div>
         <div className="flex">
           <NavComponent />
 
-           <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 min-h-screen">
+          <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 min-h-screen">
             <SettingsComponent
               dataLoading={restaurantContext.dataLoading}
               setDataLoading={restaurantContext.setDataLoading}
@@ -110,7 +102,6 @@ export default function SubscriptionPage(props) {
 
             <div className="flex gap-2 items-center">
               <InvoiceSvg width={30} height={30} fillColor="#131E3690" />
-
               <h1 className="pl-2 text-2xl">{t("subscription:titles.main")}</h1>
             </div>
 
@@ -121,7 +112,6 @@ export default function SubscriptionPage(props) {
 
             <div className="flex gap-2 items-center mt-6">
               <InvoiceSvg width={30} height={30} fillColor="#131E3690" />
-
               <h1 className="pl-2 text-2xl">
                 {t("subscription:titles.second")}
               </h1>

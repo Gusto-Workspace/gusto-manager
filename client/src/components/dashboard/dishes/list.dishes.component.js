@@ -182,7 +182,7 @@ export default function ListDishesComponent(props) {
         </button>
       </div>
 
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-2">
         <DndContext
           id={id}
           collisionDetection={closestCenter}

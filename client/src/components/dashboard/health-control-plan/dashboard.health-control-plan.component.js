@@ -278,7 +278,7 @@ export default function DashboardHealthControlPlanComponent() {
                   "group relative overflow-hidden rounded-xl bg-white h-36",
                   "border-slate-200/80 shadow-[0_1px_0_rgba(0,0,0,0.03)]",
                   "transition-all duration-200 hover:-translate-y-[1px] hover:shadow-md",
-                  "focus:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone)/0.35)]",
+                  "focus:outline-none ",
                 ].join(" ")}
               >
                 {/* halo radial discret en haut-droite */}

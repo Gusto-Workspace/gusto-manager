@@ -761,7 +761,7 @@ export default function ListReservationsComponent(props) {
               <hr className="bg-darkBlue/40 absolute h-[1px] w-full left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 z-10" />
             </div>
 
-            <ul className="grid grid-cols-1 midTablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-4 gap-6">
+            <ul className="grid grid-cols-1 midTablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-4 gap-4">
               {byTime[time].map((reservation) => (
                 <CardReservationComponent
                   key={reservation._id}

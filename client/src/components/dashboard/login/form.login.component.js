@@ -115,7 +115,7 @@ export default function FormLoginComponent() {
   }
 
   return (
-    <section className="relative mx-4 bg-white/15 backdrop-blur-sm flex flex-col rounded-lg p-12 drop-shadow-sm w-[500px]">
+    <section className="relative mx-4 bg-white/15   flex flex-col rounded-lg p-12 drop-shadow-sm w-[500px]">
       <div className="flex flex-col gap-2 items-center">
         <h1 className="text-4xl font-semibold text-white">
           {t("titles.main")}

@@ -42,21 +42,112 @@ export default function GlobalWinesComponent(props) {
 
   const volumes = getAllVolumes(props.categories);
 
-  return (
-    <div className="flex flex-col gap-6">
-      <div className="flex gap-2 items-center">
-        <GlassSvg
-          width={30}
-          height={30}
-          className="min-h-[30px] min-w-[30px]"
-          fillColor="#131E3690"
-        />
+  const outerSectionCls = "flex flex-col gap-6";
+  const cardWrapperCls =
+    "overflow-x-auto max-w-[calc(100vw-48px)] tablet:max-w-[calc(100vw-318px)]";
+  const cardCls =
+    "w-[1024px] tablet:max-w-[1024px] desktop:max-w-[1024px] desktop:mx-auto " +
+    "rounded-2xl border border-darkBlue/10 bg-white/50 " +
+    "px-4 py-4 tablet:px-8 tablet:py-6 flex flex-col gap-8 shadow-[0_18px_45px_rgba(19,30,54,0.06)]";
 
-        <h1 className="pl-2 text-2xl">{t("titles.second")}</h1>
+  const pillCategoryTitle = (label) => (
+    <div className="relative py-2">
+      <h2 className="relative mx-auto w-fit rounded-full border border-darkBlue/10 bg-white px-5 py-1 text-xs tablet:text-sm font-semibold uppercase tracking-[0.08em] text-darkBlue z-10">
+        {label}
+      </h2>
+      <hr className="pointer-events-none absolute left-0 top-1/2 h-px w-full -translate-y-1/2 border-0 bg-darkBlue/10" />
+    </div>
+  );
+
+  const pillSubCategoryTitle = (label) => (
+    <div className="relative py-1 mt-2">
+      <h3 className="relative mx-auto w-fit rounded-full bg-white px-4 py-0.5 text-[11px] tablet:text-xs font-semibold tracking-[0.08em] text-darkBlue z-10">
+        {label}
+      </h3>
+      <div className="pointer-events-none absolute inset-x-[15%] top-1/2 h-px -translate-y-1/2 bg-darkBlue/10" />
+    </div>
+  );
+
+  const VolumesHeaderRow = () => (
+    <div className="mt-2 flex items-center justify-between text-[11px] tablet:text-xs font-medium text-darkBlue/60">
+      <span className="uppercase tracking-[0.12em] text-darkBlue/40">
+        {t("volumes", "Volumes")}
+      </span>
+      <div className="flex">
+        {volumes.map((v, idx) => (
+          <span
+            key={idx}
+            className="w-24 text-center uppercase tracking-[0.08em]"
+          >
+            {v}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+
+  const WineRow = ({ wine }) => (
+    <div
+      className="
+        flex items-center justify-between gap-4 border-b border-darkBlue/5 last:border-b-0
+        py-2
+      "
+    >
+      {/* Nom + année */}
+      <div className="flex-1 flex items-center justify-between flex-nowrap gap-4 min-w-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <p className="font-medium text-sm tablet:text-base text-darkBlue truncate">
+            {wine.name}
+          </p>
+          {wine.bio && (
+            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-darkBlue/85">
+              <BioSvg fillColor="white" width={9} height={9} />
+            </span>
+          )}
+        </div>
+        <p className="text-xs tablet:text-sm text-darkBlue/60 whitespace-nowrap">
+          {wine.year || "-"}
+        </p>
       </div>
 
-      <div className="overflow-x-auto max-w-[calc(100vw-48px)] tablet:max-w-[calc(100vw-318px)]">
-        <div className="bg-white rounded-lg drop-shadow-sm p-12 w-[1024px] tablet:max-w-[1024px] desktop:max-w-[1024px] desktop:mx-auto flex flex-col gap-6">
+      {/* Prix alignés sous volumes */}
+      <div className="flex">
+        {volumes.map((volume, idx) => {
+          const matchingVolume = wine.volumes.find((v) => v.volume === volume);
+          return (
+            <p
+              key={idx}
+              className="w-24 text-center text-xs tablet:text-sm text-darkBlue"
+            >
+              {matchingVolume ? `${matchingVolume.price.toFixed(2)} €` : "-"}
+            </p>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  return (
+    <section className={outerSectionCls}>
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <div className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-darkBlue/5">
+          <GlassSvg
+            width={22}
+            height={22}
+            className="min-h-[22px] min-w-[22px]"
+            fillColor="#131E3690"
+          />
+        </div>
+
+        <h1 className="pl-1 text-xl tablet:text-2xl font-semibold text-darkBlue">
+          {t("titles.second")}
+        </h1>
+      </div>
+
+      {/* Carte scrollable */}
+      <div className={cardWrapperCls}>
+        <section className={cardCls}>
           {props.categories
             .filter(
               (category) =>
@@ -70,86 +161,38 @@ export default function GlobalWinesComponent(props) {
             )
             .map((category, i) => (
               <div key={i} className="flex flex-col gap-4">
-                {/* Titre de la catégorie */}
-                <div className="relative">
-                  <h2 className="relative text-xl font-semibold uppercase float-start midTablet:float-none text-center bg-white pr-6 midTablet:px-6 w-fit mx-auto z-20">
-                    {category.name}
-                  </h2>
+                {/* Titre catégorie */}
+                {pillCategoryTitle(category.name)}
 
-                  <hr className="bg-darkBlue absolute h-[1px] w-full top-1/2 -translate-y-1/2 z-10 opacity-50" />
-                </div>
+                {/* Volumes header */}
+                <VolumesHeaderRow />
 
-                {/* Volumes affichés en haut à droite */}
-                <div className="text-right font-semibold">
-                  {volumes.map((v, idx) => (
-                    <span key={idx} className="inline-block w-24 text-center">
-                      {v}
-                    </span>
-                  ))}
-                </div>
-
-                {/* Affichage des vins groupés par appellation */}
+                {/* Vins de la catégorie principale */}
                 {category.wines.some((wine) => wine.showOnWebsite) && (
-                  <div className="flex flex-col gap-4">
+                  <div className="mt-2 flex flex-col gap-3">
                     {Object.entries(
                       groupByAppellation(
                         category.wines.filter((wine) => wine.showOnWebsite)
                       )
                     ).map(([appellation, wines], j) => (
-                      <div key={j} className="flex flex-col gap-4">
+                      <div key={j} className="flex flex-col gap-1">
                         {appellation !== "Sans Appellation" && (
-                          <h3 className="text-lg font-semibold">
+                          <h3 className="text-xs tablet:text-sm font-semibold uppercase tracking-[0.08em] text-darkBlue/70 mt-3">
                             {appellation}
                           </h3>
                         )}
 
-                        {wines.map((wine, k) => (
-                          <div
-                            key={k}
-                            className="flex items-center justify-between gap-4 pb-2"
-                          >
-                            {/* Nom du vin + année */}
-                            <div className="flex-1 flex items-center justify-between flex-nowrap">
-                              <p className="font-medium whitespace-nowrap">
-                                {wine.name}
-                                {wine.bio && (
-                                  <BioSvg
-                                    fillColor="white"
-                                    width={9}
-                                    height={9}
-                                    className="bg-darkBlue p-1 w-4 h-4 rounded-full opacity-70 inline-block ml-2"
-                                  />
-                                )}
-                              </p>
-                              <p className="text-sm">{wine.year || "-"}</p>
-                            </div>
-
-                            {/* Prix alignés sous les volumes */}
-                            <div className="flex">
-                              {volumes.map((volume, idx) => {
-                                const matchingVolume = wine.volumes.find(
-                                  (v) => v.volume === volume
-                                );
-                                return (
-                                  <p
-                                    key={idx}
-                                    className="w-24 text-center text-sm"
-                                  >
-                                    {matchingVolume
-                                      ? `${matchingVolume.price.toFixed(2)} €`
-                                      : "-"}
-                                  </p>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        ))}
+                        <div className="flex flex-col gap-1">
+                          {wines.map((wine, k) => (
+                            <WineRow key={k} wine={wine} />
+                          ))}
+                        </div>
                       </div>
                     ))}
                   </div>
                 )}
 
-                {/* Sous-catégories visibles */}
+                {/* Sous-catégories */}
                 {category.subCategories
                   .filter(
                     (subCategory) =>
@@ -157,79 +200,34 @@ export default function GlobalWinesComponent(props) {
                       subCategory.wines.some((wine) => wine.showOnWebsite)
                   )
                   .map((subCategory, k) => (
-                    <div key={k} className="flex flex-col gap-4 my-2">
-                      {/* Nom de la sous-catégorie */}
-                      <div className="relative">
-                        <h3 className="relative underline underline-offset-2 midTablet:no-underline font-semibold bg-white pr-4 midTablet:px-4 w-fit midTablet:mx-auto z-20">
-                          {subCategory.name}
-                        </h3>
-
-                        <hr className="bg-darkBlue absolute h-[1px] midTablet:w-[70%] left-1/2 -translate-x-1/2 top-0 z-10 opacity-30" />
-
-                        <hr className="bg-darkBlue absolute h-[1px] midTablet:w-[70%] left-1/2 -translate-x-1/2 bottom-0 z-10 opacity-30" />
-                      </div>
+                    <div key={k} className="flex flex-col gap-3 mt-4">
+                      {pillSubCategoryTitle(subCategory.name)}
 
                       {Object.entries(
                         groupByAppellation(
                           subCategory.wines.filter((wine) => wine.showOnWebsite)
                         )
                       ).map(([appellation, wines], l) => (
-                        <div key={l} className="flex flex-col">
+                        <div key={l} className="flex flex-col gap-1">
                           {appellation !== "Sans Appellation" && (
-                            <h4 className="text-lg font-semibold uppercase pb-2">
+                            <h4 className="text-xs tablet:text-sm font-semibold uppercase tracking-[0.08em] text-darkBlue/70 mt-2">
                               {appellation}
                             </h4>
                           )}
 
-                          {wines.map((wine, m) => (
-                            <div
-                              key={m}
-                              className="flex items-center justify-between gap-4 pb-2"
-                            >
-                              {/* Nom du vin + année */}
-                              <div className="flex-1 flex items-center justify-between gap-4 flex-nowrap">
-                                <p className="font-medium whitespace-nowrap">
-                                  {wine.name}
-                                  {wine.bio && (
-                                    <BioSvg
-                                      fillColor="white"
-                                      width={9}
-                                      height={9}
-                                      className="bg-darkBlue p-1 w-4 h-4 rounded-full opacity-70 inline-block ml-2"
-                                    />
-                                  )}
-                                </p>
-                                <p className="text-sm">{wine.year || "-"}</p>
-                              </div>
-
-                              {/* Prix alignés sous les volumes */}
-                              <div className="flex">
-                                {volumes.map((volume, idx) => {
-                                  const matchingVolume = wine.volumes.find(
-                                    (v) => v.volume === volume
-                                  );
-                                  return (
-                                    <p
-                                      key={idx}
-                                      className="w-24 text-center text-sm"
-                                    >
-                                      {matchingVolume
-                                        ? `${matchingVolume.price.toFixed(2)} €`
-                                        : "-"}
-                                    </p>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          ))}
+                          <div className="flex flex-col gap-1">
+                            {wines.map((wine, m) => (
+                              <WineRow key={m} wine={wine} />
+                            ))}
+                          </div>
                         </div>
                       ))}
                     </div>
                   ))}
               </div>
             ))}
-        </div>
+        </section>
       </div>
-    </div>
+    </section>
   );
 }

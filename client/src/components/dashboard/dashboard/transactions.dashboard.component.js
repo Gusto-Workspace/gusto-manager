@@ -117,7 +117,7 @@ export default function TransactionsDashboardComponent(props) {
       {/* Bloc sélection + filtres */}
       <section
         className="
-          rounded-2xl border border-darkBlue/10 bg-white/50 backdrop-blur-sm
+          rounded-2xl border border-darkBlue/10 bg-white/50  
           px-4 py-4 midTablet:px-6 midTablet:py-5
           flex flex-col gap-4
           shadow-[0_18px_45px_rgba(19,30,54,0.06)]
