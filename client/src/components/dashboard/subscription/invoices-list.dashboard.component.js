@@ -11,11 +11,22 @@ export default function InvoicesListComponent(props) {
   const router = useRouter();
   const { locale } = router;
 
+  const cardSkeletonCls =
+    "w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 py-4 tablet:px-6 tablet:py-5 shadow-[0_18px_45px_rgba(19,30,54,0.06)] flex items-center";
+  const listWrapCls = "flex flex-col gap-4";
+  const itemCls =
+    "w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 py-4 tablet:px-6 tablet:py-4 shadow-[0_12px_30px_rgba(19,30,54,0.04)] flex items-center justify-between gap-4";
+  const dateTextCls = "text-sm tablet:text-base font-medium text-darkBlue";
+  const btnDownloadCls =
+    "inline-flex items-center justify-center rounded-xl bg-blue px-4 py-2 text-xs tablet:text-sm font-medium text-white shadow hover:bg-blue/90 transition";
+  const emptyCardCls =
+    "w-full rounded-2xl border border-dashed border-darkBlue/10 bg-white/70 px-4 py-5 tablet:px-6 tablet:py-6 text-sm text-center text-darkBlue/60";
+
   if (props.isLoading) {
     return (
-      <div className="bg-white p-6 rounded-lg drop-shadow-sm min-h-[100px] flex items-center">
+      <section className={cardSkeletonCls}>
         <SimpleSkeletonComponent />
-      </div>
+      </section>
     );
   }
 
@@ -30,36 +41,44 @@ export default function InvoicesListComponent(props) {
     });
   }
 
+  if (!invoices || invoices.length === 0) {
+    return (
+      <section className={emptyCardCls}>
+        {t("text.noInvoices")}
+      </section>
+    );
+  }
+
   return (
-    <div className="flex flex-col gap-4">
-      {invoices?.length > 0 ? (
-        <ul className=" flex flex-col gap-4 items-center">
-          {invoices.map((invoice) => (
-            <li
-              key={invoice.id}
-              className="bg-white p-6 rounded-lg drop-shadow-sm min-h-[100px] flex justify-between items-center w-full"
-            >
-              <div>
-                <p className="text-base font-medium">
-                  {t("text.invoiceDate")} {formatDate(invoice.date)}
+    <section className={listWrapCls}>
+      <ul className="flex flex-col gap-3">
+        {invoices.map((invoice) => (
+          <li key={invoice.id} className={itemCls}>
+            <div className="flex flex-col gap-1">
+              <p className={dateTextCls}>
+                {t("text.invoiceDate")} {formatDate(invoice.date)}
+              </p>
+              {invoice.amount && invoice.currency && (
+                <p className="text-xs text-darkBlue/60">
+                  {invoice.amount}{" "}
+                  {invoice.currency === "eur" || invoice.currency === "EUR"
+                    ? "€"
+                    : invoice.currency.toUpperCase()}
                 </p>
-              </div>
-              <a
-                href={invoice.download_url}
-                download
-                rel="noopener noreferrer"
-                className="text-blue px-4 py-2 rounded-lg hover:bg-blue-600 transition"
-              >
-                {t("buttons.download")}
-              </a>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="bg-white p-6 rounded-lg drop-shadow-sm min-h-[100px] flex items-center">
-          {t("text.noInvoices")}
-        </p>
-      )}
-    </div>
+              )}
+            </div>
+
+            <a
+              href={invoice.download_url}
+              download
+              rel="noopener noreferrer"
+              className={btnDownloadCls}
+            >
+              {t("buttons.download")}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

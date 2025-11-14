@@ -300,7 +300,7 @@ export default function CustomMenuComponent(props) {
             {props.isEditing && (
               <button
                 type="submit"
-                className="inline-flex min-w-[120px] items-center justify-center rounded-xl bg-darkBlue text-white text-sm font-medium px-4 py-2.5 shadow-sm hover:bg-darkBlue/90 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                className="inline-flex min-w-[120px] items-center justify-center rounded-xl bg-blue text-white text-sm font-medium px-4 py-2.5 shadow-sm hover:bg-blue/90 transition disabled:opacity-60 disabled:cursor-not-allowed"
                 disabled={isLoading}
               >
                 {isLoading ? t("buttons.loading") : t("buttons.save")}

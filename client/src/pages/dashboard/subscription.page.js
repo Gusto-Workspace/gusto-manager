@@ -27,7 +27,6 @@ export default function SubscriptionPage(props) {
   const [isLoading, setIsLoading] = useState(true);
   const [subscriptionData, setSubscriptionData] = useState({});
 
-  // 👉 dérive un restaurantId *safe* (peut être undefined)
   const restaurantId = restaurantContext.restaurantData?._id;
 
   let title;
@@ -74,9 +73,7 @@ export default function SubscriptionPage(props) {
       fetchSubscriptionData(restaurantId);
     }
   }, [restaurantContext.isAuth, restaurantId]);
-  // 🔥 plus de `.restaurantData._id` direct ici
 
-  // Une fois que tu n’es plus auth, tu peux sortir de la page
   if (!restaurantContext.isAuth) return null;
 
   return (

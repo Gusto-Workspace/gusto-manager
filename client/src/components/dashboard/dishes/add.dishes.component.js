@@ -246,7 +246,7 @@ export default function AddDishesComponent(props) {
           {/* Etiquettes (vegan, végétarien, etc.) */}
           <div className="flex flex-col gap-3">
             <span className="text-xs font-semibold uppercase tracking-[0.08em] text-darkBlue/70">
-              {t("form.labels.dietOptions")}
+              {t("Régimes & particularités")}
             </span>
 
             <div className="flex flex-wrap gap-3">

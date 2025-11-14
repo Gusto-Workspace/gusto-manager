@@ -77,7 +77,7 @@ export default function HelpPage(props) {
               <div className="flex gap-2 items-center">
                 <HelpSvg width={30} height={30} fillColor="#131E3690" />
 
-                <h1 className="pl-2 py-1 text-xl tablet:text-2xl">
+                <h1 className="pl-2 text-xl tablet:text-2xl">
                   {t("help:titles.main")}
                 </h1>
               </div>

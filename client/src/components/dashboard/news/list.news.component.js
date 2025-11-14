@@ -27,6 +27,16 @@ export default function ListNewsComponent(props) {
   const [selectedNews, setSelectedNews] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  const cardCls =
+    "rounded-2xl border border-darkBlue/10 bg-white/50 px-4 py-3 tablet:px-5 tablet:py-4 shadow-[0_18px_45px_rgba(19,30,54,0.06)] hover:shadow-[0_22px_55px_rgba(19,30,54,0.10)] transition-shadow flex flex-col gap-3";
+  const btnPrimary =
+    "inline-flex items-center gap-2 rounded-xl bg-blue text-white text-sm font-medium px-4 py-2.5 shadow-sm hover:bg-blue/90 transition";
+  const btnSecondary =
+    "inline-flex min-w-[120px] items-center justify-center rounded-xl border border-red bg-red text-white text-sm font-medium px-4 py-2.5 shadow-sm hover:bg-red/90 transition disabled:opacity-60 disabled:cursor-not-allowed";
+  const iconPill =
+    "inline-flex items-center justify-center h-8 w-8 rounded-full border transition-colors";
+  const actionLabelCls = "text-[11px] text-darkBlue/70";
+
   function handleAddClick() {
     router.push(`/dashboard/news/add`);
   }
@@ -57,7 +67,7 @@ export default function ListNewsComponent(props) {
         restaurantContext.setRestaurantData((prev) => ({
           ...prev,
           news: response.data.restaurant.news,
-        })); 
+        }));
         closeDeleteModal();
       })
       .catch((error) => {
@@ -87,11 +97,14 @@ export default function ListNewsComponent(props) {
       });
   }
 
+  const hasNews = Array.isArray(props?.news) && props.news.length > 0;
+
   return (
     <section className="flex flex-col gap-6">
       <hr className="opacity-20" />
 
-      <div className="flex gap-4 flex-wrap justify-between">
+      {/* Header */}
+      <div className="flex gap-4 flex-wrap justify-between items-center">
         <div className="flex gap-2 items-center min-h-[40px]">
           <NewsSvg
             width={30}
@@ -100,142 +113,184 @@ export default function ListNewsComponent(props) {
             strokeColor="#131E3690"
           />
 
-          <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2">
+          <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2 text-darkBlue">
             {t("titles.main")}
           </h1>
         </div>
 
-        <button
-          onClick={handleAddClick}
-          className="bg-blue px-6 py-2 rounded-lg text-white cursor-pointer"
-        >
+        <button onClick={handleAddClick} className={btnPrimary}>
           {t("buttons.add")}
         </button>
       </div>
 
-      <div className="grid grid-cols-1 midTablet:grid-cols-2 desktop:grid-cols-3 gap-6">
-        {props?.news?.map((data, i) => {
-          return (
-            <div
-              key={i}
-              className="bg-white rounded-lg drop-shadow-sm p-6 flex flex-col gap-4 h-fit"
-            >
-              <h2 className="text-xl text-center min-h-[56px] text-balance flex items-center justify-center">
-                {data.title}
-              </h2>
+      {/* Liste / Empty state */}
+      {!hasNews ? (
+        <div className={cardCls}>
+          <div className="flex flex-col items-center gap-2 text-center text-darkBlue/70 py-4">
+            <NewsSvg
+              width={36}
+              height={36}
+              className="opacity-30 mb-1"
+              strokeColor="#131E3690"
+            />
+            <p className="text-sm">{t("Aucun article pour le moment")}</p>
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 midTablet:grid-cols-2 desktop:grid-cols-3 gap-6">
+          {props.news.map((data) => {
+            const isVisible = data.visible;
 
-              <hr className="bg-darkBlue h-[1px] w-full opacity-20 mx-auto" />
+            return (
+              <article key={data._id} className={cardCls}>
+                {/* Header carte : titre + badge + séparateur */}
+                <div className="flex flex-col items-center gap-2">
+                  <h2 className="text-base tablet:text-lg font-semibold text-darkBlue text-center text-balance min-h-[40px] flex items-center justify-center px-2">
+                    {data.title}
+                  </h2>
 
-              <div
-                dangerouslySetInnerHTML={{ __html: data.description }}
-                className="prose h-[250px] overflow-y-auto dro"
-              />
+                  <div className="inline-flex items-center gap-1 rounded-full border border-darkBlue/10 bg-white px-3 py-0.5 text-[11px]">
+                    <span
+                      className={`inline-block h-1.5 w-1.5 rounded-full ${
+                        isVisible ? "bg-[#4ead7a]" : "bg-darkBlue/30"
+                      }`}
+                    />
+                    <span className="text-darkBlue/70">
+                      {isVisible ? "Visible" : "Non visible"}
+                    </span>
+                  </div>
 
-              <hr className="bg-darkBlue h-[1px] w-[100%] opacity-20 mx-auto" />
-
-              {data.image ? (
-                <img
-                  src={data.image}
-                  alt="img"
-                  draggable={false}
-                  className="h-[350px] midTablet:h-[500px] w-full object-contain object-center  rounded-lg"
-                />
-              ) : (
-                <div className="h-[350px] midTablet:h-[500px] flex items-center justify-center">
-                  <NoImageSvg width={80} height={80} className="opacity-10" />
+                  <hr className="border-0 h-px bg-darkBlue/10 w-full" />
                 </div>
-              )}
 
-              <hr className="bg-darkBlue h-[1px] w-[90%] opacity-20 mx-auto" />
+                {/* Contenu */}
+                <div className="flex flex-col gap-3">
+                  <div
+                    dangerouslySetInnerHTML={{ __html: data.description }}
+                    className="prose prose-sm max-w-none text-darkBlue/80 h-[210px] overflow-y-auto custom-scrollbar"
+                  />
 
-              <div className="flex w-full justify-center">
-                <div className="w-1/3 flex justify-center">
+                  <div className="flex flex-col gap-2">
+                    {data.image ? (
+                      <div className="w-full rounded-xl overflow-hidden border border-darkBlue/10 bg-white">
+                        <img
+                          src={data.image}
+                          alt={data.title || "Image de l'actualité"}
+                          draggable={false}
+                          className="w-full h-[210px] object-cover object-center"
+                        />
+                      </div>
+                    ) : (
+                      <div className="h-[210px] flex items-center justify-center rounded-xl border border-dashed border-darkBlue/10 bg-white/80">
+                        <NoImageSvg
+                          width={64}
+                          height={64}
+                          className="opacity-20"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <hr className="border-0 h-px bg-darkBlue/10 w-full" />
+
+                {/* Actions */}
+                <div className="flex w-full justify-between gap-1 pt-1">
+                  {/* Visibilité */}
                   <button
-                    onClick={(e) => {
-                      handleVisibilityToggle(data);
-                    }}
-                    className="flex flex-col items-center gap-1 p-2"
+                    type="button"
+                    onClick={() => handleVisibilityToggle(data)}
+                    className="flex flex-col items-center gap-1 flex-1 px-1 py-1"
                   >
                     <div
-                      className={`bg-green ${
-                        data.visible ? "bg-opacity-20" : ""
-                      } p-[6px] rounded-full transition-colors duration-300`}
+                      className={`${iconPill} ${
+                        isVisible
+                          ? "bg-[#4ead7a1a] border-[#4ead7a80]"
+                          : "bg-darkBlue/5 border-darkBlue/15"
+                      }`}
                     >
                       <NoVisibleSvg
                         width={15}
                         height={15}
-                        strokeColor="white"
-                        fillColor="white"
+                        strokeColor={isVisible ? "#167a47" : "#6b7280"}
+                        fillColor={isVisible ? "#167a47" : "#6b7280"}
                       />
                     </div>
-                    <p className="text-xs text-center">
-                      {data.visible ? "Visible" : "Non Visible"}
-                    </p>
+                    <span className={actionLabelCls}>
+                      {isVisible ? "Visible" : "Non visible"}
+                    </span>
                   </button>
-                </div>
 
-                <div className="w-1/3 flex justify-center">
+                  {/* Supprimer */}
                   <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleDeleteClick(data);
                     }}
-                    className="flex flex-col items-center gap-1 p-2"
+                    className="flex flex-col items-center gap-1 flex-1 px-1 py-1"
                   >
-                    <div className="hover:bg-[#FF7664] bg-[#FF766499] p-[6px] rounded-full transition-colors duration-300">
+                    <div
+                      className={`${iconPill} bg-[#ef44441a] border-[#ef444480] hover:bg-[#ef444433]`}
+                    >
                       <DeleteSvg
                         width={15}
                         height={15}
-                        strokeColor="white"
-                        fillColor="white"
+                        strokeColor="#b91c1c"
+                        fillColor="#b91c1c"
                       />
                     </div>
-                    <p className="text-xs text-center">Supprimer</p>
+                    <span className={actionLabelCls}>
+                      {t("buttons.delete")}
+                    </span>
                   </button>
-                </div>
 
-                <div className="w-1/3 flex justify-center">
+                  {/* Modifier */}
                   <button
+                    type="button"
                     onClick={() => handleEditClick(data)}
-                    className="flex flex-col items-center gap-1 p-2"
+                    className="flex flex-col items-center gap-1 flex-1 px-1 py-1"
                   >
-                    <div className="hover:bg-[#4583FF] bg-[#4583FF99] p-[6px] rounded-full transition-colors duration-300">
+                    <div
+                      className={`${iconPill} bg-[#4f46e51a] border-[#4f46e580] hover:bg-[#4f46e533]`}
+                    >
                       <EditSvg
                         width={15}
                         height={15}
-                        strokeColor="white"
-                        fillColor="white"
+                        strokeColor="#4f46e5"
+                        fillColor="#4f46e5"
                       />
                     </div>
-                    <p className="text-xs text-center">Modifier</p>
+                    <span className={actionLabelCls}>{t("buttons.edit")}</span>
                   </button>
                 </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
 
+      {/* Modal suppression */}
       {isDeleteModalOpen && (
-        <div className="fixed inset-0 flex items-center justify-center z-[100]">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center">
           <div
             onClick={!isDeleting ? closeDeleteModal : undefined}
-            className="fixed inset-0 bg-black bg-opacity-20"
+            className="fixed inset-0 bg-black/30"
           />
-          <div className="bg-white p-6 rounded-lg shadow-lg w-[400px] z-10">
-            <h2 className="text-xl font-semibold mb-6 text-center">
+          <div className="relative z-10 w-[90%] max-w-[420px] rounded-2xl border border-darkBlue/10 bg-white px-5 py-5 shadow-[0_18px_45px_rgba(19,30,54,0.25)] flex flex-col gap-4">
+            <h2 className="text-lg font-semibold text-darkBlue text-center">
               {t("buttons.deleteNews")}
             </h2>
 
-            <p className="mb-6 text-center">
+            <p className="text-sm text-darkBlue/80 text-center">
               {t("buttons.confirmDelete", {
                 newsTitle: selectedNews?.title,
               })}
             </p>
 
-            <div className="flex gap-4 justify-center">
+            <div className="flex gap-3 justify-center pt-1">
               <button
-                className="px-4 py-2 rounded-lg bg-blue text-white"
+                className={btnPrimary}
                 onClick={handleDeleteConfirm}
                 disabled={isDeleting}
               >
@@ -243,7 +298,7 @@ export default function ListNewsComponent(props) {
               </button>
 
               <button
-                className="px-4 py-2 rounded-lg bg-red text-white"
+                className={btnSecondary}
                 onClick={closeDeleteModal}
                 disabled={isDeleting}
               >

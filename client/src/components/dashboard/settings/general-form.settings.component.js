@@ -29,6 +29,20 @@ export default function GeneralFormSettingsComponent({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // ---- Styles communs ----
+  const cardCls =
+    "rounded-2xl border border-darkBlue/10 bg-white/50 px-4 py-5 tablet:px-6 tablet:py-6 shadow-[0_18px_45px_rgba(19,30,54,0.06)] flex flex-col gap-5";
+  const headerBadgeCls =
+    "inline-flex h-7 px-3 items-center justify-center rounded-full bg-darkBlue/5 text-[11px] font-semibold uppercase tracking-[0.14em] text-darkBlue";
+  const fieldWrap = "flex flex-col gap-1.5";
+  const labelCls =
+    "text-xs font-semibold uppercase tracking-[0.08em] text-darkBlue/70";
+  const inputCls =
+    "h-11 w-full rounded-xl border border-darkBlue/10 bg-white/90 px-3 text-sm outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-1 focus:ring-blue/30";
+  const errorTextCls = "text-[11px] text-red mt-0.5";
+  const btnPrimary =
+    "inline-flex items-center justify-center rounded-xl bg-blue px-4 py-2.5 text-sm font-medium text-white shadow hover:bg-blue/90 transition disabled:opacity-60 disabled:cursor-not-allowed";
+
   // Pré-remplissage quand userData arrive ou change
   useEffect(() => {
     if (!userData) return;
@@ -65,7 +79,7 @@ export default function GeneralFormSettingsComponent({
         if (error.response?.status === 409) {
           setError("email", {
             type: "manual",
-            message:  "Cet email est déjà utilisé.",
+            message: "Cet email est déjà utilisé.",
           });
         } else {
           console.error("Erreur lors de la mise à jour :", error);
@@ -77,61 +91,114 @@ export default function GeneralFormSettingsComponent({
   }
 
   return (
-    <div className="flex flex-col gap-6 bg-white rounded-lg drop-shadow-sm p-6">
-      <h1 className="text-xl text-center font-semibold">
-        {t("titles.general")}
-      </h1>
-
-      <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
-        <div className="grid grid-cols-1 gap-4 tablet:grid-cols-2">
-          <div className="flex flex-col gap-1">
-            <label>{t("form.general.labels.firstname")}</label>
-            <input
-              type="text"
-              {...register("firstname", { required: true })}
-              className={`p-2 border rounded-lg ${errors.firstname ? "border-red" : ""}`}
-            />
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label>{t("form.general.labels.lastname")}</label>
-            <input
-              type="text"
-              {...register("lastname", { required: true })}
-              className={`p-2 border rounded-lg ${errors.lastname ? "border-red" : ""}`}
-            />
-          </div>
-
-          <div className="flex flex-col gap-1 relative">
-            <label>{t("form.general.labels.email")}</label>
-            <input
-              type="email"
-              {...register("email", { required: true })}
-              className={`p-2 border rounded-lg ${errors.email ? "border-red" : ""}`}
-            />
-            {errors.email && (
-              <p className="text-red text-xs mt-1">{errors.email.message}</p>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label>{t("form.general.labels.phone")}</label>
-            <input
-              type="text"
-              {...register("phoneNumber", { required: true })}
-              className={`p-2 border rounded-lg ${errors.phoneNumber ? "border-red" : ""}`}
-            />
-          </div>
+    <section className="flex flex-col gap-4">
+      <div className={cardCls}>
+        {/* Header / badge */}
+        <div className="flex items-center justify-between gap-2">
+          <span className={headerBadgeCls}>{t("titles.general")}</span>
         </div>
 
-        <button
-          type="submit"
-          className="px-4 py-2 mt-2 mx-auto tablet:mx-0 text-white rounded-md bg-blue w-fit"
-          disabled={isSubmitting}
+        <form
+          onSubmit={handleSubmit(onSubmit)}
+          className="mt-2 flex flex-col gap-4"
         >
-          {isSubmitting ? t("buttons.loading") : t("buttons.save")}
-        </button>
-      </form>
-    </div>
+          <div className="grid grid-cols-1 gap-4 tablet:grid-cols-2">
+            {/* Prénom */}
+            <div className={fieldWrap}>
+              <label className={labelCls}>
+                {t("form.general.labels.firstname")}
+                <span className="ml-1 text-red">*</span>
+              </label>
+              <input
+                type="text"
+                {...register("firstname", {
+                  required:
+                    t("form.errors.required") || "Ce champ est requis.",
+                })}
+                className={`${inputCls} ${
+                  errors.firstname ? "border-red ring-1 ring-red/30" : ""
+                }`}
+              />
+              {errors.firstname && (
+                <p className={errorTextCls}>{errors.firstname.message}</p>
+              )}
+            </div>
+
+            {/* Nom */}
+            <div className={fieldWrap}>
+              <label className={labelCls}>
+                {t("form.general.labels.lastname")}
+                <span className="ml-1 text-red">*</span>
+              </label>
+              <input
+                type="text"
+                {...register("lastname", {
+                  required:
+                    t("form.errors.required") || "Ce champ est requis.",
+                })}
+                className={`${inputCls} ${
+                  errors.lastname ? "border-red ring-1 ring-red/30" : ""
+                }`}
+              />
+              {errors.lastname && (
+                <p className={errorTextCls}>{errors.lastname.message}</p>
+              )}
+            </div>
+
+            {/* Email */}
+            <div className={fieldWrap}>
+              <label className={labelCls}>
+                {t("form.general.labels.email")}
+                <span className="ml-1 text-red">*</span>
+              </label>
+              <input
+                type="email"
+                {...register("email", {
+                  required:
+                    t("form.errors.required") || "Ce champ est requis.",
+                })}
+                className={`${inputCls} ${
+                  errors.email ? "border-red ring-1 ring-red/30" : ""
+                }`}
+              />
+              {errors.email && (
+                <p className={errorTextCls}>{errors.email.message}</p>
+              )}
+            </div>
+
+            {/* Téléphone */}
+            <div className={fieldWrap}>
+              <label className={labelCls}>
+                {t("form.general.labels.phone")}
+                <span className="ml-1 text-red">*</span>
+              </label>
+              <input
+                type="text"
+                {...register("phoneNumber", {
+                  required:
+                    t("form.errors.required") || "Ce champ est requis.",
+                })}
+                className={`${inputCls} ${
+                  errors.phoneNumber ? "border-red ring-1 ring-red/30" : ""
+                }`}
+              />
+              {errors.phoneNumber && (
+                <p className={errorTextCls}>{errors.phoneNumber.message}</p>
+              )}
+            </div>
+          </div>
+
+          <div className="pt-1 flex justify-start">
+            <button
+              type="submit"
+              className={btnPrimary}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? t("buttons.loading") : t("buttons.save")}
+            </button>
+          </div>
+        </form>
+      </div>
+    </section>
   );
 }

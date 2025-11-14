@@ -37,6 +37,7 @@ export default function ListGiftsComponent(props) {
   const router = useRouter();
   const { locale } = router;
   const currencySymbol = locale === "fr" ? "€" : "$";
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingGift, setEditingGift] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -51,38 +52,58 @@ export default function ListGiftsComponent(props) {
     formState: { errors },
   } = useForm();
 
-  // GENERE UN ID POUR DND
+  // Styles communs
+  const btnPrimary =
+    "inline-flex items-center justify-center rounded-xl bg-blue px-5 py-2.5 text-sm font-medium text-white shadow hover:bg-blue/90 transition disabled:opacity-60 disabled:cursor-not-allowed";
+  const btnSecondary =
+    "inline-flex items-center justify-center rounded-xl bg-red px-5 py-2.5 text-sm font-medium text-white shadow hover:bg-red/90 transition disabled:opacity-60 disabled:cursor-not-allowed";
+  const sectionChipWrap =
+    "flex items-center gap-3 my-6 max-w-4xl mx-auto px-2";
+  const sectionChipLine = "h-px flex-1 bg-darkBlue/10";
+  const sectionChipLabel =
+    "inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/90 px-6 py-1.5 text-[11px] font-semibold tracking-[0.18em] text-darkBlue uppercase shadow-sm";
+  const modalCardCls =
+    "relative w-full max-w-[460px] rounded-2xl border border-darkBlue/10 bg-white/95 px-5 py-6 tablet:px-7 tablet:py-7 shadow-[0_22px_55px_rgba(19,30,54,0.18)] flex flex-col gap-5";
+  const fieldWrap = "flex flex-col gap-1.5";
+  const labelCls =
+    "text-xs font-semibold uppercase tracking-[0.08em] text-darkBlue/70";
+  const inputCls =
+    "h-10 w-full rounded-xl border border-darkBlue/15 bg-white px-3 text-sm outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-1 focus:ring-blue/30";
+  const textAreaCls =
+    "w-full rounded-xl border border-darkBlue/15 bg-white px-3 py-2 text-sm outline-none transition placeholder:text-darkBlue/40 resize-none min-h-[80px] focus:border-blue/60 focus:ring-1 focus:ring-blue/30";
+  const errorTextCls = "text-[11px] text-red mt-0.5";
+
+  // ID DnD
   const id = useId();
 
-  // Définir les capteurs pour prendre en charge à la fois la souris et le toucher
+  // Capteurs souris + touch
   const mouseSensor = useSensor(MouseSensor);
   const touchSensor = useSensor(TouchSensor);
   const sensors = useSensors(mouseSensor, touchSensor);
 
   useEffect(() => {
-    setGiftCardsValue(
-      restaurantContext?.restaurantData?.giftCards.filter(
-        (giftCard) => !giftCard.description
-      )
-    );
-
-    setGiftCardsDescription(
-      restaurantContext?.restaurantData?.giftCards.filter(
-        (giftCard) => giftCard.description
-      )
-    );
+    const cards = restaurantContext?.restaurantData?.giftCards || [];
+    setGiftCardsValue(cards.filter((giftCard) => !giftCard.description));
+    setGiftCardsDescription(cards.filter((giftCard) => giftCard.description));
   }, [restaurantContext?.restaurantData]);
 
   useEffect(() => {
     if (editingGift) {
-      reset({ value: editingGift.value, description: editingGift.description });
+      reset({
+        value: editingGift.value,
+        description: editingGift.description || "",
+      });
     } else {
-      reset({ value: null, description: null });
+      reset({
+        value: "",
+        description: "",
+      });
     }
   }, [editingGift, reset]);
 
   function handleEditClick(gift) {
     setEditingGift(gift);
+    setIsDeleting(false);
     setIsModalOpen(true);
   }
 
@@ -138,9 +159,7 @@ export default function ListGiftsComponent(props) {
   function handleDragEnd(event) {
     const { active, over } = event;
 
-    if (!active || !over) {
-      return;
-    }
+    if (!active || !over) return;
 
     const allGiftCards = [...giftCardsValue, ...giftCardsDescription];
 
@@ -154,7 +173,6 @@ export default function ListGiftsComponent(props) {
     if (oldIndex !== -1 && newIndex !== -1) {
       const newOrder = arrayMove(allGiftCards, oldIndex, newIndex);
 
-      // Met à jour les états des deux listes
       const newGiftCardsValue = newOrder.filter(
         (giftCard) => !giftCard.description
       );
@@ -185,11 +203,18 @@ export default function ListGiftsComponent(props) {
       });
   }
 
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setEditingGift(null);
+    setIsDeleting(false);
+  };
+
   return (
     <section className="flex flex-col gap-6">
       <hr className="opacity-20" />
 
-      <div className="flex gap-4 flex-wrap justify-between">
+      {/* Header page */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex gap-2 items-center min-h-[40px]">
           <GiftSvg
             width={30}
@@ -198,7 +223,9 @@ export default function ListGiftsComponent(props) {
             fillColor="#131E3690"
           />
 
-          <h1 className="pl-2 text-2xl">{t("titles.main")}</h1>
+          <h1 className="pl-2 text-xl tablet:text-2xl font-semibold text-darkBlue">
+            {t("titles.main")}
+          </h1>
         </div>
 
         <button
@@ -207,20 +234,20 @@ export default function ListGiftsComponent(props) {
             setIsDeleting(false);
             setIsModalOpen(true);
           }}
-          className="bg-blue px-6 py-2 rounded-lg text-white cursor-pointer"
+          className={btnPrimary}
         >
           {t("buttons.addGift")}
         </button>
       </div>
 
-      {giftCardsValue && (
-        <div className="">
-          <div className="relative my-6">
-            <h2 className="relative flex gap-2 items-center font-semibold w-fit px-2 midTablet:px-6 mx-auto text-center uppercase bg-lightGrey z-[4]">
-              {t("titles.amountCard")}
-            </h2>
-
-            <hr className="bg-darkBlue absolute h-[1px] w-full midTablet:w-[550px] left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 z-[3]" />
+      {/* Cartes montant fixe */}
+      {giftCardsValue?.length > 0 && (
+        <div>
+          {/* Header type ligne + pill */}
+          <div className={sectionChipWrap}>
+            <div className={sectionChipLine} />
+            <div className={sectionChipLabel}>{t("titles.amountCard")}</div>
+            <div className={sectionChipLine} />
           </div>
 
           <DndContext
@@ -230,10 +257,10 @@ export default function ListGiftsComponent(props) {
             onDragEnd={handleDragEnd}
           >
             <SortableContext
-              items={giftCardsValue?.map((giftCard) => giftCard._id)}
+              items={giftCardsValue.map((giftCard) => giftCard._id)}
             >
-              <div className="my-12 grid grid-cols-1 tablet:grid-cols-3 desktop:grid-cols-4 ultraWild:grid-cols-5 gap-4">
-                {giftCardsValue?.map((giftCard, i) => (
+              <div className="mt-6 mb-10 grid grid-cols-1 tablet:grid-cols-3 desktop:grid-cols-4 ultraWild:grid-cols-5 gap-3 tablet:gap-4">
+                {giftCardsValue.map((giftCard) => (
                   <CardGiftsComponent
                     key={giftCard._id}
                     giftCard={giftCard}
@@ -249,13 +276,13 @@ export default function ListGiftsComponent(props) {
         </div>
       )}
 
-      {giftCardsDescription && (
-        <div className="mb-12">
-          <div className="relative my-6">
-            <h2 className="relative flex gap-2 items-center font-semibold w-fit px-2 midTablet:px-6 mx-auto text-center uppercase bg-lightGrey z-20">
-              {t("titles.menuCard")}
-            </h2>
-            <hr className="bg-darkBlue absolute h-[1px] w-full midTablet:w-[550px] left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 z-10" />
+      {/* Cartes type “menu / expérience” */}
+      {giftCardsDescription?.length > 0 && (
+        <div className="mb-10">
+          <div className={sectionChipWrap}>
+            <div className={sectionChipLine} />
+            <div className={sectionChipLabel}>{t("titles.menuCard")}</div>
+            <div className={sectionChipLine} />
           </div>
 
           <DndContext
@@ -265,10 +292,10 @@ export default function ListGiftsComponent(props) {
             onDragEnd={handleDragEnd}
           >
             <SortableContext
-              items={giftCardsDescription?.map((giftCard) => giftCard._id)}
+              items={giftCardsDescription.map((giftCard) => giftCard._id)}
             >
-              <div className="my-12 grid grid-cols-1 tablet:grid-cols-3 desktop:grid-cols-4 ultraWild:grid-cols-5 gap-4">
-                {giftCardsDescription?.map((giftCard, i) => (
+              <div className="mt-6 mb-10 grid grid-cols-1 tablet:grid-cols-3 desktop:grid-cols-4 ultraWild:grid-cols-5 gap-3 tablet:gap-4">
+                {giftCardsDescription.map((giftCard) => (
                   <CardGiftsComponent
                     key={giftCard._id}
                     giftCard={giftCard}
@@ -284,94 +311,97 @@ export default function ListGiftsComponent(props) {
         </div>
       )}
 
+      {/* Achats de cartes cadeaux */}
       <PurchasesGiftListComponent
         purchasesGiftCards={
           restaurantContext?.restaurantData?.purchasesGiftCards
         }
       />
 
-      {/* MODALES */}
-
+      {/* MODALE ajout / édition / suppression */}
       {isModalOpen && (
-        <div className="fixed inset-0 flex items-center mx-6 justify-center z-[100]">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center px-4">
           <div
-            onClick={() => {
-              setIsModalOpen(false);
-              setEditingGift(null);
-              setIsDeleting(false);
-            }}
-            className="fixed inset-0 bg-black bg-opacity-20"
+            onClick={closeModal}
+            className="fixed inset-0 bg-black/25 backdrop-blur-[1px]"
           />
 
-          <div className="bg-white p-6 rounded-lg shadow-lg w-[450px] z-10">
-            <h2 className="text-xl font-semibold mb-6 text-center">
+          <div className={modalCardCls}>
+            <h2 className="text-lg tablet:text-xl font-semibold text-center text-darkBlue">
               {isDeleting
                 ? t("buttons.deleteGift")
                 : editingGift
-                  ? t("buttons.editGift")
-                  : t("buttons.addGift")}
+                ? t("buttons.editGift")
+                : t("buttons.addGift")}
             </h2>
 
             <form
               onSubmit={handleSubmit(onSubmit)}
-              className="flex flex-col gap-6"
+              className="flex flex-col gap-5"
             >
-              <div className="flex flex-col gap-2">
-                <label className="block font-semibold">
+              {/* Description */}
+              <div className={fieldWrap}>
+                <label className={labelCls}>
                   <span>{t("form.labels.description")}</span>
-                  <span className="text-xs opacity-50 ml-2 italic">
+                  <span className="ml-2 text-[11px] text-darkBlue/40 italic">
                     {t("form.labels.optional")}
                   </span>
                 </label>
 
                 <textarea
-                  className={`border p-2 rounded-lg w-full resize-none  ${isDeleting ? "opacity-50 cursor-not-allowed" : ""}`}
-                  {...register("description", { required: false })}
+                  className={`${textAreaCls} ${
+                    isDeleting ? "opacity-60 cursor-not-allowed" : ""
+                  }`}
+                  {...register("description")}
                   disabled={isDeleting}
+                  placeholder={t("Commencer à écrire...")}
                 />
+              </div>
 
-                <label className="block font-semibold">
-                  {t("form.labels.value")}
-                </label>
+              {/* Valeur */}
+              <div className={fieldWrap}>
+                <label className={labelCls}>{t("form.labels.value")}</label>
 
-                <div className="flex items-center">
+                <div className="flex items-stretch rounded-xl border border-darkBlue/15 bg-white/90 overflow-hidden text-sm">
                   <span
-                    className={`px-3 py-2 rounded-l-lg ${isDeleting ? "opacity-50 cursor-not-allowed" : ""}  ${errors.value ? " border border-r-0 border-t-red border-l-red border-b-red" : " border-t border-l border-b"}`}
+                    className={`px-3 inline-flex items-center text-darkBlue/70 select-none ${
+                      isDeleting ? "opacity-60" : ""
+                    }`}
                   >
                     {currencySymbol}
                   </span>
 
                   <input
                     type="number"
-                    placeholder="-"
                     step="0.01"
                     onWheel={(e) => e.currentTarget.blur()}
+                    placeholder="-"
                     defaultValue={editingGift?.value || ""}
                     disabled={isDeleting}
                     {...register("value", { required: !isDeleting })}
-                    className={`border p-2 rounded-r-lg w-full ${
-                      errors.value ? "border-red" : ""
-                    } ${isDeleting ? "opacity-50 cursor-not-allowed" : ""}`}
+                    className={`h-10 w-full border-l px-3 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
+                      errors.value
+                        ? "border-red text-red"
+                        : "border-darkBlue/10 text-darkBlue"
+                    } ${isDeleting ? "opacity-60 cursor-not-allowed" : ""}`}
                   />
                 </div>
+
+                {errors.value && !isDeleting && (
+                  <p className={errorTextCls}>{t("form.errors.required")}</p>
+                )}
               </div>
 
-              <div className="flex gap-4 mx-auto">
-                <button
-                  type="submit"
-                  className="px-4 py-2 rounded-lg bg-blue text-white"
-                >
+              {/* Actions */}
+              <div className="mt-1 flex flex-col gap-2 tablet:flex-row tablet:justify-center">
+                <button type="submit" className={btnPrimary}>
                   {isDeleting ? t("buttons.confirm") : t("buttons.save")}
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => {
-                    setIsModalOpen(false);
-                    setEditingGift(null);
-                    setIsDeleting(false);
-                  }}
-                  className="px-4 py-2 rounded-lg text-white bg-red"
+                  onClick={closeModal}
+                  className={btnSecondary}
                 >
                   {t("buttons.cancel")}
                 </button>

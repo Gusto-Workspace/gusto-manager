@@ -18,7 +18,39 @@ export default function PurchasesGiftListComponent(props) {
   const [selectedPurchase, setSelectedPurchase] = useState(null);
   const [actionType, setActionType] = useState("");
 
-  // normalize function to strip accents & lowercase
+  // ----- Styles communs -----
+  const headerTitleCls =
+    "pl-2 text-xl tablet:text-2xl font-semibold text-darkBlue";
+  const searchInputCls =
+    "h-10 w-full rounded-xl border border-darkBlue/15 bg-white/90 px-3 pr-9 text-sm outline-none placeholder:text-darkBlue/40 shadow-sm focus:border-blue/60 focus:ring-1 focus:ring-blue/30";
+  const statusChipWrap =
+    "flex items-center gap-3 my-4 max-w-3xl mx-auto px-2";
+  const statusChipLine = "h-px flex-1 bg-darkBlue/10";
+  const statusChipLabel =
+    "inline-flex items-center justify-center rounded-full border px-5 py-1.5 text-[11px] font-semibold tracking-[0.18em] uppercase shadow-sm";
+  const btnPrimary =
+    "inline-flex items-center justify-center rounded-xl bg-blue px-4 py-2 text-xs font-medium text-white shadow hover:bg-blue/90 transition disabled:opacity-60 disabled:cursor-not-allowed";
+  const emptyBoxCls =
+    "p-5 rounded-2xl border border-dashed border-darkBlue/10 bg-white/50 text-center text-sm text-darkBlue/60 max-w-md mx-auto";
+  const modalOverlayCls = "fixed inset-0 bg-black/25 backdrop-blur-[1px]";
+  const modalCardCls =
+    "relative w-full max-w-[460px] rounded-2xl border border-darkBlue/10 bg-white/95 px-5 py-6 tablet:px-7 tablet:py-7 shadow-[0_22px_55px_rgba(19,30,54,0.20)] flex flex-col gap-5";
+  const modalBtnPrimary =
+    "inline-flex items-center justify-center rounded-xl bg-blue px-4 py-2.5 text-sm font-medium text-white shadow hover:bg-blue/90 transition";
+  const modalBtnSecondary =
+    "inline-flex items-center justify-center rounded-xl bg-red px-4 py-2.5 text-sm font-medium text-white shadow hover:bg-red/90 transition";
+
+  // Couleurs pour les badges de catégories
+  const statusColor = {
+    Valid:
+      "bg-[#4ead7a1a] text-[#166534] border-[#4ead7a80]",
+    Used:
+      "bg-[#4f46e51a] text-[#312e81] border-[#4f46e580]",
+    Expired:
+      "bg-[#ef44441a] text-[#b91c1c] border-[#ef444480]",
+  };
+
+  // ----- Utils -----
   const normalize = (str = "") =>
     str
       .normalize("NFD")
@@ -26,7 +58,7 @@ export default function PurchasesGiftListComponent(props) {
       .toLowerCase()
       .trim();
 
-  // group by status
+  // Group by status
   const purchasesByStatus = useMemo(() => {
     const groups = { Valid: [], Used: [], Expired: [] };
     (props.purchasesGiftCards || []).forEach((purchase) => {
@@ -35,37 +67,22 @@ export default function PurchasesGiftListComponent(props) {
     return groups;
   }, [props.purchasesGiftCards]);
 
-  // filter inside each status
+  // Search filter inside each status
   const filteredByStatus = useMemo(() => {
     const norm = normalize(searchTerm);
+    const filterFn = (p) =>
+      [
+        p.purchaseCode,
+        p.beneficiaryFirstName,
+        p.beneficiaryLastName,
+        p.sender,
+        p.sendEmail,
+      ].some((field) => normalize(field).includes(norm));
+
     return {
-      Valid: purchasesByStatus.Valid.filter((p) =>
-        [
-          p.purchaseCode,
-          p.beneficiaryFirstName,
-          p.beneficiaryLastName,
-          p.sender,
-          p.sendEmail,
-        ].some((field) => normalize(field).includes(norm))
-      ),
-      Used: purchasesByStatus.Used.filter((p) =>
-        [
-          p.purchaseCode,
-          p.beneficiaryFirstName,
-          p.beneficiaryLastName,
-          p.sender,
-          p.sendEmail,
-        ].some((field) => normalize(field).includes(norm))
-      ),
-      Expired: purchasesByStatus.Expired.filter((p) =>
-        [
-          p.purchaseCode,
-          p.beneficiaryFirstName,
-          p.beneficiaryLastName,
-          p.sender,
-          p.sendEmail,
-        ].some((field) => normalize(field).includes(norm))
-      ),
+      Valid: purchasesByStatus.Valid.filter(filterFn),
+      Used: purchasesByStatus.Used.filter(filterFn),
+      Expired: purchasesByStatus.Expired.filter(filterFn),
     };
   }, [purchasesByStatus, searchTerm]);
 
@@ -80,12 +97,13 @@ export default function PurchasesGiftListComponent(props) {
   function handleActionConfirm() {
     if (!selectedPurchase || !actionType) return;
 
+    const baseUrl = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext.restaurantData._id}/purchases/${selectedPurchase._id}`;
     const url =
       actionType === "Used"
-        ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext.restaurantData._id}/purchases/${selectedPurchase._id}/use`
+        ? `${baseUrl}/use`
         : actionType === "Valid"
-          ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext.restaurantData._id}/purchases/${selectedPurchase._id}/validate`
-          : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext.restaurantData._id}/purchases/${selectedPurchase._id}/delete`;
+        ? `${baseUrl}/validate`
+        : `${baseUrl}/delete`;
 
     const method = actionType === "Delete" ? "delete" : "put";
 
@@ -96,6 +114,8 @@ export default function PurchasesGiftListComponent(props) {
           purchasesGiftCards: response.data.restaurant.purchasesGiftCards,
         }));
         setIsModalOpen(false);
+        setSelectedPurchase(null);
+        setActionType("");
       })
       .catch((error) => {
         console.error("Erreur mise à jour carte cadeau :", error);
@@ -115,14 +135,22 @@ export default function PurchasesGiftListComponent(props) {
     setIsModalOpen(true);
   }
 
+  function closeModal() {
+    setIsModalOpen(false);
+    setSelectedPurchase(null);
+    setActionType("");
+  }
+
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-4">
-        <div className="flex gap-2 items-center">
+    <div className="flex flex-col gap-6 mt-4">
+      {/* Header + search */}
+      <div className="flex flex-col gap-3 tablet:flex-row tablet:items-center tablet:justify-between">
+        <div className="flex gap-2 items-center min-h-[40px]">
           <GiftSvg width={30} height={30} fillColor="#131E3690" />
-          <h1 className="pl-2 text-2xl">{t("titles.second")}</h1>
+          <h1 className={headerTitleCls}>{t("titles.second")}</h1>
         </div>
-        <div className="relative midTablet:w-[350px]">
+
+        <div className="relative w-full tablet:max-w-xs">
           <input
             type="text"
             placeholder={t(
@@ -131,159 +159,196 @@ export default function PurchasesGiftListComponent(props) {
             )}
             value={searchTerm}
             onChange={handleSearchChange}
-            className="p-2 border border-[#131E3690] rounded-lg midTablet:w-[350px]"
+            className={searchInputCls}
           />
           {searchTerm && (
             <button
               onClick={() => setSearchTerm("")}
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 w-6 h-6 bg-black bg-opacity-30 text-white rounded-full flex items-center justify-center"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded-full bg-darkBlue/10 text-[11px] text-darkBlue hover:bg-darkBlue/20 transition"
             >
-              &times;
+              ×
             </button>
           )}
         </div>
       </div>
 
-      <div className="flex flex-col gap-12">
-        {["Valid", "Used", "Expired"].map((status) => (
-          <div key={status} className="flex flex-col gap-4">
-            <div className="relative">
-              <h2 className="relative flex gap-2 items-center text-lg font-semibold w-fit px-6 mx-auto text-center uppercase bg-lightGrey z-20">
-                {statusTranslations[status]}{" "}
-                <span className="text-base opacity-50">
-                  ({filteredByStatus[status].length})
-                </span>
-              </h2>
-              <hr className="bg-darkBlue absolute h-[1px] w-full midTablet:w-[350px] left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 z-10" />
-            </div>
+      {/* Lists par statut */}
+      <div className="flex flex-col gap-10">
+        {["Valid", "Used", "Expired"].map((status) => {
+          const items = filteredByStatus[status] || [];
 
-            {filteredByStatus[status].length > 0 ? (
-              <ul className="flex flex-col gap-2 max-h-[570px] overflow-y-auto">
-                {filteredByStatus[status].map((purchase) => (
-                  <li
-                    key={purchase._id}
-                    className="relative bg-white p-4 rounded-lg drop-shadow-sm flex flex-col gap-4 midTablet:flex-row text-center midTablet:text-start justify-between item-start midTablet:items-end"
-                  >
-                    <button
-                      className="group absolute bottom-4 mobile:top-4 right-4 px-2 py-2 rounded h-fit bg-white drop-shadow-md"
-                      onClick={() => handleDeleteGiftCard(purchase)}
-                    >
-                      <TrashSvg
-                        height={28}
-                        width={28}
-                        strokeColor="#FF7664"
-                        className="group-hover:rotate-12 transition-all duration-200"
-                      />
-                    </button>
-
-                    <div className="flex flex-col gap-2">
-                      <p>
-                        {t("labels.amount")} : {purchase.value}€
-                      </p>
-                      {purchase.description && (
-                        <p>
-                          {t("labels.description")} : {purchase.description}
-                        </p>
-                      )}
-                      <p>
-                        {t("labels.owner")} : {purchase.beneficiaryFirstName}{" "}
-                        {purchase.beneficiaryLastName}
-                      </p>
-                      <p>
-                        {t("labels.code")} : {purchase.purchaseCode}
-                      </p>
-                      <p>
-                        {t("labels.sender")} : {purchase.sender}{" "}
-                        {purchase.sendEmail && (
-                          <span className="text-sm opacity-30 italic">
-                            ({purchase.sendEmail})
-                          </span>
-                        )}
-                      </p>
-                      <p>
-                        {t("labels.orderedDay")} :{" "}
-                        {new Date(purchase.created_at).toLocaleDateString(
-                          "fr-FR"
-                        )}
-                      </p>
-                      {status === "Valid" && (
-                        <p>
-                          {t("labels.valididy")}:{" "}
-                          {new Date(purchase.validUntil).toLocaleDateString(
-                            "fr-FR"
-                          )}
-                        </p>
-                      )}
-                      {status === "Used" && (
-                        <p>
-                          {t("labels.useDate")}:{" "}
-                          {new Date(purchase.useDate).toLocaleDateString(
-                            "fr-FR"
-                          )}
-                        </p>
-                      )}
-                    </div>
-
-                    {(status === "Valid" || status === "Expired") && (
-                      <button
-                        className="mt-2 whitespace-nowrap px-4 py-2 bg-blue text-white rounded hover:bg-opacity-50 transition-all duration-200 w-fit mobile:mx-auto midTablet:mx-0"
-                        onClick={() => handleActionClick(purchase, "Used")}
-                      >
-                        {t("buttons.usedCard")}
-                      </button>
-                    )}
-                    {status === "Used" && (
-                      <button
-                        className="mt-2 px-4 py-2 bg-blue text-white rounded hover:bg-opacity-50 transition-all duration-200 w-fit mobile:mx-auto midTablet:mx-0"
-                        onClick={() => handleActionClick(purchase, "Valid")}
-                      >
-                        {t("buttons.revalidateCard")}
-                      </button>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="p-6 bg-white bg-opacity-70 drop-shadow-sm rounded-lg w-full mobile:w-1/2 mx-auto text-center">
-                <p className="italic">{t("labels.emptyCard")}</p>
+          return (
+            <div key={status} className="flex flex-col gap-4">
+              {/* Badge de catégorie coloré + lignes */}
+              <div className={statusChipWrap}>
+                <div className={statusChipLine} />
+                <div
+                  className={`${statusChipLabel} ${statusColor[status]}`}
+                >
+                  <span>{statusTranslations[status]}</span>
+                  <span className="ml-2 text-xs opacity-70">
+                    ({items.length})
+                  </span>
+                </div>
+                <div className={statusChipLine} />
               </div>
-            )}
-          </div>
-        ))}
+
+              {items.length > 0 ? (
+                <ul className="flex flex-col gap-3 max-h-[570px] overflow-y-auto">
+                  {items.map((purchase) => (
+                    <li
+                      key={purchase._id}
+                      className="relative flex flex-col gap-3 tablet:flex-row tablet:items-end justify-between rounded-2xl border border-darkBlue/10 bg-white/50 px-4 py-4 shadow-[0_18px_45px_rgba(19,30,54,0.06)]"
+                    >
+                      {/* Bouton supprimer */}
+                      <button
+                        type="button"
+                        className="group absolute right-3 top-3 inline-flex items-center justify-center rounded-full bg-white shadow-sm border border-red/10 p-1.5 hover:bg-red/5"
+                        onClick={() => handleDeleteGiftCard(purchase)}
+                      >
+                        <TrashSvg
+                          height={22}
+                          width={22}
+                          strokeColor="#FF7664"
+                          className="group-hover:rotate-12 transition-transform duration-200"
+                        />
+                      </button>
+
+                      {/* Infos principales */}
+                      <div className="flex flex-col gap-1 text-sm text-darkBlue">
+                        <p className="font-semibold">
+                          {t("labels.amount")} : {purchase.value}€
+                        </p>
+
+                        {purchase.description && (
+                          <p className="text-xs text-darkBlue/70">
+                            {t("labels.description")} : {purchase.description}
+                          </p>
+                        )}
+
+                        <p>
+                          {t("labels.owner")} :{" "}
+                          <span className="font-medium">
+                            {purchase.beneficiaryFirstName}{" "}
+                            {purchase.beneficiaryLastName}
+                          </span>
+                        </p>
+
+                        <p>
+                          {t("labels.code")} :{" "}
+                          <span className="font-mono text-[13px]">
+                            {purchase.purchaseCode}
+                          </span>
+                        </p>
+
+                        <p>
+                          {t("labels.sender")} : {purchase.sender}{" "}
+                          {purchase.sendEmail && (
+                            <span className="text-xs text-darkBlue/40 italic">
+                              ({purchase.sendEmail})
+                            </span>
+                          )}
+                        </p>
+
+                        <p className="text-xs text-darkBlue/70 mt-1">
+                          {t("labels.orderedDay")} :{" "}
+                          {new Date(
+                            purchase.created_at
+                          ).toLocaleDateString("fr-FR")}
+                        </p>
+
+                        {status === "Valid" && (
+                          <p className="text-xs text-darkBlue/70">
+                            {t("labels.valididy")} :{" "}
+                            {new Date(
+                              purchase.validUntil
+                            ).toLocaleDateString("fr-FR")}
+                          </p>
+                        )}
+
+                        {status === "Used" && purchase.useDate && (
+                          <p className="text-xs text-darkBlue/70">
+                            {t("labels.useDate")} :{" "}
+                            {new Date(
+                              purchase.useDate
+                            ).toLocaleDateString("fr-FR")}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Bouton action statut */}
+                      <div className="mt-3 tablet:mt-0 tablet:text-right">
+                        {(status === "Valid" || status === "Expired") && (
+                          <button
+                            type="button"
+                            className={btnPrimary}
+                            onClick={() =>
+                              handleActionClick(purchase, "Used")
+                            }
+                          >
+                            {t("buttons.usedCard")}
+                          </button>
+                        )}
+
+                        {status === "Used" && (
+                          <button
+                            type="button"
+                            className={btnPrimary}
+                            onClick={() =>
+                              handleActionClick(purchase, "Valid")
+                            }
+                          >
+                            {t("buttons.revalidateCard")}
+                          </button>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className={emptyBoxCls}>
+                  <p className="italic">{t("labels.emptyCard")}</p>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
+      {/* MODALE CONFIRMATION */}
       {isModalOpen && (
-        <div className="fixed inset-0 flex items-center mx-6 justify-center z-[100]">
-          <div
-            onClick={() => setIsModalOpen(false)}
-            className="fixed inset-0 bg-black bg-opacity-20"
-          />
-          <div className="bg-white mx-6 w-[500px] p-6 rounded-lg shadow-lg flex flex-col gap-6 z-10">
-            <p className="text-xl font-semibold mx-auto flex flex-col gap-4 text-center text-pretty">
+        <div className="fixed inset-0 z-[120] flex items-center justify-center px-4">
+          <div className={modalOverlayCls} onClick={closeModal} />
+
+          <div className={modalCardCls}>
+            <h2 className="text-lg tablet:text-xl font-semibold text-center text-darkBlue">
               {actionType === "Used"
                 ? t("labels.confirmUse.title")
                 : actionType === "Valid"
-                  ? t("labels.confirmRevalidate.title")
-                  : t("labels.confirmDelete.title")}
-              <span className="w-[200px] h-[1px] mx-auto bg-black" />
-            </p>
-            <p className="text-md mb-2 text-center text-balance">
+                ? t("labels.confirmRevalidate.title")
+                : t("labels.confirmDelete.title")}
+            </h2>
+
+            <p className="text-sm text-center text-darkBlue/80">
               {actionType === "Used"
                 ? t("labels.confirmUse.text")
                 : actionType === "Valid"
-                  ? t("labels.confirmRevalidate.text")
-                  : t("labels.confirmDelete.text")}
+                ? t("labels.confirmRevalidate.text")
+                : t("labels.confirmDelete.text")}
             </p>
-            <div className="flex justify-center gap-4">
+
+            <div className="mt-2 flex flex-col gap-2 tablet:flex-row tablet:justify-center">
               <button
-                className="px-4 py-2 bg-blue text-white rounded hover:bg-green-400"
+                type="button"
+                className={modalBtnPrimary}
                 onClick={handleActionConfirm}
               >
                 {t("buttons.confirm")}
               </button>
               <button
-                className="px-4 py-2 bg-red text-white rounded hover:bg-red-400"
-                onClick={() => setIsModalOpen(false)}
+                type="button"
+                className={modalBtnSecondary}
+                onClick={closeModal}
               >
                 {t("buttons.cancel")}
               </button>
