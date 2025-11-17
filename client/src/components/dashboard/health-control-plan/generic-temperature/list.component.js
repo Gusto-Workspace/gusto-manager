@@ -317,7 +317,7 @@ export default function GenericTemperatureList({
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto max-w-[calc(100vw-83px)] midTablet:max-w-[calc(100vw-92px)] tablet:max-w-[calc(100vw-340px)] rounded-xl border border-darkBlue/10 p-2">
+      <div className="overflow-x-auto max-w-[calc(100vw-83px)] midTablet:max-w-[calc(100vw-92px)] tablet:max-w-[calc(100vw-340px)] rounded-xl border border-darkBlue/10 p-2 pb-0">
         <table className="w-full text-[13px]">
           <thead className="whitespace-nowrap">
             <tr className="sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
@@ -342,7 +342,7 @@ export default function GenericTemperatureList({
             </tr>
           </thead>
 
-          <tbody className="divide-y divide-darkBlue/10 [&>tr:last-child>td]:!pb-0">
+          <tbody className="divide-y divide-darkBlue/10">
             {!loading && filtered.length === 0 && (
               <tr>
                 <td colSpan={6} className="py-8 text-center text-darkBlue/50">
@@ -353,11 +353,10 @@ export default function GenericTemperatureList({
 
             {loading && (
               <tr>
-                <td colSpan={6} className="py-8 text-center text-darkBlue/50">
-                  <div className="flex items-center gap-2">
-                    <Loader2 className="size-4 animate-spin" />
-                    <span>chargement…</span>
-                  </div>
+                <td colSpan={6} className="text-center text-darkBlue/50">
+                  <span className="py-8 flex justify-center items-center gap-2">
+                    <Loader2 className="size-4 animate-spin" /> Chargement…
+                  </span>
                 </td>
               </tr>
             )}
