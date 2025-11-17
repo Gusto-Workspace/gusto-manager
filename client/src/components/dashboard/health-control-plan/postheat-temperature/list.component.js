@@ -246,7 +246,7 @@ export default function PostheatTemperatureList({
 
   /* ------------------------------ Styles ------------------------------ */
   const fieldWrap =
-    "group relative rounded-xl bg-white/50   transition-shadow";
+    "group relative rounded-xl bg-white/50 backdrop-blur-sm transition-shadow";
   const labelCls =
     "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
   const inputCls =

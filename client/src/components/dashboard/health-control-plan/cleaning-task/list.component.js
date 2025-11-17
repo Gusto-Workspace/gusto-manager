@@ -470,7 +470,7 @@ export default function CleaningTaskList({
             {loading && (
               <tr>
                 <td colSpan={9} className="py-8 text-center text-darkBlue/50">
-                  <div className="flex items-center gap-2">
+                  <div className="flex justify-center items-center gap-2">
                     <Loader2 className="size-4 animate-spin" />
                     <span>chargement…</span>
                   </div>

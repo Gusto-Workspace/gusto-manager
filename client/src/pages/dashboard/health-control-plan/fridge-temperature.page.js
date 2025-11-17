@@ -1,20 +1,26 @@
 import { useContext, useEffect, useMemo, useState } from "react";
 import Head from "next/head";
+import { GlobalContext } from "@/contexts/global.context";
 import { useRouter } from "next/router";
 import { useTranslation } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
+
+// AXIOS
 import axios from "axios";
 
-import { GlobalContext } from "@/contexts/global.context";
+// COMPOSANTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
-import { HealthSvg } from "@/components/_shared/_svgs/health.svg";
-
 import FridgeTemperatureForm from "@/components/dashboard/health-control-plan/fridge-temperature/form.component";
 import FridgeTemperatureList from "@/components/dashboard/health-control-plan/fridge-temperature/list.component";
 import FridgeManagerModal from "@/components/dashboard/health-control-plan/fridge-temperature/fridge-manager-modale.component";
+
+
+// ICONS + SVG
+import { HealthSvg } from "@/components/_shared/_svgs/health.svg";
 import { List } from "lucide-react";
+
 
 export default function FridgeTemperaturePage() {
   const { t } = useTranslation("");

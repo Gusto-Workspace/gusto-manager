@@ -73,7 +73,7 @@ export default function InventoryLotList({
 
   // Styles (alignés sur l'autre List)
   const fieldWrap =
-    "group relative rounded-xl bg-white/50   transition-shadow";
+    "group relative rounded-xl bg-white/50 backdrop-blur-sm transition-shadow";
   const labelCls =
     "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
   const inputCls =
@@ -363,10 +363,9 @@ export default function InventoryLotList({
             {loading && (
               <tr>
                 <td colSpan={8} className="py-8 text-center text-darkBlue/50">
-                  <div className="flex items-center gap-2">
-                    <Loader2 className="size-4 animate-spin" />
-                    <span>chargement…</span>
-                  </div>
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="size-4 animate-spin" /> Chargement…
+                  </span>
                 </td>
               </tr>
             )}
@@ -509,10 +508,9 @@ export default function InventoryLotList({
                     type="button"
                   >
                     {deleteLoading ? (
-                      <div className="flex items-center gap-2">
-                        <Loader2 className="size-4 animate-spin" />
-                        <span>Suppression…</span>
-                      </div>
+                      <>
+                        <Loader2 className="size-4 animate-spin" /> Suppression…
+                      </>
                     ) : (
                       "Confirmer"
                     )}

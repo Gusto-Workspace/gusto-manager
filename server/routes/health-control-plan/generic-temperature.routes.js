@@ -15,8 +15,8 @@ function currentUserFromToken(req) {
   return {
     userId: u.id,
     role,
-    firstName: u.firstname || u.firstName || "",
-    lastName: u.lastname || u.lastName || "",
+    firstName: u.firstname || "",
+    lastName: u.lastname || "",
   };
 }
 function normalizeStr(v) {
@@ -28,14 +28,6 @@ function normalizeDate(v) {
   if (!v) return null;
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? null : d;
-}
-function hasBusinessChanges(prev, next) {
-  const fields = ["location", "locationId", "value", "unit", "note"];
-  for (const f of fields)
-    if ((prev?.[f] ?? null) !== (next?.[f] ?? null)) return true;
-  const t1 = prev?.createdAt?.getTime?.() ?? null;
-  const t2 = next?.createdAt?.getTime?.() ?? null;
-  return t1 !== t2;
 }
 
 /* -------------------- CREATE -------------------- */

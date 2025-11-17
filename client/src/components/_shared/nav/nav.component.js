@@ -34,7 +34,7 @@ const HREF_TO_OPTION_KEY = {
   "/dashboard/gifts": "gift_card",
   "/dashboard/reservations": "reservations",
   "/dashboard/take-away": "take_away",
-  "/dashboard/health-control-plan" : "health_control_plan",
+  "/dashboard/health-control-plan": "health_control_plan",
 };
 
 export default function NavComponent() {
@@ -47,6 +47,38 @@ export default function NavComponent() {
 
   const navRef = useRef(null);
   const timeoutRef = useRef(null);
+
+  // ----- Styles communs -----
+  const sidebarCls = `
+    fixed top-0 left-0
+    w-[270px] h-[100dvh]
+    flex flex-col
+    bg-white
+    border-r border-darkBlue/10
+    shadow-[3px_0_20px_rgba(19,30,54,0.06)]
+    px-2 py-4 tablet:px-4 tablet:py-6
+    gap-4
+    overflow-y-auto custom-scrollbar
+    z-[90] tablet:z-10
+    transition-transform duration-200 ease-out
+  `;
+  const logoWrapCls =
+    "h-[72px] flex items-center justify-center  mb-1";
+  const logoImgCls = "max-w-[50px] opacity-70";
+  const navListCls = "flex-1 flex flex-col gap-3 mt-1.5";
+  const navItemBaseCls =
+    "group h-11 flex items-center rounded-xl px-2 pr-3 text-base font-medium transition";
+  const navItemEnabledCls =
+    "cursor-pointer text-darkBlue/80 hover:bg-darkBlue/5";
+  const navItemDisabledCls = "cursor-not-allowed text-darkBlue/40 opacity-60";
+  const navItemActiveCls = "bg-blue/10 text-blue";
+  const iconChipBase =
+    "inline-flex items-center justify-center rounded-full p-2 transition-colors";
+  const iconChipActive = "bg-blue text-white";
+  const iconChipInactive =
+    "bg-white border border-darkBlue/10 group-hover:border-darkBlue/25";
+  const logoutBtnCls =
+    "w-full inline-flex items-center justify-center rounded-xl bg-red text-white text-sm font-semibold py-2.5 mt-2 shadow hover:bg-red/90 transition";
 
   const calculateTranslateX = useCallback(() => {
     const windowWidth = window.innerWidth;
@@ -80,7 +112,7 @@ export default function NavComponent() {
   function handleLinkClick(e, href) {
     e.preventDefault();
     setMenuOpen(false);
-    timeoutRef.current = setTimeout(() => router.push(href), 200);
+    timeoutRef.current = setTimeout(() => router.push(href), 180);
   }
 
   function isActive(itemHref) {
@@ -105,15 +137,12 @@ export default function NavComponent() {
 
       const optionKey = HREF_TO_OPTION_KEY[itemHref];
       if (role === "owner") {
-        // Dashboard et Restaurant toujours visibles
         if (itemHref === "/dashboard" || itemHref === "/dashboard/restaurant") {
           return true;
         }
-        // sinon selon les options du restaurant
         const opts = restaurantContext.restaurantData?.options || {};
         return optionKey ? !!opts[optionKey] : true;
       } else {
-        // pour les employés, selon leurs propres options
         const opts = restaurantContext.userConnected?.options || {};
         return optionKey ? !!opts[optionKey] : true;
       }
@@ -127,122 +156,147 @@ export default function NavComponent() {
 
   const sortedNavItems = useMemo(() => {
     const role = restaurantContext.userConnected?.role;
-    // on mappe chaque item avec son flag enabled
     let items = navItemsData.map((item) => ({
       ...item,
       enabled: isOptionEnabled(item.href),
     }));
 
     if (role === "owner") {
-      // pour les owners : on retire _uniquement_ "my-space"
       items = items.filter((item) => item.href !== "/dashboard/my-space");
     } else {
-      // pour les employés : on ne garde que les routes activées
       items = items.filter((item) => item.enabled);
     }
 
-    // toujours afficher en premier les enabled
+    // enabled d'abord, mais la verticale reste plus aérée via gap
     return items.sort((a, b) => (b.enabled === true) - (a.enabled === true));
-  }, [navItemsData, isOptionEnabled, restaurantContext.userConnected?.role]);
+  }, [isOptionEnabled, restaurantContext.userConnected?.role]);
 
   return (
     <div>
+      {/* Overlay mobile */}
       <div
-        className={`fixed inset-0 z-[60] tablet:hidden ${
-          menuOpen ? "bg-black bg-opacity-35" : "pointer-events-none"
-        } transition-bg duration-200 ease-in-out`}
+        className={`
+          fixed inset-0 z-[60] tablet:hidden
+          transition-opacity duration-200 ease-out
+          ${menuOpen ? "bg-black/40 opacity-100" : "opacity-0 pointer-events-none"}
+        `}
         onClick={() => setMenuOpen(false)}
       />
 
+      {/* Bouton hamburger mobile */}
       <button
-        className="fixed left-6 top-6 z-[91] tablet:hidden desktop:hidden bg-white w-[49px] h-[49px] flex items-center justify-center drop-shadow-sm rounded-lg transition-transform duration-200 ease-in-out"
+        className="
+          fixed left-2 top-5 z-[91]
+          tablet:hidden desktop:hidden
+          flex items-center justify-center
+          w-[49px] h-[49px]
+          rounded-full border border-darkBlue/10
+          bg-white shadow-[0_18px_45px_rgba(19,30,54,0.16)]
+          transition-transform duration-200 ease-out
+        "
         style={{
           transform: menuOpen ? `translateX(${translateX}px)` : "translateX(0)",
         }}
         onClick={() => setMenuOpen((o) => !o)}
+        aria-label="Toggle navigation"
       >
-        <div>
-          <div
-            className={`h-0.5 w-8 bg-darkBlue transform transition duration-200 ease-in-out ${
-              menuOpen ? "rotate-45 translate-y-2.5" : ""
-            }`}
+        <div className="relative w-6 h-4 flex flex-col justify-between">
+          <span
+            className={`
+              absolute left-0 top-0 h-[2px] w-full bg-darkBlue
+              transition-all duration-200 ease-out
+              ${menuOpen ? "rotate-45 top-1/2 -translate-y-1/2" : ""}
+            `}
           />
-          <div className="my-2">
-            <div
-              className={`h-0.5 w-8 bg-darkBlue transition-all duration-200 ease-in-out ${
-                menuOpen ? "opacity-0" : "opacity-100"
-              }`}
-            />
-          </div>
-          <div
-            className={`h-0.5 w-8 bg-darkBlue transform transition duration-200 ease-in-out ${
-              menuOpen ? "-rotate-45 -translate-y-2.5" : ""
-            }`}
+          <span
+            className={`
+              absolute left-0 top-1/2 -translate-y-1/2 h-[2px] w-full bg-darkBlue
+              transition-opacity duration-200 ease-out
+              ${menuOpen ? "opacity-0" : "opacity-100"}
+            `}
+          />
+          <span
+            className={`
+              absolute left-0 bottom-0 h-[2px] w-full bg-darkBlue
+              transition-all duration-200 ease-out
+              ${menuOpen ? "-rotate-45 bottom-1/2 translate-y-1/2" : ""}
+            `}
           />
         </div>
       </button>
 
+      {/* Sidebar */}
       <nav
         ref={navRef}
-        style={{ boxShadow: "3px 0 5px rgba(0,0,0,0.05)" }}
-        className={`${
-          menuOpen ? "translate-x-0" : "-translate-x-full"
-        } transition duration-200 ease-in-out custom-scrollbar tablet:translate-x-0 w-[270px] fixed bg-white h-[100dvh] overflow-y-auto flex flex-col py-6 px-4 gap-3 z-[90] tablet:z-10 text-darkBlue overscroll-contain`}
+        className={`
+          ${sidebarCls}
+          ${menuOpen ? "translate-x-0" : "-translate-x-full tablet:translate-x-0"}
+        `}
       >
-        <div className="z-10 h-[80px] flex items-center justify-center">
+        {/* Logo */}
+        <div className={logoWrapCls}>
           <img
-            src="/img/logo-2.png"
+            src="/img/logo-3.png"
             draggable={false}
             alt="logo"
-            className="max-w-[100px] opacity-50"
+            className={logoImgCls}
           />
         </div>
 
-        <ul className="flex-1 flex flex-col gap-3">
+        {/* Items */}
+        <ul className={navListCls}>
           {sortedNavItems.map((item) => {
             const Icon = icons[item.icon];
             const active = isActive(item.href);
+            const canClick = item.enabled;
+
+            const itemCls = [
+              navItemBaseCls,
+              canClick ? navItemEnabledCls : navItemDisabledCls,
+              active ? navItemActiveCls : "",
+            ]
+              .join(" ")
+              .trim();
 
             return (
-              <li
-                key={item.href}
-                className={`h-12 flex items-center pl-1 pr-6 ${
-                  active ? "text-blue bg-blue bg-opacity-30 rounded-full" : ""
-                } ${!item.enabled ? "opacity-50 cursor-not-allowed" : ""}`}
-              >
-                {item.enabled ? (
+              <li key={item.href}>
+                {canClick ? (
                   <Link
                     href={item.href}
                     onClick={(e) => handleLinkClick(e, item.href)}
-                    className="h-12 flex gap-2 items-center w-full"
+                    className={itemCls}
                   >
                     {Icon && (
                       <div
-                        className={`${active ? "bg-blue" : ""} p-[8px] rounded-full`}
+                        className={`${
+                          active ? iconChipActive : iconChipInactive
+                        } ${iconChipBase}`}
                       >
                         <Icon
-                          width={23}
-                          height={23}
+                          width={20}
+                          height={20}
                           fillColor={active ? "white" : "#131E3699"}
                           strokeColor={active ? "white" : "#131E3699"}
                         />
                       </div>
                     )}
-                    {t(item.label)}
+                    <span className="ml-2 truncate">{t(item.label)}</span>
                   </Link>
                 ) : (
-                  <div className="h-12 flex gap-2 items-center w-full">
+                  <div className={itemCls}>
                     {Icon && (
-                      <div className="p-[8px] rounded-full opacity-50">
+                      <div
+                        className={`${iconChipBase} bg-white border border-darkBlue/5`}
+                      >
                         <Icon
-                          width={23}
-                          height={23}
-                          fillColor="#131E3699"
-                          strokeColor="#131E3699"
+                          width={20}
+                          height={20}
+                          fillColor="#9ca3af"
+                          strokeColor="#9ca3af"
                         />
                       </div>
                     )}
-                    {t(item.label)}
+                    <span className="ml-2 truncate">{t(item.label)}</span>
                   </div>
                 )}
               </li>
@@ -250,10 +304,8 @@ export default function NavComponent() {
           })}
         </ul>
 
-        <button
-          className="text-white bg-red py-2 rounded-lg"
-          onClick={restaurantContext.logout}
-        >
+        {/* Logout */}
+        <button className={logoutBtnCls} onClick={restaurantContext.logout}>
           {t("buttons.logout")}
         </button>
       </nav>

@@ -226,7 +226,7 @@ export default function GenericTemperatureList({
 
   /* ------------------------------ Styles ------------------------------ */
   const fieldWrap =
-    "group relative rounded-xl bg-white/50   transition-shadow";
+    "group relative rounded-xl bg-white/50 backdrop-blur-sm transition-shadow";
   const labelCls =
     "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
   const inputCls =
@@ -482,10 +482,9 @@ export default function GenericTemperatureList({
                     type="button"
                   >
                     {deleteLoading ? (
-                      <div className="flex items-center gap-2">
-                        <Loader2 className="size-4 animate-spin" />
-                        <span>Suppression…</span>
-                      </div>
+                      <>
+                        <Loader2 className="size-4 animate-spin" /> Suppression…
+                      </>
                     ) : (
                       "Confirmer"
                     )}

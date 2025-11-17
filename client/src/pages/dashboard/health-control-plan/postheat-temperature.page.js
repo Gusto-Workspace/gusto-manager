@@ -180,7 +180,6 @@ export default function PostHeatTemperaturePage(props) {
         </div>
       </div>
 
-      {/* Modale réutilisée (identique à preheat) */}
       {isEquipmentModalOpen ? (
         <CookingEquipmentManagerModal
           restaurantId={restaurantId}

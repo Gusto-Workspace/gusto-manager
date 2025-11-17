@@ -1,4 +1,3 @@
-// server/routes/health-control-plan/cooking-equipments.routes.js
 const express = require("express");
 const router = express.Router();
 

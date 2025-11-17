@@ -17,8 +17,8 @@ function currentUserFromToken(req) {
   return {
     userId: new Types.ObjectId(String(u.id)),
     role,
-    firstName: u.firstname || u.firstName || "",
-    lastName: u.lastname || u.lastName || "",
+    firstName: u.firstname || "",
+    lastName: u.lastname || "",
   };
 }
 function normalizeStr(v) {
