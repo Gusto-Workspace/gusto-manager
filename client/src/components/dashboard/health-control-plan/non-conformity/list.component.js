@@ -1,10 +1,10 @@
-// components/dashboard/health-control-plan/non-conformities/list.component.jsx
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import axios from "axios";
 import { Search, CalendarClock, Edit3, Trash2, Loader2, X } from "lucide-react";
 
+/* ---------- Utils ---------- */
 function fmtDate(d) {
   try {
     if (!d) return "—";
@@ -21,17 +21,37 @@ function fmtDate(d) {
   }
 }
 
-const statusPill = (s) => {
+/* ---------- Labels FR ---------- */
+const TYPE_LABELS = {
+  temperature: "Température",
+  hygiene: "Hygiène",
+  reception: "Réception",
+  microbiology: "Microbiologie",
+  other: "Autre",
+};
+
+const SEVERITY_LABELS = {
+  low: "Faible",
+  medium: "Moyenne",
+  high: "Élevée",
+};
+
+const STATUS_LABELS = {
+  open: "Ouverte",
+  in_progress: "En cours",
+  closed: "Fermée",
+};
+
+function statusPill(s) {
   const map = {
     open: "bg-red text-white",
     in_progress: "bg-orange text-white",
     closed: "bg-green text-white",
   };
   const cls = map[s] || "bg-darkBlue/15 text-darkBlue";
-  return (
-    <span className={`px-2 py-0.5 rounded text-xs ${cls}`}>{s || "—"}</span>
-  );
-};
+  const label = STATUS_LABELS[s] || s || "—";
+  return <span className={`px-2 py-0.5 rounded text-xs ${cls}`}>{label}</span>;
+}
 
 export default function NonConformityList({
   restaurantId,
@@ -41,9 +61,11 @@ export default function NonConformityList({
 }) {
   const [items, setItems] = useState([]);
   const [meta, setMeta] = useState({ page: 1, limit: 20, pages: 1, total: 0 });
-  const [loading, setLoading] = useState(false);
 
-  // Filtres
+  const [loading, setLoading] = useState(false);
+  const [showSlowLoader, setShowSlowLoader] = useState(false);
+
+  // Filtres affichés
   const [q, setQ] = useState("");
   const [type, setType] = useState("");
   const [severity, setSeverity] = useState("");
@@ -51,14 +73,24 @@ export default function NonConformityList({
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
+  // Dates réellement appliquées au backend
+  const [appliedDateFrom, setAppliedDateFrom] = useState("");
+  const [appliedDateTo, setAppliedDateTo] = useState("");
+
+  // Suppression
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
+  // SSR-safe portal
   const [isClient, setIsClient] = useState(false);
   useEffect(() => setIsClient(true), []);
 
-  const token = useMemo(() => localStorage.getItem("token"), []);
+  const token = useMemo(
+    () => (typeof window !== "undefined" ? localStorage.getItem("token") : null),
+    []
+  );
+
   const metaRef = useRef(meta);
   useEffect(() => {
     metaRef.current = meta;
@@ -81,14 +113,25 @@ export default function NonConformityList({
     });
 
   const hasActiveFilters = useMemo(
-    () => Boolean(q || type || severity || status || dateFrom || dateTo),
-    [q, type, severity, status, dateFrom, dateTo]
+    () =>
+      Boolean(
+        q ||
+          type ||
+          severity ||
+          status ||
+          dateFrom ||
+          dateTo ||
+          appliedDateFrom ||
+          appliedDateTo
+      ),
+    [q, type, severity, status, dateFrom, dateTo, appliedDateFrom, appliedDateTo]
   );
+
   const hasFullDateRange = Boolean(dateFrom && dateTo);
 
-  /* ---------- Styles (alignés sur MicrobiologyList) ---------- */
+  /* ---------- Styles ---------- */
   const fieldWrap =
-    "group relative rounded-xl bg-white/50   transition-shadow";
+    "group relative rounded-xl bg-white/50 backdrop-blur-sm transition-shadow";
   const labelCls =
     "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
   const inputCls =
@@ -98,7 +141,10 @@ export default function NonConformityList({
   const btnBase =
     "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition active:scale-[0.98]";
 
+  /* ---------- Fetch ---------- */
   const fetchData = async (page = 1, overrides = {}) => {
+    if (!restaurantId) return;
+
     setLoading(true);
     try {
       const cur = {
@@ -106,9 +152,14 @@ export default function NonConformityList({
         type: overrides.type ?? type,
         severity: overrides.severity ?? severity,
         status: overrides.status ?? status,
-        dateFrom: overrides.dateFrom ?? dateFrom,
-        dateTo: overrides.dateTo ?? dateTo,
+        dateFrom:
+          overrides.dateFrom !== undefined
+            ? overrides.dateFrom
+            : appliedDateFrom,
+        dateTo:
+          overrides.dateTo !== undefined ? overrides.dateTo : appliedDateTo,
       };
+
       const params = { page, limit: meta.limit || 20 };
       if (cur.q) params.q = cur.q;
       if (cur.type) params.type = cur.type;
@@ -119,7 +170,7 @@ export default function NonConformityList({
 
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-non-conformities`;
       const { data } = await axios.get(url, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         params,
       });
 
@@ -135,9 +186,23 @@ export default function NonConformityList({
     }
   };
 
+  // Loader "lent" : visible seulement si loading > 1s
+  useEffect(() => {
+    if (!loading) {
+      setShowSlowLoader(false);
+      return;
+    }
+    const id = setTimeout(() => {
+      setShowSlowLoader(true);
+    }, 1000);
+    return () => clearTimeout(id);
+  }, [loading]);
+
   // Initial fetch
   useEffect(() => {
-    if (restaurantId)
+    if (restaurantId) {
+      setAppliedDateFrom("");
+      setAppliedDateTo("");
       fetchData(1, {
         q: "",
         type: "",
@@ -146,6 +211,7 @@ export default function NonConformityList({
         dateFrom: "",
         dateTo: "",
       });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
 
@@ -155,6 +221,25 @@ export default function NonConformityList({
     fetchData(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [type, severity, status]);
+
+  // 🔍 Debounce 500ms sur q → backend
+  const isFirstLoadRef = useRef(true);
+  useEffect(() => {
+    if (!restaurantId) return;
+
+    // éviter un second fetch au tout 1er rendu
+    if (isFirstLoadRef.current) {
+      isFirstLoadRef.current = false;
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      fetchData(1, { q });
+    }, 500);
+
+    return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, restaurantId]);
 
   // Live update via event
   useEffect(() => {
@@ -205,44 +290,22 @@ export default function NonConformityList({
       window.removeEventListener("non-conformity:upsert", handleUpsert);
   }, [restaurantId]);
 
-  // Recherche locale instantanée (sur q uniquement)
-  const filtered = useMemo(() => {
-    if (!q) return items;
-    const qq = q.toLowerCase();
-    return items.filter((it) =>
-      [
-        it?.type,
-        it?.severity,
-        it?.status,
-        it?.referenceId,
-        it?.description,
-        ...(Array.isArray(it?.correctiveActions) ? it.correctiveActions : []),
-        ...(Array.isArray(it?.attachments) ? it.attachments : []),
-        it?.recordedBy?.firstName,
-        it?.recordedBy?.lastName,
-        it?.notes,
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(qq)
-    );
-  }, [items, q]);
-
   const askDelete = (it) => {
     setDeleteTarget(it);
     setIsDeleteModalOpen(true);
   };
+
   const onConfirmDelete = async () => {
     if (!deleteTarget) return;
     try {
       setDeleteLoading(true);
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/non-conformities/${deleteTarget._id}`;
       await axios.delete(url, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
 
       setItems((prev) =>
-        prev.filter((x) => String(x._id) !== String(deleteTarget._id))
+        (prev || []).filter((x) => String(x?._id) !== String(deleteTarget._id))
       );
       onDeleted?.(deleteTarget);
       setIsDeleteModalOpen(false);
@@ -251,7 +314,7 @@ export default function NonConformityList({
       setMeta((prevMeta) => {
         const limitValue = prevMeta.limit || 20;
         const total = Math.max(0, (prevMeta.total || 0) - 1);
-        const pages = total > 0 ? Math.ceil(total / limitValue) : 1;
+        const pages = total > 0 ? Math.ceil(total / Number(limitValue)) : 1;
         const page = Math.min(prevMeta.page || 1, pages);
         const nextMeta = { ...prevMeta, total, pages, page };
         metaRef.current = nextMeta;
@@ -263,15 +326,17 @@ export default function NonConformityList({
       setDeleteLoading(false);
     }
   };
+
   const closeDeleteModal = () => {
     if (deleteLoading) return;
     setIsDeleteModalOpen(false);
     setDeleteTarget(null);
   };
 
+  /* ---------- Render ---------- */
   return (
     <div className="rounded-2xl border border-darkBlue/10 bg-white p-4 midTablet:p-5 shadow">
-      {/* Filtres (style MicrobiologyList) */}
+      {/* Filtres */}
       <div className="mb-4 grid grid-cols-[repeat(auto-fit,minmax(220px,_1fr))] gap-2">
         {/* Recherche */}
         <div className={fieldWrap}>
@@ -333,7 +398,7 @@ export default function NonConformityList({
           </select>
         </div>
 
-        {/* Dates */}
+        {/* Du */}
         <div className={fieldWrap}>
           <label className={labelCls}>
             <CalendarClock className="size-4" /> Déclarées du
@@ -347,6 +412,7 @@ export default function NonConformityList({
           />
         </div>
 
+        {/* Au */}
         <div className={fieldWrap}>
           <label className={labelCls}>
             <CalendarClock className="size-4" /> Au
@@ -363,7 +429,12 @@ export default function NonConformityList({
         {/* Actions filtres */}
         <div className="col-span-full flex flex-col gap-2 mobile:flex-row">
           <button
-            onClick={() => hasFullDateRange && fetchData(1)}
+            onClick={() => {
+              if (!hasFullDateRange) return;
+              setAppliedDateFrom(dateFrom);
+              setAppliedDateTo(dateTo);
+              fetchData(1, { dateFrom, dateTo });
+            }}
             disabled={!hasFullDateRange}
             title={
               !hasFullDateRange
@@ -384,6 +455,8 @@ export default function NonConformityList({
               setStatus("");
               setDateFrom("");
               setDateTo("");
+              setAppliedDateFrom("");
+              setAppliedDateTo("");
               fetchData(1, {
                 q: "",
                 type: "",
@@ -402,127 +475,131 @@ export default function NonConformityList({
         </div>
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto max-w-[calc(100vw-83px)] midTablet:max-w-[calc(100vw-92px)] tablet:max-w-[calc(100vw-360px)] rounded-xl border border-darkBlue/10 p-2 pb-0">
-        <table className="w-full text-[13px]">
-          <thead className="whitespace-nowrap">
-            <tr className="sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Déclarée le
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Type
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Gravité
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Statut
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Référence
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Description
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Actions corr.
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Pièces
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Opérateur
-              </th>
-              <th className="py-2 pr-3 text-right font-medium text-darkBlue/70">
-                Actions
-              </th>
-            </tr>
-          </thead>
-
-          <tbody className="divide-y divide-darkBlue/10">
-            {!loading && filtered.length === 0 && (
-              <tr>
-                <td colSpan={10} className="py-8 text-center text-darkBlue/50">
-                  Aucune non-conformité
-                </td>
+      {/* Table + overlay loader */}
+      <div className="relative">
+        <div className="overflow-x-auto max-w-[calc(100vw-83px)] midTablet:max-w-[calc(100vw-92px)] tablet:max-w-[calc(100vw-360px)] rounded-xl border border-darkBlue/10">
+          <table className="w-full text-[13px]">
+            <thead className="whitespace-nowrap">
+              <tr className="sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
+                <th className="py-2 pr-3 pl-2 text-left font-medium text-darkBlue/70">
+                  Déclarée le
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Type
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Gravité
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Statut
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Référence
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Description
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Actions corr.
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Pièces
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Opérateur
+                </th>
+                <th className="py-2 pr-2 text-right font-medium text-darkBlue/70">
+                  Actions
+                </th>
               </tr>
-            )}
+            </thead>
 
-            {loading && (
-              <tr>
-                <td colSpan={10} className="text-center text-darkBlue/50">
-                  <span className="py-8 flex justify-center items-center gap-2">
-                    <Loader2 className="size-4 animate-spin" /> Chargement…
-                  </span>
-                </td>
-              </tr>
-            )}
-
-            {!loading &&
-              filtered.map((it) => (
-                <tr
-                  key={it._id}
-                  className={`transition-colors hover:bg-darkBlue/[0.03] ${
-                    editingId === it._id ? "bg-blue/5 ring-1 ring-blue/20" : ""
-                  }`}
-                >
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {fmtDate(it.reportedAt)}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap capitalize">
-                    {it.type || "—"}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {it.severity || "—"}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {statusPill(it.status)}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {it.referenceId || "—"}
-                  </td>
-                  <td className="py-2 pr-3">{it.description || "—"}</td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {Array.isArray(it.correctiveActions)
-                      ? it.correctiveActions.length
-                      : 0}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {Array.isArray(it.attachments) && it.attachments.length
-                      ? `${it.attachments.length} doc(s)`
-                      : "—"}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {it?.recordedBy
-                      ? `${it.recordedBy.firstName || ""} ${it.recordedBy.lastName || ""}`.trim() ||
-                        "—"
-                      : "—"}
-                  </td>
-                  <td className="py-2 pr-0">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => onEdit?.(it)}
-                        className={`${btnBase} border border-green/50 bg-white text-green`}
-                        aria-label="Éditer"
-                        type="button"
-                      >
-                        <Edit3 className="size-4" /> Éditer
-                      </button>
-                      <button
-                        onClick={() => askDelete(it)}
-                        className={`${btnBase} border border-red bg-white text-red hover:border-red/80`}
-                        aria-label="Supprimer"
-                        type="button"
-                      >
-                        <Trash2 className="size-4" /> Supprimer
-                      </button>
-                    </div>
+            <tbody>
+              {items.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="py-8 text-center text-darkBlue/50">
+                    Aucune non-conformité
                   </td>
                 </tr>
-              ))}
-          </tbody>
-        </table>
+              ) : (
+                items.map((it) => (
+                  <tr
+                    key={it._id}
+                    className={`border-b border-darkBlue/10 last:border-b-0 transition-colors hover:bg-darkBlue/[0.03] ${
+                      editingId === it._id ? "bg-blue/5 ring-1 ring-blue/20" : ""
+                    }`}
+                  >
+                    <td className="py-2 pl-2 pr-3 whitespace-nowrap">
+                      {fmtDate(it.reportedAt)}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {TYPE_LABELS[it.type] ?? "—"}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {SEVERITY_LABELS[it.severity] ?? "—"}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {statusPill(it.status)}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it.referenceId || "—"}
+                    </td>
+                    <td className="py-2 pr-3">
+                      {it.description || "—"}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {Array.isArray(it.correctiveActions)
+                        ? it.correctiveActions.length
+                        : 0}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {Array.isArray(it.attachments) && it.attachments.length
+                        ? `${it.attachments.length} doc(s)`
+                        : "—"}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it?.recordedBy
+                        ? `${it.recordedBy.firstName || ""} ${
+                            it.recordedBy.lastName || ""
+                          }`.trim() || "—"
+                        : "—"}
+                    </td>
+                    <td className="py-2 pr-2">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => onEdit?.(it)}
+                          className={`${btnBase} border border-green/50 bg-white text-green`}
+                          aria-label="Éditer"
+                          type="button"
+                        >
+                          <Edit3 className="size-4" /> Éditer
+                        </button>
+                        <button
+                          onClick={() => askDelete(it)}
+                          className={`${btnBase} border border-red bg-white text-red hover:border-red/80`}
+                          aria-label="Supprimer"
+                          type="button"
+                        >
+                          <Trash2 className="size-4" /> Supprimer
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Overlay loader (seulement si loading > 1s) */}
+        {showSlowLoader && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-white/60">
+            <div className="flex items-center gap-2 text-darkBlue/70 text-sm">
+              <Loader2 className="size-4 animate-spin" />
+              <span>Chargement…</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Pagination */}

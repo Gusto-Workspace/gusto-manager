@@ -8,7 +8,7 @@ const userRefSchema = new Schema(
     role: { type: String, enum: ["owner", "employee"] },
     firstName: String,
     lastName: String,
-    avatarUrl: String, // <-- NEW: URL photo de profil (dénormalisée)
+    avatarUrl: String,
   },
   { _id: false }
 );

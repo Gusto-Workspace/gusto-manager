@@ -5,6 +5,10 @@ const authenticateToken = require("../../middleware/authentificate-token");
 const ReceptionDelivery = require("../../models/logs/reception-delivery.model");
 
 /* --------- helpers --------- */
+function escapeRegExp(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function currentUserFromToken(req) {
   const u = req.user || {};
   const role = (u.role || "").toLowerCase();
@@ -74,7 +78,7 @@ function normalizeLine(l = {}) {
     ? l.packagingCondition
     : "compliant";
 
-  // NOUVEAU : qtyRemaining normalisée et bornée à [0, qty]
+  // qtyRemaining normalisée et bornée à [0, qty]
   let qtyRemaining = normalizeNumber(l.qtyRemaining);
   if (qty != null) {
     const qrRaw = qtyRemaining == null ? qty : qtyRemaining;
@@ -186,8 +190,12 @@ router.get(
         }
       }
 
-      if (q && String(q).trim().length) {
-        const rx = new RegExp(String(q).trim(), "i");
+      // 🔐 Recherche texte sécurisée
+      const trimmedQ = String(q || "").trim();
+      if (trimmedQ) {
+        const safe = escapeRegExp(trimmedQ);
+        const rx = new RegExp(safe, "i");
+
         query.$or = [
           { supplier: rx },
           { note: rx },

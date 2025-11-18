@@ -9,6 +9,10 @@ const Employee = require("../../models/employee.model");
 const TrainingSession = require("../../models/logs/training-session.model");
 
 /* ---------- helpers ---------- */
+function escapeRegExp(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function currentUserFromToken(req) {
   const u = req.user || {};
   const role = (u.role || "").toLowerCase();
@@ -144,14 +148,16 @@ router.get(
       const query = { restaurantId };
 
       if (q && String(q).trim().length) {
-        const rx = new RegExp(String(q).trim(), "i");
-        (query.$or ||= []).push(
+        const safe = escapeRegExp(String(q).trim());
+        const rx = new RegExp(safe, "i");
+        query.$or = [
           { title: rx },
           { topic: rx },
           { provider: rx },
           { location: rx },
-          { notes: rx }
-        );
+          { notes: rx },
+          { materialsUrl: rx },
+        ];
       }
 
       if (topic && String(topic).trim().length) {

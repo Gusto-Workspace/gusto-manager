@@ -1,12 +1,17 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+
+// AXIOS
 import axios from "axios";
+
+// ICONS
 import { Search, CalendarClock, Edit3, Trash2, Loader2, X } from "lucide-react";
 
+/* ----------------------------- Utils ----------------------------- */
 function fmtDate(d) {
   try {
-    if (!d) return "—";
+    if (!d) return "";
     const date = new Date(d);
     return new Intl.DateTimeFormat("fr-FR", {
       day: "2-digit",
@@ -16,10 +21,11 @@ function fmtDate(d) {
       minute: "2-digit",
     }).format(date);
   } catch {
-    return d || "—";
+    return d || "";
   }
 }
 
+/* --------------------------- Component --------------------------- */
 export default function OilChangeList({
   restaurantId,
   onEdit,
@@ -29,16 +35,24 @@ export default function OilChangeList({
   const [items, setItems] = useState([]);
   const [meta, setMeta] = useState({ page: 1, limit: 20, pages: 1, total: 0 });
   const [loading, setLoading] = useState(false);
+  const [showSlowLoader, setShowSlowLoader] = useState(false);
 
-  // Filtres
-  const [q, setQ] = useState("");
+  // Filtres date affichés
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  // Filtres date appliqués côté backend
+  const [appliedDateFrom, setAppliedDateFrom] = useState("");
+  const [appliedDateTo, setAppliedDateTo] = useState("");
 
+  // Recherche texte
+  const [q, setQ] = useState("");
+
+  // Suppression
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
+  // SSR-safe portal
   const [isClient, setIsClient] = useState(false);
   useEffect(() => setIsClient(true), []);
 
@@ -48,7 +62,7 @@ export default function OilChangeList({
   );
   const hasFullDateRange = Boolean(dateFrom && dateTo);
 
-  // Empêche Au < Du
+  // Corriger intervalle invalide à la volée
   useEffect(() => {
     if (dateFrom && dateTo && dateTo < dateFrom) setDateTo(dateFrom);
   }, [dateFrom, dateTo]);
@@ -64,26 +78,16 @@ export default function OilChangeList({
       (a, b) => new Date(b?.performedAt || 0) - new Date(a?.performedAt || 0)
     );
 
-  // Styles (alignés sur InventoryLotList / RecipeBatchesList)
-  const fieldWrap =
-    "group relative rounded-xl bg-white/50   transition-shadow";
-  const labelCls =
-    "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
-  const inputCls =
-    "h-11 w-full rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition placeholder:text-darkBlue/40";
-  const selectCls =
-    "h-11 w-full appearance-none rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition";
-  const btnBase =
-    "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition active:scale-[0.98]";
-
-  // fetchData avec overrides pour reset propre
   const fetchData = async (page = 1, overrides = {}) => {
+    if (!restaurantId) return;
+
     setLoading(true);
     try {
       const curQ = overrides.q !== undefined ? overrides.q : q;
       const curFrom =
-        overrides.dateFrom !== undefined ? overrides.dateFrom : dateFrom;
-      const curTo = overrides.dateTo !== undefined ? overrides.dateTo : dateTo;
+        overrides.dateFrom !== undefined ? overrides.dateFrom : appliedDateFrom;
+      const curTo =
+        overrides.dateTo !== undefined ? overrides.dateTo : appliedDateTo;
 
       const params = { page, limit: meta.limit || 20 };
       if (curFrom) params.date_from = new Date(curFrom).toISOString();
@@ -108,13 +112,50 @@ export default function OilChangeList({
     }
   };
 
-  // Initial fetch
+  // Loader "lent" : visible seulement si loading > 1s
   useEffect(() => {
-    if (restaurantId) fetchData(1, { q: "", dateFrom: "", dateTo: "" });
+    if (!loading) {
+      setShowSlowLoader(false);
+      return;
+    }
+
+    const id = setTimeout(() => {
+      setShowSlowLoader(true);
+    }, 1000);
+
+    return () => clearTimeout(id);
+  }, [loading]);
+
+  // Initial
+  useEffect(() => {
+    if (restaurantId) {
+      setAppliedDateFrom("");
+      setAppliedDateTo("");
+      fetchData(1, { q: "", dateFrom: "", dateTo: "" });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
 
-  // Upserts live
+  // Debounce sur la recherche (500ms) → fetch backend
+  const isFirstLoadRef = useRef(true);
+  useEffect(() => {
+    if (!restaurantId) return;
+
+    // Pas de fetch supplémentaire au premier rendu
+    if (isFirstLoadRef.current) {
+      isFirstLoadRef.current = false;
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      fetchData(1, { q });
+    }, 500);
+
+    return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, restaurantId]);
+
+  // 🔁 Upsert temps réel
   useEffect(() => {
     const handleUpsert = (event) => {
       const doc = event?.detail?.doc;
@@ -125,6 +166,7 @@ export default function OilChangeList({
       const currentMeta = metaRef.current || {};
       const limit = currentMeta.limit || 20;
       const page = currentMeta.page || 1;
+
       let isNew = false;
 
       setItems((prev) => {
@@ -163,28 +205,6 @@ export default function OilChangeList({
     return () => window.removeEventListener("oil-change:upsert", handleUpsert);
   }, [restaurantId]);
 
-  // Recherche locale
-  const filtered = useMemo(() => {
-    if (!q) return items;
-    const qq = q.toLowerCase();
-    return items.filter((it) =>
-      [
-        it?.fryerId,
-        it?.qualityNotes,
-        it?.disposalDocumentUrl,
-        it?.newOilBatch?.batchNumber,
-        it?.oilBrand,
-        it?.colorIndex,
-        it?.odorCheck,
-        it?.recordedBy?.firstName,
-        it?.recordedBy?.lastName,
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(qq)
-    );
-  }, [items, q]);
-
   const askDelete = (item) => {
     setDeleteTarget(item);
     setIsDeleteModalOpen(true);
@@ -201,10 +221,9 @@ export default function OilChangeList({
         headers: { Authorization: `Bearer ${token}` },
       });
       const deleted = deleteTarget;
-      const updatedItems = (items || []).filter(
-        (item) => String(item?._id) !== String(deleted._id)
+      setItems((prev) =>
+        prev.filter((it) => String(it?._id) !== String(deleted._id))
       );
-      setItems(updatedItems);
       setIsDeleteModalOpen(false);
       setDeleteTarget(null);
       onDeleted?.(deleted);
@@ -219,7 +238,7 @@ export default function OilChangeList({
         return nextMeta;
       });
     } catch (err) {
-      console.error("Erreur lors de la suppression:", err);
+      console.error("Erreur lors de la suppression de l'opération:", err);
     } finally {
       setDeleteLoading(false);
     }
@@ -231,11 +250,24 @@ export default function OilChangeList({
     setDeleteTarget(null);
   };
 
+  /* ------------------------------ Styles ------------------------------ */
+  const fieldWrap =
+    "group relative rounded-xl bg-white/50 backdrop-blur-sm transition-shadow";
+  const labelCls =
+    "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
+  const inputCls =
+    "h-11 w-full rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition placeholder:text-darkBlue/40";
+  const selectCls =
+    "h-11 w-full appearance-none rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition";
+  const btnBase =
+    "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition active:scale-[0.98]";
+
+  /* ------------------------------ Render ------------------------------ */
   return (
-    <div className="rounded-2xl border border-darkBlue/10 bg-white p-4  midTablet:p-5 shadow">
+    <div className="rounded-2xl border border-darkBlue/10 bg-white p-4 midTablet:p-5 shadow">
       {/* Filtres */}
       <div className="flex flex-col midTablet:flex-row gap-2 mb-2">
-        {/* Recherche */}
+        {/* Recherche → prend toute la place */}
         <div className={`${fieldWrap} w-full`}>
           <label className={labelCls}>
             <Search className="size-4" /> Recherche
@@ -243,7 +275,7 @@ export default function OilChangeList({
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Friteuse, marque, lot, couleur/odeur, notes…"
+            placeholder="Friteuse, marque, lot, couleur/odeur, notes, opérateur…"
             className={inputCls}
           />
         </div>
@@ -277,11 +309,16 @@ export default function OilChangeList({
         </div>
       </div>
 
-      {/* Actions filtres */}
       <div className="mb-4">
-        <div className="col-span-full flex flex-col gap-2 midTablet:flex-row">
+        {/* Actions filtres */}
+        <div className="col-span-full flex flex-col gap-2 mobile:flex-row">
           <button
-            onClick={() => hasFullDateRange && fetchData(1)}
+            onClick={() => {
+              if (!hasFullDateRange) return;
+              setAppliedDateFrom(dateFrom);
+              setAppliedDateTo(dateTo);
+              fetchData(1, { dateFrom, dateTo });
+            }}
             disabled={!hasFullDateRange}
             title={
               !hasFullDateRange
@@ -299,6 +336,8 @@ export default function OilChangeList({
               setQ("");
               setDateFrom("");
               setDateTo("");
+              setAppliedDateFrom("");
+              setAppliedDateTo("");
               fetchData(1, { q: "", dateFrom: "", dateTo: "" });
             }}
             disabled={!hasActiveFilters}
@@ -310,142 +349,156 @@ export default function OilChangeList({
         </div>
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto max-w-[calc(100vw-83px)] midTablet:max-w-[calc(100vw-92px)] tablet:max-w-[calc(100vw-360px)] rounded-xl border border-darkBlue/10 p-2 pb-0">
-        <table className="w-full text-[13px]">
-          <thead className="whitespace-nowrap">
-            <tr className="sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Date
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Friteuse
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Litres retirés
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                TPM %
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Filtrée
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Marque
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Lot huile neuve
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Opérateur
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Notes
-              </th>
-              <th className="py-2 pr-0 text-right font-medium text-darkBlue/70">
-                Actions
-              </th>
-            </tr>
-          </thead>
-
-          <tbody className="divide-y divide-darkBlue/10">
-            {!loading && filtered.length === 0 && (
-              <tr>
-                <td colSpan={10} className="py-8 text-center text-darkBlue/50">
-                  Aucune opération
-                </td>
+      {/* Table + overlay loader */}
+      <div className="relative">
+        <div className="overflow-x-auto max-w-[calc(100vw-83px)] midTablet:max-w-[calc(100vw-92px)] tablet:max-w-[calc(100vw-360px)] rounded-xl border border-darkBlue/10">
+          <table className="w-full text-[13px]">
+            <thead className="whitespace-nowrap">
+              <tr className="sticky top-0 z-10 bg-white/95 backdrop-blur">
+                <th className="py-2 pr-3 pl-2 text-left font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  Date
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  Friteuse
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  Litres retirés
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  TPM %
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  Filtrée
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  Marque
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  Lot huile neuve
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  Opérateur
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  Notes
+                </th>
+                <th className="py-2 pr-2 text-right font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  Actions
+                </th>
               </tr>
-            )}
+            </thead>
 
-            {loading && (
-              <tr>
-                <td colSpan={10} className="text-center text-darkBlue/50">
-                  <span className="py-8 flex justify-center items-center gap-2">
-                    <Loader2 className="size-4 animate-spin" /> Chargement…
-                  </span>
-                </td>
-              </tr>
-            )}
-
-            {!loading &&
-              filtered.map((it) => (
-                <tr
-                  key={it._id}
-                  className={`transition-colors hover:bg-darkBlue/[0.03] ${
-                    editingId === it._id ? "bg-blue/5 ring-1 ring-blue/20" : ""
-                  }`}
-                >
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {fmtDate(it.performedAt)}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {it.fryerId || "—"}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {it?.litersRemoved != null ? `${it.litersRemoved} L` : "—"}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {it?.tpmPercent != null ? `${it.tpmPercent}` : "—"}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {it?.filteredBeforeChange ? "Oui" : "Non"}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {it?.oilBrand || "—"}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {it?.newOilBatch?.batchNumber || "—"}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {it?.recordedBy
-                      ? `${it.recordedBy.firstName || ""} ${
-                          it.recordedBy.lastName || ""
-                        }`.trim() || "—"
-                      : "—"}
-                  </td>
-                  <td className="py-2 pr-3 max-w-[320px]">
-                    <div className="flex items-center gap-2">
-                      <span className="line-clamp-2">
-                        {it.qualityNotes || "—"}
-                        {it?.colorIndex ? ` • ${it.colorIndex}` : ""}
-                        {it?.odorCheck ? ` • ${it.odorCheck}` : ""}
-                      </span>
-                      {it.disposalDocumentUrl && (
-                        <a
-                          href={it.disposalDocumentUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-blue underline whitespace-nowrap"
-                        >
-                          Voir doc
-                        </a>
-                      )}
-                    </div>
-                  </td>
-                  <td className="py-2 pr-0">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => onEdit?.(it)}
-                        className={`${btnBase} border border-green/50 bg-white text-green`}
-                        aria-label="Éditer"
-                        type="button"
-                      >
-                        <Edit3 className="size-4" /> Éditer
-                      </button>
-                      <button
-                        onClick={() => askDelete(it)}
-                        className={`${btnBase} border border-red bg-white text-red hover:border-red/80`}
-                        aria-label="Supprimer"
-                        type="button"
-                      >
-                        <Trash2 className="size-4" /> Supprimer
-                      </button>
-                    </div>
+            <tbody>
+              {items.length === 0 ? (
+                <tr className="border-b border-darkBlue/10 last:border-b-0">
+                  <td colSpan={10} className="py-8 text-center text-darkBlue/50">
+                    Aucune opération
                   </td>
                 </tr>
-              ))}
-          </tbody>
-        </table>
+              ) : (
+                items.map((it) => (
+                  <tr
+                    key={it._id}
+                    className={`border-b border-darkBlue/10 last:border-b-0 transition-colors hover:bg-darkBlue/[0.03] ${
+                      editingId === it._id
+                        ? "bg-blue/5 ring-1 ring-blue/20"
+                        : ""
+                    }`}
+                  >
+                    <td className="py-2 pl-2 pr-3 whitespace-nowrap">
+                      {fmtDate(it.performedAt)}
+                    </td>
+
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it.fryerId || "—"}
+                    </td>
+
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it?.litersRemoved != null
+                        ? `${it.litersRemoved} L`
+                        : "—"}
+                    </td>
+
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it?.tpmPercent != null ? `${it.tpmPercent}` : "—"}
+                    </td>
+
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it?.filteredBeforeChange ? "Oui" : "Non"}
+                    </td>
+
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it?.oilBrand || "—"}
+                    </td>
+
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it?.newOilBatch?.batchNumber || "—"}
+                    </td>
+
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it?.recordedBy
+                        ? `${it.recordedBy.firstName || ""} ${
+                            it.recordedBy.lastName || ""
+                          }`.trim() || "—"
+                        : "—"}
+                    </td>
+
+                    <td className="py-2 pr-3 max-w-[320px]">
+                      <div className="flex items-center gap-2">
+                        <span className="line-clamp-2">
+                          {it.qualityNotes || "—"}
+                          {it?.colorIndex ? ` • ${it.colorIndex}` : ""}
+                          {it?.odorCheck ? ` • ${it.odorCheck}` : ""}
+                        </span>
+                        {it.disposalDocumentUrl && (
+                          <a
+                            href={it.disposalDocumentUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-blue underline whitespace-nowrap"
+                          >
+                            Voir doc
+                          </a>
+                        )}
+                      </div>
+                    </td>
+
+                    <td className="py-2 pr-2">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => onEdit?.(it)}
+                          className={`${btnBase} border border-green/50 bg-white text-green`}
+                          aria-label="Éditer"
+                          type="button"
+                        >
+                          <Edit3 className="size-4" /> Éditer
+                        </button>
+                        <button
+                          onClick={() => askDelete(it)}
+                          className={`${btnBase} border border-red bg-white text-red hover:border-red/80`}
+                          aria-label="Supprimer"
+                          type="button"
+                        >
+                          <Trash2 className="size-4" /> Supprimer
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Overlay loader par-dessus la table, seulement si loading > 1s */}
+        {showSlowLoader && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-white/60">
+            <div className="flex items-center gap-2 text-darkBlue/70 text-sm">
+              <Loader2 className="size-4 animate-spin" />
+              <span>Chargement…</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Pagination */}

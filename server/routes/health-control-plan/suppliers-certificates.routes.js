@@ -7,6 +7,10 @@ const authenticateToken = require("../../middleware/authentificate-token");
 const SupplierCertificate = require("../../models/logs/supplier-certificate.model");
 
 /* ---------- helpers ---------- */
+function escapeRegExp(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function currentUserFromToken(req) {
   const u = req.user || {};
   const role = (u.role || "").toLowerCase();
@@ -82,8 +86,6 @@ router.post(
 );
 
 /* ------------------ LIST ------------------ */
-// NB: filtre date_from/date_to appliqué sur validUntil (période d’expiration)
-// status: "active" | "expired" | "expiring_soon" (nb jours paramétrable, défaut 30)
 router.get(
   "/restaurants/:restaurantId/list-supplier-certificates",
   authenticateToken,
@@ -96,54 +98,81 @@ router.get(
         q,
         type,
         supplierId,
-        status, // active|expired|expiring_soon
-        soon_days = 30, // fenêtre "expiring_soon"
+        status,
+        soon_days = 30,
         date_from,
         date_to,
       } = req.query;
 
       const query = { restaurantId };
 
-      // Filtres simples
-      if (type && String(type).trim().length) query.type = String(type).trim();
-      if (supplierId && normObjId(supplierId))
-        query.supplierId = normObjId(supplierId);
-
-      // Filtre status (calculable en base via dates)
-      const now = new Date();
-      const soon = new Date(now);
-      soon.setDate(soon.getDate() + Number(soon_days || 30));
-
-      if (status === "expired") {
-        query.validUntil = { $lte: now };
-      } else if (status === "active") {
-        query.$or = [
-          { validUntil: { $gt: now } },
-          { validUntil: { $exists: false } },
-        ];
-      } else if (status === "expiring_soon") {
-        query.validUntil = { $gt: now, $lte: soon };
+      // ── Filtres simples ─────────────────────────────────────
+      if (type && String(type).trim().length) {
+        query.type = String(type).trim();
+      }
+      const normSupId = normObjId(supplierId);
+      if (supplierId && normSupId) {
+        query.supplierId = normSupId;
       }
 
-      // Intervalle de dates sur validUntil
+      // ── FILTRE STATUT + PLAGE DE DATES (CORRIGÉ) ─────────────────────
+      const validUntilFilters = [];
+
+      if (status) {
+        const now = new Date();
+        const soon = new Date();
+        soon.setDate(soon.getDate() + Number(soon_days || 30));
+
+        if (status === "expired") {
+          validUntilFilters.push({ validUntil: { $lte: now } });
+        } else if (status === "expiring_soon") {
+          validUntilFilters.push({ validUntil: { $gt: now, $lte: soon } });
+        } else if (status === "active") {
+          validUntilFilters.push({
+            $or: [
+              { validUntil: { $gt: now } },
+              { validUntil: { $exists: false } },
+            ],
+          });
+        }
+      }
+
+      // Plage de dates
       if (date_from || date_to) {
         const from = date_from ? normDate(date_from) : null;
         const to = date_to ? normDate(date_to) : null;
+
+        const range = {};
+        if (from) range.$gte = from;
         if (to) {
-          to.setDate(to.getDate() + 1);
-          to.setMilliseconds(to.getMilliseconds() - 1);
+          const endOfDay = new Date(to);
+          endOfDay.setDate(endOfDay.getDate() + 1);
+          endOfDay.setMilliseconds(endOfDay.getMilliseconds() - 1);
+          range.$lte = endOfDay;
         }
-        query.validUntil = {
-          ...(from ? { $gte: from } : {}),
-          ...(to ? { $lte: to } : {}),
-          ...(query.validUntil || {}),
-        };
+
+        if (Object.keys(range).length > 0) {
+          validUntilFilters.push({ validUntil: range });
+        }
       }
 
-      // Recherche texte
+      // Appliquer tous les filtres validUntil
+      if (validUntilFilters.length > 0) {
+        query.$and = query.$and || [];
+        query.$and.push(
+          validUntilFilters.length === 1
+            ? validUntilFilters[0]
+            : { $and: validUntilFilters }
+        );
+      }
+
+      // ── Recherche texte ─────────────────────────────────────
       if (q && String(q).trim().length) {
-        const rx = new RegExp(String(q).trim(), "i");
-        (query.$or ||= []).push(
+        const safe = escapeRegExp(String(q).trim());
+        const rx = new RegExp(safe, "i");
+
+        query.$or = query.$or || [];
+        query.$or.push(
           { supplierName: rx },
           { type: rx },
           { certificateNumber: rx },
@@ -154,22 +183,27 @@ router.get(
         );
       }
 
-      const skip = (Number(page) - 1) * Number(limit);
+      // ── Pagination ─────────────────────────────────────────
+      const pageNum = Math.max(1, Number(page) || 1);
+      const limitNum = Math.max(1, Number(limit) || 20);
+      const skip = (pageNum - 1) * limitNum;
+
       const [items, total] = await Promise.all([
         SupplierCertificate.find(query)
           .sort(listSortExpr())
           .skip(skip)
-          .limit(Number(limit)),
+          .limit(limitNum)
+          .lean(),
         SupplierCertificate.countDocuments(query),
       ]);
 
       return res.json({
         items,
         meta: {
-          page: Number(page),
-          limit: Number(limit),
+          page: pageNum,
+          limit: limitNum,
           total,
-          pages: Math.max(1, Math.ceil(total / Number(limit))),
+          pages: Math.max(1, Math.ceil(total / limitNum)),
         },
       });
     } catch (err) {

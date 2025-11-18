@@ -28,19 +28,13 @@ const normDate = (v) => {
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? null : d;
 };
-const normBool = (v) => {
-  if (v === undefined || v === null || v === "") return null;
-  if (typeof v === "boolean") return v;
-  const s = String(v).toLowerCase();
-  if (s === "true") return true;
-  if (s === "false") return false;
-  return null;
-};
+
 const normObjId = (v) => {
   if (!v) return null;
   const s = String(v);
   return Types.ObjectId.isValid(s) ? s : null;
 };
+
 function normStringArray(input) {
   if (!input) return [];
   if (Array.isArray(input))
@@ -53,6 +47,10 @@ function normStringArray(input) {
     .map((s) => s.trim())
     .filter(Boolean)
     .slice(0, 100);
+}
+
+function escapeRegExp(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 const ALLOWED_TYPES = [
@@ -180,9 +178,10 @@ router.get(
         }
       }
 
-      // Recherche texte
+      // Recherche texte sécurisée
       if (q && String(q).trim().length) {
-        const rx = new RegExp(String(q).trim(), "i");
+        const safe = escapeRegExp(String(q).trim());
+        const rx = new RegExp(safe, "i");
         (query.$or ||= []).push(
           { referenceId: rx },
           { description: rx },
@@ -194,29 +193,32 @@ router.get(
         );
       }
 
-      const skip = (Number(page) - 1) * Number(limit);
+      const pageNum = Number(page) || 1;
+      const limitNum = Number(limit) || 20;
+      const skip = (pageNum - 1) * limitNum;
+
       const [items, total] = await Promise.all([
         NonConformity.find(query)
           .sort(listSortExpr())
           .skip(skip)
-          .limit(Number(limit)),
+          .limit(limitNum),
         NonConformity.countDocuments(query),
       ]);
 
       return res.json({
         items,
         meta: {
-          page: Number(page),
-          limit: Number(limit),
+          page: pageNum,
+          limit: limitNum,
           total,
-          pages: Math.max(1, Math.ceil(total / Number(limit))),
+          pages: Math.max(1, Math.ceil(total / limitNum)),
         },
       });
     } catch (err) {
       console.error("GET /list-non-conformities:", err);
-      return res
-        .status(500)
-        .json({ error: "Erreur lors de la récupération des non-conformités" });
+      return res.status(500).json({
+        error: "Erreur lors de la récupération des non-conformités",
+      });
     }
   }
 );

@@ -5,6 +5,10 @@ const authenticateToken = require("../../middleware/authentificate-token");
 const WasteEntry = require("../../models/logs/waste-entry.model");
 
 /* ---------- helpers ---------- */
+function escapeRegExp(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function currentUserFromToken(req) {
   const u = req.user || {};
   const role = (u.role || "").toLowerCase();
@@ -134,7 +138,8 @@ router.get(
       }
 
       if (q && String(q).trim().length) {
-        const rx = new RegExp(String(q).trim(), "i");
+        const safe = escapeRegExp(String(q).trim());
+        const rx = new RegExp(safe, "i");
         query.$or = [
           { contractor: rx },
           { manifestNumber: rx },

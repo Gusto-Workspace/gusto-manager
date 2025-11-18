@@ -20,6 +20,10 @@ function roundByUnit(val, unit) {
 }
 
 /* --------- helpers --------- */
+function escapeRegExp(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function currentUserFromToken(req) {
   const u = req.user || {};
   const role = (u.role || "").toLowerCase();
@@ -246,10 +250,12 @@ router.get(
         }
       }
 
-      if (status && STATUS.has(String(status))) query.status = String(status);
+      if (status && STATUS.has(String(status))) {
+        query.status = String(status);
+      }
 
       if (q && String(q).trim().length) {
-        const rx = new RegExp(String(q).trim(), "i");
+        const rx = new RegExp(escapeRegExp(String(q).trim()), "i");
         query.$or = [
           { productName: rx },
           { supplier: rx },

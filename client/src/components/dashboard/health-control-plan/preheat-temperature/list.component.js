@@ -25,48 +25,31 @@ function fmtDate(d) {
   }
 }
 
-/** Accès snapshot robuste (différents noms possibles côté API) */
-const snapOf = (it) =>
-  it?.deviceSnapshot ??
-  it?.equipmentSnapshot ??
-  it?.snapshot ??
-  it?.device ??
-  null;
+const deviceSnapshotOf = (it) => it?.device ?? null;
 
-const equipNameOf = (it) => {
-  const s = snapOf(it);
-  return it?.equipmentName ?? s?.name ?? s?.label ?? s?.equipmentName ?? "";
+const deviceNameOf = (it) => {
+  const d = deviceSnapshotOf(it);
+  return d?.name ?? "";
 };
-const equipIdOf = (it) => {
-  const s = snapOf(it);
-  return it?.equipmentId ?? s?.equipmentCode ?? s?.code ?? s?.id ?? "";
+
+const deviceCodeOf = (it) => {
+  const d = deviceSnapshotOf(it);
+  return d?.equipmentCode ?? "";
 };
-const locationMainOf = (it) => {
-  const s = snapOf(it);
-  return (
-    it?.location ??
-    s?.location ??
-    s?.place ??
-    s?.area ??
-    s?.room ??
-    s?.zone ??
-    ""
-  );
+
+const locationNameOf = (it) => {
+  const d = deviceSnapshotOf(it);
+  return d?.location ?? "";
 };
-const locationIdOf = (it) => {
-  const s = snapOf(it);
-  return (
-    it?.locationId ??
-    s?.locationCode ??
-    s?.placeId ??
-    s?.areaId ??
-    s?.zoneId ??
-    ""
-  );
+
+const locationCodeOf = (it) => {
+  const d = deviceSnapshotOf(it);
+  return d?.locationCode ?? "";
 };
+
 const unitOf = (it) => {
-  const s = snapOf(it);
-  return it?.unit ?? s?.unit ?? "°C";
+  const d = deviceSnapshotOf(it);
+  return it?.unit ?? d?.unit ?? "°C";
 };
 
 /* --------------------------- Labels FR --------------------------- */
@@ -85,10 +68,16 @@ export default function PreheatTemperatureList({
   const [items, setItems] = useState([]);
   const [meta, setMeta] = useState({ page: 1, limit: 20, pages: 1, total: 0 });
   const [loading, setLoading] = useState(false);
+  const [showSlowLoader, setShowSlowLoader] = useState(false);
 
-  // Filtres
+  // Filtres dates affichées
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  // Filtres dates appliquées côté backend
+  const [appliedDateFrom, setAppliedDateFrom] = useState("");
+  const [appliedDateTo, setAppliedDateTo] = useState("");
+
+  // Recherche texte
   const [q, setQ] = useState("");
 
   // Suppression
@@ -105,10 +94,6 @@ export default function PreheatTemperatureList({
     [q, dateFrom, dateTo]
   );
   const hasFullDateRange = Boolean(dateFrom && dateTo);
-  const invalidRange = useMemo(
-    () => Boolean(dateFrom && dateTo && dateTo < dateFrom),
-    [dateFrom, dateTo]
-  );
 
   useEffect(() => {
     if (dateFrom && dateTo && dateTo < dateFrom) setDateTo(dateFrom);
@@ -126,15 +111,20 @@ export default function PreheatTemperatureList({
     );
 
   const fetchData = async (page = 1, overrides = {}) => {
+    if (!restaurantId) return;
+
     setLoading(true);
     try {
+      const curQ = overrides.q !== undefined ? overrides.q : q;
       const curFrom =
-        overrides.dateFrom !== undefined ? overrides.dateFrom : dateFrom;
-      const curTo = overrides.dateTo !== undefined ? overrides.dateTo : dateTo;
+        overrides.dateFrom !== undefined ? overrides.dateFrom : appliedDateFrom;
+      const curTo =
+        overrides.dateTo !== undefined ? overrides.dateTo : appliedDateTo;
 
       const params = { page, limit: meta.limit || 20 };
       if (curFrom) params.date_from = new Date(curFrom).toISOString();
       if (curTo) params.date_to = new Date(curTo).toISOString();
+      if (curQ) params.q = curQ;
 
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/preheat-temperatures`;
       const { data } = await axios.get(url, {
@@ -153,11 +143,48 @@ export default function PreheatTemperatureList({
     }
   };
 
+  // Loader "lent" : visible seulement si loading > 1s
+  useEffect(() => {
+    if (!loading) {
+      setShowSlowLoader(false);
+      return;
+    }
+
+    const id = setTimeout(() => {
+      setShowSlowLoader(true);
+    }, 1000);
+
+    return () => clearTimeout(id);
+  }, [loading]);
+
   // Initial
   useEffect(() => {
-    if (restaurantId) fetchData(1, { dateFrom: "", dateTo: "" });
+    if (restaurantId) {
+      setAppliedDateFrom("");
+      setAppliedDateTo("");
+      fetchData(1, { q: "", dateFrom: "", dateTo: "" });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
+
+  // Debounce recherche texte (500ms) → fetch backend
+  const isFirstLoadRef = useRef(true);
+  useEffect(() => {
+    if (!restaurantId) return;
+
+    // Pas de fetch en plus au premier rendu (on garde celui de l'init)
+    if (isFirstLoadRef.current) {
+      isFirstLoadRef.current = false;
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      fetchData(1, { q });
+    }, 500);
+
+    return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, restaurantId]);
 
   // 🔁 Upsert temps réel
   useEffect(() => {
@@ -210,33 +237,6 @@ export default function PreheatTemperatureList({
       window.removeEventListener("preheat-temperature:upsert", handleUpsert);
   }, [restaurantId]);
 
-  // Recherche locale (q) — inclut aussi les champs du snapshot
-  const filtered = useMemo(() => {
-    if (!q) return items;
-    const qq = q.toLowerCase();
-    return items.filter((it) => {
-      const s = snapOf(it) || {};
-      return [
-        equipNameOf(it),
-        equipIdOf(it),
-        locationMainOf(it),
-        locationIdOf(it),
-        s?.unit,
-        it?.unit,
-        it?.phase,
-        String(it?.value ?? ""),
-        it?.recordedBy?.firstName,
-        it?.recordedBy?.lastName,
-        it?.note,
-        it?.deviceRef, // au cas où
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(qq);
-    });
-  }, [items, q]);
-
   const askDelete = (item) => {
     setDeleteTarget(item);
     setIsDeleteModalOpen(true);
@@ -283,13 +283,14 @@ export default function PreheatTemperatureList({
   };
 
   /* ------------------------------ Styles ------------------------------ */
-  const fieldWrap = "group relative rounded-xl bg-white/50   transition-shadow";
+  const fieldWrap =
+    "group relative rounded-xl bg-white/50 backdrop-blur-sm transition-shadow";
   const labelCls =
     "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
   const inputCls =
     "h-11 w-full rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition placeholder:text-darkBlue/40";
   const selectCls =
-    "h-11 w-full rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition";
+    "h-11 w-full appearance-none rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition";
   const btnBase =
     "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition active:scale-[0.98]";
 
@@ -297,9 +298,9 @@ export default function PreheatTemperatureList({
   return (
     <div className="rounded-2xl border border-darkBlue/10 bg-white p-4 midTablet:p-5 shadow">
       {/* Filtres */}
-      <div className="mb-4 grid gap-2 grid-cols-1 midTablet:grid-cols-[1fr_auto_auto]">
+      <div className="flex flex-col midTablet:flex-row gap-2 mb-2">
         {/* Recherche → prend la place restante */}
-        <div className={fieldWrap}>
+        <div className={`${fieldWrap} w-full`}>
           <label className={labelCls}>
             <Search className="size-4" /> Recherche
           </label>
@@ -338,18 +339,23 @@ export default function PreheatTemperatureList({
             min={dateFrom || undefined}
           />
         </div>
+      </div>
 
+      <div className="mb-4">
         {/* Actions filtres */}
-        <div className="col-span-full flex flex-col gap-2 mobile:flex-row">
+        <div className="col-span-full flex flex-col gap-2 midTablet:flex-row">
           <button
-            onClick={() => fetchData(1)}
-            disabled={invalidRange || !hasFullDateRange}
+            onClick={() => {
+              if (!hasFullDateRange) return;
+              setAppliedDateFrom(dateFrom);
+              setAppliedDateTo(dateTo);
+              fetchData(1, { dateFrom, dateTo });
+            }}
+            disabled={!hasFullDateRange}
             title={
-              invalidRange
-                ? "Intervalle invalide : 'Du' doit être ≤ 'Au'."
-                : !hasFullDateRange
-                  ? "Sélectionnez 'Du' ET 'Au' pour filtrer par dates"
-                  : undefined
+              !hasFullDateRange
+                ? "Sélectionnez 'Du' ET 'Au' pour filtrer par dates"
+                : undefined
             }
             className={`${btnBase} bg-blue text-white disabled:opacity-40`}
             type="button"
@@ -362,7 +368,9 @@ export default function PreheatTemperatureList({
               setQ("");
               setDateFrom("");
               setDateTo("");
-              fetchData(1, { dateFrom: "", dateTo: "" });
+              setAppliedDateFrom("");
+              setAppliedDateTo("");
+              fetchData(1, { q: "", dateFrom: "", dateTo: "" });
             }}
             disabled={!hasActiveFilters}
             className={`${btnBase} border border-darkBlue/20 bg-white text-darkBlue hover:border-darkBlue/30 disabled:opacity-40`}
@@ -373,140 +381,141 @@ export default function PreheatTemperatureList({
         </div>
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto max-w-[calc(100vw-83px)] midTablet:max-w-[calc(100vw-92px)] tablet:max-w-[calc(100vw-360px)] rounded-xl border border-darkBlue/10 p-2 pb-0">
-        <table className="w-full text-[13px]">
-          <thead className="whitespace-nowrap">
-            <tr className="sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Date
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Équipement
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Emplacement
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                T°
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Phase
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Opérateur
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Note
-              </th>
-              <th className="py-2 pr-3 text-right font-medium text-darkBlue/70">
-                Actions
-              </th>
-            </tr>
-          </thead>
-
-          <tbody className="divide-y divide-darkBlue/10">
-            {!loading && filtered.length === 0 && (
-              <tr>
-                <td colSpan={8} className="py-8 text-center text-darkBlue/50">
-                  Aucun relevé
-                </td>
+      {/* Table + overlay loader */}
+      <div className="relative">
+        <div className="overflow-x-auto max-w-[calc(100vw-83px)] midTablet:max-w-[calc(100vw-92px)] tablet:max-w-[calc(100vw-360px)] rounded-xl border border-darkBlue/10">
+          <table className="w-full text-[13px]">
+            <thead className="whitespace-nowrap">
+              <tr className="sticky top-0 z-10 bg-white/95 backdrop-blur">
+                <th className="py-2 pr-3 pl-2 text-left font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  Date
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  Équipement
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  Emplacement
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  T°
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  Phase
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  Opérateur
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  Note
+                </th>
+                <th className="py-2 pr-2 text-right font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  Actions
+                </th>
               </tr>
-            )}
+            </thead>
 
-            {loading && (
-              <tr>
-                <td colSpan={8} className="text-center text-darkBlue/50">
-                  <span className="py-8 flex justify-center items-center gap-2">
-                    <Loader2 className="size-4 animate-spin" /> Chargement…
-                  </span>
-                </td>
-              </tr>
-            )}
+            <tbody>
+              {items.length === 0 ? (
+                <tr className="border-b border-darkBlue/10 last:border-b-0">
+                  <td colSpan={8} className="py-8 text-center text-darkBlue/50">
+                    Aucun relevé
+                  </td>
+                </tr>
+              ) : (
+                items.map((it) => {
+                  const eqName = deviceNameOf(it);
+                  const eqCode = deviceCodeOf(it);
+                  const loc = locationNameOf(it);
+                  const locCode = locationCodeOf(it);
 
-            {!loading &&
-              filtered.map((it) => {
-                const eqName = equipNameOf(it);
-                const eqId = equipIdOf(it);
-                const loc = locationMainOf(it);
-                const locId = locationIdOf(it);
-                return (
-                  <tr
-                    key={it._id}
-                    className={`transition-colors hover:bg-darkBlue/[0.03] ${
-                      editingId === it._id
-                        ? "bg-blue/5 ring-1 ring-blue/20"
-                        : ""
-                    }`}
-                  >
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      {fmtDate(it.createdAt)}
-                    </td>
+                  return (
+                    <tr
+                      key={it._id}
+                      className={`border-b border-darkBlue/10 last:border-b-0 transition-colors hover:bg-darkBlue/[0.03] ${
+                        editingId === it._id
+                          ? "bg-blue/5 ring-1 ring-blue/20"
+                          : ""
+                      }`}
+                    >
+                      <td className="py-2 pl-2 pr-3 whitespace-nowrap">
+                        {fmtDate(it.createdAt)}
+                      </td>
 
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      {eqName || eqId || "—"}
-                      {eqName && eqId ? (
-                        <span className="opacity-60"> • {eqId}</span>
-                      ) : null}
-                    </td>
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {eqName || eqCode || "—"}
+                        {eqName && eqCode ? (
+                          <span className="opacity-60"> • {eqCode}</span>
+                        ) : null}
+                      </td>
 
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      {loc || "—"}
-                      {locId ? (
-                        <span className="opacity-60"> • {locId}</span>
-                      ) : null}
-                    </td>
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {loc || "—"}
+                        {locCode ? (
+                          <span className="opacity-60"> • {locCode}</span>
+                        ) : null}
+                      </td>
 
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      {typeof it.value === "number"
-                        ? it.value
-                        : (it.value ?? "—")}{" "}
-                      {unitOf(it)}
-                    </td>
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {typeof it.value === "number"
+                          ? it.value
+                          : (it.value ?? "—")}{" "}
+                        {unitOf(it)}
+                      </td>
 
-                    {/* ▼ Traduction visuelle de la phase */}
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      {PHASE_LABELS[it.phase] ?? it.phase ?? "—"}
-                    </td>
+                      {/* ▼ Traduction visuelle de la phase */}
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {PHASE_LABELS[it.phase] ?? it.phase ?? "—"}
+                      </td>
 
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      {it?.recordedBy
-                        ? `${it.recordedBy.firstName || ""} ${it.recordedBy.lastName || ""}`.trim() ||
-                          "—"
-                        : "—"}
-                    </td>
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {it?.recordedBy
+                          ? `${it.recordedBy.firstName || ""} ${
+                              it.recordedBy.lastName || ""
+                            }`.trim() || "—"
+                          : "—"}
+                      </td>
 
-                    <td className="py-2 pr-3 max-w-[360px]">
-                      <span className="line-clamp-2">{it.note || "—"}</span>
-                    </td>
+                      <td className="py-2 pr-3 max-w-[360px]">
+                        <span className="line-clamp-2">{it.note || "—"}</span>
+                      </td>
 
-                    <td className="py-2 pr-0">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => onEdit?.(it)}
-                          className={`${btnBase} border border-green/50 bg-white text-green`}
-                          aria-label="Éditer"
-                          type="button"
-                        >
-                          <Edit3 className="size-4" /> Éditer
-                        </button>
-                        <button
-                          onClick={() =>
-                            setIsDeleteModalOpen(true) || setDeleteTarget(it)
-                          }
-                          className={`${btnBase} border border-red bg-white text-red hover:border-red/80`}
-                          aria-label="Supprimer"
-                          type="button"
-                        >
-                          <Trash2 className="size-4" /> Supprimer
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-          </tbody>
-        </table>
+                      <td className="py-2 pr-2">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => onEdit?.(it)}
+                            className={`${btnBase} border border-green/50 bg-white text-green`}
+                            aria-label="Éditer"
+                            type="button"
+                          >
+                            <Edit3 className="size-4" /> Éditer
+                          </button>
+                          <button
+                            onClick={() => askDelete(it)}
+                            className={`${btnBase} border border-red bg-white text-red hover:border-red/80`}
+                            aria-label="Supprimer"
+                            type="button"
+                          >
+                            <Trash2 className="size-4" /> Supprimer
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Overlay loader par-dessus la table, seulement si loading > 1s */}
+        {showSlowLoader && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-white/60">
+            <div className="flex items-center gap-2 text-darkBlue/70 text-sm">
+              <Loader2 className="size-4 animate-spin" />
+              <span>Chargement…</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Pagination */}

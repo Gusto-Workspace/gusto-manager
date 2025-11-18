@@ -6,7 +6,6 @@ const PreheatTemperature = require("../../models/logs/preheat-temperature.model"
 const CookingEquipment = require("../../models/logs/cooking-equipment.model");
 
 /* helpers */
-
 function escapeRegExp(str) {
   return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

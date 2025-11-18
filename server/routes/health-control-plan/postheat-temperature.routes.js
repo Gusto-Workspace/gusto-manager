@@ -5,6 +5,10 @@ const authenticateToken = require("../../middleware/authentificate-token");
 const PostheatTemperature = require("../../models/logs/postheat-temperature.model");
 
 /* --------- helpers --------- */
+function escapeRegExp(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function currentUserFromToken(req) {
   const u = req.user || {};
   const role = (u.role || "").toLowerCase();
@@ -130,8 +134,12 @@ router.get(
         }
       }
 
-      if (q && String(q).trim().length) {
-        const rx = new RegExp(String(q).trim(), "i");
+      // 🔐 Recherche texte sécurisée
+      const trimmedQ = String(q || "").trim();
+      if (trimmedQ) {
+        const safe = escapeRegExp(trimmedQ);
+        const rx = new RegExp(safe, "i");
+
         query.$or = [
           { equipmentName: rx },
           { equipmentId: rx },

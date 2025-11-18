@@ -1,7 +1,11 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+
+// AXIOS
 import axios from "axios";
+
+// ICONS
 import { Search, CalendarClock, Edit3, Trash2, Loader2, X } from "lucide-react";
 
 function fmtDate(d) {
@@ -27,6 +31,21 @@ function qtyLabel(it) {
   return `${r}/${rec} ${u}`.trim();
 }
 
+/* --------- Labels statut FR --------- */
+const STATUS_LABELS = {
+  in_stock: "En stock",
+  used: "Utilisé",
+  expired: "Périmé",
+  discarded: "Jeté",
+  returned: "Retourné",
+  recalled: "Rappelé",
+};
+
+function getStatusLabel(code) {
+  if (!code) return "—";
+  return STATUS_LABELS[code] || code;
+}
+
 export default function InventoryLotList({
   restaurantId,
   onEdit,
@@ -36,11 +55,13 @@ export default function InventoryLotList({
   const [items, setItems] = useState([]);
   const [meta, setMeta] = useState({ page: 1, limit: 20, pages: 1, total: 0 });
   const [loading, setLoading] = useState(false);
+  const [showSlowLoader, setShowSlowLoader] = useState(false);
 
   // Filtres
   const [q, setQ] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [status, setStatus] = useState(""); // <-- nouveau filtre statut
 
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -66,12 +87,12 @@ export default function InventoryLotList({
     );
 
   const hasActiveFilters = useMemo(
-    () => Boolean(q || dateFrom || dateTo),
-    [q, dateFrom, dateTo]
+    () => Boolean(q || dateFrom || dateTo || status),
+    [q, dateFrom, dateTo, status]
   );
   const hasFullDateRange = Boolean(dateFrom && dateTo);
 
-  // Styles (alignés sur l'autre List)
+  // Styles (alignés sur les autres List)
   const fieldWrap =
     "group relative rounded-xl bg-white/50 backdrop-blur-sm transition-shadow";
   const labelCls =
@@ -83,19 +104,25 @@ export default function InventoryLotList({
   const btnBase =
     "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition active:scale-[0.98]";
 
-  // fetchData avec overrides pour reset propre
+  // fetchData avec overrides (q + dates + status envoyés au backend)
   const fetchData = async (page = 1, overrides = {}) => {
+    if (!restaurantId) return;
+
     setLoading(true);
     try {
       const curQ = overrides.q !== undefined ? overrides.q : q;
       const curFrom =
         overrides.dateFrom !== undefined ? overrides.dateFrom : dateFrom;
-      const curTo = overrides.dateTo !== undefined ? overrides.dateTo : dateTo;
+      const curTo =
+        overrides.dateTo !== undefined ? overrides.dateTo : dateTo;
+      const curStatus =
+        overrides.status !== undefined ? overrides.status : status;
 
       const params = { page, limit: meta.limit || 20 };
       if (curQ) params.q = curQ;
       if (curFrom) params.date_from = new Date(curFrom).toISOString();
       if (curTo) params.date_to = new Date(curTo).toISOString();
+      if (curStatus) params.status = curStatus;
 
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-inventory-lots`;
       const { data } = await axios.get(url, {
@@ -115,11 +142,43 @@ export default function InventoryLotList({
     }
   };
 
-  // Initial fetch
+  // Loader "lent" comme pour ReceptionDeliveryList
   useEffect(() => {
-    if (restaurantId) fetchData(1, { q: "", dateFrom: "", dateTo: "" });
+    if (!loading) {
+      setShowSlowLoader(false);
+      return;
+    }
+    const id = setTimeout(() => {
+      setShowSlowLoader(true);
+    }, 1000);
+    return () => clearTimeout(id);
+  }, [loading]);
+
+  // Initial fetch (sans filtres)
+  useEffect(() => {
+    if (restaurantId)
+      fetchData(1, { q: "", dateFrom: "", dateTo: "", status: "" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
+
+  // Debounce 500ms sur la recherche mots-clés → fetch côté BDD
+  const isFirstLoadRef = useRef(true);
+  useEffect(() => {
+    if (!restaurantId) return;
+
+    // On ne déclenche pas de 2e fetch au premier rendu
+    if (isFirstLoadRef.current) {
+      isFirstLoadRef.current = false;
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      fetchData(1, { q });
+    }, 500);
+
+    return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, restaurantId]);
 
   // Écoute des upserts
   useEffect(() => {
@@ -171,30 +230,6 @@ export default function InventoryLotList({
       window.removeEventListener("inventory-lot:upsert", handleUpsert);
   }, [restaurantId]);
 
-  // Recherche locale instantanée
-  const filtered = useMemo(() => {
-    if (!q) return items;
-    const qq = q.toLowerCase();
-    return items.filter((it) =>
-      [
-        it?.productName,
-        it?.supplier,
-        it?.lotNumber,
-        it?.unit,
-        it?.storageArea,
-        it?.status,
-        it?.labelCode,
-        it?.notes,
-        it?.disposalReason,
-        it?.createdBy?.firstName,
-        it?.createdBy?.lastName,
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(qq)
-    );
-  }, [items, q]);
-
   const askDelete = (item) => {
     setDeleteTarget(item);
     setIsDeleteModalOpen(true);
@@ -241,7 +276,7 @@ export default function InventoryLotList({
   };
 
   return (
-    <div className="rounded-2xl border border-darkBlue/10 bg-white p-4  midTablet:p-5 shadow">
+    <div className="rounded-2xl border border-darkBlue/10 bg-white p-4 midTablet:p-5 shadow">
       {/* Filtres */}
       <div className="flex flex-col midTablet:flex-row gap-2 mb-2">
         {/* Recherche */}
@@ -255,6 +290,27 @@ export default function InventoryLotList({
             placeholder="Produit, lot, fournisseur, note…"
             className={inputCls}
           />
+        </div>
+
+        {/* Statut */}
+        <div className={`${fieldWrap} min-w-fit`}>
+          <label className={labelCls}>Statut</label>
+          <select
+            value={status}
+            onChange={(e) => {
+              const value = e.target.value || "";
+              setStatus(value);
+              fetchData(1, { status: value });
+            }}
+            className={selectCls}
+          >
+            <option value="">Tous les statuts</option>
+            {Object.entries(STATUS_LABELS).map(([code, label]) => (
+              <option key={code} value={code}>
+                {label}
+              </option>
+            ))}
+          </select>
         </div>
 
         {/* Du */}
@@ -308,7 +364,8 @@ export default function InventoryLotList({
               setQ("");
               setDateFrom("");
               setDateTo("");
-              fetchData(1, { q: "", dateFrom: "", dateTo: "" });
+              setStatus("");
+              fetchData(1, { q: "", dateFrom: "", dateTo: "", status: "" });
             }}
             disabled={!hasActiveFilters}
             className={`${btnBase} border border-darkBlue/20 bg-white text-darkBlue hover:border-darkBlue/30 disabled:opacity-40`}
@@ -319,141 +376,145 @@ export default function InventoryLotList({
         </div>
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto max-w-[calc(100vw-83px)] midTablet:max-w-[calc(100vw-92px)] tablet:max-w-[calc(100vw-360px)] rounded-xl border border-darkBlue/10">
-        <table className="w-full text-[13px]">
-          <thead className="whitespace-nowrap">
-            <tr className="sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
-              <th className="py-2 pr-3 pl-2 text-left font-medium text-darkBlue/70">
-                Créé le
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Produit
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Lot
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Qté (reste/reçue)
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Statut
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Stockage
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Opérateur
-              </th>
-              <th className="py-2 pr-2 text-right font-medium text-darkBlue/70">
-                Actions
-              </th>
-            </tr>
-          </thead>
-
-          <tbody className="divide-y divide-darkBlue/10">
-            {!loading && filtered.length === 0 && (
-              <tr>
-                <td colSpan={8} className="py-8 text-center text-darkBlue/50">
-                  Aucun lot
-                </td>
+      {/* Table + overlay loader */}
+      <div className="relative">
+        <div className="overflow-x-auto max-w-[calc(100vw-83px)] midTablet:max-w-[calc(100vw-92px)] tablet:max-w-[calc(100vw-360px)] rounded-xl border border-darkBlue/10">
+          <table className="w-full text-[13px]">
+            <thead className="whitespace-nowrap">
+              <tr className="sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
+                <th className="py-2 pr-3 pl-2 text-left font-medium text-darkBlue/70">
+                  Créé le
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Produit
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Lot
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Qté (reste/reçue)
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Statut
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Stockage
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Opérateur
+                </th>
+                <th className="py-2 pr-2 text-right font-medium text-darkBlue/70">
+                  Actions
+                </th>
               </tr>
-            )}
+            </thead>
 
-            {loading && (
-              <tr>
-                <td colSpan={8} className="text-center text-darkBlue/50">
-                   <span className="py-8 flex justify-center items-center gap-2">
-                    <Loader2 className="size-4 animate-spin" /> Chargement…
-                  </span>
-                </td>
-              </tr>
-            )}
-
-            {!loading &&
-              filtered.map((it) => {
-                const isOutOrNegative = (it?.qtyRemaining ?? 0) <= 0;
-                return (
-                  <tr
-                    key={it._id}
-                    className={`transition-colors hover:bg-darkBlue/[0.03] ${
-                      editingId === it._id
-                        ? "bg-blue/5 ring-1 ring-blue/20"
-                        : ""
-                    }`}
+            <tbody className="divide-y divide-darkBlue/10">
+              {items.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={8}
+                    className="py-8 text-center text-darkBlue/50"
                   >
-                    <td className="py-2 pl-2 pr-3 whitespace-nowrap">
-                      {fmtDate(it.createdAt)}
-                    </td>
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      {it.productName || "—"}
-                    </td>
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      {it.lotNumber || "—"}
-                    </td>
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      <span
-                        className={
-                          isOutOrNegative ? "text-red font-semibold" : ""
-                        }
-                        title={
-                          isOutOrNegative
-                            ? "Rupture ou quantité négative"
-                            : undefined
-                        }
-                      >
-                        {qtyLabel(it)}
-                      </span>
-                    </td>
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      {it.status ? (
-                        <span className="px-2 py-0.5 rounded text-xs bg-darkBlue/10 text-darkBlue">
-                          {it.status}
+                    Aucun lot
+                  </td>
+                </tr>
+              ) : (
+                items.map((it) => {
+                  const isOutOrNegative = (it?.qtyRemaining ?? 0) <= 0;
+                  return (
+                    <tr
+                      key={it._id}
+                      className={`transition-colors hover:bg-darkBlue/[0.03] ${
+                        editingId === it._id
+                          ? "bg-blue/5 ring-1 ring-blue/20"
+                          : ""
+                      }`}
+                    >
+                      <td className="py-2 pl-2 pr-3 whitespace-nowrap">
+                        {fmtDate(it.createdAt)}
+                      </td>
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {it.productName || "—"}
+                      </td>
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {it.lotNumber || "—"}
+                      </td>
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        <span
+                          className={
+                            isOutOrNegative ? "text-red font-semibold" : ""
+                          }
+                          title={
+                            isOutOrNegative
+                              ? "Rupture ou quantité négative"
+                              : undefined
+                          }
+                        >
+                          {qtyLabel(it)}
                         </span>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      {it.storageArea || "—"}
-                    </td>
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      {it?.createdBy
-                        ? `${it.createdBy.firstName || ""} ${
-                            it.createdBy.lastName || ""
-                          }`.trim() || "—"
-                        : "—"}
-                    </td>
-                    <td className="py-2 pr-2">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => onEdit?.(it)}
-                          className={`${btnBase} border border-green/50 bg-white text-green`}
-                          aria-label="Éditer"
-                          type="button"
-                        >
-                          <Edit3 className="size-4" /> Éditer
-                        </button>
-                        <button
-                          onClick={() => askDelete(it)}
-                          className={`${btnBase} border border-red bg-white text-red hover:border-red/80`}
-                          aria-label="Supprimer"
-                          type="button"
-                        >
-                          <Trash2 className="size-4" /> Supprimer
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-          </tbody>
-        </table>
+                      </td>
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {it.status ? (
+                          <span className="px-2 py-0.5 rounded text-xs bg-darkBlue/10 text-darkBlue">
+                            {getStatusLabel(it.status)}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {it.storageArea || "—"}
+                      </td>
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {it?.createdBy
+                          ? `${it.createdBy.firstName || ""} ${
+                              it.createdBy.lastName || ""
+                            }`.trim() || "—"
+                          : "—"}
+                      </td>
+                      <td className="py-2 pr-2">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => onEdit?.(it)}
+                            className={`${btnBase} border border-green/50 bg-white text-green`}
+                            aria-label="Éditer"
+                            type="button"
+                          >
+                            <Edit3 className="size-4" /> Éditer
+                          </button>
+                          <button
+                            onClick={() => askDelete(it)}
+                            className={`${btnBase} border border-red bg-white text-red hover:border-red/80`}
+                            aria-label="Supprimer"
+                            type="button"
+                          >
+                            <Trash2 className="size-4" /> Supprimer
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Overlay loader par-dessus la table, seulement si loading > 1s */}
+        {showSlowLoader && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-white/60">
+            <div className="flex items-center gap-2 text-darkBlue/70 text-sm">
+              <Loader2 className="size-4 animate-spin" />
+              <span>Chargement…</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Pagination */}
       {meta?.pages > 1 && (
-        <div className="mt-4 flex items-center justify-between">
+        <div className="mt-4 flex items-center justify_between">
           <div className="text-xs text-darkBlue/60">
             Page {meta.page}/{meta.pages} — {meta.total} lots
           </div>

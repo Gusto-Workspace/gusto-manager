@@ -12,6 +12,10 @@ const authenticateToken = require("../../middleware/authentificate-token");
 const OilChange = require("../../models/logs/oil-change.model");
 
 /* ---------- helpers ---------- */
+function escapeRegExp(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function currentUserFromToken(req) {
   const u = req.user || {};
   const role = (u.role || "").toLowerCase();
@@ -163,21 +167,41 @@ router.get(
       const { restaurantId } = req.params;
       const { page = 1, limit = 20, date_from, date_to, q } = req.query;
 
+      const pageNum = Math.max(1, parseInt(page, 10) || 1);
+      const limitNum = Math.min(200, Math.max(1, parseInt(limit, 10) || 20));
+
       const query = { restaurantId };
 
+      // Filtre dates sur performedAt
       if (date_from || date_to) {
         query.performedAt = {};
-        if (date_from) query.performedAt.$gte = new Date(date_from);
+        if (date_from) {
+          const start = new Date(date_from);
+          if (!Number.isNaN(start.getTime())) {
+            query.performedAt.$gte = start;
+          }
+        }
         if (date_to) {
           const end = new Date(date_to);
-          end.setDate(end.getDate() + 1);
-          end.setMilliseconds(end.getMilliseconds() - 1);
-          query.performedAt.$lte = end;
+          if (!Number.isNaN(end.getTime())) {
+            end.setDate(end.getDate() + 1);
+            end.setMilliseconds(end.getMilliseconds() - 1);
+            query.performedAt.$lte = end;
+          }
+        }
+        if (
+          query.performedAt &&
+          !query.performedAt.$gte &&
+          !query.performedAt.$lte
+        ) {
+          delete query.performedAt;
         }
       }
 
+      // Recherche texte sécurisée
       if (q && String(q).trim().length) {
-        const rx = new RegExp(String(q).trim(), "i");
+        const safe = escapeRegExp(String(q).trim());
+        const rx = new RegExp(safe, "i");
         query.$or = [
           { fryerId: rx },
           { qualityNotes: rx },
@@ -191,23 +215,23 @@ router.get(
         ];
       }
 
-      const skip = (Number(page) - 1) * Number(limit);
+      const skip = (pageNum - 1) * limitNum;
 
       const [items, total] = await Promise.all([
         OilChange.find(query)
           .sort({ performedAt: -1, _id: -1 })
           .skip(skip)
-          .limit(Number(limit)),
+          .limit(limitNum),
         OilChange.countDocuments(query),
       ]);
 
       return res.json({
         items,
         meta: {
-          page: Number(page),
-          limit: Number(limit),
+          page: pageNum,
+          limit: limitNum,
           total,
-          pages: Math.max(1, Math.ceil(total / Number(limit))),
+          pages: Math.max(1, Math.ceil(total / limitNum)),
         },
       });
     } catch (err) {

@@ -49,6 +49,10 @@ function convertQty(qty, from, to) {
 }
 
 /* ---------- helpers génériques ---------- */
+function escapeRegExp(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function currentUserFromToken(req) {
   const u = req.user || {};
   const role = (u.role || "").toLowerCase();
@@ -296,15 +300,18 @@ router.get(
   async (req, res) => {
     try {
       const { restaurantId } = req.params;
-      const { page = 1, limit = 20, date_from, date_to, q, closed } = req.query;
+      const { page = 1, limit = 20, q, closed, date_from, date_to } = req.query;
 
       const query = { restaurantId };
 
-      // closed: "open" / "closed"
-      if (closed === "open") query.closedAt = { $exists: false };
-      if (closed === "closed") query.closedAt = { $exists: true, $ne: null };
+      // STATUT : ouvert / fermé (corrigé)
+      if (closed === "open") {
+        query.closedAt = null;                       // champ absent ou null → ouvert
+      } else if (closed === "closed") {
+        query.closedAt = { $ne: null };              // champ présent et non-null → fermé
+      }
 
-      // date range on initiatedAt
+      // Plage de dates sur initiatedAt
       if (date_from || date_to) {
         const from = normDate(date_from);
         const to = normDate(date_to);
@@ -319,40 +326,42 @@ router.get(
         if (Object.keys(range).length) query.initiatedAt = range;
       }
 
+      // Recherche texte sécurisée
       if (q && String(q).trim().length) {
-        const rx = new RegExp(String(q).trim(), "i");
-        (query.$or ||= []).push(
+        const safe = escapeRegExp(String(q).trim());
+        const rx = new RegExp(safe, "i");
+        query.$or = [
           { "item.productName": rx },
           { "item.supplierName": rx },
           { "item.lotNumber": rx },
           { "item.unit": rx },
           { actionsTaken: rx },
-          { attachments: rx },
           { "recordedBy.firstName": rx },
-          { "recordedBy.lastName": rx }
-        );
+          { "recordedBy.lastName": rx },
+        ];
       }
 
-      const skip = (Number(page) - 1) * Number(limit);
+      const pageNum = Math.max(1, Number(page) || 1);
+      const limitNum = Math.max(1, Number(limit) || 20);
+      const skip = (pageNum - 1) * limitNum;
+
       const [items, total] = await Promise.all([
-        Recall.find(query).sort(listSortExpr()).skip(skip).limit(Number(limit)),
+        Recall.find(query).sort(listSortExpr()).skip(skip).limit(limitNum).lean(),
         Recall.countDocuments(query),
       ]);
 
       return res.json({
         items,
         meta: {
-          page: Number(page),
-          limit: Number(limit),
+          page: pageNum,
+          limit: limitNum,
           total,
-          pages: Math.max(1, Math.ceil(total / Number(limit))),
+          pages: Math.max(1, Math.ceil(total / limitNum)),
         },
       });
     } catch (err) {
       console.error("GET /list-recalls:", err);
-      return res
-        .status(500)
-        .json({ error: "Erreur lors de la récupération des retours NC" });
+      return res.status(500).json({ error: "Erreur lors de la récupération des retours NC" });
     }
   }
 );

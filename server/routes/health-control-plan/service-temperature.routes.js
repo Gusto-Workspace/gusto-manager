@@ -5,6 +5,10 @@ const authenticateToken = require("../../middleware/authentificate-token");
 const ServiceTemperature = require("../../models/logs/service-temperature.model");
 
 /* --------- helpers --------- */
+function escapeRegExp(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function currentUserFromToken(req) {
   const u = req.user || {};
   const role = (u.role || "").toLowerCase();
@@ -116,7 +120,6 @@ router.post(
   }
 );
 
-/* -------------------- LIST -------------------- */
 router.get(
   "/restaurants/:restaurantId/service-temperatures",
   authenticateToken,
@@ -138,8 +141,12 @@ router.get(
         }
       }
 
-      if (q && String(q).trim().length) {
-        const rx = new RegExp(String(q).trim(), "i");
+      // 🔐 Recherche texte sécurisée avec escapeRegExp
+      const trimmedQ = String(q || "").trim();
+      if (trimmedQ) {
+        const safe = escapeRegExp(trimmedQ);
+        const rx = new RegExp(safe, "i");
+
         query.$or = [
           { serviceArea: rx },
           { serviceId: rx },
