@@ -553,7 +553,7 @@ export default function MaintenanceList({
       <div className="relative">
         <div className="overflow-x-auto max-w-[calc(100vw-50px)] mobile:max-w-[calc(100vw-83px)] midTablet:max-w-[calc(100vw-92px)] tablet:max-w-[calc(100vw-360px)] rounded-xl border border-darkBlue/10">
           <table className="w-full text-[13px]">
-            <thead className="sticky top-0 z-10 bg-white/95 backdrop-blur border-b border-darkBlue/10">
+            <thead className="text-nowrap sticky top-0 z-10 bg-white/95 backdrop-blur border-b border-darkBlue/10">
               <tr>
                 <th className="py-2 pl-2 pr-3 text-left font-medium text-darkBlue/70">
                   Statut
@@ -577,7 +577,7 @@ export default function MaintenanceList({
                   Échéance
                 </th>
                 <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                  Preuves (plan)
+                  Preuves
                 </th>
                 <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
                   Créé par
@@ -668,7 +668,7 @@ export default function MaintenanceList({
                       </td>
 
                       <td className="py-2 pr-2 text-right">
-                        <div className="flex justify-end gap-2">
+                        <div className="text-nowrap flex justify-end gap-2">
                           <button
                             onClick={() => markDone(it)}
                             className={`${btnBase} border border-green/60 bg-white text-green`}

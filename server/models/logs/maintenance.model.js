@@ -25,6 +25,16 @@ const historySchema = new Schema(
   { _id: false }
 );
 
+const attachmentSchema = new Schema(
+  {
+    url: { type: String, required: true },
+    public_id: { type: String, required: true, index: true },
+    filename: { type: String },
+    mimetype: { type: String },
+  },
+  { _id: false }
+);
+
 const maintenanceSchema = new Schema(
   {
     restaurantId: {
@@ -58,8 +68,7 @@ const maintenanceSchema = new Schema(
     provider: String,
     notes: String,
 
-    // Preuves “statiques” liées au plan
-    proofUrls: { type: [String], default: [] },
+    attachments: { type: [attachmentSchema], default: [] },
 
     // === Historique des exécutions ===
     history: { type: [historySchema], default: [] },

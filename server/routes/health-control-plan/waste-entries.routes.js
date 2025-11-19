@@ -384,7 +384,7 @@ router.delete(
 
 // ---------- DOWNLOAD ATTACHMENT ----------
 router.get(
-  "/haccp/:restaurantId/documents/:public_id(*)/download",
+  "/haccp/waste-entries/:restaurantId/documents/:public_id(*)/download",
   async (req, res) => {
     try {
       const { restaurantId, public_id } = req.params;

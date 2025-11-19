@@ -1,6 +1,16 @@
 const mongoose = require("mongoose");
 const { Schema } = mongoose;
 
+const attachmentSchema = new Schema(
+  {
+    url: { type: String, required: true },
+    public_id: { type: String, required: true, index: true },
+    filename: { type: String },
+    mimetype: { type: String },
+  },
+  { _id: false }
+);
+
 const healthMeasureSchema = new Schema(
   {
     restaurantId: {
@@ -17,7 +27,9 @@ const healthMeasureSchema = new Schema(
     },
     performedAt: { type: Date, default: Date.now, index: true },
     notes: String,
-    attachments: { type: [String], default: [] },
+
+    attachments: { type: [attachmentSchema], default: [] },
+
     createdBy: {
       userId: { type: Schema.Types.ObjectId, required: true, index: true },
       role: { type: String, enum: ["owner", "employee"], required: true },
@@ -33,6 +45,7 @@ const healthMeasureSchema = new Schema(
 
 healthMeasureSchema.index({ restaurantId: 1, performedAt: -1 });
 healthMeasureSchema.index({ restaurantId: 1, type: 1, performedAt: -1 });
+healthMeasureSchema.index({ restaurantId: 1, "attachments.public_id": 1 });
 
 healthMeasureSchema.pre("save", function (next) {
   this.updatedAt = new Date();

@@ -7,6 +7,23 @@ const authenticateToken = require("../../middleware/authentificate-token");
 const Recall = require("../../models/logs/recall.model");
 const InventoryLot = require("../../models/logs/inventory-lot.model");
 
+const cloudinary = require("cloudinary").v2;
+const multer = require("multer");
+const streamifier = require("streamifier");
+const path = require("path");
+const axios = require("axios");
+
+/* ---------- Cloudinary config ---------- */
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+/* ---------- Multer mémoire ---------- */
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
+
 /* ---------- ARRONDI & UNITÉS (helpers locaux) ---------- */
 function decimalsForUnit(u) {
   const unit = String(u || "").trim();
@@ -84,19 +101,6 @@ const normObjId = (v) => {
   const s = String(v);
   return Types.ObjectId.isValid(s) ? s : null;
 };
-function normStringArray(input) {
-  if (!input) return [];
-  if (Array.isArray(input))
-    return input
-      .map((x) => normStr(x))
-      .filter(Boolean)
-      .slice(0, 100);
-  return String(input)
-    .split(/[\n,;]+/g)
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .slice(0, 100);
-}
 function clampQtyRemaining(qtyRemaining, qtyReceived) {
   const q = Number.isFinite(Number(qtyRemaining)) ? Number(qtyRemaining) : 0;
   const r = Number.isFinite(Number(qtyReceived)) ? Number(qtyReceived) : 0;
@@ -137,6 +141,61 @@ function normItem(i = {}) {
   // pas de lot & pas de nom produit -> invalide
   if (!out.inventoryLotId && !out.productName) return null;
   return out;
+}
+
+/* ---------- Helpers Cloudinary pour Recalls ---------- */
+function haccpRecallFolder(restaurantId) {
+  return `Gusto_Workspace/restaurants/${restaurantId}/haccp/recalls`;
+}
+
+function safePublicIdFromFilename(originalname) {
+  const ext = path.extname(originalname);
+  const basename = path.basename(originalname, ext);
+  const safeBase = basename
+    .replace(/\s+/g, "_")
+    .replace(/[^a-zA-Z0-9_\-]/g, "");
+  const stamp = Date.now();
+  return `${safeBase}_${stamp}`;
+}
+
+function uploadRecallFile(buffer, originalname, mimetype, restaurantId) {
+  const folder = haccpRecallFolder(restaurantId);
+  const public_id = safePublicIdFromFilename(originalname);
+
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        resource_type: "raw", // PDF + images
+        folder,
+        public_id,
+        overwrite: true,
+      },
+      (err, result) => {
+        if (err) return reject(err);
+        resolve({
+          url: result.secure_url,
+          public_id: result.public_id,
+          filename: originalname,
+          mimetype,
+        });
+      }
+    );
+    streamifier.createReadStream(buffer).pipe(uploadStream);
+  });
+}
+
+async function deleteRecallAttachment(public_id) {
+  if (!public_id) return;
+  try {
+    await cloudinary.uploader.destroy(public_id, {
+      resource_type: "raw",
+    });
+  } catch (err) {
+    console.warn(
+      `Erreur suppression pièce jointe Cloudinary (recall: ${public_id}):`,
+      err
+    );
+  }
 }
 
 /* --------- autocomplete inventory lots --------- */
@@ -191,12 +250,22 @@ router.get(
 router.post(
   "/restaurants/:restaurantId/recalls",
   authenticateToken,
+  upload.array("attachments"),
   async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
     try {
       const { restaurantId } = req.params;
       const inData = { ...req.body };
+
+      // item envoyé en JSON string dans FormData
+      if (typeof inData.item === "string") {
+        try {
+          inData.item = JSON.parse(inData.item);
+        } catch {
+          inData.item = {};
+        }
+      }
 
       const currentUser = currentUserFromToken(req);
       if (!currentUser) {
@@ -234,13 +303,29 @@ router.post(
         return res.status(400).json({ error: "productName requis" });
       }
 
+      // Upload éventuelles pièces jointes
+      let attachments = [];
+      if (Array.isArray(req.files) && req.files.length) {
+        const uploads = await Promise.all(
+          req.files.map((file) =>
+            uploadRecallFile(
+              file.buffer,
+              file.originalname,
+              file.mimetype,
+              restaurantId
+            )
+          )
+        );
+        attachments = uploads;
+      }
+
       // Créer le doc
       const doc = new Recall({
         restaurantId,
         initiatedAt: normDate(inData.initiatedAt) ?? new Date(),
         item,
         actionsTaken: normStr(inData.actionsTaken) ?? undefined,
-        attachments: normStringArray(inData.attachments),
+        attachments,
         closedAt: normDate(inData.closedAt) ?? undefined,
         recordedBy: currentUser,
       });
@@ -306,9 +391,9 @@ router.get(
 
       // STATUT : ouvert / fermé (corrigé)
       if (closed === "open") {
-        query.closedAt = null;                       // champ absent ou null → ouvert
+        query.closedAt = null; // champ absent ou null → ouvert
       } else if (closed === "closed") {
-        query.closedAt = { $ne: null };              // champ présent et non-null → fermé
+        query.closedAt = { $ne: null }; // champ présent et non-null → fermé
       }
 
       // Plage de dates sur initiatedAt
@@ -346,7 +431,11 @@ router.get(
       const skip = (pageNum - 1) * limitNum;
 
       const [items, total] = await Promise.all([
-        Recall.find(query).sort(listSortExpr()).skip(skip).limit(limitNum).lean(),
+        Recall.find(query)
+          .sort(listSortExpr())
+          .skip(skip)
+          .limit(limitNum)
+          .lean(),
         Recall.countDocuments(query),
       ]);
 
@@ -361,7 +450,9 @@ router.get(
       });
     } catch (err) {
       console.error("GET /list-recalls:", err);
-      return res.status(500).json({ error: "Erreur lors de la récupération des retours NC" });
+      return res
+        .status(500)
+        .json({ error: "Erreur lors de la récupération des retours NC" });
     }
   }
 );
@@ -387,6 +478,7 @@ router.get(
 router.put(
   "/restaurants/:restaurantId/recalls/:recallId",
   authenticateToken,
+  upload.array("attachments"),
   async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
@@ -397,6 +489,18 @@ router.put(
       // ne pas accepter d’override de champs protégés
       delete inData.recordedBy;
       delete inData.restaurantId;
+      delete inData.createdAt;
+      delete inData.updatedAt;
+      delete inData.attachments; // on gère nous-mêmes
+
+      // item potentiellement envoyé en JSON string
+      if (typeof inData.item === "string") {
+        try {
+          inData.item = JSON.parse(inData.item);
+        } catch {
+          inData.item = undefined;
+        }
+      }
 
       const prev = await Recall.findOne({
         _id: recallId,
@@ -541,14 +645,53 @@ router.put(
           ? normStr(inData.actionsTaken) || undefined
           : prev.actionsTaken;
 
-      if (inData.attachments !== undefined) {
-        prev.attachments = normStringArray(inData.attachments);
-      }
-
       prev.closedAt =
         inData.closedAt !== undefined
           ? normDate(inData.closedAt)
           : prev.closedAt;
+
+      // ----- Gestion des pièces jointes Cloudinary -----
+      const prevAttachments = Array.isArray(prev.attachments)
+        ? prev.attachments
+        : [];
+
+      // Liste des public_id à conserver (venant du front via FormData)
+      let keep = req.body.keepAttachments || [];
+      if (!Array.isArray(keep)) keep = keep ? [keep] : [];
+      keep = keep.map((s) => String(s));
+
+      const attachmentsToKeep = prevAttachments.filter((att) =>
+        keep.includes(String(att.public_id))
+      );
+      const attachmentsToRemove = prevAttachments.filter(
+        (att) => !keep.includes(String(att.public_id))
+      );
+
+      if (attachmentsToRemove.length) {
+        await Promise.all(
+          attachmentsToRemove.map((att) =>
+            deleteRecallAttachment(att.public_id)
+          )
+        );
+      }
+
+      // Upload nouveaux fichiers
+      let newAttachments = [];
+      if (Array.isArray(req.files) && req.files.length) {
+        const uploads = await Promise.all(
+          req.files.map((file) =>
+            uploadRecallFile(
+              file.buffer,
+              file.originalname,
+              file.mimetype,
+              restaurantId
+            )
+          )
+        );
+        newAttachments = uploads;
+      }
+
+      prev.attachments = [...attachmentsToKeep, ...newAttachments];
 
       // appliquer le nouvel item
       prev.item = nextItem;
@@ -567,7 +710,7 @@ router.put(
   }
 );
 
-/* ------------------ DELETE (recrédite le lot) ------------------ */
+/* ------------------ DELETE (recrédite le lot + supprime pièces) ------------------ */
 router.delete(
   "/restaurants/:restaurantId/recalls/:recallId",
   authenticateToken,
@@ -627,6 +770,13 @@ router.delete(
         }
       }
 
+      // suppression des pièces jointes Cloudinary
+      if (Array.isArray(doc.attachments) && doc.attachments.length) {
+        await Promise.all(
+          doc.attachments.map((att) => deleteRecallAttachment(att.public_id))
+        );
+      }
+
       await Recall.deleteOne({ _id: recallId, restaurantId }).session(session);
 
       await session.commitTransaction();
@@ -637,6 +787,58 @@ router.delete(
       return res.status(500).json({ error: "Erreur lors de la suppression" });
     } finally {
       session.endSession();
+    }
+  }
+);
+
+/* ---------- DOWNLOAD ATTACHMENT ---------- */
+router.get(
+  "/haccp/recalls/:restaurantId/documents/:public_id(*)/download",
+  async (req, res) => {
+    try {
+      const { restaurantId, public_id } = req.params;
+
+      const doc = await Recall.findOne(
+        {
+          restaurantId,
+          "attachments.public_id": public_id,
+        },
+        { attachments: 1 }
+      ).lean();
+
+      if (!doc) {
+        console.log(
+          "[HACCP RECALL DOWNLOAD] Aucune entrée contenant cette pièce jointe"
+        );
+        return res
+          .status(404)
+          .json({ message: "Pièce jointe introuvable pour ce restaurant" });
+      }
+
+      const att =
+        (doc.attachments || []).find(
+          (a) => String(a.public_id) === String(public_id)
+        ) || null;
+
+      if (!att || !att.url) {
+        console.log(
+          "[HACCP RECALL DOWNLOAD] Attachment non trouvé ou sans URL"
+        );
+        return res.status(404).json({ message: "Pièce jointe introuvable" });
+      }
+
+      const response = await axios.get(att.url, { responseType: "stream" });
+
+      res.setHeader("Content-Type", response.headers["content-type"]);
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${att.filename || "document"}"`
+      );
+
+      response.data.pipe(res);
+    } catch (err) {
+      console.error("Error in HACCP RECALL download route:", err);
+      res.status(500).json({ message: "Server error" });
     }
   }
 );

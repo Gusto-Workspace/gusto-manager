@@ -6,8 +6,8 @@ const attachmentSchema = new Schema(
   {
     url: { type: String, required: true },
     public_id: { type: String, required: true },
-    filename: { type: String, required: true }, // vrai nom + extension
-    mimetype: { type: String }, // optionnel mais pratique pour l'UI
+    filename: { type: String, required: true },
+    mimetype: { type: String },
   },
   { _id: false }
 );

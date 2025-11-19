@@ -1,8 +1,9 @@
-// app/(components)/health/RecallForm.jsx
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import axios from "axios";
+
+// ICONS
 import {
   CalendarClock,
   FileText,
@@ -14,6 +15,11 @@ import {
   Search,
   Loader2,
   ShieldCheck,
+  Camera,
+  Upload,
+  Trash2,
+  Download,
+  XCircle,
 } from "lucide-react";
 
 /* ---------- Utils dates ---------- */
@@ -77,15 +83,44 @@ function roundByUnit(val, unit) {
   return Math.round(n * f) / f;
 }
 
+/* ---------- Helpers fichiers (comme maintenance) ---------- */
+function normalizeFilename(name) {
+  if (!name) return "";
+  try {
+    if (typeof TextDecoder === "undefined") return name;
+    const bytes = Uint8Array.from([...name].map((ch) => ch.charCodeAt(0)));
+    const decoded = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+    return decoded;
+  } catch {
+    return name;
+  }
+}
+function truncate(text, max = 26) {
+  if (!text) return "";
+  return text.length > max ? `${text.slice(0, max - 3)}…` : text;
+}
+function mimeBadgeLabel(mimeOrName) {
+  if (!mimeOrName) return "FILE";
+  const lower = String(mimeOrName).toLowerCase();
+
+  if (lower.includes("pdf")) return "PDF";
+  if (lower.startsWith("image/")) {
+    const sub = lower.split("/")[1] || "img";
+    if (sub === "jpeg") return "JPG";
+    return sub.slice(0, 4).toUpperCase();
+  }
+  if (lower.includes("word")) return "DOC";
+  if (lower.includes("excel") || lower.includes("sheet")) return "XLS";
+  if (lower.includes("zip")) return "ZIP";
+  return lower.split("/")[1]?.slice(0, 4).toUpperCase() || "FILE";
+}
+
 /* ---------- Defaults ---------- */
 function buildDefaults(rec) {
   const it = rec?.item || {};
   return {
     initiatedAt: toDatetimeLocal(rec?.initiatedAt ?? new Date()),
     actionsTaken: rec?.actionsTaken ?? "",
-    attachmentsText: Array.isArray(rec?.attachments)
-      ? rec.attachments.join("\n")
-      : "",
     closed: !!rec?.closedAt,
     closedAt: toDatetimeLocal(rec?.closedAt),
 
@@ -110,7 +145,7 @@ function buildDefaults(rec) {
 
 /* ---------- STYLES (alignés) ---------- */
 const fieldWrap =
-  "group relative rounded-xl bg-white/50   px-3 py-2 min-h-[80px] transition-shadow";
+  "group relative rounded-xl bg-white/50 px-3 py-2 h-[80px] transition-shadow";
 const labelCls =
   "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
 const inputCls =
@@ -120,10 +155,10 @@ const selectCls =
 const textareaCls =
   "w-full resize-none rounded-lg border border-darkBlue/20 bg-white p-[10px] text-[15px] outline-none transition placeholder:text-darkBlue/40";
 const btnBase =
-  "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition active:scale-[0.98]";
+  "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition active:scale-[0.98]";
 
 /* ---------- Autocomplete config ---------- */
-const MIN_CHARS = 1; // dès le 1er caractère
+const MIN_CHARS = 1;
 const DEBOUNCE_MS = 250;
 
 export default function RecallForm({
@@ -150,10 +185,49 @@ export default function RecallForm({
     []
   );
 
+  /* ---------- Pièces jointes Cloudinary ---------- */
+  const [existingAttachments, setExistingAttachments] = useState(
+    Array.isArray(initial?.attachments) ? initial.attachments : []
+  );
+  const [removedAttachmentIds, setRemovedAttachmentIds] = useState([]);
+  const [newFiles, setNewFiles] = useState([]);
+
+  const fileInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
+
   useEffect(() => {
     reset(buildDefaults(initial));
+    setExistingAttachments(
+      Array.isArray(initial?.attachments) ? initial.attachments : []
+    );
+    setRemovedAttachmentIds([]);
+    setNewFiles([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial]);
+
+  const downloadUrlForAttachment = (att) => {
+    if (!att?.public_id) return att?.url || "#";
+    const encodedPublicId = encodeURIComponent(att.public_id);
+    return `${process.env.NEXT_PUBLIC_API_URL}/haccp/recalls/${restaurantId}/documents/${encodedPublicId}/download`;
+  };
+
+  const handleFilesSelected = (event) => {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+    setNewFiles((prev) => [...prev, ...files]);
+    event.target.value = "";
+  };
+
+  const removeNewFile = (index) => {
+    setNewFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const toggleExistingAttachmentRemoval = (public_id) => {
+    setRemovedAttachmentIds((prev) => {
+      const id = String(public_id);
+      return prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+    });
+  };
 
   /* ---------- Auto date de clôture via switch ---------- */
   const closedWatch = watch("closed");
@@ -175,13 +249,12 @@ export default function RecallForm({
   const searchTimer = useRef(null);
   const reqCtrlRef = useRef(null);
   const lastQueryRef = useRef("");
-  const cacheRef = useRef(new Map()); // Map<query, items[]>
+  const cacheRef = useRef(new Map());
 
   async function fetchLots(query) {
     const q = (query || "").trim();
     lastQueryRef.current = q;
 
-    // Cache hit → pas d'appel API
     if (cacheRef.current.has(q)) {
       setIsLoading(false);
       setOptions(cacheRef.current.get(q) || []);
@@ -202,7 +275,7 @@ export default function RecallForm({
         signal: ctrl.signal,
       });
 
-      if (lastQueryRef.current !== q) return; // réponse périmée
+      if (lastQueryRef.current !== q) return;
 
       const items = Array.isArray(data?.items) ? data.items : [];
       cacheRef.current.set(q, items);
@@ -227,28 +300,24 @@ export default function RecallForm({
     setValue("lotMaxRemaining", "", { shouldDirty: true });
     setValue("lotBaseUnit", "", { shouldDirty: true });
 
-    // Ouverture conditionnelle
     const allowOpen = q.length >= MIN_CHARS;
     setDropdownOpen(allowOpen);
 
-    // Annule l'ancienne recherche
     clearTimeout(searchTimer.current);
 
     if (!allowOpen) {
-      // Pas assez de caractères : on ne montre rien et on arrête
       if (reqCtrlRef.current) reqCtrlRef.current.abort();
       setIsLoading(false);
       setOptions([]);
       return;
     }
 
-    // Cache immédiat si dispo, sinon spinner + fetch
     if (cacheRef.current.has(q)) {
       setIsLoading(false);
       setOptions(cacheRef.current.get(q) || []);
     } else {
       setIsLoading(true);
-      setOptions([]); // on n'affiche pas "Aucun résultat" pendant le chargement
+      setOptions([]);
     }
 
     searchTimer.current = setTimeout(() => fetchLots(q), DEBOUNCE_MS);
@@ -259,7 +328,6 @@ export default function RecallForm({
     const allowOpen = q.length >= MIN_CHARS;
     setDropdownOpen(allowOpen);
 
-    // Si on a déjà le cache → affiche direct ; sinon lance la recherche
     if (allowOpen) {
       if (cacheRef.current.has(q)) {
         setIsLoading(false);
@@ -274,13 +342,12 @@ export default function RecallForm({
   }
 
   function onProductBlur() {
-    // Laisse le temps au click sur la liste (onMouseDown preventDefault)
     setTimeout(() => setDropdownOpen(false), 120);
     if (reqCtrlRef.current) reqCtrlRef.current.abort();
     clearErrors(["productSearch", "inventoryLotId"]);
   }
 
-  // Cap autorisé = stock restant du lot (converti dans l’unité choisie)
+  // Cap autorisé = stock restant du lot (converti)
   function allowedMax() {
     const baseRemain = Number(getValues("lotMaxRemaining"));
     const lotBaseUnit = getValues("lotBaseUnit") || "";
@@ -351,10 +418,6 @@ export default function RecallForm({
 
     setValue("note", "", { shouldDirty: true, shouldValidate: true });
     setValue("actionsTaken", "", { shouldDirty: true, shouldValidate: true });
-    setValue("attachmentsText", "", {
-      shouldDirty: true,
-      shouldValidate: true,
-    });
 
     setOptions([]);
     setIsLoading(false);
@@ -379,7 +442,7 @@ export default function RecallForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lotBaseUnit, JSON.stringify(unitOpts), curUnit]);
 
-  /* --- HYDRATATION “max restant” si un lot est sélectionné --- */
+  /* --- HYDRAT LOT sur edit --- */
   useEffect(() => {
     const curLotId = getValues("inventoryLotId");
     if (!restaurantId || !token || !curLotId) return;
@@ -430,7 +493,7 @@ export default function RecallForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId, token, watch("inventoryLotId")]);
 
-  /* ---------- Submit ---------- */
+  /* ---------- Submit (FormData + fichiers) ---------- */
   const onSubmit = async (data) => {
     const token = localStorage.getItem("token");
     if (!token) return;
@@ -438,60 +501,81 @@ export default function RecallForm({
     const pname =
       (data.productName || "").trim() || (data.productSearch || "").trim();
     if (!pname) {
-      setError("productName", { type: "manual" }); // pas de message "Requis"
+      setError("productName", { type: "manual" });
       return;
     }
     clearErrors("productName");
 
     const a = allowedMax();
     const n = Number(data.quantity);
+    const safeUnitLocal = safeUnit;
     if (data.inventoryLotId && a != null && Number.isFinite(n) && n > a) {
       setError("quantity", {
         type: "manual",
-        message: `Quantité > stock restant (${a} ${safeUnit || ""})`,
+        message: `Quantité > stock restant (${a} ${safeUnitLocal || ""})`,
       });
       return;
     }
 
-    const attachments =
-      typeof data.attachmentsText === "string" && data.attachmentsText.trim()
-        ? data.attachmentsText
-            .split(/[\n,;]+/g)
-            .map((s) => s.trim())
-            .filter(Boolean)
-        : [];
+    const formData = new FormData();
 
-    const payload = {
-      initiatedAt: data.initiatedAt ? new Date(data.initiatedAt) : new Date(),
-      item: {
-        inventoryLotId: data.inventoryLotId || undefined,
-        productName: pname,
-        supplierName: data.supplierName || undefined,
-        lotNumber: data.lotNumber || undefined,
-        quantity:
-          data.quantity !== "" && data.quantity != null
-            ? Number(data.quantity)
-            : undefined,
-        unit: data.unit || undefined,
-        bestBefore: data.bestBefore ? new Date(data.bestBefore) : undefined,
-        note: data.note || undefined,
-      },
-      actionsTaken: data.actionsTaken || undefined,
-      attachments,
-      closedAt: data.closed
-        ? data.closedAt
-          ? new Date(data.closedAt)
-          : new Date()
-        : null,
+    // Champs racine
+    formData.append(
+      "initiatedAt",
+      data.initiatedAt || new Date().toISOString()
+    );
+    if (data.actionsTaken) formData.append("actionsTaken", data.actionsTaken);
+
+    if (data.closed) {
+      formData.append(
+        "closedAt",
+        data.closedAt || new Date().toISOString()
+      );
+    } else {
+      formData.append("closedAt", "");
+    }
+
+    // Item (JSON string)
+    const itemPayload = {
+      inventoryLotId: data.inventoryLotId || undefined,
+      productName: pname,
+      supplierName: data.supplierName || undefined,
+      lotNumber: data.lotNumber || undefined,
+      quantity:
+        data.quantity !== "" && data.quantity != null
+          ? Number(data.quantity)
+          : undefined,
+      unit: data.unit || undefined,
+      bestBefore: data.bestBefore || undefined,
+      note: data.note || undefined,
     };
+    formData.append("item", JSON.stringify(itemPayload));
+
+    // Pièces existantes gardées
+    existingAttachments.forEach((att) => {
+      if (
+        att.public_id &&
+        !removedAttachmentIds.includes(String(att.public_id))
+      ) {
+        formData.append("keepAttachments", att.public_id);
+      }
+    });
+
+    // Nouveaux fichiers
+    newFiles.forEach((file) => {
+      formData.append("attachments", file);
+    });
 
     const url = initial?._id
       ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/recalls/${initial._id}`
       : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/recalls`;
     const method = initial?._id ? "put" : "post";
 
-    const { data: saved } = await axios[method](url, payload, {
-      headers: { Authorization: `Bearer ${token}` },
+    const { data: saved } = await axios[method](url, formData, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "multipart/form-data",
+      },
     });
 
     window.dispatchEvent(
@@ -499,6 +583,9 @@ export default function RecallForm({
     );
 
     reset(buildDefaults(null));
+    setExistingAttachments([]);
+    setRemovedAttachmentIds([]);
+    setNewFiles([]);
     onSuccess?.(saved);
   };
 
@@ -510,6 +597,8 @@ export default function RecallForm({
     dropdownOpen &&
     productQ.length >= MIN_CHARS &&
     (isLoading || hasCacheForQ || options.length > 0);
+
+  const notesVal = watch("actionsTaken") || "";
 
   return (
     <form
@@ -525,9 +614,10 @@ export default function RecallForm({
           <input
             type="datetime-local"
             {...register("initiatedAt", { required: true })}
-            className={`${selectCls} ${errors.initiatedAt ? "border-red focus:ring-red/20" : ""}`}
+            className={`${selectCls} ${
+              errors.initiatedAt ? "border-red focus:ring-red/20" : ""
+            }`}
           />
-          {/* pas de message "Requis" */}
         </div>
       </div>
 
@@ -547,10 +637,11 @@ export default function RecallForm({
               spellCheck={false}
               autoCorrect="off"
               onChange={(e) => onProductInputChange(e.target.value)}
-              className={`${inputCls} pr-10 ${errors?.productName ? "border-red ring-1 ring-red/30" : ""}`}
+              className={`${inputCls} pr-10 ${
+                errors?.productName ? "border-red ring-1 ring-red/30" : ""
+              }`}
               placeholder="Rechercher un produit/lot…"
             />
-            {/* Loupe : à droite quand vide, reculée quand du texte (croix visible) */}
             <Search
               className={`pointer-events-none absolute top-1/2 -translate-y-1/2 size-4 text-darkBlue/40 ${
                 hasSearch ? "right-10" : "right-2"
@@ -607,7 +698,6 @@ export default function RecallForm({
           <input type="hidden" {...register("inventoryLotId")} />
           <input type="hidden" {...register("lotMaxRemaining")} />
           <input type="hidden" {...register("lotBaseUnit")} />
-          {/* pas de message "Requis" */}
         </div>
 
         <div className={fieldWrap}>
@@ -656,7 +746,9 @@ export default function RecallForm({
                 });
               }
             }}
-            className={`${inputCls} ${errors.quantity ? "border-red focus:ring-red/20" : ""}`}
+            className={`${inputCls} ${
+              errors.quantity ? "border-red focus:ring-red/20" : ""
+            }`}
           />
           {allowedMax() != null && (
             <div className="text-xs opacity-60 mt-1">
@@ -734,28 +826,188 @@ export default function RecallForm({
         </div>
       </div>
 
-      {/* Ligne 5 : Actions / Pièces */}
+      {/* Ligne 5 : Actions / Pièces jointes (fichiers) */}
       <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
-        <div className={`${fieldWrap} h-auto`}>
+        <div className={fieldWrap.replace("h-[80px]", "h-auto")}>
           <label className={labelCls}>
             <FileText className="size-4" /> Actions menées
           </label>
           <textarea
-            rows={4}
+            rows={7}
             {...register("actionsTaken")}
-            className={`${textareaCls} min-h-[96px]`}
+            className={textareaCls}
           />
+          <span className="pointer-events-none absolute bottom-4 right-6 select-none text-[11px] text-darkBlue/40">
+              {(notesVal?.length ?? 0).toString()}
+          </span>
         </div>
-        <div className={`${fieldWrap} h-auto`}>
+
+        <div className={fieldWrap.replace("h-[80px]", "h-auto")}>
           <label className={labelCls}>
-            <LinkIcon className="size-4" /> Pièces (URLs, 1 par ligne)
+            <LinkIcon className="size-4" /> Pièces jointes (PDF, photos)
           </label>
-          <textarea
-            rows={4}
-            {...register("attachmentsText")}
-            className={`${textareaCls} min-h-[96px]`}
-            placeholder={"https://…/bon-retour.pdf\nhttps://…/photos.jpg"}
+
+          {/* Boutons d'action */}
+          <div className="flex flex-wrap gap-2 mb-3">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className={`${btnBase} border border-darkBlue/15 bg-white text-darkBlue/80 hover:border-darkBlue/40 hover:bg-darkBlue/[0.03]`}
+            >
+              <Upload className="size-4" />
+              Importer un fichier
+            </button>
+            <button
+              type="button"
+              onClick={() => cameraInputRef.current?.click()}
+              className={`${btnBase} border border-blue/40 bg-blue/5 text-blue hover:border-blue/70 hover:bg-blue/10`}
+            >
+              <Camera className="size-4" />
+              Prendre une photo
+            </button>
+          </div>
+
+          {/* Inputs file cachés */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/*,application/pdf"
+            className="hidden"
+            onChange={handleFilesSelected}
           />
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={handleFilesSelected}
+          />
+
+          {/* Liste des pièces */}
+          <div className="space-y-2 max-h-[135px] overflow-y-scroll">
+            {/* Nouveaux fichiers */}
+            {newFiles.length > 0 && (
+              <div className="rounded-lg bg-blue/5 px-2 py-2">
+                <p className="mb-1 text-[11px] uppercase tracking-wide text-blue/80">
+                  Fichiers à ajouter
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {newFiles.map((file, idx) => {
+                    const prettyName = normalizeFilename(file.name);
+                    const label = mimeBadgeLabel(file.type || file.name);
+                    return (
+                      <div
+                        key={`${file.name}-${idx}`}
+                        className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-[11px] text-blue-950 shadow-sm border border-blue/20"
+                      >
+                        <span className="flex h-6 w-8 items-center justify-center rounded-md bg-blue/5 text-[10px] font-semibold text-blue">
+                          {label}
+                        </span>
+                        <span title={prettyName}>
+                          {truncate(prettyName, 25)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => removeNewFile(idx)}
+                          className="ml-1 inline-flex items-center justify-center rounded-full bg-red/10 p-[3px] text-red hover:bg-red/20"
+                          title="Retirer"
+                        >
+                          <Trash2 className="size-3" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Pièces existantes (Cloudinary) */}
+            {existingAttachments.length > 0 && (
+              <div className="rounded-lg bg-darkBlue/[0.03] px-2 py-2">
+                <p className="mb-1 text-[11px] uppercase tracking-wide text-darkBlue/50">
+                  Pièces déjà enregistrées
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {existingAttachments.map((att) => {
+                    const prettyName = normalizeFilename(att.filename);
+                    const label = mimeBadgeLabel(att.mimetype || att.filename);
+                    const isMarked = removedAttachmentIds.includes(
+                      String(att.public_id)
+                    );
+
+                    return (
+                      <div
+                        key={att.public_id}
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] shadow-sm border ${
+                          isMarked
+                            ? "bg-red/5 border-red/40 text-red/70 opacity-70"
+                            : "bg-white border-darkBlue/10 text-darkBlue/80"
+                        }`}
+                      >
+                        <span
+                          className={`flex h-6 w-8 items-center justify-center rounded-md text-[10px] font-semibold ${
+                            isMarked
+                              ? "bg-red/10 text-red"
+                              : "bg-darkBlue/5 text-darkBlue/70"
+                          }`}
+                        >
+                          {label}
+                        </span>
+
+                        <a
+                          href={
+                            isMarked ? undefined : downloadUrlForAttachment(att)
+                          }
+                          target={isMarked ? undefined : "_blank"}
+                          rel={isMarked ? undefined : "noreferrer"}
+                          className={`flex items-center gap-1 ${
+                            isMarked
+                              ? "cursor-not-allowed line-through text-red/70"
+                              : "hover:underline"
+                          }`}
+                          title={
+                            isMarked ? "Marquée pour suppression" : prettyName
+                          }
+                        >
+                          <Download className="size-3" />
+                          <span>{truncate(prettyName, 25)}</span>
+                        </a>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            toggleExistingAttachmentRemoval(att.public_id)
+                          }
+                          className={`ml-1 inline-flex items-center justify-center rounded-full p-[3px] ${
+                            isMarked
+                              ? "bg-red text-white hover:bg-red/80"
+                              : "bg-red/10 text-red hover:bg-red/20"
+                          }`}
+                          title={
+                            isMarked
+                              ? "Annuler la suppression"
+                              : "Marquer pour suppression"
+                          }
+                        >
+                          <Trash2 className="size-3" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Hint si aucun doc */}
+            {existingAttachments.length === 0 && newFiles.length === 0 && (
+              <p className="text-[11px] text-darkBlue/40">
+                Ajoutez la notification du fournisseur, un bon de retour ou des
+                photos pour tracer ce rappel / retrait.
+              </p>
+            )}
+          </div>
         </div>
       </div>
 
@@ -794,7 +1046,9 @@ export default function RecallForm({
           <input
             type="datetime-local"
             {...register("closedAt")}
-            className={`${selectCls} ${!closedWatch ? "opacity-60 cursor-not-allowed" : ""}`}
+            className={`${selectCls} ${
+              !closedWatch ? "opacity-60 cursor-not-allowed" : ""
+            }`}
             disabled={!closedWatch}
           />
         </div>
@@ -805,7 +1059,9 @@ export default function RecallForm({
         <button
           type="submit"
           disabled={isSubmitting}
-          className={`text-nowrap ${btnBase} h-[38px] text-white shadow ${isSubmitting ? "bg-darkBlue/40" : "bg-blue"}`}
+          className={`text-nowrap ${btnBase} h-[38px] text-white shadow ${
+            isSubmitting ? "bg-darkBlue/40" : "bg-blue"
+          }`}
         >
           {isSubmitting ? (
             <div className="flex items-center gap-2">
@@ -830,10 +1086,14 @@ export default function RecallForm({
             type="button"
             onClick={() => {
               reset(buildDefaults(null));
+              setExistingAttachments([]);
+              setRemovedAttachmentIds([]);
+              setNewFiles([]);
               onCancel?.();
             }}
             className={`${btnBase} h-[38px] border border-red bg-white text-red`}
           >
+            <XCircle className="size-4" />
             Annuler
           </button>
         )}
