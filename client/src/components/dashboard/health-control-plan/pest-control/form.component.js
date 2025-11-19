@@ -618,7 +618,7 @@ export default function PestControlForm({
 
       {/* Journal d’intervention */}
       <div className="rounded-2xl bg-white/50 p-3 pb-0">
-        <div className="mb-3 flex items-center justify_between gap-2 justify-between">
+        <div className="mb-3 flex flex-col mobile:flex-row mobile:items-center gap-2 justify-between">
           <h3 className="text-sm font-semibold text-darkBlue flex items-center gap-2">
             <ListChecks className="size-4" /> Journal d’intervention
           </h3>

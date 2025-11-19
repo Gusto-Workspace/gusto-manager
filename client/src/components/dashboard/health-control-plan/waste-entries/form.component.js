@@ -1,8 +1,12 @@
-// app/(components)/waste/WasteEntriesForm.jsx
+// components/dashboard/health-control-plan/waste/WasteEntriesForm.jsx
 "use client";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useForm } from "react-hook-form";
+
+// AXIOS
 import axios from "axios";
+
+// ICONS
 import {
   CalendarClock,
   FileText,
@@ -10,6 +14,10 @@ import {
   Hash,
   ChevronDown,
   Loader2,
+  Camera,
+  Upload,
+  Trash2,
+  Download,
 } from "lucide-react";
 
 /* ---------- Utils ---------- */
@@ -18,13 +26,6 @@ function toDatetimeLocal(value) {
   if (Number.isNaN(d.getTime())) return "";
   const off = d.getTimezoneOffset() * 60000;
   return new Date(d.getTime() - off).toISOString().slice(0, 16);
-}
-function uniqLines(text) {
-  const lines = (text || "")
-    .split(/[\n,;]+/g)
-    .map((s) => s.trim())
-    .filter(Boolean);
-  return Array.from(new Set(lines));
 }
 
 /* ---------- Defaults ---------- */
@@ -40,9 +41,9 @@ function buildDefaults(rec) {
     contractor: rec?.contractor ?? "",
     manifestNumber: rec?.manifestNumber ?? "",
     notes: rec?.notes ?? "",
-    attachmentsText: Array.isArray(rec?.attachments)
-      ? rec.attachments.join("\n")
-      : "",
+    // On garde un champ "fantôme" pour la compatibilité avec useForm,
+    // mais il n'est plus utilisé pour les URLs.
+    attachmentsText: "",
   };
 }
 
@@ -75,6 +76,14 @@ export default function WasteEntriesForm({
     watch,
   } = useForm({ defaultValues: buildDefaults(initial) });
 
+  const [existingAttachments, setExistingAttachments] = useState(
+    Array.isArray(initial?.attachments) ? initial.attachments : []
+  );
+  const [newFiles, setNewFiles] = useState([]);
+
+  const fileInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
+
   const token = useMemo(
     () =>
       typeof window !== "undefined" ? localStorage.getItem("token") : null,
@@ -83,36 +92,56 @@ export default function WasteEntriesForm({
 
   useEffect(() => {
     reset(buildDefaults(initial));
+    setExistingAttachments(
+      Array.isArray(initial?.attachments) ? initial.attachments : []
+    );
+    setNewFiles([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial]);
 
   const onSubmit = async (data) => {
     if (!token) return;
 
-    const attachments = uniqLines(data.attachmentsText);
+    const formData = new FormData();
 
-    const payload = {
-      date: data.date ? new Date(data.date) : new Date(),
-      wasteType: data.wasteType,
-      weightKg:
-        data.weightKg !== "" && data.weightKg != null
-          ? Number(data.weightKg)
-          : undefined,
-      unit: "kg",
-      disposalMethod: data.disposalMethod || undefined,
-      contractor: data.contractor || undefined,
-      manifestNumber: data.manifestNumber || undefined,
-      notes: data.notes || undefined,
-      attachments, // remplace en update si fourni
-    };
+    formData.append("date", data.date || "");
+    formData.append("wasteType", data.wasteType);
+
+    if (data.weightKg !== "" && data.weightKg != null) {
+      formData.append("weightKg", data.weightKg);
+    }
+
+    formData.append("unit", "kg");
+
+    if (data.disposalMethod)
+      formData.append("disposalMethod", data.disposalMethod);
+    if (data.contractor) formData.append("contractor", data.contractor);
+    if (data.manifestNumber)
+      formData.append("manifestNumber", data.manifestNumber);
+    if (data.notes) formData.append("notes", data.notes);
+
+    // Pièces déjà existantes qu'on garde (public_id)
+    existingAttachments.forEach((att) => {
+      if (att.public_id) {
+        formData.append("keepAttachments", att.public_id);
+      }
+    });
+
+    // Nouveaux fichiers à uploader
+    newFiles.forEach((file) => {
+      formData.append("attachments", file);
+    });
 
     const url = initial?._id
       ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/waste-entries/${initial._id}`
       : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/waste-entries`;
     const method = initial?._id ? "put" : "post";
 
-    const { data: saved } = await axios[method](url, payload, {
-      headers: { Authorization: `Bearer ${token}` },
+    const { data: saved } = await axios[method](url, formData, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "multipart/form-data",
+      },
     });
 
     // live update
@@ -121,6 +150,8 @@ export default function WasteEntriesForm({
     );
 
     reset(buildDefaults(null));
+    setExistingAttachments([]);
+    setNewFiles([]);
     onSuccess?.(saved);
   };
 
@@ -131,8 +162,31 @@ export default function WasteEntriesForm({
       shouldTouch: true,
     });
 
-  const attachmentsPreview = uniqLines(watch("attachmentsText"));
   const notesVal = watch("notes");
+
+  const handleFilesSelected = (event) => {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+    setNewFiles((prev) => [...prev, ...files]);
+    // reset value pour pouvoir re-sélectionner le même fichier si besoin
+    event.target.value = "";
+  };
+
+  const removeNewFile = (index) => {
+    setNewFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const removeExistingAttachment = (public_id) => {
+    setExistingAttachments((prev) =>
+      prev.filter((att) => att.public_id !== public_id)
+    );
+  };
+
+  const downloadUrlForAttachment = (att) => {
+    if (!att?.public_id) return att?.url || "#";
+    const encodedPublicId = encodeURIComponent(att.public_id);
+    return `${process.env.NEXT_PUBLIC_API_URL}/haccp/${restaurantId}/documents/${encodedPublicId}/download`;
+  };
 
   return (
     <form
@@ -152,6 +206,13 @@ export default function WasteEntriesForm({
               {...register("date", { required: "Requis" })}
               className={selectCls}
             />
+            <button
+              type="button"
+              onClick={setNow}
+              className="ml-2 text-xs text-blue underline"
+            >
+              Maintenant
+            </button>
           </div>
           {errors.date && (
             <p className="mt-1 text-xs text-red">{errors.date.message}</p>
@@ -279,38 +340,117 @@ export default function WasteEntriesForm({
           </div>
         </div>
 
+        {/* Pièces jointes */}
         <div className={fieldWrap.replace("h-[80px]", "h-auto")}>
           <label className={labelCls}>
-            <LinkIcon className="size-4" /> Pièces (URLs, 1 par ligne)
+            <LinkIcon className="size-4" /> Pièces jointes (PDF, photos)
           </label>
-          <textarea
-            rows={4}
-            {...register("attachmentsText", {
-              onBlur: (e) => {
-                const cleaned = uniqLines(e.target.value).join("\n");
-                setValue("attachmentsText", cleaned, {
-                  shouldDirty: true,
-                  shouldTouch: true,
-                });
-              },
-            })}
-            className={textareaCls}
-            placeholder={"https://…/bon-enlevement.pdf\nhttps://…/photo.jpg"}
+
+          <div className="flex flex-wrap gap-2 mb-2">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className={`${btnBase} border border-darkBlue/20 bg-white text-darkBlue/80 hover:border-darkBlue/40`}
+            >
+              <Upload className="size-4" />
+              Importer un fichier
+            </button>
+            <button
+              type="button"
+              onClick={() => cameraInputRef.current?.click()}
+              className={`${btnBase} border border-blue/60 bg-blue/5 text-blue hover:border-blue/70`}
+            >
+              <Camera className="size-4" />
+              Prendre une photo
+            </button>
+          </div>
+
+          {/* Inputs file cachés */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/*,application/pdf"
+            className="hidden"
+            onChange={handleFilesSelected}
           />
-          {!!attachmentsPreview.length && (
-            <div className="mt-2 flex flex-wrap gap-1">
-              {attachmentsPreview.map((u) => (
-                <a
-                  key={u}
-                  href={u}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-md bg-darkBlue/10 px-2 py-0.5 text-[11px] text-darkBlue/70 hover:underline"
-                  title={u}
-                >
-                  {u.length > 38 ? `${u.slice(0, 35)}…` : u}
-                </a>
-              ))}
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={handleFilesSelected}
+          />
+
+          {/* Pièces existantes (Cloudinary) */}
+          {existingAttachments.length > 0 && (
+            <div className="mb-2">
+              <p className="mb-1 text-[11px] uppercase tracking-wide text-darkBlue/50">
+                Pièces déjà enregistrées
+              </p>
+              <div className="flex flex-wrap gap-1">
+                {existingAttachments.map((att) => (
+                  <div
+                    key={att.public_id}
+                    className="inline-flex items-center gap-1 rounded-md bg-darkBlue/5 px-2 py-1 text-[11px] text-darkBlue/80"
+                  >
+                    <a
+                      href={downloadUrlForAttachment(att)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center gap-1 hover:underline"
+                      title={att.filename}
+                    >
+                      <Download className="size-3" />
+                      <span>
+                        {att.filename.length > 26
+                          ? `${att.filename.slice(0, 23)}…`
+                          : att.filename}
+                      </span>
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => removeExistingAttachment(att.public_id)}
+                      className="ml-1 inline-flex items-center justify-center rounded-full bg-red/10 p-[2px] text-red hover:bg-red/20"
+                      title="Retirer de la saisie (sera supprimé après mise à jour)"
+                    >
+                      <Trash2 className="size-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Nouveaux fichiers */}
+          {newFiles.length > 0 && (
+            <div>
+              <p className="mb-1 text-[11px] uppercase tracking-wide text-darkBlue/50">
+                Fichiers à ajouter
+              </p>
+              <div className="flex flex-wrap gap-1">
+                {newFiles.map((file, idx) => (
+                  <div
+                    key={`${file.name}-${idx}`}
+                    className="inline-flex items-center gap-1 rounded-md bg-blue/5 px-2 py-1 text-[11px] text-blue-900"
+                  >
+                    <span title={file.name}>
+                      {file.name.length > 26
+                        ? `${file.name.slice(0, 23)}…`
+                        : file.name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeNewFile(idx)}
+                      className="ml-1 inline-flex items-center justify-center rounded-full bg-red/10 p-[2px] text-red hover:bg-red/20"
+                      title="Retirer"
+                    >
+                      <Trash2 className="size-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -346,6 +486,8 @@ export default function WasteEntriesForm({
             type="button"
             onClick={() => {
               reset(buildDefaults(null));
+              setExistingAttachments([]);
+              setNewFiles([]);
               onCancel?.();
             }}
             className="inline-flex h-[38px] items-center justify-center gap-2 rounded-lg border border-red bg-white px-4 py-2 text-sm font-medium text-red"

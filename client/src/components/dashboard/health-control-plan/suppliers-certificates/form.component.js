@@ -1,4 +1,3 @@
-// app/(components)/haccp/suppliers/SupplierCertificateForm.jsx
 "use client";
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";

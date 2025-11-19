@@ -1,7 +1,11 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+
+// AXIOS
 import axios from "axios";
+
+// ICONS
 import { Search, CalendarClock, Edit3, Trash2, Loader2, X } from "lucide-react";
 
 /* ---------- Utils ---------- */
@@ -269,7 +273,6 @@ export default function WasteEntriesList({
   }, [restaurantId]);
 
   const askDelete = (it) => {
-    set;
     setDeleteTarget(it);
     setIsDeleteModalOpen(true);
   };
@@ -283,7 +286,7 @@ export default function WasteEntriesList({
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      setItems((prev) => prev.filter((x) => x._id === deleteTarget._id));
+      setItems((prev) => prev.filter((x) => x._id !== deleteTarget._id));
       onDeleted?.(deleteTarget);
       setIsDeleteModalOpen(false);
       setDeleteTarget(null);
@@ -425,9 +428,9 @@ export default function WasteEntriesList({
 
       {/* Table + overlay loader */}
       <div className="relative">
-        <div className="overflow-x-auto rounded-xl border border-darkBlue/10">
+        <div className="overflow-x-auto max-w-[calc(100vw-50px)] mobile:max-w-[calc(100vw-83px)] midTablet:max-w-[calc(100vw-92px)] tablet:max-w-[calc(100vw-360px)] rounded-xl border border-darkBlue/10">
           <table className="w-full text-[13px]">
-            <thead className="sticky top-0 z-10 bg-white/95 backdrop-blur border-b border-darkBlue/10">
+            <thead className="text-nowrap sticky top-0 z-10 bg-white/95 backdrop-blur border-b border-darkBlue/10">
               <tr>
                 <th className="py-2 pl-2 pr-3 text-left font-medium text-darkBlue/70">
                   Date

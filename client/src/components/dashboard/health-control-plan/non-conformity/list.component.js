@@ -87,7 +87,8 @@ export default function NonConformityList({
   useEffect(() => setIsClient(true), []);
 
   const token = useMemo(
-    () => (typeof window !== "undefined" ? localStorage.getItem("token") : null),
+    () =>
+      typeof window !== "undefined" ? localStorage.getItem("token") : null,
     []
   );
 
@@ -124,7 +125,16 @@ export default function NonConformityList({
           appliedDateFrom ||
           appliedDateTo
       ),
-    [q, type, severity, status, dateFrom, dateTo, appliedDateFrom, appliedDateTo]
+    [
+      q,
+      type,
+      severity,
+      status,
+      dateFrom,
+      dateTo,
+      appliedDateFrom,
+      appliedDateTo,
+    ]
   );
 
   const hasFullDateRange = Boolean(dateFrom && dateTo);
@@ -477,7 +487,7 @@ export default function NonConformityList({
 
       {/* Table + overlay loader */}
       <div className="relative">
-        <div className="overflow-x-auto max-w-[calc(100vw-83px)] midTablet:max-w-[calc(100vw-92px)] tablet:max-w-[calc(100vw-360px)] rounded-xl border border-darkBlue/10">
+        <div className="overflow-x-auto max-w-[calc(100vw-50px)] mobile:max-w-[calc(100vw-83px)] midTablet:max-w-[calc(100vw-92px)] tablet:max-w-[calc(100vw-360px)] rounded-xl border border-darkBlue/10">
           <table className="w-full text-[13px]">
             <thead className="whitespace-nowrap">
               <tr className="sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
@@ -517,7 +527,10 @@ export default function NonConformityList({
             <tbody>
               {items.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-8 text-center text-darkBlue/50">
+                  <td
+                    colSpan={10}
+                    className="py-8 text-center text-darkBlue/50"
+                  >
                     Aucune non-conformité
                   </td>
                 </tr>
@@ -526,7 +539,9 @@ export default function NonConformityList({
                   <tr
                     key={it._id}
                     className={`border-b border-darkBlue/10 last:border-b-0 transition-colors hover:bg-darkBlue/[0.03] ${
-                      editingId === it._id ? "bg-blue/5 ring-1 ring-blue/20" : ""
+                      editingId === it._id
+                        ? "bg-blue/5 ring-1 ring-blue/20"
+                        : ""
                     }`}
                   >
                     <td className="py-2 pl-2 pr-3 whitespace-nowrap">
@@ -544,9 +559,7 @@ export default function NonConformityList({
                     <td className="py-2 pr-3 whitespace-nowrap">
                       {it.referenceId || "—"}
                     </td>
-                    <td className="py-2 pr-3">
-                      {it.description || "—"}
-                    </td>
+                    <td className="py-2 pr-3">{it.description || "—"}</td>
                     <td className="py-2 pr-3 whitespace-nowrap">
                       {Array.isArray(it.correctiveActions)
                         ? it.correctiveActions.length

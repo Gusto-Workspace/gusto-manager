@@ -47,13 +47,12 @@ async function loadEquipmentSnapshot(restaurantId, deviceRef) {
   };
 }
 
-router.use(authenticateToken);
-
 /** CREATE
  * body: { deviceRef, value, phase, note, createdAt }
  */
 router.post(
   "/restaurants/:restaurantId/preheat-temperatures",
+  authenticateToken,
   async (req, res) => {
     try {
       const { restaurantId } = req.params;
@@ -105,6 +104,7 @@ router.post(
  */
 router.get(
   "/restaurants/:restaurantId/preheat-temperatures",
+  authenticateToken,
   async (req, res) => {
     try {
       const { restaurantId } = req.params;
@@ -180,6 +180,7 @@ router.get(
 /** READ ONE */
 router.get(
   "/restaurants/:restaurantId/preheat-temperatures/:tempId",
+  authenticateToken,
   async (req, res) => {
     try {
       const { restaurantId, tempId } = req.params;
@@ -258,6 +259,7 @@ router.put(
 /** DELETE */
 router.delete(
   "/restaurants/:restaurantId/preheat-temperatures/:tempId",
+  authenticateToken,
   async (req, res) => {
     try {
       const { restaurantId, tempId } = req.params;

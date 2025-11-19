@@ -418,9 +418,9 @@ export default function SupplierCertificateList({
         </div>
       </div>
 
-      {/* Table + overlay loader (avec pl-2 / pr-2 comme demandé) */}
+      {/* Table + overlay loader */}
       <div className="relative">
-        <div className="overflow-x-auto max-w-[calc(100vw-83px)] midTablet:max-w-[calc(100vw-92px)] tablet:max-w-[calc(100vw-360px)] rounded-xl border border-darkBlue/10">
+        <div className="overflow-x-auto max-w-[calc(100vw-50px)] mobile:max-w-[calc(100vw-83px)] midTablet:max-w-[calc(100vw-92px)] tablet:max-w-[calc(100vw-360px)] rounded-xl border border-darkBlue/10">
           <table className="w-full text-[13px]">
             <thead className="whitespace-nowrap">
               <tr className="sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">

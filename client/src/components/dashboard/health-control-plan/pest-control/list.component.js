@@ -84,7 +84,11 @@ export default function PestControlList({
   const [isClient, setIsClient] = useState(false);
   useEffect(() => setIsClient(true), []);
 
-  const token = useMemo(() => (typeof window !== "undefined" ? localStorage.getItem("token") : null), []);
+  const token = useMemo(
+    () =>
+      typeof window !== "undefined" ? localStorage.getItem("token") : null,
+    []
+  );
   const metaRef = useRef(meta);
   useEffect(() => {
     metaRef.current = meta;
@@ -118,7 +122,16 @@ export default function PestControlList({
           appliedDateFrom ||
           appliedDateTo
       ),
-    [q, status, freq, activity, dateFrom, dateTo, appliedDateFrom, appliedDateTo]
+    [
+      q,
+      status,
+      freq,
+      activity,
+      dateFrom,
+      dateTo,
+      appliedDateFrom,
+      appliedDateTo,
+    ]
   );
   const hasFullDateRange = Boolean(dateFrom && dateTo);
 
@@ -466,7 +479,7 @@ export default function PestControlList({
 
       {/* Table + overlay loader */}
       <div className="relative">
-        <div className="overflow-x-auto max-w-[calc(100vw-83px)] midTablet:max-w-[calc(100vw-92px)] tablet:max-w-[calc(100vw-360px)] rounded-xl border border-darkBlue/10">
+        <div className="overflow-x-auto max-w-[calc(100vw-50px)] mobile:max-w-[calc(100vw-83px)] midTablet:max-w-[calc(100vw-92px)] tablet:max-w-[calc(100vw-360px)] rounded-xl border border-darkBlue/10">
           <table className="w-full text-[13px]">
             <thead className="whitespace-nowrap">
               <tr className="sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
@@ -556,15 +569,15 @@ export default function PestControlList({
                         </span>
                         <div className="text-xs opacity-70">
                           {it.contractStart
-                            ? new Date(
-                                it.contractStart
-                              ).toLocaleDateString("fr-FR")
+                            ? new Date(it.contractStart).toLocaleDateString(
+                                "fr-FR"
+                              )
                             : "—"}{" "}
                           →{" "}
                           {it.contractEnd
-                            ? new Date(
-                                it.contractEnd
-                              ).toLocaleDateString("fr-FR")
+                            ? new Date(it.contractEnd).toLocaleDateString(
+                                "fr-FR"
+                              )
                             : "—"}
                         </div>
                       </div>
