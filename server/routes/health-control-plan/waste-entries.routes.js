@@ -413,13 +413,6 @@ router.get(
         return res.status(404).json({ message: "Pièce jointe introuvable" });
       }
 
-      console.log(
-        "[HACCP DOWNLOAD] Found attachment",
-        att.filename,
-        "=>",
-        att.url
-      );
-
       const response = await axios.get(att.url, { responseType: "stream" });
 
       res.setHeader("Content-Type", response.headers["content-type"]);

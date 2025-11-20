@@ -4,7 +4,24 @@ const router = express.Router();
 const authenticateToken = require("../../middleware/authentificate-token");
 const ReceptionDelivery = require("../../models/logs/reception-delivery.model");
 
-/* --------- helpers --------- */
+const cloudinary = require("cloudinary").v2;
+const multer = require("multer");
+const streamifier = require("streamifier");
+const path = require("path");
+const axios = require("axios");
+
+// ---------- Cloudinary config ----------
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+// ---------- Multer mémoire ----------
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
+
+// ---------- Utils généraux ----------
 function escapeRegExp(str) {
   return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -20,23 +37,23 @@ function currentUserFromToken(req) {
     lastName: u.lastname || "",
   };
 }
-
-function normalizeStr(v) {
+const normStr = (v) => {
   if (v == null) return null;
   const s = String(v).trim();
   return s.length ? s : null;
-}
-function normalizeDate(v) {
+};
+const normDate = (v) => {
   if (!v) return null;
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? null : d;
-}
-function normalizeNumber(v) {
+};
+const normNum = (v) => {
   if (v === undefined || v === null || v === "") return null;
   const n = Number(v);
-  return Number.isNaN(n) ? null : n;
-}
+  return Number.isFinite(n) ? n : null;
+};
 
+// ---------- Normalisation lignes ----------
 const ALLOWED_PACKAGING = new Set(["compliant", "non-compliant"]);
 
 function decimalsForUnit(u) {
@@ -52,15 +69,31 @@ function roundByUnit(val, unit) {
   return Math.round(n * f) / f;
 }
 
+// lines peut arriver soit comme tableau JSON, soit comme string JSON (FormData)
+function parseLinesInput(linesField) {
+  if (!linesField) return [];
+  if (typeof linesField === "string") {
+    try {
+      const parsed = JSON.parse(linesField);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      console.warn("parseLinesInput: JSON.parse failed");
+      return [];
+    }
+  }
+  return Array.isArray(linesField) ? linesField : [];
+}
+
 function normalizeLine(l = {}) {
-  const productName = normalizeStr(l.productName);
-  const supplierProductId = normalizeStr(l.supplierProductId);
-  const lotNumber = normalizeStr(l.lotNumber);
-  const dlc = normalizeDate(l.dlc);
-  const ddm = normalizeDate(l.ddm);
-  const qty = normalizeNumber(l.qty);
-  const unit = normalizeStr(l.unit);
-  const tempOnArrival = normalizeNumber(l.tempOnArrival);
+  const productName = normStr(l.productName);
+  const supplierProductId = normStr(l.supplierProductId);
+  const lotNumber = normStr(l.lotNumber);
+  const dlc = normDate(l.dlc);
+  const ddm = normDate(l.ddm);
+  const qty = normNum(l.qty);
+  const unit = normStr(l.unit);
+  const tempOnArrival = normNum(l.tempOnArrival);
+
   let allergens = Array.isArray(l.allergens)
     ? l.allergens
     : typeof l.allergens === "string"
@@ -70,23 +103,19 @@ function normalizeLine(l = {}) {
           .filter(Boolean)
       : [];
 
-  allergens = allergens
-    .map((a) => normalizeStr(a))
-    .filter((a) => a && a.length);
+  allergens = allergens.map((a) => normStr(a)).filter((a) => a && a.length);
 
   const packagingCondition = ALLOWED_PACKAGING.has(l.packagingCondition)
     ? l.packagingCondition
     : "compliant";
 
-  // qtyRemaining normalisée et bornée à [0, qty]
-  let qtyRemaining = normalizeNumber(l.qtyRemaining);
+  let qtyRemaining = normNum(l.qtyRemaining);
   if (qty != null) {
     const qrRaw = qtyRemaining == null ? qty : qtyRemaining;
     const roundedQty = roundByUnit(qty, unit);
     const roundedRemaining = roundByUnit(qrRaw, unit);
     qtyRemaining = Math.max(0, Math.min(roundedRemaining, roundedQty));
   } else {
-    // si pas de qty, on ignore qtyRemaining (incohérent)
     qtyRemaining = undefined;
   }
 
@@ -119,21 +148,94 @@ function isMeaningfulLine(x = {}) {
   );
 }
 
-function normalizeLines(inLines) {
-  const arr = Array.isArray(inLines) ? inLines : [];
-  return arr.map(normalizeLine).filter(isMeaningfulLine);
+// ---------- Helpers Cloudinary ----------
+function haccpReceptionFolder(restaurantId) {
+  return `Gusto_Workspace/restaurants/${restaurantId}/haccp/reception-deliveries`;
 }
 
-/* -------------------- CREATE -------------------- */
+function safePublicIdFromFilename(originalname) {
+  const ext = path.extname(originalname);
+  const basename = path.basename(originalname, ext);
+  const safeBase = basename
+    .replace(/\s+/g, "_")
+    .replace(/[^a-zA-Z0-9_\-]/g, "");
+  const stamp = Date.now();
+  return `${safeBase}_${stamp}`;
+}
+
+function uploadReceptionFile(buffer, originalname, mimetype, restaurantId) {
+  const folder = haccpReceptionFolder(restaurantId);
+  const public_id = safePublicIdFromFilename(originalname);
+
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        resource_type: "raw", // PDF + images
+        folder,
+        public_id,
+        overwrite: true,
+      },
+      (err, result) => {
+        if (err) return reject(err);
+        resolve({
+          url: result.secure_url,
+          public_id: result.public_id,
+          filename: originalname,
+          mimetype,
+        });
+      }
+    );
+    streamifier.createReadStream(buffer).pipe(uploadStream);
+  });
+}
+
+async function deleteReceptionAttachment(public_id) {
+  if (!public_id) return;
+  try {
+    await cloudinary.uploader.destroy(public_id, {
+      resource_type: "raw",
+    });
+  } catch (err) {
+    console.warn(
+      `Erreur suppression pièce jointe réception Cloudinary (${public_id}):`,
+      err
+    );
+  }
+}
+
+// Regroupe les fichiers par index de ligne (lineAttachments_0, lineAttachments_1, …)
+function collectFilesByIndex(filesArray) {
+  const byIndex = new Map();
+  (filesArray || []).forEach((file) => {
+    const m = /^lineAttachments_(\d+)$/.exec(file.fieldname || "");
+    if (!m) return;
+    const idx = Number(m[1]);
+    if (!byIndex.has(idx)) byIndex.set(idx, []);
+    byIndex.get(idx).push(file);
+  });
+  return byIndex;
+}
+
+// Récupère les public_id à garder pour une ligne donnée (keepLineAttachment_0)
+function getKeepPublicIds(body, index) {
+  const key = `keepLineAttachment_${index}`;
+  const raw = body[key];
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.map((x) => String(x));
+  return [String(raw)];
+}
+
+/* ---------- CREATE ---------- */
 router.post(
   "/restaurants/:restaurantId/reception-deliveries",
   authenticateToken,
+  upload.any(),
   async (req, res) => {
     try {
       const { restaurantId } = req.params;
       const inData = { ...req.body };
 
-      const supplier = normalizeStr(inData.supplier);
+      const supplier = normStr(inData.supplier);
       if (!supplier)
         return res.status(400).json({ error: "supplier est requis" });
 
@@ -141,11 +243,39 @@ router.post(
       if (!currentUser)
         return res.status(400).json({ error: "Utilisateur non reconnu" });
 
-      const receivedAt = normalizeDate(inData.receivedAt) || new Date();
-      const note = normalizeStr(inData.note);
-      const billUrl = normalizeStr(inData.billUrl);
+      const receivedAt = normDate(inData.receivedAt) || new Date();
+      const note = normStr(inData.note);
+      const billUrl = normStr(inData.billUrl);
 
-      const lines = normalizeLines(inData.lines);
+      const rawLines = parseLinesInput(inData.lines);
+      const filesByIndex = collectFilesByIndex(req.files);
+
+      const lines = [];
+      for (let i = 0; i < rawLines.length; i += 1) {
+        const baseNorm = normalizeLine(rawLines[i]);
+        if (!isMeaningfulLine(baseNorm)) continue;
+
+        const filesForLine = filesByIndex.get(i) || [];
+        let attachments = [];
+        if (filesForLine.length) {
+          const uploads = await Promise.all(
+            filesForLine.map((f) =>
+              uploadReceptionFile(
+                f.buffer,
+                f.originalname,
+                f.mimetype,
+                restaurantId
+              )
+            )
+          );
+          attachments = uploads;
+        }
+
+        lines.push({
+          ...baseNorm,
+          attachments,
+        });
+      }
 
       const doc = new ReceptionDelivery({
         restaurantId,
@@ -168,7 +298,7 @@ router.post(
   }
 );
 
-/* -------------------- LIST -------------------- */
+/* ---------- LIST ---------- */
 router.get(
   "/restaurants/:restaurantId/list-reception-deliveries",
   authenticateToken,
@@ -180,17 +310,19 @@ router.get(
       const query = { restaurantId };
 
       if (date_from || date_to) {
-        query.receivedAt = {};
-        if (date_from) query.receivedAt.$gte = new Date(date_from);
-        if (date_to) {
-          const end = new Date(date_to);
+        const from = normDate(date_from);
+        const to = normDate(date_to);
+        const range = {};
+        if (from) range.$gte = from;
+        if (to) {
+          const end = new Date(to);
           end.setDate(end.getDate() + 1);
           end.setMilliseconds(end.getMilliseconds() - 1);
-          query.receivedAt.$lte = end;
+          range.$lte = end;
         }
+        if (Object.keys(range).length) query.receivedAt = range;
       }
 
-      // 🔐 Recherche texte sécurisée
       const trimmedQ = String(q || "").trim();
       if (trimmedQ) {
         const safe = escapeRegExp(trimmedQ);
@@ -237,7 +369,7 @@ router.get(
   }
 );
 
-/* -------------------- READ ONE -------------------- */
+/* ---------- READ ONE ---------- */
 router.get(
   "/restaurants/:restaurantId/reception-deliveries/:receptionId",
   authenticateToken,
@@ -259,17 +391,22 @@ router.get(
   }
 );
 
-/* -------------------- UPDATE -------------------- */
+/* ---------- UPDATE ---------- */
 router.put(
   "/restaurants/:restaurantId/reception-deliveries/:receptionId",
   authenticateToken,
+  upload.any(),
   async (req, res) => {
     try {
       const { restaurantId, receptionId } = req.params;
       const inData = { ...req.body };
 
+      // champs protégés
       delete inData.recordedBy;
       delete inData.restaurantId;
+      delete inData.createdAt;
+      delete inData.updatedAt;
+      delete inData.attachments;
 
       const prev = await ReceptionDelivery.findOne({
         _id: receptionId,
@@ -280,35 +417,107 @@ router.put(
 
       const supplier =
         inData.supplier !== undefined
-          ? normalizeStr(inData.supplier)
+          ? normStr(inData.supplier)
           : prev.supplier;
-
       if (!supplier)
         return res.status(400).json({ error: "supplier est requis" });
 
       const receivedAt =
         inData.receivedAt !== undefined
-          ? normalizeDate(inData.receivedAt) || prev.receivedAt
+          ? normDate(inData.receivedAt) || prev.receivedAt
           : prev.receivedAt;
 
-      const note =
-        inData.note !== undefined ? normalizeStr(inData.note) : prev.note;
+      const note = inData.note !== undefined ? normStr(inData.note) : prev.note;
 
       const billUrl =
-        inData.billUrl !== undefined
-          ? normalizeStr(inData.billUrl)
-          : prev.billUrl;
+        inData.billUrl !== undefined ? normStr(inData.billUrl) : prev.billUrl;
 
-      const lines =
+      const rawLines =
         inData.lines !== undefined
-          ? normalizeLines(inData.lines)
+          ? parseLinesInput(inData.lines)
           : prev.lines || [];
+
+      // Map des anciennes pièces jointes par public_id
+      const prevAttachmentsById = new Map();
+      (prev.lines || []).forEach((line) => {
+        (line.attachments || []).forEach((att) => {
+          if (att?.public_id) {
+            prevAttachmentsById.set(
+              String(att.public_id),
+              att.toObject ? att.toObject() : att
+            );
+          }
+        });
+      });
+
+      const filesByIndex = collectFilesByIndex(req.files);
+      const newLines = [];
+      const newPublicIds = new Set();
+
+      // On reconstitue entièrement les lignes avec leurs attachments
+      for (let i = 0; i < rawLines.length; i += 1) {
+        const baseNorm = normalizeLine(rawLines[i]);
+        if (!isMeaningfulLine(baseNorm)) continue;
+
+        const keepIds = getKeepPublicIds(inData, i);
+        const attachments = [];
+
+        // Pièces à garder (anciennes)
+        keepIds.forEach((idStr) => {
+          const att = prevAttachmentsById.get(String(idStr));
+          if (att) {
+            attachments.push(att);
+            newPublicIds.add(String(att.public_id));
+          }
+        });
+
+        // Nouveaux fichiers
+        const filesForLine = filesByIndex.get(i) || [];
+        if (filesForLine.length) {
+          const uploaded = await Promise.all(
+            filesForLine.map((f) =>
+              uploadReceptionFile(
+                f.buffer,
+                f.originalname,
+                f.mimetype,
+                restaurantId
+              )
+            )
+          );
+          uploaded.forEach((att) => {
+            attachments.push(att);
+            if (att.public_id) newPublicIds.add(String(att.public_id));
+          });
+        }
+
+        newLines.push({
+          ...baseNorm,
+          attachments,
+        });
+      }
+
+      // Calcul des anciens IDs vs nouveaux pour suppression Cloudinary
+      const prevPublicIds = new Set();
+      (prev.lines || []).forEach((line) => {
+        (line.attachments || []).forEach((att) => {
+          if (att?.public_id) prevPublicIds.add(String(att.public_id));
+        });
+      });
+
+      const toDelete = [];
+      prevPublicIds.forEach((id) => {
+        if (!newPublicIds.has(id)) toDelete.push(id);
+      });
+
+      if (toDelete.length) {
+        await Promise.all(toDelete.map((id) => deleteReceptionAttachment(id)));
+      }
 
       prev.supplier = supplier;
       prev.receivedAt = receivedAt;
       prev.note = note ?? undefined;
       prev.billUrl = billUrl ?? undefined;
-      prev.lines = lines;
+      prev.lines = newLines;
 
       await prev.save();
       return res.json(prev);
@@ -321,7 +530,7 @@ router.put(
   }
 );
 
-/* -------------------- DELETE -------------------- */
+/* ---------- DELETE ---------- */
 router.delete(
   "/restaurants/:restaurantId/reception-deliveries/:receptionId",
   authenticateToken,
@@ -332,13 +541,84 @@ router.delete(
         _id: receptionId,
         restaurantId,
       });
+
       if (!doc) return res.status(404).json({ error: "Réception introuvable" });
+
+      // Suppression des pièces jointes Cloudinary liées
+      const toDelete = [];
+      (doc.lines || []).forEach((line) => {
+        (line.attachments || []).forEach((att) => {
+          if (att?.public_id) toDelete.push(String(att.public_id));
+        });
+      });
+
+      if (toDelete.length) {
+        await Promise.all(toDelete.map((id) => deleteReceptionAttachment(id)));
+      }
+
       return res.json({ success: true });
     } catch (err) {
       console.error("DELETE /reception-deliveries/:receptionId:", err);
       return res
         .status(500)
         .json({ error: "Erreur lors de la suppression de la réception" });
+    }
+  }
+);
+
+// ---------- DOWNLOAD ATTACHMENT ----------
+router.get(
+  "/haccp/reception-deliveries/:restaurantId/documents/:public_id(*)/download",
+  async (req, res) => {
+    try {
+      const { restaurantId, public_id } = req.params;
+
+      // On cherche UNE réception de ce resto qui contient cette pièce jointe dans une ligne
+      const doc = await ReceptionDelivery.findOne(
+        {
+          restaurantId,
+          "lines.attachments.public_id": public_id,
+        },
+        { lines: 1 }
+      ).lean();
+
+      if (!doc) {
+        console.log(
+          "[HACCP RECEPTION DOWNLOAD] Aucun document contenant cette pièce jointe"
+        );
+        return res.status(404).json({ message: "Pièce jointe introuvable" });
+      }
+
+      let att = null;
+      for (const line of doc.lines || []) {
+        const cand = (line.attachments || []).find(
+          (a) => a.public_id === public_id
+        );
+        if (cand) {
+          att = cand;
+          break;
+        }
+      }
+
+      if (!att) {
+        console.log(
+          "[HACCP RECEPTION DOWNLOAD] Attachment non trouvé dans les lignes"
+        );
+        return res.status(404).json({ message: "Pièce jointe introuvable" });
+      }
+
+      const response = await axios.get(att.url, { responseType: "stream" });
+
+      res.setHeader("Content-Type", response.headers["content-type"]);
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${att.filename || "document"}"`
+      );
+
+      response.data.pipe(res);
+    } catch (err) {
+      console.error("Error in HACCP reception download route:", err);
+      res.status(500).json({ message: "Server error" });
     }
   }
 );

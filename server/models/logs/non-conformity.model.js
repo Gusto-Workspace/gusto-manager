@@ -1,6 +1,15 @@
-// server/models/logs/non-conformity.model.js
 const mongoose = require("mongoose");
 const { Schema } = mongoose;
+
+const attachmentSchema = new Schema(
+  {
+    url: { type: String, required: true },
+    public_id: { type: String, required: true },
+    filename: { type: String, required: true },
+    mimetype: { type: String },
+  },
+  { _id: false }
+);
 
 const correctiveActionSchema = new Schema(
   {
@@ -42,14 +51,18 @@ const nonConformitySchema = new Schema(
       lastName: { type: String },
     },
     reportedAt: { type: Date, default: Date.now, index: true },
+
     correctiveActions: { type: [correctiveActionSchema], default: [] },
+
     status: {
       type: String,
       enum: ["open", "in_progress", "closed"],
       default: "open",
       index: true,
     },
-    attachments: { type: [String], default: [] },
+
+    // ⬇️ maintenant : objets Cloudinary (comme waste-entries)
+    attachments: { type: [attachmentSchema], default: [] },
 
     // métadonnées
     createdAt: { type: Date, default: Date.now },

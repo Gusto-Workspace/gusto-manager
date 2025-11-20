@@ -10,7 +10,18 @@ import {
 import { useForm, useFieldArray } from "react-hook-form";
 import axios from "axios";
 import { GlobalContext } from "@/contexts/global.context";
-import { PlusCircle, Trash2, ChevronDown, FileText } from "lucide-react";
+import {
+  PlusCircle,
+  Trash2,
+  ChevronDown,
+  FileText,
+  Link as LinkIcon,
+  Camera,
+  Upload,
+  Download,
+  XCircle,
+  Loader2,
+} from "lucide-react";
 
 /* ---------- Utils ---------- */
 function toDatetimeLocal(value) {
@@ -29,6 +40,40 @@ const normalize = (s) =>
     .toLowerCase()
     .trim();
 
+// Essaye de corriger le mojibake type "dâeÌcran" -> "d’écran"
+function normalizeFilename(name) {
+  if (!name) return "";
+  try {
+    if (typeof TextDecoder === "undefined") return name;
+    const bytes = Uint8Array.from([...name].map((ch) => ch.charCodeAt(0)));
+    const decoded = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+    return decoded;
+  } catch {
+    return name;
+  }
+}
+
+function truncate(text, max = 26) {
+  if (!text) return "";
+  return text.length > max ? `${text.slice(0, max - 3)}…` : text;
+}
+
+function mimeBadgeLabel(mimeOrName) {
+  if (!mimeOrName) return "FILE";
+  const lower = String(mimeOrName).toLowerCase();
+
+  if (lower.includes("pdf")) return "PDF";
+  if (lower.startsWith("image/")) {
+    const sub = lower.split("/")[1] || "img";
+    if (sub === "jpeg") return "JPG";
+    return sub.slice(0, 4).toUpperCase();
+  }
+  if (lower.includes("word")) return "DOC";
+  if (lower.includes("excel") || lower.includes("sheet")) return "XLS";
+  if (lower.includes("zip")) return "ZIP";
+  return lower.split("/")[1]?.slice(0, 4).toUpperCase() || "FILE";
+}
+
 function buildDefaults(rec) {
   return {
     type: rec?.type ?? "other",
@@ -37,9 +82,8 @@ function buildDefaults(rec) {
     severity: rec?.severity ?? "medium",
     reportedAt: toDatetimeLocal(rec?.reportedAt ?? new Date()),
     status: rec?.status ?? "open",
-    attachmentsText: Array.isArray(rec?.attachments)
-      ? rec.attachments.join("\n")
-      : "",
+    // Champ conservé pour compat, mais plus utilisé pour les URLs directes
+    attachmentsText: "",
     correctiveActions:
       Array.isArray(rec?.correctiveActions) && rec.correctiveActions.length
         ? rec.correctiveActions.map((c) => ({
@@ -97,7 +141,7 @@ export default function NonConformityForm({
 
   /* ---------- Styles (alignés) ---------- */
   const fieldWrap =
-    "group relative rounded-xl bg-white/50   py-2 min-h-[80px] transition-shadow";
+    "group relative rounded-xl bg-white/50 py-2 min-h-[80px] transition-shadow";
   const labelCls =
     "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
   const inputCls =
@@ -235,7 +279,47 @@ export default function NonConformityForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caWatch]);
 
+  /* ---------- Pièces jointes (Cloudinary, même UI que WasteEntries) ---------- */
+  const [existingAttachments, setExistingAttachments] = useState(
+    Array.isArray(initial?.attachments) ? initial.attachments : []
+  );
+  const [removedAttachmentIds, setRemovedAttachmentIds] = useState([]);
+  const [newFiles, setNewFiles] = useState([]);
+
+  const fileInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
+
+  const handleFilesSelected = (event) => {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+    setNewFiles((prev) => [...prev, ...files]);
+    event.target.value = "";
+  };
+
+  const removeNewFile = (index) => {
+    setNewFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const toggleExistingAttachmentRemoval = (public_id) => {
+    setRemovedAttachmentIds((prev) => {
+      const id = String(public_id);
+      return prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+    });
+  };
+
+  const downloadUrlForAttachment = (att) => {
+    if (!att?.public_id) return att?.url || "#";
+    const encodedPublicId = encodeURIComponent(att.public_id);
+    return `${process.env.NEXT_PUBLIC_API_URL}/haccp/non-conformities/${restaurantId}/documents/${encodedPublicId}/download`;
+  };
+
   /* ---------- Reset + pré-remplissages ---------- */
+  const token = useMemo(
+    () =>
+      typeof window !== "undefined" ? localStorage.getItem("token") : null,
+    []
+  );
+
   useEffect(() => {
     reset(buildDefaults(initial));
     (initial?.correctiveActions || []).forEach((r, idx) => {
@@ -246,10 +330,19 @@ export default function NonConformityForm({
         shouldDirty: false,
       });
     });
+
     // Reset états de lignes
     setOpenById({});
     setShowReqErrById({});
     setValidatedById({});
+
+    // Reset pièces jointes
+    setExistingAttachments(
+      Array.isArray(initial?.attachments) ? initial.attachments : []
+    );
+    setRemovedAttachmentIds([]);
+    setNewFiles([]);
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial, allEmployees.length]);
 
@@ -348,7 +441,6 @@ export default function NonConformityForm({
 
   /* ---------- Submit ---------- */
   const onSubmit = async (data) => {
-    const token = localStorage.getItem("token");
     if (!token) return;
 
     // Vérifier "effectué par" seulement sur lignes validées
@@ -383,35 +475,48 @@ export default function NonConformityForm({
 
     if (!correctiveActions.length) return;
 
-    const attachments =
-      typeof data.attachmentsText === "string" && data.attachmentsText.trim()
-        ? data.attachmentsText
-            .split(/[\n,;]+/g)
-            .map((s) => s.trim())
-            .filter(Boolean)
-        : [];
+    // Construction FormData (Cloudinary + champs classiques)
+    const formData = new FormData();
 
-    const payload = {
-      type: data.type || "other",
-      referenceId: data.referenceId || undefined,
-      description: data.description || undefined,
-      severity: data.severity || "medium",
-      reportedAt: data.reportedAt ? new Date(data.reportedAt) : new Date(),
-      status: data.status || "open",
-      attachments,
-      correctiveActions,
-    };
+    formData.append("type", data.type || "other");
+    if (data.referenceId) formData.append("referenceId", data.referenceId);
+    if (data.description) formData.append("description", data.description);
+    formData.append("severity", data.severity || "medium");
+    formData.append(
+      "reportedAt",
+      data.reportedAt ? data.reportedAt : new Date().toISOString()
+    );
+    formData.append("status", data.status || "open");
+
+    // correctiveActions envoyées en JSON
+    formData.append("correctiveActions", JSON.stringify(correctiveActions));
+
+    // Pièces déjà existantes qu'on garde (public_id non marqué pour suppression)
+    existingAttachments.forEach((att) => {
+      if (
+        att.public_id &&
+        !removedAttachmentIds.includes(String(att.public_id))
+      ) {
+        formData.append("keepAttachments", att.public_id);
+      }
+    });
+
+    // Nouveaux fichiers à uploader
+    newFiles.forEach((file) => {
+      formData.append("attachments", file);
+    });
 
     const url = initial?._id
       ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/non-conformities/${initial._id}`
       : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/non-conformities`;
     const method = initial?._id ? "put" : "post";
 
-    const { data: saved } = await axios[method](
-      url,
-      { ...payload },
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
+    const { data: saved } = await axios[method](url, formData, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "multipart/form-data",
+      },
+    });
 
     window.dispatchEvent(
       new CustomEvent("non-conformity:upsert", { detail: { doc: saved } })
@@ -420,6 +525,9 @@ export default function NonConformityForm({
     setOpenById({});
     setShowReqErrById({});
     setValidatedById({});
+    setExistingAttachments([]);
+    setRemovedAttachmentIds([]);
+    setNewFiles([]);
     onSuccess?.(saved);
   };
 
@@ -432,14 +540,19 @@ export default function NonConformityForm({
 
   /* ---------- Render ---------- */
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="relative flex flex-col gap-5">
+    <form
+      onSubmit={handleSubmit(onSubmit)}
+      className="relative flex flex-col gap-5"
+    >
       {/* Ligne 1 : type / statut / sévérité / date */}
       <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2 ultraWild:grid-cols-4">
         <div className={`${fieldWrap} px-3`}>
           <label className={labelCls}>Type *</label>
           <select
             {...register("type", { required: "Requis" })}
-            className={`${selectCls} ${errors.type ? "border-red focus:ring-red/20" : ""}`}
+            className={`${selectCls} ${
+              errors.type ? "border-red focus:ring-red/20" : ""
+            }`}
           >
             <option value="temperature">Température</option>
             <option value="hygiene">Hygiène</option>
@@ -456,7 +569,9 @@ export default function NonConformityForm({
           <label className={labelCls}>Statut *</label>
           <select
             {...register("status", { required: "Requis" })}
-            className={`${selectCls} ${errors.status ? "border-red focus:ring-red/20" : ""}`}
+            className={`${selectCls} ${
+              errors.status ? "border-red focus:ring-red/20" : ""
+            }`}
           >
             <option value="open">Ouverte</option>
             <option value="in_progress">En cours</option>
@@ -471,7 +586,9 @@ export default function NonConformityForm({
           <label className={labelCls}>Gravité *</label>
           <select
             {...register("severity", { required: "Requis" })}
-            className={`${selectCls} ${errors.severity ? "border-red focus:ring-red/20" : ""}`}
+            className={`${selectCls} ${
+              errors.severity ? "border-red focus:ring-red/20" : ""
+            }`}
           >
             <option value="low">Faible</option>
             <option value="medium">Moyenne</option>
@@ -487,10 +604,14 @@ export default function NonConformityForm({
           <input
             type="datetime-local"
             {...register("reportedAt", { required: "Requis" })}
-            className={`${selectCls} ${errors.reportedAt ? "border-red focus:ring-red/20" : ""}`}
+            className={`${selectCls} ${
+              errors.reportedAt ? "border-red focus:ring-red/20" : ""
+            }`}
           />
           {errors.reportedAt && (
-            <p className="text-xs text-red mt-1">{errors.reportedAt.message}</p>
+            <p className="text-xs text-red mt-1">
+              {errors.reportedAt.message}
+            </p>
           )}
         </div>
       </div>
@@ -523,16 +644,178 @@ export default function NonConformityForm({
         </div>
       </div>
 
-      {/* Ligne 3 : pièces */}
+      {/* Ligne 3 : pièces (UI Cloudinary comme WasteEntriesForm) */}
       <div className="grid grid-cols-1 gap-2">
-        <div className={`${fieldWrap} px-3`}>
-          <label className={labelCls}>Pièces (URLs, 1 par ligne)</label>
-          <textarea
-            rows={3}
-            {...register("attachmentsText")}
-            className="w-full resize-none rounded-lg border border-darkBlue/20 bg-white p-[10px] text-[15px] outline-none transition placeholder:text-darkBlue/40 min-h-[96px]"
-            placeholder={"https://…/photo1.jpg\nhttps://…/rapport.pdf"}
+        <div className={`${fieldWrap.replace("min-h-[80px]", "min-h-0")} px-3`}>
+          <label className={labelCls}>
+            <LinkIcon className="size-4" /> Pièces jointes (PDF, photos)
+          </label>
+
+          {/* Boutons d'action */}
+          <div className="flex flex-wrap gap-2 mb-3">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className={`${btnBase} border border-darkBlue/15 bg-white text-darkBlue/80 hover:border-darkBlue/40 hover:bg-darkBlue/[0.03]`}
+            >
+              <Upload className="size-4" />
+              Importer un fichier
+            </button>
+            <button
+              type="button"
+              onClick={() => cameraInputRef.current?.click()}
+              className={`${btnBase} border border-blue/40 bg-blue/5 text-blue hover:border-blue/70 hover:bg-blue/10`}
+            >
+              <Camera className="size-4" />
+              Prendre une photo
+            </button>
+          </div>
+
+          {/* Inputs file cachés */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/*,application/pdf"
+            className="hidden"
+            onChange={handleFilesSelected}
           />
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={handleFilesSelected}
+          />
+
+          <div className="space-y-2 max-h-[135px] overflow-y-scroll">
+            {/* Nouveaux fichiers */}
+            {newFiles.length > 0 && (
+              <div className="rounded-lg bg-blue/5 px-2 py-2">
+                <p className="mb-1 text-[11px] uppercase tracking-wide text-blue/80">
+                  Fichiers à ajouter
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {newFiles.map((file, idx) => {
+                    const prettyName = normalizeFilename(file.name);
+                    const label = mimeBadgeLabel(file.type || file.name);
+                    return (
+                      <div
+                        key={`${file.name}-${idx}`}
+                        className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-[11px] text-blue-950 shadow-sm border border-blue/20"
+                      >
+                        <span className="flex h-6 w-8 items-center justify-center rounded-md bg-blue/5 text-[10px] font-semibold text-blue">
+                          {label}
+                        </span>
+                        <span title={prettyName}>
+                          {truncate(prettyName, 25)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => removeNewFile(idx)}
+                          className="ml-1 inline-flex items-center justify-center rounded-full bg-red/10 p-[3px] text-red hover:bg-red/20"
+                          title="Retirer"
+                        >
+                          <Trash2 className="size-3" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Pièces existantes (Cloudinary) */}
+            {existingAttachments.length > 0 && (
+              <div className="rounded-lg bg-darkBlue/[0.03] px-2 py-2">
+                <p className="mb-1 text-[11px] uppercase tracking-wide text-darkBlue/50">
+                  Pièces déjà enregistrées
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {existingAttachments.map((att) => {
+                    const prettyName = normalizeFilename(att.filename);
+                    const label = mimeBadgeLabel(att.mimetype || att.filename);
+                    const isMarked = removedAttachmentIds.includes(
+                      String(att.public_id)
+                    );
+
+                    return (
+                      <div
+                        key={att.public_id}
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] shadow-sm border ${
+                          isMarked
+                            ? "bg-red/5 border-red/40 text-red/70 opacity-70"
+                            : "bg-white border-darkBlue/10 text-darkBlue/80"
+                        }`}
+                      >
+                        {/* Badge mimetype */}
+                        <span
+                          className={`flex h-6 w-8 items-center justify-center rounded-md text-[10px] font-semibold ${
+                            isMarked
+                              ? "bg-red/10 text-red"
+                              : "bg-darkBlue/5 text-darkBlue/70"
+                          }`}
+                        >
+                          {label}
+                        </span>
+
+                        {/* Nom + download */}
+                        <a
+                          href={
+                            isMarked
+                              ? undefined
+                              : downloadUrlForAttachment(att)
+                          }
+                          target={isMarked ? undefined : "_blank"}
+                          rel={isMarked ? undefined : "noreferrer"}
+                          className={`flex items-center gap-1 ${
+                            isMarked
+                              ? "cursor-not-allowed line-through text-red/70"
+                              : "hover:underline"
+                          }`}
+                          title={
+                            isMarked ? "Marquée pour suppression" : prettyName
+                          }
+                        >
+                          <Download className="size-3" />
+                          <span>{truncate(prettyName, 25)}</span>
+                        </a>
+
+                        {/* Bouton marquer / annuler suppression */}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            toggleExistingAttachmentRemoval(att.public_id)
+                          }
+                          className={`ml-1 inline-flex items-center justify-center rounded-full p-[3px] ${
+                            isMarked
+                              ? "bg-red text-white hover:bg-red/80"
+                              : "bg-red/10 text-red hover:bg-red/20"
+                          }`}
+                          title={
+                            isMarked
+                              ? "Annuler la suppression"
+                              : "Marquer pour suppression"
+                          }
+                        >
+                          <Trash2 className="size-3" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Petit hint si rien */}
+            {existingAttachments.length === 0 && newFiles.length === 0 && (
+              <p className="text-[11px] text-darkBlue/40">
+                Ajoutez une photo ou un document PDF pour justifier cette
+                non-conformité.
+              </p>
+            )}
+          </div>
         </div>
       </div>
 
@@ -902,24 +1185,24 @@ export default function NonConformityForm({
         </div>
       </div>
 
-      {/* Actions form */}
-      <div className="flex flex-col gap-2 mobile:flex-row">
+      {/* Actions form (même UI que WasteEntriesForm) */}
+      <div className="flex flex-col items-center gap-2 mt-3 mobile:flex-row">
         <button
           type="submit"
           disabled={submitDisabled}
           aria-disabled={submitDisabled}
-          className={`text-nowrap inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white shadow disabled:opacity-60 ${
-            submitDisabled ? "bg-darkBlue/40" : "bg-blue"
-          }`}
+          className="text-nowrap inline-flex items-center justify-center gap-2 h-[38px] rounded-lg bg-blue px-4 py-2 text-sm font-medium text-white shadow disabled:opacity-60"
           title={
-            submitDisabled ? "Validez au moins une ligne (Action*)" : undefined
+            submitDisabled
+              ? "Validez au moins une ligne (Action*)"
+              : undefined
           }
         >
           {isSubmitting ? (
-            <>
-              <FileText className="size-4 animate-spin" />
-              Enregistrement…
-            </>
+            <div className="flex items-center gap-2">
+              <Loader2 className="size-4 animate-spin" />
+              <span>Enregistrement…</span>
+            </div>
           ) : initial?._id ? (
             <>
               <FileText className="size-4" />
@@ -941,10 +1224,14 @@ export default function NonConformityForm({
               setOpenById({});
               setShowReqErrById({});
               setValidatedById({});
+              setExistingAttachments([]);
+              setRemovedAttachmentIds([]);
+              setNewFiles([]);
               onCancel?.();
             }}
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-red bg-white px-4 py-2 text-sm font-medium text-red"
+            className="inline-flex h-[38px] items-center justify-center gap-2 rounded-lg border border-red bg-white px-4 py-2 text-sm font-medium text-red"
           >
+            <XCircle className="size-4" />
             Annuler
           </button>
         )}

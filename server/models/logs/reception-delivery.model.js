@@ -1,6 +1,18 @@
 const mongoose = require("mongoose");
 const { Schema } = mongoose;
 
+const receptionDeliveryLineAttachmentSchema = new Schema(
+  {
+    public_id: { type: String, required: true },
+    url: { type: String, required: true },
+    filename: { type: String },
+    mimetype: { type: String },
+    bytes: { type: Number },
+    uploadedAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
 const receptionDeliveryLineSchema = new Schema(
   {
     productName: String,
@@ -18,6 +30,12 @@ const receptionDeliveryLineSchema = new Schema(
       default: "compliant",
     },
     qtyRemaining: Number,
+
+    // 🔽 NOUVEAU : pièces jointes par ligne produit
+    attachments: {
+      type: [receptionDeliveryLineAttachmentSchema],
+      default: [],
+    },
   },
   { _id: true }
 );
