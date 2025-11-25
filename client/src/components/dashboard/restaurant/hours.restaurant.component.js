@@ -167,11 +167,10 @@ export default function HoursRestaurantComponent(props) {
     }
   }
 
-  // Styles communs alignés avec les autres cards
   const sectionCls =
     "bg-white/60 p-2 midTablet:p-6 rounded-2xl border border-darkBlue/10 shadow-sm w-full text-darkBlue flex flex-col gap-4";
   const rowCls =
-    "group rounded-xl bg-white/70 border border-darkBlue/10 px-4 py-3 flex flex-row justify-between items-center gap-4";
+    "group rounded-xl bg-white/70 border border-darkBlue/10 px-4 py-3 flex flex-col midTablet:flex-row justify-between items-center gap-4";
   const dayLabelCls = "font-semibold text-sm text-darkBlue";
   const timeInputCls =
     "h-9 w-full rounded-lg border border-darkBlue/20 bg-white px-3 text-sm outline-none transition placeholder:text-darkBlue/40";
@@ -369,7 +368,7 @@ export default function HoursRestaurantComponent(props) {
                     )}
 
                     {/* Checkbox pour fermer le jour entier */}
-                    <label className="flex items-center gap-2 mt-2 text-xs text-darkBlue/80">
+                    <label className="flex items-center gap-2 text-xs text-darkBlue/80">
                       <input
                         type="checkbox"
                         checked={dayHour.isClosed}

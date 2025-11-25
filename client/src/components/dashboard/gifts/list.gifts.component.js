@@ -223,7 +223,7 @@ export default function ListGiftsComponent(props) {
             fillColor="#131E3690"
           />
 
-          <h1 className="pl-2 text-xl tablet:text-2xl font-semibold text-darkBlue">
+          <h1 className="pl-2 text-xl tablet:text-2xl text-darkBlue">
             {t("titles.main")}
           </h1>
         </div>

@@ -130,22 +130,8 @@ export default function DaysOffEmployeesComponent() {
     cancelled: t("daysOff.labels.cancelled", "Annulées"),
   };
 
-  const statusColors = {
-    pending: "bg-amber-50 border-amber-200",
-    approved: "bg-emerald-50 border-emerald-200",
-    rejected: "bg-red-50 border-red-200",
-    cancelled: "bg-slate-50 border-slate-200",
-  };
-
-  const statusPillColors = {
-    pending: "bg-amber-100 text-amber-800",
-    approved: "bg-emerald-100 text-emerald-800",
-    rejected: "bg-red-100 text-red-800",
-    cancelled: "bg-slate-100 text-slate-700",
-  };
-
   const sectionCard =
-    "rounded-2xl bg-white/60   border border-darkBlue/10 shadow-sm p-4 midTablet:p-5";
+    "rounded-2xl bg-white/60 border border-darkBlue/10 shadow-sm p-2 midTablet:p-3";
 
   return (
     <section className="flex flex-col gap-6 min-w-0">
@@ -174,7 +160,7 @@ export default function DaysOffEmployeesComponent() {
                 {t("titles.planning")}
               </span>
               <span>/</span>
-              <span className="font-semibold">{t("titles.daysOff")}</span>
+              <span className="">{t("titles.daysOff")}</span>
             </h1>
           </div>
           <p className="text-xs text-darkBlue/60 max-w-xl">
@@ -187,11 +173,7 @@ export default function DaysOffEmployeesComponent() {
       </div>
 
       {/* ─── Barre de recherche ───────────────────────────────────── */}
-      <div className={`${sectionCard} midTablet:w-[380px]`}>
-        <label className="text-xs font-medium text-darkBlue/60 mb-1 flex items-center gap-1">
-          <Search className="size-3.5" />
-          {t("placeholders.searchEmployee", "Rechercher un employé")}
-        </label>
+      <div className={`midTablet:w-[380px]`}>
         <div className="relative">
           <input
             type="text"
@@ -221,7 +203,7 @@ export default function DaysOffEmployeesComponent() {
         <div key={status} className="flex flex-col gap-3">
           {/* Titre de section avec ligne */}
           <div className="relative mb-1">
-            <hr className="bg-darkBlue/10 absolute h-[1px] w-full left-0 top-1/2 -translate-y-1/2 z-10" />
+            <hr className="text-darkBlue/10 absolute h-[1px] w-full left-0 top-1/2 -translate-y-1/2 z-10" />
             <div className="relative z-20 flex justify-center">
               <span className="inline-flex items-center gap-2 rounded-full bg-lightGrey px-4 py-1 text-xs font-semibold uppercase tracking-wide text-darkBlue/80 shadow-sm">
                 {status === "pending" && (
@@ -259,7 +241,7 @@ export default function DaysOffEmployeesComponent() {
                 return (
                   <li
                     key={req._id}
-                    className={`${sectionCard} ${statusColors[status]} flex flex-col gap-3 midTablet:flex-row midTablet:items-center justify-between`}
+                    className={`${sectionCard} flex flex-col gap-3 midTablet:flex-row midTablet:items-center justify-between`}
                   >
                     {/* Infos employé + dates */}
                     <div className="flex flex-col gap-1 text-center midTablet:text-left">
@@ -270,7 +252,7 @@ export default function DaysOffEmployeesComponent() {
                         </span>
                       </div>
 
-                      <div className="text-sm text-darkBlue/80">
+                      <div className="text-sm flex flex-col gap-1 items-center midTablet:items-start text-darkBlue/80">
                         <span className="inline-flex items-center gap-1">
                           <CalendarDays className="size-3.5 text-darkBlue/60" />
                           <strong>
@@ -281,7 +263,7 @@ export default function DaysOffEmployeesComponent() {
                             {format(end, "dd/MM/yyyy", { locale: frLocale })}
                           </strong>
                         </span>
-                        <span className="ml-2 text-xs text-darkBlue/60">
+                        <span className="text-xs text-darkBlue/60">
                           ({formatDays(req)})
                         </span>
                       </div>
@@ -301,10 +283,12 @@ export default function DaysOffEmployeesComponent() {
                       </div>
                     </div>
 
+                   
                     {/* Statut / actions */}
+                   {status === "pending" && (
                     <div className="flex flex-col items-center midTablet:items-end gap-2">
-                      {status === "pending" && (
-                        <div className="flex gap-2 mt-1">
+                      
+                        <div className="flex gap-2">
                           <button
                             type="button"
                             onClick={() =>
@@ -316,8 +300,7 @@ export default function DaysOffEmployeesComponent() {
                             }
                             className="inline-flex items-center gap-2 rounded-lg bg-green px-3 py-1.5 text-xs font-medium text-white shadow hover:opacity-90 transition"
                           >
-                            <CheckCircle2 className="size-3.5" />
-                            {t("daysOff.confirm", "Confirmer")}
+                            <CheckCircle2 className="size-5" />
                           </button>
                           <button
                             type="button"
@@ -330,12 +313,11 @@ export default function DaysOffEmployeesComponent() {
                             }
                             className="inline-flex items-center gap-2 rounded-lg bg-red px-3 py-1.5 text-xs font-medium text-white shadow hover:opacity-90 transition"
                           >
-                            <XCircle className="size-3.5" />
-                            {t("daysOff.reject", "Rejeter")}
+                            <XCircle className="size-5" />
                           </button>
                         </div>
-                      )}
                     </div>
+                      )}
                   </li>
                 );
               })}
