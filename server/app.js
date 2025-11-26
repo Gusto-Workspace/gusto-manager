@@ -117,6 +117,7 @@ const waste_entries = require("./routes/health-control-plan/waste-entries.routes
 const health_mesures = require("./routes/health-control-plan/health-mesures.routes");
 const cooking_equipments = require("./routes/health-control-plan/cooking-equipments.routes");
 const zones = require("./routes/health-control-plan/zone.routes")
+const haccp_report = require('./routes/health-control-plan/haccp-report.routes')
 
 app.use(apiRoutes, fridge_temperature);
 app.use(apiRoutes, preheat_temperature);
@@ -141,6 +142,7 @@ app.use(apiRoutes, waste_entries);
 app.use(apiRoutes, health_mesures);
 app.use(apiRoutes, cooking_equipments);
 app.use(apiRoutes, zones);
+app.use(apiRoutes, haccp_report)
 
 // ÉCOUTE DU PORT
 server.listen(PORT, () => {
