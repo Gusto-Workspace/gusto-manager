@@ -2,14 +2,7 @@ import { useState, useEffect, useRef } from "react";
 
 // REACT BIG CALENDAR
 import { Calendar, dateFnsLocalizer, Views } from "react-big-calendar";
-import {
-  format,
-  parse,
-  startOfWeek,
-  getDay,
-  differenceInCalendarDays,
-  addDays,
-} from "date-fns";
+import { format, parse, startOfWeek, getDay } from "date-fns";
 import frLocale from "date-fns/locale/fr";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 
@@ -22,7 +15,7 @@ import axios from "axios";
 // SVG
 import { CalendarSvg } from "@/components/_shared/_svgs/calendar.svg";
 
-export default function PlanningMySpaceComponent({ employeeId }) {
+export default function PlanningMySpaceComponent({ employeeId, restaurantId }) {
   const { t } = useTranslation("myspace");
   const [events, setEvents] = useState([]);
   const [leaveModalOpen, setLeaveModalOpen] = useState(false);
@@ -35,7 +28,6 @@ export default function PlanningMySpaceComponent({ employeeId }) {
   const [tooltipInfo, setTooltipInfo] = useState(null);
   const [alreadyExisting, setAlreadyExisting] = useState(false);
 
-  // date-fns FR
   const locales = { fr: frLocale };
   const localizer = dateFnsLocalizer({
     format,
@@ -47,29 +39,30 @@ export default function PlanningMySpaceComponent({ employeeId }) {
 
   const calendarRef = useRef(null);
 
-  // bloque le scroll du body quand la modale est ouverte
+  // bloque le scroll du body quand la modale ou le tooltip sont ouverts
   useEffect(() => {
     document.body.classList.toggle(
       "overflow-hidden",
-      leaveModalOpen || tooltipInfo
+      leaveModalOpen || !!tooltipInfo
     );
     return () => document.body.classList.remove("overflow-hidden");
   }, [leaveModalOpen, tooltipInfo]);
 
-  // chargement des shifts
+  // chargement des shifts (par restaurant)
   useEffect(() => {
-    if (!employeeId) return;
+    if (!employeeId || !restaurantId) return;
+
     (async () => {
       try {
         const { data } = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/shifts`
+          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}/shifts`
         );
         setEvents(
-          data.shifts.flatMap((s, i) => {
+          (data.shifts || []).flatMap((s, i) => {
             const startDate = new Date(s.start);
             const endDate = new Date(s.end);
             const durationMs = endDate - startDate;
-            // Congés : full-day events spanning entire period
+
             if (s.title === "Congés" && durationMs >= 1000 * 60 * 60 * 24) {
               return [
                 {
@@ -81,7 +74,7 @@ export default function PlanningMySpaceComponent({ employeeId }) {
                 },
               ];
             }
-            // Shifts normaux
+
             return [
               {
                 id: `${employeeId}-shift-${i}`,
@@ -97,13 +90,14 @@ export default function PlanningMySpaceComponent({ employeeId }) {
         console.error("Erreur fetch shifts :", err);
       }
     })();
-  }, [employeeId]);
+  }, [employeeId, restaurantId]);
 
-  // CustomEvent pour masquer l’heure des events compressés
   const CustomEvent = ({ event }) => {
     const start = format(event.start, "HH:mm");
     const end = format(event.end, "HH:mm");
-    const tooltip = `${event.title}${!event.allDay ? ` : ${start} – ${end}` : ""}`;
+    const tooltip = `${event.title}${
+      !event.allDay ? ` : ${start} – ${end}` : ""
+    }`;
     return (
       <div className="px-2" title={tooltip}>
         {event.title}
@@ -111,7 +105,6 @@ export default function PlanningMySpaceComponent({ employeeId }) {
     );
   };
 
-  // modale
   function openLeaveModal() {
     const today = new Date().toISOString().slice(0, 10);
     setLeaveModalData({ startDate: today, endDate: today, type: "full" });
@@ -119,15 +112,14 @@ export default function PlanningMySpaceComponent({ employeeId }) {
   }
 
   async function submitLeave() {
-    const { startDate, endDate, type } = leaveModalData;
+    if (!employeeId || !restaurantId) return;
 
-    // 1) Construire le même interval que celui posté au backend
+    const { startDate, endDate, type } = leaveModalData;
     const candidate = { ...buildInterval({ startDate, endDate, type }), type };
 
-    // 2) Récupérer les demandes existantes et bloquer si duplicata strict
     try {
       const { data: existing } = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/leave-requests`
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}/leave-requests`
       );
 
       if (hasExactDuplicate(existing, candidate)) {
@@ -135,11 +127,9 @@ export default function PlanningMySpaceComponent({ employeeId }) {
         return;
       }
     } catch (e) {
-      // en cas d'échec du GET, on peut décider de bloquer par prudence ou laisser passer
       console.error("Erreur lecture demandes existantes :", e);
     }
 
-    // 3) Contrôle de cohérence local (fin après début)
     if (new Date(candidate.end) <= new Date(candidate.start)) {
       return window.alert(
         t(
@@ -149,10 +139,9 @@ export default function PlanningMySpaceComponent({ employeeId }) {
       );
     }
 
-    // 4) Envoi de la demande
     try {
       await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/leave-requests`,
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}/leave-requests`,
         { start: candidate.start, end: candidate.end, type }
       );
       window.dispatchEvent(new Event("leaveRequestAdded"));
@@ -163,9 +152,7 @@ export default function PlanningMySpaceComponent({ employeeId }) {
     }
   }
 
-  // ——— Helpers pour comparer exactement deux demandes ———
   function buildInterval({ startDate, endDate, type }) {
-    // Reproduit EXACTEMENT ce que tu envoies au backend
     if (startDate === endDate && type !== "full") {
       if (type === "morning") {
         return {
@@ -173,7 +160,6 @@ export default function PlanningMySpaceComponent({ employeeId }) {
           end: new Date(`${startDate}T12:00:00`).toISOString(),
         };
       }
-      // afternoon
       return {
         start: new Date(`${startDate}T12:00:00`).toISOString(),
         end: new Date(`${startDate}T23:59:59`).toISOString(),
@@ -206,12 +192,10 @@ export default function PlanningMySpaceComponent({ employeeId }) {
     );
   }
 
-  // largeur minimale pour scroll (7 jours * 100px)
   const minTableWidth = currentView === Views.DAY ? "auto" : `${7 * 100}px`;
 
   return (
     <section className="flex flex-col gap-6 min-w-0" ref={calendarRef}>
-      {/* En-tête */}
       <div className="flex gap-4 flex-wrap justify-between items-center">
         <div className="flex gap-2 items-center">
           <CalendarSvg
@@ -220,7 +204,9 @@ export default function PlanningMySpaceComponent({ employeeId }) {
             fillColor="#131E3690"
             strokeColor="#131E3690"
           />
-          <h1 className="text-lg sm:text-xl tablet:text-2xl">{t("titles.main")}</h1>
+          <h1 className="text-lg sm:text-xl tablet:text-2xl">
+            {t("titles.main")}
+          </h1>
         </div>
         <button
           onClick={openLeaveModal}
@@ -230,13 +216,14 @@ export default function PlanningMySpaceComponent({ employeeId }) {
         </button>
       </div>
 
-      {/* Modale */}
+      {/* Modale demande de congé */}
       {leaveModalOpen && (
         <div className="fixed inset-0 flex items-center justify-center z-[100]">
           <div
             className="absolute inset-0 bg-black bg-opacity-40"
             onClick={() => {
-              setLeaveModalOpen(false), setAlreadyExisting(false);
+              setLeaveModalOpen(false);
+              setAlreadyExisting(false);
             }}
           />
           <div className="bg-white p-6 rounded-lg shadow-lg z-10 w-[400px] mx-4 relative">
@@ -312,7 +299,8 @@ export default function PlanningMySpaceComponent({ employeeId }) {
               </button>
               <button
                 onClick={() => {
-                  setLeaveModalOpen(false), setAlreadyExisting(false);
+                  setLeaveModalOpen(false);
+                  setAlreadyExisting(false);
                 }}
                 className="px-4 py-2 bg-red text-white rounded-lg"
               >
@@ -329,7 +317,7 @@ export default function PlanningMySpaceComponent({ employeeId }) {
         </div>
       )}
 
-      {/* Calendrier responsive */}
+      {/* Calendrier */}
       <div className="overflow-x-auto">
         <div style={{ minWidth: minTableWidth }} className="h-[75vh]">
           <Calendar

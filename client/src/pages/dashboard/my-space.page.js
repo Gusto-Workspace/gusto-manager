@@ -37,26 +37,17 @@ export default function MySpacePage(props) {
 
   if (!restaurantContext.isAuth) return null;
 
+  const user = restaurantContext?.userConnected;
+  const employeeId = user?.role === "employee" ? user.id : null;
+
+  // restaurant sélectionné pour cet employé
+  const restaurantId =
+    restaurantContext?.restaurantData?._id || user?.restaurantId || null;
+
   return (
     <>
       <Head>
         <title>{title}</title>
-
-        {/* <>
-          {description && <meta name="description" content={description} />}
-          {title && <meta property="og:title" content={title} />}
-          {description && (
-            <meta property="og:description" content={description} />
-          )}
-          <meta
-            property="og:url"
-            content="https://lespetitsbilingues-newham.com/"
-          />
-          <meta property="og:type" content="website" />
-          <meta property="og:image" content="/img/open-graph.jpg" />
-          <meta property="og:image:width" content="1200" />
-          <meta property="og:image:height" content="630" />
-        </> */}
       </Head>
 
       <div>
@@ -74,22 +65,26 @@ export default function MySpacePage(props) {
 
             <hr className="opacity-20" />
 
-            {restaurantContext?.userConnected?.role === "employee" ? (
+            {user?.role === "employee" && employeeId && restaurantId ? (
               <>
                 <DocumentsMySpaceComponent
-                  employeeId={restaurantContext?.userConnected?.id}
+                  employeeId={employeeId}
+                  restaurantId={restaurantId}
                 />
 
                 <PlanningMySpaceComponent
-                  employeeId={restaurantContext?.userConnected?.id}
+                  employeeId={employeeId}
+                  restaurantId={restaurantId}
                 />
 
                 <DaysOffMySpaceComponent
-                  employeeId={restaurantContext?.userConnected?.id}
+                  employeeId={employeeId}
+                  restaurantId={restaurantId}
                 />
 
                 <TrainingSessionsMySpaceComponent
-                  employeeId={restaurantContext?.userConnected?.id}
+                  employeeId={employeeId}
+                  restaurantId={restaurantId}
                 />
               </>
             ) : (

@@ -8,11 +8,13 @@ const SibApiV3Sdk = require("sib-api-v3-sdk");
 const AdminModel = require("../models/admin.model");
 const OwnerModel = require("../models/owner.model");
 const EmployeeModel = require("../models/employee.model");
+const RestaurantModel = require("../models/restaurant.model");
 
 // JWT
 const JWT_SECRET = process.env.JWT_SECRET;
 
-// CONNEXION ADMIN
+// ----------------- CONNEXION ADMIN -----------------
+
 router.post("/admin/login", async (req, res) => {
   const { email, password } = req.body;
 
@@ -35,11 +37,13 @@ router.post("/admin/login", async (req, res) => {
   }
 });
 
-// CONNEXION USER
+// ----------------- CONNEXION OWNER + EMPLOYEE -----------------
+
 router.post("/user/login", async (req, res) => {
   const { email, password } = req.body;
 
   try {
+    // OWNER
     const owner = await OwnerModel.findOne({ email }).populate(
       "restaurants",
       "name _id"
@@ -63,11 +67,8 @@ router.post("/user/login", async (req, res) => {
       return res.json({ token, owner });
     }
 
-    const employee = await EmployeeModel.findOne({ email }).populate(
-      "restaurant",
-      "name _id"
-    );
-
+    // EMPLOYEE
+    const employee = await EmployeeModel.findOne({ email });
     if (!employee) {
       return res.status(401).json({ message: "errors.incorrect" });
     }
@@ -76,6 +77,13 @@ router.post("/user/login", async (req, res) => {
     if (!isMatch) {
       return res.status(401).json({ message: "errors.incorrect" });
     }
+
+    // Tous les restaurants où il est employé
+    const restaurants = await RestaurantModel.find(
+      { employees: employee._id },
+      "name _id"
+    ).lean();
+
     const token = jwt.sign(
       {
         id: employee._id,
@@ -83,23 +91,81 @@ router.post("/user/login", async (req, res) => {
         lastname: employee.lastname,
         email: employee.email,
         role: "employee",
-        options: employee.options,
+        // options seront ajoutées après sélection de restaurant
       },
       JWT_SECRET,
       { expiresIn: "7d" }
     );
-    return res.json({ token, employee });
+
+    const plainEmployee = employee.toObject();
+    delete plainEmployee.password;
+    plainEmployee.restaurants = restaurants;
+
+    return res.json({ token, employee: plainEmployee });
   } catch (err) {
+    console.error("user/login error:", err);
     res.status(500).json({ message: "errors.server" });
   }
 });
 
-// OWNER RESTAURANT SELECTION
+// ----------------- SÉLECTION RESTAURANT (OWNER + EMPLOYEE) -----------------
+
+function findRestaurantProfile(employee, restaurantId) {
+  if (!employee || !Array.isArray(employee.restaurantProfiles)) return null;
+  const target = String(restaurantId);
+  return employee.restaurantProfiles.find(
+    (p) => String(p.restaurant) === target
+  );
+}
+
 router.post("/user/select-restaurant", async (req, res) => {
   const { token, restaurantId } = req.body;
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
+
+    // OWNER : on ajoute juste restaurantId
+    if (decoded.role === "owner") {
+      const newPayload = { ...decoded, restaurantId };
+      const newToken = jwt.sign(newPayload, JWT_SECRET);
+      return res.json({ token: newToken });
+    }
+
+    // EMPLOYEE : on va chercher les options du profil pour ce restaurant
+    if (decoded.role === "employee") {
+      const employee = await EmployeeModel.findById(decoded.id);
+      if (!employee) {
+        return res.status(404).json({ message: "Employee not found" });
+      }
+
+      const worksHere = (employee.restaurants || []).some(
+        (id) => String(id) === String(restaurantId)
+      );
+      if (!worksHere) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const profile = findRestaurantProfile(employee, restaurantId) || {
+        options: {},
+      };
+
+      const newPayload = {
+        id: employee._id,
+        firstname: employee.firstname,
+        lastname: employee.lastname,
+        email: employee.email,
+        role: "employee",
+        restaurantId,
+        options: profile.options || {},
+      };
+
+      const newToken = jwt.sign(newPayload, JWT_SECRET, {
+        expiresIn: "7d",
+      });
+      return res.json({ token: newToken });
+    }
+
+    // fallback (au cas où)
     const newPayload = { ...decoded, restaurantId };
     const newToken = jwt.sign(newPayload, JWT_SECRET);
     return res.json({ token: newToken });
@@ -108,6 +174,8 @@ router.post("/user/select-restaurant", async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 });
+
+// ----------------- FORGOT PASSWORD (identique, global) -----------------
 
 function instantiateClient() {
   const defaultClient = SibApiV3Sdk.ApiClient.instance;
@@ -126,7 +194,6 @@ function sendTransactionalEmail({ to, subject, htmlContent }) {
   return api.sendTransacEmail(mail);
 }
 
-// util
 async function findUserByEmail(email) {
   const normalized = (email || "").trim().toLowerCase();
   const [owner, employee] = await Promise.all([
@@ -135,8 +202,6 @@ async function findUserByEmail(email) {
   ]);
   return owner || employee || null;
 }
-
-// ===================== FORGOT PASSWORD (owner + employee) =====================
 
 // 1) envoyer le code
 router.post("/auth/send-reset-code", async (req, res) => {

@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 
-// Sous-schéma pour les options
+// Sous-schéma pour les options d'accès (par restaurant)
 const optionsSchema = new mongoose.Schema(
   {
     dashboard: { type: Boolean, default: false },
@@ -58,30 +58,60 @@ const leaveRequestSchema = new mongoose.Schema(
   }
 );
 
+/**
+ * Données spécifiques à un restaurant pour un employé :
+ * - options (droits d'accès)
+ * - documents
+ * - shifts (planning)
+ * - leaveRequests (congés)
+ */
+const restaurantProfileSchema = new mongoose.Schema(
+  {
+    restaurant: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Restaurant",
+      required: true,
+    },
+    options: { type: optionsSchema, default: {} },
+    documents: { type: [documentSchema], default: [] },
+    shifts: { type: [shiftSchema], default: [] },
+    leaveRequests: { type: [leaveRequestSchema], default: [] },
+  },
+  { _id: true }
+);
+
 const employeeSchema = new mongoose.Schema({
+  // Identité globale
   firstname: { type: String, required: true },
   lastname: { type: String, required: true },
-  email: { type: String },
+  email: { type: String }, // normalisé côté routes
   password: { type: String },
   phone: { type: String, required: true },
-  restaurant: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Restaurant",
-    required: true,
-  },
+  secuNumber: { type: String },
+  address: { type: String },
+  emergencyContact: { type: String },
   post: { type: String },
   dateOnPost: { type: Date },
+
   profilePicture: {
     url: String,
     public_id: String,
   },
-  secuNumber: { type: String },
-  address: { type: String },
-  emergencyContact: { type: String },
-  options: { type: optionsSchema, default: {} },
-  documents: { type: [documentSchema], default: [] },
-  shifts: { type: [shiftSchema], default: [] },
-  leaveRequests: { type: [leaveRequestSchema], default: [] },
+
+  // Multi-restaurants : liste des restos où il travaille
+  restaurants: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Restaurant",
+    },
+  ],
+
+  // Données spécifiques par restaurant
+  restaurantProfiles: {
+    type: [restaurantProfileSchema],
+    default: [],
+  },
+
   created_at: { type: Date, default: Date.now },
   trainingSessions: [
     { type: mongoose.Schema.Types.ObjectId, ref: "TrainingSession" },
@@ -93,9 +123,10 @@ const employeeSchema = new mongoose.Schema({
 
 // Index pour des recherches optimisées
 employeeSchema.index({ email: 1 });
-employeeSchema.index({ restaurant: 1 });
+employeeSchema.index({ restaurants: 1 });
+employeeSchema.index({ "restaurantProfiles.restaurant": 1 });
 employeeSchema.index({ firstname: 1, lastname: 1 });
-employeeSchema.index({ "shifts.leaveRequestId": 1 });
+employeeSchema.index({ "restaurantProfiles.shifts.leaveRequestId": 1 });
 employeeSchema.index({ trainingSessions: 1 });
 
 // Hachage du mot de passe avant sauvegarde

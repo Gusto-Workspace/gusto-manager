@@ -3,14 +3,31 @@ import { useContext, useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { useForm } from "react-hook-form";
 import { GlobalContext } from "@/contexts/global.context";
-import { EmployeesSvg } from "@/components/_shared/_svgs/employees.svg";
 import { useTranslation } from "next-i18next";
+
+// SVG
+import { EmployeesSvg } from "@/components/_shared/_svgs/employees.svg";
 
 // COMPONENTS
 import ModaleEmployeesComponent from "./modale.employees.component";
 import DocumentsEmployeeComponent from "./documents.employees.component";
 import AccessRightsEmployeesComponent from "./access-rights.employees.component";
 import DataEmployeesComponent from "./data.employees.component";
+
+const DEFAULT_OPTIONS = {
+  dashboard: false,
+  restaurant: false,
+  menus: false,
+  dishes: false,
+  drinks: false,
+  wines: false,
+  news: false,
+  gift_card: false,
+  reservations: false,
+  take_away: false,
+  employees: false,
+  health_control_plan: false,
+};
 
 export default function DetailsEmployeesComponent({ employeeId }) {
   const { t } = useTranslation("employees");
@@ -23,7 +40,6 @@ export default function DetailsEmployeesComponent({ employeeId }) {
   const [previewUrl, setPreviewUrl] = useState(null);
 
   // documents
-
   const [docs, setDocs] = useState([]);
   const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
   const [isUploadingDocs, setIsUploadingDocs] = useState(false);
@@ -42,7 +58,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     formState: { isDirty: detailsDirty },
   } = useForm({ mode: "onChange" });
 
-  // Formulaire options
+  // Formulaire options (droits par resto)
   const {
     register: regOptions,
     handleSubmit: handleOptionsSubmit,
@@ -72,7 +88,8 @@ export default function DetailsEmployeesComponent({ employeeId }) {
   // Charger l’employé et initialiser les formulaires
   useEffect(() => {
     const data = restaurantContext.restaurantData;
-    if (!data) return;
+    if (!data || !restaurantId) return;
+
     const found = data.employees.find((e) => e._id === employeeId);
     if (!found) {
       router.replace("/dashboard/employees");
@@ -80,6 +97,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     }
     setEmployee(found);
 
+    // Détails "globaux" de l'employé
     resetDetails({
       firstname: found.firstname,
       lastname: found.lastname,
@@ -91,13 +109,25 @@ export default function DetailsEmployeesComponent({ employeeId }) {
       address: found.address,
       emergencyContact: found.emergencyContact,
     });
-    resetOptions({ options: found.options });
+
+    // Options spécifiques au restaurant courant
+    const profile =
+      (found.restaurantProfiles || []).find(
+        (p) => String(p.restaurant) === String(restaurantId)
+      ) || null;
+
+    const mergedOptions = {
+      ...DEFAULT_OPTIONS,
+      ...(profile?.options || {}),
+    };
+
+    resetOptions({ options: mergedOptions });
 
     setPreviewUrl(found.profilePicture?.url || null);
     setProfileFile(null);
     setOptionsSaved(false);
 
-    // On réinitialise docs à chaque nouvel employé
+    // On réinitialise docs à chaque nouvel employé (docs "en attente" d'upload)
     setDocs([]);
   }, [
     employeeId,
@@ -105,6 +135,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     resetOptions,
     router,
     restaurantContext.restaurantData,
+    restaurantId,
   ]);
 
   // Réinitialise le champ fileInput si docs est vide
@@ -114,7 +145,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     }
   }, [docs]);
 
-  // Sélection locale de la photo (inchangé)
+  // Sélection locale de la photo
   function handleFileSelect(e) {
     const f = e.target.files[0];
     if (!f) return;
@@ -138,9 +169,10 @@ export default function DetailsEmployeesComponent({ employeeId }) {
         ...prev,
         employees: response.data.restaurant.employees,
       }));
-      setEmployee(
-        response.data.restaurant.employees.find((e) => e._id === employeeId)
+      const updated = response.data.restaurant.employees.find(
+        (e) => e._id === employeeId
       );
+      setEmployee(updated);
       setIsEditing(false);
     } catch (err) {
       console.error("Erreur update détails :", err);
@@ -149,7 +181,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     }
   }
 
-  // Sauvegarde options
+  // Sauvegarde options (droits pour ce restaurant)
   async function onSaveOptions(formData) {
     try {
       await handleOptionsSubmit(async (d) => {
@@ -165,7 +197,17 @@ export default function DetailsEmployeesComponent({ employeeId }) {
         );
         setEmployee(updated);
         setOptionsSaved(true);
-        resetOptions({ options: updated.options });
+
+        // On ré-injecte les options à jour dans le formulaire
+        const profile =
+          (updated.restaurantProfiles || []).find(
+            (p) => String(p.restaurant) === String(restaurantId)
+          ) || null;
+        const mergedOptions = {
+          ...DEFAULT_OPTIONS,
+          ...(profile?.options || {}),
+        };
+        resetOptions({ options: mergedOptions });
       })(formData);
     } catch (err) {
       console.error("Erreur update options :", err);
@@ -177,9 +219,14 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     const selectedFiles = Array.from(e.target.files);
     // 1. Ne pas réajouter un fichier déjà en attente d'upload
     const existingNames = new Set(docs.map((d) => d.file.name));
+
     // 2. Ne pas ajouter non plus un fichier déjà présent sur l'employé
+    const currentProfile =
+      (employee?.restaurantProfiles || []).find(
+        (p) => String(p.restaurant) === String(restaurantId)
+      ) || null;
     const uploadedNames = new Set(
-      employee.documents?.map((d) => d.filename) || []
+      currentProfile?.documents?.map((d) => d.filename) || []
     );
 
     // Garde uniquement les fichiers UNIQUES
@@ -188,7 +235,6 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     );
 
     if (uniqueFiles.length < selectedFiles.length) {
-      // Avertissement : certains fichiers étaient en double
       setDuplicateModalOpen(true);
     }
 
@@ -221,9 +267,10 @@ export default function DetailsEmployeesComponent({ employeeId }) {
         ...prev,
         employees: response.data.restaurant.employees,
       }));
-      setEmployee(
-        response.data.restaurant.employees.find((e) => e._id === employeeId)
+      const updated = response.data.restaurant.employees.find(
+        (e) => e._id === employeeId
       );
+      setEmployee(updated);
       setDocs([]);
     } catch (err) {
       console.error("Erreur upload documents :", err);
@@ -242,7 +289,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     setDocToDelete(doc);
   }
 
-  // Supprime après confirmation (inchangé)
+  // Supprime après confirmation
   async function onDeleteDoc() {
     const { public_id } = docToDelete;
     setIsDeletingDocId(public_id);
@@ -252,9 +299,10 @@ export default function DetailsEmployeesComponent({ employeeId }) {
         ...prev,
         employees: response.data.restaurant.employees,
       }));
-      setEmployee(
-        response.data.restaurant.employees.find((e) => e._id === employeeId)
+      const updated = response.data.restaurant.employees.find(
+        (e) => e._id === employeeId
       );
+      setEmployee(updated);
       setDocToDelete(null);
     } catch (err) {
       console.error("Erreur suppression document :", err);
@@ -264,6 +312,16 @@ export default function DetailsEmployeesComponent({ employeeId }) {
   }
 
   if (!employee) return null;
+
+  // Profil & documents pour le restaurant courant
+  const currentProfile =
+    (employee.restaurantProfiles || []).find(
+      (p) => String(p.restaurant) === String(restaurantId)
+    ) || null;
+
+  const currentDocuments = currentProfile?.documents || [];
+
+  const currentOptions = watchOptions("options") || {};
 
   return (
     <section className="flex flex-col gap-6">
@@ -306,7 +364,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
         profileFile={profileFile}
       />
 
-      {/* Attribuer des droits */}
+      {/* Attribuer des droits (par restaurant) */}
       <AccessRightsEmployeesComponent
         handleOptionsSubmit={handleOptionsSubmit}
         onSaveOptions={onSaveOptions}
@@ -318,15 +376,19 @@ export default function DetailsEmployeesComponent({ employeeId }) {
         optionsSaved={optionsSaved}
         optionsDirty={optionsDirty}
         regOptions={regOptions}
+        options={currentOptions}
       />
 
-      {/* Documents */}
+      {/* Documents (par restaurant) */}
       <DocumentsEmployeeComponent
         onDocsChange={onDocsChange}
         isUploadingDocs={isUploadingDocs}
         docs={docs}
         onSaveDocs={onSaveDocs}
         employee={employee}
+        restaurantId={restaurantId}
+        baseUrl={baseUrl}
+        currentDocuments={currentDocuments}
         confirmDeleteDoc={confirmDeleteDoc}
         isDeletingDocId={isDeletingDocId}
         removeSelectedDoc={removeSelectedDoc}

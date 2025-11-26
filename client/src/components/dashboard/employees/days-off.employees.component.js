@@ -19,10 +19,75 @@ export default function DaysOffEmployeesComponent() {
   const { restaurantContext } = useContext(GlobalContext);
   const router = useRouter();
 
+  const restaurantId = restaurantContext.restaurantData?._id;
+
   // 1) Liste brute des employés
   const allEmployees = restaurantContext.restaurantData?.employees || [];
 
-  // 2) Search state + normalisation sans accents
+  // 2) HYDRATATION DES LEAVE-REQUESTS AU MONTAGE ──────────────────────────────
+  useEffect(() => {
+    if (!restaurantId) return;
+    const employees = allEmployees;
+    if (!employees.length) return;
+
+    const alreadyHaveLeave = employees.some(
+      (e) => Array.isArray(e.leaveRequests) && e.leaveRequests.length > 0
+    );
+    if (alreadyHaveLeave) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const results = await Promise.all(
+          employees.map((emp) =>
+            axios
+              .get(
+                `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${emp._id}/leave-requests`
+              )
+              .then((res) => ({
+                employeeId: emp._id,
+                leaveRequests: res.data || [],
+              }))
+              .catch((err) => {
+                console.error(
+                  "Erreur fetch leave-requests pour",
+                  emp._id,
+                  err
+                );
+                return { employeeId: emp._id, leaveRequests: [] };
+              })
+          )
+        );
+
+        if (cancelled) return;
+
+        restaurantContext.setRestaurantData((prev) => {
+          if (!prev) return prev;
+          const prevEmployees = prev.employees || [];
+          return {
+            ...prev,
+            employees: prevEmployees.map((emp) => {
+              const match = results.find(
+                (r) => String(r.employeeId) === String(emp._id)
+              );
+              return match
+                ? { ...emp, leaveRequests: match.leaveRequests }
+                : emp;
+            }),
+          };
+        });
+      } catch (e) {
+        console.error("Erreur hydratation leave-requests:", e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [restaurantId, allEmployees.length]);
+
+  // 3) Search state + normalisation sans accents
   const [searchTerm, setSearchTerm] = useState("");
   const normalize = (str) =>
     str
@@ -31,7 +96,7 @@ export default function DaysOffEmployeesComponent() {
       .toLowerCase()
       .trim();
 
-  // 3) Filtrer les employés
+  // 4) Filtrer les employés
   const employees = useMemo(() => {
     if (!searchTerm.trim()) return allEmployees;
     const norm = normalize(searchTerm);
@@ -40,7 +105,7 @@ export default function DaysOffEmployeesComponent() {
     );
   }, [allEmployees, searchTerm]);
 
-  // 4) Aplatir leurs demandes
+  // 5) Aplatir leurs demandes
   const [requests, setRequests] = useState([]);
   useEffect(() => {
     const objectIdToDate = (oid) =>
@@ -59,7 +124,7 @@ export default function DaysOffEmployeesComponent() {
     setRequests(all);
   }, [employees]);
 
-  // 5) Grouper par statut
+  // 6) Grouper par statut
   const grouped = useMemo(() => {
     return requests.reduce(
       (acc, req) => {
@@ -70,7 +135,7 @@ export default function DaysOffEmployeesComponent() {
     );
   }, [requests]);
 
-  // 6) Formater le nombre de jours
+  // 7) Formater le nombre de jours
   function formatDays(req) {
     const start = new Date(req.start);
     const end = new Date(req.end);
@@ -86,22 +151,28 @@ export default function DaysOffEmployeesComponent() {
     return `${totalDays} ${totalDays > 1 ? "jours" : "jour"}`;
   }
 
-  // 7) Mise à jour instantanée du statut
+  // 8) Mise à jour instantanée du statut
   async function updateStatus(empId, reqId, status) {
     try {
+      if (!restaurantId) {
+        window.alert("Restaurant introuvable");
+        return;
+      }
+
       const { data } = await axios.put(
-        `${process.env.NEXT_PUBLIC_API_URL}/employees/${empId}/leave-requests/${reqId}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${empId}/leave-requests/${reqId}`,
         { status }
       );
+      // data = { leaveRequest, shifts }
 
-      // 1) Mettre à jour la liste aplanie locale (UI de cette page)
+      // 1) Mettre à jour la liste aplanie locale
       setRequests((rs) =>
         rs.map((r) =>
           r._id === reqId && r.employee._id === empId ? { ...r, status } : r
         )
       );
 
-      // 2) Mettre à jour le contexte global (très important pour la page Planning)
+      // 2) Mettre à jour le contexte global (pour le planning)
       restaurantContext.setRestaurantData((prev) => ({
         ...prev,
         employees: (prev?.employees || []).map((e) =>
@@ -122,7 +193,7 @@ export default function DaysOffEmployeesComponent() {
     }
   }
 
-  // 8) Labels
+  // 9) Labels
   const statusLabels = {
     pending: t("daysOff.labels.pending", "En attente"),
     approved: t("daysOff.labels.approved", "Confirmées"),
@@ -283,11 +354,9 @@ export default function DaysOffEmployeesComponent() {
                       </div>
                     </div>
 
-                   
                     {/* Statut / actions */}
-                   {status === "pending" && (
-                    <div className="flex flex-col items-center midTablet:items-end gap-2">
-                      
+                    {status === "pending" && (
+                      <div className="flex flex-col items-center midTablet:items-end gap-2">
                         <div className="flex gap-2">
                           <button
                             type="button"
@@ -316,8 +385,8 @@ export default function DaysOffEmployeesComponent() {
                             <XCircle className="size-5" />
                           </button>
                         </div>
-                    </div>
-                      )}
+                      </div>
+                    )}
                   </li>
                 );
               })}

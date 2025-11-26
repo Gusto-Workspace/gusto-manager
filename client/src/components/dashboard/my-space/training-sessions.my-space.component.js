@@ -23,7 +23,6 @@ function endFromStartAndMinutes(start, minutes) {
   return d.toISOString();
 }
 
-// ——— Statuts autorisés (sans "excused") ———
 const STATUS_LABEL = {
   attended: "Présent",
   absent: "Absent",
@@ -34,16 +33,17 @@ const STATUS_BG_CLASS = {
   absent: "bg-red",
 };
 
-export default function TrainingSessionsMySpaceComponent(props) {
+export default function TrainingSessionsMySpaceComponent({
+  employeeId,
+  restaurantId,
+}) {
   const { t } = useTranslation("myspace");
   const [trainingSessions, setTrainingSessions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState({}); // { [sessionId]: boolean }
+  const [saving, setSaving] = useState({});
 
-  // Modale de confirmation
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [toConfirm, setToConfirm] = useState(null);
-  // { session, nextStatus: 'attended' | 'absent' }
 
   useEffect(() => {
     if (confirmOpen) {
@@ -56,20 +56,29 @@ export default function TrainingSessionsMySpaceComponent(props) {
 
   useEffect(() => {
     (async () => {
+      if (!employeeId) return;
+
       try {
         const token = localStorage.getItem("token");
         const { data } = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_URL}/employees/${props.employeeId}/training-sessions`,
+          `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/training-sessions`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
-        setTrainingSessions(data.trainingSessions || []);
+
+        const all = data.trainingSessions || [];
+        // On garde seulement les formations de ce restaurant
+        const filtered = restaurantId
+          ? all.filter((s) => String(s.restaurantId) === String(restaurantId))
+          : all;
+
+        setTrainingSessions(filtered);
       } catch (e) {
         console.error(e);
       } finally {
         setLoading(false);
       }
     })();
-  }, [props.employeeId]);
+  }, [employeeId, restaurantId]);
 
   function askConfirm(session, nextVal) {
     const current = session.myStatus || "attended";
@@ -83,22 +92,21 @@ export default function TrainingSessionsMySpaceComponent(props) {
     const { session, nextStatus } = toConfirm;
     const token = localStorage.getItem("token");
     const sessionId = session._id;
-    const restaurantId = session.restaurantId;
+    const restId = session.restaurantId;
 
     setSaving((s) => ({ ...s, [sessionId]: true }));
     try {
       const { data } = await axios.put(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/training-sessions/${sessionId}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restId}/training-sessions/${sessionId}`,
         {
           attendanceUpdate: {
-            employeeId: props.employeeId,
-            status: nextStatus, // "attended" | "absent"
+            employeeId,
+            status: nextStatus,
           },
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      // Maj locale du statut
       setTrainingSessions((arr) =>
         arr.map((s) =>
           s._id === sessionId ? { ...s, myStatus: data.myStatus } : s
@@ -121,7 +129,6 @@ export default function TrainingSessionsMySpaceComponent(props) {
 
   return (
     <section className="flex flex-col gap-6">
-      {/* En-tête */}
       <div className="flex justify-between items-center">
         <div className="flex gap-2 items-center">
           <StudySvg
@@ -134,12 +141,13 @@ export default function TrainingSessionsMySpaceComponent(props) {
         </div>
       </div>
 
-      {/* Liste */}
       <div>
         {loading ? (
           <p className="text-center italic">Chargement…</p>
         ) : trainingSessions.length === 0 ? (
-          <p className="text-center italic">Aucune formation</p>
+          <p className="text-center italic">
+            Aucune formation pour ce restaurant
+          </p>
         ) : (
           <ul className="space-y-2">
             {trainingSessions.map((tra) => {
@@ -148,7 +156,7 @@ export default function TrainingSessionsMySpaceComponent(props) {
                 tra.date,
                 tra.durationMinutes
               );
-              const myStatus = tra.myStatus || "attended"; // défaut Présent
+              const myStatus = tra.myStatus || "attended";
               const statusBgCls = STATUS_BG_CLASS[myStatus] || "";
 
               return (
@@ -171,7 +179,6 @@ export default function TrainingSessionsMySpaceComponent(props) {
                       )}
                     </div>
 
-                    {/* Select statut (vert/rouge) */}
                     <label className="text-sm flex items-center gap-2">
                       <select
                         className={`text-white rounded px-2 py-1 ${statusBgCls}`}
@@ -179,8 +186,10 @@ export default function TrainingSessionsMySpaceComponent(props) {
                         disabled={!!saving[tra._id]}
                         onChange={(e) => askConfirm(tra, e.target.value)}
                       >
-                        <option value="attended">Présent</option>
-                        <option value="absent">Absent</option>
+                        <option value="attended">
+                          {STATUS_LABEL.attended}
+                        </option>
+                        <option value="absent">{STATUS_LABEL.absent}</option>
                       </select>
                     </label>
                   </div>
@@ -191,7 +200,6 @@ export default function TrainingSessionsMySpaceComponent(props) {
         )}
       </div>
 
-      {/* Modale de confirmation (personnalisée) */}
       {confirmOpen && toConfirm && (
         <div className="fixed inset-0 flex items-center justify-center z-[100]">
           <div

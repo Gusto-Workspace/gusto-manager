@@ -4,12 +4,11 @@ import { useTranslation } from "next-i18next";
 export default function AccessRightsEmployeesComponent(props) {
   const { t } = useTranslation("employees");
 
-  const { employee } = props || {};
-  const options = employee?.options || {};
+  const options = props?.options || {};
 
-  // styles communs (alignés avec DataEmployees / form employé)
+  // styles communs
   const cardWrap =
-    "group relative rounded-xl bg-white/60   px-4 py-3 border border-darkBlue/10 transition hover:border-darkBlue/30";
+    "group relative rounded-xl bg-white/60 px-4 py-3 border border-darkBlue/10 transition hover:border-darkBlue/30";
   const titleCls = "text-sm font-medium text-darkBlue";
   const checkboxBase =
     "h-4 w-4 rounded cursor-pointer border border-darkBlue/30 text-blue focus:ring-blue focus:ring-offset-0";
@@ -20,7 +19,7 @@ export default function AccessRightsEmployeesComponent(props) {
   return (
     <form
       onSubmit={props?.handleOptionsSubmit(props?.onSaveOptions)}
-      className="bg-white/60   p-2 mobile:p-6 rounded-2xl border border-darkBlue/10 shadow-sm flex flex-col gap-4"
+      className="bg-white/60 p-2 mobile:p-6 rounded-2xl border border-darkBlue/10 shadow-sm flex flex-col gap-4"
     >
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <h3 className="text-lg font-semibold text-darkBlue">

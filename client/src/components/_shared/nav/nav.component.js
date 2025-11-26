@@ -62,8 +62,7 @@ export default function NavComponent() {
     z-[90] tablet:z-10
     transition-transform duration-200 ease-out
   `;
-  const logoWrapCls =
-    "h-[72px] flex items-center justify-center  mb-1";
+  const logoWrapCls = "h-[72px] flex items-center justify-center  mb-1";
   const logoImgCls = "max-w-[50px] opacity-70";
   const navListCls = "flex-1 flex flex-col gap-3 mt-1.5";
   const navItemBaseCls =
@@ -124,6 +123,32 @@ export default function NavComponent() {
     );
   }
 
+  // ----- Options dynamiques pour l'employé selon le resto courant -----
+  const currentEmployeeOptions = useMemo(() => {
+    const role = restaurantContext.userConnected?.role;
+    if (role !== "employee") return null;
+
+    const restaurantId = restaurantContext.restaurantData?._id;
+    const employeeId = restaurantContext.userConnected?.id;
+    if (!restaurantId || !employeeId) {
+      return restaurantContext.userConnected?.options || null;
+    }
+
+    const employees = restaurantContext.restaurantData?.employees || [];
+    const me = employees.find(
+      (e) =>
+        String(e._id) === String(employeeId) ||
+        String(e.id) === String(employeeId)
+    );
+
+    const profiles = me?.restaurantProfiles || [];
+    const profile = profiles.find(
+      (p) => String(p.restaurant) === String(restaurantId)
+    );
+
+    return profile?.options || restaurantContext.userConnected?.options || null;
+  }, [restaurantContext.userConnected, restaurantContext.restaurantData]);
+
   // Détermine si une route est activée selon rôle + options
   const isOptionEnabled = useCallback(
     (itemHref) => {
@@ -136,6 +161,7 @@ export default function NavComponent() {
       }
 
       const optionKey = HREF_TO_OPTION_KEY[itemHref];
+
       if (role === "owner") {
         if (itemHref === "/dashboard" || itemHref === "/dashboard/restaurant") {
           return true;
@@ -143,14 +169,16 @@ export default function NavComponent() {
         const opts = restaurantContext.restaurantData?.options || {};
         return optionKey ? !!opts[optionKey] : true;
       } else {
-        const opts = restaurantContext.userConnected?.options || {};
+        // Employé : options par restaurant via restaurantProfiles
+        const opts = currentEmployeeOptions || {};
         return optionKey ? !!opts[optionKey] : true;
       }
     },
     [
       restaurantContext.dataLoading,
-      restaurantContext.userConnected,
+      restaurantContext.userConnected?.role,
       restaurantContext.restaurantData,
+      currentEmployeeOptions,
     ]
   );
 
@@ -167,7 +195,7 @@ export default function NavComponent() {
       items = items.filter((item) => item.enabled);
     }
 
-    // enabled d'abord, mais la verticale reste plus aérée via gap
+    // enabled d'abord
     return items.sort((a, b) => (b.enabled === true) - (a.enabled === true));
   }, [isOptionEnabled, restaurantContext.userConnected?.role]);
 

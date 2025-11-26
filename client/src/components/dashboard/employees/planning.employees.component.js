@@ -25,6 +25,8 @@ export default function PlanningEmployeesComponent() {
   const { restaurantContext } = useContext(GlobalContext);
   const router = useRouter();
 
+  const restaurantId = restaurantContext.restaurantData?._id;
+
   // ─── États ─────────────────────────────────────────────────────────────────
   const [events, setEvents] = useState([]);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(null);
@@ -79,6 +81,64 @@ export default function PlanningEmployeesComponent() {
     [restaurantContext.restaurantData?.employees]
   );
 
+  // ─── HYDRATATION DES SHIFTS AU MONTAGE ─────────────────────────────────────
+  useEffect(() => {
+    if (!restaurantId) return;
+    const employees = restaurantContext.restaurantData?.employees || [];
+    if (!employees.length) return;
+
+    // Si au moins un employé a déjà des shifts, on ne relance pas l'hydratation
+    const alreadyHaveShifts = employees.some(
+      (e) => Array.isArray(e.shifts) && e.shifts.length > 0
+    );
+    if (alreadyHaveShifts) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const results = await Promise.all(
+          employees.map((emp) =>
+            axios
+              .get(
+                `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${emp._id}/shifts`
+              )
+              .then((res) => ({
+                employeeId: emp._id,
+                shifts: res.data?.shifts || [],
+              }))
+              .catch((err) => {
+                console.error("Erreur fetch shifts pour", emp._id, err);
+                return { employeeId: emp._id, shifts: [] };
+              })
+          )
+        );
+
+        if (cancelled) return;
+
+        restaurantContext.setRestaurantData((prev) => {
+          if (!prev) return prev;
+          const prevEmployees = prev.employees || [];
+          return {
+            ...prev,
+            employees: prevEmployees.map((emp) => {
+              const match = results.find(
+                (r) => String(r.employeeId) === String(emp._id)
+              );
+              return match ? { ...emp, shifts: match.shifts } : emp;
+            }),
+          };
+        });
+      } catch (e) {
+        console.error("Erreur hydratation shifts:", e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [restaurantId, restaurantContext.restaurantData?.employees?.length]);
+
   // Normalisation pour recherche
   const normalize = (str) =>
     str
@@ -105,7 +165,6 @@ export default function PlanningEmployeesComponent() {
   }, [allEmployees, modalEmployeeQuery]);
 
   // ─── Recompose les events à partir des shifts ──────────────────────────────
-  // Quand tu reconstruis les events à partir des shifts :
   useEffect(() => {
     const newEvents = allEmployees.flatMap((emp) =>
       (emp.shifts || []).map((s) => {
@@ -200,21 +259,25 @@ export default function PlanningEmployeesComponent() {
       );
       return;
     }
+    if (!restaurantId) {
+      window.alert("Restaurant introuvable");
+      return;
+    }
 
     try {
       const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/shifts`,
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}/shifts`,
         { title, start: start.toISOString(), end: end.toISOString() }
       );
 
-      const updatedShifts = response.data.shifts; // contient des _id
+      const updatedShifts = response.data.shifts; // contient les _id
       const updatedRestaurant = { ...restaurantContext.restaurantData };
       updatedRestaurant.employees = updatedRestaurant.employees.map((emp) =>
         emp._id === employeeId ? { ...emp, shifts: updatedShifts } : emp
       );
       restaurantContext.setRestaurantData(updatedRestaurant);
 
-      // rebuild events (ils auront les vrais _id)
+      // rebuild events pour cet employé
       const employee = allEmployees.find((e) => e._id === employeeId) || {};
       const updatedEvents = updatedShifts.map((s) => ({
         id: String(s._id),
@@ -256,7 +319,7 @@ export default function PlanningEmployeesComponent() {
 
     try {
       const response = await axios.put(
-        `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/shifts/${shiftId}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}/shifts/${shiftId}`,
         {
           title: event.title.split(" - ")[1],
           start: start.toISOString(),
@@ -264,7 +327,6 @@ export default function PlanningEmployeesComponent() {
         }
       );
 
-      // Mets à jour le contexte (employé courant)
       const updatedShifts = response.data.shifts;
       const updatedRestaurant = { ...restaurantContext.restaurantData };
       updatedRestaurant.employees = updatedRestaurant.employees.map((emp) =>
@@ -289,7 +351,6 @@ export default function PlanningEmployeesComponent() {
       title: event.title.split(" - ")[1],
       start: event.start,
       end: event.end,
-
       leaveRequestId: event.leaveRequestId || null,
       isLeave: !!event.isLeave,
     });
@@ -301,20 +362,17 @@ export default function PlanningEmployeesComponent() {
     const {
       employeeId,
       eventId: shiftId,
-      title,
       leaveRequestId,
       isLeave,
     } = deleteModalData;
 
     try {
       if (isLeave && leaveRequestId) {
-        // Annuler la LR par ID (le backend supprime le shift lié)
         await axios.put(
-          `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/leave-requests/${leaveRequestId}`,
+          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}/leave-requests/${leaveRequestId}`,
           { status: "cancelled" }
         );
 
-        // MAJ contexte: LR -> cancelled, et purge les shifts dont leaveRequestId = lrId
         const updated = { ...restaurantContext.restaurantData };
         updated.employees = updated.employees.map((e) => {
           if (e._id !== employeeId) return e;
@@ -332,12 +390,10 @@ export default function PlanningEmployeesComponent() {
         });
         restaurantContext.setRestaurantData(updated);
       } else {
-        // Shift normal -> suppression par shiftId
         await axios.delete(
-          `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/shifts/${shiftId}`
+          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}/shifts/${shiftId}`
         );
 
-        // MAJ contexte (en retirant le shift par _id)
         const updated = { ...restaurantContext.restaurantData };
         updated.employees = updated.employees.map((e) => {
           if (e._id !== employeeId) return e;
@@ -392,7 +448,7 @@ export default function PlanningEmployeesComponent() {
     );
   };
 
-  // Responsive (même logique que l'autre composant)
+  // Responsive
   const minTableWidth = view === Views.DAY ? "auto" : `${7 * 100}px`;
 
   return (
@@ -438,7 +494,7 @@ export default function PlanningEmployeesComponent() {
         {searchTerm && (
           <button
             onClick={() => setSearchTerm("")}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 w-6 h-6 bg-black bg-opacity-30 text-white rounded-full flex items-center justify-center"
+            className="absolute right-3 top-1/2 transform -translate-y-1/2 w-6 h-6 bg-black bg-opacity-30 text-white rounded-full flex items-center justify-center"
           >
             &times;
           </button>
@@ -469,7 +525,7 @@ export default function PlanningEmployeesComponent() {
         </ul>
       </div>
 
-      {/* ─── Calendrier Drag & Drop (responsive, sans colonne resources) ─────── */}
+      {/* ─── Calendrier Drag & Drop ───────────────────────────────────────────── */}
       <div className="overflow-x-auto">
         <div style={{ minWidth: minTableWidth }} className="h-[75vh]">
           <DnDCalendar
@@ -498,7 +554,7 @@ export default function PlanningEmployeesComponent() {
                   backgroundColor: isLeave
                     ? "#FFD19C"
                     : employeeColorMap[event.resourceId],
-                  border: `2px solid ${isLeave ? "#FDBA74" : "#FFFFFF"}`, // bordure blanche sur shifts
+                  border: `2px solid ${isLeave ? "#FDBA74" : "#FFFFFF"}`,
                   borderRadius: "4px",
                   outline: "none",
                 },
@@ -711,7 +767,9 @@ export default function PlanningEmployeesComponent() {
                       {
                         locale: frLocale,
                       }
-                    )} – ${format(deleteModalData.end, "HH:mm", { locale: frLocale })}`;
+                    )} – ${format(deleteModalData.end, "HH:mm", {
+                      locale: frLocale,
+                    })}`;
                   }
                 })()}
               </strong>

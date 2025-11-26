@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useContext } from "react";
+import React, { useState, useMemo, useContext, useEffect } from "react";
 import Link from "next/link";
 import axios from "axios";
 import { GlobalContext } from "@/contexts/global.context";
@@ -189,6 +189,18 @@ export default function DashboardHealthControlPlanComponent() {
 
   const restaurantId = restaurantContext?.restaurantData?._id;
   const restaurantName = restaurantContext?.restaurantData?.name;
+
+  useEffect(() => {
+    if (isReportModalOpen) {
+      document.body.classList.add("overflow-hidden");
+    } else {
+      document.body.classList.remove("overflow-hidden");
+    }
+
+    return () => {
+      document.body.classList.remove("overflow-hidden");
+    };
+  }, [isReportModalOpen]);
 
   // normalize string (accent-insensitive)
   const normalize = (s = "") =>
@@ -424,8 +436,14 @@ export default function DashboardHealthControlPlanComponent() {
 
       {/* Modale édition de rapport */}
       {isReportModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-2xl shadow-lg max-w-md w-[90%] p-6 space-y-4">
+        <div
+          onClick={() => setIsReportModalOpen(false)}
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl shadow-lg max-w-md w-[90%] p-6 space-y-4"
+          >
             <h2 className="text-lg font-semibold mb-2">
               {t(
                 "health-control-plan:report.modalTitle",
@@ -516,7 +534,7 @@ export default function DashboardHealthControlPlanComponent() {
               <button
                 type="button"
                 onClick={handleDownloadReport}
-                disabled={reportLoading}
+                disabled={reportLoading || !reportFrom || !reportTo}
                 className="px-4 py-2 w-full mobile:w-auto text-sm rounded-lg bg-[#131E36] text-white hover:bg-[#131E36]/90 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {reportLoading

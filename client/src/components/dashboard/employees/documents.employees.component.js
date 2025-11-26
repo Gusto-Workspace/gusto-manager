@@ -10,26 +10,25 @@ export default function DocumentsEmployeeComponent(props) {
   const { t } = useTranslation("employees");
   const fileInputRef = useRef(null);
 
+  const [titleErrors, setTitleErrors] = useState([]);
+
   // Fonction pour tronquer le nom de fichier
   const truncate = (name) =>
     name.length > 20 ? `${name.slice(0, 17)}…` : name;
-
-  const [titleErrors, setTitleErrors] = useState([]);
 
   useEffect(() => {
     if (props.docs.length === 0 && fileInputRef.current) {
       fileInputRef.current.value = "";
     }
-    // reset des erreurs quand la liste change (ex: après une sauvegarde)
     setTitleErrors([]);
   }, [props.docs]);
 
   const isUploading = props.isUploadingDocs;
   const isDeletingId = props.isDeletingDocId;
 
-  // styles communs (alignés avec les autres composants employés)
+  // styles communs
   const sectionCls =
-    "bg-white/60   p-2 mobile:p-6 rounded-2xl border border-darkBlue/10 shadow-sm flex flex-col gap-4";
+    "bg-white/60 p-2 mobile:p-6 rounded-2xl border border-darkBlue/10 shadow-sm flex flex-col gap-4";
   const cardWrap =
     "rounded-xl bg-white/70 border border-darkBlue/10 px-4 py-3 flex flex-col gap-2";
   const inputBaseCls =
@@ -39,28 +38,31 @@ export default function DocumentsEmployeeComponent(props) {
   const badgeCls =
     "inline-flex items-center justify-center rounded-full px-2 py-0.5 text-[11px] font-medium";
 
-  // wrapper pour la modif du titre (on nettoie l'erreur si l'utilisateur tape quelque chose)
+  // wrapper pour la modif du titre
   const handleTitleChange = (index, value) => {
     const limited = value.slice(0, 30); // max 30 caractères
 
     props.onDocTitleChange(index, limited);
     setTitleErrors((prev) => {
       const next = [...prev];
-      next[index] = !limited.trim(); // erreur seulement si vide
+      next[index] = !limited.trim();
       return next;
     });
   };
 
-  // handler pour l'enregistrement : vérifie les titres avant de lancer onSaveDocs
+  // handler pour l'enregistrement
   const handleSaveDocs = () => {
     const errors = props.docs.map((d) => !d.title || !d.title.trim());
     setTitleErrors(errors);
 
     const hasError = errors.some((e) => e);
-    if (hasError) return; // on ne sauvegarde pas tant que tout n'est pas rempli
+    if (hasError) return;
 
     props.onSaveDocs();
   };
+
+  const currentDocuments = props.currentDocuments || [];
+  const baseUrl = props.baseUrl;
 
   return (
     <section className={sectionCls}>
@@ -179,15 +181,15 @@ export default function DocumentsEmployeeComponent(props) {
         </div>
       )}
 
-      {/* Documents déjà uploadés */}
-      {props?.employee.documents?.length > 0 && (
+      {/* Documents déjà uploadés (profil du resto courant) */}
+      {currentDocuments.length > 0 && (
         <div className="mt-4 flex flex-col gap-3">
           <h4 className="text-xs font-medium text-darkBlue/70 uppercase tracking-wide">
             {t("Documents enregistrés")}
           </h4>
 
           <ul className="grid grid-cols-1 mobile:grid-cols-2 midTablet:grid-cols-3 tablet:grid-cols-4 gap-3">
-            {props.employee.documents.map((doc, i) => (
+            {currentDocuments.map((doc, i) => (
               <li
                 key={i}
                 className="flex flex-col justify-between gap-3 rounded-xl bg-white/70 border border-darkBlue/10 px-4 py-3 shadow-sm"
@@ -206,7 +208,7 @@ export default function DocumentsEmployeeComponent(props) {
                 <div className="mt-2 flex items-center justify-between gap-2">
                   {/* Télécharger */}
                   <a
-                    href={`${process.env.NEXT_PUBLIC_API_URL}/employees/${props.employee._id}/documents/${encodeURIComponent(
+                    href={`${baseUrl}/documents/${encodeURIComponent(
                       doc.public_id
                     )}/download`}
                     className="inline-flex items-center justify-center rounded-full bg-[#4ead7a99] hover:bg-[#4ead7a] p-2 transition-colors duration-200"
@@ -225,7 +227,7 @@ export default function DocumentsEmployeeComponent(props) {
                     type="button"
                     onClick={() => props.confirmDeleteDoc(doc)}
                     disabled={isDeletingId === doc.public_id}
-                    className="inline-flex items-center justify-center rounded-full bg-[#FF766499] hover:bg-[#FF7664] p-2 transition-colors durée-200 disabled:opacity-40"
+                    className="inline-flex items-center justify-center rounded-full bg-[#FF766499] hover:bg-[#FF7664] p-2 transition-colors duration-200 disabled:opacity-40"
                     title={t("buttons.delete") || "Supprimer"}
                   >
                     <DeleteSvg

@@ -5,13 +5,12 @@ import frLocale from "date-fns/locale/fr";
 import { useTranslation } from "next-i18next";
 import { CalendarSvg } from "@/components/_shared/_svgs/_index";
 
-export default function DaysOffMySpaceComponent({ employeeId }) {
+export default function DaysOffMySpaceComponent({ employeeId, restaurantId }) {
   const { t } = useTranslation("myspace");
   const [requests, setRequests] = useState([]);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [toCancel, setToCancel] = useState(null);
 
-  // Styles communs (même esprit que DaysOffEmployeesComponent)
   useEffect(() => {
     if (confirmOpen) {
       document.body.classList.add("overflow-hidden");
@@ -24,49 +23,44 @@ export default function DaysOffMySpaceComponent({ employeeId }) {
     };
   }, [confirmOpen]);
 
-  // 1) Fonction de chargement
   async function fetchRequests() {
-    if (!employeeId) return;
+    if (!employeeId || !restaurantId) return;
     try {
       const { data } = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/leave-requests`
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}/leave-requests`
       );
-      setRequests(data);
+      setRequests(data || []);
     } catch (err) {
       console.error("Erreur fetch leave requests:", err);
     }
   }
 
-  // 2) Au montage et à chaque changement d'employeeId
   useEffect(() => {
     fetchRequests();
-  }, [employeeId]);
+  }, [employeeId, restaurantId]);
 
-  // 3) Écoute de l’événement pour rafraîchir instantanément
   useEffect(() => {
     const handler = () => fetchRequests();
     window.addEventListener("leaveRequestAdded", handler);
     return () => {
       window.removeEventListener("leaveRequestAdded", handler);
     };
-  }, [employeeId]);
+  }, [employeeId, restaurantId]);
 
-  // 4) Supprimer une demande
   async function cancelRequest(reqId) {
+    if (!employeeId || !restaurantId) return;
+
     try {
       await axios.delete(
-        `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/leave-requests/${reqId}`
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}/leave-requests/${reqId}`
       );
       fetchRequests();
     } catch (err) {
       console.error("Erreur delete leave request:", err);
-      window.alert(
-        t("daysOff.errorCancel", "Impossible d’annuler la demande")
-      );
+      window.alert(t("daysOff.errorCancel", "Impossible d’annuler la demande"));
     }
   }
 
-  // Format label jours (même logique que l'autre composant)
   function formatDays(req) {
     const start = new Date(req.start);
     const end = new Date(req.end);
@@ -82,7 +76,6 @@ export default function DaysOffMySpaceComponent({ employeeId }) {
     return `${totalDays} ${totalDays > 1 ? "jours" : "jour"}`;
   }
 
-  // Badge de statut
   function statusBadge(status) {
     const label = t(`daysOff.status.${status}`);
     let cls =
@@ -105,7 +98,6 @@ export default function DaysOffMySpaceComponent({ employeeId }) {
 
   return (
     <section className="flex flex-col gap-6 min-w-0">
-      {/* En-tête */}
       <div className="flex justify-between items-start flex-wrap gap-3">
         <div className="flex flex-col gap-2">
           <div className="flex gap-2 items-center min-h-[40px]">
@@ -128,7 +120,6 @@ export default function DaysOffMySpaceComponent({ employeeId }) {
         </div>
       </div>
 
-      {/* Liste des demandes */}
       <div className="">
         {requests.length === 0 ? (
           <p className="text-center italic text-sm text-darkBlue/60">
@@ -150,7 +141,6 @@ export default function DaysOffMySpaceComponent({ employeeId }) {
                     px-3 py-3 midTablet:px-4 midTablet:py-3
                   "
                 >
-                  {/* Infos dates */}
                   <div className="flex flex-col gap-1 text-sm text-darkBlue">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-medium">
@@ -181,7 +171,6 @@ export default function DaysOffMySpaceComponent({ employeeId }) {
                     </div>
                   </div>
 
-                  {/* Statut + action */}
                   <div className="flex gap-2">
                     <div>{statusBadge(req.status)}</div>
 
@@ -216,16 +205,13 @@ export default function DaysOffMySpaceComponent({ employeeId }) {
         )}
       </div>
 
-      {/* Modale de confirmation de suppression */}
       {confirmOpen && toCancel && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center px-4">
-          {/* Overlay */}
           <div
             className="absolute inset-0 bg-black/25 backdrop-blur-[1px]"
             onClick={() => setConfirmOpen(false)}
           />
 
-          {/* Carte modale */}
           <div
             className="
               relative w-full max-w-[380px]

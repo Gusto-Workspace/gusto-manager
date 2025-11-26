@@ -172,7 +172,13 @@ export default function SettingsComponent() {
                     <li
                       className="p-6 cursor-pointer"
                       onClick={() => {
-                        router.push("/dashboard");
+                        const role = restaurantContext.userConnected?.role;
+                        const targetPath =
+                          role === "employee"
+                            ? "/dashboard/my-space"
+                            : "/dashboard";
+
+                        router.push(targetPath);
                         setShowRestaurantList(false);
                         restaurantContext.handleRestaurantSelect(
                           restaurant._id
