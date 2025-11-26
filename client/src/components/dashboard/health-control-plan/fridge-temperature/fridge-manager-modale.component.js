@@ -419,7 +419,7 @@ export default function FridgeManagerModal({
             </div>
 
             {/* Liste (filtrée localement) */}
-            <div className="rounded-2xl border border-darkBlue/10 bg-white p-3">
+            <div className="text-nowrap rounded-2xl border border-darkBlue/10 bg-white p-3">
               <div className="overflow-x-auto overflow-y-auto h-[250px]">
                 <table className="w-full text-[13px]">
                   <thead>

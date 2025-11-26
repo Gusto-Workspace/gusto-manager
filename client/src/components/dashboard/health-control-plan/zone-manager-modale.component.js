@@ -1,4 +1,3 @@
-// components/dashboard/health-control-plan/zone-manager-modale.component.jsx
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -335,7 +334,7 @@ export default function ZoneManagerModal({
             </div>
 
             {/* Liste */}
-            <div className="rounded-2xl border border-darkBlue/10 bg-white p-3">
+            <div className="text-nowrap rounded-2xl border border-darkBlue/10 bg-white p-3">
               <div className="overflow-x-auto overflow-y-auto h-[250px]">
                 <table className="w-full text-[13px]">
                   <thead>
