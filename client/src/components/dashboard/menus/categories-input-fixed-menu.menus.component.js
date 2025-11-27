@@ -1,5 +1,5 @@
 // REACT HOOK FORM
-import { useFieldArray } from "react-hook-form";
+import { useFieldArray, Controller } from "react-hook-form";
 
 // I18N
 import { useTranslation } from "next-i18next";
@@ -13,7 +13,6 @@ export default function CategoriesInputFixedMenuComponent(props) {
   const {
     control,
     combinationIndex,
-    register,
     categories,
     errorFields,
     isEditing,
@@ -63,26 +62,35 @@ export default function CategoriesInputFixedMenuComponent(props) {
         >
           <div className="flex flex-col gap-1 min-w-[180px]">
             <div className="relative">
-              <select
-                {...register(
-                  `combinations.${combinationIndex}.categories.${j}.value`
+              <Controller
+                control={control}
+                name={`combinations.${combinationIndex}.categories.${j}.value`}
+                render={({ field: ctrlField }) => (
+                  <select
+                    {...ctrlField}
+                    // on force toujours la valeur depuis RHF
+                    value={ctrlField.value ?? ""}
+                    onChange={(e) => {
+                      ctrlField.onChange(e); // met à jour RHF
+                      handleCategoryChange(e.target.value, j); // ta logique d'erreur
+                    }}
+                    className={`h-11 w-full rounded-xl border bg-white/80 px-3 pr-9 text-sm outline-none transition appearance-none
+                      ${
+                        hasCategoryError(j)
+                          ? "border-red/70 focus:border-red"
+                          : "border-darkBlue/10 focus:border-darkBlue/40 "
+                      }`}
+                    disabled={!isEditing}
+                  >
+                    <option value="">{t("labels.select")}</option>
+                    {categories?.map((category, k) => (
+                      <option key={k} value={category.name}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
                 )}
-                className={`h-11 w-full rounded-xl border bg-white/80 px-3 pr-9 text-sm outline-none transition appearance-none
-                  ${
-                    hasCategoryError(j)
-                      ? "border-red/70 focus:border-red"
-                      : "border-darkBlue/10 focus:border-darkBlue/40 "
-                  }`}
-                onChange={(e) => handleCategoryChange(e.target.value, j)}
-                disabled={!isEditing}
-              >
-                <option value="">{t("labels.select")}</option>
-                {categories?.map((category, k) => (
-                  <option key={k} value={category.name}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
+              />
 
               {/* Petite flèche de select (pure déco) */}
               <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-darkBlue/30 text-xs">

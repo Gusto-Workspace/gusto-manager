@@ -46,16 +46,21 @@ function getOrCreateRestaurantProfile(employee, restaurantId) {
   if (!profile) {
     profile = {
       restaurant: restaurantId,
-      phone: employee.phone || "",
-      post: employee.post || "",
-      dateOnPost: employee.dateOnPost || null,
-      secuNumber: employee.secuNumber || "",
-      address: employee.address || "",
-      emergencyContact: employee.emergencyContact || "",
-      options: employee.options || {},
+      options: {},
       documents: [],
       shifts: [],
       leaveRequests: [],
+      snapshot: {
+        firstname: employee.firstname || "",
+        lastname: employee.lastname || "",
+        email: employee.email || "",
+        phone: employee.phone || "",
+        secuNumber: employee.secuNumber || "",
+        address: employee.address || "",
+        emergencyContact: employee.emergencyContact || "",
+        post: employee.post || "",
+        dateOnPost: employee.dateOnPost || null,
+      },
     };
 
     employee.restaurantProfiles.push(profile);
@@ -82,6 +87,23 @@ async function updateExpiredStatus(restaurantId) {
   });
 
   await restaurant.save();
+}
+
+// Vérifie qu'un employé travaille bien dans un restaurant donné
+function employeeWorksInRestaurant(employee, restaurantId) {
+  const target = String(restaurantId);
+  return Array.isArray(employee.restaurants)
+    ? employee.restaurants.some((id) => String(id) === target)
+    : false;
+}
+
+// Trouve le profil de restaurant pour cet employé
+function findRestaurantProfile(employee, restaurantId) {
+  if (!Array.isArray(employee.restaurantProfiles)) return null;
+  const target = String(restaurantId);
+  return employee.restaurantProfiles.find(
+    (p) => String(p.restaurant) === target
+  );
 }
 
 // GET ALL OWNER RESTAURANTS
@@ -111,6 +133,59 @@ router.post("/owner/change-restaurant", authenticateToken, (req, res) => {
 
   res.status(200).json({ token: updatedToken });
 });
+
+// CHANGE RESTAURANT SELECTED POUR EMPLOYÉ
+router.post(
+  "/employees/change-restaurant",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      if (req.user.role !== "employee") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const { restaurantId } = req.body;
+      if (!restaurantId) {
+        return res.status(400).json({ message: "restaurantId is required" });
+      }
+
+      const emp = await EmployeeModel.findById(req.user.id);
+      if (!emp) {
+        return res.status(404).json({ message: "Employee not found" });
+      }
+
+      // Sécurité : l'employé doit vraiment être rattaché à ce resto
+      const worksHere = (emp.restaurants || []).some(
+        (id) => String(id) === String(restaurantId)
+      );
+      if (!worksHere) {
+        return res.status(403).json({
+          message: "Employee is not linked to this restaurant",
+        });
+      }
+
+      const profile = findRestaurantProfile(emp, restaurantId);
+
+      // On repart du token courant, mais SANS exp / iat
+      const decodedToken = req.user;
+      const { exp, iat, ...rest } = decodedToken; // on enlève ces champs
+
+      const payload = {
+        ...rest,
+        restaurantId,
+        options: profile?.options || {},
+      };
+
+      // 🔴 IMPORTANT : pas d'option expiresIn ici
+      const updatedToken = jwt.sign(payload, JWT_SECRET);
+
+      return res.status(200).json({ token: updatedToken });
+    } catch (e) {
+      console.error("Error in /employees/change-restaurant:", e);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  }
+);
 
 // GET RESTAURANT DETAILS FROM PANEL
 router.get("/owner/restaurants/:id", authenticateToken, async (req, res) => {
@@ -386,10 +461,16 @@ router.get("/owner/employees", async (req, res) => {
     }
 
     // Tous les employés rattachés à au moins un de ces restos
-    const employees = await EmployeeModel.find(
-      { restaurants: { $in: restaurantIds } },
-      "firstname lastname email restaurants profilePicture"
-    )
+    const employees = await EmployeeModel.find({
+      restaurants: { $in: restaurantIds },
+    })
+      .select(
+        `
+        firstname lastname email phone secuNumber address emergencyContact
+        post dateOnPost profilePicture
+        restaurants restaurantProfiles
+      `
+      )
       .populate("restaurants", "name _id")
       .lean();
 

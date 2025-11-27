@@ -143,9 +143,11 @@ export default function TrainingSessionsMySpaceComponent({
 
       <div>
         {loading ? (
-          <p className="text-center italic">Chargement…</p>
+          <p className="text-center italic text-sm text-darkBlue/60">
+            Chargement…
+          </p>
         ) : trainingSessions.length === 0 ? (
-          <p className="text-center italic">
+          <p className="text-center italic text-sm text-darkBlue/60">
             Aucune formation pour ce restaurant
           </p>
         ) : (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useContext, useRef, useEffect } from "react";
+import { useState, useContext, useEffect } from "react";
 import { useRouter } from "next/router";
 import { createPortal } from "react-dom";
 
@@ -17,7 +17,7 @@ import { GlobalContext } from "@/contexts/global.context";
 import { useTranslation } from "next-i18next";
 
 // SVG
-import { EmployeesSvg, RemoveSvg, UploadSvg } from "../../_shared/_svgs/_index";
+import { EmployeesSvg } from "../../_shared/_svgs/_index";
 
 // ICONS LUCIDE
 import {
@@ -29,24 +29,28 @@ import {
   Shield,
   Home,
   PhoneCall,
-  Image as ImageIcon,
   Search,
   X,
   Loader2,
 } from "lucide-react";
 
+/* ---------- Utils ---------- */
+
+function toDateInputValue(value) {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 export default function AddEmployeesComponent() {
   const { t } = useTranslation("employees");
   const { restaurantContext } = useContext(GlobalContext);
-  const [isLoading, setIsLoading] = useState(false);
 
-  // état pour la photo de profil
-  const [profilePreview, setProfilePreview] = useState(null);
-  const [profileFile, setProfileFile] = useState(null);
-  const [profileHasError, setProfileHasError] = useState(false);
-
-  const fileInputRef = useRef(null);
-
+  const [isSaving, setIsSaving] = useState(false);
   const router = useRouter();
 
   const {
@@ -64,6 +68,8 @@ export default function AddEmployeesComponent() {
   const [importError, setImportError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [isBrowser, setIsBrowser] = useState(false);
+
+  const [importLoadingId, setImportLoadingId] = useState(null);
 
   useEffect(() => {
     setIsBrowser(true);
@@ -134,46 +140,33 @@ export default function AddEmployeesComponent() {
     return fullName.includes(q) || email.includes(q);
   });
 
-  async function handleImportEmployee(employeeId) {
+  // ---------- IMPORT EMPLOYÉ ----------
+  function handleImportEmployee(employeeId) {
     if (!employeeId) return;
-    const restaurantId = restaurantContext?.restaurantData?._id;
-    if (!restaurantId) return;
 
-    setIsLoading(true);
+    const selected = existingEmployees.find((e) => e._id === employeeId);
+    if (!selected) return;
+
     setImportError("");
+    setImportLoadingId(employeeId);
 
-    try {
-      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/import`;
-      const { data } = await axios.post(url, { employeeId });
+    reset({
+      lastName: selected.lastname || "",
+      firstName: selected.firstname || "",
+      email: selected.email || "",
+      phone: selected.phone || "",
+      post: selected.post || "",
+      dateOnPost: "",
+      secuNumber: selected.secuNumber || "",
+      address: selected.address || "",
+      emergencyContact: selected.emergencyContact || "",
+    });
 
-      restaurantContext.setRestaurantData((prev) => ({
-        ...prev,
-        employees: data.restaurant.employees,
-      }));
-
-      setShowImportModal(false);
-      router.replace("/dashboard/employees");
-    } catch (err) {
-      console.error("Error importing employee:", err);
-      if (err.response?.status === 409) {
-        setImportError(
-          t("errors.employeeAlreadyInRestaurant", {
-            defaultValue: "Cet employé est déjà rattaché à ce restaurant.",
-          })
-        );
-      } else {
-        setImportError(
-          t("errors.importExistingEmployee", {
-            defaultValue: "Une erreur est survenue lors de l'import.",
-          })
-        );
-      }
-    } finally {
-      setIsLoading(false);
-    }
+    setShowImportModal(false);
+    setImportLoadingId(null);
   }
 
-  // ---------- SUBMIT FORMULAIRE AJOUT NOUVEL EMPLOYÉ ----------
+  // ---------- SUBMIT FORMULAIRE AJOUT / IMPORT ----------
 
   async function onSubmit(data) {
     const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext.restaurantData._id}/employees`;
@@ -188,11 +181,7 @@ export default function AddEmployeesComponent() {
     formData.append("address", data.address || "");
     formData.append("emergencyContact", data.emergencyContact || "");
 
-    if (profileFile) {
-      formData.append("profilePicture", profileFile);
-    }
-
-    setIsLoading(true);
+    setIsSaving(true);
     try {
       const response = await axios.post(url, formData, {
         headers: { "Content-Type": "multipart/form-data" },
@@ -202,17 +191,16 @@ export default function AddEmployeesComponent() {
         employees: response.data.restaurant.employees,
       }));
       reset();
-      setProfileFile(null);
-      setProfilePreview(null);
       router.replace("/dashboard/employees");
     } catch (err) {
       console.error("Error creating employee:", err);
     } finally {
-      setIsLoading(false);
+      setIsSaving(false);
     }
   }
 
-  // styles communs
+  // ---------- Styles communs ----------
+
   const fieldWrap =
     "group relative rounded-xl bg-white/50 px-3 py-2 h-[80px] transition-shadow";
   const labelCls =
@@ -222,51 +210,7 @@ export default function AddEmployeesComponent() {
   const inputNormalCls = `${inputBaseCls} border-darkBlue/20`;
   const inputErrorCls = `${inputBaseCls} border-red`;
 
-  // déstructuration spéciale pour brancher RHF + gestion custom du file
-  const {
-    ref: profileRHFRef,
-    onChange: profileRHFOnChange,
-    ...profileInputProps
-  } = register("profilePicture");
-
-  function handleProfileChange(e) {
-    profileRHFOnChange(e); // on laisse RHF suivre le champ
-
-    const file = e.target.files?.[0] || null;
-
-    if (file) {
-      // limite 10 Mo
-      if (file.size > 10 * 1024 * 1024) {
-        setProfileHasError(true);
-        setProfileFile(null);
-        setProfilePreview(null);
-        return;
-      }
-      setProfileHasError(false);
-      setProfileFile(file);
-
-      const reader = new FileReader();
-      reader.onload = () => {
-        setProfilePreview(reader.result);
-      };
-      reader.readAsDataURL(file);
-    } else {
-      setProfileFile(null);
-      setProfilePreview(null);
-      setProfileHasError(false);
-    }
-  }
-
-  function handleRemoveProfile() {
-    setProfileFile(null);
-    setProfilePreview(null);
-    setProfileHasError(false);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  }
-
-  // ---------- Rendu de la modale d'import (portal) ----------
+  // ---------- Modale d'import (portal) ----------
 
   const importModal =
     isBrowser && showImportModal
@@ -297,7 +241,7 @@ export default function AddEmployeesComponent() {
                 <p className="text-sm text-darkBlue/70">
                   {t("descriptions.importExistingEmployee", {
                     defaultValue:
-                      "Sélectionnez un employé déjà présent dans l’un de vos restaurants pour l’ajouter à ce restaurant.",
+                      "Sélectionnez un employé déjà présent dans l’un de vos restaurants pour pré-remplir le formulaire.",
                   })}
                 </p>
               </div>
@@ -316,7 +260,7 @@ export default function AddEmployeesComponent() {
                 />
               </div>
 
-              {/* Contenu liste */}
+              {/* Liste */}
               <div className="flex-1 min-h-[200px] max-h-[250px] overflow-y-auto rounded-xl border border-darkBlue/10 bg-[#f7f8fc] p-3">
                 {isLoadingExisting ? (
                   <div className="flex items-center justify-center gap-2 text-sm text-darkBlue/70 py-20">
@@ -352,7 +296,8 @@ export default function AddEmployeesComponent() {
                           (r) => String(r._id) === String(currentRestaurantId)
                         );
 
-                      const disabled = isLoading || alreadyInCurrent;
+                      const disabled =
+                        importLoadingId !== null || alreadyInCurrent;
 
                       return (
                         <li
@@ -385,7 +330,9 @@ export default function AddEmployeesComponent() {
                           <button
                             type="button"
                             onClick={() =>
-                              !alreadyInCurrent && handleImportEmployee(emp._id)
+                              !alreadyInCurrent &&
+                              !importLoadingId &&
+                              handleImportEmployee(emp._id)
                             }
                             disabled={disabled}
                             className={`inline-flex items-center justify-center rounded-lg px-3 py-1.5 text-xs font-medium shadow-sm ${
@@ -398,9 +345,9 @@ export default function AddEmployeesComponent() {
                               ? t("labels.existingEmployee", {
                                   defaultValue: "Existant",
                                 })
-                              : isLoading
+                              : importLoadingId === emp._id
                                 ? t("buttons.loading", {
-                                    defaultValue: "Chargement...",
+                                    defaultValue: "En cours...",
                                   })
                                 : t("buttons.importExistingEmployee", {
                                     defaultValue: "Importer",
@@ -454,7 +401,6 @@ export default function AddEmployeesComponent() {
             </div>
           </div>
 
-          {/* Bouton Importer un employé existant */}
           <div className="flex items-center">
             <button
               type="button"
@@ -473,7 +419,6 @@ export default function AddEmployeesComponent() {
           onSubmit={handleSubmit(onSubmit)}
           className="relative flex flex-col gap-3"
         >
-          {/* Grid des champs */}
           <div className="grid grid-cols-1 midTablet:grid-cols-3 gap-2">
             {/* Nom */}
             <div className="w-full">
@@ -648,93 +593,22 @@ export default function AddEmployeesComponent() {
                 />
               </div>
             </div>
-
-            {/* Photo de profil */}
-            <div className="w-full">
-              <div
-                className={`${fieldWrap} h-auto ${
-                  profileHasError ? "ring-1 ring-red/60" : ""
-                }`}
-              >
-                <label className={labelCls}>
-                  <ImageIcon className="size-4" />
-                  {t("labels.profilePicture")}
-                </label>
-
-                <div className="flex flex-col gap-3">
-                  {/* zone cliquable */}
-                  <label
-                    htmlFor="profilePicture"
-                    className={`flex flex-col justify-center items-center w-full h-[150px] p-3 border border-dashed rounded-lg cursor-pointer transition ${
-                      profileHasError
-                        ? "border-red bg-red/5"
-                        : "border-darkBlue/20 hover:border-darkBlue/40 bg-white/60"
-                    }`}
-                  >
-                    <div className="flex flex-col items-center justify-center pt-2 pb-2 gap-2">
-                      <UploadSvg width={32} height={32} />
-                      <p className="text-sm text-center font-semibold text-darkBlue/80">
-                        {profileFile
-                          ? profileFile.name
-                          : "Choisir une photo ou prendre une photo"}
-                      </p>
-                      <p className="text-xs text-darkBlue/50">
-                        JPG, PNG, WEBP – 10 Mo max
-                      </p>
-                    </div>
-
-                    {/* vrai input file caché */}
-                    <input
-                      id="profilePicture"
-                      type="file"
-                      accept="image/*"
-                      {...profileInputProps}
-                      capture="environment"
-                      ref={(el) => {
-                        profileRHFRef(el);
-                        fileInputRef.current = el;
-                      }}
-                      className="hidden"
-                      onChange={handleProfileChange}
-                    />
-                  </label>
-
-                  {/* Preview + bouton supprimer */}
-                  {profilePreview && (
-                    <div className="relative mx-auto max-w-[120px] rounded-lg overflow-hidden group">
-                      <img
-                        src={profilePreview}
-                        alt="Prévisualisation photo de profil"
-                        className="w-full h-auto object-cover"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleRemoveProfile}
-                        className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/50 transition"
-                      >
-                        <RemoveSvg width={40} height={40} fillColor="white" />
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
           </div>
 
           {/* Actions */}
           <div className="mt-2 flex flex-col mobile:flex-row gap-2">
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={isSaving}
               className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue px-4 py-2 text-sm font-medium text-white shadow disabled:opacity-60"
             >
-              {isLoading ? t("buttons.loading") : t("buttons.save")}
+              {isSaving ? t("buttons.loading") : t("buttons.save")}
             </button>
 
             <button
               type="button"
               onClick={() => router.replace("/dashboard/employees")}
-              disabled={isLoading}
+              disabled={isSaving}
               className="inline-flex items-center justify-center gap-2 rounded-lg border border-red bg-red px-4 py-2 text-sm font-medium text-white"
             >
               {t("buttons.cancel")}

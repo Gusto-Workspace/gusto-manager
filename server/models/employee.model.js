@@ -58,6 +58,21 @@ const leaveRequestSchema = new mongoose.Schema(
   }
 );
 
+const employeeSnapshotSchema = new mongoose.Schema(
+  {
+    firstname: String,
+    lastname: String,
+    email: String,
+    phone: String,
+    secuNumber: String,
+    address: String,
+    emergencyContact: String,
+    post: String,
+    dateOnPost: Date,
+  },
+  { _id: false }
+);
+
 /**
  * Données spécifiques à un restaurant pour un employé :
  * - options (droits d'accès)
@@ -76,6 +91,7 @@ const restaurantProfileSchema = new mongoose.Schema(
     documents: { type: [documentSchema], default: [] },
     shifts: { type: [shiftSchema], default: [] },
     leaveRequests: { type: [leaveRequestSchema], default: [] },
+    snapshot: { type: employeeSnapshotSchema, default: {} },
   },
   { _id: true }
 );

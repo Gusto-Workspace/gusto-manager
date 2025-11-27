@@ -342,57 +342,127 @@ export default function RestaurantContext() {
 
     if (!token) {
       handleInvalidToken();
-    } else {
-      try {
-        const decodedToken = jwtDecode(token);
-
-        if (!decodedToken.id) {
-          throw new Error("Invalid token: ownerId is missing");
-        }
-
-        setDataLoading(true);
-
-        axios
-          .get(`${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants`, {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-            params: {
-              ownerId: decodedToken.id,
-            },
-          })
-          .then((response) => {
-            setRestaurantsList(response.data.restaurants);
-
-            const selectedRestaurantId =
-              decodedToken.restaurantId || response.data.restaurants[0]._id;
-
-            fetchRestaurantData(token, selectedRestaurantId);
-            setIsAuth(true);
-          })
-          .catch((error) => {
-            if (error.response?.status === 403) {
-              handleInvalidToken();
-            } else {
-              console.error(
-                "Erreur lors de la récupération des restaurants:",
-                error
-              );
-              setDataLoading(false);
-            }
-          });
-      } catch (error) {
-        console.error("Invalid token:", error);
-        handleInvalidToken();
-      }
+      return;
     }
+
+    let decodedToken;
+    try {
+      decodedToken = jwtDecode(token);
+    } catch (error) {
+      console.error("Invalid token:", error);
+      handleInvalidToken();
+      return;
+    }
+
+    const role = decodedToken.role;
+    if (!decodedToken.id || !role) {
+      console.error("Invalid token payload:", decodedToken);
+      handleInvalidToken();
+      return;
+    }
+
+    setDataLoading(true);
+
+    // ----- OWNER -----
+    if (role === "owner") {
+      axios
+        .get(`${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          params: {
+            ownerId: decodedToken.id,
+          },
+        })
+        .then((response) => {
+          const restaurants = response.data.restaurants || [];
+          setRestaurantsList(restaurants);
+
+          if (!restaurants.length) {
+            setRestaurantData(null);
+            setDataLoading(false);
+            setIsAuth(true);
+            return;
+          }
+
+          // resto déjà dans le token ou premier de la liste
+          const selectedRestaurantId =
+            decodedToken.restaurantId || restaurants[0]._id;
+
+          fetchRestaurantData(token, selectedRestaurantId);
+          setIsAuth(true);
+        })
+        .catch((error) => {
+          if (error.response?.status === 403) {
+            handleInvalidToken();
+          } else {
+            console.error(
+              "Erreur lors de la récupération des restaurants (owner):",
+              error
+            );
+            setDataLoading(false);
+          }
+        });
+
+      return;
+    }
+
+    // ----- EMPLOYEE -----
+    if (role === "employee") {
+      axios
+        .get(`${process.env.NEXT_PUBLIC_API_URL}/employees/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        .then((res) => {
+          const { restaurant, restaurants } = res.data;
+
+          setRestaurantsList(restaurants || []);
+
+          setRestaurantData(restaurant || null);
+
+          setIsAuth(true);
+          setDataLoading(false);
+        })
+        .catch((error) => {
+          if (error.response?.status === 403) {
+            handleInvalidToken();
+          } else {
+            console.error(
+              "Erreur lors de la récupération des restaurants (employee):",
+              error
+            );
+            setDataLoading(false);
+          }
+        });
+
+      return;
+    }
+
+    // ----- ROLE INCONNU -----
+    console.warn("Unknown role in token:", role);
+    handleInvalidToken();
   }
 
   function handleRestaurantSelect(restaurantId) {
     const token = localStorage.getItem("token");
-    if (token) {
-      setDataLoading(true);
-      setCloseEditing(true);
+    if (!token) return;
+
+    let decoded;
+    try {
+      decoded = jwtDecode(token);
+    } catch (err) {
+      console.error("Invalid token:", err);
+      handleInvalidToken();
+      return;
+    }
+
+    const role = decoded.role;
+
+    setDataLoading(true);
+    setCloseEditing(true);
+
+    // ----- OWNER -----
+    if (role === "owner") {
       axios
         .post(
           `${process.env.NEXT_PUBLIC_API_URL}/owner/change-restaurant`,
@@ -410,12 +480,69 @@ export default function RestaurantContext() {
           if (error.response?.status === 403) {
             handleInvalidToken();
           } else {
-            console.error("Erreur lors de la sélection du restaurant:", error);
+            console.error(
+              "Erreur lors de la sélection du restaurant (owner):",
+              error
+            );
             setDataLoading(false);
             setCloseEditing(false);
           }
         });
+      return;
     }
+
+    // ----- EMPLOYEE -----
+    if (role === "employee") {
+      axios
+        .post(
+          `${process.env.NEXT_PUBLIC_API_URL}/employees/change-restaurant`,
+          { restaurantId },
+          { headers: { Authorization: `Bearer ${token}` } }
+        )
+        .then((response) => {
+          const { token: updatedToken } = response.data;
+          localStorage.setItem("token", updatedToken);
+
+          // On va re-fetch le resto courant via /employees/me
+          // pour avoir restaurantData aligné avec le nouveau token
+          axios
+            .get(`${process.env.NEXT_PUBLIC_API_URL}/employees/me`, {
+              headers: { Authorization: `Bearer ${updatedToken}` },
+            })
+            .then((res) => {
+              const { restaurant, restaurants } = res.data;
+              setRestaurantsList(restaurants || []);
+              setRestaurantData(restaurant || null);
+              setDataLoading(false);
+              setCloseEditing(false);
+            })
+            .catch((err) => {
+              console.error(
+                "Erreur lors de la récupération des données employé après changement de resto:",
+                err
+              );
+              setDataLoading(false);
+              setCloseEditing(false);
+            });
+        })
+        .catch((error) => {
+          if (error.response?.status === 403) {
+            handleInvalidToken();
+          } else {
+            console.error(
+              "Erreur lors de la sélection du restaurant (employee):",
+              error
+            );
+            setDataLoading(false);
+            setCloseEditing(false);
+          }
+        });
+      return;
+    }
+
+    // rôle inconnu → on reset
+    setDataLoading(false);
+    setCloseEditing(false);
   }
 
   // Fonction pour mettre à jour le champ lastNotificationCheck dans la BDD

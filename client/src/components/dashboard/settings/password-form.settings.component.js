@@ -38,9 +38,15 @@ export default function PasswordFormSettingsComponent() {
     "h-11 w-full rounded-xl border border-darkBlue/10 bg-white/90 px-3 pr-9 text-sm outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-1 focus:ring-blue/30";
   const errorTextCls = "text-[11px] text-red mt-0.5";
   const btnPrimary =
-    "inline-flex items-center justify-center rounded-xl bg-blue px-4 py-2.5 text-sm font-medium text-white shadow hover:bg-blue/90 transition disabled:opacity-60 disabled:cursor-not-allowed";
+    "inline-flex items-center w-full midTablet:w-fit justify-center rounded-xl bg-blue px-4 py-2.5 text-sm font-medium text-white shadow hover:bg-blue/90 transition disabled:opacity-60 disabled:cursor-not-allowed";
 
+  const currentPasswordValue = watch("currentPassword");
   const newPasswordValue = watch("newPassword");
+  const confirmNewPasswordValue = watch("confirmNewPassword");
+
+  // 🔹 Bouton enabled seulement si au moins un champ est rempli
+  const hasChanges =
+    !!currentPasswordValue || !!newPasswordValue || !!confirmNewPasswordValue;
 
   function onSubmit(data) {
     setIsSubmitting(true);
@@ -58,7 +64,7 @@ export default function PasswordFormSettingsComponent() {
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
       })
       .then(() => {
-        setPasswordSuccess(t("form.password.success"));
+        setPasswordSuccess("Modifications effectuées");
         reset({ currentPassword: "", newPassword: "", confirmNewPassword: "" });
         setShowCurrentPassword(false);
         setShowNewPassword(false);
@@ -93,8 +99,8 @@ export default function PasswordFormSettingsComponent() {
           onSubmit={handleSubmit(onSubmit)}
           className="mt-2 flex flex-col gap-4"
         >
-          <div className="flex flex-col gap-4">
-            {/* Mot de passe actuel */}
+          {/* Ligne 1 : mot de passe actuel (1/2 largeur) */}
+          <div className="flex flex-col midTablet:flex-row gap-4">
             <div className={fieldWrap}>
               <label className={labelCls}>
                 {t("form.password.current")}
@@ -131,95 +137,97 @@ export default function PasswordFormSettingsComponent() {
               )}
             </div>
 
-            {/* Nouveau mot de passe */}
-            <div className="flex flex-col midTablet:flex-row gap-4">
-              <div className={fieldWrap}>
-                <label className={labelCls}>
-                  {t("form.password.new")}
-                  <span className="ml-1 text-red">*</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type={showNewPassword ? "text" : "password"}
-                    {...register("newPassword", {
-                      required:
-                        t("form.errors.new_required") ||
-                        "Le nouveau mot de passe est requis.",
-                      minLength: {
-                        value: 6,
-                        message:
-                          t("form.errors.new") ||
-                          "Le mot de passe doit contenir au moins 6 caractères.",
-                      },
-                    })}
-                    className={`${inputCls} ${
-                      errors.newPassword ? "border-red ring-1 ring-red/30" : ""
-                    }`}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowNewPassword((prev) => !prev)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2"
-                  >
-                    {showNewPassword ? (
-                      <NoVisibleSvg width={20} height={20} />
-                    ) : (
-                      <VisibleSvg width={20} height={20} />
-                    )}
-                  </button>
-                </div>
-                {errors.newPassword && (
-                  <p className={errorTextCls}>{errors.newPassword.message}</p>
-                )}
-              </div>
+            {/* Colonne vide pour garder la grille alignée */}
+            <div className="midTablet:w-1/2" />
+          </div>
 
-              {/* Confirmation mot de passe */}
-              <div className={fieldWrap}>
-                <label className={labelCls}>
-                  {t("Confirmer le nouveau mot de passe")}
-                  <span className="ml-1 text-red">*</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type={showConfirmPassword ? "text" : "password"}
-                    {...register("confirmNewPassword", {
-                      required: t("Ce champ est requis."),
-                      validate: (value) =>
-                        value === newPasswordValue ||
-                        t("Les mots de passe ne correspondent pas."),
-                    })}
-                    className={`${inputCls} ${
-                      errors.confirmNewPassword
-                        ? "border-red ring-1 ring-red/30"
-                        : ""
-                    }`}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword((prev) => !prev)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2"
-                  >
-                    {showConfirmPassword ? (
-                      <NoVisibleSvg width={20} height={20} />
-                    ) : (
-                      <VisibleSvg width={20} height={20} />
-                    )}
-                  </button>
-                </div>
-                {errors.confirmNewPassword && (
-                  <p className={errorTextCls}>
-                    {errors.confirmNewPassword.message}
-                  </p>
-                )}
+          {/* Ligne 2 : nouveau + confirmation */}
+          <div className="flex flex-col midTablet:flex-row gap-4">
+            {/* Nouveau mot de passe */}
+            <div className={fieldWrap}>
+              <label className={labelCls}>
+                {t("form.password.new")}
+                <span className="ml-1 text-red">*</span>
+              </label>
+              <div className="relative">
+                <input
+                  type={showNewPassword ? "text" : "password"}
+                  {...register("newPassword", {
+                    required: "Le nouveau mot de passe est requis.",
+                    minLength: {
+                      value: 6,
+                      message:
+                        "Le mot de passe doit contenir au moins 6 caractères.",
+                    },
+                  })}
+                  className={`${inputCls} ${
+                    errors.newPassword ? "border-red ring-1 ring-red/30" : ""
+                  }`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNewPassword((prev) => !prev)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2"
+                >
+                  {showNewPassword ? (
+                    <NoVisibleSvg width={20} height={20} />
+                  ) : (
+                    <VisibleSvg width={20} height={20} />
+                  )}
+                </button>
               </div>
+              {errors.newPassword && (
+                <p className={errorTextCls}>{errors.newPassword.message}</p>
+              )}
+            </div>
+
+            {/* Confirmation mot de passe */}
+            <div className={fieldWrap}>
+              <label className={labelCls}>
+                {t("Confirmer le nouveau mot de passe")}
+                <span className="ml-1 text-red">*</span>
+              </label>
+              <div className="relative">
+                <input
+                  type={showConfirmPassword ? "text" : "password"}
+                  {...register("confirmNewPassword", {
+                    required: t("Ce champ est requis."),
+                    validate: (value) =>
+                      value === newPasswordValue ||
+                      t("Les mots de passe ne correspondent pas."),
+                  })}
+                  className={`${inputCls} ${
+                    errors.confirmNewPassword
+                      ? "border-red ring-1 ring-red/30"
+                      : ""
+                  }`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword((prev) => !prev)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2"
+                >
+                  {showConfirmPassword ? (
+                    <NoVisibleSvg width={20} height={20} />
+                  ) : (
+                    <VisibleSvg width={20} height={20} />
+                  )}
+                </button>
+              </div>
+              {errors.confirmNewPassword && (
+                <p className={errorTextCls}>
+                  {errors.confirmNewPassword.message}
+                </p>
+              )}
             </div>
           </div>
 
+          {/* Bouton + message success */}
           <div className="pt-1 flex flex-col gap-2 tablet:flex-row tablet:items-center tablet:justify-between">
             <button
               type="submit"
               className={btnPrimary}
-              disabled={isSubmitting}
+              disabled={isSubmitting || !hasChanges}
             >
               {isSubmitting ? t("buttons.loading") : t("buttons.save")}
             </button>

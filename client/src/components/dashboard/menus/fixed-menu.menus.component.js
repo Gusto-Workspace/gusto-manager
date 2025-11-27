@@ -34,13 +34,12 @@ export default function FixedMenuComponent(props) {
 
   const currencySymbol = locale === "fr" ? "€" : "$";
 
-  const [categories, setCategories] = useState(
-    restaurantContext?.restaurantData?.dish_categories
-  );
+  const categories =
+    restaurantContext?.restaurantData?.dish_categories || [];
+    
   const [isLoading, setIsLoading] = useState(false);
   const [errorFields, setErrorFields] = useState([]);
 
-  // index de l'option ouverte (accordion)
   const [openIndex, setOpenIndex] = useState(0);
 
   const { register, handleSubmit, reset, control } = useForm({
@@ -62,7 +61,6 @@ export default function FixedMenuComponent(props) {
     name: "combinations",
   });
 
-  // on regarde les valeurs pour afficher catégories + prix dans le header
   const combinationsValues = useWatch({
     control,
     name: "combinations",
@@ -89,17 +87,6 @@ export default function FixedMenuComponent(props) {
       setOpenIndex(0);
     }
   }, [props.menu, reset]);
-
-  // useEffect(() => {
-  //   const modifiedCategories =
-  //     restaurantContext?.restaurantData?.dish_categories?.map((category) => ({
-  //       ...category,
-  //       name: category.name.endsWith("s")
-  //         ? category.name.slice(0, -1)
-  //         : category.name,
-  //     })) || [];
-  //   setCategories(modifiedCategories);
-  // }, [restaurantContext?.restaurantData]);
 
   function onSubmit(data) {
     const emptyFields = data.combinations.reduce((acc, combo, comboIndex) => {
@@ -165,7 +152,6 @@ export default function FixedMenuComponent(props) {
 
   function handleAddCombination() {
     addCombination({ categories: [{ value: "" }], price: "", description: "" });
-    // la nouvelle option est à l'index = length avant append
     setOpenIndex(combinationFields.length);
   }
 
@@ -300,7 +286,7 @@ export default function FixedMenuComponent(props) {
                   </span>
 
                   {props.isEditing && combinationFields.length > 1 && (
-                    <button
+                    <div
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -317,7 +303,7 @@ export default function FixedMenuComponent(props) {
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                       <span>{t("buttons.deleteOption")}</span>
-                    </button>
+                    </div>
                   )}
 
                   <ChevronDown

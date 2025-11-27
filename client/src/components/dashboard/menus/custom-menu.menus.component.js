@@ -27,9 +27,8 @@ export default function CustomMenuComponent(props) {
 
   const currencySymbol = locale === "fr" ? "€" : "$";
 
-  const [categories, setCategories] = useState(
-    restaurantContext?.restaurantData?.dish_categories || []
-  );
+  const categories = restaurantContext?.restaurantData?.dish_categories || [];
+
   const [isLoading, setIsLoading] = useState(false);
   const [selectedDishes, setSelectedDishes] = useState({});
 
@@ -50,8 +49,6 @@ export default function CustomMenuComponent(props) {
   });
 
   useEffect(() => {
-    setCategories(restaurantContext?.restaurantData?.dish_categories || []);
-
     if (props.menu) {
       reset({
         name: props.menu.name || "",

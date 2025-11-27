@@ -58,6 +58,7 @@ function getOrCreateRestaurantProfile(employee, restaurantId) {
       documents: [],
       shifts: [],
       leaveRequests: [],
+      snapshot: {},
     });
     profile =
       employee.restaurantProfiles[employee.restaurantProfiles.length - 1];
@@ -210,10 +211,21 @@ router.post(
           restaurantProfiles: [
             {
               restaurant: restaurantId,
-              options: {}, // par défaut, tout à false
+              options: {},
               documents: [],
               shifts: [],
               leaveRequests: [],
+              snapshot: {
+                firstname: firstName,
+                lastname: lastName,
+                email: normalizedEmail || undefined,
+                phone,
+                secuNumber,
+                address,
+                emergencyContact,
+                post,
+                dateOnPost: dateOnPost ? new Date(dateOnPost) : undefined,
+              },
             },
           ],
         });
@@ -265,12 +277,102 @@ router.post(
       // ---------- CAS 2 : EMPLOYÉ EXISTANT ----------
       ensureEmployeeRestaurantLink(existingEmployee, restaurantId);
 
+      // 🔹 Photo globale (si upload)
       if (profilePicture) {
         existingEmployee.profilePicture = profilePicture;
       }
 
-      // On crée le profil pour ce restaurant si inexistant
-      getOrCreateRestaurantProfile(existingEmployee, restaurantId);
+      // 🔹 Mettre à jour les infos "globales" de l'employé
+      //    -> on prend ce qui vient du formulaire si ce n'est pas vide,
+      //       sinon on garde ce qu'il y avait déjà.
+      if (typeof lastName !== "undefined" && lastName !== "") {
+        existingEmployee.lastname = lastName;
+      }
+      if (typeof firstName !== "undefined" && firstName !== "") {
+        existingEmployee.firstname = firstName;
+      }
+      if (typeof phone !== "undefined" && phone !== "") {
+        existingEmployee.phone = phone;
+      }
+      if (typeof secuNumber !== "undefined" && secuNumber !== "") {
+        existingEmployee.secuNumber = secuNumber;
+      }
+      if (typeof address !== "undefined" && address !== "") {
+        existingEmployee.address = address;
+      }
+      if (typeof emergencyContact !== "undefined" && emergencyContact !== "") {
+        existingEmployee.emergencyContact = emergencyContact;
+      }
+      if (typeof post !== "undefined" && post !== "") {
+        existingEmployee.post = post;
+      }
+      if (typeof dateOnPost !== "undefined" && dateOnPost !== "") {
+        existingEmployee.dateOnPost = new Date(dateOnPost);
+      }
+
+      // 🔹 Email global normalisé
+      if (typeof normalizedEmail !== "undefined" && normalizedEmail !== "") {
+        existingEmployee.email = normalizedEmail;
+      }
+
+      // 🔹 Profil spécifique à CE restaurant
+      const profile = getOrCreateRestaurantProfile(
+        existingEmployee,
+        restaurantId
+      );
+
+      if (!profile.snapshot) {
+        profile.snapshot = {};
+      }
+
+      // Snapshot = données figées pour CE restaurant
+      profile.snapshot.firstname =
+        typeof firstName !== "undefined" && firstName !== ""
+          ? firstName
+          : existingEmployee.firstname;
+
+      profile.snapshot.lastname =
+        typeof lastName !== "undefined" && lastName !== ""
+          ? lastName
+          : existingEmployee.lastname;
+
+      profile.snapshot.email =
+        typeof normalizedEmail !== "undefined" && normalizedEmail !== ""
+          ? normalizedEmail
+          : existingEmployee.email;
+
+      profile.snapshot.phone =
+        typeof phone !== "undefined" && phone !== ""
+          ? phone
+          : existingEmployee.phone;
+
+      profile.snapshot.secuNumber =
+        typeof secuNumber !== "undefined" && secuNumber !== ""
+          ? secuNumber
+          : existingEmployee.secuNumber;
+
+      profile.snapshot.address =
+        typeof address !== "undefined" && address !== ""
+          ? address
+          : existingEmployee.address;
+
+      profile.snapshot.emergencyContact =
+        typeof emergencyContact !== "undefined" && emergencyContact !== ""
+          ? emergencyContact
+          : existingEmployee.emergencyContact;
+
+      profile.snapshot.post =
+        typeof post !== "undefined" && post !== ""
+          ? post
+          : existingEmployee.post;
+
+      profile.snapshot.dateOnPost =
+        typeof dateOnPost !== "undefined" && dateOnPost !== ""
+          ? new Date(dateOnPost)
+          : existingEmployee.dateOnPost || profile.snapshot.dateOnPost;
+
+      // ✅ Important : indiquer à Mongoose que restaurantProfiles a changé
+      existingEmployee.markModified("restaurantProfiles");
 
       await existingEmployee.save();
 
@@ -337,26 +439,41 @@ router.patch(
         };
       }
 
-      // Identité globale
-      if (firstname !== undefined) employee.firstname = firstname;
-      if (lastname !== undefined) employee.lastname = lastname;
-      if (phone !== undefined) employee.phone = phone;
-      if (secuNumber !== undefined) employee.secuNumber = secuNumber;
-      if (address !== undefined) employee.address = address;
+      // Profil spécifique à CE resto
+      const profile = getOrCreateRestaurantProfile(employee, restaurantId);
+
+      if (!profile.snapshot) {
+        profile.snapshot = {};
+      }
+
+      // 🔥 Log temporaire pour voir ce qui arrive
+      // console.log("PATCH body ===>", req.body);
+
+      if (firstname !== undefined) profile.snapshot.firstname = firstname;
+      if (lastname !== undefined) profile.snapshot.lastname = lastname;
+      if (phone !== undefined) profile.snapshot.phone = phone;
+      if (secuNumber !== undefined) profile.snapshot.secuNumber = secuNumber;
+      if (address !== undefined) profile.snapshot.address = address;
       if (emergencyContact !== undefined)
-        employee.emergencyContact = emergencyContact;
-      if (post !== undefined) employee.post = post;
-      if (dateOnPost !== undefined)
-        employee.dateOnPost = dateOnPost ? new Date(dateOnPost) : undefined;
+        profile.snapshot.emergencyContact = emergencyContact;
+      if (post !== undefined) profile.snapshot.post = post;
+      if (dateOnPost !== undefined) {
+        profile.snapshot.dateOnPost = dateOnPost
+          ? new Date(dateOnPost)
+          : undefined;
+      }
 
       const normalizedEmail = normalizeEmail(email);
-      if (email !== undefined) employee.email = normalizedEmail;
+      if (email !== undefined) {
+        profile.snapshot.email = normalizedEmail;
+      }
 
-      // Options spécifiques à CE restaurant
-      const profile = getOrCreateRestaurantProfile(employee, restaurantId);
       if (options !== undefined) {
         profile.options = options;
       }
+
+      // ✅ Important : forcer mongoose à considérer restaurantProfiles comme modifié
+      employee.markModified("restaurantProfiles");
 
       await employee.save();
 
@@ -569,26 +686,52 @@ router.delete(
         return res.status(404).json({ message: "Employee not found" });
       }
 
-      // 1) Détacher l'employé du restaurant
+      // 🔹 0) Récupérer le profil pour CE restaurant (pour supprimer ses docs)
+      const profileForRestaurant =
+        (employee.restaurantProfiles || []).find(
+          (p) => String(p.restaurant) === String(restaurantId)
+        ) || null;
+
+      // 🔹 1) Supprimer les documents Cloudinary du profil de CE restaurant
+      if (
+        profileForRestaurant &&
+        Array.isArray(profileForRestaurant.documents)
+      ) {
+        for (const doc of profileForRestaurant.documents) {
+          if (!doc.public_id) continue;
+          try {
+            await cloudinary.uploader.destroy(doc.public_id, {
+              resource_type: "raw",
+            });
+          } catch (err) {
+            console.warn(
+              `Erreur lors de la suppression du document employé ${employeeId} (resto ${restaurantId}) :`,
+              err?.message || err
+            );
+          }
+        }
+      }
+
+      // 2) Détacher l'employé du restaurant
       restaurant.employees = restaurant.employees.filter(
         (e) => String(e._id || e) !== String(employeeId)
       );
       await restaurant.save();
 
-      // 2) Retirer ce restaurant de la liste de l'employé
+      // 3) Retirer ce restaurant de la liste de l'employé
       employee.restaurants = (employee.restaurants || []).filter(
         (id) => String(id) !== String(restaurantId)
       );
 
-      // 3) Supprimer le profil pour ce restaurant
+      // 4) Supprimer le profil pour ce restaurant
       employee.restaurantProfiles =
         employee.restaurantProfiles?.filter(
           (p) => String(p.restaurant) !== String(restaurantId)
         ) || [];
 
-      // 4) Si l'employé n'est plus rattaché à aucun resto → suppression totale
+      // 5) Si l'employé n'est plus rattaché à aucun resto → suppression totale
       if (!employee.restaurants || employee.restaurants.length === 0) {
-        // Document & image de profil : on pourrait les supprimer ici
+        // 🔹 Photo de profil
         if (employee.profilePicture?.public_id) {
           try {
             await cloudinary.uploader.destroy(
@@ -597,17 +740,47 @@ router.delete(
           } catch (err) {
             console.warn(
               "Erreur lors de la suppression de la photo employé :",
-              err
+              err?.message || err
             );
           }
         }
 
-        // Les documents sont stockés par restaurant. Les URLs Cloudinary
-        // sont déjà dans des dossiers par resto, donc on ne les parcourt pas ici
-        // pour simplifier. À faire si tu veux un nettoyage complet.
+        // 🔹 Supprimer aussi les documents des AUTRES profils restants (par sécurité)
+        if (Array.isArray(employee.restaurantProfiles)) {
+          for (const prof of employee.restaurantProfiles) {
+            if (!Array.isArray(prof.documents)) continue;
+            for (const doc of prof.documents) {
+              if (!doc.public_id) continue;
+              try {
+                await cloudinary.uploader.destroy(doc.public_id, {
+                  resource_type: "raw",
+                });
+              } catch (err) {
+                console.warn(
+                  `Erreur lors de la suppression d'un document (cleanup total employé ${employeeId}) :`,
+                  err?.message || err
+                );
+              }
+            }
+          }
+        }
+
+        // 🔹 Supprimer le dossier Cloudinary perso de l'employé
+        // (utilisé pour les avatars via /employees/update-data : Gusto_Workspace/employees/<employeeId>)
+        try {
+          await cloudinary.api.delete_folder(
+            `Gusto_Workspace/employees/${employeeId}`
+          );
+        } catch (err) {
+          console.warn(
+            `Erreur lors de la suppression du dossier Cloudinary de l'employé ${employeeId} :`,
+            err?.message || err
+          );
+        }
 
         await EmployeeModel.findByIdAndDelete(employeeId);
       } else {
+        // Il reste d'autres restos → on garde l'employé (sans le profil du resto supprimé)
         await employee.save();
       }
 
@@ -921,9 +1094,19 @@ router.get("/employees/me", authenticateToken, async (req, res) => {
     if (req.user.role !== "employee") {
       return res.status(403).json({ message: "Forbidden" });
     }
+
     const emp = await EmployeeModel.findById(req.user.id).select("-password");
     if (!emp) return res.status(404).json({ message: "Employee not found" });
 
+    // 1) Tous les restos où il travaille
+    const restaurantIds = Array.isArray(emp.restaurants) ? emp.restaurants : [];
+    const restaurants = await RestaurantModel.find({
+      _id: { $in: restaurantIds },
+    })
+      .select("name _id")
+      .lean();
+
+    // 2) Resto courant (via token) + profil courant
     const restaurantIdFromToken = req.user.restaurantId;
     let restaurant = null;
     let currentProfile = null;
@@ -937,69 +1120,171 @@ router.get("/employees/me", authenticateToken, async (req, res) => {
       currentProfile = findRestaurantProfile(emp, restaurantIdFromToken);
     }
 
-    return res.json({ employee: emp, restaurant, currentProfile });
-  } catch (e) {
-    console.error(e);
-    return res.status(500).json({ message: "Server error" });
-  }
-});
+    // 3) Fallback : si token n’a pas de restaurantId, on prend le premier
+    if (!restaurant && restaurants.length > 0) {
+      const firstId = restaurants[0]._id;
+      restaurant = await RestaurantModel.findById(firstId)
+        .populate("owner_id", "firstname")
+        .populate("employees")
+        .populate("menus");
 
-router.put("/employees/update-data", authenticateToken, async (req, res) => {
-  try {
-    if (req.user.role !== "employee") {
-      return res.status(403).json({ message: "Forbidden" });
+      currentProfile = findRestaurantProfile(emp, firstId);
     }
 
-    const { firstname, lastname, email, phone } = req.body;
-    const emp = await EmployeeModel.findById(req.user.id);
-    if (!emp) return res.status(404).json({ message: "Employee not found" });
-
-    const normalizedEmail = normalizeEmail(email);
-
-    if (normalizedEmail && normalizedEmail !== emp.email) {
-      const [employeeDup, ownerDup] = await Promise.all([
-        EmployeeModel.findOne({
-          email: normalizedEmail,
-          _id: { $ne: emp._id },
-        }),
-        OwnerModel.findOne({ email: normalizedEmail }),
-      ]);
-      if (employeeDup || ownerDup) {
-        return res
-          .status(409)
-          .json({ message: "L'adresse mail est déjà utilisée" });
-      }
-    }
-
-    if (firstname !== undefined) emp.firstname = firstname;
-    if (lastname !== undefined) emp.lastname = lastname;
-    if (email !== undefined) emp.email = normalizedEmail;
-    if (phone !== undefined) emp.phone = phone;
-
-    await emp.save();
-
-    const jwt = require("jsonwebtoken");
-    const payload = {
-      id: emp._id,
-      role: "employee",
-      firstname: emp.firstname,
-      lastname: emp.lastname,
-      email: emp.email,
-      phone: emp.phone,
-      restaurantId: req.user.restaurantId,
-      options: req.user.options || {}, // options déjà liées au resto courant
-    };
-
-    const token = jwt.sign(payload, process.env.JWT_SECRET, {
-      expiresIn: "7d",
+    return res.json({
+      employee: emp,
+      restaurant,
+      currentProfile,
+      restaurants, // 🔥 <--- pour alimenter restaurantsList côté front
     });
-
-    return res.json({ message: "Employee updated", token });
   } catch (e) {
     console.error(e);
     return res.status(500).json({ message: "Server error" });
   }
 });
+
+router.put(
+  "/employees/update-data",
+  authenticateToken,
+  upload.single("profilePicture"),
+  async (req, res) => {
+    try {
+      if (req.user.role !== "employee") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const { firstname, lastname, email, phone, removeProfilePicture } =
+        req.body;
+
+      const emp = await EmployeeModel.findById(req.user.id);
+      if (!emp) return res.status(404).json({ message: "Employee not found" });
+
+      const normalizedEmail = normalizeEmail(email);
+
+      // 🔹 Vérif duplication email (si l'email change)
+      if (normalizedEmail && normalizedEmail !== emp.email) {
+        const [employeeDup, ownerDup] = await Promise.all([
+          EmployeeModel.findOne({
+            email: normalizedEmail,
+            _id: { $ne: emp._id },
+          }),
+          OwnerModel.findOne({ email: normalizedEmail }),
+        ]);
+        if (employeeDup || ownerDup) {
+          return res
+            .status(409)
+            .json({ message: "L'adresse mail est déjà utilisée" });
+        }
+      }
+
+      // ---------- Mise à jour des infos de base + snapshots ----------
+
+      const profiles = Array.isArray(emp.restaurantProfiles)
+        ? emp.restaurantProfiles
+        : [];
+
+      // firstname
+      if (firstname !== undefined) {
+        emp.firstname = firstname;
+        profiles.forEach((p) => {
+          p.snapshot = p.snapshot || {};
+          p.snapshot.firstname = firstname;
+        });
+      }
+
+      // lastname
+      if (lastname !== undefined) {
+        emp.lastname = lastname;
+        profiles.forEach((p) => {
+          p.snapshot = p.snapshot || {};
+          p.snapshot.lastname = lastname;
+        });
+      }
+
+      // email
+      if (normalizedEmail !== undefined) {
+        emp.email = normalizedEmail;
+        profiles.forEach((p) => {
+          p.snapshot = p.snapshot || {};
+          p.snapshot.email = normalizedEmail;
+        });
+      }
+
+      // phone
+      if (phone !== undefined) {
+        emp.phone = phone;
+        profiles.forEach((p) => {
+          p.snapshot = p.snapshot || {};
+          p.snapshot.phone = phone;
+        });
+      }
+
+      // ---------- Photo de profil ----------
+
+      if (req.file) {
+        // suppression éventuelle de l'ancienne
+        if (emp.profilePicture?.public_id) {
+          try {
+            await cloudinary.uploader.destroy(emp.profilePicture.public_id);
+          } catch (err) {
+            console.warn(
+              "Erreur lors de la suppression de l'ancienne photo employé :",
+              err?.message || err
+            );
+          }
+        }
+
+        const result = await uploadFromBuffer(
+          req.file.buffer,
+          `Gusto_Workspace/employees/${emp._id}`
+        );
+
+        emp.profilePicture = {
+          url: result.secure_url,
+          public_id: result.public_id,
+        };
+      } else if (removeProfilePicture === "true") {
+        if (emp.profilePicture?.public_id) {
+          try {
+            await cloudinary.uploader.destroy(emp.profilePicture.public_id);
+          } catch (err) {
+            console.warn(
+              "Erreur lors de la suppression de la photo employé :",
+              err?.message || err
+            );
+          }
+        }
+        emp.profilePicture = null;
+      }
+
+      // 👉 Important : on marque restaurantProfiles comme modifié
+      emp.markModified("restaurantProfiles");
+
+      await emp.save();
+
+      const jwt = require("jsonwebtoken");
+      const payload = {
+        id: emp._id,
+        role: "employee",
+        firstname: emp.firstname,
+        lastname: emp.lastname,
+        email: emp.email,
+        phone: emp.phone,
+        restaurantId: req.user.restaurantId,
+        options: req.user.options || {},
+      };
+
+      const token = jwt.sign(payload, process.env.JWT_SECRET, {
+        expiresIn: "7d",
+      });
+
+      return res.json({ message: "Employee updated", token });
+    } catch (e) {
+      console.error(e);
+      return res.status(500).json({ message: "Server error" });
+    }
+  }
+);
 
 router.put(
   "/employees/update-password",
