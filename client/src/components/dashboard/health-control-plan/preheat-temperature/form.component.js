@@ -1,4 +1,3 @@
-// app/(components)/dashboard/health-control-plan/preheat-temperature/form.component.jsx
 "use client";
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
