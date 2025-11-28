@@ -458,17 +458,16 @@ export default function DashboardHealthControlPlanComponent() {
               )}
             </p>
 
-            <div className="flex flex-col gap-4 mt-4">
+            <div className="flex flex-col w-full gap-4 mt-4">
               {/* Du (inclus) */}
-              <div className="flex flex-col gap-1">
+              <div className="flex flex-col w-full gap-1">
                 <label className="text-xs font-medium text-slate-700">
                   {t("health-control-plan:report.from", "Du (inclus)")}
                 </label>
                 <input
                   type="date"
-                  className="w-full border border-[#131E3690] rounded-lg px-2 py-2 bg-white"
+                  className="w-full border border-[#131E3690] rounded-lg px-2 py-2 bg-white appearance-none"
                   value={reportFrom}
-                  // Empêche de choisir une date > reportTo si déjà renseigné
                   max={reportTo || undefined}
                   onChange={(e) => {
                     const value = e.target.value;
@@ -493,9 +492,8 @@ export default function DashboardHealthControlPlanComponent() {
                 </label>
                 <input
                   type="date"
-                  className="w-full border border-[#131E3690] rounded-lg px-2 py-2 bg-white"
+                  className="w-full border border-[#131E3690] rounded-lg px-2 py-2 bg-white appearance-none"
                   value={reportTo}
-                  // Empêche de sélectionner une date antérieure à "from"
                   min={reportFrom || undefined}
                   onChange={(e) => {
                     const value = e.target.value;
