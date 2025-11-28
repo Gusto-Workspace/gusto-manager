@@ -269,7 +269,11 @@ router.post(
         const updatedRestaurant = await RestaurantModel.findById(restaurantId)
           .populate("owner_id", "firstname")
           .populate("menus")
-          .populate("employees");
+          .populate("employees")
+          .populate({
+            path: "reservations.list",
+            populate: { path: "table" },
+          });
 
         return res.status(201).json({ restaurant: updatedRestaurant });
       }
@@ -388,7 +392,11 @@ router.post(
       const updatedRestaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
         .populate("menus")
-        .populate("employees");
+        .populate("employees")
+        .populate({
+          path: "reservations.list",
+          populate: { path: "table" },
+        });
 
       return res.status(200).json({ restaurant: updatedRestaurant });
     } catch (error) {
@@ -480,7 +488,11 @@ router.patch(
       const updatedRestaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
         .populate("menus")
-        .populate("employees");
+        .populate("employees")
+        .populate({
+          path: "reservations.list",
+          populate: { path: "table" },
+        });
 
       res.status(200).json({ restaurant: updatedRestaurant });
     } catch (error) {
@@ -656,7 +668,11 @@ router.delete(
       const updatedRestaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
         .populate("menus")
-        .populate("employees");
+        .populate("employees")
+        .populate({
+          path: "reservations.list",
+          populate: { path: "table" },
+        });
 
       return res.json({ restaurant: updatedRestaurant });
     } catch (err) {
@@ -770,22 +786,30 @@ router.delete(
             `Gusto_Workspace/employees/${employeeId}`
           );
         } catch (err) {
-          console.warn(
-            `Erreur lors de la suppression du dossier Cloudinary de l'employé ${employeeId} :`,
-            err?.message || err
-          );
+          const httpCode = err?.http_code || err?.error?.http_code;
+
+          if (httpCode === 404) {
+          } else {
+            console.warn(
+              `Erreur lors de la suppression du dossier Cloudinary de l'employé ${employeeId} :`,
+              err?.error?.message || err?.message || err
+            );
+          }
         }
 
         await EmployeeModel.findByIdAndDelete(employeeId);
       } else {
-        // Il reste d'autres restos → on garde l'employé (sans le profil du resto supprimé)
         await employee.save();
       }
 
       const updatedRestaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
         .populate("menus")
-        .populate("employees");
+        .populate("employees")
+        .populate({
+          path: "reservations.list",
+          populate: { path: "table" },
+        });
 
       if (!updatedRestaurant) {
         return res

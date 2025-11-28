@@ -22,7 +22,6 @@ export default function HoursRestaurantComponent(props) {
   const [localHours, setLocalHours] = useState([]);
   const [saving, setSaving] = useState(false);
 
-  // Initialisation des heures locales (ouvre la voie aux multiples créneaux)
   useEffect(() => {
     const initialHours = daysOfWeeksData.map((day) => {
       const existingHour = props.reservations

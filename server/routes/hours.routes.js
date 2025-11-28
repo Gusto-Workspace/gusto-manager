@@ -35,7 +35,11 @@ router.put("/restaurants/:id/opening_hours", async (req, res) => {
     )
       .populate("owner_id", "firstname")
       .populate("employees")
-      .populate("menus");
+      .populate("menus")
+      .populate({
+        path: "reservations.list",
+        populate: { path: "table" },
+      });
 
     if (!restaurant) {
       return res.status(404).json({ message: "Restaurant not found" });
