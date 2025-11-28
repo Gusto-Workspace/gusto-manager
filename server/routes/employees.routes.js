@@ -1113,7 +1113,11 @@ router.get("/employees/me", authenticateToken, async (req, res) => {
       restaurant = await RestaurantModel.findById(restaurantIdFromToken)
         .populate("owner_id", "firstname")
         .populate("employees")
-        .populate("menus");
+        .populate("menus")
+        .populate({
+          path: "reservations.list",
+          populate: { path: "table" },
+        });
 
       currentProfile = findRestaurantProfile(emp, restaurantIdFromToken);
     }
@@ -1124,7 +1128,11 @@ router.get("/employees/me", authenticateToken, async (req, res) => {
       restaurant = await RestaurantModel.findById(firstId)
         .populate("owner_id", "firstname")
         .populate("employees")
-        .populate("menus");
+        .populate("menus")
+        .populate({
+          path: "reservations.list",
+          populate: { path: "table" },
+        });
 
       currentProfile = findRestaurantProfile(emp, firstId);
     }
@@ -1133,7 +1141,7 @@ router.get("/employees/me", authenticateToken, async (req, res) => {
       employee: emp,
       restaurant,
       currentProfile,
-      restaurants, // 🔥 <--- pour alimenter restaurantsList côté front
+      restaurants,
     });
   } catch (e) {
     console.error(e);
