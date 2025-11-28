@@ -22,7 +22,11 @@ router.put("/owner/restaurants/:id/contact", async (req, res) => {
     )
       .populate("owner_id", "firstname")
       .populate("menus")
-      .populate("employees");
+      .populate("employees")
+      .populate({
+        path: "reservations.list",
+        populate: { path: "table" },
+      });
 
     if (!updatedRestaurant) {
       return res.status(404).json({ message: "Restaurant not found" });

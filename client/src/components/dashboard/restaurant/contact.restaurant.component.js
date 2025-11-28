@@ -7,7 +7,6 @@ import { useForm } from "react-hook-form";
 import { useTranslation } from "next-i18next";
 
 // SVG
-import { EditSvg } from "../../_shared/_svgs/_index";
 import * as icons from "../../_shared/_svgs/_index";
 
 // DATA
