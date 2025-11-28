@@ -73,7 +73,7 @@ export default function NavComponent() {
   const navItemActiveCls = "bg-blue/10 text-blue";
   const iconChipBase =
     "inline-flex items-center justify-center rounded-full p-2 transition-colors";
-  const iconChipActive = "bg-blue text-white";
+  const iconChipActive = "bg-blue border border-blue text-white";
   const iconChipInactive =
     "bg-white border border-darkBlue/10 group-hover:border-darkBlue/25";
   const logoutBtnCls =

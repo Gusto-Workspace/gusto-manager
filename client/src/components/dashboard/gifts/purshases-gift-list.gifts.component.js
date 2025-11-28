@@ -31,7 +31,7 @@ export default function PurchasesGiftListComponent(props) {
   const btnPrimary =
     "inline-flex items-center justify-center rounded-xl bg-blue px-4 py-2 text-xs font-medium text-white shadow hover:bg-blue/90 transition disabled:opacity-60 disabled:cursor-not-allowed";
   const emptyBoxCls =
-    "p-5 rounded-2xl border border-dashed border-darkBlue/10 bg-white/50 text-center text-sm text-darkBlue/60 max-w-md mx-auto";
+    "p-5 rounded-2xl w-full border border-dashed border-darkBlue/10 bg-white/50 text-center text-sm text-darkBlue/60 mx-auto";
   const modalOverlayCls = "fixed inset-0 bg-black/25 backdrop-blur-[1px]";
   const modalCardCls =
     "relative w-full max-w-[460px] rounded-2xl border border-darkBlue/10 bg-white/95 px-5 py-6 tablet:px-7 tablet:py-7 shadow-[0_22px_55px_rgba(19,30,54,0.20)] flex flex-col gap-5";

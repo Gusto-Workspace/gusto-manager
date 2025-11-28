@@ -32,26 +32,32 @@ export default function ReservationsPage(props) {
 
   if (!restaurantContext.isAuth) return null;
 
+  const restaurant = restaurantContext.restaurantData;
+  const restaurantOptions = restaurant?.options || {};
+  const hasReservationsModule = !!restaurantOptions.reservations;
+
+  const user = restaurantContext.userConnected;
+  const isEmployee = user?.role === "employee";
+
+  let employeeHasReservationsAccess = true;
+
+  if (isEmployee && restaurant) {
+    const employeeInRestaurant = restaurant.employees?.find(
+      (emp) => String(emp._id) === String(user.id)
+    );
+
+    const profile = employeeInRestaurant?.restaurantProfiles?.find(
+      (p) => String(p.restaurant) === String(restaurant._id)
+    );
+
+    employeeHasReservationsAccess = profile?.options?.reservations === true;
+  }
+
   return (
     <>
       <Head>
         <title>{title}</title>
-
-        {/* <>
-          {description && <meta name="description" content={description} />}
-          {title && <meta property="og:title" content={title} />}
-          {description && (
-            <meta property="og:description" content={description} />
-          )}
-          <meta
-            property="og:url"
-            content="https://lespetitsbilingues-newham.com/"
-          />
-          <meta property="og:type" content="website" />
-          <meta property="og:image" content="/img/open-graph.jpg" />
-          <meta property="og:image:width" content="1200" />
-          <meta property="og:image:height" content="630" />
-        </> */}
+        {/* metas si besoin */}
       </Head>
 
       <div>
@@ -67,17 +73,23 @@ export default function ReservationsPage(props) {
               restaurantData={restaurantContext.restaurantData}
             />
 
-            {restaurantContext?.restaurantData?.options?.reservations ? (
+            {!hasReservationsModule ? (
+              <NoAvailableComponent
+                dataLoading={restaurantContext.dataLoading}
+                emptyText="Vous n'avez pas souscrit à cette option"
+              />
+            ) : !employeeHasReservationsAccess ? (
+              <NoAvailableComponent
+                dataLoading={restaurantContext.dataLoading}
+                emptyText="Vous n'avez pas accès à cette section"
+              />
+            ) : (
               <ListReservationsComponent
                 restaurantData={restaurantContext.restaurantData}
                 setRestaurantData={restaurantContext.setRestaurantData}
                 reservations={
-                  restaurantContext?.restaurantData?.reservations.list
+                  restaurantContext?.restaurantData?.reservations?.list
                 }
-              />
-            ) : (
-              <NoAvailableComponent
-                dataLoading={restaurantContext.dataLoading}
               />
             )}
           </div>

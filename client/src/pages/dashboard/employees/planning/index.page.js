@@ -34,6 +34,27 @@ export default function PlanningEmployeePage(props) {
 
   if (!restaurantContext.isAuth) return null;
 
+  const restaurant = restaurantContext.restaurantData;
+  const restaurantOptions = restaurant?.options || {};
+  const hasEmployeesModule = !!restaurantOptions.employees;
+
+  const user = restaurantContext.userConnected;
+  const isEmployee = user?.role === "employee";
+
+  let employeeHasEmployeesAccess = true;
+
+  if (isEmployee && restaurant) {
+    const employeeInRestaurant = restaurant.employees?.find(
+      (emp) => String(emp._id) === String(user.id)
+    );
+
+    const profile = employeeInRestaurant?.restaurantProfiles?.find(
+      (p) => String(p.restaurant) === String(restaurant._id)
+    );
+
+    employeeHasEmployeesAccess = profile?.options?.employees === true;
+  }
+
   return (
     <>
       <Head>
@@ -55,12 +76,18 @@ export default function PlanningEmployeePage(props) {
 
             <hr className="opacity-20" />
 
-            {restaurantContext?.restaurantData?.options?.employees ? (
-              <PlanningEmployeesComponent />
-            ) : (
+            {!hasEmployeesModule ? (
               <NoAvailableComponent
                 dataLoading={restaurantContext.dataLoading}
+                emptyText="Vous n'avez pas souscrit à cette option"
               />
+            ) : !employeeHasEmployeesAccess ? (
+              <NoAvailableComponent
+                dataLoading={restaurantContext.dataLoading}
+                emptyText="Vous n'avez pas accès à cette section"
+              />
+            ) : (
+              <PlanningEmployeesComponent />
             )}
           </div>
         </div>
