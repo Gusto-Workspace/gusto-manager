@@ -4,7 +4,28 @@ const router = express.Router();
 const authenticateToken = require("../../middleware/authentificate-token");
 const WasteEntry = require("../../models/logs/waste-entry.model");
 
-/* ---------- helpers ---------- */
+const cloudinary = require("cloudinary").v2;
+const multer = require("multer");
+const streamifier = require("streamifier");
+const path = require("path");
+const axios = require("axios");
+
+// ---------- Cloudinary config ----------
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+// ---------- Multer mémoire ----------
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
+
+// ---------- Utils généraux ----------
+function escapeRegExp(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function currentUserFromToken(req) {
   const u = req.user || {};
   const role = (u.role || "").toLowerCase();
@@ -12,8 +33,8 @@ function currentUserFromToken(req) {
   return {
     userId: u.id,
     role,
-    firstName: u.firstname || u.firstName || "",
-    lastName: u.lastname || u.lastName || "",
+    firstName: u.firstname || "",
+    lastName: u.lastname || "",
   };
 }
 const normStr = (v) => {
@@ -31,17 +52,8 @@ const normNum = (v) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 };
-const normAttachments = (arr) => {
-  if (!arr) return undefined;
-  if (Array.isArray(arr)) {
-    return arr
-      .map((s) => String(s || "").trim())
-      .filter(Boolean)
-      .slice(0, 50);
-  }
-  return undefined;
-};
 
+// On ne normalise plus les attachments ici (gérés par Cloudinary + req.files)
 function normalizeWaste(inData = {}) {
   return {
     date: normDate(inData.date) ?? undefined,
@@ -52,14 +64,71 @@ function normalizeWaste(inData = {}) {
     contractor: normStr(inData.contractor) ?? null,
     manifestNumber: normStr(inData.manifestNumber) ?? null,
     notes: normStr(inData.notes) ?? null,
-    attachments: normAttachments(inData.attachments),
   };
+}
+
+// ---------- Helpers Cloudinary ----------
+function haccpWasteFolder(restaurantId) {
+  // tu peux adapter le nom du dossier "waste-entries" si tu veux
+  return `Gusto_Workspace/restaurants/${restaurantId}/haccp/waste-entries`;
+}
+
+function safePublicIdFromFilename(originalname) {
+  const ext = path.extname(originalname);
+  const basename = path.basename(originalname, ext);
+  const safeBase = basename
+    .replace(/\s+/g, "_")
+    .replace(/[^a-zA-Z0-9_\-]/g, "");
+  // Optionnel : ajoute un timestamp pour éviter les collisions
+  const stamp = Date.now();
+  return `${safeBase}_${stamp}`;
+}
+
+function uploadWasteFile(buffer, originalname, mimetype, restaurantId) {
+  const folder = haccpWasteFolder(restaurantId);
+  const public_id = safePublicIdFromFilename(originalname);
+
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        resource_type: "raw", // supporte PDF + images
+        folder,
+        public_id,
+        overwrite: true,
+      },
+      (err, result) => {
+        if (err) return reject(err);
+        resolve({
+          url: result.secure_url,
+          public_id: result.public_id,
+          filename: originalname,
+          mimetype,
+        });
+      }
+    );
+    streamifier.createReadStream(buffer).pipe(uploadStream);
+  });
+}
+
+async function deleteWasteAttachment(public_id) {
+  if (!public_id) return;
+  try {
+    await cloudinary.uploader.destroy(public_id, {
+      resource_type: "raw",
+    });
+  } catch (err) {
+    console.warn(
+      `Erreur suppression pièce jointe Cloudinary (${public_id}):`,
+      err
+    );
+  }
 }
 
 /* ---------- CREATE ---------- */
 router.post(
   "/restaurants/:restaurantId/waste-entries",
   authenticateToken,
+  upload.array("attachments"),
   async (req, res) => {
     try {
       const { restaurantId } = req.params;
@@ -74,9 +143,26 @@ router.post(
         return res.status(400).json({ error: "weightKg requis" });
       if (!body.date) body.date = new Date();
 
+      // Upload éventuels fichiers
+      let attachments = [];
+      if (Array.isArray(req.files) && req.files.length) {
+        const uploads = await Promise.all(
+          req.files.map((file) =>
+            uploadWasteFile(
+              file.buffer,
+              file.originalname,
+              file.mimetype,
+              restaurantId
+            )
+          )
+        );
+        attachments = uploads;
+      }
+
       const doc = new WasteEntry({
         restaurantId,
         ...body,
+        attachments,
         recordedBy: currentUser,
       });
 
@@ -134,7 +220,8 @@ router.get(
       }
 
       if (q && String(q).trim().length) {
-        const rx = new RegExp(String(q).trim(), "i");
+        const safe = escapeRegExp(String(q).trim());
+        const rx = new RegExp(safe, "i");
         query.$or = [
           { contractor: rx },
           { manifestNumber: rx },
@@ -195,6 +282,7 @@ router.get(
 router.put(
   "/restaurants/:restaurantId/waste-entries/:id",
   authenticateToken,
+  upload.array("attachments"),
   async (req, res) => {
     try {
       const { restaurantId, id } = req.params;
@@ -205,6 +293,7 @@ router.put(
       delete inData.restaurantId;
       delete inData.createdAt;
       delete inData.updatedAt;
+      delete inData.attachments; // on gère nous-mêmes
 
       const prev = await WasteEntry.findOne({ _id: id, restaurantId });
       if (!prev)
@@ -212,12 +301,49 @@ router.put(
 
       const patch = normalizeWaste(inData);
 
-      // Si attachments a été explicitement fourni (même vide), on remplace
-      if (Array.isArray(patch.attachments)) {
-        prev.attachments = patch.attachments;
-        delete patch.attachments;
+      // ----- Gestion des pièces jointes -----
+      const prevAttachments = Array.isArray(prev.attachments)
+        ? prev.attachments
+        : [];
+
+      // Liste des public_id à conserver (venant du front)
+      let keep = req.body.keepAttachments || [];
+      if (!Array.isArray(keep)) keep = keep ? [keep] : [];
+      keep = keep.map((s) => String(s));
+
+      const attachmentsToKeep = prevAttachments.filter((att) =>
+        keep.includes(String(att.public_id))
+      );
+      const attachmentsToRemove = prevAttachments.filter(
+        (att) => !keep.includes(String(att.public_id))
+      );
+
+      // Suppression Cloudinary des pièces retirées
+      if (attachmentsToRemove.length) {
+        await Promise.all(
+          attachmentsToRemove.map((att) => deleteWasteAttachment(att.public_id))
+        );
       }
 
+      // Upload nouveaux fichiers
+      let newAttachments = [];
+      if (Array.isArray(req.files) && req.files.length) {
+        const uploads = await Promise.all(
+          req.files.map((file) =>
+            uploadWasteFile(
+              file.buffer,
+              file.originalname,
+              file.mimetype,
+              restaurantId
+            )
+          )
+        );
+        newAttachments = uploads;
+      }
+
+      prev.attachments = [...attachmentsToKeep, ...newAttachments];
+
+      // Application du patch de base
       Object.assign(prev, patch, { updatedAt: new Date() });
       await prev.save();
       return res.json(prev);
@@ -241,11 +367,64 @@ router.delete(
       if (!doc)
         return res.status(404).json({ error: "Entrée déchets introuvable" });
 
+      if (Array.isArray(doc.attachments) && doc.attachments.length) {
+        await Promise.all(
+          doc.attachments.map((att) => deleteWasteAttachment(att.public_id))
+        );
+      }
+
       await WasteEntry.deleteOne({ _id: id, restaurantId });
       return res.json({ success: true });
     } catch (err) {
       console.error("DELETE /waste-entries/:id:", err);
       return res.status(500).json({ error: "Erreur lors de la suppression" });
+    }
+  }
+);
+
+// ---------- DOWNLOAD ATTACHMENT ----------
+router.get(
+  "/haccp/waste-entries/:restaurantId/documents/:public_id(*)/download",
+  async (req, res) => {
+    try {
+      const { restaurantId, public_id } = req.params;
+
+      // On cherche UNE entrée déchets de ce resto qui contient cette pièce jointe
+      const doc = await WasteEntry.findOne(
+        {
+          restaurantId,
+          "attachments.public_id": public_id,
+        },
+        { attachments: 1 } // on ne récupère que les attachments
+      ).lean();
+
+      if (!doc) {
+        console.log(
+          "[HACCP DOWNLOAD] Aucune entrée contenant cette pièce jointe"
+        );
+        return res.status(404).json({ message: "Pièce jointe introuvable" });
+      }
+
+      const att = (doc.attachments || []).find(
+        (a) => a.public_id === public_id
+      );
+      if (!att) {
+        console.log("[HACCP DOWNLOAD] Attachment non trouvé dans le doc");
+        return res.status(404).json({ message: "Pièce jointe introuvable" });
+      }
+
+      const response = await axios.get(att.url, { responseType: "stream" });
+
+      res.setHeader("Content-Type", response.headers["content-type"]);
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${att.filename}"`
+      );
+
+      response.data.pipe(res);
+    } catch (err) {
+      console.error("Error in HACCP waste download route:", err);
+      res.status(500).json({ message: "Server error" });
     }
   }
 );

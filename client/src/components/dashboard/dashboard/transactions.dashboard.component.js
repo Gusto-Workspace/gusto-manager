@@ -53,7 +53,6 @@ export default function TransactionsDashboardComponent(props) {
 
       const { payoutTransactions, has_more, last_tx_id } = response.data;
 
-      // On met à jour le mapping
       setPayoutTxMap((prev) => ({
         ...prev,
         [payoutId]: {
@@ -72,7 +71,7 @@ export default function TransactionsDashboardComponent(props) {
     }
   }
 
-  // ---- Fonction pour "Charger plus" de transactions pour un payout ----
+  // ---- Charger plus de transactions pour un payout ----
   async function loadMorePayoutTx(payoutId) {
     const current = payoutTxMap[payoutId];
     if (!current || !current.hasMore || !current.lastTxId) {
@@ -114,40 +113,106 @@ export default function TransactionsDashboardComponent(props) {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-6">
-        <select
-          value={selectedOption}
-          onChange={handleOptionChange}
-          className="border rounded-lg p-2 w-[250px]"
-        >
-          <option value="payouts">{t("select.payouts")}</option>
-          <option value="payments">{t("select.payments")}</option>
-        </select>
+    <section className="flex flex-col mt-4 gap-6">
+      {/* Bloc sélection + filtres */}
+      <section
+        className="
+          rounded-2xl border border-darkBlue/10 bg-white/50  
+          px-4 py-4 midTablet:px-6 midTablet:py-5
+          flex flex-col gap-4
+          shadow-[0_18px_45px_rgba(19,30,54,0.06)]
+        "
+      >
+        {/* Ligne select + titre */}
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-base tablet:text-lg font-semibold text-darkBlue">
+              {t("title", "Transactions cartes cadeaux")}
+            </h2>
+            <p className="text-[11px] tablet:text-xs text-darkBlue/60 max-w-xl">
+              {selectedOption === "payouts"
+                ? t(
+                    "payouts.subtitle",
+                    "Visualisez les virements reçus et les paiements associés."
+                  )
+                : t(
+                    "payments.subtitle",
+                    "Consultez le détail des paiements cartes cadeaux et filtrez par client."
+                  )}
+            </p>
+          </div>
 
+          <div className="relative">
+            <select
+              value={selectedOption}
+              onChange={handleOptionChange}
+              className="
+                w-[220px] midTablet:w-[260px]
+                rounded-xl border border-darkBlue/20 bg-white px-3 py-2
+                text-sm text-darkBlue
+                shadow-sm
+              "
+            >
+              <option value="payouts">{t("select.payouts")}</option>
+              <option value="payments">{t("select.payments")}</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Info texte payouts */}
         {selectedOption === "payouts" && (
-          <p className="italic">
-            <span className="underline uppercase font-semibold">
+          <p className="text-xs tablet:text-sm text-darkBlue/70 leading-relaxed">
+            <span className="font-semibold uppercase tracking-wide">
               {t("payouts.information.title")}
             </span>{" "}
             : {t("payouts.information.text")}
           </p>
         )}
 
+        {/* Filtres payments */}
         {selectedOption === "payments" && (
-          <div className="flex flex-col midTablet:flex-row gap-4">
-            <input
-              type="text"
-              placeholder={t("payments.filter.placeholder")}
-              value={props.clientName}
-              onChange={handleShearchClient}
-              className="p-2 border rounded-lg midTablet:w-[350px]"
-            />
+          <div className="flex flex-col midTablet:flex-row gap-4 items-start midTablet:items-center">
+            {/* Input + cross */}
+            <div className="relative w-full midTablet:w-[320px]">
+              <input
+                type="text"
+                placeholder={t("payments.filter.placeholder")}
+                value={props.clientName}
+                onChange={handleShearchClient}
+                className="
+                  w-full rounded-lg border border-darkBlue/25 bg-white
+                  px-3 py-2 pr-9 text-sm
+                  placeholder:text-darkBlue/40
+                "
+              />
+              {props.clientName && (
+                <button
+                  type="button"
+                  onClick={() => props.setClientName("")}
+                  className="
+                    absolute right-2 top-1/2 -translate-y-1/2
+                    w-6 h-6 rounded-full
+                    bg-black/30 text-white
+                    flex items-center justify-center text-sm
+                  "
+                >
+                  &times;
+                </button>
+              )}
+            </div>
 
-            <div className="flex gap-4">
+            <div className="flex flex-wrap gap-3">
               <button
-                onClick={() => props.onFetchPaymentsByClient(props.clientName)}
-                className="bg-blue text-white px-4 py-2 rounded-lg disabled:opacity-80"
+                type="button"
+                onClick={() =>
+                  props.onFetchPaymentsByClient(props.clientName)
+                }
+                className="
+                  inline-flex items-center justify-center gap-2 rounded-lg
+                  bg-blue px-4 py-2 text-xs tablet:text-sm font-medium text-white
+                  shadow-sm hover:shadow-md hover:opacity-95
+                  disabled:opacity-50 disabled:cursor-not-allowed
+                "
                 disabled={props.filterLoading || !props.clientName}
               >
                 {props.filterLoading
@@ -157,8 +222,13 @@ export default function TransactionsDashboardComponent(props) {
 
               {props.isFiltered && (
                 <button
+                  type="button"
                   onClick={handleResetFilter}
-                  className="bg-violet text-white px-4 py-2 rounded-lg hover:bg-opacity-80"
+                  className="
+                    inline-flex items-center justify-center gap-2 rounded-lg
+                    bg-darkBlue/5 px-4 py-2 text-xs tablet:text-sm font-medium text-darkBlue
+                    border border-darkBlue/15 hover:bg-darkBlue/8
+                  "
                 >
                   {t("payments.filter.button.resetFilter")}
                 </button>
@@ -166,8 +236,9 @@ export default function TransactionsDashboardComponent(props) {
             </div>
           </div>
         )}
-      </div>
+      </section>
 
+      {/* Onglet "payouts" */}
       {selectedOption === "payouts" && (
         <PayoutsDashboardComponent
           payouts={props.payouts}
@@ -180,7 +251,7 @@ export default function TransactionsDashboardComponent(props) {
         />
       )}
 
-      {/* -- Onglet "payments" -- */}
+      {/* Onglet "payments" */}
       {selectedOption === "payments" && (
         <PaymentsDashboardComponent
           payments={props.payments}
@@ -194,6 +265,6 @@ export default function TransactionsDashboardComponent(props) {
           isFiltered={props.isFiltered}
         />
       )}
-    </div>
+    </section>
   );
 }

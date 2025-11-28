@@ -33,6 +33,10 @@ function clampQtyRemaining(qtyRemaining, qtyReceived, unit) {
 }
 
 /* ---------- helpers ---------- */
+function escapeRegExp(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function currentUserFromToken(req) {
   const u = req.user || {};
   const role = (u.role || "").toLowerCase();
@@ -40,8 +44,8 @@ function currentUserFromToken(req) {
   return {
     userId: u.id,
     role,
-    firstName: u.firstname || u.firstName || "",
-    lastName: u.lastname || u.lastName || "",
+    firstName: u.firstname || "",
+    lastName: u.lastname || "",
   };
 }
 const normalizeStr = (v) => {
@@ -349,21 +353,39 @@ router.get(
       const { restaurantId } = req.params;
       const { page = 1, limit = 20, date_from, date_to, q } = req.query;
 
+      const pageNum = Math.max(1, parseInt(page, 10) || 1);
+      const limitNum = Math.min(200, Math.max(1, parseInt(limit, 10) || 20));
+
       const query = { restaurantId };
 
+      // Filtre dates sur preparedAt
       if (date_from || date_to) {
         query.preparedAt = {};
-        if (date_from) query.preparedAt.$gte = new Date(date_from);
+        if (date_from) {
+          const start = new Date(date_from);
+          if (!Number.isNaN(start.getTime())) {
+            query.preparedAt.$gte = start;
+          }
+        }
         if (date_to) {
           const end = new Date(date_to);
-          end.setDate(end.getDate() + 1);
-          end.setMilliseconds(end.getMilliseconds() - 1);
-          query.preparedAt.$lte = end;
+          if (!Number.isNaN(end.getTime())) {
+            // Fin de journée incluse
+            end.setDate(end.getDate() + 1);
+            end.setMilliseconds(end.getMilliseconds() - 1);
+            query.preparedAt.$lte = end;
+          }
+        }
+        // Si au final l'objet est vide, on le retire
+        if (Object.keys(query.preparedAt).length === 0) {
+          delete query.preparedAt;
         }
       }
 
+      // Recherche texte multi-champs (regex escape)
       if (q && String(q).trim().length) {
-        const rx = new RegExp(String(q).trim(), "i");
+        const safe = escapeRegExp(String(q).trim());
+        const rx = new RegExp(safe, "i");
         query.$or = [
           { recipeId: rx },
           { batchId: rx },
@@ -376,22 +398,23 @@ router.get(
         ];
       }
 
-      const skip = (Number(page) - 1) * Number(limit);
+      const skip = (pageNum - 1) * limitNum;
+
       const [items, total] = await Promise.all([
         RecipeBatch.find(query)
           .sort({ preparedAt: -1, _id: -1 })
           .skip(skip)
-          .limit(Number(limit)),
+          .limit(limitNum),
         RecipeBatch.countDocuments(query),
       ]);
 
       return res.json({
         items,
         meta: {
-          page: Number(page),
-          limit: Number(limit),
+          page: pageNum,
+          limit: limitNum,
           total,
-          pages: Math.max(1, Math.ceil(total / Number(limit))),
+          pages: Math.max(1, Math.ceil(total / limitNum)),
         },
       });
     } catch (err) {

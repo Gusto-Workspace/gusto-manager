@@ -55,6 +55,14 @@ const fmtDateTime = (d) => {
   }
 };
 
+/* ---------- Labels FR ---------- */
+const SEVERITY_LABELS = {
+  none: "Nulle",
+  low: "Faible",
+  medium: "Moyenne",
+  high: "Forte",
+};
+
 function buildDefaults(rec) {
   return {
     provider: rec?.provider ?? "",
@@ -153,7 +161,7 @@ const isLineValidatedByFields = (row) =>
 
 /* ---------- Styles (alignés) ---------- */
 const fieldWrap =
-  "group relative rounded-xl bg-white/50 backdrop-blur-sm py-2 h-[80px] transition-shadow";
+  "group relative rounded-xl bg-white/50   py-2 h-[80px] transition-shadow";
 const labelCls =
   "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
 const inputCls =
@@ -610,7 +618,7 @@ export default function PestControlForm({
 
       {/* Journal d’intervention */}
       <div className="rounded-2xl bg-white/50 p-3 pb-0">
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-3 flex flex-col mobile:flex-row mobile:items-center gap-2 justify-between">
           <h3 className="text-sm font-semibold text-darkBlue flex items-center gap-2">
             <ListChecks className="size-4" /> Journal d’intervention
           </h3>
@@ -660,6 +668,11 @@ export default function PestControlForm({
             const hasActionErr = showErr && needAction;
             const hasZoneErr = showErr && needZone;
 
+            const severityLabel =
+              row?.severity && row.severity !== "none"
+                ? SEVERITY_LABELS[row.severity] ?? row.severity
+                : null;
+
             return (
               <div
                 key={id}
@@ -684,8 +697,8 @@ export default function PestControlForm({
                         <span className="text-[11px] text-darkBlue/60">
                           {row?.date ? fmtDateTime(row.date) : "Aucune date"}
                           {row?.zone ? ` • ${row.zone}` : ""}
-                          {row?.severity && row.severity !== "none"
-                            ? ` • Gravité: ${row.severity}`
+                          {severityLabel
+                            ? ` • Gravité: ${severityLabel}`
                             : ""}
                           {row?.baitRefilled
                             ? ` • Appâts: ${row.baitRefilled}`
@@ -696,13 +709,13 @@ export default function PestControlForm({
                   </button>
 
                   {/* Résumé compact quand replié */}
-                  <div className="flex flex-wrap items-center justify-end gap-1">
+                  <div className="flex flex_wrap items-center justify-end gap-1 flex-wrap">
                     {!!row?.date && (
                       <span className={chip}>{fmtDateTime(row.date)}</span>
                     )}
                     {!!row?.zone && <span className={chip}>{row.zone}</span>}
-                    {!!row?.severity && row.severity !== "none" && (
-                      <span className={chip}>Gravité {row.severity}</span>
+                    {severityLabel && (
+                      <span className={chip}>Gravité {severityLabel}</span>
                     )}
                     {!!row?.baitRefilled && (
                       <span className={chip}>Appâts {row.baitRefilled}</span>
@@ -934,10 +947,10 @@ export default function PestControlForm({
           }
         >
           {isSubmitting ? (
-            <>
+            <div className="flex items-center gap-2">
               <Loader2 className="size-4 animate-spin" />
-              Enregistrement…
-            </>
+              <span>Enregistrement…</span>
+            </div>
           ) : initial?._id ? (
             <>
               <FileText className="size-4" />

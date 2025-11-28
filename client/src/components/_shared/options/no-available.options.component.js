@@ -1,10 +1,14 @@
-export default function NoAvailableComponent(props) {
+export default function NoAvailableComponent({
+  dataLoading,
+  loadingText = "Chargement ...",
+  emptyText = "Vous n'avez pas souscrit à cette option",
+}) {
   return (
     <div className="flex items-center justify-center flex-1">
-      {props.dataLoading ? (
-        <p className="italic">Chargement ...</p>
+      {dataLoading ? (
+        <p className="italic">{loadingText}</p>
       ) : (
-        <p className="italic">Vous n'avez pas souscrit à cette option</p>
+        <p className="italic">{emptyText}</p>
       )}
     </div>
   );

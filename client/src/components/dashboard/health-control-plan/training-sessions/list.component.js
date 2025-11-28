@@ -1,11 +1,14 @@
-// components/dashboard/health-control-plan/trainings/training-list.component.jsx
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+
+// AXIOS
 import axios from "axios";
+
+// ICONS
 import { Search, CalendarClock, Edit3, Trash2, Loader2, X } from "lucide-react";
 
-/* ----------------------------- Utils ----------------------------- */
+/* ---------- Utils ---------- */
 function fmtDate(d, withTime = true) {
   try {
     if (!d) return "—";
@@ -21,20 +24,33 @@ function fmtDate(d, withTime = true) {
   }
 }
 
-const DUE_SOON_DAYS = 14;
+const DUE_SOON_DEFAULT = 14;
 
-function validityStatus(validUntil, soonDays = DUE_SOON_DAYS) {
-  if (!validUntil) return { label: "—", key: "valid", cls: "bg-green text-white" };
+function validityStatus(validUntil, soonDays = DUE_SOON_DEFAULT) {
+  if (!validUntil)
+    return { label: "—", key: "valid", cls: "bg-green text-white" };
   const now = new Date();
   const until = new Date(validUntil);
-  if (until < now) return { label: "Expiré", key: "expired", cls: "bg-red text-white" };
+  if (until < now)
+    return { label: "Expiré", key: "expired", cls: "bg-red text-white" };
   const soon = new Date(now);
   soon.setDate(soon.getDate() + soonDays);
-  if (until <= soon) return { label: "Bientôt dû", key: "due_soon", cls: "bg-orange text-white" };
+  if (until <= soon)
+    return {
+      label: "Bientôt dû",
+      key: "due_soon",
+      cls: "bg-orange text-white",
+    };
   return { label: "Valide", key: "valid", cls: "bg-green text-white" };
 }
 
-/* --------------------------- Component --------------------------- */
+function counts(attendees = []) {
+  const total = Array.isArray(attendees) ? attendees.length : 0;
+  const present = attendees.filter((a) => a?.status === "attended").length;
+  return { present, total };
+}
+
+/* ---------- Component ---------- */
 export default function TrainingList({
   restaurantId,
   onEdit,
@@ -43,30 +59,42 @@ export default function TrainingList({
 }) {
   const [items, setItems] = useState([]);
   const [meta, setMeta] = useState({ page: 1, limit: 20, pages: 1, total: 0 });
-  const [loading, setLoading] = useState(false);
 
-  // Filtres
+  const [loading, setLoading] = useState(false);
+  const [showSlowLoader, setShowSlowLoader] = useState(false);
+
+  // Filtres UI
   const [q, setQ] = useState("");
-  const [status, setStatus] = useState("all"); // all | expired | due_soon | valid
+  const [status, setStatus] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [soonDays, setSoonDays] = useState(DUE_SOON_DEFAULT);
+
+  // Filtres réellement appliqués
+  const [appliedDateFrom, setAppliedDateFrom] = useState("");
+  const [appliedDateTo, setAppliedDateTo] = useState("");
 
   // Suppression
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
-  // SSR-safe portal
+  // SSR-safe
   const [isClient, setIsClient] = useState(false);
   useEffect(() => setIsClient(true), []);
 
-  const token = useMemo(() => localStorage.getItem("token"), []);
+  const token = useMemo(
+    () =>
+      typeof window !== "undefined" ? localStorage.getItem("token") : null,
+    []
+  );
+
   const metaRef = useRef(meta);
   useEffect(() => {
     metaRef.current = meta;
   }, [meta]);
 
-  // Corriger intervalle invalide
+  // Corrige intervalle
   useEffect(() => {
     if (dateFrom && dateTo && dateTo < dateFrom) setDateTo(dateFrom);
   }, [dateFrom, dateTo]);
@@ -83,32 +111,67 @@ export default function TrainingList({
     });
 
   const hasActiveFilters = useMemo(
-    () => Boolean(q || status !== "all" || dateFrom || dateTo),
-    [q, status, dateFrom, dateTo]
+    () =>
+      Boolean(
+        q ||
+          status !== "all" ||
+          dateFrom ||
+          dateTo ||
+          appliedDateFrom ||
+          appliedDateTo ||
+          soonDays !== DUE_SOON_DEFAULT
+      ),
+    [q, status, dateFrom, dateTo, appliedDateFrom, appliedDateTo, soonDays]
   );
+
   const hasFullDateRange = Boolean(dateFrom && dateTo);
 
+  /* ---------- Styles ---------- */
+  const fieldWrap =
+    "group relative rounded-xl bg-white/50 backdrop-blur-sm transition-shadow";
+  const labelCls =
+    "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
+  const inputCls =
+    "h-11 w-full rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition placeholder:text-darkBlue/40";
+  const selectCls =
+    "h-11 w-full appearance-none rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition";
+  const btnBase =
+    "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition active:scale-[0.98]";
+
+  /* ---------- Fetch ---------- */
   const fetchData = async (page = 1, overrides = {}) => {
+    if (!restaurantId) return;
+
     setLoading(true);
     try {
       const cur = {
+        q: overrides.q ?? q,
         status: overrides.status ?? status,
-        dateFrom: overrides.dateFrom ?? dateFrom,
-        dateTo: overrides.dateTo ?? dateTo,
+        dateFrom:
+          overrides.dateFrom !== undefined
+            ? overrides.dateFrom
+            : appliedDateFrom,
+        dateTo:
+          overrides.dateTo !== undefined ? overrides.dateTo : appliedDateTo,
+        soonDays: overrides.soonDays ?? soonDays,
       };
+
       const params = { page, limit: meta.limit || 20 };
-      // Pas de q côté serveur : recherche locale uniquement.
+      if (cur.q) params.q = cur.q;
       if (cur.status && cur.status !== "all") {
-        params.status = cur.status; // backend gère expired | due_soon | valid (due_soon basé sur 14j par défaut)
+        params.status = cur.status;
+        if (cur.status === "due_soon") params.soon_days = cur.soonDays;
       }
       if (cur.dateFrom) params.date_from = new Date(cur.dateFrom).toISOString();
       if (cur.dateTo) params.date_to = new Date(cur.dateTo).toISOString();
 
-      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-training-sessions`;
-      const { data } = await axios.get(url, {
-        headers: { Authorization: `Bearer ${token}` },
-        params,
-      });
+      const { data } = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-training-sessions`,
+        {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          params,
+        }
+      );
 
       const list = sortLogic(data.items || []);
       const nextMeta = data.meta || { page: 1, limit: 20, pages: 1, total: 0 };
@@ -116,37 +179,73 @@ export default function TrainingList({
       setMeta(nextMeta);
       metaRef.current = nextMeta;
     } catch (e) {
-      console.error("fetch trainings list error:", e);
+      console.error("fetch training sessions error:", e);
     } finally {
       setLoading(false);
     }
   };
 
-  // Initial fetch
+  // Loader lent
   useEffect(() => {
-    if (restaurantId) fetchData(1, { status: "all", dateFrom: "", dateTo: "" });
+    if (!loading) {
+      setShowSlowLoader(false);
+      return;
+    }
+    const id = setTimeout(() => setShowSlowLoader(true), 1000);
+    return () => clearTimeout(id);
+  }, [loading]);
+
+  // Initial fetch (un seul)
+  useEffect(() => {
+    if (restaurantId) {
+      setAppliedDateFrom("");
+      setAppliedDateTo("");
+      fetchData(1, {
+        q: "",
+        status: "all",
+        dateFrom: "",
+        dateTo: "",
+        soonDays: DUE_SOON_DEFAULT,
+      });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
 
-  // Auto-refresh quand le statut change
+  // Refresh immédiat sur changement de statut / soonDays
   useEffect(() => {
     if (!restaurantId) return;
-    fetchData(1, { status });
+    fetchData(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status]);
+  }, [status, soonDays]);
 
-  // Live update via event (création/mise à jour)
+  // Debounce recherche texte (backend)
+  const isFirstLoadRef = useRef(true);
+  useEffect(() => {
+    if (!restaurantId) return;
+    if (isFirstLoadRef.current) {
+      isFirstLoadRef.current = false;
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      fetchData(1, { q });
+    }, 500);
+
+    return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, restaurantId]);
+
+  // Live update
   useEffect(() => {
     const handleUpsert = (event) => {
       const doc = event?.detail?.doc;
-      if (!doc || !doc._id) return;
-      if (restaurantId && String(doc.restaurantId) !== String(restaurantId)) return;
+      if (!doc || !doc._id || String(doc.restaurantId) !== String(restaurantId))
+        return;
 
-      const currentMeta = metaRef.current || {};
-      const limit = currentMeta.limit || 20;
-      const page = currentMeta.page || 1;
-
+      const limit = metaRef.current.limit || 20;
+      const page = metaRef.current.page || 1;
       let isNew = false;
+
       setItems((prev) => {
         const prevList = Array.isArray(prev) ? prev : [];
         const index = prevList.findIndex((it) => it?._id === doc._id);
@@ -168,9 +267,8 @@ export default function TrainingList({
 
       if (isNew) {
         setMeta((prevMeta) => {
-          const limitValue = prevMeta.limit || limit;
           const total = (prevMeta.total || 0) + 1;
-          const pages = Math.max(1, Math.ceil(total / limitValue));
+          const pages = Math.max(1, Math.ceil(total / limit));
           const nextMeta = { ...prevMeta, total, pages };
           metaRef.current = nextMeta;
           return nextMeta;
@@ -179,39 +277,10 @@ export default function TrainingList({
     };
 
     window.addEventListener("training-sessions:upsert", handleUpsert);
-    return () => window.removeEventListener("training-sessions:upsert", handleUpsert);
+    return () =>
+      window.removeEventListener("training-sessions:upsert", handleUpsert);
   }, [restaurantId]);
 
-  // Filtrage client (q + statut) sur la page chargée
-  const filtered = useMemo(() => {
-    let base = items;
-
-    if (q) {
-      const qq = q.toLowerCase();
-      base = base.filter((it) =>
-        [
-          it?.title,
-          it?.topic,
-          it?.provider,
-          it?.location,
-          it?.notes,
-          it?.materialsUrl,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase()
-          .includes(qq)
-      );
-    }
-
-    if (status !== "all") {
-      base = base.filter((it) => validityStatus(it.validUntil).key === status);
-    }
-
-    return base;
-  }, [items, q, status]);
-
-  // Suppression
   const askDelete = (it) => {
     setDeleteTarget(it);
     setIsDeleteModalOpen(true);
@@ -221,63 +290,42 @@ export default function TrainingList({
     if (!deleteTarget) return;
     try {
       setDeleteLoading(true);
-      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/training-sessions/${deleteTarget._id}`;
-      await axios.delete(url, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.delete(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/training-sessions/${deleteTarget._id}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
 
-      setItems((prev) => prev.filter((x) => String(x._id) !== String(deleteTarget._id)));
+      setItems((prev) => prev.filter((x) => x._id !== deleteTarget._id));
       onDeleted?.(deleteTarget);
       setIsDeleteModalOpen(false);
       setDeleteTarget(null);
 
       setMeta((prevMeta) => {
-        const limitValue = prevMeta.limit || 20;
         const total = Math.max(0, (prevMeta.total || 0) - 1);
-        const pages = total > 0 ? Math.ceil(total / limitValue) : 1;
+        const pages = total > 0 ? Math.ceil(total / (prevMeta.limit || 20)) : 1;
         const page = Math.min(prevMeta.page || 1, pages);
         const nextMeta = { ...prevMeta, total, pages, page };
         metaRef.current = nextMeta;
         return nextMeta;
       });
     } catch (err) {
-      console.error("Erreur suppression :", err);
+      console.error("Erreur suppression formation:", err);
     } finally {
       setDeleteLoading(false);
     }
   };
+
   const closeDeleteModal = () => {
-    if (!deleteLoading) {
-      setIsDeleteModalOpen(false);
-      setDeleteTarget(null);
-    }
+    if (deleteLoading) return;
+    setIsDeleteModalOpen(false);
+    setDeleteTarget(null);
   };
 
-  // helpers d'affichage
-  function counts(attendees = []) {
-    const total = Array.isArray(attendees) ? attendees.length : 0;
-    const present = Array.isArray(attendees)
-      ? attendees.filter((a) => a?.status === "attended").length
-      : 0;
-    return { present, total };
-  }
-
-  /* ------------------------------ Styles ------------------------------ */
-  const fieldWrap =
-    "group relative rounded-xl bg-white/50 backdrop-blur-sm transition-shadow";
-  const labelCls =
-    "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
-  const inputCls =
-    "h-11 w-full rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition placeholder:text-darkBlue/40";
-  const selectCls =
-    "h-11 w-full appearance-none rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition";
-  const btnBase =
-    "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition active:scale-[0.98]";
-
-  /* ------------------------------ Render ------------------------------ */
+  /* ---------- Render ---------- */
   return (
     <div className="rounded-2xl border border-darkBlue/10 bg-white p-4 midTablet:p-5 shadow">
       {/* Filtres */}
-      <div className="mb-4 grid grid-cols-[repeat(auto-fit,minmax(220px,_1fr))] gap-2">
-        {/* Recherche */}
+      <div className="mb-4 grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-2">
         <div className={fieldWrap}>
           <label className={labelCls}>
             <Search className="size-4" /> Recherche
@@ -285,12 +333,11 @@ export default function TrainingList({
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Titre, thème, organisme, lieu, notes…"
+            placeholder="Titre, thème, organisme, lieu…"
             className={inputCls}
           />
         </div>
 
-        {/* Statut */}
         <div className={fieldWrap}>
           <label className={labelCls}>Statut de validité</label>
           <select
@@ -305,7 +352,6 @@ export default function TrainingList({
           </select>
         </div>
 
-        {/* Du */}
         <div className={fieldWrap}>
           <label className={labelCls}>
             <CalendarClock className="size-4" /> Sessions du
@@ -319,7 +365,6 @@ export default function TrainingList({
           />
         </div>
 
-        {/* Au */}
         <div className={fieldWrap}>
           <label className={labelCls}>
             <CalendarClock className="size-4" /> Au
@@ -333,14 +378,16 @@ export default function TrainingList({
           />
         </div>
 
-        {/* Actions filtres */}
         <div className="col-span-full flex flex-col gap-2 mobile:flex-row">
           <button
-            onClick={() => hasFullDateRange && fetchData(1)}
+            onClick={() => {
+              if (!hasFullDateRange) return;
+              setAppliedDateFrom(dateFrom);
+              setAppliedDateTo(dateTo);
+              fetchData(1, { dateFrom, dateTo });
+            }}
             disabled={!hasFullDateRange}
-            title={!hasFullDateRange ? "Sélectionnez 'Du' ET 'Au' pour filtrer par dates" : undefined}
             className={`${btnBase} bg-blue text-white disabled:opacity-40`}
-            type="button"
           >
             Filtrer
           </button>
@@ -351,125 +398,159 @@ export default function TrainingList({
               setStatus("all");
               setDateFrom("");
               setDateTo("");
-              fetchData(1, { status: "all", dateFrom: "", dateTo: "" });
+              setSoonDays(DUE_SOON_DEFAULT);
+              setAppliedDateFrom("");
+              setAppliedDateTo("");
+              fetchData(1, {
+                q: "",
+                status: "all",
+                dateFrom: "",
+                dateTo: "",
+                soonDays: DUE_SOON_DEFAULT,
+              });
             }}
             disabled={!hasActiveFilters}
             className={`${btnBase} border border-darkBlue/20 bg-white text-darkBlue hover:border-darkBlue/30 disabled:opacity-40`}
-            type="button"
           >
             Réinitialiser
           </button>
         </div>
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto max-w-[calc(100vw-83px)] midTablet:max-w-[calc(100vw-92px)] tablet:max-w-[calc(100vw-360px)] rounded-xl border border-darkBlue/10 p-2">
-        <table className="w-full text-[13px]">
-          <thead className="whitespace-nowrap">
-            <tr className="sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Date</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Titre</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Thème</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Organisme</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Lieu</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Participants</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Validité</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Opérateur</th>
-              <th className="py-2 pr-3 text-right font-medium text-darkBlue/70">Actions</th>
-            </tr>
-          </thead>
-
-          <tbody className="divide-y divide-darkBlue/10 [&>tr:last-child>td]:!pb-0">
-            {!loading && filtered.length === 0 && (
+      {/* Table + overlay loader */}
+      <div className="relative">
+        <div className="overflow-x-auto max-w-[calc(100vw-50px)] mobile:max-w-[calc(100vw-83px)] midTablet:max-w-[calc(100vw-92px)] tablet:max-w-[calc(100vw-360px)] rounded-xl border border-darkBlue/10">
+          <table className="w-full text-[13px]">
+            <thead className="text-nowrap sticky top-0 z-10 bg-white/95 backdrop-blur border-b border-darkBlue/10">
               <tr>
-                <td colSpan={9} className="py-8 text-center text-darkBlue/50">
-                  Aucune formation
-                </td>
+                <th className="py-2 pl-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Date
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Titre
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Thème
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Organisme
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Lieu
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Participants
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Validité
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Opérateur
+                </th>
+                <th className="py-2 pr-2 text-right font-medium text-darkBlue/70">
+                  Actions
+                </th>
               </tr>
-            )}
-
-            {loading && (
-              <tr>
-                <td colSpan={9} className="py-8 text-center text-darkBlue/50">
-                  <span className="inline-flex items-center gap-2">
-                    <Loader2 className="size-4 animate-spin" /> Chargement…
-                  </span>
-                </td>
-              </tr>
-            )}
-
-            {!loading &&
-              filtered.map((it) => {
-                const st = validityStatus(it.validUntil);
-                const c = counts(it.attendees);
-                return (
-                  <tr
-                    key={it._id}
-                    className={`transition-colors hover:bg-darkBlue/[0.03] ${
-                      editingId === it._id ? "bg-blue/5 ring-1 ring-blue/20" : ""
-                    }`}
-                  >
-                    <td className="py-2 pr-3 whitespace-nowrap">{fmtDate(it.date)}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{it.title || "—"}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{it.topic || "—"}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{it.provider || "—"}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{it.location || "—"}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{c.present}/{c.total}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      <span className={`px-2 py-0.5 rounded text-xs ${st.cls}`}>{st.label}</span>
-                    </td>
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      {it?.recordedBy
-                        ? `${it.recordedBy.firstName || ""} ${it.recordedBy.lastName || ""}`.trim() || "—"
-                        : "—"}
-                    </td>
-                    <td className="py-2 pr-0">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => onEdit?.(it)}
-                          className={`${btnBase} border border-green/50 bg-white text-green`}
-                          type="button"
-                          aria-label="Éditer"
+            </thead>
+            <tbody className="divide-y divide-darkBlue/10">
+              {items.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="py-8 text-center text-darkBlue/50">
+                    Aucune formation
+                  </td>
+                </tr>
+              ) : (
+                items.map((it) => {
+                  const st = validityStatus(it.validUntil, soonDays);
+                  const c = counts(it.attendees);
+                  return (
+                    <tr
+                      key={it._id}
+                      className={`hover:bg-darkBlue/[0.03] ${editingId === it._id ? "bg-blue/5 ring-1 ring-blue/20" : ""}`}
+                    >
+                      <td className="py-2 pl-2 pr-3 whitespace-nowrap">
+                        {fmtDate(it.date)}
+                      </td>
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {it.title || "—"}
+                      </td>
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {it.topic || "—"}
+                      </td>
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {it.provider || "—"}
+                      </td>
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {it.location || "—"}
+                      </td>
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {c.present}/{c.total}
+                      </td>
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        <span
+                          className={`px-2 py-0.5 rounded text-xs ${st.cls}`}
                         >
-                          <Edit3 className="size-4" /> Éditer
-                        </button>
-                        <button
-                          onClick={() => askDelete(it)}
-                          className={`${btnBase} border border-red bg-white text-red hover:border-red/80`}
-                          type="button"
-                          aria-label="Supprimer"
-                        >
-                          <Trash2 className="size-4" /> Supprimer
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-          </tbody>
-        </table>
+                          {st.label}
+                        </span>
+                      </td>
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {it.recordedBy
+                          ? `${it.recordedBy.firstName || ""} ${it.recordedBy.lastName || ""}`.trim() ||
+                            "—"
+                          : "—"}
+                      </td>
+                      <td className="py-2 pr-2 text-right">
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => onEdit?.(it)}
+                            className={`${btnBase} border border-green/50 bg-white text-green`}
+                          >
+                            <Edit3 className="size-4" /> Éditer
+                          </button>
+                          <button
+                            onClick={() => askDelete(it)}
+                            className={`${btnBase} border border-red bg-white text-red hover:border-red/80`}
+                          >
+                            <Trash2 className="size-4" /> Supprimer
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {showSlowLoader && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-white/60">
+            <div className="flex items-center gap-2 text-darkBlue/70 text-sm">
+              <Loader2 className="size-4 animate-spin" />
+              <span>Chargement…</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Pagination */}
-      {meta?.pages > 1 && (
-        <div className="mt-4 flex items-center justify-between">
-          <div className="text-xs text-darkBlue/60">
+      {meta.pages > 1 && (
+        <div className="mt-4 flex items-center justify-between text-xs text-darkBlue/60">
+          <div>
             Page {meta.page}/{meta.pages} — {meta.total} formation(s)
           </div>
           <div className="flex gap-2">
             <button
               disabled={meta.page <= 1}
               onClick={() => fetchData(meta.page - 1)}
-              className={`${btnBase} border border-darkBlue/20 bg-white text-darkBlue hover:border-darkBlue/30 disabled:opacity-40`}
-              type="button"
+              className={`${btnBase} border border-darkBlue/20 bg-white text-darkBlue disabled:opacity-40`}
             >
               Précédent
             </button>
             <button
               disabled={meta.page >= meta.pages}
               onClick={() => fetchData(meta.page + 1)}
-              className={`${btnBase} border border-darkBlue/20 bg-white text-darkBlue hover:border-darkBlue/30 disabled:opacity-40`}
-              type="button"
+              className={`${btnBase} border border-darkBlue/20 bg-white text-darkBlue disabled:opacity-40`}
             >
               Suivant
             </button>
@@ -481,8 +562,15 @@ export default function TrainingList({
       {isDeleteModalOpen &&
         isClient &&
         createPortal(
-          <div className="fixed inset-0 z-[1000]" aria-modal="true" role="dialog">
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px]" onClick={closeDeleteModal} />
+          <div
+            className="fixed inset-0 z-[1000]"
+            aria-modal="true"
+            role="dialog"
+          >
+            <div
+              onClick={closeDeleteModal}
+              className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"
+            />
             <div className="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
               <div className="pointer-events-auto w-full max-w-[480px] rounded-2xl border border-darkBlue/10 bg-white p-5 shadow-2xl">
                 <h2 className="mb-2 text-center text-lg font-semibold text-darkBlue">
@@ -491,23 +579,22 @@ export default function TrainingList({
                 <p className="mb-5 text-center text-sm text-darkBlue/70">
                   Cette action est définitive.
                 </p>
-                <div className="flex items-center justify-center gap-2">
+                <div className="flex justify-center gap-2">
                   <button
                     onClick={onConfirmDelete}
                     disabled={deleteLoading}
                     className={`${btnBase} bg-blue text-white disabled:opacity-50`}
-                    type="button"
                   >
                     {deleteLoading ? (
                       <>
-                        <Loader2 className="size-4 animate-spin" /> Suppression…
+                        {" "}
+                        <Loader2 className="size-4 animate-spin" /> Suppression…{" "}
                       </>
                     ) : (
                       "Confirmer"
                     )}
                   </button>
                   <button
-                    type="button"
                     onClick={closeDeleteModal}
                     className={`${btnBase} border border-red bg-red text-white`}
                   >

@@ -33,7 +33,7 @@ export default function DetailsDishComponent(props) {
     <div
       ref={setNodeRef}
       style={style}
-      className="bg-white p-4 midTablet:p-6 midTablet:pl-4 rounded-lg drop-shadow-sm flex flex-col midTablet:flex-row gap-1 midTablet:justify-between midTablet:items-center min-h-[100px]"
+      className="bg-white/50 p-4 midTablet:p-6 midTablet:pl-4 rounded-lg flex flex-col midTablet:flex-row gap-1 midTablet:justify-between midTablet:items-center min-h-[100px]"
     >
       <div className="flex items-start midTablet:items-center gap-4">
         <button {...listeners} className="opacity-50 cursor-grab">

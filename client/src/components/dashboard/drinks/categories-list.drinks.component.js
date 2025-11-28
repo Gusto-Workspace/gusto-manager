@@ -229,7 +229,7 @@ export default function CategoriesListDrinksComponent() {
             <SortableContext
               items={categories?.map((category) => category._id)}
             >
-              <div className="grid grid-cols-1 midTablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-4 gap-6">
+              <div className="grid grid-cols-1 midTablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-4 gap-4">
                 {categories?.map((category, i) => (
                   <CardCategoryListComponent
                     key={category._id}

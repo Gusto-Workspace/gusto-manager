@@ -18,7 +18,7 @@ export default function AddMenusComponent(props) {
   const [isEditing, setIsEditing] = useState(props?.menu ? false : true);
 
   return (
-    <div   className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6">
       <hr className="opacity-20" />
 
       <div className="flex gap-4 flex-wrap justify-between">
@@ -63,7 +63,7 @@ export default function AddMenusComponent(props) {
           </option>
 
           <option value="fixed">{t("labels.fixed")}</option>
-          
+
           <option value="custom">{t("labels.custom")}</option>
         </select>
       </div>
@@ -73,12 +73,14 @@ export default function AddMenusComponent(props) {
           menuType={menuType}
           menu={props?.menu}
           isEditing={isEditing}
+          setIsEditing={setIsEditing}
         />
       ) : menuType === "custom" ? (
         <CustomMenuComponent
           menuType={menuType}
           menu={props?.menu}
           isEditing={isEditing}
+          setIsEditing={setIsEditing}
           selectedDishes={props?.selectedDishes}
         />
       ) : null}

@@ -1,5 +1,6 @@
 import { useContext, useState } from "react";
 import Head from "next/head";
+import { useRouter } from "next/router";
 
 // I18N
 import { i18n, useTranslation } from "next-i18next";
@@ -14,8 +15,9 @@ import SettingsComponent from "@/components/_shared/settings/settings.component"
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
 import PestControlForm from "@/components/dashboard/health-control-plan/pest-control/form.component";
 import PestControlList from "@/components/dashboard/health-control-plan/pest-control/list.component";
+
+// SVG
 import { HealthSvg } from "@/components/_shared/_svgs/health.svg";
-import { useRouter } from "next/router";
 
 export default function PestControlPage(props) {
   const { t } = useTranslation("");

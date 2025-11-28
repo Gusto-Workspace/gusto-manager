@@ -1,8 +1,11 @@
-// components/dashboard/health-control-plan/postheat-temperature-list.component.jsx
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+
+// AXIOS
 import axios from "axios";
+
+// ICONS
 import { Search, CalendarClock, Edit3, Trash2, Loader2, X } from "lucide-react";
 
 /* ----------------------------- Utils ----------------------------- */
@@ -47,10 +50,16 @@ export default function PostheatTemperatureList({
   const [items, setItems] = useState([]);
   const [meta, setMeta] = useState({ page: 1, limit: 20, pages: 1, total: 0 });
   const [loading, setLoading] = useState(false);
+  const [showSlowLoader, setShowSlowLoader] = useState(false);
 
-  // Filtres
+  // Filtres date affichés
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  // Filtres date appliqués côté backend
+  const [appliedDateFrom, setAppliedDateFrom] = useState("");
+  const [appliedDateTo, setAppliedDateTo] = useState("");
+
+  // Recherche texte
   const [q, setQ] = useState("");
 
   // Suppression
@@ -67,10 +76,6 @@ export default function PostheatTemperatureList({
     [q, dateFrom, dateTo]
   );
   const hasFullDateRange = Boolean(dateFrom && dateTo);
-  const invalidRange = useMemo(
-    () => Boolean(dateFrom && dateTo && dateTo < dateFrom),
-    [dateFrom, dateTo]
-  );
 
   // Corriger intervalle invalide à la volée
   useEffect(() => {
@@ -89,22 +94,27 @@ export default function PostheatTemperatureList({
     );
 
   const fetchData = async (page = 1, overrides = {}) => {
+    if (!restaurantId) return;
+
     setLoading(true);
     try {
+      const curQ = overrides.q !== undefined ? overrides.q : q;
       const curFrom =
-        overrides.dateFrom !== undefined ? overrides.dateFrom : dateFrom;
-      const curTo = overrides.dateTo !== undefined ? overrides.dateTo : dateTo;
+        overrides.dateFrom !== undefined ? overrides.dateFrom : appliedDateFrom;
+      const curTo =
+        overrides.dateTo !== undefined ? overrides.dateTo : appliedDateTo;
 
       const params = { page, limit: meta.limit || 20 };
-      // ❗️Pas de 'q' côté serveur → recherche locale uniquement
       if (curFrom) params.date_from = new Date(curFrom).toISOString();
       if (curTo) params.date_to = new Date(curTo).toISOString();
+      if (curQ) params.q = curQ;
 
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/postheat-temperatures`;
       const { data } = await axios.get(url, {
         headers: { Authorization: `Bearer ${token}` },
         params,
       });
+
       const list = sortByDate(data.items || []);
       const nextMeta = data.meta || { page: 1, limit: 20, pages: 1, total: 0 };
       setItems(list);
@@ -117,11 +127,48 @@ export default function PostheatTemperatureList({
     }
   };
 
+  // Loader "lent" : visible seulement si loading > 1s
+  useEffect(() => {
+    if (!loading) {
+      setShowSlowLoader(false);
+      return;
+    }
+
+    const id = setTimeout(() => {
+      setShowSlowLoader(true);
+    }, 1000);
+
+    return () => clearTimeout(id);
+  }, [loading]);
+
   // Initial
   useEffect(() => {
-    if (restaurantId) fetchData(1, { dateFrom: "", dateTo: "" });
+    if (restaurantId) {
+      setAppliedDateFrom("");
+      setAppliedDateTo("");
+      fetchData(1, { q: "", dateFrom: "", dateTo: "" });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
+
+  // Debounce sur la recherche (500ms) → fetch backend
+  const isFirstLoadRef = useRef(true);
+  useEffect(() => {
+    if (!restaurantId) return;
+
+    // Pas de fetch supplémentaire au premier rendu
+    if (isFirstLoadRef.current) {
+      isFirstLoadRef.current = false;
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      fetchData(1, { q });
+    }, 500);
+
+    return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, restaurantId]);
 
   // 🔁 Upsert temps réel
   useEffect(() => {
@@ -173,31 +220,6 @@ export default function PostheatTemperatureList({
     return () =>
       window.removeEventListener("postheat-temperature:upsert", handleUpsert);
   }, [restaurantId]);
-
-  // Recherche locale (q)
-  const filtered = useMemo(() => {
-    if (!q) return items;
-    const qq = q.toLowerCase();
-    return items.filter((it) =>
-      [
-        it?.equipmentName,
-        it?.equipmentId,
-        it?.location,
-        it?.locationId,
-        it?.probeType,
-        it?.phase,
-        it?.unit,
-        String(it?.value ?? ""),
-        it?.recordedBy?.firstName,
-        it?.recordedBy?.lastName,
-        it?.note,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(qq)
-    );
-  }, [items, q]);
 
   const askDelete = (item) => {
     setDeleteTarget(item);
@@ -252,7 +274,7 @@ export default function PostheatTemperatureList({
   const inputCls =
     "h-11 w-full rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition placeholder:text-darkBlue/40";
   const selectCls =
-    "h-11 w-full rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition";
+    "h-11 w-full appearance-none rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition";
   const btnBase =
     "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition active:scale-[0.98]";
 
@@ -260,9 +282,9 @@ export default function PostheatTemperatureList({
   return (
     <div className="rounded-2xl border border-darkBlue/10 bg-white p-4 midTablet:p-5 shadow">
       {/* Filtres */}
-      <div className="mb-4 grid gap-2 grid-cols-1 midTablet:grid-cols-[1fr_auto_auto]">
+      <div className="flex flex-col midTablet:flex-row gap-2 mb-2">
         {/* Recherche → prend toute la place */}
-        <div className={fieldWrap}>
+        <div className={`${fieldWrap} w-full`}>
           <label className={labelCls}>
             <Search className="size-4" /> Recherche
           </label>
@@ -301,18 +323,23 @@ export default function PostheatTemperatureList({
             min={dateFrom || undefined}
           />
         </div>
+      </div>
 
+      <div className="mb-4">
         {/* Actions filtres */}
         <div className="col-span-full flex flex-col gap-2 mobile:flex-row">
           <button
-            onClick={() => fetchData(1)}
-            disabled={invalidRange || !hasFullDateRange}
+            onClick={() => {
+              if (!hasFullDateRange) return;
+              setAppliedDateFrom(dateFrom);
+              setAppliedDateTo(dateTo);
+              fetchData(1, { dateFrom, dateTo });
+            }}
+            disabled={!hasFullDateRange}
             title={
-              invalidRange
-                ? "Intervalle invalide : 'Du' doit être ≤ 'Au'."
-                : !hasFullDateRange
-                  ? "Sélectionnez 'Du' ET 'Au' pour filtrer par dates"
-                  : undefined
+              !hasFullDateRange
+                ? "Sélectionnez 'Du' ET 'Au' pour filtrer par dates"
+                : undefined
             }
             className={`${btnBase} bg-blue text-white disabled:opacity-40`}
             type="button"
@@ -325,7 +352,9 @@ export default function PostheatTemperatureList({
               setQ("");
               setDateFrom("");
               setDateTo("");
-              fetchData(1, { dateFrom: "", dateTo: "" });
+              setAppliedDateFrom("");
+              setAppliedDateTo("");
+              fetchData(1, { q: "", dateFrom: "", dateTo: "" });
             }}
             disabled={!hasActiveFilters}
             className={`${btnBase} border border-darkBlue/20 bg-white text-darkBlue hover:border-darkBlue/30 disabled:opacity-40`}
@@ -336,139 +365,140 @@ export default function PostheatTemperatureList({
         </div>
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto max-w-[calc(100vw-83px)] midTablet:max-w-[calc(100vw-92px)] tablet:max-w-[calc(100vw-360px)] rounded-xl border border-darkBlue/10 p-2">
-        <table className="w-full text-[13px]">
-          <thead className="whitespace-nowrap">
-            <tr className="sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Date
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Équipement
-              </th>
-              {/* Type retiré */}
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Emplacement
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Phase
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Sonde
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                T°
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Opérateur
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Note
-              </th>
-              <th className="py-2 pr-3 text-right font-medium text-darkBlue/70">
-                Actions
-              </th>
-            </tr>
-          </thead>
-
-          <tbody className="divide-y divide-darkBlue/10 [&>tr:last-child>td]:!pb-0">
-            {!loading && filtered.length === 0 && (
-              <tr>
-                <td colSpan={9} className="py-8 text-center text-darkBlue/50">
-                  Aucun relevé
-                </td>
+      {/* Table + overlay loader */}
+      <div className="relative">
+        <div className="overflow-x-auto max-w-[calc(100vw-50px)] mobile:max-w-[calc(100vw-83px)] midTablet:max-w-[calc(100vw-92px)] tablet:max-w-[calc(100vw-360px)] rounded-xl border border-darkBlue/10">
+          <table className="w-full text-[13px]">
+            <thead className="whitespace-nowrap">
+              <tr className="text-nowrap sticky top-0 z-10 bg-white/95 backdrop-blur">
+                <th className="py-2 pr-3 pl-2 text-left font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  Date
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  Équipement
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  Emplacement
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  Phase
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  Sonde
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  T°
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  Opérateur
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  Note
+                </th>
+                <th className="py-2 pr-2 text-right font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  Actions
+                </th>
               </tr>
-            )}
+            </thead>
 
-            {loading && (
-              <tr>
-                <td colSpan={9} className="py-8 text-center text-darkBlue/50">
-                  <span className="inline-flex items-center gap-2">
-                    <Loader2 className="size-4 animate-spin" /> Chargement…
-                  </span>
-                </td>
-              </tr>
-            )}
-
-            {!loading &&
-              filtered.map((it) => (
-                <tr
-                  key={it._id}
-                  className={`transition-colors hover:bg-darkBlue/[0.03] ${
-                    editingId === it._id ? "bg-blue/5 ring-1 ring-blue/20" : ""
-                  }`}
-                >
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {fmtDate(it.createdAt)}
-                  </td>
-
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {it.equipmentName || "—"}
-                    {it.equipmentId ? (
-                      <span className="opacity-60"> • {it.equipmentId}</span>
-                    ) : null}
-                  </td>
-
-                  {/* Type retiré */}
-
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    <span>{it.location || "—"}</span>
-                    {it.locationId ? (
-                      <span className="opacity-60"> • {it.locationId}</span>
-                    ) : null}
-                  </td>
-
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {PHASE_LABELS[it.phase] ?? it.phase ?? "—"}
-                  </td>
-
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {PROBE_LABELS[it.probeType] ?? it.probeType ?? "—"}
-                  </td>
-
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {typeof it.value === "number"
-                      ? it.value
-                      : (it.value ?? "—")}{" "}
-                    {it.unit || ""}
-                  </td>
-
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {it?.recordedBy
-                      ? `${it.recordedBy.firstName || ""} ${it.recordedBy.lastName || ""}`.trim() ||
-                        "—"
-                      : "—"}
-                  </td>
-
-                  <td className="py-2 pr-3 max-w-[360px]">
-                    <span className="line-clamp-2">{it.note || "—"}</span>
-                  </td>
-
-                  <td className="py-2 pr-0">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => onEdit?.(it)}
-                        className={`${btnBase} border border-green/50 bg-white text-green`}
-                        aria-label="Éditer"
-                        type="button"
-                      >
-                        <Edit3 className="size-4" /> Éditer
-                      </button>
-                      <button
-                        onClick={() => askDelete(it)}
-                        className={`${btnBase} border border-red bg-white text-red hover:border-red/80`}
-                        aria-label="Supprimer"
-                        type="button"
-                      >
-                        <Trash2 className="size-4" /> Supprimer
-                      </button>
-                    </div>
+            <tbody>
+              {items.length === 0 ? (
+                <tr className="border-b border-darkBlue/10 last:border-b-0">
+                  <td colSpan={9} className="py-8 text-center text-darkBlue/50">
+                    Aucun relevé
                   </td>
                 </tr>
-              ))}
-          </tbody>
-        </table>
+              ) : (
+                items.map((it) => (
+                  <tr
+                    key={it._id}
+                    className={`border-b border-darkBlue/10 last:border-b-0 transition-colors hover:bg-darkBlue/[0.03] ${
+                      editingId === it._id
+                        ? "bg-blue/5 ring-1 ring-blue/20"
+                        : ""
+                    }`}
+                  >
+                    <td className="py-2 pl-2 pr-3 whitespace-nowrap">
+                      {fmtDate(it.createdAt)}
+                    </td>
+
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it.equipmentName || "—"}
+                      {it.equipmentId ? (
+                        <span className="opacity-60"> • {it.equipmentId}</span>
+                      ) : null}
+                    </td>
+
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      <span>{it.location || "—"}</span>
+                      {it.locationId ? (
+                        <span className="opacity-60"> • {it.locationId}</span>
+                      ) : null}
+                    </td>
+
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {PHASE_LABELS[it.phase] ?? it.phase ?? "—"}
+                    </td>
+
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {PROBE_LABELS[it.probeType] ?? it.probeType ?? "—"}
+                    </td>
+
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {typeof it.value === "number"
+                        ? it.value
+                        : (it.value ?? "—")}{" "}
+                      {it.unit || ""}
+                    </td>
+
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it?.recordedBy
+                        ? `${it.recordedBy.firstName || ""} ${
+                            it.recordedBy.lastName || ""
+                          }`.trim() || "—"
+                        : "—"}
+                    </td>
+
+                    <td className="py-2 pr-3 max-w-[360px]">
+                      <span className="line-clamp-2">{it.note || "—"}</span>
+                    </td>
+
+                    <td className="py-2 pr-2">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => onEdit?.(it)}
+                          className={`${btnBase} border border-green/50 bg-white text-green`}
+                          aria-label="Éditer"
+                          type="button"
+                        >
+                          <Edit3 className="size-4" /> Éditer
+                        </button>
+                        <button
+                          onClick={() => askDelete(it)}
+                          className={`${btnBase} border border-red bg-white text-red hover:border-red/80`}
+                          aria-label="Supprimer"
+                          type="button"
+                        >
+                          <Trash2 className="size-4" /> Supprimer
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Overlay loader par-dessus la table, seulement si loading > 1s */}
+        {showSlowLoader && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-white/60">
+            <div className="flex items-center gap-2 text-darkBlue/70 text-sm">
+              <Loader2 className="size-4 animate-spin" />
+              <span>Chargement…</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Pagination */}
@@ -528,9 +558,10 @@ export default function PostheatTemperatureList({
                     type="button"
                   >
                     {deleteLoading ? (
-                      <>
-                        <Loader2 className="size-4 animate-spin" /> Suppression…
-                      </>
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="size-4 animate-spin" />
+                        <span>Suppression…</span>
+                      </div>
                     ) : (
                       "Confirmer"
                     )}

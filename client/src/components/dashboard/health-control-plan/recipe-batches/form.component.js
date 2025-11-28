@@ -114,7 +114,11 @@ function formatLotLabel(l) {
 
 /* ---------------- Helpers lignes ---------------- */
 const isRowEmpty = (row) =>
-  !row?.name && !row?.qty && !row?.unit && !row?.lotNumber && !row?.inventoryLotId;
+  !row?.name &&
+  !row?.qty &&
+  !row?.unit &&
+  !row?.lotNumber &&
+  !row?.inventoryLotId;
 
 // Une ligne est “valide” si le Nom est saisi
 const isRowValidByName = (row) => !!row?.name?.trim();
@@ -149,7 +153,7 @@ export default function RecipeBatchesForm({
 
   // --- Styles
   const fieldWrap =
-    "group relative rounded-xl bg-white/50 backdrop-blur-sm py-2 h-[80px] transition-shadow";
+    "group relative rounded-xl bg-white/50   py-2 h-[80px] transition-shadow";
   const labelCls =
     "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
   const inputCls =
@@ -468,15 +472,15 @@ export default function RecipeBatchesForm({
     }
 
     // Garder UNIQUEMENT les lignes validées explicitement
-    const mapped = (Array.isArray(data.ingredients) ? data.ingredients : []).map(
-      (l) => ({
-        name: l.name || undefined,
-        lotNumber: l.lotNumber || undefined,
-        qty: l.qty !== "" && l.qty != null ? Number(l.qty) : undefined,
-        unit: l.unit || undefined,
-        inventoryLotId: l.inventoryLotId || undefined,
-      })
-    );
+    const mapped = (
+      Array.isArray(data.ingredients) ? data.ingredients : []
+    ).map((l) => ({
+      name: l.name || undefined,
+      lotNumber: l.lotNumber || undefined,
+      qty: l.qty !== "" && l.qty != null ? Number(l.qty) : undefined,
+      unit: l.unit || undefined,
+      inventoryLotId: l.inventoryLotId || undefined,
+    }));
 
     const ingredientsFiltered = mapped.filter((_, idx) => {
       const fid = fields[idx]?.id;
@@ -527,7 +531,10 @@ export default function RecipeBatchesForm({
   const addDisabled = lastField ? !validatedById[lastField.id] : false;
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="relative flex flex-col gap-5">
+    <form
+      onSubmit={handleSubmit(onSubmit)}
+      className="relative flex flex-col gap-5"
+    >
       {/* En-tête batch */}
       <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
         <div className={`${fieldWrap} px-3`}>
@@ -565,14 +572,22 @@ export default function RecipeBatchesForm({
           <label className={labelCls}>
             <FileText className="size-4" /> Préparé le *
           </label>
-          <input type="datetime-local" {...register("preparedAt")} className={selectCls} />
+          <input
+            type="datetime-local"
+            {...register("preparedAt")}
+            className={selectCls}
+          />
         </div>
 
         <div className={`${fieldWrap} px-3`}>
           <label className={labelCls}>
             <FileText className="size-4" /> À utiliser pour le service
           </label>
-          <input type="date" {...register("usedByServiceDate")} className={selectCls} />
+          <input
+            type="date"
+            {...register("usedByServiceDate")}
+            className={selectCls}
+          />
         </div>
       </div>
 
@@ -629,8 +644,8 @@ export default function RecipeBatchesForm({
             const safeUnit = allowedUnits.includes(curUnit)
               ? curUnit
               : lot
-              ? lot.unit || allowedUnits[0] || ""
-              : "";
+                ? lot.unit || allowedUnits[0] || ""
+                : "";
 
             if (safeUnit !== curUnit) {
               setTimeout(() => {
@@ -658,7 +673,10 @@ export default function RecipeBatchesForm({
             const hasNameErr = showErr && needName;
 
             return (
-              <div key={id} className="rounded-xl border border-darkBlue/10 bg-white">
+              <div
+                key={id}
+                className="rounded-xl border border-darkBlue/10 bg-white"
+              >
                 {/* Header ligne */}
                 <div className="flex items-center justify-between gap-3 px-3 py-2">
                   <button
@@ -790,7 +808,8 @@ export default function RecipeBatchesForm({
                               if (!Number.isFinite(n) || n < 0)
                                 return "Valeur invalide";
                               const a = allowedMaxForRow(idx);
-                              if (a != null && n > a) return `Max autorisé: ${a}`;
+                              if (a != null && n > a)
+                                return `Max autorisé: ${a}`;
                               return true;
                             },
                             onChange: () => {
@@ -818,19 +837,25 @@ export default function RecipeBatchesForm({
                         <select
                           value={row.unit || ""}
                           onChange={(e) =>
-                            setValue(`ingredients.${idx}.unit`, e.target.value, {
-                              shouldDirty: true,
-                              shouldValidate: true,
-                            })
+                            setValue(
+                              `ingredients.${idx}.unit`,
+                              e.target.value,
+                              {
+                                shouldDirty: true,
+                                shouldValidate: true,
+                              }
+                            )
                           }
                           className={selectCls}
                           disabled={lot ? allowedUnits.length === 1 : false}
                         >
-                          {(lot ? allowedUnits : ["", ...ALL_UNITS]).map((u, i) => (
-                            <option key={`${u}-${i}`} value={u}>
-                              {u || "—"}
-                            </option>
-                          ))}
+                          {(lot ? allowedUnits : ["", ...ALL_UNITS]).map(
+                            (u, i) => (
+                              <option key={`${u}-${i}`} value={u}>
+                                {u || "—"}
+                              </option>
+                            )
+                          )}
                         </select>
                       </div>
                     </div>
@@ -901,16 +926,14 @@ export default function RecipeBatchesForm({
             submitDisabled ? "bg-darkBlue/40" : "bg-blue"
           }`}
           title={
-            submitDisabled
-              ? "Validez au moins une ligne (Nom*)"
-              : undefined
+            submitDisabled ? "Validez au moins une ligne (Nom*)" : undefined
           }
         >
           {isSubmitting ? (
-            <>
+            <div className="flex items-center gap-2">
               <Loader2 className="size-4 animate-spin" />
-              Enregistrement…
-            </>
+              <span>Enregistrement…</span>
+            </div>
           ) : initial?._id ? (
             <>
               <FileText className="size-4" />

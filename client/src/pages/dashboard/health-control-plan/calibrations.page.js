@@ -13,11 +13,11 @@ import { GlobalContext } from "@/contexts/global.context";
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
+import CalibrationsForm from "@/components/dashboard/health-control-plan/calibrations/form.component";
+import CalibrationsList from "@/components/dashboard/health-control-plan/calibrations/list.component";
 
 // SVG
 import { HealthSvg } from "@/components/_shared/_svgs/health.svg";
-import CalibrationsForm from "@/components/dashboard/health-control-plan/calibrations/form.component";
-import CalibrationsList from "@/components/dashboard/health-control-plan/calibrations/list.component";
 
 export default function CalibrationstionPage(props) {
   const { t } = useTranslation("");

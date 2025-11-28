@@ -13,8 +13,8 @@ function currentUserFromToken(req) {
   return {
     userId: u.id,
     role,
-    firstName: u.firstname || u.firstName || "",
-    lastName: u.lastname || u.lastName || "",
+    firstName: u.firstname || "",
+    lastName: u.lastname || "",
   };
 }
 function normalizeStr(v) {
@@ -50,137 +50,152 @@ async function loadFridgeSnapshot(restaurantId, fridgeRef) {
    A) CRUD ENCEINTES (modale "Liste des enceintes")
    ============================================================ */
 
-router.use(authenticateToken);
-
 /** LIST
  * GET /restaurants/:restaurantId/fridges?active=1&q=...
  */
-router.get("/restaurants/:restaurantId/fridges", async (req, res) => {
-  try {
-    const { restaurantId } = req.params;
-    const { q, active } = req.query;
-    const query = { restaurantId };
-    if (active === "1" || active === "true") query.isActive = true;
-    if (q && String(q).trim()) {
-      const rx = new RegExp(String(q).trim(), "i");
-      query.$or = [
-        { name: rx },
-        { fridgeCode: rx },
-        { location: rx },
-        { locationCode: rx },
-        { sensorIdentifier: rx },
-      ];
+router.get(
+  "/restaurants/:restaurantId/fridges",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { restaurantId } = req.params;
+      const { q, active } = req.query;
+      const query = { restaurantId };
+      if (active === "1" || active === "true") query.isActive = true;
+      if (q && String(q).trim()) {
+        const rx = new RegExp(String(q).trim(), "i");
+        query.$or = [
+          { name: rx },
+          { fridgeCode: rx },
+          { location: rx },
+          { locationCode: rx },
+          { sensorIdentifier: rx },
+        ];
+      }
+      const items = await Fridge.find(query).sort({ isActive: -1, name: 1 });
+      res.json({ items });
+    } catch (err) {
+      console.error("GET /fridges:", err);
+      res
+        .status(500)
+        .json({ error: "Erreur lors du chargement des enceintes" });
     }
-    const items = await Fridge.find(query).sort({ isActive: -1, name: 1 });
-    res.json({ items });
-  } catch (err) {
-    console.error("GET /fridges:", err);
-    res.status(500).json({ error: "Erreur lors du chargement des enceintes" });
   }
-});
+);
 
 /** CREATE
  * POST /restaurants/:restaurantId/fridges
  */
-router.post("/restaurants/:restaurantId/fridges", async (req, res) => {
-  try {
-    const { restaurantId } = req.params;
-    const {
-      name,
-      fridgeCode,
-      location,
-      locationCode,
-      sensorIdentifier,
-      unit,
-      isActive,
-    } = req.body;
+router.post(
+  "/restaurants/:restaurantId/fridges",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { restaurantId } = req.params;
+      const {
+        name,
+        fridgeCode,
+        location,
+        locationCode,
+        sensorIdentifier,
+        unit,
+        isActive,
+      } = req.body;
 
-    if (!name || !String(name).trim())
-      return res.status(400).json({ error: "name est requis" });
+      if (!name || !String(name).trim())
+        return res.status(400).json({ error: "name est requis" });
 
-    const doc = new Fridge({
-      restaurantId,
-      name: String(name).trim(),
-      fridgeCode: normalizeStr(fridgeCode),
-      location: normalizeStr(location),
-      locationCode: normalizeStr(locationCode),
-      sensorIdentifier: normalizeStr(sensorIdentifier),
-      unit: unit === "°F" ? "°F" : "°C",
-      isActive: !!isActive,
-    });
+      const doc = new Fridge({
+        restaurantId,
+        name: String(name).trim(),
+        fridgeCode: normalizeStr(fridgeCode),
+        location: normalizeStr(location),
+        locationCode: normalizeStr(locationCode),
+        sensorIdentifier: normalizeStr(sensorIdentifier),
+        unit: unit === "°F" ? "°F" : "°C",
+        isActive: !!isActive,
+      });
 
-    await doc.save();
-    res.status(201).json(doc);
-  } catch (err) {
-    if (err?.code === 11000) {
-      return res
-        .status(409)
-        .json({ error: "Une enceinte avec ce nom existe déjà." });
+      await doc.save();
+      res.status(201).json(doc);
+    } catch (err) {
+      if (err?.code === 11000) {
+        return res
+          .status(409)
+          .json({ error: "Une enceinte avec ce nom existe déjà." });
+      }
+      console.error("POST /fridges:", err);
+      res
+        .status(500)
+        .json({ error: "Erreur lors de la création de l’enceinte" });
     }
-    console.error("POST /fridges:", err);
-    res.status(500).json({ error: "Erreur lors de la création de l’enceinte" });
   }
-});
+);
 
-/** UPDATE
- * PUT /restaurants/:restaurantId/fridges/:id
- */
-router.put("/restaurants/:restaurantId/fridges/:id", async (req, res) => {
-  try {
-    const { restaurantId, id } = req.params;
-    const f = await Fridge.findOne({ _id: id, restaurantId });
-    if (!f) return res.status(404).json({ error: "Enceinte introuvable" });
+/** UPDATE **/
+router.put(
+  "/restaurants/:restaurantId/fridges/:id",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { restaurantId, id } = req.params;
+      const f = await Fridge.findOne({ _id: id, restaurantId });
+      if (!f) return res.status(404).json({ error: "Enceinte introuvable" });
 
-    const {
-      name,
-      fridgeCode,
-      location,
-      locationCode,
-      sensorIdentifier,
-      unit,
-      isActive,
-    } = req.body;
+      const {
+        name,
+        fridgeCode,
+        location,
+        locationCode,
+        sensorIdentifier,
+        unit,
+        isActive,
+      } = req.body;
 
-    if (name !== undefined) f.name = String(name || "").trim();
-    if (fridgeCode !== undefined) f.fridgeCode = normalizeStr(fridgeCode);
-    if (location !== undefined) f.location = normalizeStr(location);
-    if (locationCode !== undefined) f.locationCode = normalizeStr(locationCode);
-    if (sensorIdentifier !== undefined)
-      f.sensorIdentifier = normalizeStr(sensorIdentifier);
-    if (unit !== undefined) f.unit = unit === "°F" ? "°F" : "°C";
-    if (isActive !== undefined) f.isActive = !!isActive;
+      if (name !== undefined) f.name = String(name || "").trim();
+      if (fridgeCode !== undefined) f.fridgeCode = normalizeStr(fridgeCode);
+      if (location !== undefined) f.location = normalizeStr(location);
+      if (locationCode !== undefined)
+        f.locationCode = normalizeStr(locationCode);
+      if (sensorIdentifier !== undefined)
+        f.sensorIdentifier = normalizeStr(sensorIdentifier);
+      if (unit !== undefined) f.unit = unit === "°F" ? "°F" : "°C";
+      if (isActive !== undefined) f.isActive = !!isActive;
 
-    await f.save();
-    res.json(f);
-  } catch (err) {
-    if (err?.code === 11000) {
-      return res
-        .status(409)
-        .json({ error: "Une enceinte avec ce nom existe déjà." });
+      await f.save();
+      res.json(f);
+    } catch (err) {
+      if (err?.code === 11000) {
+        return res
+          .status(409)
+          .json({ error: "Une enceinte avec ce nom existe déjà." });
+      }
+      console.error("PUT /fridges/:id:", err);
+      res
+        .status(500)
+        .json({ error: "Erreur lors de la mise à jour de l’enceinte" });
     }
-    console.error("PUT /fridges/:id:", err);
-    res
-      .status(500)
-      .json({ error: "Erreur lors de la mise à jour de l’enceinte" });
   }
-});
+);
 
-/** DELETE
- * DELETE /restaurants/:restaurantId/fridges/:id
- */
-router.delete("/restaurants/:restaurantId/fridges/:id", async (req, res) => {
-  try {
-    const { restaurantId, id } = req.params;
-    const doc = await Fridge.findOneAndDelete({ _id: id, restaurantId });
-    if (!doc) return res.status(404).json({ error: "Enceinte introuvable" });
-    res.json({ success: true });
-  } catch (err) {
-    console.error("DELETE /fridges/:id:", err);
-    res
-      .status(500)
-      .json({ error: "Erreur lors de la suppression de l’enceinte" });
+/** DELETE **/
+router.delete(
+  "/restaurants/:restaurantId/fridges/:id",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { restaurantId, id } = req.params;
+      const doc = await Fridge.findOneAndDelete({ _id: id, restaurantId });
+      if (!doc) return res.status(404).json({ error: "Enceinte introuvable" });
+      res.json({ success: true });
+    } catch (err) {
+      console.error("DELETE /fridges/:id:", err);
+      res
+        .status(500)
+        .json({ error: "Erreur lors de la suppression de l’enceinte" });
+    }
   }
-});
+);
 
 /* ============================================================
    B) CRUD RELEVÉS T°
@@ -191,6 +206,7 @@ router.delete("/restaurants/:restaurantId/fridges/:id", async (req, res) => {
  */
 router.post(
   "/restaurants/:restaurantId/fridge-temperatures",
+  authenticateToken,
   async (req, res) => {
     try {
       const { restaurantId } = req.params;
@@ -243,6 +259,7 @@ router.post(
  */
 router.get(
   "/restaurants/:restaurantId/fridge-temperatures",
+  authenticateToken,
   async (req, res) => {
     try {
       const { restaurantId } = req.params;
@@ -315,6 +332,7 @@ router.get(
 /** READ ONE */
 router.get(
   "/restaurants/:restaurantId/fridge-temperatures/:tempId",
+  authenticateToken,
   async (req, res) => {
     try {
       const { restaurantId, tempId } = req.params;
@@ -336,6 +354,7 @@ router.get(
 /** UPDATE (cellule en ligne) */
 router.put(
   "/restaurants/:restaurantId/fridge-temperatures/:tempId",
+  authenticateToken,
   async (req, res) => {
     try {
       const { restaurantId, tempId } = req.params;
@@ -389,6 +408,7 @@ router.put(
 /** DELETE */
 router.delete(
   "/restaurants/:restaurantId/fridge-temperatures/:tempId",
+  authenticateToken,
   async (req, res) => {
     try {
       const { restaurantId, tempId } = req.params;

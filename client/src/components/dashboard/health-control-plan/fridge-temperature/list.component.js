@@ -1,6 +1,10 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
+
+// AXIOS
 import axios from "axios";
+
+// ICONS
 import {
   CalendarDays,
   ChevronLeft,
@@ -245,7 +249,7 @@ export default function FridgeTemperatureList({
           <div className="text-xs text-darkBlue/50">{fmtDay(today)}</div>
         </header>
 
-        <div className="overflow-x-auto max-w-[calc(100vw-82px)] tablet:max-w-[calc(100vw-355px)] pb-2">
+        <div className="overflow-x-auto max-w-[calc(100vw-50px)] mobile:max-w-[calc(100vw-82px)] tablet:max-w-[calc(100vw-355px)] pb-2">
           <table className="w-full text-[13px]">
             <thead className="whitespace-nowrap">
               <tr className="sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
@@ -336,7 +340,7 @@ export default function FridgeTemperatureList({
         </header>
 
         {/* Scroll X + Y */}
-        <div className="overflow-x-auto overflow-y-auto max-h-[350px] max-w-[calc(100vw-82px)] tablet:max-w-[calc(100vw-355px)]">
+        <div className="overflow-x-auto overflow-y-auto max-h-[350px] max-w-[calc(100vw-50px)] mobile:max-w-[calc(100vw-82px)] tablet:max-w-[calc(100vw-355px)]">
           {loading ? (
             <div className="flex h-[300px] w-full items-center justify-center text-darkBlue/60">
               <Loader2 className="mr-2 size-4 animate-spin" /> Chargement…

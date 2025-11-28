@@ -3,7 +3,6 @@ const router = express.Router();
 
 const authenticateToken = require("../../middleware/authentificate-token");
 const InventoryLot = require("../../models/logs/inventory-lot.model");
-// NOUVEAU : pour synchroniser la qtyRemaining de la ligne de réception
 const ReceptionDelivery = require("../../models/logs/reception-delivery.model");
 
 /* --------- ARRONDI (helper local au fichier) --------- */
@@ -21,6 +20,10 @@ function roundByUnit(val, unit) {
 }
 
 /* --------- helpers --------- */
+function escapeRegExp(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function currentUserFromToken(req) {
   const u = req.user || {};
   const role = (u.role || "").toLowerCase();
@@ -28,8 +31,8 @@ function currentUserFromToken(req) {
   return {
     userId: u.id,
     role,
-    firstName: u.firstname || u.firstName || "",
-    lastName: u.lastname || u.lastName || "",
+    firstName: u.firstname || "",
+    lastName: u.lastname || "",
   };
 }
 function normalizeStr(v) {
@@ -247,10 +250,12 @@ router.get(
         }
       }
 
-      if (status && STATUS.has(String(status))) query.status = String(status);
+      if (status && STATUS.has(String(status))) {
+        query.status = String(status);
+      }
 
       if (q && String(q).trim().length) {
-        const rx = new RegExp(String(q).trim(), "i");
+        const rx = new RegExp(escapeRegExp(String(q).trim()), "i");
         query.$or = [
           { productName: rx },
           { supplier: rx },

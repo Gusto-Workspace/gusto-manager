@@ -4,7 +4,28 @@ const router = express.Router();
 const authenticateToken = require("../../middleware/authentificate-token");
 const HealthMeasure = require("../../models/logs/health-measure.model");
 
-/* ---------- helpers ---------- */
+const cloudinary = require("cloudinary").v2;
+const multer = require("multer");
+const streamifier = require("streamifier");
+const path = require("path");
+const axios = require("axios");
+
+/* ---------- Cloudinary config ---------- */
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+/* ---------- Multer mémoire ---------- */
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
+
+/* ---------- helpers généraux ---------- */
+function escapeRegExp(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function currentUserFromToken(req) {
   const u = req.user || {};
   const role = (u.role || "").toLowerCase();
@@ -12,8 +33,8 @@ function currentUserFromToken(req) {
   return {
     userId: u.id,
     role,
-    firstName: u.firstname || u.firstName || "",
-    lastName: u.lastname || u.lastName || "",
+    firstName: u.firstname || "",
+    lastName: u.lastname || "",
   };
 }
 const normStr = (v) => {
@@ -26,28 +47,75 @@ const normDate = (v) => {
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? null : d;
 };
-const normAttachments = (arr) => {
-  if (!arr) return undefined;
-  if (Array.isArray(arr))
-    return arr
-      .map((s) => String(s || "").trim())
-      .filter(Boolean)
-      .slice(0, 50);
-  return undefined;
-};
+
 function normalize(inData = {}) {
   return {
     type: normStr(inData.type) ?? undefined,
     performedAt: normDate(inData.performedAt) ?? undefined,
     notes: normStr(inData.notes) ?? null,
-    attachments: normAttachments(inData.attachments),
   };
+}
+
+/* ---------- Helpers Cloudinary ---------- */
+function haccpHealthFolder(restaurantId) {
+  return `Gusto_Workspace/restaurants/${restaurantId}/haccp/health-measures`;
+}
+
+function safePublicIdFromFilename(originalname) {
+  const ext = path.extname(originalname);
+  const basename = path.basename(originalname, ext);
+  const safeBase = basename
+    .replace(/\s+/g, "_")
+    .replace(/[^a-zA-Z0-9_\-]/g, "");
+  const stamp = Date.now();
+  return `${safeBase}_${stamp}`;
+}
+
+function uploadHealthFile(buffer, originalname, mimetype, restaurantId) {
+  const folder = haccpHealthFolder(restaurantId);
+  const public_id = safePublicIdFromFilename(originalname);
+
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        resource_type: "raw",
+        folder,
+        public_id,
+        overwrite: true,
+      },
+      (err, result) => {
+        if (err) return reject(err);
+        resolve({
+          url: result.secure_url,
+          public_id: result.public_id,
+          filename: originalname,
+          mimetype,
+        });
+      }
+    );
+    streamifier.createReadStream(buffer).pipe(uploadStream);
+  });
+}
+
+async function deleteHealthAttachment(public_id) {
+  if (!public_id) return;
+  try {
+    await cloudinary.uploader.destroy(public_id, {
+      resource_type: "raw",
+    });
+  } catch (err) {
+    console.warn(
+      `Erreur suppression pièce jointe Cloudinary health-measures (${public_id}):`,
+      err
+    );
+  }
 }
 
 /* ---------- CREATE ---------- */
 router.post(
   "/restaurants/:restaurantId/health-measures",
   authenticateToken,
+  upload.array("attachments"),
   async (req, res) => {
     try {
       const { restaurantId } = req.params;
@@ -56,9 +124,27 @@ router.post(
         return res.status(400).json({ error: "Utilisateur non reconnu" });
 
       const body = normalize(req.body);
+
+      // Upload éventuels fichiers
+      let attachments = [];
+      if (Array.isArray(req.files) && req.files.length) {
+        const uploads = await Promise.all(
+          req.files.map((file) =>
+            uploadHealthFile(
+              file.buffer,
+              file.originalname,
+              file.mimetype,
+              restaurantId
+            )
+          )
+        );
+        attachments = uploads;
+      }
+
       const doc = new HealthMeasure({
         restaurantId,
         ...body,
+        attachments,
         createdBy: currentUser,
       });
       await doc.save();
@@ -101,8 +187,13 @@ router.get(
       }
 
       if (q && String(q).trim().length) {
-        const rx = new RegExp(String(q).trim(), "i");
-        query.$or = [{ notes: rx }, { attachments: rx }, { type: rx }];
+        const safe = escapeRegExp(String(q).trim());
+        const rx = new RegExp(safe, "i");
+        query.$or = [
+          { notes: rx },
+          { type: rx },
+          { "attachments.filename": rx },
+        ];
       }
 
       const skip = (Number(page) - 1) * Number(limit);
@@ -153,6 +244,7 @@ router.get(
 router.put(
   "/restaurants/:restaurantId/health-measures/:id",
   authenticateToken,
+  upload.array("attachments"),
   async (req, res) => {
     try {
       const { restaurantId, id } = req.params;
@@ -163,17 +255,55 @@ router.put(
       delete inData.restaurantId;
       delete inData.createdAt;
       delete inData.updatedAt;
+      delete inData.attachments;
 
       const prev = await HealthMeasure.findOne({ _id: id, restaurantId });
       if (!prev) return res.status(404).json({ error: "Mesure introuvable" });
 
       const patch = normalize(inData);
 
-      // si attachments explicitement fournis (même vide) → remplace
-      if (Array.isArray(patch.attachments)) {
-        prev.attachments = patch.attachments;
-        delete patch.attachments;
+      // Gestion des pièces jointes
+      const prevAttachments = Array.isArray(prev.attachments)
+        ? prev.attachments
+        : [];
+
+      // Liste des public_id à conserver (depuis le front)
+      let keep = req.body.keepAttachments || [];
+      if (!Array.isArray(keep)) keep = keep ? [keep] : [];
+      keep = keep.map((s) => String(s));
+
+      const attachmentsToKeep = prevAttachments.filter((att) =>
+        keep.includes(String(att.public_id))
+      );
+      const attachmentsToRemove = prevAttachments.filter(
+        (att) => !keep.includes(String(att.public_id))
+      );
+
+      if (attachmentsToRemove.length) {
+        await Promise.all(
+          attachmentsToRemove.map((att) =>
+            deleteHealthAttachment(att.public_id)
+          )
+        );
       }
+
+      // Nouveaux fichiers
+      let newAttachments = [];
+      if (Array.isArray(req.files) && req.files.length) {
+        const uploads = await Promise.all(
+          req.files.map((file) =>
+            uploadHealthFile(
+              file.buffer,
+              file.originalname,
+              file.mimetype,
+              restaurantId
+            )
+          )
+        );
+        newAttachments = uploads;
+      }
+
+      prev.attachments = [...attachmentsToKeep, ...newAttachments];
 
       Object.assign(prev, patch, { updatedAt: new Date() });
       await prev.save();
@@ -197,11 +327,59 @@ router.delete(
       const doc = await HealthMeasure.findOne({ _id: id, restaurantId });
       if (!doc) return res.status(404).json({ error: "Mesure introuvable" });
 
+      if (Array.isArray(doc.attachments) && doc.attachments.length) {
+        await Promise.all(
+          doc.attachments.map((att) => deleteHealthAttachment(att.public_id))
+        );
+      }
+
       await HealthMeasure.deleteOne({ _id: id, restaurantId });
       return res.json({ success: true });
     } catch (err) {
       console.error("DELETE /health-measures/:id:", err);
       return res.status(500).json({ error: "Erreur lors de la suppression" });
+    }
+  }
+);
+
+/* ---------- DOWNLOAD ATTACHMENT ---------- */
+router.get(
+  "/haccp/health-measures/:restaurantId/documents/:public_id(*)/download",
+  async (req, res) => {
+    try {
+      const { restaurantId, public_id } = req.params;
+
+      const doc = await HealthMeasure.findOne(
+        {
+          restaurantId,
+          "attachments.public_id": public_id,
+        },
+        { attachments: 1 }
+      ).lean();
+
+      if (!doc) {
+        return res.status(404).json({ message: "Pièce jointe introuvable" });
+      }
+
+      const att = (doc.attachments || []).find(
+        (a) => a.public_id === public_id
+      );
+      if (!att) {
+        return res.status(404).json({ message: "Pièce jointe introuvable" });
+      }
+
+      const response = await axios.get(att.url, { responseType: "stream" });
+
+      res.setHeader("Content-Type", response.headers["content-type"]);
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${att.filename}"`
+      );
+
+      response.data.pipe(res);
+    } catch (err) {
+      console.error("Error in health-measures download route:", err);
+      res.status(500).json({ message: "Server error" });
     }
   }
 );

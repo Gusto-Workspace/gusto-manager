@@ -1,4 +1,3 @@
-// app/(components)/dashboard/health-control-plan/preheat-temperature/form.component.jsx
 "use client";
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
@@ -89,7 +88,7 @@ export default function PreheatTemperatureForm({
 
   // Styles alignés
   const fieldWrap =
-    "group relative rounded-xl bg-white/50 backdrop-blur-sm px-3 py-2 h-[80px] transition-shadow";
+    "group relative rounded-xl bg-white/50   px-3 py-2 h-[80px] transition-shadow";
   const labelCls =
     "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
   const inputCls =
@@ -204,9 +203,10 @@ export default function PreheatTemperatureForm({
           className={`${btnBase} bg-blue border-blue border text-white disabled:opacity-60`}
         >
           {isSubmitting ? (
-            <>
-              <Loader2 className="size-4 animate-spin" /> Enregistrement…
-            </>
+            <div className="flex items-center gap-2">
+              <Loader2 className="size-4 animate-spin" />
+              <span>Enregistrement…</span>
+            </div>
           ) : (
             <>
               <Thermometer className="size-4" />

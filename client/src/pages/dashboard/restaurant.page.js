@@ -17,9 +17,10 @@ import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import HoursRestaurantComponent from "@/components/dashboard/restaurant/hours.restaurant.component";
 import ContactRestaurantComponent from "@/components/dashboard/restaurant/contact.restaurant.component";
+import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
 
 export default function RestaurantPage(props) {
-  const { t } = useTranslation("");
+  const { t } = useTranslation("restaurant");
   const { restaurantContext } = useContext(GlobalContext);
 
   function handleUpdateData(updatedRestaurant) {
@@ -41,6 +42,25 @@ export default function RestaurantPage(props) {
 
   if (!restaurantContext.isAuth) return null;
 
+  const user = restaurantContext.userConnected;
+  const isEmployee = user?.role === "employee";
+
+  const restaurant = restaurantContext.restaurantData;
+
+  let employeeHasRestaurantAccess = true;
+
+  if (isEmployee && restaurant) {
+    const employeeInRestaurant = restaurant.employees?.find(
+      (emp) => String(emp._id) === String(user.id)
+    );
+
+    const profile = employeeInRestaurant?.restaurantProfiles?.find(
+      (p) => String(p.restaurant) === String(restaurant._id)
+    );
+
+    employeeHasRestaurantAccess = profile?.options?.restaurant === true;
+  }
+
   return (
     <>
       <Head>
@@ -60,33 +80,44 @@ export default function RestaurantPage(props) {
               restaurantData={restaurantContext.restaurantData}
             />
 
-            <hr className="opacity-20" />
-
-            <div className="flex gap-2 items-center">
-              <RestaurantSvg width={30} height={30} fillColor="#131E3690" />
-
-              <h1 className="pl-2 py-1 text-xl tablet:text-2xl">
-                {t("restaurant:title")}
-              </h1>
-            </div>
-
-            <div className="flex flex-col gap-6">
-              <ContactRestaurantComponent
-                restaurantData={restaurantContext.restaurantData}
-                restaurantId={restaurantContext.restaurantData?._id}
-                handleUpdateData={handleUpdateData}
+            {!employeeHasRestaurantAccess ? (
+              <NoAvailableComponent
                 dataLoading={restaurantContext.dataLoading}
-                closeEditing={restaurantContext.closeEditing}
+                emptyText="Vous n'avez pas accès à cette section"
               />
+            ) : (
+              <>
+                <hr className="opacity-20" />
 
-              <HoursRestaurantComponent
-                openingHours={restaurantContext.restaurantData?.opening_hours}
-                restaurantId={restaurantContext.restaurantData?._id}
-                dataLoading={restaurantContext.dataLoading}
-                closeEditing={restaurantContext.closeEditing}
-                handleUpdateData={handleUpdateData}
-              />
-            </div>
+                <div className="flex gap-2 items-center">
+                  <RestaurantSvg width={30} height={30} fillColor="#131E3690" />
+
+                  <h1 className="pl-2 py-1 text-xl tablet:text-2xl">
+                    {t("title")}
+                  </h1>
+                </div>
+
+                <div className="flex flex-col gap-6">
+                  <ContactRestaurantComponent
+                    restaurantData={restaurantContext.restaurantData}
+                    restaurantId={restaurantContext.restaurantData?._id}
+                    handleUpdateData={handleUpdateData}
+                    dataLoading={restaurantContext.dataLoading}
+                    closeEditing={restaurantContext.closeEditing}
+                  />
+
+                  <HoursRestaurantComponent
+                    openingHours={
+                      restaurantContext.restaurantData?.opening_hours
+                    }
+                    restaurantId={restaurantContext.restaurantData?._id}
+                    dataLoading={restaurantContext.dataLoading}
+                    closeEditing={restaurantContext.closeEditing}
+                    handleUpdateData={handleUpdateData}
+                  />
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>

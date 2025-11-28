@@ -9,6 +9,9 @@ import { useTranslation } from "next-i18next";
 // COMPONENTS
 import SimpleSkeletonComponent from "../../_shared/skeleton/simple-skeleton.component";
 
+// ICONS
+import { Loader2, RotateCcw, CheckCircle2, ChevronDown } from "lucide-react";
+
 export default function PaymentsDashboardComponent(props) {
   const { t } = useTranslation("transactions");
 
@@ -54,135 +57,250 @@ export default function PaymentsDashboardComponent(props) {
     setSelectedPayment(null);
   }
 
+  // helper statut + couleurs
+  function getStatus(payment) {
+    if (payment.refunded) {
+      return {
+        label: t("payments.refunded"),
+        cls: "bg-[#3b82f61a] text-[#1d4ed8] border-none",
+      };
+    }
+
+    let label = t("payments.status.unknown");
+    let cls = "bg-darkBlue/5 text-darkBlue border border-darkBlue/10";
+
+    switch (payment.status) {
+      case "succeeded":
+        label = t("payments.status.succeeded");
+        cls = "bg-[#4ead7a1a] text-[#167a47] border-none";
+        break;
+      case "pending":
+        label = t("payments.status.pending");
+        cls = "bg-[#f973161a] text-[#c2410c] border-none";
+        break;
+      case "failed":
+        label = t("payments.status.failed");
+        cls = "bg-[#ef44441a] text-[#b91c1c] border-none";
+        break;
+      case "canceled":
+        label = t("payments.status.canceled");
+        cls = "bg-[#9ca3af1a] text-[#4b5563] border-none";
+        break;
+    }
+
+    return { label, cls };
+  }
+
   return (
     <div className="flex flex-col gap-4">
       {props?.payments?.length > 0 ? (
         <>
-          {props.payments.map((payment, index) => (
-            <div
-              key={index}
-              className="bg-white drop-shadow-sm flex flex-col gap-4 midTablet:flex-row midTablet:items-center justify-between p-4 rounded-lg"
-            >
-              <div className="flex flex-col">
-                <p className="font-medium">
-                  <strong>{t("payments.date")} :</strong>{" "}
-                  {new Date(payment.date * 1000).toLocaleDateString()}
-                </p>
+          {props.payments.map((payment, index) => {
+            const { label: statusLabel, cls: statusBadgeCls } =
+              getStatus(payment);
+            const isThisRefundLoading =
+              refundLoading && selectedPayment?.id === payment.id;
 
-                <p>
-                  <strong>{t("payments.customer")} :</strong>{" "}
-                  {payment.customer || "Non renseigné"}
-                </p>
+            return (
+              <section
+                key={index}
+                className="
+                  rounded-2xl border border-darkBlue/10 bg-white/50
+                  px-4 py-4 midTablet:px-6 midTablet:py-5
+                  flex gap-4 flex-row items-center justify-between
+                  shadow-[0_18px_45px_rgba(19,30,54,0.06)]
+                "
+              >
+                {/* Infos paiement */}
+                <div className="flex flex-col gap-1 text-sm text-darkBlue">
+                  <div className="flex flex-wrap items-center gap-2 mb-1">
+                    <h3 className="font-semibold text-base">
+                      {t("payments.title", "Paiement")}
+                    </h3>
+                    <span
+                      className={`inline-flex items-center rounded-full px-3 py-0.5 text-[11px] font-medium ${statusBadgeCls}`}
+                    >
+                      {statusLabel}
+                    </span>
+                  </div>
 
-                <p>
-                  <strong>{t("payments.grossAmount")} :</strong>{" "}
-                  {payment.grossAmount} €
-                </p>
+                  <p>
+                    <span className="font-medium">
+                      {t("payments.date")} :
+                    </span>{" "}
+                    {new Date(payment.date * 1000).toLocaleDateString()}
+                  </p>
 
-                <p>
-                  <strong>{t("payments.fees")} : </strong>
-                  {payment.status !== "succeeded" ? "-" : payment.feeAmount} €
-                </p>
+                  <p>
+                    <span className="font-medium">
+                      {t("payments.customer")} :
+                    </span>{" "}
+                    {payment.customer || "Non renseigné"}
+                  </p>
 
-                <p>
-                  <strong>{t("payments.netAmount")} :</strong>{" "}
-                  {payment.status !== "succeeded" ? "-" : payment.netAmount} €
-                </p>
+                  <p>
+                    <span className="font-medium">
+                      {t("payments.grossAmount")} :
+                    </span>{" "}
+                    {payment.grossAmount} €
+                  </p>
 
-                <p>
-                  <strong>{t("payments.status.title")} : </strong>
-                  {payment.refunded
-                    ? t("payments.refunded")
-                    : (() => {
-                        switch (payment.status) {
-                          case "succeeded":
-                            return t("payments.status.succeeded");
-                          case "pending":
-                            return t("payments.status.pending");
-                          case "failed":
-                            return t("payments.status.failed");
-                          case "canceled":
-                            return t("payments.status.canceled");
-                          default:
-                            return t("payments.status.unknown");
+                  <p>
+                    <span className="font-medium">
+                      {t("payments.fees")} :
+                    </span>{" "}
+                    {payment.status !== "succeeded"
+                      ? "-"
+                      : `${payment.feeAmount} €`}
+                  </p>
+
+                  <p>
+                    <span className="font-medium">
+                      {t("payments.netAmount")} :
+                    </span>{" "}
+                    {payment.status !== "succeeded"
+                      ? "-"
+                      : `${payment.netAmount} €`}
+                  </p>
+                </div>
+
+                {/* CTA remboursement */}
+                <div className="flex items-center justify-end">
+                  {payment.refunded ? (
+                    <span
+                      className="
+                        inline-flex items-center gap-2 rounded-full
+                        bg-darkBlue/5 px-4 py-1.5 text-xs tablet:text-sm font-medium text-darkBlue
+                        border border-darkBlue/15
+                      "
+                    >
+                      <CheckCircle2 className="size-4 text-[#1d4ed8]" />
+                      {t("payments.refunded")}
+                    </span>
+                  ) : (
+                    <button
+                      className={`
+                        inline-flex items-center justify-center gap-2 rounded-full
+                        bg-red px-4 py-2 text-xs tablet:text-sm font-medium text-white
+                        shadow-sm transition-all duration-150
+                        ${
+                          payment.status !== "succeeded"
+                            ? "opacity-30 cursor-not-allowed"
+                            : "hover:shadow-md hover:opacity-95"
                         }
-                      })()}
-                </p>
-              </div>
-
-              {payment.refunded ? (
-                <p className="bg-blue text-white py-1 px-3 rounded-lg opacity-35 w-fit mx-auto midTablet:mx-0">
-                  {t("payments.refunded")}
-                </p>
-              ) : (
-                <button
-                  className={`bg-red text-white py-1 px-3 rounded-lg w-fit mx-auto midTablet:mx-0 ${
-                    payment.status !== "succeeded" && "hidden"
-                  }`}
-                  onClick={() => handleRefundClick(payment)}
-                  disabled={payment.status !== "succeeded" || refundLoading}
-                >
-                  {refundLoading && selectedPayment?.id === payment.id
-                    ? t("payments.refunding")
-                    : t("payments.refund")}
-                </button>
-              )}
-            </div>
-          ))}
+                      `}
+                      onClick={() => handleRefundClick(payment)}
+                      disabled={
+                        payment.status !== "succeeded" || refundLoading
+                      }
+                    >
+                      {isThisRefundLoading ? (
+                        <>
+                          <Loader2 className="size-4 animate-spin" />
+                          <span className="hidden mobile:inline">
+                            {t("payments.refunding")}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <RotateCcw className="size-4" />
+                          <span className="hidden mobile:inline">
+                            {t("payments.refund")}
+                          </span>
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+              </section>
+            );
+          })}
 
           {props.hasMorePayments && !props.isFiltered && (
             <button
-              className="bg-blue text-white py-2 px-4 rounded-lg w-fit self-center"
+              className="
+                inline-flex self-center items-center justify-center gap-2 rounded-full
+                bg-blue px-4 py-2 text-xs tablet:text-sm font-medium text-white
+                shadow-sm hover:shadow-md hover:opacity-95
+                disabled:opacity-40 disabled:cursor-not-allowed
+              "
               onClick={() => props.onLoadMore("payments")}
               disabled={props.dataLoading}
             >
-              {props.dataLoading
-                ? t("payments.loading")
-                : t("payments.loadMore")}
+              {props.dataLoading ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  <span>{t("payments.loading")}</span>
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="size-4" />
+                  <span>{t("payments.loadMore")}</span>
+                </>
+              )}
             </button>
           )}
         </>
       ) : (
-        <p className="bg-white p-6 rounded-lg drop-shadow-sm">
+        <section className="rounded-2xl border border-darkBlue/10 bg-white/50   px-4 py-5">
           {props.dataLoading ? (
             <SimpleSkeletonComponent />
           ) : (
-            t("payments.empty")
+            <p className="text-sm text-darkBlue/70">{t("payments.empty")}</p>
           )}
-        </p>
+        </section>
       )}
 
       {/* Modale de confirmation */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg shadow-lg max-w-[550px] mx-6 flex flex-col gap-6">
-            <p className="text-xl font-semibold mx-auto flex flex-col gap-4 text-center">
-              {t("payments.modale.title")}
-              <span className="w-[200px] h-[1px] mx-auto bg-black" />
-            </p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40   px-4">
+          <div className="max-w-[520px] w-full rounded-2xl border border-darkBlue/10 bg-white/95 px-6 py-5 shadow-[0_18px_45px_rgba(19,30,54,0.20)] flex flex-col gap-5">
+            <div className="text-center">
+              <h2 className="text-base tablet:text-lg font-semibold text-darkBlue">
+                {t("payments.modale.title")}
+              </h2>
+              <div className="mt-3 h-px w-32 mx-auto bg-darkBlue/15" />
+            </div>
 
-            <p className="text-md text-center">
+            <p className="text-sm text-darkBlue/70 text-center">
               {t("payments.modale.infoFirst")}
             </p>
 
-            <p className="text-md mb-2 text-center text-pretty">
+            <p className="text-sm text-darkBlue/70 text-center text-pretty">
               {t("payments.modale.infoSecond")}
             </p>
 
-            <div className="flex justify-center gap-2">
+            <div className="mt-2 flex flex-wrap items-center justify-center gap-3">
               <button
                 onClick={handleConfirmRefund}
                 disabled={refundLoading}
-                className="bg-blue text-white px-4 py-2 rounded-lg"
+                className="
+                  inline-flex items-center justify-center gap-2 rounded-full
+                  bg-red px-5 py-2 text-sm font-medium text-white
+                  shadow-sm hover:shadow-md hover:opacity-95
+                  disabled:opacity-50 disabled:cursor-not-allowed
+                "
               >
-                {refundLoading
-                  ? t("payments.modale.buttons.loading")
-                  : t("payments.modale.buttons.confirm")}
+                {refundLoading ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" />
+                    <span>{t("payments.modale.buttons.loading")}</span>
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw className="size-4" />
+                    <span>{t("payments.modale.buttons.confirm")}</span>
+                  </>
+                )}
               </button>
-              
+
               <button
                 onClick={handleCancelRefund}
-                className="bg-red text-white px-4 py-2 rounded-lg"
+                className="
+                  inline-flex items-center justify-center gap-2 rounded-full
+                  bg-darkBlue/5 px-5 py-2 text-sm font-medium text-darkBlue
+                  border border-darkBlue/15 hover:bg-darkBlue/8
+                "
               >
                 {t("payments.modale.buttons.cancel")}
               </button>

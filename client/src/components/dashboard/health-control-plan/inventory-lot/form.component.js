@@ -166,7 +166,7 @@ export default function InventoryLotForm({
 
   // ---- Styles
   const fieldWrap =
-    "group relative rounded-xl bg-white/50 backdrop-blur-sm px-3 py-2 h-[80px] transition-shadow";
+    "group relative rounded-xl bg-white/50   px-3 py-2 h-[80px] transition-shadow";
   const labelCls =
     "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
   const inputCls =
@@ -1259,10 +1259,10 @@ export default function InventoryLotForm({
       <div className="flex flex-col gap-2 mt-3 mobile:flex-row">
         <button type="submit" disabled={isSubmitting} className={btnPrimary}>
           {isSubmitting ? (
-            <>
-              <Loader2 className="size-4 animate-spin" />
-              Enregistrement…
-            </>
+             <div className="flex items-center gap-2">
+                <Loader2 className="size-4 animate-spin" />
+                <span>Enregistrementﬂ…</span>
+              </div>
           ) : initial?._id ? (
             <>
               <FileText className="size-4" />

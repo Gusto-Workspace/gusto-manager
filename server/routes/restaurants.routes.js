@@ -10,6 +10,64 @@ const authenticateToken = require("../middleware/authentificate-token");
 // MODELS
 const RestaurantModel = require("../models/restaurant.model");
 const VisitCounterModel = require("../models/visit-counter.model");
+const EmployeeModel = require("../models/employee.model");
+
+/* --------------------------------------------------------
+   Helpers multi-restaurant pour Employee
+   (doivent matcher ton nouveau schema Employee)
+---------------------------------------------------------*/
+
+// Ajoute le restaurant dans employee.restaurants s'il n'y est pas déjà
+function ensureEmployeeRestaurantLink(employee, restaurantId) {
+  const idStr = String(restaurantId);
+  if (!Array.isArray(employee.restaurants)) {
+    employee.restaurants = [];
+  }
+  const alreadyLinked = employee.restaurants.some(
+    (rId) => String(rId) === idStr
+  );
+  if (!alreadyLinked) {
+    employee.restaurants.push(restaurantId);
+  }
+}
+
+// Crée un profil "snapshot" pour ce restaurant si inexistant
+function getOrCreateRestaurantProfile(employee, restaurantId) {
+  const idStr = String(restaurantId);
+
+  if (!Array.isArray(employee.restaurantProfiles)) {
+    employee.restaurantProfiles = [];
+  }
+
+  let profile = employee.restaurantProfiles.find(
+    (p) => String(p.restaurant) === idStr
+  );
+
+  if (!profile) {
+    profile = {
+      restaurant: restaurantId,
+      options: {},
+      documents: [],
+      shifts: [],
+      leaveRequests: [],
+      snapshot: {
+        firstname: employee.firstname || "",
+        lastname: employee.lastname || "",
+        email: employee.email || "",
+        phone: employee.phone || "",
+        secuNumber: employee.secuNumber || "",
+        address: employee.address || "",
+        emergencyContact: employee.emergencyContact || "",
+        post: employee.post || "",
+        dateOnPost: employee.dateOnPost || null,
+      },
+    };
+
+    employee.restaurantProfiles.push(profile);
+  }
+
+  return profile;
+}
 
 // Fonction pour mettre à jour le statut des cartes cadeaux expirées
 async function updateExpiredStatus(restaurantId) {
@@ -29,6 +87,23 @@ async function updateExpiredStatus(restaurantId) {
   });
 
   await restaurant.save();
+}
+
+// Vérifie qu'un employé travaille bien dans un restaurant donné
+function employeeWorksInRestaurant(employee, restaurantId) {
+  const target = String(restaurantId);
+  return Array.isArray(employee.restaurants)
+    ? employee.restaurants.some((id) => String(id) === target)
+    : false;
+}
+
+// Trouve le profil de restaurant pour cet employé
+function findRestaurantProfile(employee, restaurantId) {
+  if (!Array.isArray(employee.restaurantProfiles)) return null;
+  const target = String(restaurantId);
+  return employee.restaurantProfiles.find(
+    (p) => String(p.restaurant) === target
+  );
 }
 
 // GET ALL OWNER RESTAURANTS
@@ -59,13 +134,65 @@ router.post("/owner/change-restaurant", authenticateToken, (req, res) => {
   res.status(200).json({ token: updatedToken });
 });
 
+// CHANGE RESTAURANT SELECTED POUR EMPLOYÉ
+router.post(
+  "/employees/change-restaurant",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      if (req.user.role !== "employee") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const { restaurantId } = req.body;
+      if (!restaurantId) {
+        return res.status(400).json({ message: "restaurantId is required" });
+      }
+
+      const emp = await EmployeeModel.findById(req.user.id);
+      if (!emp) {
+        return res.status(404).json({ message: "Employee not found" });
+      }
+
+      // Sécurité : l'employé doit vraiment être rattaché à ce resto
+      const worksHere = (emp.restaurants || []).some(
+        (id) => String(id) === String(restaurantId)
+      );
+      if (!worksHere) {
+        return res.status(403).json({
+          message: "Employee is not linked to this restaurant",
+        });
+      }
+
+      const profile = findRestaurantProfile(emp, restaurantId);
+
+      // On repart du token courant, mais SANS exp / iat
+      const decodedToken = req.user;
+      const { exp, iat, ...rest } = decodedToken; // on enlève ces champs
+
+      const payload = {
+        ...rest,
+        restaurantId,
+        options: profile?.options || {},
+      };
+
+      // 🔴 IMPORTANT : pas d'option expiresIn ici
+      const updatedToken = jwt.sign(payload, JWT_SECRET);
+
+      return res.status(200).json({ token: updatedToken });
+    } catch (e) {
+      console.error("Error in /employees/change-restaurant:", e);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  }
+);
+
 // GET RESTAURANT DETAILS FROM PANEL
 router.get("/owner/restaurants/:id", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
 
     // Met à jour les statuts des cartes expirées avant de récupérer les données
-
     await updateExpiredStatus(id);
 
     const restaurant = await RestaurantModel.findById(id)
@@ -238,7 +365,10 @@ router.post("/restaurants/:id/visits", async (req, res) => {
   const restaurantId = req.params.id;
   const now = new Date();
   // Format YYYY-MM, ex. "2025-07"
-  const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}`;
 
   try {
     // 1) On essaye d'incrémenter dans le sous-doc "periods" existant
@@ -308,6 +438,98 @@ router.get("/restaurants/:id/visits/monthly", async (req, res) => {
     return res
       .status(500)
       .json({ error: "Impossible de récupérer les visites mensuelles" });
+  }
+});
+
+// ----------------- OWNER : LISTE DES EMPLOYÉS EXISTANTS -----------------
+router.get("/owner/employees", async (req, res) => {
+  try {
+    const ownerId = req.query.ownerId;
+    if (!ownerId) {
+      return res.status(400).json({ message: "ownerId is required" });
+    }
+
+    // Tous les restos du propriétaire
+    const restaurants = await RestaurantModel.find(
+      { owner_id: ownerId },
+      "_id name"
+    ).lean();
+
+    const restaurantIds = restaurants.map((r) => r._id);
+    if (restaurantIds.length === 0) {
+      return res.json({ employees: [] });
+    }
+
+    // Tous les employés rattachés à au moins un de ces restos
+    const employees = await EmployeeModel.find({
+      restaurants: { $in: restaurantIds },
+    })
+      .select(
+        `
+        firstname lastname email phone secuNumber address emergencyContact
+        post dateOnPost profilePicture
+        restaurants restaurantProfiles
+      `
+      )
+      .populate("restaurants", "name _id")
+      .lean();
+
+    return res.json({ employees });
+  } catch (e) {
+    console.error("Error fetching owner employees:", e);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// ----------------- IMPORT EMPLOYÉ EXISTANT DANS UN RESTO -----------------
+router.post("/restaurants/:restaurantId/employees/import", async (req, res) => {
+  try {
+    const { restaurantId } = req.params;
+    const { employeeId } = req.body;
+
+    const restaurant = await RestaurantModel.findById(restaurantId);
+    if (!restaurant) {
+      return res.status(404).json({ message: "Restaurant not found" });
+    }
+
+    const employee = await EmployeeModel.findById(employeeId);
+    if (!employee) {
+      return res.status(404).json({ message: "Employee not found" });
+    }
+
+    // sécurité : si déjà rattaché à ce resto, on refuse
+    const alreadyInRestaurant =
+      Array.isArray(employee.restaurants) &&
+      employee.restaurants.some((rId) => String(rId) === String(restaurantId));
+
+    if (alreadyInRestaurant) {
+      return res
+        .status(409)
+        .json({ message: "Employee already in this restaurant" });
+    }
+
+    // On lie l'employé à ce resto + on crée le profil pour ce resto au besoin
+    ensureEmployeeRestaurantLink(employee, restaurantId);
+    getOrCreateRestaurantProfile(employee, restaurantId);
+
+    await employee.save();
+
+    if (
+      !restaurant.employees.some((id) => String(id) === String(employee._id))
+    ) {
+      restaurant.employees.push(employee._id);
+      await restaurant.save();
+    }
+
+    const updatedRestaurant = await RestaurantModel.findById(restaurantId)
+      .populate("owner_id", "firstname")
+      .populate("menus")
+      .populate("employees");
+
+    return res.json({ restaurant: updatedRestaurant });
+  } catch (e) {
+    console.error("Error importing employee:", e);
+    return res.status(500).json({ message: "Internal server error" });
   }
 });
 

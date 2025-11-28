@@ -6,16 +6,88 @@ import frLocale from "date-fns/locale/fr";
 import { GlobalContext } from "@/contexts/global.context";
 import { useTranslation } from "next-i18next";
 import { EmployeesSvg } from "../../_shared/_svgs/_index";
+import {
+  Search,
+  CalendarDays,
+  User,
+  CheckCircle2,
+  XCircle,
+} from "lucide-react";
 
 export default function DaysOffEmployeesComponent() {
   const { t } = useTranslation("employees");
   const { restaurantContext } = useContext(GlobalContext);
   const router = useRouter();
 
+  const restaurantId = restaurantContext.restaurantData?._id;
+
   // 1) Liste brute des employés
   const allEmployees = restaurantContext.restaurantData?.employees || [];
 
-  // 2) Search state + normalisation sans accents
+  // 2) HYDRATATION DES LEAVE-REQUESTS AU MONTAGE ──────────────────────────────
+  useEffect(() => {
+    if (!restaurantId) return;
+    const employees = allEmployees;
+    if (!employees.length) return;
+
+    const alreadyHaveLeave = employees.some(
+      (e) => Array.isArray(e.leaveRequests) && e.leaveRequests.length > 0
+    );
+    if (alreadyHaveLeave) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const results = await Promise.all(
+          employees.map((emp) =>
+            axios
+              .get(
+                `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${emp._id}/leave-requests`
+              )
+              .then((res) => ({
+                employeeId: emp._id,
+                leaveRequests: res.data || [],
+              }))
+              .catch((err) => {
+                console.error(
+                  "Erreur fetch leave-requests pour",
+                  emp._id,
+                  err
+                );
+                return { employeeId: emp._id, leaveRequests: [] };
+              })
+          )
+        );
+
+        if (cancelled) return;
+
+        restaurantContext.setRestaurantData((prev) => {
+          if (!prev) return prev;
+          const prevEmployees = prev.employees || [];
+          return {
+            ...prev,
+            employees: prevEmployees.map((emp) => {
+              const match = results.find(
+                (r) => String(r.employeeId) === String(emp._id)
+              );
+              return match
+                ? { ...emp, leaveRequests: match.leaveRequests }
+                : emp;
+            }),
+          };
+        });
+      } catch (e) {
+        console.error("Erreur hydratation leave-requests:", e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [restaurantId, allEmployees.length]);
+
+  // 3) Search state + normalisation sans accents
   const [searchTerm, setSearchTerm] = useState("");
   const normalize = (str) =>
     str
@@ -24,7 +96,7 @@ export default function DaysOffEmployeesComponent() {
       .toLowerCase()
       .trim();
 
-  // 3) Filtrer les employés
+  // 4) Filtrer les employés
   const employees = useMemo(() => {
     if (!searchTerm.trim()) return allEmployees;
     const norm = normalize(searchTerm);
@@ -33,7 +105,7 @@ export default function DaysOffEmployeesComponent() {
     );
   }, [allEmployees, searchTerm]);
 
-  // 4) Aplatir leurs demandes
+  // 5) Aplatir leurs demandes
   const [requests, setRequests] = useState([]);
   useEffect(() => {
     const objectIdToDate = (oid) =>
@@ -52,7 +124,7 @@ export default function DaysOffEmployeesComponent() {
     setRequests(all);
   }, [employees]);
 
-  // 5) Grouper par statut
+  // 6) Grouper par statut
   const grouped = useMemo(() => {
     return requests.reduce(
       (acc, req) => {
@@ -63,7 +135,7 @@ export default function DaysOffEmployeesComponent() {
     );
   }, [requests]);
 
-  // 6) Formater le nombre de jours
+  // 7) Formater le nombre de jours
   function formatDays(req) {
     const start = new Date(req.start);
     const end = new Date(req.end);
@@ -79,33 +151,37 @@ export default function DaysOffEmployeesComponent() {
     return `${totalDays} ${totalDays > 1 ? "jours" : "jour"}`;
   }
 
-  // 7) Mise à jour instantanée du statut
+  // 8) Mise à jour instantanée du statut
   async function updateStatus(empId, reqId, status) {
     try {
+      if (!restaurantId) {
+        window.alert("Restaurant introuvable");
+        return;
+      }
+
       const { data } = await axios.put(
-        `${process.env.NEXT_PUBLIC_API_URL}/employees/${empId}/leave-requests/${reqId}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${empId}/leave-requests/${reqId}`,
         { status }
       );
+      // data = { leaveRequest, shifts }
 
-      // 1) Mettre à jour la liste aplanie locale (UI de cette page)
+      // 1) Mettre à jour la liste aplanie locale
       setRequests((rs) =>
         rs.map((r) =>
           r._id === reqId && r.employee._id === empId ? { ...r, status } : r
         )
       );
 
-      // 2) Mettre à jour le contexte global (très important pour la page Planning)
+      // 2) Mettre à jour le contexte global (pour le planning)
       restaurantContext.setRestaurantData((prev) => ({
         ...prev,
         employees: (prev?.employees || []).map((e) =>
           e._id === empId
             ? {
                 ...e,
-                // on met à jour le status de la LR ciblée
                 leaveRequests: (e.leaveRequests || []).map((lr) =>
                   String(lr._id) === String(reqId) ? { ...lr, status } : lr
                 ),
-                // et on remplace les shifts par ceux renvoyés par l’API
                 shifts: data.shifts || [],
               }
             : e
@@ -117,7 +193,7 @@ export default function DaysOffEmployeesComponent() {
     }
   }
 
-  // 8) Labels
+  // 9) Labels
   const statusLabels = {
     pending: t("daysOff.labels.pending", "En attente"),
     approved: t("daysOff.labels.approved", "Confirmées"),
@@ -125,11 +201,14 @@ export default function DaysOffEmployeesComponent() {
     cancelled: t("daysOff.labels.cancelled", "Annulées"),
   };
 
+  const sectionCard =
+    "rounded-2xl bg-white/60 border border-darkBlue/10 shadow-sm p-2 midTablet:p-3";
+
   return (
-    <section className="flex flex-col gap-4 min-w-0">
-      {/* ─── En-tête + Recherche ─────────────────────────────────────────────── */}
+    <section className="flex flex-col gap-6 min-w-0">
+      {/* ─── En-tête ─────────────────────────────────────────────── */}
       <div className="flex justify-between flex-wrap gap-4">
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3">
           <div className="flex items-center gap-2 min-h-[40px]">
             <EmployeesSvg
               width={30}
@@ -152,76 +231,115 @@ export default function DaysOffEmployeesComponent() {
                 {t("titles.planning")}
               </span>
               <span>/</span>
-              <span>{t("titles.daysOff")}</span>
+              <span className="">{t("titles.daysOff")}</span>
             </h1>
           </div>
+          <p className="text-xs text-darkBlue/60 max-w-xl">
+            {t(
+              "daysOff.helper",
+              "Visualisez et gérez les demandes de congés des employés, par statut."
+            )}
+          </p>
         </div>
       </div>
-      <div className="relative midTablet:w-[350px] mb-6">
-        <input
-          type="text"
-          placeholder={t(
-            "placeholders.searchEmployee",
-            "Rechercher un employé"
+
+      {/* ─── Barre de recherche ───────────────────────────────────── */}
+      <div className={`midTablet:w-[380px]`}>
+        <div className="relative">
+          <input
+            type="text"
+            placeholder={t(
+              "placeholders.searchEmployee",
+              "Rechercher un employé"
+            )}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full h-10 rounded-lg border border-darkBlue/20 bg-white/90 px-3 pr-9 text-[14px] outline-none transition placeholder:text-darkBlue/40 focus:border-darkBlue/50"
+          />
+          <Search className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/30" />
+          {searchTerm && (
+            <button
+              type="button"
+              onClick={() => setSearchTerm("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 bg-black/20 text-white rounded-full flex items-center justify-center text-xs hover:bg-black/40 transition"
+            >
+              ×
+            </button>
           )}
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full p-2 pr-10 border border-[#131E3690] rounded-lg"
-        />
-        {searchTerm && (
-          <button
-            onClick={() => setSearchTerm("")}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 w-6 h-6 bg-black bg-opacity-30 text-white rounded-full flex items-center justify-center"
-          >
-            &times;
-          </button>
-        )}
+        </div>
       </div>
 
-      {/* ─── Sections par statut ────────────────────────────────────────────── */}
+      {/* ─── Sections par statut ──────────────────────────────────── */}
       {["pending", "approved", "rejected", "cancelled"].map((status) => (
-        <div key={status}>
-          <div className="relative mb-4">
-            <h2 className="relative flex items-center justify-center gap-2 w-fit px-6 mx-auto text-center text-lg font-semibold uppercase bg-lightGrey z-20">
-              {statusLabels[status]}
-              <span className="text-base opacity-50">
-                ({grouped[status].length})
+        <div key={status} className="flex flex-col gap-3">
+          {/* Titre de section avec ligne */}
+          <div className="relative mb-1">
+            <hr className="text-darkBlue/10 absolute h-[1px] w-full left-0 top-1/2 -translate-y-1/2 z-10" />
+            <div className="relative z-20 flex justify-center">
+              <span className="inline-flex items-center gap-2 rounded-full bg-lightGrey px-4 py-1 text-xs font-semibold uppercase tracking-wide text-darkBlue/80 shadow-sm">
+                {status === "pending" && (
+                  <CalendarDays className="size-3.5 text-amber-500" />
+                )}
+                {status === "approved" && (
+                  <CheckCircle2 className="size-3.5 text-emerald-500" />
+                )}
+                {status === "rejected" && (
+                  <XCircle className="size-3.5 text-red-500" />
+                )}
+                {status === "cancelled" && (
+                  <XCircle className="size-3.5 text-slate-500" />
+                )}
+                <span>{statusLabels[status]}</span>
+                <span className="text-[11px] opacity-60">
+                  ({grouped[status].length})
+                </span>
               </span>
-            </h2>
-            <hr className="bg-darkBlue absolute h-[1px] w-full midTablet:w-[350px] left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 z-10" />
+            </div>
           </div>
 
           {grouped[status].length === 0 ? (
-            <div className="p-6 bg-white bg-opacity-70 drop-shadow-sm rounded-lg w-full mobile:w-1/2 mx-auto text-center">
-              <p className="italic">
+            <div className={`${sectionCard} midTablet:w-1/2 mx-auto`}>
+              <p className="italic text-center text-sm text-darkBlue/60">
                 {t("daysOff.noRequestsStatus", "Aucune demande")}
               </p>
             </div>
           ) : (
-            <ul className="flex flex-col gap-4">
+            <ul className="grid grid-cols-1 midTablet:grid-cols-2 gap-3">
               {grouped[status].map((req) => {
                 const start = new Date(req.start);
                 const end = new Date(req.end);
+
                 return (
                   <li
                     key={req._id}
-                    className="relative bg-white p-4 rounded-lg drop-shadow-sm flex flex-col gap-2 midTablet:flex-row midTablet:items-center justify-between"
+                    className={`${sectionCard} flex flex-col gap-3 midTablet:flex-row midTablet:items-center justify-between`}
                   >
-                    <div className="flex flex-col text-center midTablet:text-start">
-                      <div className="font-medium">
-                        {req.employee.firstname} {req.employee.lastname}
+                    {/* Infos employé + dates */}
+                    <div className="flex flex-col gap-1 text-center midTablet:text-left">
+                      <div className="flex items-center justify-center midTablet:justify-start gap-2">
+                        <User className="size-4 text-darkBlue/70" />
+                        <span className="font-medium text-darkBlue">
+                          {req.employee.firstname} {req.employee.lastname}
+                        </span>
                       </div>
-                      <div>
-                        <strong>
-                          {format(start, "dd/MM/yyyy", { locale: frLocale })}
-                        </strong>{" "}
-                        –{" "}
-                        <strong>
-                          {format(end, "dd/MM/yyyy", { locale: frLocale })}
-                        </strong>{" "}
-                        ({formatDays(req)})
+
+                      <div className="text-sm flex flex-col gap-1 items-center midTablet:items-start text-darkBlue/80">
+                        <span className="inline-flex items-center gap-1">
+                          <CalendarDays className="size-3.5 text-darkBlue/60" />
+                          <strong>
+                            {format(start, "dd/MM/yyyy", { locale: frLocale })}
+                          </strong>
+                          <span>–</span>
+                          <strong>
+                            {format(end, "dd/MM/yyyy", { locale: frLocale })}
+                          </strong>
+                        </span>
+                        <span className="text-xs text-darkBlue/60">
+                          ({formatDays(req)})
+                        </span>
                       </div>
-                      <div className="text-sm text-gray-600">
+
+                      <div className="text-[11px] text-darkBlue/50">
                         {t("daysOff.requestedAt", "Demandé le")}{" "}
                         {format(
                           req.createdAt
@@ -236,24 +354,37 @@ export default function DaysOffEmployeesComponent() {
                       </div>
                     </div>
 
+                    {/* Statut / actions */}
                     {status === "pending" && (
-                      <div className="flex gap-2 mt-4 midTablet:mt-0">
-                        <button
-                          onClick={() =>
-                            updateStatus(req.employee._id, req._id, "approved")
-                          }
-                          className="px-4 py-2 bg-green text-white rounded hover:opacity-80 transition"
-                        >
-                          {t("daysOff.confirm", "Confirmer")}
-                        </button>
-                        <button
-                          onClick={() =>
-                            updateStatus(req.employee._id, req._id, "rejected")
-                          }
-                          className="px-4 py-2 bg-red text-white rounded hover:opacity-80 transition"
-                        >
-                          {t("daysOff.reject", "Rejeter")}
-                        </button>
+                      <div className="flex flex-col items-center midTablet:items-end gap-2">
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateStatus(
+                                req.employee._id,
+                                req._id,
+                                "approved"
+                              )
+                            }
+                            className="inline-flex items-center gap-2 rounded-lg bg-green px-3 py-1.5 text-xs font-medium text-white shadow hover:opacity-90 transition"
+                          >
+                            <CheckCircle2 className="size-5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateStatus(
+                                req.employee._id,
+                                req._id,
+                                "rejected"
+                              )
+                            }
+                            className="inline-flex items-center gap-2 rounded-lg bg-red px-3 py-1.5 text-xs font-medium text-white shadow hover:opacity-90 transition"
+                          >
+                            <XCircle className="size-5" />
+                          </button>
+                        </div>
                       </div>
                     )}
                   </li>

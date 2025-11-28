@@ -533,7 +533,7 @@ export default function ListReservationsComponent(props) {
             const baseInMonth = d.inMonth
               ? "bg-white/80 border border-[#131E3615]"
               : "bg-white/60 border-transparent opacity-60";
-            const todayBorder = isToday ? " border border-[#FF914D70]" : "";
+
             const matchOutline = hasMatch
               ? " outline outline-1 outline-[#131E36]/40"
               : "";
@@ -548,11 +548,13 @@ export default function ListReservationsComponent(props) {
                   setSelectedDay(new Date(d.date));
                   setActiveDayTab("All"); // "Toutes" par défaut
                 }}
-                className={`relative p-1 midTablet:p-2 rounded-md midTablet:rounded-xl text-left transition ${baseInMonth}${todayBorder}${matchOutline}${selectedOutline}`}
+                className={`relative p-1 midTablet:p-2 rounded-md midTablet:rounded-xl text-left transition ${baseInMonth}${matchOutline}${selectedOutline}`}
                 aria-label={`Ouvrir le ${d.date.toLocaleDateString("fr-FR")}`}
               >
                 <div className="flex items-start justify-between">
-                  <div className={`text-sm ${isToday ? "font-bold" : ""}`}>
+                  <div
+                    className={`text-sm ${isToday ? "font-bold text-blue" : ""}`}
+                  >
                     {d.date.getDate()}
                   </div>
 
@@ -632,12 +634,14 @@ export default function ListReservationsComponent(props) {
               <span
                 className="cursor-pointer hover:underline"
                 onClick={() => {
-                  setSelectedDay(null); 
+                  setSelectedDay(null);
                 }}
               >
                 {t("titles.main")}
               </span>
-            <span className="font-normal text-sm opacity-70 mt-0.5 midTablet:mt-1">- {dateStrLong}</span>
+              <span className="font-normal text-sm opacity-70 mt-0.5 midTablet:mt-1">
+                - {dateStrLong}
+              </span>
             </h1>
           </div>
 
@@ -754,10 +758,10 @@ export default function ListReservationsComponent(props) {
                   ({byTime[time].length})
                 </span>
               </h3>
-              <hr className="bg-darkBlue/40 absolute h-[1px] w-full left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 z-10" />
+              <hr className="text-darkBlue/20 absolute h-[1px] w-full left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 z-10" />
             </div>
 
-            <ul className="grid grid-cols-1 midTablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-4 gap-6">
+            <ul className="grid grid-cols-1 midTablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-4 gap-4">
               {byTime[time].map((reservation) => (
                 <CardReservationComponent
                   key={reservation._id}

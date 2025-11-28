@@ -3,14 +3,31 @@ import { useContext, useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { useForm } from "react-hook-form";
 import { GlobalContext } from "@/contexts/global.context";
-import { EmployeesSvg } from "@/components/_shared/_svgs/employees.svg";
 import { useTranslation } from "next-i18next";
+
+// SVG
+import { EmployeesSvg } from "@/components/_shared/_svgs/employees.svg";
 
 // COMPONENTS
 import ModaleEmployeesComponent from "./modale.employees.component";
 import DocumentsEmployeeComponent from "./documents.employees.component";
 import AccessRightsEmployeesComponent from "./access-rights.employees.component";
 import DataEmployeesComponent from "./data.employees.component";
+
+const DEFAULT_OPTIONS = {
+  dashboard: false,
+  restaurant: false,
+  menus: false,
+  dishes: false,
+  drinks: false,
+  wines: false,
+  news: false,
+  gift_card: false,
+  reservations: false,
+  take_away: false,
+  employees: false,
+  health_control_plan: false,
+};
 
 export default function DetailsEmployeesComponent({ employeeId }) {
   const { t } = useTranslation("employees");
@@ -23,7 +40,6 @@ export default function DetailsEmployeesComponent({ employeeId }) {
   const [previewUrl, setPreviewUrl] = useState(null);
 
   // documents
-
   const [docs, setDocs] = useState([]);
   const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
   const [isUploadingDocs, setIsUploadingDocs] = useState(false);
@@ -34,7 +50,10 @@ export default function DetailsEmployeesComponent({ employeeId }) {
   const [isSavingDetails, setIsSavingDetails] = useState(false);
   const [optionsSaved, setOptionsSaved] = useState(false);
 
-  // Formulaire détails + photo
+  const restaurantId = restaurantContext.restaurantData?._id;
+  const baseUrl = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}`;
+
+  // Formulaire détails + photo (SNAPSHOT pour CE RESTO)
   const {
     register: regDetails,
     handleSubmit: handleDetailsSubmit,
@@ -42,7 +61,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     formState: { isDirty: detailsDirty },
   } = useForm({ mode: "onChange" });
 
-  // Formulaire options
+  // Formulaire options (droits par resto)
   const {
     register: regOptions,
     handleSubmit: handleOptionsSubmit,
@@ -66,13 +85,11 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     health_control_plan: t("nav.health", { ns: "common" }),
   };
 
-  const restaurantId = restaurantContext.restaurantData?._id;
-  const baseUrl = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}`;
-
   // Charger l’employé et initialiser les formulaires
   useEffect(() => {
     const data = restaurantContext.restaurantData;
-    if (!data) return;
+    if (!data || !restaurantId) return;
+
     const found = data.employees.find((e) => e._id === employeeId);
     if (!found) {
       router.replace("/dashboard/employees");
@@ -80,24 +97,44 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     }
     setEmployee(found);
 
+    // --- Récupérer le profile pour CE resto ---
+    const profile =
+      (found.restaurantProfiles || []).find(
+        (p) => String(p.restaurant) === String(restaurantId)
+      ) || null;
+
+    const snapshot = profile?.snapshot || {};
+
+    // Petite util pour la date
+    const rawDate = snapshot.dateOnPost || found.dateOnPost;
+    const dateOnPostStr = rawDate ? String(rawDate).slice(0, 10) : "";
+
+    // --- Initialisation des champs DÉTAILS avec priorité au snapshot ---
     resetDetails({
-      firstname: found.firstname,
-      lastname: found.lastname,
-      post: found.post,
-      dateOnPost: found.dateOnPost?.slice(0, 10),
-      email: found.email,
-      phone: found.phone,
-      secuNumber: found.secuNumber,
-      address: found.address,
-      emergencyContact: found.emergencyContact,
+      firstname: snapshot.firstname ?? found.firstname ?? "",
+      lastname: snapshot.lastname ?? found.lastname ?? "",
+      post: snapshot.post ?? found.post ?? "",
+      dateOnPost: dateOnPostStr,
+      email: snapshot.email ?? found.email ?? "",
+      phone: snapshot.phone ?? found.phone ?? "",
+      secuNumber: snapshot.secuNumber ?? found.secuNumber ?? "",
+      address: snapshot.address ?? found.address ?? "",
+      emergencyContact:
+        snapshot.emergencyContact ?? found.emergencyContact ?? "",
     });
-    resetOptions({ options: found.options });
+
+    // --- Initialisation des options avec fallback DEFAULT_OPTIONS ---
+    const mergedOptions = {
+      ...DEFAULT_OPTIONS,
+      ...(profile?.options || {}),
+    };
+    resetOptions({ options: mergedOptions });
 
     setPreviewUrl(found.profilePicture?.url || null);
     setProfileFile(null);
     setOptionsSaved(false);
 
-    // On réinitialise docs à chaque nouvel employé
+    // Initialise la liste de docs “en attente d’upload”
     setDocs([]);
   }, [
     employeeId,
@@ -105,6 +142,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     resetOptions,
     router,
     restaurantContext.restaurantData,
+    restaurantId,
   ]);
 
   // Réinitialise le champ fileInput si docs est vide
@@ -114,7 +152,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     }
   }, [docs]);
 
-  // Sélection locale de la photo (inchangé)
+  // Sélection locale de la photo
   function handleFileSelect(e) {
     const f = e.target.files[0];
     if (!f) return;
@@ -131,16 +169,20 @@ export default function DetailsEmployeesComponent({ employeeId }) {
         ([k, v]) => v !== undefined && fd.append(k, v)
       );
       if (profileFile) fd.append("profilePicture", profileFile);
+
       const response = await axios.patch(baseUrl, fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
+
       restaurantContext.setRestaurantData((prev) => ({
         ...prev,
         employees: response.data.restaurant.employees,
       }));
-      setEmployee(
-        response.data.restaurant.employees.find((e) => e._id === employeeId)
+
+      const updated = response.data.restaurant.employees.find(
+        (e) => e._id === employeeId
       );
+      setEmployee(updated);
       setIsEditing(false);
     } catch (err) {
       console.error("Erreur update détails :", err);
@@ -149,23 +191,34 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     }
   }
 
-  // Sauvegarde options
+  // Sauvegarde options (droits pour ce restaurant)
   async function onSaveOptions(formData) {
     try {
       await handleOptionsSubmit(async (d) => {
         const response = await axios.patch(baseUrl, {
           options: d.options,
         });
+
         restaurantContext.setRestaurantData((prev) => ({
           ...prev,
           employees: response.data.restaurant.employees,
         }));
+
         const updated = response.data.restaurant.employees.find(
           (e) => e._id === employeeId
         );
         setEmployee(updated);
         setOptionsSaved(true);
-        resetOptions({ options: updated.options });
+
+        const profile =
+          (updated.restaurantProfiles || []).find(
+            (p) => String(p.restaurant) === String(restaurantId)
+          ) || null;
+        const mergedOptions = {
+          ...DEFAULT_OPTIONS,
+          ...(profile?.options || {}),
+        };
+        resetOptions({ options: mergedOptions });
       })(formData);
     } catch (err) {
       console.error("Erreur update options :", err);
@@ -175,36 +228,34 @@ export default function DetailsEmployeesComponent({ employeeId }) {
   // Sélection documents locaux
   function onDocsChange(e) {
     const selectedFiles = Array.from(e.target.files);
-    // 1. Ne pas réajouter un fichier déjà en attente d'upload
     const existingNames = new Set(docs.map((d) => d.file.name));
-    // 2. Ne pas ajouter non plus un fichier déjà présent sur l'employé
+
+    const currentProfile =
+      (employee?.restaurantProfiles || []).find(
+        (p) => String(p.restaurant) === String(restaurantId)
+      ) || null;
     const uploadedNames = new Set(
-      employee.documents?.map((d) => d.filename) || []
+      currentProfile?.documents?.map((d) => d.filename) || []
     );
 
-    // Garde uniquement les fichiers UNIQUES
     const uniqueFiles = selectedFiles.filter(
       (f) => !existingNames.has(f.name) && !uploadedNames.has(f.name)
     );
 
     if (uniqueFiles.length < selectedFiles.length) {
-      // Avertissement : certains fichiers étaient en double
       setDuplicateModalOpen(true);
     }
 
-    // On ajoute les nouveaux fichiers (file + titre vide)
     const newDocs = uniqueFiles.map((f) => ({ file: f, title: "" }));
     setDocs((prev) => [...prev, ...newDocs]);
   }
 
-  // Met à jour le titre pour le doc à l’index donné
   function onDocTitleChange(index, newTitle) {
     setDocs((prev) =>
       prev.map((d, i) => (i === index ? { ...d, title: newTitle } : d))
     );
   }
 
-  // Upload documents + titres
   async function onSaveDocs() {
     if (!docs.length) return;
     setIsUploadingDocs(true);
@@ -221,9 +272,10 @@ export default function DetailsEmployeesComponent({ employeeId }) {
         ...prev,
         employees: response.data.restaurant.employees,
       }));
-      setEmployee(
-        response.data.restaurant.employees.find((e) => e._id === employeeId)
+      const updated = response.data.restaurant.employees.find(
+        (e) => e._id === employeeId
       );
+      setEmployee(updated);
       setDocs([]);
     } catch (err) {
       console.error("Erreur upload documents :", err);
@@ -232,17 +284,14 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     }
   }
 
-  // Retirer un fichier sélectionné
   function removeSelectedDoc(index) {
     setDocs((prev) => prev.filter((_, i) => i !== index));
   }
 
-  // Ouvre la modale de confirmation
   function confirmDeleteDoc(doc) {
     setDocToDelete(doc);
   }
 
-  // Supprime après confirmation (inchangé)
   async function onDeleteDoc() {
     const { public_id } = docToDelete;
     setIsDeletingDocId(public_id);
@@ -252,9 +301,10 @@ export default function DetailsEmployeesComponent({ employeeId }) {
         ...prev,
         employees: response.data.restaurant.employees,
       }));
-      setEmployee(
-        response.data.restaurant.employees.find((e) => e._id === employeeId)
+      const updated = response.data.restaurant.employees.find(
+        (e) => e._id === employeeId
       );
+      setEmployee(updated);
       setDocToDelete(null);
     } catch (err) {
       console.error("Erreur suppression document :", err);
@@ -264,6 +314,19 @@ export default function DetailsEmployeesComponent({ employeeId }) {
   }
 
   if (!employee) return null;
+
+  // Profil & documents pour le restaurant courant
+  const currentProfile =
+    (employee.restaurantProfiles || []).find(
+      (p) => String(p.restaurant) === String(restaurantId)
+    ) || null;
+
+  const currentSnapshot = currentProfile?.snapshot || {};
+  const currentDocuments = currentProfile?.documents || [];
+  const currentOptions = watchOptions("options") || {};
+
+  const displayFirstname = currentSnapshot.firstname || employee.firstname;
+  const displayLastname = currentSnapshot.lastname || employee.lastname;
 
   return (
     <section className="flex flex-col gap-6">
@@ -282,12 +345,12 @@ export default function DetailsEmployeesComponent({ employeeId }) {
           </span>
           <span>/</span>
           <span>
-            {employee.firstname} {employee.lastname}
+            {displayFirstname} {displayLastname}
           </span>
         </h1>
       </div>
 
-      {/* Détails & Photo */}
+      {/* Détails & Photo (formulaire branché sur le SNAPSHOT) */}
       <DataEmployeesComponent
         isEditing={isEditing}
         setIsEditing={setIsEditing}
@@ -296,6 +359,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
         regDetails={regDetails}
         isSavingDetails={isSavingDetails}
         employee={employee}
+        currentSnapshot={currentSnapshot}
         previewUrl={previewUrl}
         fileInputRef={fileInputRef}
         handleFileSelect={handleFileSelect}
@@ -306,7 +370,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
         profileFile={profileFile}
       />
 
-      {/* Attribuer des droits */}
+      {/* Attribuer des droits (par restaurant) */}
       <AccessRightsEmployeesComponent
         handleOptionsSubmit={handleOptionsSubmit}
         onSaveOptions={onSaveOptions}
@@ -318,15 +382,19 @@ export default function DetailsEmployeesComponent({ employeeId }) {
         optionsSaved={optionsSaved}
         optionsDirty={optionsDirty}
         regOptions={regOptions}
+        options={currentOptions}
       />
 
-      {/* Documents */}
+      {/* Documents (par restaurant) */}
       <DocumentsEmployeeComponent
         onDocsChange={onDocsChange}
         isUploadingDocs={isUploadingDocs}
         docs={docs}
         onSaveDocs={onSaveDocs}
         employee={employee}
+        restaurantId={restaurantId}
+        baseUrl={baseUrl}
+        currentDocuments={currentDocuments}
         confirmDeleteDoc={confirmDeleteDoc}
         isDeletingDocId={isDeletingDocId}
         removeSelectedDoc={removeSelectedDoc}

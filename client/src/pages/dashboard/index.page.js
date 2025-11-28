@@ -34,7 +34,6 @@ export default function DashboardPage(props) {
       description = "";
   }
 
-
   if (!restaurantContext.isAuth) return null;
 
   return (
@@ -78,7 +77,9 @@ export default function DashboardPage(props) {
               <div className="flex gap-2 items-center">
                 <AnalyticsSvg width={30} height={30} strokeColor="#131E3690" />
 
-                <h1 className="pl-2 text-2xl">{t("index:titles.main")}</h1>
+                <h1 className="pl-2 py-1 text-xl tablet:text-2xl">
+                  {t("index:titles.main")}
+                </h1>
               </div>
             </div>
 

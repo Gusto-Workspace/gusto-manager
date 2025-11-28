@@ -1,11 +1,15 @@
-import React, { useState, useMemo } from "react";
+"use client";
+
+import React, { useState, useMemo, useContext, useEffect } from "react";
+import Link from "next/link";
+import axios from "axios";
+import { GlobalContext } from "@/contexts/global.context";
 
 // I18N
 import { useTranslation } from "next-i18next";
 
 // SVG
 import { HealthSvg } from "@/components/_shared/_svgs/health.svg";
-import Link from "next/link";
 
 const tiles = [
   {
@@ -56,7 +60,6 @@ const tiles = [
     href: "/dashboard/health-control-plan/generic-temperature",
     tone: "350 84% 58%",
   },
-
   {
     key: "trace",
     label: "Traçabilité étiquettes",
@@ -97,14 +100,6 @@ const tiles = [
     href: "/dashboard/health-control-plan/pest-control",
     tone: "352 75% 54%",
   },
-  // {
-  //   key: "allergens",
-  //   label: "Allergènes",
-  //   icon: "🥜",
-  //   note: "Gestion & étiquetage",
-  //   href: "/dashboard/health-control-plan/allergen-incidents",
-  //   tone: "30 92% 50%",
-  // },
   {
     key: "micro",
     label: "Microbiologie",
@@ -181,8 +176,31 @@ const tiles = [
 
 export default function DashboardHealthControlPlanComponent() {
   const { t } = useTranslation(["health-control-plan", "common"]);
+  const { restaurantContext } = useContext(GlobalContext);
 
   const [searchTerm, setSearchTerm] = useState("");
+
+  // états pour la modale de rapport
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [reportFrom, setReportFrom] = useState("");
+  const [reportTo, setReportTo] = useState("");
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState(null);
+
+  const restaurantId = restaurantContext?.restaurantData?._id;
+  const restaurantName = restaurantContext?.restaurantData?.name;
+
+  useEffect(() => {
+    if (isReportModalOpen) {
+      document.body.classList.add("overflow-hidden");
+    } else {
+      document.body.classList.remove("overflow-hidden");
+    }
+
+    return () => {
+      document.body.classList.remove("overflow-hidden");
+    };
+  }, [isReportModalOpen]);
 
   // normalize string (accent-insensitive)
   const normalize = (s = "") =>
@@ -203,7 +221,7 @@ export default function DashboardHealthControlPlanComponent() {
           _searchText: `${tile.key} ${tile.label} ${translatedLabel} ${tile.note} ${translatedNote}`,
         };
       }),
-    [tiles, t]
+    [t]
   );
 
   // filtered tiles by searchTerm (matches key/label/note, accent-insensitive)
@@ -215,12 +233,89 @@ export default function DashboardHealthControlPlanComponent() {
     );
   }, [tilesWithText, searchTerm]);
 
+  const handleDownloadReport = async () => {
+    if (!restaurantId) {
+      setReportError(
+        "Aucun restaurant sélectionné. Veuillez recharger le tableau de bord."
+      );
+      return;
+    }
+
+    // Garde-fou : empêcher un "to" antérieur à "from"
+    if (reportFrom && reportTo && reportTo < reportFrom) {
+      setReportError(
+        "La date de fin ne peut pas être antérieure à la date de début."
+      );
+      return;
+    }
+
+    setReportError(null);
+    setReportLoading(true);
+
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL;
+
+      let token = null;
+      if (typeof window !== "undefined") {
+        token = localStorage.getItem("token");
+      }
+
+      const payload = {
+        from: reportFrom || null,
+        to: reportTo || null,
+        restaurantName: restaurantName || null,
+      };
+
+      const response = await axios.post(
+        `${API_URL}/restaurants/${restaurantId}/haccp-report`,
+        payload,
+        {
+          responseType: "blob",
+          headers: token
+            ? {
+                Authorization: `Bearer ${token}`,
+              }
+            : {},
+        }
+      );
+
+      const blob = new Blob([response.data], { type: "application/pdf" });
+      const url = window.URL.createObjectURL(blob);
+
+      const fromLabel = reportFrom || "";
+      const toLabel = reportTo || "";
+      const safeName = (restaurantName || `restaurant-${restaurantId}`)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `haccp-${safeName}-${fromLabel || "from"}-${
+        toLabel || "to"
+      }.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      setIsReportModalOpen(false);
+    } catch (err) {
+      console.error("Erreur lors du téléchargement du rapport HACCP :", err);
+      setReportError(
+        "Impossible de générer le rapport. Veuillez réessayer dans quelques instants."
+      );
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
   return (
     <section className="flex flex-col gap-6">
       <hr className="opacity-20" />
 
-      <div className="flex justify-between flex-wrap gap-4">
-        <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-4">
+        <div className="flex justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-2 min-h-[40px]">
             <HealthSvg width={30} height={30} fillColor="#131E3690" />
 
@@ -228,9 +323,22 @@ export default function DashboardHealthControlPlanComponent() {
               {t("health-control-plan:titles.main")}
             </h1>
           </div>
+
+          {/* Bouton édition de rapport */}
+          <button
+            type="button"
+            onClick={() => {
+              setIsReportModalOpen(true);
+              setReportError(null);
+            }}
+            className="bg-blue h-fit px-6 py-2 rounded-lg text-white cursor-pointer hover:opacity-80 transition-all ease-in-out"
+          >
+            Générer un rapport
+          </button>
         </div>
+
+        {/* Search + count */}
         <div className="w-full">
-          {/* Search + count */}
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
             <div className="flex items-center gap-3">
               <div className="relative max-w-[320px] w-full">
@@ -264,7 +372,7 @@ export default function DashboardHealthControlPlanComponent() {
         </div>
 
         {/* Tiles grid */}
-        <div className="grid grid-cols-1 midTablet:grid-cols-2 tablet:grid-cols-3 desktop:grid-cols-4 ultraWild:grid-cols-5 gap-4 w-full">
+        <div className="grid grid-cols-1 midTablet:grid-cols-2 tablet:grid-cols-3 desktop:grid-cols-4 ultraWild:grid-cols-5 gap-2 midTablet:gap-4 w-full">
           {filteredTiles.map((tile) => {
             const tone = tile.tone;
             return (
@@ -278,7 +386,7 @@ export default function DashboardHealthControlPlanComponent() {
                   "group relative overflow-hidden rounded-xl bg-white h-36",
                   "border-slate-200/80 shadow-[0_1px_0_rgba(0,0,0,0.03)]",
                   "transition-all duration-200 hover:-translate-y-[1px] hover:shadow-md",
-                  "focus:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone)/0.35)]",
+                  "focus:outline-none ",
                 ].join(" ")}
               >
                 {/* halo radial discret en haut-droite */}
@@ -325,6 +433,121 @@ export default function DashboardHealthControlPlanComponent() {
           })}
         </div>
       </div>
+
+      {/* Modale édition de rapport */}
+      {isReportModalOpen && (
+        <div
+          onClick={() => setIsReportModalOpen(false)}
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl shadow-lg max-w-md w-[90%] p-6 space-y-4"
+          >
+            <h2 className="text-lg font-semibold mb-2">
+              {t(
+                "health-control-plan:report.modalTitle",
+                "Générer un rapport HACCP"
+              )}
+            </h2>
+
+            <p className="text-sm text-slate-600">
+              {t(
+                "health-control-plan:report.modalDescription",
+                "Sélectionnez une plage de dates pour générer un rapport complet de vos enregistrements HACCP."
+              )}
+            </p>
+
+            <div className="flex flex-col gap-4 mt-4">
+              {/* Du (inclus) */}
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-slate-700">
+                  {t("health-control-plan:report.from", "Du (inclus)")}
+                </label>
+                <input
+                  type="date"
+                  className="w-full border border-[#131E3690] rounded-lg px-2 py-2 bg-white"
+                  value={reportFrom}
+                  // Empêche de choisir une date > reportTo si déjà renseigné
+                  max={reportTo || undefined}
+                  onChange={(e) => {
+                    const value = e.target.value;
+
+                    if (reportTo && value && value > reportTo) {
+                      setReportError(
+                        "La date de début ne peut pas être postérieure à la date de fin."
+                      );
+                      return;
+                    }
+
+                    setReportFrom(value);
+                    setReportError(null);
+                  }}
+                />
+              </div>
+
+              {/* Au (inclus) */}
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-slate-700">
+                  {t("health-control-plan:report.to", "Au (inclus)")}
+                </label>
+                <input
+                  type="date"
+                  className="w-full border border-[#131E3690] rounded-lg px-2 py-2 bg-white"
+                  value={reportTo}
+                  // Empêche de sélectionner une date antérieure à "from"
+                  min={reportFrom || undefined}
+                  onChange={(e) => {
+                    const value = e.target.value;
+
+                    if (reportFrom && value && value < reportFrom) {
+                      setReportError(
+                        "La date de fin ne peut pas être antérieure à la date de début."
+                      );
+                      return;
+                    }
+
+                    setReportTo(value);
+                    setReportError(null);
+                  }}
+                />
+              </div>
+            </div>
+
+            {reportError && (
+              <p className="text-xs text-red mt-2">{reportError}</p>
+            )}
+
+            <div className="flex flex-col-reverse mobile:flex-row mobile:justify-end gap-2 mt-4">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!reportLoading) {
+                    setIsReportModalOpen(false);
+                    setReportError(null);
+                  }
+                }}
+                className="px-3 w-full mobile:w-auto py-2 text-sm rounded-lg border border-slate-300 bg-white hover:bg-slate-50"
+              >
+                {t("common:buttons.cancel", "Annuler")}
+              </button>
+              <button
+                type="button"
+                onClick={handleDownloadReport}
+                disabled={reportLoading || !reportFrom || !reportTo}
+                className="px-4 py-2 w-full mobile:w-auto text-sm rounded-lg bg-[#131E36] text-white hover:bg-[#131E36]/90 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {reportLoading
+                  ? t("common:loading", "Génération…")
+                  : t(
+                      "health-control-plan:report.generate",
+                      "Générer le rapport"
+                    )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

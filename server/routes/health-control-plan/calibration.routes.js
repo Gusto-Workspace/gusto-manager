@@ -6,6 +6,10 @@ const authenticateToken = require("../../middleware/authentificate-token");
 const Calibration = require("../../models/logs/calibration.model");
 
 /* ---------- helpers ---------- */
+function escapeRegExp(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function currentUserFromToken(req) {
   const u = req.user || {};
   const role = (u.role || "").toLowerCase();
@@ -13,8 +17,8 @@ function currentUserFromToken(req) {
   return {
     userId: u.id,
     role,
-    firstName: u.firstname || u.firstName || "",
-    lastName: u.lastname || u.lastName || "",
+    firstName: u.firstname || "",
+    lastName: u.lastname || "",
   };
 }
 const normStr = (v) => {
@@ -74,9 +78,6 @@ router.post(
   }
 );
 
-/* ---------- LIST ---------- */
-// Filtres supportés : q (texte), type (deviceType), status (all|overdue|due_soon|ok),
-// date_from/date_to (sur calibratedAt), due_within_days (fenêtre "due_soon", défaut 14)
 router.get(
   "/restaurants/:restaurantId/list-calibrations",
   authenticateToken,
@@ -87,33 +88,31 @@ router.get(
         page = 1,
         limit = 20,
         q,
-        type,
         status = "all",
         date_from,
         date_to,
-        due_within_days,
+        soon_days = 14,
       } = req.query;
 
       const query = { restaurantId };
 
-      // recherche texte
+      // Recherche texte sécurisée
       if (q && String(q).trim().length) {
-        const rx = new RegExp(String(q).trim(), "i");
+        const safe = escapeRegExp(String(q).trim());
+        const rx = new RegExp(safe, "i");
         query.$or = [
           { deviceIdentifier: rx },
           { deviceType: rx },
           { method: rx },
           { provider: rx },
           { notes: rx },
+          { certificateUrl: rx },
+          { "recordedBy.firstName": rx },
+          { "recordedBy.lastName": rx },
         ];
       }
 
-      // filtre type
-      if (type && String(type).trim().length) {
-        query.deviceType = String(type).trim();
-      }
-
-      // range sur calibratedAt
+      // Dates calibratedAt
       if (date_from || date_to) {
         const from = normDate(date_from);
         const to = normDate(date_to);
@@ -128,43 +127,43 @@ router.get(
         if (Object.keys(range).length) query.calibratedAt = range;
       }
 
-      // statut basé sur nextCalibrationDue
+      // Statut basé sur nextCalibrationDue
       const now = new Date();
-      const soonDays = Math.max(
-        1,
-        Math.min(90, parseInt(due_within_days, 10) || 14)
-      );
+      const days = Math.max(1, Math.min(90, Number(soon_days) || 14));
       const soonLimit = new Date(now);
-      soonLimit.setDate(soonLimit.getDate() + soonDays);
+      soonLimit.setDate(soonLimit.getDate() + days);
 
       if (status === "overdue") {
-        query.nextCalibrationDue = { $ne: null, $lt: now };
+        query.nextCalibrationDue = { $lt: now, $ne: null };
       } else if (status === "due_soon") {
-        query.nextCalibrationDue = { $ne: null, $gte: now, $lte: soonLimit };
+        query.nextCalibrationDue = { $gte: now, $lte: soonLimit };
       } else if (status === "ok") {
-        // "ok" = soit pas d'échéance, soit > soonLimit
         query.$or = [
           { nextCalibrationDue: null },
           { nextCalibrationDue: { $gt: soonLimit } },
         ];
       }
 
-      const skip = (Number(page) - 1) * Number(limit);
+      const pageNum = Math.max(1, Number(page) || 1);
+      const limitNum = Math.max(1, Number(limit) || 20);
+      const skip = (pageNum - 1) * limitNum;
+
       const [items, total] = await Promise.all([
         Calibration.find(query)
           .sort({ calibratedAt: -1, _id: -1 })
           .skip(skip)
-          .limit(Number(limit)),
+          .limit(limitNum)
+          .lean(),
         Calibration.countDocuments(query),
       ]);
 
       return res.json({
         items,
         meta: {
-          page: Number(page),
-          limit: Number(limit),
+          page: pageNum,
+          limit: limitNum,
           total,
-          pages: Math.max(1, Math.ceil(total / Number(limit))),
+          pages: Math.max(1, Math.ceil(total / limitNum)),
         },
       });
     } catch (err) {

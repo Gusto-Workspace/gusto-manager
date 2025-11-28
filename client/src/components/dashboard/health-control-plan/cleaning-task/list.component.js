@@ -1,7 +1,11 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+
+// AXIOS
 import axios from "axios";
+
+// ICONS
 import {
   Search,
   CalendarClock,
@@ -61,6 +65,20 @@ function statusBadge(item) {
   return isDoneForPeriod(item) ? "Fait" : "À faire";
 }
 
+// Labels FR
+const FREQUENCY_LABELS = {
+  daily: "Quotidienne",
+  weekly: "Hebdomadaire",
+  monthly: "Mensuelle",
+  on_demand: "À la demande",
+};
+
+const RISK_LABELS = {
+  low: "Basse",
+  medium: "Moyenne",
+  high: "Élevée",
+};
+
 export default function CleaningTaskList({
   restaurantId,
   onEdit,
@@ -70,21 +88,33 @@ export default function CleaningTaskList({
   const [items, setItems] = useState([]);
   const [meta, setMeta] = useState({ page: 1, limit: 20, pages: 1, total: 0 });
   const [loading, setLoading] = useState(false);
+  const [showSlowLoader, setShowSlowLoader] = useState(false);
 
-  // Filtres
+  // Filtres date affichés
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  // Filtres date appliqués côté backend
+  const [appliedDateFrom, setAppliedDateFrom] = useState("");
+  const [appliedDateTo, setAppliedDateTo] = useState("");
+
+  // Recherche texte (backend)
   const [q, setQ] = useState("");
-  const [status, setStatus] = useState("all"); // all|done|todo (client-side désormais)
+
+  // Statut (client-side)
+  const [status, setStatus] = useState("all"); // all|done|todo
+  // Fréquence (backend)
   const [freq, setFreq] = useState(""); // ''
 
+  // Suppression
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
+  // SSR-safe portal
   const [isClient, setIsClient] = useState(false);
   useEffect(() => setIsClient(true), []);
 
+  // Empêche Au < Du
   useEffect(() => {
     if (dateFrom && dateTo && dateTo < dateFrom) setDateTo(dateFrom);
   }, [dateFrom, dateTo]);
@@ -113,13 +143,19 @@ export default function CleaningTaskList({
   const hasFullDateRange = Boolean(dateFrom && dateTo);
 
   const fetchData = async (page = 1, overrides = {}) => {
+    if (!restaurantId) return;
+
     setLoading(true);
     try {
       const cur = {
         q: overrides.q ?? q,
-        dateFrom: overrides.dateFrom ?? dateFrom,
-        dateTo: overrides.dateTo ?? dateTo,
-        status: overrides.status ?? status, // volontairement ignoré par le back
+        dateFrom:
+          overrides.dateFrom !== undefined
+            ? overrides.dateFrom
+            : appliedDateFrom,
+        dateTo:
+          overrides.dateTo !== undefined ? overrides.dateTo : appliedDateTo,
+        // status = client-side only
         freq: overrides.freq ?? freq,
       };
 
@@ -147,20 +183,53 @@ export default function CleaningTaskList({
     }
   };
 
+  // Loader "lent" : visible seulement si loading > 1s
+  useEffect(() => {
+    if (!loading) {
+      setShowSlowLoader(false);
+      return;
+    }
+    const id = setTimeout(() => {
+      setShowSlowLoader(true);
+    }, 1000);
+    return () => clearTimeout(id);
+  }, [loading]);
+
   // Initial fetch
   useEffect(() => {
-    if (restaurantId)
+    if (restaurantId) {
+      setAppliedDateFrom("");
+      setAppliedDateTo("");
       fetchData(1, {
         q: "",
         dateFrom: "",
         dateTo: "",
-        status: "all",
         freq: "",
       });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
 
-  // Auto-fetch quand Fréquence change (status=client-side now)
+  // Debounce sur la recherche (500ms) → fetch backend
+  const isFirstLoadRef = useRef(true);
+  useEffect(() => {
+    if (!restaurantId) return;
+
+    // Pas de fetch supplémentaire au premier rendu
+    if (isFirstLoadRef.current) {
+      isFirstLoadRef.current = false;
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      fetchData(1, { q });
+    }, 500);
+
+    return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, restaurantId]);
+
+  // Auto-fetch quand Fréquence change (status=client-side only)
   useEffect(() => {
     if (!restaurantId) return;
     fetchData(1);
@@ -218,28 +287,9 @@ export default function CleaningTaskList({
       window.removeEventListener("cleaning-task:upsert", handleUpsert);
   }, [restaurantId]);
 
-  // Recherche + statut côté client
+  // Filtre statut côté client (q est géré côté backend)
   const filtered = useMemo(() => {
     let base = items;
-
-    if (q) {
-      const qq = q.toLowerCase();
-      base = base.filter((it) =>
-        [
-          it?.zone,
-          it?.description,
-          it?.frequency,
-          ...(Array.isArray(it?.products) ? it.products : []),
-          ...(Array.isArray(it?.protocolSteps) ? it.protocolSteps : []),
-          it?.riskLevel,
-          it?.recordedBy?.firstName,
-          it?.recordedBy?.lastName,
-        ]
-          .join(" ")
-          .toLowerCase()
-          .includes(qq)
-      );
-    }
 
     if (status !== "all") {
       base = base.filter((it) => {
@@ -249,7 +299,7 @@ export default function CleaningTaskList({
     }
 
     return base;
-  }, [items, q, status]);
+  }, [items, status]);
 
   const askDelete = (item) => {
     setDeleteTarget(item);
@@ -308,7 +358,7 @@ export default function CleaningTaskList({
     }
   }
 
-  // Styles
+  /* ------------------------------ Styles ------------------------------ */
   const fieldWrap =
     "group relative rounded-xl bg-white/50 backdrop-blur-sm transition-shadow";
   const labelCls =
@@ -320,6 +370,7 @@ export default function CleaningTaskList({
   const btnBase =
     "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition active:scale-[0.98]";
 
+  /* ------------------------------ Render ------------------------------ */
   return (
     <div className="rounded-2xl border border-darkBlue/10 bg-white p-4 midTablet:p-5 shadow">
       {/* Filtres */}
@@ -395,9 +446,18 @@ export default function CleaningTaskList({
       <div className="mb-4">
         <div className="col-span-full flex flex-col gap-2 midTablet:flex-row">
           <button
-            onClick={() => hasFullDateRange && fetchData(1)}
+            onClick={() => {
+              if (!hasFullDateRange) return;
+              setAppliedDateFrom(dateFrom);
+              setAppliedDateTo(dateTo);
+              fetchData(1, { dateFrom, dateTo });
+            }}
             disabled={!hasFullDateRange}
-            title={!hasFullDateRange ? "Sélectionnez 'Du' ET 'Au'" : undefined}
+            title={
+              !hasFullDateRange
+                ? "Sélectionnez 'Du' ET 'Au' pour filtrer par dates"
+                : undefined
+            }
             className={`${btnBase} bg-blue text-white disabled:opacity-40`}
             type="button"
           >
@@ -411,11 +471,12 @@ export default function CleaningTaskList({
               setFreq("");
               setDateFrom("");
               setDateTo("");
+              setAppliedDateFrom("");
+              setAppliedDateTo("");
               fetchData(1, {
                 q: "",
                 dateFrom: "",
                 dateTo: "",
-                status: "all",
                 freq: "",
               });
             }}
@@ -428,136 +489,148 @@ export default function CleaningTaskList({
         </div>
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto max-w-[calc(100vw-83px)] midTablet:max-w-[calc(100vw-92px)] tablet:max-w-[calc(100vw-360px)] rounded-xl border border-darkBlue/10 p-2">
-        <table className="w-full text-[13px]">
-          <thead className="whitespace-nowrap">
-            <tr className="sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Statut
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Zone
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Fréquence
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Dernière fois
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Priorité
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Produits
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Dernier opérateur
-              </th>
-              <th className="py-2 pr-0 text-right font-medium text-darkBlue/70">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-darkBlue/10 [&>tr:last-child>td]:!pb-0">
-            {!loading && filtered.length === 0 && (
-              <tr>
-                <td colSpan={9} className="py-8 text-center text-darkBlue/50">
-                  Aucun plan
-                </td>
+      {/* Table + overlay loader */}
+      <div className="relative">
+        <div className="overflow-x-auto max-w-[calc(100vw-50px)] mobile:max-w-[calc(100vw-83px)] midTablet:max-w-[calc(100vw-92px)] tablet:max-w-[calc(100vw-360px)] rounded-xl border border-darkBlue/10">
+          <table className="w-full text-[13px]">
+            <thead className="whitespace-nowrap">
+              <tr className="text-nowrap sticky top-0 z-10 bg-white/95 backdrop-blur">
+                <th className="py-2 pr-3 pl-2 text-left font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  Statut
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  Zone
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  Fréquence
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  Dernière fois
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  Priorité
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  Produits
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  Dernier opérateur
+                </th>
+                <th className="py-2 pr-2 text-right font-medium text-darkBlue/70 border-b border-darkBlue/10">
+                  Actions
+                </th>
               </tr>
-            )}
-            {loading && (
-              <tr>
-                <td colSpan={9} className="py-8 text-center text-darkBlue/50">
-                  <span className="inline-flex items-center gap-2">
-                    <Loader2 className="size-4 animate-spin" /> Chargement…
-                  </span>
-                </td>
-              </tr>
-            )}
-            {!loading &&
-              filtered.map((it) => {
-                const badge = statusBadge(it);
-                const doneNow = badge === "Fait";
-                return (
-                  <tr
-                    key={it._id}
-                    className={`transition-colors hover:bg-darkBlue/[0.03] ${
-                      editingId === it._id
-                        ? "bg-blue/5 ring-1 ring-blue/20"
-                        : ""
-                    }`}
-                  >
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      <span
-                        className={`px-2 py-0.5 rounded text-xs ${
-                          it.frequency === "on_demand"
-                            ? "bg-orange text-white"
-                            : doneNow
-                              ? "bg-green text-white"
-                              : "bg-red text-white"
-                        }`}
-                      >
-                        {badge}
-                      </span>
-                    </td>
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      {it.zone || "—"}
-                    </td>
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      {it.frequency || "—"}
-                    </td>
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      {fmtDate(it.lastDoneAt)}
-                    </td>
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      {it.riskLevel || "—"}
-                    </td>
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      {Array.isArray(it.products) && it.products.length
-                        ? it.products.join(", ")
-                        : "—"}
-                    </td>
+            </thead>
 
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      {it?.lastDoneBy
-                        ? `${it.lastDoneBy.firstName || ""} ${it.lastDoneBy.lastName || ""}`.trim()
-                        : "—"}
-                    </td>
-                    <td className="py-2 pr-0">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => markDone(it)}
-                          className={`${btnBase} border border-green/60 bg-white text-green`}
-                          type="button"
-                          title="Marquer comme fait maintenant"
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr className="border-b border-darkBlue/10 last:border-b-0">
+                  <td colSpan={8} className="py-8 text-center text-darkBlue/50">
+                    Aucun plan
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((it) => {
+                  const badge = statusBadge(it);
+                  const doneNow = badge === "Fait";
+                  return (
+                    <tr
+                      key={it._id}
+                      className={`border-b border-darkBlue/10 last:border-b-0 transition-colors hover:bg-darkBlue/[0.03] ${
+                        editingId === it._id
+                          ? "bg-blue/5 ring-1 ring-blue/20"
+                          : ""
+                      }`}
+                    >
+                      <td className="py-2 pl-2 pr-3 whitespace-nowrap">
+                        <span
+                          className={`px-2 py-0.5 rounded text-xs ${
+                            it.frequency === "on_demand"
+                              ? "bg-orange text-white"
+                              : doneNow
+                                ? "bg-green text-white"
+                                : "bg-red text-white"
+                          }`}
                         >
-                          <Check className="size-4" /> Fait
-                        </button>
-                        <button
-                          onClick={() => onEdit?.(it)}
-                          className={`${btnBase} border text-nowrap border-blue/60 bg-white text-blue`}
-                          aria-label="Voir/Éditer"
-                          type="button"
-                        >
-                          <Edit3 className="size-4" /> Voir / Éditer
-                        </button>
-                        <button
-                          onClick={() => askDelete(it)}
-                          className={`${btnBase} border border-red bg-white text-red hover:border-red/80`}
-                          aria-label="Supprimer"
-                          type="button"
-                        >
-                          <Trash2 className="size-4" /> Supprimer
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-          </tbody>
-        </table>
+                          {badge}
+                        </span>
+                      </td>
+
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {it.zone || "—"}
+                      </td>
+
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {FREQUENCY_LABELS[it.frequency] ?? "—"}
+                      </td>
+
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {fmtDate(it.lastDoneAt)}
+                      </td>
+
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {RISK_LABELS[it.riskLevel] ?? "—"}
+                      </td>
+
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {Array.isArray(it.products) && it.products.length
+                          ? it.products.join(", ")
+                          : "—"}
+                      </td>
+
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {it?.lastDoneBy
+                          ? `${it.lastDoneBy.firstName || ""} ${
+                              it.lastDoneBy.lastName || ""
+                            }`.trim()
+                          : "—"}
+                      </td>
+
+                      <td className="py-2 pr-2">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => markDone(it)}
+                            className={`${btnBase} border border-green/60 bg-white text-green`}
+                            type="button"
+                            title="Marquer comme fait maintenant"
+                          >
+                            <Check className="size-4" /> Fait
+                          </button>
+                          <button
+                            onClick={() => onEdit?.(it)}
+                            className={`${btnBase} border text-nowrap border-blue/60 bg-white text-blue`}
+                            aria-label="Voir/Éditer"
+                            type="button"
+                          >
+                            <Edit3 className="size-4" /> Voir / Éditer
+                          </button>
+                          <button
+                            onClick={() => askDelete(it)}
+                            className={`${btnBase} border border-red bg-white text-red hover:border-red/80`}
+                            aria-label="Supprimer"
+                            type="button"
+                          >
+                            <Trash2 className="size-4" /> Supprimer
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Overlay loader par-dessus la table, seulement si loading > 1s */}
+        {showSlowLoader && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-white/60">
+            <div className="flex items-center gap-2 text-darkBlue/70 text-sm">
+              <Loader2 className="size-4 animate-spin" />
+              <span>Chargement…</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Pagination */}
@@ -617,9 +690,10 @@ export default function CleaningTaskList({
                     type="button"
                   >
                     {deleteLoading ? (
-                      <>
-                        <Loader2 className="size-4 animate-spin" /> Suppression…
-                      </>
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="size-4 animate-spin" />
+                        <span>Suppression…</span>
+                      </div>
                     ) : (
                       "Confirmer"
                     )}

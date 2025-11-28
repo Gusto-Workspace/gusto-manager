@@ -9,6 +9,10 @@ const ownerSchema = new mongoose.Schema({
   email: String,
   password: String,
   phoneNumber: String,
+  profilePicture: {
+    url: String,
+    public_id: String,
+  },
   stripeCustomerId: { type: String },
   restaurants: [{ type: mongoose.Schema.Types.ObjectId, ref: "Restaurant" }],
   created_at: { type: Date, default: Date.now },

@@ -44,7 +44,7 @@ function buildDefaults(rec) {
 
 /* ---------- STYLES alignés ---------- */
 const fieldWrap =
-  "group relative rounded-xl bg-white/50 backdrop-blur-sm px-3 py-2 min-h-[80px] transition-shadow";
+  "group relative rounded-xl bg-white/50   px-3 py-2 min-h-[80px] transition-shadow";
 const labelCls =
   "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
 const inputCls =
@@ -247,10 +247,10 @@ export default function CalibrationsForm({
           className={`text-nowrap ${btnBase} h-[38px] text-white shadow ${isSubmitting ? "bg-darkBlue/40" : "bg-blue"}`}
         >
           {isSubmitting ? (
-            <>
-              <Loader2 className="size-4 animate-spin" />
-              Enregistrement…
-            </>
+             <div className="flex items-center gap-2">
+                <Loader2 className="size-4 animate-spin" />
+                <span>Enregistrement…</span>
+              </div>
           ) : initial?._id ? (
             <>
               <FileText className="size-4" />

@@ -168,7 +168,7 @@ export default function ListMenusComponent(props) {
           onDragEnd={handleDragEnd}
         >
           <SortableContext items={menus?.map((menu) => menu._id)}>
-            <div className="grid grid-cols-1 midTablet:grid-cols-2 desktop:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 midTablet:grid-cols-2 desktop:grid-cols-3 gap-4">
               {menus?.map((menu, i) => (
                 <CardListMenuComponent
                   key={menu._id}

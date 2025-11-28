@@ -12,6 +12,7 @@ import { GlobalContext } from "@/contexts/global.context";
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import CategoriesListWinesComponent from "@/components/dashboard/wines/categories-list.wines.component";
+import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
 
 export default function WinesPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
@@ -31,33 +32,38 @@ export default function WinesPage(props) {
 
   if (!restaurantContext.isAuth) return null;
 
+  const restaurant = restaurantContext.restaurantData;
+  const restaurantOptions = restaurant?.options || {};
+  const hasWinesModule = !!restaurantOptions.wines;
+
+  const user = restaurantContext.userConnected;
+  const isEmployee = user?.role === "employee";
+
+  let employeeHasWinesAccess = true;
+
+  if (isEmployee && restaurant) {
+    const employeeInRestaurant = restaurant.employees?.find(
+      (emp) => String(emp._id) === String(user.id)
+    );
+
+    const profile = employeeInRestaurant?.restaurantProfiles?.find(
+      (p) => String(p.restaurant) === String(restaurant._id)
+    );
+
+    employeeHasWinesAccess = profile?.options?.wines === true;
+  }
+
   return (
     <>
       <Head>
         <title>{title}</title>
-
-        {/* <>
-          {description && <meta name="description" content={description} />}
-          {title && <meta property="og:title" content={title} />}
-          {description && (
-            <meta property="og:description" content={description} />
-          )}
-          <meta
-            property="og:url"
-            content="https://lespetitsbilingues-newham.com/"
-          />
-          <meta property="og:type" content="website" />
-          <meta property="og:image" content="/img/open-graph.jpg" />
-          <meta property="og:image:width" content="1200" />
-          <meta property="og:image:height" content="630" />
-        </> */}
       </Head>
 
       <div>
         <div className="flex">
           <NavComponent />
 
-           <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 min-h-screen">
+          <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 min-h-screen">
             <SettingsComponent
               dataLoading={restaurantContext.dataLoading}
               setDataLoading={restaurantContext.setDataLoading}
@@ -66,7 +72,19 @@ export default function WinesPage(props) {
               restaurantData={restaurantContext.restaurantData}
             />
 
-            <CategoriesListWinesComponent />
+            {!hasWinesModule ? (
+              <NoAvailableComponent
+                dataLoading={restaurantContext.dataLoading}
+                emptyText="Vous n'avez pas souscrit à cette option"
+              />
+            ) : !employeeHasWinesAccess ? (
+              <NoAvailableComponent
+                dataLoading={restaurantContext.dataLoading}
+                emptyText="Vous n'avez pas accès à cette section"
+              />
+            ) : (
+              <CategoriesListWinesComponent />
+            )}
           </div>
         </div>
       </div>

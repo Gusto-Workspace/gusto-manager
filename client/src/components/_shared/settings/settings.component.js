@@ -128,6 +128,9 @@ export default function SettingsComponent() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showUserMenu]);
 
+  const profilePictureUrl =
+    restaurantContext?.userConnected?.profilePictureUrl || null;
+
   return (
     <section className="flex flex-col-reverse tablet:flex-row min-h-16 gap-6 tablet:gap-7 justify-between items-center relative">
       {showRestaurantList && (
@@ -172,7 +175,13 @@ export default function SettingsComponent() {
                     <li
                       className="p-6 cursor-pointer"
                       onClick={() => {
-                        router.push("/dashboard");
+                        const role = restaurantContext.userConnected?.role;
+                        const targetPath =
+                          role === "employee"
+                            ? "/dashboard/my-space"
+                            : "/dashboard";
+
+                        router.push(targetPath);
                         setShowRestaurantList(false);
                         restaurantContext.handleRestaurantSelect(
                           restaurant._id
@@ -356,8 +365,16 @@ export default function SettingsComponent() {
                 {restaurantContext?.userConnected?.firstname}
               </span>
             </p>
-            <div className="h-10 w-10 rounded-full bg-black bg-opacity-20 text-white text-xl flex items-center justify-center">
-              {restaurantContext?.userConnected?.firstname?.charAt(0)}
+            <div className="h-10 w-10 rounded-full bg-black bg-opacity-20 text-white text-xl flex items-center justify-center overflow-hidden">
+              {profilePictureUrl ? (
+                <img
+                  src={profilePictureUrl}
+                  alt={`Avatar ${restaurantContext?.userConnected?.firstname || ""}`}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                restaurantContext?.userConnected?.firstname?.charAt(0)
+              )}
             </div>
           </div>
 

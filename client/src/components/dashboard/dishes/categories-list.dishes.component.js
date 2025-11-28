@@ -36,22 +36,27 @@ export default function CategoriesListDishesComponent() {
   const { t } = useTranslation("dishes");
   const router = useRouter();
   const { restaurantContext } = useContext(GlobalContext);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
   const [categories, setCategories] = useState(
-    restaurantContext?.restaurantData?.dish_categories
+    restaurantContext?.restaurantData?.dish_categories || []
   );
   const [catAlreadyExist, setCatAlreadyExist] = useState(false);
 
-  // Détecte les capteurs pour le drag-and-drop (souris et tactile)
+  // Afficher / masquer les catégories non visibles
+  const [showHidden, setShowHidden] = useState(false);
+
+  // DnD sensors
   const mouseSensor = useSensor(MouseSensor);
   const touchSensor = useSensor(TouchSensor);
   const sensors = useSensors(mouseSensor, touchSensor);
 
   useEffect(() => {
-    setCategories(restaurantContext?.restaurantData?.dish_categories);
+    setCategories(restaurantContext?.restaurantData?.dish_categories || []);
   }, [restaurantContext?.restaurantData]);
 
   const {
@@ -150,28 +155,21 @@ export default function CategoriesListDishesComponent() {
   function handleDragEnd(event) {
     const { active, over } = event;
 
-    if (!active || !over) {
-      return;
-    }
+    if (!active || !over) return;
+    if (active.id === over.id) return;
 
-    if (active.id !== over.id) {
-      setCategories((prevCategories) => {
-        const oldIndex = prevCategories.findIndex(
-          (cat) => cat._id === active.id
-        );
-        const newIndex = prevCategories.findIndex((cat) => cat._id === over.id);
+    setCategories((prevCategories) => {
+      if (!prevCategories || prevCategories.length === 0) return prevCategories;
 
-        const newCategoriesOrder = arrayMove(
-          prevCategories,
-          oldIndex,
-          newIndex
-        );
+      const oldIndex = prevCategories.findIndex((cat) => cat._id === active.id);
+      const newIndex = prevCategories.findIndex((cat) => cat._id === over.id);
 
-        saveNewCategoryOrder(newCategoriesOrder);
+      if (oldIndex === -1 || newIndex === -1) return prevCategories;
 
-        return newCategoriesOrder;
-      });
-    }
+      const newCategoriesOrder = arrayMove(prevCategories, oldIndex, newIndex);
+      saveNewCategoryOrder(newCategoriesOrder);
+      return newCategoriesOrder;
+    });
   }
 
   function saveNewCategoryOrder(updatedCategories) {
@@ -195,30 +193,68 @@ export default function CategoriesListDishesComponent() {
       });
   }
 
+  // --- dérivés pour l'UI ---
+  const hiddenCount =
+    categories?.filter((cat) => cat && cat.visible === false).length || 0;
+
+  const displayedCategories = showHidden
+    ? categories
+    : categories.filter((cat) => cat.visible !== false);
+
+  const toggleHiddenLabel = showHidden
+    ? `Masquer les catégories non visible`
+    : `Afficher les catégories non visible (${hiddenCount})`;
+
   return (
     <div className="flex flex-col gap-6">
       <hr className="opacity-20" />
 
-      <div className="flex flex-wrap gap-4 justify-between">
-        <div className="flex gap-2 items-center min-h-[40px]">
-          <DishSvg width={30} height={30} fillColor="#131E3690" />
+      <div className="flex flex-wrap gap-4 justify-between items-start">
+        {/* Titre + bouton toggle alignés à gauche */}
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-2 items-center min-h-[40px]">
+            <DishSvg width={30} height={30} fillColor="#131E3690" />
+            <h1 className="pl-2 text-xl tablet:text-2xl">
+              {t("titles.main")}
+            </h1>
+          </div>
 
-          <h1 className="pl-2 text-xl tablet:text-2xl">{t("titles.main")}</h1>
+          {hiddenCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowHidden((prev) => !prev)}
+              className="
+                inline-flex items-center gap-2
+                rounded-full border border-darkBlue/10 bg-white/80
+                px-3 py-1.5
+                text-[11px] font-medium text-darkBlue/70 tracking-[0.12em] uppercase
+                shadow-sm hover:bg-darkBlue/5 transition
+              "
+            >
+              <span
+                className={`inline-block h-1.5 w-1.5 rounded-full ${
+                  showHidden ? "bg-darkBlue/40" : "bg-darkBlue/25"
+                }`}
+              />
+              <span>{toggleHiddenLabel}</span>
+            </button>
+          )}
         </div>
 
+        {/* Bouton ajouter à droite */}
         <button
           onClick={() => {
             setEditingCategory(null);
             setIsDeleting(false);
             setIsModalOpen(true);
           }}
-          className="bg-blue px-6 py-2 rounded-lg text-white cursor-pointer"
+          className="bg-blue px-6 py-2 rounded-xl text-white text-sm font-medium shadow-sm hover:bg-blue/90 cursor-pointer"
         >
           {t("buttons.addCategory")}
         </button>
       </div>
 
-      {categories && (
+      {categories && categories.length > 0 && (
         <div className="flex flex-col gap-12">
           <DndContext
             sensors={sensors}
@@ -226,10 +262,10 @@ export default function CategoriesListDishesComponent() {
             onDragEnd={handleDragEnd}
           >
             <SortableContext
-              items={categories?.map((category) => category._id)}
+              items={displayedCategories.map((category) => category._id)}
             >
-              <div className="grid grid-cols-1 midTablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-4 gap-6">
-                {categories?.map((category) => (
+              <div className="grid grid-cols-1 midTablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-4 gap-4">
+                {displayedCategories.map((category) => (
                   <CardCategoryListComponent
                     key={category._id}
                     category={category}

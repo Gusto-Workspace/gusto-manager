@@ -1,4 +1,3 @@
-// server/routes/health-control-plan/cleaning-tasks.routes.js
 const express = require("express");
 const router = express.Router();
 
@@ -10,6 +9,9 @@ const CleaningTask = require("../../models/logs/cleaning-task.model");
 const Employee = require("../../models/employee.model");
 
 /* ---------- helpers ---------- */
+function escapeRegExp(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 function currentUserFromToken(req) {
   const u = req.user || {};
   const role = (u.role || "").toLowerCase();
@@ -17,8 +19,8 @@ function currentUserFromToken(req) {
   return {
     userId: new Types.ObjectId(String(u.id)),
     role,
-    firstName: u.firstname || u.firstName || "",
-    lastName: u.lastname || u.lastName || "",
+    firstName: u.firstname || "",
+    lastName: u.lastname || "",
   };
 }
 function normalizeStr(v) {
@@ -118,34 +120,42 @@ router.get(
         date_to,
       } = req.query;
 
-      const query = { restaurantId };
+      const baseQuery = { restaurantId };
 
+      // Fréquence stricte
       if (
         freq &&
         ["daily", "weekly", "monthly", "on_demand"].includes(String(freq))
       ) {
-        query.frequency = String(freq);
+        baseQuery.frequency = String(freq);
       }
 
+      // Filtre zone texte simple
       if (zone && String(zone).trim()) {
-        query.zone = new RegExp(String(zone).trim(), "i");
+        const safeZone = escapeRegExp(String(zone).trim());
+        baseQuery.zone = new RegExp(safeZone, "i");
       }
 
-      // Recherche texte simple
+      const andConds = [];
+
+      // Recherche texte
       if (q && String(q).trim()) {
-        const rx = new RegExp(String(q).trim(), "i");
-        (query.$or ||= []).push(
-          { zone: rx },
-          { description: rx },
-          { products: rx },
-          { protocolSteps: rx },
-          { riskLevel: rx },
-          { "recordedBy.firstName": rx },
-          { "recordedBy.lastName": rx }
-        );
+        const safeQ = escapeRegExp(String(q).trim());
+        const rx = new RegExp(safeQ, "i");
+        andConds.push({
+          $or: [
+            { zone: rx },
+            { description: rx },
+            { products: rx },
+            { protocolSteps: rx },
+            { riskLevel: rx },
+            { "recordedBy.firstName": rx },
+            { "recordedBy.lastName": rx },
+          ],
+        });
       }
 
-      // Filtre date
+      // Filtre date combiné lastDoneAt / createdAt
       if (date_from || date_to) {
         const from = date_from ? new Date(date_from) : null;
         const to = date_to ? new Date(date_to) : null;
@@ -153,31 +163,39 @@ router.get(
           to.setDate(to.getDate() + 1);
           to.setMilliseconds(to.getMilliseconds() - 1);
         }
-        query.$or = [
-          {
-            lastDoneAt: {
-              ...(from ? { $gte: from } : {}),
-              ...(to ? { $lte: to } : {}),
+
+        andConds.push({
+          $or: [
+            {
+              // Plans avec historique : filtre sur lastDoneAt
+              lastDoneAt: {
+                ...(from ? { $gte: from } : {}),
+                ...(to ? { $lte: to } : {}),
+              },
             },
-          },
-          {
-            lastDoneAt: { $exists: false },
-            createdAt: {
-              ...(from ? { $gte: from } : {}),
-              ...(to ? { $lte: to } : {}),
+            {
+              // Plans jamais faits : filtre sur createdAt
+              lastDoneAt: { $exists: false },
+              createdAt: {
+                ...(from ? { $gte: from } : {}),
+                ...(to ? { $lte: to } : {}),
+              },
             },
-          },
-        ];
+          ],
+        });
       }
+
+      const finalQuery =
+        andConds.length > 0 ? { ...baseQuery, $and: andConds } : baseQuery;
 
       const skip = (Number(page) - 1) * Number(limit);
 
       const [items, total] = await Promise.all([
-        CleaningTask.find(query)
+        CleaningTask.find(finalQuery)
           .sort(listSortExpr())
           .skip(skip)
           .limit(Number(limit)),
-        CleaningTask.countDocuments(query),
+        CleaningTask.countDocuments(finalQuery),
       ]);
 
       return res.json({

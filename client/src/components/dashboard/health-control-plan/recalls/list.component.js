@@ -1,4 +1,3 @@
-// components/dashboard/health-control-plan/recalls/recall-list.component.jsx
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -41,13 +40,19 @@ export default function RecallList({
   const [items, setItems] = useState([]);
   const [meta, setMeta] = useState({ page: 1, limit: 20, pages: 1, total: 0 });
   const [loading, setLoading] = useState(false);
+  const [showSlowLoader, setShowSlowLoader] = useState(false);
 
-  // Filtres
+  // Filtres UI
   const [q, setQ] = useState("");
-  const [status, setStatus] = useState("all"); // all|open|closed
+  const [status, setStatus] = useState("all"); // all | open | closed
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
+  // Filtres réellement appliqués au backend
+  const [appliedDateFrom, setAppliedDateFrom] = useState("");
+  const [appliedDateTo, setAppliedDateTo] = useState("");
+
+  // Suppression
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -55,17 +60,22 @@ export default function RecallList({
   const [isClient, setIsClient] = useState(false);
   useEffect(() => setIsClient(true), []);
 
-  const token = useMemo(() => localStorage.getItem("token"), []);
+  const token = useMemo(
+    () =>
+      typeof window !== "undefined" ? localStorage.getItem("token") : null,
+    []
+  );
   const metaRef = useRef(meta);
   useEffect(() => {
     metaRef.current = meta;
   }, [meta]);
 
-  // Corrige si 'Au' < 'Du'
+  // Corrige intervalle invalide
   useEffect(() => {
     if (dateFrom && dateTo && dateTo < dateFrom) setDateTo(dateFrom);
   }, [dateFrom, dateTo]);
 
+  // Tri : plus récent d'abord
   const sortLogic = (list) =>
     [...list].sort((a, b) => {
       const ak = a?.initiatedAt
@@ -78,14 +88,19 @@ export default function RecallList({
     });
 
   const hasActiveFilters = useMemo(
-    () => Boolean(q || status !== "all" || dateFrom || dateTo),
-    [q, status, dateFrom, dateTo]
+    () =>
+      Boolean(
+        q ||
+          status !== "all" ||
+          dateFrom ||
+          dateTo ||
+          appliedDateFrom ||
+          appliedDateTo
+      ),
+    [q, status, dateFrom, dateTo, appliedDateFrom, appliedDateTo]
   );
+
   const hasFullDateRange = Boolean(dateFrom && dateTo);
-  const invalidRange = useMemo(
-    () => Boolean(dateFrom && dateTo && dateTo < dateFrom),
-    [dateFrom, dateTo]
-  );
 
   /* ------------------------------ Styles ------------------------------ */
   const fieldWrap =
@@ -101,24 +116,33 @@ export default function RecallList({
 
   /* ------------------------------ Fetch ------------------------------ */
   const fetchData = async (page = 1, overrides = {}) => {
+    if (!restaurantId) return;
     setLoading(true);
     try {
       const cur = {
+        q: overrides.q ?? q,
         status: overrides.status ?? status,
-        dateFrom: overrides.dateFrom ?? dateFrom,
-        dateTo: overrides.dateTo ?? dateTo,
+        dateFrom:
+          overrides.dateFrom !== undefined
+            ? overrides.dateFrom
+            : appliedDateFrom,
+        dateTo:
+          overrides.dateTo !== undefined ? overrides.dateTo : appliedDateTo,
       };
+
       const params = { page, limit: meta.limit || 20 };
-      // Backend attend 'closed' = 'open' | 'closed'
-      if (cur.status && cur.status !== "all") params.closed = cur.status;
+      if (cur.q) params.q = cur.q;
+      if (cur.status && cur.status !== "all") params.closed = cur.status; // backend attend "open" ou "closed"
       if (cur.dateFrom) params.date_from = new Date(cur.dateFrom).toISOString();
       if (cur.dateTo) params.date_to = new Date(cur.dateTo).toISOString();
 
-      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-recalls`;
-      const { data } = await axios.get(url, {
-        headers: { Authorization: `Bearer ${token}` },
-        params,
-      });
+      const { data } = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-recalls`,
+        {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          params,
+        }
+      );
 
       const list = sortLogic(data.items || []);
       const nextMeta = data.meta || { page: 1, limit: 20, pages: 1, total: 0 };
@@ -126,95 +150,92 @@ export default function RecallList({
       setMeta(nextMeta);
       metaRef.current = nextMeta;
     } catch (e) {
-      console.error("fetch recalls list error:", e);
+      console.error("fetch recalls error:", e);
     } finally {
       setLoading(false);
     }
   };
 
-  // Initial fetch
+  // Loader lent (>1s)
   useEffect(() => {
-    if (restaurantId)
-      fetchData(1, { status: "all", dateFrom: "", dateTo: "" });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!loading) {
+      setShowSlowLoader(false);
+      return;
+    }
+    const id = setTimeout(() => setShowSlowLoader(true), 1000);
+    return () => clearTimeout(id);
+  }, [loading]);
+
+  // Initial
+  useEffect(() => {
+    if (restaurantId) {
+      setAppliedDateFrom("");
+      setAppliedDateTo("");
+      fetchData(1, { q: "", status: "all", dateFrom: "", dateTo: "" });
+    }
   }, [restaurantId]);
 
-  // Auto-refresh quand le statut change
+  // Auto-refresh sur changement de statut
   useEffect(() => {
     if (!restaurantId) return;
     fetchData(1, { status });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 
-  // Live update via event
+  // Debounce 500ms sur recherche texte (backend)
+  const isFirstLoadRef = useRef(true);
   useEffect(() => {
-    const handleUpsert = (event) => {
-      const doc = event?.detail?.doc;
-      if (!doc || !doc._id) return;
-      if (restaurantId && String(doc.restaurantId) !== String(restaurantId))
+    if (!restaurantId) return;
+    if (isFirstLoadRef.current) {
+      isFirstLoadRef.current = false;
+      return;
+    }
+    const timeout = setTimeout(() => fetchData(1, { q }), 500);
+    return () => clearTimeout(timeout);
+  }, [q, restaurantId]);
+
+  // Upsert temps réel
+  useEffect(() => {
+    const handler = (e) => {
+      const doc = e?.detail?.doc;
+      if (!doc || !doc._id || String(doc.restaurantId) !== String(restaurantId))
         return;
 
-      const currentMeta = metaRef.current || {};
-      const limit = currentMeta.limit || 20;
-      const page = currentMeta.page || 1;
-
+      const limit = metaRef.current.limit || 20;
+      const page = metaRef.current.page || 1;
       let isNew = false;
+
       setItems((prev) => {
-        const prevList = Array.isArray(prev) ? prev : [];
-        const index = prevList.findIndex((it) => it?._id === doc._id);
-        let nextList;
-        if (index !== -1) {
-          nextList = [...prevList];
-          nextList[index] = { ...prevList[index], ...doc };
+        const list = Array.isArray(prev) ? prev : [];
+        const idx = list.findIndex((x) => x._id === doc._id);
+        let next;
+        if (idx > -1) {
+          next = [...list];
+          next[idx] = { ...next[idx], ...doc };
         } else {
           isNew = true;
           if (page === 1) {
-            nextList = [doc, ...prevList];
-            if (nextList.length > limit) nextList = nextList.slice(0, limit);
+            next = [doc, ...list];
+            if (next.length > limit) next = next.slice(0, limit);
           } else {
-            nextList = prevList;
+            next = list;
           }
         }
-        return sortLogic(nextList || prevList);
+        return sortLogic(next || list);
       });
 
       if (isNew) {
-        setMeta((prevMeta) => {
-          const limitValue = prevMeta.limit || limit;
-          const total = (prevMeta.total || 0) + 1;
-          const pages = Math.max(1, Math.ceil(total / limitValue));
-          const nextMeta = { ...prevMeta, total, pages };
+        setMeta((m) => {
+          const total = (m.total || 0) + 1;
+          const pages = Math.max(1, Math.ceil(total / limit));
+          const nextMeta = { ...m, total, pages };
           metaRef.current = nextMeta;
           return nextMeta;
         });
       }
     };
-
-    window.addEventListener("recall:upsert", handleUpsert);
-    return () => window.removeEventListener("recall:upsert", handleUpsert);
+    window.addEventListener("recall:upsert", handler);
+    return () => window.removeEventListener("recall:upsert", handler);
   }, [restaurantId]);
-
-  /* ----------------------- Recherche locale (q) ----------------------- */
-  const filtered = useMemo(() => {
-    const qq = q.trim().toLowerCase();
-    if (!qq) return items;
-
-    return items.filter((it) => {
-      const item = it?.item || {};
-      const hay = [
-        item.productName,
-        item.supplierName,
-        item.lotNumber,
-        String(item.quantity ?? ""),
-        item.unit,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-
-      return hay.includes(qq);
-    });
-  }, [items, q]);
 
   /* ----------------------------- Delete ----------------------------- */
   const askDelete = (it) => {
@@ -226,36 +247,24 @@ export default function RecallList({
     if (!deleteTarget) return;
     try {
       setDeleteLoading(true);
-      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/recalls/${deleteTarget._id}`;
-      await axios.delete(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      setItems((prev) =>
-        prev.filter((x) => String(x._id) !== String(deleteTarget._id))
+      await axios.delete(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/recalls/${deleteTarget._id}`,
+        { headers: { Authorization: `Bearer ${token}` } }
       );
+      setItems((prev) => prev.filter((x) => x._id !== deleteTarget._id));
       onDeleted?.(deleteTarget);
-      setIsDeleteModalOpen(false);
-      setDeleteTarget(null);
-
-      setMeta((prevMeta) => {
-        const limitValue = prevMeta.limit || 20;
-        const total = Math.max(0, (prevMeta.total || 0) - 1);
-        const pages = total > 0 ? Math.ceil(total / limitValue) : 1;
-        const page = Math.min(prevMeta.page || 1, pages);
-        const nextMeta = { ...prevMeta, total, pages, page };
-        metaRef.current = nextMeta;
-        return nextMeta;
-      });
+      setMeta((m) => ({
+        ...m,
+        total: Math.max(0, (m.total || 0) - 1),
+        pages: Math.max(
+          1,
+          Math.ceil(Math.max(0, (m.total || 0) - 1) / (m.limit || 20))
+        ),
+      }));
     } catch (err) {
-      console.error("Erreur suppression :", err);
+      console.error("Suppression recall:", err);
     } finally {
       setDeleteLoading(false);
-    }
-  };
-
-  const closeDeleteModal = () => {
-    if (!deleteLoading) {
       setIsDeleteModalOpen(false);
       setDeleteTarget(null);
     }
@@ -264,9 +273,8 @@ export default function RecallList({
   /* ------------------------------ Render ------------------------------ */
   return (
     <div className="rounded-2xl border border-darkBlue/10 bg-white p-4 midTablet:p-5 shadow">
-      {/* Filtres (alignés aux autres listes) */}
-      <div className="mb-4 grid grid-cols-[repeat(auto-fit,minmax(220px,_1fr))] gap-2">
-        {/* Recherche */}
+      {/* Filtres */}
+      <div className="mb-4 grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-2">
         <div className={fieldWrap}>
           <label className={labelCls}>
             <Search className="size-4" /> Recherche
@@ -279,7 +287,6 @@ export default function RecallList({
           />
         </div>
 
-        {/* Statut */}
         <div className={fieldWrap}>
           <label className={labelCls}>Statut</label>
           <select
@@ -293,7 +300,6 @@ export default function RecallList({
           </select>
         </div>
 
-        {/* Du */}
         <div className={fieldWrap}>
           <label className={labelCls}>
             <CalendarClock className="size-4" /> Déclarés du
@@ -307,7 +313,6 @@ export default function RecallList({
           />
         </div>
 
-        {/* Au */}
         <div className={fieldWrap}>
           <label className={labelCls}>
             <CalendarClock className="size-4" /> Au
@@ -321,20 +326,16 @@ export default function RecallList({
           />
         </div>
 
-        {/* Actions filtres */}
         <div className="col-span-full flex flex-col gap-2 mobile:flex-row">
           <button
-            onClick={() => fetchData(1)}
-            disabled={invalidRange || !hasFullDateRange}
-            title={
-              invalidRange
-                ? "Intervalle invalide : 'Du' doit être ≤ 'Au'"
-                : !hasFullDateRange
-                  ? "Sélectionnez 'Du' ET 'Au' pour filtrer"
-                  : undefined
-            }
+            onClick={() => {
+              if (!hasFullDateRange) return;
+              setAppliedDateFrom(dateFrom);
+              setAppliedDateTo(dateTo);
+              fetchData(1, { dateFrom, dateTo });
+            }}
+            disabled={!hasFullDateRange}
             className={`${btnBase} bg-blue text-white disabled:opacity-40`}
-            type="button"
           >
             Filtrer
           </button>
@@ -345,136 +346,165 @@ export default function RecallList({
               setStatus("all");
               setDateFrom("");
               setDateTo("");
-              fetchData(1, { status: "all", dateFrom: "", dateTo: "" });
+              setAppliedDateFrom("");
+              setAppliedDateTo("");
+              fetchData(1, { q: "", status: "all", dateFrom: "", dateTo: "" });
             }}
             disabled={!hasActiveFilters}
             className={`${btnBase} border border-darkBlue/20 bg-white text-darkBlue hover:border-darkBlue/30 disabled:opacity-40`}
-            type="button"
           >
             Réinitialiser
           </button>
         </div>
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto max-w-[calc(100vw-83px)] midTablet:max-w-[calc(100vw-92px)] tablet:max-w-[calc(100vw-360px)] rounded-xl border border-darkBlue/10 p-2">
-        <table className="w-full text-[13px]">
-          <thead className="whitespace-nowrap">
-            <tr className="sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Déclaré le</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Produit</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Fournisseur</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">N° lot</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Qté</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">DLC/DDM</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Statut</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Clôturé le</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Pièces</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Opérateur</th>
-              <th className="py-2 pr-3 text-right font-medium text-darkBlue/70">Actions</th>
-            </tr>
-          </thead>
-
-          <tbody className="divide-y divide-darkBlue/10 [&>tr:last-child>td]:!pb-0">
-            {!loading && filtered.length === 0 && (
-              <tr>
-                <td colSpan={11} className="py-8 text-center text-darkBlue/50">
-                  Aucun retour NC
-                </td>
+      {/* Table + overlay loader */}
+      <div className="relative">
+        <div className="overflow-x-auto max-w-[calc(100vw-50px)] mobile:max-w-[calc(100vw-83px)] midTablet:max-w-[calc(100vw-92px)] tablet:max-w-[calc(100vw-360px)] rounded-xl border border-darkBlue/10">
+          <table className="w-full text-[13px]">
+            <thead className="whitespace-nowrap">
+              <tr className="text-nowrap sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
+                <th className="py-2 pl-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Déclaré le
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Produit
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Fournisseur
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  N° lot
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Qté
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  DLC/DDM
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Statut
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Clôturé le
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Pièces
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Opérateur
+                </th>
+                <th className="py-2 pr-2 text-right font-medium text-darkBlue/70">
+                  Actions
+                </th>
               </tr>
-            )}
-
-            {loading && (
-              <tr>
-                <td colSpan={11} className="py-8 text-center text-darkBlue/50">
-                  <span className="inline-flex items-center gap-2">
-                    <Loader2 className="size-4 animate-spin" /> Chargement…
-                  </span>
-                </td>
-              </tr>
-            )}
-
-            {!loading &&
-              filtered.map((it) => {
-                const item = it?.item || {};
-                return (
-                  <tr
-                    key={it._id}
-                    className={`transition-colors hover:bg-darkBlue/[0.03] ${
-                      editingId === it._id ? "bg-blue/5 ring-1 ring-blue/20" : ""
-                    }`}
+            </thead>
+            <tbody>
+              {items.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={11}
+                    className="py-8 text-center text-darkBlue/50"
                   >
-                    <td className="py-2 pr-3 whitespace-nowrap">{fmtDate(it.initiatedAt)}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{item.productName || "—"}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{item.supplierName || "—"}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{item.lotNumber || "—"}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      {item.quantity ?? "—"}
-                      {item.unit ? ` ${item.unit}` : ""}
-                    </td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{fmtDate(item.bestBefore, false)}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      <StatusPill closedAt={it.closedAt} />
-                    </td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{fmtDate(it.closedAt)}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      {Array.isArray(it.attachments) && it.attachments.length
-                        ? `${it.attachments.length} doc(s)`
-                        : "—"}
-                    </td>
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      {it?.recordedBy
-                        ? `${it.recordedBy.firstName || ""} ${it.recordedBy.lastName || ""}`.trim() ||
-                          "—"
-                        : "—"}
-                    </td>
-                    <td className="py-2 pr-0">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => onEdit?.(it)}
-                          className={`${btnBase} border border-green/50 bg-white text-green`}
-                          aria-label="Éditer"
-                          type="button"
-                        >
-                          <Edit3 className="size-4" /> Éditer
-                        </button>
-                        <button
-                          onClick={() => askDelete(it)}
-                          className={`${btnBase} border border-red bg-white text-red hover:border-red/80`}
-                          aria-label="Supprimer"
-                          type="button"
-                        >
-                          <Trash2 className="size-4" /> Supprimer
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-          </tbody>
-        </table>
+                    Aucun retour NC
+                  </td>
+                </tr>
+              ) : (
+                items.map((it) => {
+                  const item = it?.item || {};
+                  return (
+                    <tr
+                      key={it._id}
+                      className={`border-b border-darkBlue/10 last:border-b-0 hover:bg-darkBlue/[0.03] ${editingId === it._id ? "bg-blue/5 ring-1 ring-blue/20" : ""}`}
+                    >
+                      <td className="py-2 pl-2 pr-3 whitespace-nowrap">
+                        {fmtDate(it.initiatedAt)}
+                      </td>
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {item.productName || "—"}
+                      </td>
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {item.supplierName || "—"}
+                      </td>
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {item.lotNumber || "—"}
+                      </td>
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {item.quantity ?? "—"}
+                        {item.unit ? ` ${item.unit}` : ""}
+                      </td>
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {fmtDate(item.bestBefore, false)}
+                      </td>
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        <StatusPill closedAt={it.closedAt} />
+                      </td>
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {fmtDate(it.closedAt)}
+                      </td>
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {Array.isArray(it.attachments) && it.attachments.length
+                          ? `${it.attachments.length} doc(s)`
+                          : "—"}
+                      </td>
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {it?.recordedBy
+                          ? `${it.recordedBy.firstName || ""} ${it.recordedBy.lastName || ""}`.trim() ||
+                            "—"
+                          : "—"}
+                      </td>
+                      <td className="py-2 pr-2 text-right">
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => onEdit?.(it)}
+                            className={`${btnBase} border border-green/50 bg-white text-green`}
+                          >
+                            <Edit3 className="size-4" /> Éditer
+                          </button>
+                          <button
+                            onClick={() => askDelete(it)}
+                            className={`${btnBase} border border-red bg-white text-red hover:border-red/80`}
+                          >
+                            <Trash2 className="size-4" /> Supprimer
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {showSlowLoader && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-white/60">
+            <div className="flex items-center gap-2 text-darkBlue/70 text-sm">
+              <Loader2 className="size-4 animate-spin" />
+              <span>Chargement…</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Pagination */}
       {meta?.pages > 1 && (
-        <div className="mt-4 flex items-center justify-between">
-          <div className="text-xs text-darkBlue/60">
+        <div className="mt-4 flex items-center justify-between text-xs text-darkBlue/60">
+          <div>
             Page {meta.page}/{meta.pages} — {meta.total} retours
           </div>
           <div className="flex gap-2">
             <button
               disabled={meta.page <= 1}
               onClick={() => fetchData(meta.page - 1)}
-              className={`${btnBase} border border-darkBlue/20 bg-white text-darkBlue hover:border-darkBlue/30 disabled:opacity-40`}
-              type="button"
+              className={`${btnBase} border border-darkBlue/20 bg-white text-darkBlue disabled:opacity-40`}
             >
               Précédent
             </button>
             <button
               disabled={meta.page >= meta.pages}
               onClick={() => fetchData(meta.page + 1)}
-              className={`${btnBase} border border-darkBlue/20 bg-white text-darkBlue hover:border-darkBlue/30 disabled:opacity-40`}
-              type="button"
+              className={`${btnBase} border border-darkBlue/20 bg-white text-darkBlue disabled:opacity-40`}
             >
               Suivant
             </button>
@@ -486,9 +516,13 @@ export default function RecallList({
       {isDeleteModalOpen &&
         isClient &&
         createPortal(
-          <div className="fixed inset-0 z-[1000]" aria-modal="true" role="dialog">
+          <div
+            className="fixed inset-0 z-[1000]"
+            aria-modal="true"
+            role="dialog"
+          >
             <div
-              onClick={closeDeleteModal}
+              onClick={() => !deleteLoading && closeDeleteModal()}
               className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"
             />
             <div className="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
@@ -499,24 +533,23 @@ export default function RecallList({
                 <p className="mb-5 text-center text-sm text-darkBlue/70">
                   Cette action est définitive.
                 </p>
-                <div className="flex items-center justify-center gap-2">
+                <div className="flex justify-center gap-2">
                   <button
                     onClick={onConfirmDelete}
                     disabled={deleteLoading}
                     className={`${btnBase} bg-blue text-white disabled:opacity-50`}
-                    type="button"
                   >
                     {deleteLoading ? (
                       <>
-                        <Loader2 className="size-4 animate-spin" /> Suppression…
+                        {" "}
+                        <Loader2 className="size-4 animate-spin" /> Suppression…{" "}
                       </>
                     ) : (
                       "Confirmer"
                     )}
                   </button>
                   <button
-                    type="button"
-                    onClick={closeDeleteModal}
+                    onClick={() => !deleteLoading && closeDeleteModal()}
                     className={`${btnBase} border border-red bg-red text-white`}
                   >
                     <X className="size-4" /> Annuler

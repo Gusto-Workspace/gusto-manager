@@ -1,4 +1,3 @@
-// app/(components)/dashboard/health-control-plan/preheat-temperature/cooking-equipment-manager-modal.component.jsx
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -160,7 +159,7 @@ export default function CookingEquipmentManagerModal({
 
   // Styles
   const fieldWrap =
-    "group relative rounded-xl bg-white/50 backdrop-blur-sm transition-shadow";
+    "group relative rounded-xl bg-white/50   transition-shadow";
   const labelCls = "text-xs font-medium text-darkBlue/60 mb-1";
   const inputCls =
     "h-11 w-full rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition placeholder:text-darkBlue/40 focus:border-blue focus:ring-2 focus:ring-blue/20";
@@ -342,9 +341,10 @@ export default function CookingEquipmentManagerModal({
                       disabled={isSaving}
                     >
                       {isSaving ? (
-                        <>
-                          <Loader2 className="size-4 animate-spin" /> En cours…
-                        </>
+                        <div className="flex items-center gap-2">
+                          <Loader2 className="size-4 animate-spin" />
+                          <span>En cours…</span>
+                        </div>
                       ) : (
                         <>
                           {editingId ? (
@@ -362,7 +362,7 @@ export default function CookingEquipmentManagerModal({
             </div>
 
             {/* Liste */}
-            <div className="rounded-2xl border border-darkBlue/10 bg-white p-3">
+            <div className="text-nowrap rounded-2xl border border-darkBlue/10 bg-white p-3">
               <div className="overflow-x-auto overflow-y-auto h-[250px]">
                 <table className="w-full text-[13px]">
                   <thead>
@@ -437,10 +437,10 @@ export default function CookingEquipmentManagerModal({
                                     disabled={deleteLoading}
                                   >
                                     {deleteLoading ? (
-                                      <>
-                                        <Loader2 className="size-4 animate-spin" />{" "}
-                                        Suppression…
-                                      </>
+                                      <div className="flex items-center gap-2">
+                                        <Loader2 className="size-4 animate-spin" />
+                                        <span>Suppression…</span>
+                                      </div>
                                     ) : (
                                       <>
                                         <Trash2 className="size-4" /> Confirmer

@@ -586,7 +586,7 @@ export default function AddReservationComponent(props) {
               onWheel={(e) => e.target.blur()}
               onChange={handleInputChange}
               required
-              className="block w-full border border-gray-300 rounded-md p-2"
+              className="h-11 w-full rounded-xl border border-darkBlue/10 bg-white/90 px-3 text-sm outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-1 focus:ring-blue/30"
             />
           </div>
         </div>
@@ -667,7 +667,7 @@ export default function AddReservationComponent(props) {
               value={reservationData.customerName}
               onChange={handleInputChange}
               required
-              className="block w-full border border-gray-300 rounded-md p-2"
+              className="h-11 w-full rounded-xl border border-darkBlue/10 bg-white/90 px-3 text-sm outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-1 focus:ring-blue/30"
             />
           </div>
 
@@ -689,7 +689,7 @@ export default function AddReservationComponent(props) {
               name="customerEmail"
               value={reservationData.customerEmail}
               onChange={handleInputChange}
-              className="block w-full border border-gray-300 rounded-md p-2"
+              className="h-11 w-full rounded-xl border border-darkBlue/10 bg-white/90 px-3 text-sm outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-1 focus:ring-blue/30"
             />
           </div>
 
@@ -709,7 +709,7 @@ export default function AddReservationComponent(props) {
               value={reservationData.customerPhone}
               onChange={handleInputChange}
               required
-              className="block w-full border border-gray-300 rounded-md p-2"
+              className="h-11 w-full rounded-xl border border-darkBlue/10 bg-white/90 px-3 text-sm outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-1 focus:ring-blue/30"
             />
           </div>
 
@@ -727,7 +727,7 @@ export default function AddReservationComponent(props) {
                 value={reservationData.table}
                 onChange={handleInputChange}
                 required
-                className="block w-full border border-gray-300 rounded-md p-2"
+                className="h-11 w-full rounded-xl border border-darkBlue/10 bg-white/90 px-3 text-sm outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-1 focus:ring-blue/30"
               >
                 {/* En création, on affiche une option "Automatique" dont la valeur est "auto" */}
                 {!isEditing && (
@@ -746,7 +746,7 @@ export default function AddReservationComponent(props) {
                 name="table"
                 value={reservationData.table}
                 onChange={handleInputChange}
-                className="block w-full border border-gray-300 rounded-md p-2"
+                className="h-11 w-full rounded-xl border border-darkBlue/10 bg-white/90 px-3 text-sm outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-1 focus:ring-blue/30"
               />
             )}
           </div>
@@ -767,8 +767,8 @@ export default function AddReservationComponent(props) {
               name="commentary"
               value={reservationData.commentary}
               onChange={handleInputChange}
-              className="block w-full border border-gray-300 rounded-md p-2 resize-none"
-            />
+              rows={5}
+              className="w-full p-2 rounded-xl border border-darkBlue/10 bg-white/90 px-3 text-sm outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-1 focus:ring-blue/30 resize-none"/>
           </div>
         </div>
 

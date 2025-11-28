@@ -1,9 +1,10 @@
-// components/dashboard/health-control-plan/reception-delivery/form.component.jsx
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useForm, useFieldArray } from "react-hook-form";
 import axios from "axios";
+
+// ICONS
 import {
   CalendarClock,
   Thermometer,
@@ -16,6 +17,9 @@ import {
   Loader2,
   X,
   ChevronDown,
+  Camera,
+  Upload,
+  Download,
 } from "lucide-react";
 
 /* ---------- Utils ---------- */
@@ -59,6 +63,41 @@ const cToF = (c) => (c * 9) / 5 + 32;
 const fToC = (f) => ((f - 32) * 5) / 9;
 const round1 = (n) => (Number.isFinite(n) ? Math.round(n * 10) / 10 : n);
 
+/* ---------- Helpers filenames ---------- */
+// Essaye de corriger le mojibake type "dâeÌcran" -> "d’écran"
+function normalizeFilename(name) {
+  if (!name) return "";
+  try {
+    if (typeof TextDecoder === "undefined") return name;
+    const bytes = Uint8Array.from([...name].map((ch) => ch.charCodeAt(0)));
+    const decoded = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+    return decoded;
+  } catch {
+    return name;
+  }
+}
+
+function truncate(text, max = 26) {
+  if (!text) return "";
+  return text.length > max ? `${text.slice(0, max - 3)}…` : text;
+}
+
+function mimeBadgeLabel(mimeOrName) {
+  if (!mimeOrName) return "FILE";
+  const lower = String(mimeOrName).toLowerCase();
+
+  if (lower.includes("pdf")) return "PDF";
+  if (lower.startsWith("image/")) {
+    const sub = lower.split("/")[1] || "img";
+    if (sub === "jpeg") return "JPG";
+    return sub.slice(0, 4).toUpperCase();
+  }
+  if (lower.includes("word")) return "DOC";
+  if (lower.includes("excel") || lower.includes("sheet")) return "XLS";
+  if (lower.includes("zip")) return "ZIP";
+  return lower.split("/")[1]?.slice(0, 4).toUpperCase() || "FILE";
+}
+
 /* ---------- Defaults ---------- */
 function buildFormDefaults(record) {
   return {
@@ -69,6 +108,7 @@ function buildFormDefaults(record) {
     lines:
       Array.isArray(record?.lines) && record.lines.length
         ? record.lines.map((l) => ({
+            _id: l?._id ? String(l._id) : undefined,
             productName: l?.productName ?? "",
             supplierProductId: l?.supplierProductId ?? "",
             lotNumber: l?.lotNumber ?? "",
@@ -85,6 +125,7 @@ function buildFormDefaults(record) {
           }))
         : [
             {
+              _id: undefined,
               productName: "",
               supplierProductId: "",
               lotNumber: "",
@@ -139,6 +180,7 @@ export default function ReceptionDeliveryForm({
 
   const [openById, setOpenById] = useState({});
   const contentRefs = useRef({});
+  const [sectionHeights, setSectionHeights] = useState({});
   const openNewLineRef = useRef(false);
 
   const [showReqErrById, setShowReqErrById] = useState({});
@@ -238,6 +280,18 @@ export default function ReceptionDeliveryForm({
       window.removeEventListener("reception-delivery:upsert", onUpsert);
   }, [restaurantId]);
 
+  /* ---------- Attachments état global par ligne ---------- */
+  const [existingAttachmentsByLine, setExistingAttachmentsByLine] = useState(
+    {}
+  );
+  const [removedAttachmentIdsByLine, setRemovedAttachmentIdsByLine] = useState(
+    {}
+  );
+  const [newFilesByLine, setNewFilesByLine] = useState({});
+  const [currentUploadLineKey, setCurrentUploadLineKey] = useState(null);
+  const fileInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
+
   useEffect(() => {
     reset(buildFormDefaults(initial));
     setShowReqErrById({});
@@ -246,9 +300,22 @@ export default function ReceptionDeliveryForm({
     Object.keys(productUserTypedRef.current).forEach((k) => {
       productUserTypedRef.current[k] = false;
     });
+
+    // Init pièces jointes par ligne à partir de initial
+    const nextExisting = {};
+    (initial?.lines || []).forEach((l, idx) => {
+      const key = String(l._id || idx);
+      nextExisting[key] = Array.isArray(l.attachments) ? l.attachments : [];
+    });
+    setExistingAttachmentsByLine(nextExisting);
+    setRemovedAttachmentIdsByLine({});
+    setNewFilesByLine({});
+    setSectionHeights({});
+
     if (!suggestLoadedRef.current) fetchSuggestions();
   }, [initial, reset]); // eslint-disable-line
 
+  // Sync open/erreur/validated maps avec fields
   useEffect(() => {
     setOpenById((prev) => {
       const next = { ...prev };
@@ -288,8 +355,18 @@ export default function ReceptionDeliveryForm({
       }
       return next;
     });
+
+    // clean heights des lignes supprimées
+    setSectionHeights((prev) => {
+      const next = { ...prev };
+      for (const k of Object.keys(next)) {
+        if (!fields.find((f) => f.id === k)) delete next[k];
+      }
+      return next;
+    });
   }, [fields, lines, isEdit]);
 
+  // Ouverture auto de la nouvelle ligne
   useEffect(() => {
     if (!openNewLineRef.current) return;
     const last = fields[fields.length - 1];
@@ -325,16 +402,69 @@ export default function ReceptionDeliveryForm({
     setOpenById((s) => ({ ...s, [id]: false }));
   };
 
+  /* ---------- Gestion fichiers ---------- */
+  const handleFilesSelected = (event, isCamera = false) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = "";
+    if (!files.length || !currentUploadLineKey) return;
+
+    setNewFilesByLine((prev) => ({
+      ...prev,
+      [currentUploadLineKey]: [...(prev[currentUploadLineKey] || []), ...files],
+    }));
+  };
+
+  const removeNewFile = (lineKey, fileIndex) => {
+    setNewFilesByLine((prev) => {
+      const arr = prev[lineKey] || [];
+      return {
+        ...prev,
+        [lineKey]: arr.filter((_, i) => i !== fileIndex),
+      };
+    });
+  };
+
+  const toggleExistingAttachmentRemoval = (lineKey, public_id) => {
+    setRemovedAttachmentIdsByLine((prev) => {
+      const list = prev[lineKey] || [];
+      const idStr = String(public_id);
+      const exists = list.includes(idStr);
+      return {
+        ...prev,
+        [lineKey]: exists ? list.filter((x) => x !== idStr) : [...list, idStr],
+      };
+    });
+  };
+
+  const downloadUrlForAttachment = (restaurantId, att) => {
+    if (!att?.public_id) return att?.url || "#";
+    const encodedPublicId = encodeURIComponent(att.public_id);
+    return `${process.env.NEXT_PUBLIC_API_URL}/haccp/reception-deliveries/${restaurantId}/documents/${encodedPublicId}/download`;
+  };
+
   const onSubmit = async (data) => {
     const token = localStorage.getItem("token");
     if (!token) return;
 
+    const allLines = Array.isArray(data.lines) ? data.lines : [];
     const payloadLines = [];
-    (Array.isArray(data.lines) ? data.lines : []).forEach((l, idx) => {
-      const fid = fields[idx]?.id;
+    let payloadIndex = 0;
+
+    const formData = new FormData();
+
+    // Champs "en-tête"
+    formData.append("supplier", data.supplier || "");
+    if (data.receivedAt)
+      formData.append("receivedAt", new Date(data.receivedAt).toISOString());
+    if (data.note) formData.append("note", data.note);
+    if (data.billUrl) formData.append("billUrl", data.billUrl);
+
+    // Lignes + mapping pièces jointes par ligne
+    allLines.forEach((l, srcIdx) => {
+      const fid = fields[srcIdx]?.id;
       if (!fid || !validatedById[fid]) return;
 
-      payloadLines.push({
+      const cleanLine = {
         productName: l.productName || undefined,
         supplierProductId: l.supplierProductId || undefined,
         lotNumber: l.lotNumber || undefined,
@@ -355,38 +485,65 @@ export default function ReceptionDeliveryForm({
                 .filter(Boolean)
             : [],
         packagingCondition: l.packagingCondition || "compliant",
+      };
+
+      payloadLines.push(cleanLine);
+
+      const lineKey = l?._id ? String(l._id) : fid;
+      const existingForLine = existingAttachmentsByLine[lineKey] || [];
+      const removedForLine = new Set(removedAttachmentIdsByLine[lineKey] || []);
+      const newFilesForLine = newFilesByLine[lineKey] || [];
+
+      // pièces existantes à garder
+      existingForLine.forEach((att) => {
+        if (att.public_id && !removedForLine.has(String(att.public_id))) {
+          formData.append(`keepLineAttachment_${payloadIndex}`, att.public_id);
+        }
       });
+
+      // nouveaux fichiers à uploader
+      newFilesForLine.forEach((file) => {
+        formData.append(`lineAttachments_${payloadIndex}`, file);
+      });
+
+      payloadIndex += 1;
     });
 
     if (!payloadLines.length) return;
 
-    const payload = {
-      supplier: data.supplier,
-      receivedAt: data.receivedAt ? new Date(data.receivedAt) : undefined,
-      note: data.note || undefined,
-      billUrl: data.billUrl || undefined,
-      lines: payloadLines,
-    };
+    formData.append("lines", JSON.stringify(payloadLines));
 
     const url = initial?._id
       ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/reception-deliveries/${initial._id}`
       : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/reception-deliveries`;
     const method = initial?._id ? "put" : "post";
 
-    const { data: saved } = await axios[method](url, payload, {
-      headers: { Authorization: `Bearer ${token}` },
+    const { data: saved } = await axios[method](url, formData, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "multipart/form-data",
+      },
     });
+
+    // Event temps réel (comme les autres)
+    window.dispatchEvent(
+      new CustomEvent("reception-delivery:upsert", { detail: { doc: saved } })
+    );
 
     reset(buildFormDefaults(null));
     setShowReqErrById({});
     setValidatedById({});
+    setExistingAttachmentsByLine({});
+    setRemovedAttachmentIdsByLine({});
+    setNewFilesByLine({});
+    setSectionHeights({});
     indexFromDoc(saved);
     onSuccess?.(saved);
   };
 
   // Styles
   const fieldWrap =
-    "group relative rounded-xl bg-white/50 backdrop-blur-sm py-2 h-[80px] transition-shadow";
+    "group relative rounded-xl bg-white/50   py-2 h-[80px] transition-shadow";
   const labelCls =
     "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
   const inputCls =
@@ -424,16 +581,14 @@ export default function ReceptionDeliveryForm({
     });
   };
 
-  /* ----------------- DROPDOWNS (Supplier / Product) ----------------- */
+  /* ----------------- DROPDOWNS Supplier / Product ----------------- */
 
-  // Supplier dropdown
   const [supplierOpen, setSupplierOpen] = useState(false);
   const [supplierItems, setSupplierItems] = useState([]);
-  const supplierBoxRef = useRef(null); // wrapper (pour outside click)
-  const supplierPortalRef = useRef(null); // portal node
-  const supplierInputRef = useRef(null); // ⬅️ ancre = INPUT exact
+  const supplierBoxRef = useRef(null);
+  const supplierPortalRef = useRef(null);
+  const supplierInputRef = useRef(null);
 
-  // Product dropdowns (par ligne)
   const [productOpenById, setProductOpenById] = useState({});
   const productUserTypedRef = useRef({});
   const productDebounceRef = useRef({});
@@ -446,7 +601,6 @@ export default function ReceptionDeliveryForm({
   useEffect(() => setIsClient(true), []);
   const [, setDropdownRerender] = useState(0);
 
-  // visualViewport tracking
   const vvRef = useRef({
     offsetTop: 0,
     offsetLeft: 0,
@@ -502,7 +656,7 @@ export default function ReceptionDeliveryForm({
       position: "fixed",
       left,
       top,
-      width, // ⬅️ largeur exacte de l'ancre
+      width,
       zIndex: 1000,
       maxHeight: Math.max(120, maxHeight),
       overflow: "auto",
@@ -546,7 +700,6 @@ export default function ReceptionDeliveryForm({
 
   useEffect(() => {
     const onClickOutside = (e) => {
-      // products
       if (productPortalRef.current?.contains(e.target)) return;
       const pRefs = productBoxRefs.current;
       for (const key of Object.keys(pRefs)) {
@@ -554,7 +707,6 @@ export default function ReceptionDeliveryForm({
         if (el && el.contains(e.target)) return;
       }
       setProductOpenById({});
-      // supplier
       if (supplierPortalRef.current?.contains(e.target)) return;
       if (supplierBoxRef.current?.contains(e.target)) return;
       setSupplierOpen(false);
@@ -568,7 +720,6 @@ export default function ReceptionDeliveryForm({
   const setProductItemsFor = (fid, items) =>
     setProductItemsById((s) => ({ ...s, [fid]: items }));
 
-  // Suggestions produits filtrées par fournisseur
   const computeProductMatches = (supplier, q) => {
     const qn = normalize(q);
     if (!qn) return [];
@@ -715,11 +866,44 @@ export default function ReceptionDeliveryForm({
   const lastField = fields.length ? fields[fields.length - 1] : null;
   const addDisabled = lastField ? !validatedById[lastField.id] : false;
 
+  // ------------- Recalcul de la hauteur des sections ouvertes -------------
+  useEffect(() => {
+    fields.forEach((f) => {
+      const id = f.id;
+      if (!openById[id]) return;
+      const el = contentRefs.current[id];
+      if (!el) return;
+      const h = el.scrollHeight;
+      setSectionHeights((prev) => {
+        if (prev[id] === h) return prev;
+        return { ...prev, [id]: h };
+      });
+    });
+  }, [fields, lines, existingAttachmentsByLine, newFilesByLine, openById]);
+
   return (
     <form
       onSubmit={handleSubmit(onSubmit)}
       className="relative flex flex-col gap-5"
     >
+      {/* Inputs file globaux partagés par toutes les lignes */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept="image/*,application/pdf"
+        className="hidden"
+        onChange={(e) => handleFilesSelected(e, false)}
+      />
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={(e) => handleFilesSelected(e, true)}
+      />
+
       {/* En-tête réception */}
       <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
         <div className={`${fieldWrap} px-3`} ref={supplierBoxRef}>
@@ -728,7 +912,6 @@ export default function ReceptionDeliveryForm({
           </label>
           <div className="relative">
             {(() => {
-              // chaîner la ref RHF + notre ref input
               const supplierReg = register("supplier", {
                 required: true,
                 onChange: () => {
@@ -743,8 +926,8 @@ export default function ReceptionDeliveryForm({
                   spellCheck={false}
                   {...supplierReg}
                   ref={(el) => {
-                    supplierInputRef.current = el; // ⬅️ ancre exacte
-                    supplierReg.ref(el); // garder la ref RHF
+                    supplierInputRef.current = el;
+                    supplierReg.ref(el);
                   }}
                   className={`${inputCls} ${errors.supplier ? "border-red focus:ring-red/20" : ""}`}
                   onFocus={() => {
@@ -765,7 +948,6 @@ export default function ReceptionDeliveryForm({
               );
             })()}
 
-            {/* Suggestions fournisseur via PORTAL — ancre = INPUT */}
             {isClient &&
               supplierOpen &&
               createPortal(
@@ -848,6 +1030,7 @@ export default function ReceptionDeliveryForm({
               if (addDisabled) return;
               openNewLineRef.current = true;
               append({
+                _id: undefined,
                 productName: "",
                 supplierProductId: "",
                 lotNumber: "",
@@ -875,8 +1058,8 @@ export default function ReceptionDeliveryForm({
         <div className="space-y-3 mb-3">
           {fields.map((field, idx) => {
             const id = field.id;
-            const isOpen = !!openById[id];
             const l = (lines && lines[idx]) || {};
+            const isOpen = !!openById[id];
             const pkg = l?.packagingCondition || "compliant";
             const tempUnit = l?.tempOnArrivalUnit === "F" ? "F" : "C";
 
@@ -891,6 +1074,14 @@ export default function ReceptionDeliveryForm({
 
             const rowZ =
               productOpenById[id] || false ? "z-40 relative" : "relative";
+
+            const lineKey = l?._id ? String(l._id) : id;
+            const existingAttachments =
+              existingAttachmentsByLine[lineKey] || [];
+            const removedIds = new Set(
+              removedAttachmentIdsByLine[lineKey] || []
+            );
+            const newFiles = newFilesByLine[lineKey] || [];
 
             return (
               <div
@@ -955,12 +1146,13 @@ export default function ReceptionDeliveryForm({
                   ref={(el) => (contentRefs.current[id] = el)}
                   style={{
                     maxHeight: isOpen
-                      ? contentRefs.current[id]?.scrollHeight || 9999
+                      ? (sectionHeights[id] ??
+                        (contentRefs.current[id]?.scrollHeight || 9999))
                       : 0,
                   }}
                   className="overflow-hidden transition-[max-height] duration-300 ease-in-out"
                 >
-                  <div className="p-3 border-t border-darkBlue/10">
+                  <div className="p-3 border-t border-darkBlue/10 space-y-3">
                     {/* Ligne 1 */}
                     <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-3">
                       <div
@@ -1015,7 +1207,7 @@ export default function ReceptionDeliveryForm({
                               }
                             }}
                           />
-                          {/* Dropdown suggestions produit (PORTAL) */}
+                          {/* Dropdown suggestions produit */}
                           {isClient &&
                             productOpenById[id] &&
                             createPortal(
@@ -1150,25 +1342,27 @@ export default function ReceptionDeliveryForm({
                         </div>
                         <div className={`col-span-2 ${fieldWrap}`}>
                           <label className={labelCls}>Unité *</label>
-                          <select
-                            {...register(`lines.${idx}.unit`, {
-                              onChange: () => {
-                                setValidatedById((s) =>
-                                  s[id] ? { ...s, [id]: false } : s
-                                );
-                              },
-                            })}
-                            className={`${selectCls} ${hasUnitErr ? "border-red focus:ring-red/20" : ""}`}
-                            aria-invalid={hasUnitErr ? "true" : "false"}
-                          >
-                            <option value="">—</option>
-                            <option value="kg">kg</option>
-                            <option value="g">g</option>
-                            <option value="L">L</option>
-                            <option value="mL">mL</option>
-                            <option value="unit">unité</option>
-                          </select>
-                          <ChevronDown className="pointer-events-none absolute right-4 top-[58px] -translate-y-1/2 size-4 text-darkBlue/40" />
+                          <div className="relative">
+                            <select
+                              {...register(`lines.${idx}.unit`, {
+                                onChange: () => {
+                                  setValidatedById((s) =>
+                                    s[id] ? { ...s, [id]: false } : s
+                                  );
+                                },
+                              })}
+                              className={`${selectCls} ${hasUnitErr ? "border-red focus:ring-red/20" : ""}`}
+                              aria-invalid={hasUnitErr ? "true" : "false"}
+                            >
+                              <option value="">—</option>
+                              <option value="kg">kg</option>
+                              <option value="g">g</option>
+                              <option value="L">L</option>
+                              <option value="mL">mL</option>
+                              <option value="unit">unité</option>
+                            </select>
+                            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40" />
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1261,6 +1455,177 @@ export default function ReceptionDeliveryForm({
                       </div>
                     </div>
 
+                    {/* Pièces jointes PAR LIGNE */}
+                    <div className={fieldWrap.replace("h-[80px]", "h-auto")}>
+                      <label className={labelCls}>
+                        <LinkIcon className="size-4" /> Pièces jointes
+                      </label>
+
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCurrentUploadLineKey(lineKey);
+                            fileInputRef.current?.click();
+                          }}
+                          className={`${btnBase} border border-darkBlue/15 bg-white text-darkBlue/80 hover:border-darkBlue/40 hover:bg-darkBlue/[0.03]`}
+                        >
+                          <Upload className="size-4" />
+                          Importer un fichier
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCurrentUploadLineKey(lineKey);
+                            cameraInputRef.current?.click();
+                          }}
+                          className={`${btnBase} border border-blue/40 bg-blue/5 text-blue hover:border-blue/70 hover:bg-blue/10`}
+                        >
+                          <Camera className="size-4" />
+                          Prendre une photo
+                        </button>
+                      </div>
+
+                      <div className="space-y-2 max-h-[135px] overflow-y-scroll">
+                        {/* Nouveaux fichiers */}
+                        {newFiles.length > 0 && (
+                          <div className="rounded-lg bg-blue/5 px-2 py-2">
+                            <p className="mb-1 text-[11px] uppercase tracking-wide text-blue/80">
+                              Fichiers à ajouter
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {newFiles.map((file, fIdx) => {
+                                const pretty = normalizeFilename(file.name);
+                                const label = mimeBadgeLabel(
+                                  file.type || file.name
+                                );
+                                return (
+                                  <div
+                                    key={`${file.name}-${fIdx}`}
+                                    className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-[11px] text-blue-950 shadow-sm border border-blue/20"
+                                  >
+                                    <span className="flex h-6 w-8 items-center justify-center rounded-md bg-blue/5 text-[10px] font-semibold text-blue">
+                                      {label}
+                                    </span>
+                                    <span title={pretty}>
+                                      {truncate(pretty, 25)}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        removeNewFile(lineKey, fIdx)
+                                      }
+                                      className="ml-1 inline-flex items-center justify-center rounded-full bg-red/10 p-[3px] text-red hover:bg-red/20"
+                                      title="Retirer"
+                                    >
+                                      <Trash2 className="size-3" />
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Pièces existantes */}
+                        {existingAttachments.length > 0 && (
+                          <div className="rounded-lg bg-darkBlue/[0.03] px-2 py-2">
+                            <p className="mb-1 text-[11px] uppercase tracking-wide text-darkBlue/50">
+                              Pièces déjà enregistrées
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {existingAttachments.map((att) => {
+                                const pretty = normalizeFilename(att.filename);
+                                const label = mimeBadgeLabel(
+                                  att.mimetype || att.filename
+                                );
+                                const isMarked = removedIds.has(
+                                  String(att.public_id)
+                                );
+
+                                return (
+                                  <div
+                                    key={att.public_id}
+                                    className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] shadow-sm border ${
+                                      isMarked
+                                        ? "bg-red/5 border-red/40 text-red/70 opacity-70"
+                                        : "bg-white border-darkBlue/10 text-darkBlue/80"
+                                    }`}
+                                  >
+                                    <span
+                                      className={`flex h-6 w-8 items-center justify-center rounded-md text-[10px] font-semibold ${
+                                        isMarked
+                                          ? "bg-red/10 text-red"
+                                          : "bg-darkBlue/5 text-darkBlue/70"
+                                      }`}
+                                    >
+                                      {label}
+                                    </span>
+
+                                    <a
+                                      href={
+                                        isMarked
+                                          ? undefined
+                                          : downloadUrlForAttachment(
+                                              restaurantId,
+                                              att
+                                            )
+                                      }
+                                      target={isMarked ? undefined : "_blank"}
+                                      rel={isMarked ? undefined : "noreferrer"}
+                                      className={`flex items-center gap-1 ${
+                                        isMarked
+                                          ? "cursor-not-allowed line-through text-red/70"
+                                          : "hover:underline"
+                                      }`}
+                                      title={
+                                        isMarked
+                                          ? "Marquée pour suppression"
+                                          : pretty
+                                      }
+                                    >
+                                      <Download className="size-3" />
+                                      <span>{truncate(pretty, 25)}</span>
+                                    </a>
+
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        toggleExistingAttachmentRemoval(
+                                          lineKey,
+                                          att.public_id
+                                        )
+                                      }
+                                      className={`ml-1 inline-flex items-center justify-center rounded-full p-[3px] ${
+                                        isMarked
+                                          ? "bg-red text-white hover:bg-red/80"
+                                          : "bg-red/10 text-red hover:bg-red/20"
+                                      }`}
+                                      title={
+                                        isMarked
+                                          ? "Annuler la suppression"
+                                          : "Marquer pour suppression"
+                                      }
+                                    >
+                                      <Trash2 className="size-3" />
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {existingAttachments.length === 0 &&
+                          newFiles.length === 0 && (
+                            <p className="text-[11px] text-darkBlue/40">
+                              Ajoutez une photo ou un document PDF en lien avec
+                              ce produit.
+                            </p>
+                          )}
+                      </div>
+                    </div>
+
                     <div className="flex flex-col mobile:flex-row justify-between mt-2 gap-2">
                       <button
                         type="button"
@@ -1275,6 +1640,28 @@ export default function ReceptionDeliveryForm({
                             delete n[id];
                             return n;
                           });
+
+                          setExistingAttachmentsByLine((prev) => {
+                            const n = { ...prev };
+                            delete n[lineKey];
+                            return n;
+                          });
+                          setRemovedAttachmentIdsByLine((prev) => {
+                            const n = { ...prev };
+                            delete n[lineKey];
+                            return n;
+                          });
+                          setNewFilesByLine((prev) => {
+                            const n = { ...prev };
+                            delete n[lineKey];
+                            return n;
+                          });
+                          setSectionHeights((prev) => {
+                            const n = { ...prev };
+                            delete n[id];
+                            return n;
+                          });
+
                           remove(idx);
                         }}
                         className={`${btnBase} border border-red bg-white text-red hover:border-red/80`}
@@ -1301,7 +1688,7 @@ export default function ReceptionDeliveryForm({
         </div>
       </div>
 
-      {/* Pièce jointe + Note */}
+      {/* Pièce jointe globale + Note */}
       <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
         <div className={`${fieldWrap} px-3`}>
           <label className={labelCls}>
@@ -1336,9 +1723,7 @@ export default function ReceptionDeliveryForm({
           type="submit"
           disabled={submitDisabled}
           aria-disabled={submitDisabled}
-          className={`text-nowrap inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white shadow disabled:opacity-60 ${
-            submitDisabled ? "bg-darkBlue/40" : "bg-blue"
-          }`}
+          className="text-nowrap inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white shadow disabled:opacity-60 bg-blue"
           title={
             submitDisabled
               ? "Validez au moins une ligne (Produit, Qté, Unité)"
@@ -1346,10 +1731,10 @@ export default function ReceptionDeliveryForm({
           }
         >
           {isSubmitting ? (
-            <>
+            <div className="flex items-center gap-2">
               <Loader2 className="size-4 animate-spin" />
-              Enregistrement…
-            </>
+              <span>Enregistrement…</span>
+            </div>
           ) : isEdit ? (
             <>
               <FileText className="size-4" />
@@ -1376,6 +1761,10 @@ export default function ReceptionDeliveryForm({
               Object.keys(productUserTypedRef.current).forEach((k) => {
                 productUserTypedRef.current[k] = false;
               });
+              setExistingAttachmentsByLine({});
+              setRemovedAttachmentIdsByLine({});
+              setNewFilesByLine({});
+              setSectionHeights({});
               onCancel?.();
             }}
             className="inline-flex items-center justify-center gap-2 rounded-lg border border-red bg-white px-4 py-2 text-sm font-medium text-red"

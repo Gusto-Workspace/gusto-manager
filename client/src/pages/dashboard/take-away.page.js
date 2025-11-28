@@ -31,26 +31,31 @@ export default function TakeAwayPage(props) {
 
   if (!restaurantContext.isAuth) return null;
 
+  const restaurant = restaurantContext.restaurantData;
+  const restaurantOptions = restaurant?.options || {};
+  const hasTakeAwayModule = !!restaurantOptions.take_away;
+
+  const user = restaurantContext.userConnected;
+  const isEmployee = user?.role === "employee";
+
+  let employeeHasTakeAwayAccess = true; 
+
+  if (isEmployee && restaurant) {
+    const employeeInRestaurant = restaurant.employees?.find(
+      (emp) => String(emp._id) === String(user.id)
+    );
+
+    const profile = employeeInRestaurant?.restaurantProfiles?.find(
+      (p) => String(p.restaurant) === String(restaurant._id)
+    );
+
+    employeeHasTakeAwayAccess = profile?.options?.take_away === true;
+  }
+
   return (
     <>
       <Head>
         <title>{title}</title>
-
-        {/* <>
-          {description && <meta name="description" content={description} />}
-          {title && <meta property="og:title" content={title} />}
-          {description && (
-            <meta property="og:description" content={description} />
-          )}
-          <meta
-            property="og:url"
-            content="https://lespetitsbilingues-newham.com/"
-          />
-          <meta property="og:type" content="website" />
-          <meta property="og:image" content="/img/open-graph.jpg" />
-          <meta property="og:image:width" content="1200" />
-          <meta property="og:image:height" content="630" />
-        </> */}
       </Head>
 
       <div>
@@ -66,12 +71,18 @@ export default function TakeAwayPage(props) {
               restaurantData={restaurantContext.restaurantData}
             />
 
-            {restaurantContext?.restaurantData?.options?.take_away ? (
-              <p>Vente à emporter</p>
-            ) : (
+            {!hasTakeAwayModule ? (
               <NoAvailableComponent
                 dataLoading={restaurantContext.dataLoading}
+                emptyText="Vous n'avez pas souscrit à cette option"
               />
+            ) : !employeeHasTakeAwayAccess ? (
+              <NoAvailableComponent
+                dataLoading={restaurantContext.dataLoading}
+                emptyText="Vous n'avez pas accès à cette section"
+              />
+            ) : (
+              <p>Vente à emporter</p>
             )}
           </div>
         </div>

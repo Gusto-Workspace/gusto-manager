@@ -5,9 +5,6 @@ import { Fragment, useEffect, useState } from "react";
 // I18N
 import { useTranslation } from "next-i18next";
 
-// SVG
-import { EditSvg } from "../../_shared/_svgs/_index";
-
 // DATA
 import { daysOfWeeksData } from "@/_assets/data/days-of-week.data";
 
@@ -16,7 +13,7 @@ import axios from "axios";
 
 // COMPONENTS
 import DoubleSkeletonComonent from "../../_shared/skeleton/double-skeleton.component";
-import { Loader2 } from "lucide-react";
+import { Edit, Loader2, Save, XCircle } from "lucide-react";
 
 export default function HoursRestaurantComponent(props) {
   const { t } = useTranslation("restaurant");
@@ -45,7 +42,7 @@ export default function HoursRestaurantComponent(props) {
   }, [props.openingHours, props.reservationHours, props.reservations]);
 
   function handleToggleEdit() {
-    setEditing(!editing);
+    setEditing((prev) => !prev);
   }
 
   useEffect(() => {
@@ -147,7 +144,7 @@ export default function HoursRestaurantComponent(props) {
       return;
     }
 
-    // Mode horaires d'ouverture (non réservations) — comportement existant
+    // Mode horaires d'ouverture (non réservations)
     const token = localStorage.getItem("token");
 
     try {
@@ -170,22 +167,52 @@ export default function HoursRestaurantComponent(props) {
     }
   }
 
-  return (
-    <div
-      className={`bg-white p-4 rounded-lg drop-shadow-sm w-full text-darkBlue `}
-    >
-      <div className="flex items-center flex-col mobile:flex-row justify-between flex-wrap gap-2">
-        <h1 className="font-bold text-lg">
-          {props.reservations
-            ? "Horaires des réservations"
-            : "Horaires d'ouverture"}
-        </h1>
+  const sectionCls =
+    "bg-white/60 p-2 midTablet:p-6 rounded-2xl border border-darkBlue/10 shadow-sm w-full text-darkBlue flex flex-col gap-4";
+  const rowCls =
+    "group rounded-xl bg-white/70 border border-darkBlue/10 px-4 py-3 flex flex-col midTablet:flex-row justify-between items-center gap-4";
+  const dayLabelCls = "font-semibold text-sm text-darkBlue";
+  const timeInputCls =
+    "h-9 w-full rounded-lg border border-darkBlue/20 bg-white px-3 text-sm outline-none transition placeholder:text-darkBlue/40";
+  const closedBadgeCls =
+    "inline-flex items-center justify-center rounded-full bg-darkBlue/5 px-3 py-1 text-xs font-medium text-darkBlue/60";
 
+  return (
+    <section className={sectionCls}>
+      <div className="flex justify-between items-start w-full gap-6">
+        <div className="text-balance">
+          <h1 className="font-semibold text-lg text-darkBlue">
+            {props.reservations
+              ? t("hours.reservationsTitle", "Horaires des réservations")
+              : t("hours.openingTitle", "Horaires d'ouverture")}
+          </h1>
+          <p className="text-xs text-darkBlue/60 max-w-md">
+            {props.reservations
+              ? t(
+                  "hours.reservationsSubtitle",
+                  "Définissez les créneaux disponibles pour les réservations en ligne."
+                )
+              : t(
+                  "hours.openingSubtitle",
+                  "Configurez les horaires affichés sur votre site et vos modules."
+                )}
+          </p>
+        </div>
         <div className="flex gap-2">
           {editing && (
-            <button onClick={() => setEditing(false)} disabled={saving}>
-              <span className="hover:opacity-80 opacity-100 rounded-lg text-white disabled:cursor-none bg-red px-4 py-2 flex gap-2 items-center transition-opacity duration-150">
+            <button
+              onClick={() => setEditing(false)}
+              disabled={saving}
+              type="button"
+            >
+              {/* Texte sur mobile+ */}
+              <span className="hidden mobile:flex rounded-lg text-white disabled:cursor-none bg-red px-4 py-2 gap-2 items-center transition-opacity duration-150">
                 {t("cancel")}
+              </span>
+
+              {/* Icône seule sur très petit écran */}
+              <span className="mobile:hidden rounded-lg text-white disabled:cursor-none bg-red px-3 py-2 flex gap-2 items-center transition-opacity duration-150">
+                <XCircle className="size-5" />
               </span>
             </button>
           )}
@@ -196,39 +223,45 @@ export default function HoursRestaurantComponent(props) {
             disabled={saving}
           >
             {editing ? (
-              <span className="hover:opacity-80 opacity-100 rounded-lg text-white bg-blue px-4 py-2 flex gap-2 items-center transition-opacity duration-150">
+              <span className="rounded-lg text-white bg-blue px-4 py-2 flex gap-2 items-center transition-opacity duration-150">
                 {saving ? (
-                  <>
-                    <Loader2 className="size-6 animate-spin" />
-                    <span>En cours…</span>
-                  </>
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="size-5 mobile:size-4 animate-spin" />
+                    <span className="hidden mobile:flex">
+                      {t("saving", "En cours…")}
+                    </span>
+                  </div>
                 ) : (
-                  <span>{t("save")}</span>
+                  <>
+                    <span className="hidden mobile:flex">{t("save")}</span>
+                    <span className="mobile:hidden flex">
+                      <Save className="size-5" />
+                    </span>
+                  </>
                 )}
               </span>
             ) : (
-              <div className="hover:opacity-80 opacity-100 rounded-lg text-white bg-blue px-4 py-2 flex gap-2 items-center transition-opacity duration-150">
-                <EditSvg
-                  width={18}
-                  height={18}
-                  strokeColor="#FFFFFF"
-                  fillColor="#FFFFFF"
-                />{" "}
-                Éditer
+              <div className="rounded-lg text-white bg-blue px-4 py-2 flex gap-2 items-center transition-opacity duration-150">
+                <Edit className="size-5" />
+                <span className="hidden mobile:flex">
+                  {t("edit", "Éditer")}
+                </span>
               </div>
             )}
           </button>
         </div>
       </div>
 
-      <hr className="opacity-20 my-4" />
+      <hr className="opacity-10" />
 
-      <ul className="mt-0 flex flex-col gap-3">
+      <ul className="mt-1 flex flex-col gap-3">
         {localHours.map((dayHour, dayIndex) => (
           <Fragment key={dayHour.day}>
-            <li className="flex flex-col gap-4 midTablet:flex-row justify-between items-center py-6 midTablet:py-2 midTablet:h-auto">
-              <span>{t(dayHour.day)}</span>
+            <li className={rowCls}>
+              {/* Jour */}
+              <span className={dayLabelCls}>{t(dayHour.day)}</span>
 
+              {/* Contenu horaire */}
               <div className="w-full">
                 {props.dataLoading ? (
                   <DoubleSkeletonComonent
@@ -239,27 +272,28 @@ export default function HoursRestaurantComponent(props) {
                     }
                   />
                 ) : editing ? (
-                  <div className="flex flex-col midTablet:flex-row items-center justify-end gap-2 desktop:gap-6 ">
+                  <div className="flex flex-col midTablet:flex-row items-center justify-end gap-3 desktop:gap-6">
                     {dayHour.isClosed ? (
                       <div className="flex flex-col midTablet:flex-row items-center gap-2">
                         <input
                           type="time"
                           value=""
                           disabled
-                          className="border p-1 rounded-lg opacity-50"
+                          className={`${timeInputCls} opacity-50`}
                         />
-                        <span>{t("hours.to")}</span>
-
+                        <span className="text-xs text-darkBlue/60">
+                          {t("hours.to")}
+                        </span>
                         <input
                           type="time"
                           value=""
                           disabled
-                          className="border p-1 rounded-lg  opacity-50"
+                          className={`${timeInputCls} opacity-50`}
                         />
                       </div>
                     ) : (
                       <div className="flex flex-col midTablet:flex-row items-center gap-4">
-                        <div className="flex flex-col gap-12 midTablet:gap-2">
+                        <div className="flex flex-col gap-3 midTablet:gap-2">
                           {dayHour.hours.map((hour, index) => (
                             <div
                               key={index}
@@ -271,12 +305,7 @@ export default function HoursRestaurantComponent(props) {
                                   onClick={() =>
                                     handleRemoveTimeSlot(dayHour.day, index)
                                   }
-                                  className="
-              text-red bg-red bg-opacity-40 min-w-6 h-6 rounded-full
-              flex items-center justify-center ml-2
-              absolute -right-8 top-1/2 -translate-y-1/2
-              midTablet:static midTablet:right-auto midTablet:top-auto midTablet:translate-y-0
-            "
+                                  className="text-red bg-red/30 min-w-6 h-6 rounded-full flex items-center justify-center ml-2 absolute -right-8 top-1/2 -translate-y-1/2 midTablet:static midTablet:right-auto midTablet:top-auto midTablet:translate-y-0"
                                   aria-label={t("hours.removeTimeSlot")}
                                   disabled={saving}
                                 >
@@ -296,12 +325,14 @@ export default function HoursRestaurantComponent(props) {
                                   )
                                 }
                                 disabled={dayHour.isClosed || saving}
-                                className={`border p-1 rounded-lg w-full ${
+                                className={`${timeInputCls} ${
                                   dayHour.isClosed ? "opacity-50" : ""
                                 }`}
                               />
 
-                              <span>{t("hours.to")}</span>
+                              <span className="text-xs text-darkBlue/70">
+                                {t("hours.to")}
+                              </span>
 
                               <input
                                 type="time"
@@ -315,7 +346,7 @@ export default function HoursRestaurantComponent(props) {
                                   )
                                 }
                                 disabled={dayHour.isClosed || saving}
-                                className={`border p-1 rounded-lg w-full ${
+                                className={`${timeInputCls} ${
                                   dayHour.isClosed ? "opacity-50" : ""
                                 }`}
                               />
@@ -327,7 +358,7 @@ export default function HoursRestaurantComponent(props) {
                         <button
                           type="button"
                           onClick={() => handleAddTimeSlot(dayHour.day)}
-                          className="text-violet mt-2  bg-violet bg-opacity-40 min-w-6 h-6 rounded flex items-center justify-center"
+                          className="text-violet bg-violet/30 min-w-7 h-7 rounded-full flex items-center justify-center text-sm font-semibold"
                           aria-label={t("hours.addTimeSlot")}
                           disabled={saving}
                         >
@@ -337,7 +368,7 @@ export default function HoursRestaurantComponent(props) {
                     )}
 
                     {/* Checkbox pour fermer le jour entier */}
-                    <label className="flex items-center gap-2 mt-2 ">
+                    <label className="flex items-center gap-2 text-xs text-darkBlue/80">
                       <input
                         type="checkbox"
                         checked={dayHour.isClosed}
@@ -350,15 +381,16 @@ export default function HoursRestaurantComponent(props) {
                     </label>
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center mobile:items-end gap-1">
+                  <div className="flex flex-col items-end gap-1">
                     {dayHour.isClosed ? (
-                      <span className="flex justify-end opacity-60 italic">
-                        {t("hours.close")}
-                      </span>
+                      <span className={closedBadgeCls}>{t("hours.close")}</span>
                     ) : (
                       dayHour.hours.map((hour, i) => (
-                        <div key={i} className="flex justify-end">
-                          {hour.open || "00:00"} - {hour.close || "00:00"}
+                        <div
+                          key={i}
+                          className="flex justify-end text-sm text-darkBlue"
+                        >
+                          {hour.open || "00:00"} — {hour.close || "00:00"}
                         </div>
                       ))
                     )}
@@ -366,13 +398,9 @@ export default function HoursRestaurantComponent(props) {
                 )}
               </div>
             </li>
-
-            {dayIndex < daysOfWeeksData.length - 1 && (
-              <hr className="opacity-20" />
-            )}
           </Fragment>
         ))}
       </ul>
-    </div>
+    </section>
   );
 }

@@ -1,15 +1,12 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+
+// AXIOS
 import axios from "axios";
-import {
-  Search,
-  CalendarClock,
-  Edit3,
-  Trash2,
-  Loader2,
-  X,
-} from "lucide-react";
+
+// ICONS
+import { Search, CalendarClock, Edit3, Trash2, Loader2, X } from "lucide-react";
 
 function fmtDate(d) {
   try {
@@ -47,6 +44,7 @@ export default function RecipeBatchesList({
   const [items, setItems] = useState([]);
   const [meta, setMeta] = useState({ page: 1, limit: 20, pages: 1, total: 0 });
   const [loading, setLoading] = useState(false);
+  const [showSlowLoader, setShowSlowLoader] = useState(false);
 
   // Filtres
   const [q, setQ] = useState("");
@@ -95,12 +93,15 @@ export default function RecipeBatchesList({
     "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition active:scale-[0.98]";
 
   const fetchData = async (page = 1, overrides = {}) => {
+    if (!restaurantId) return;
+
     setLoading(true);
     try {
       const curQ = overrides.q !== undefined ? overrides.q : q;
       const curFrom =
         overrides.dateFrom !== undefined ? overrides.dateFrom : dateFrom;
-      const curTo = overrides.dateTo !== undefined ? overrides.dateTo : dateTo;
+      const curTo =
+        overrides.dateTo !== undefined ? overrides.dateTo : dateTo;
 
       const params = { page, limit: meta.limit || 20 };
       if (curFrom) params.date_from = new Date(curFrom).toISOString();
@@ -125,13 +126,44 @@ export default function RecipeBatchesList({
     }
   };
 
+  // Loader "lent" : visible seulement si loading > 1s
+  useEffect(() => {
+    if (!loading) {
+      setShowSlowLoader(false);
+      return;
+    }
+    const id = setTimeout(() => {
+      setShowSlowLoader(true);
+    }, 1000);
+    return () => clearTimeout(id);
+  }, [loading]);
+
   // Initial fetch
   useEffect(() => {
     if (restaurantId) fetchData(1, { q: "", dateFrom: "", dateTo: "" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
 
-  // Upserts live
+  // Debounce 500ms sur la recherche -> fetch côté BDD
+  const isFirstLoadRef = useRef(true);
+  useEffect(() => {
+    if (!restaurantId) return;
+
+    // on laisse l'initial fetch faire son travail sans double requête
+    if (isFirstLoadRef.current) {
+      isFirstLoadRef.current = false;
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      fetchData(1, { q });
+    }, 500);
+
+    return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, restaurantId]);
+
+  // Upserts live (create / update batch)
   useEffect(() => {
     const handleUpsert = (event) => {
       const doc = event?.detail?.doc;
@@ -150,9 +182,11 @@ export default function RecipeBatchesList({
         let nextList;
 
         if (index !== -1) {
+          // update existant
           nextList = [...prevList];
           nextList[index] = { ...prevList[index], ...doc };
         } else {
+          // nouveau doc
           isNew = true;
           if (page === 1) {
             nextList = [doc, ...prevList];
@@ -181,27 +215,6 @@ export default function RecipeBatchesList({
       window.removeEventListener("recipe-batches:upsert", handleUpsert);
   }, [restaurantId]);
 
-  // Recherche locale
-  const filtered = useMemo(() => {
-    if (!q) return items;
-    const qq = q.toLowerCase();
-    return items.filter((it) =>
-      [
-        it?.recipeId,
-        it?.batchId,
-        it?.notes,
-        ...(Array.isArray(it?.ingredients)
-          ? it.ingredients.flatMap((l) => [l?.name, l?.lotNumber, l?.unit])
-          : []),
-        it?.createdBy?.firstName,
-        it?.createdBy?.lastName,
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(qq)
-    );
-  }, [items, q]);
-
   const askDelete = (item) => {
     setDeleteTarget(item);
     setIsDeleteModalOpen(true);
@@ -225,7 +238,8 @@ export default function RecipeBatchesList({
       setIsDeleteModalOpen(false);
       setDeleteTarget(null);
       onDeleted?.(deleted);
-      // rafraîchir éventuels lots impactés
+
+      // ➜ ici, c’est bien ce dispatch : le form écoute "inventory-lots:refresh"
       window.dispatchEvent(new CustomEvent("inventory-lots:refresh"));
 
       setMeta((prevMeta) => {
@@ -329,114 +343,119 @@ export default function RecipeBatchesList({
         </div>
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto max-w-[calc(100vw-83px)] midTablet:max-w-[calc(100vw-92px)] tablet:max-w-[calc(100vw-360px)] rounded-xl border border-darkBlue/10 p-2">
-        <table className="w-full text-[13px]">
-          <thead className="whitespace-nowrap">
-            <tr className="sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Préparé le
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Recette
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Batch
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Ingrédients
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Lots
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Opérateur
-              </th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
-                Notes
-              </th>
-              <th className="py-2 pr-0 text-right font-medium text-darkBlue/70">
-                Actions
-              </th>
-            </tr>
-          </thead>
-
-          <tbody className="divide-y divide-darkBlue/10 [&>tr:last-child>td]:!pb-0">
-            {!loading && filtered.length === 0 && (
-              <tr>
-                <td colSpan={8} className="py-8 text-center text-darkBlue/50">
-                  Aucun batch
-                </td>
+      {/* Table + overlay loader */}
+      <div className="relative">
+        <div className="overflow-x-auto max-w-[calc(100vw-50px)] mobile:max-w-[calc(100vw-83px)] midTablet:max-w-[calc(100vw-92px)] tablet:max-w-[calc(100vw-360px)] rounded-xl border border-darkBlue/10">
+          <table className="w-full text-[13px]">
+            <thead className="whitespace-nowrap">
+              <tr className="text-nowrap sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Préparé le
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Recette
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Batch
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Ingrédients
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Lots
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Opérateur
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Notes
+                </th>
+                <th className="py-2 pr-0 text-right font-medium text-darkBlue/70">
+                  Actions
+                </th>
               </tr>
-            )}
+            </thead>
 
-            {loading && (
-              <tr>
-                <td colSpan={8} className="py-8 text-center text-darkBlue/50">
-                  <span className="inline-flex items-center gap-2">
-                    <Loader2 className="size-4 animate-spin" /> Chargement…
-                  </span>
-                </td>
-              </tr>
-            )}
-
-            {!loading &&
-              filtered.map((it) => (
-                <tr
-                  key={it._id}
-                  className={`transition-colors hover:bg-darkBlue/[0.03] ${
-                    editingId === it._id ? "bg-blue/5 ring-1 ring-blue/20" : ""
-                  }`}
-                >
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {fmtDate(it.preparedAt)}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {it.recipeId || "—"}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {it.batchId || "—"}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {Array.isArray(it.ingredients) ? it.ingredients.length : 0}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {summarizeLots(it.ingredients)}
-                  </td>
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    {it?.createdBy
-                      ? `${it.createdBy.firstName || ""} ${
-                          it.createdBy.lastName || ""
-                        }`.trim() || "—"
-                      : "—"}
-                  </td>
-                  <td className="py-2 pr-3 max-w-[320px]">
-                    <span className="line-clamp-2">{it.notes || "—"}</span>
-                  </td>
-                  <td className="py-2 pr-0">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => onEdit?.(it)}
-                        className={`${btnBase} border border-green/50 bg-white text-green`}
-                        aria-label="Éditer"
-                        type="button"
-                      >
-                        <Edit3 className="size-4" /> Éditer
-                      </button>
-                      <button
-                        onClick={() => askDelete(it)}
-                        className={`${btnBase} border border-red bg-white text-red hover:border-red/80`}
-                        aria-label="Supprimer"
-                        type="button"
-                      >
-                        <Trash2 className="size-4" /> Supprimer
-                      </button>
-                    </div>
+            <tbody className="divide-y divide-darkBlue/10">
+              {items.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-8 text-center text-darkBlue/50">
+                    Aucun batch
                   </td>
                 </tr>
-              ))}
-          </tbody>
-        </table>
+              ) : (
+                items.map((it) => (
+                  <tr
+                    key={it._id}
+                    className={`transition-colors hover:bg-darkBlue/[0.03] ${
+                      editingId === it._id
+                        ? "bg-blue/5 ring-1 ring-blue/20"
+                        : ""
+                    }`}
+                  >
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {fmtDate(it.preparedAt)}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it.recipeId || "—"}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it.batchId || "—"}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {Array.isArray(it.ingredients)
+                        ? it.ingredients.length
+                        : 0}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {summarizeLots(it.ingredients)}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {it?.createdBy
+                        ? `${it.createdBy.firstName || ""} ${
+                            it.createdBy.lastName || ""
+                          }`.trim() || "—"
+                        : "—"}
+                    </td>
+                    <td className="py-2 pr-3 max-w-[320px]">
+                      <span className="line-clamp-2">{it.notes || "—"}</span>
+                    </td>
+                    <td className="py-2 pr-0">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => onEdit?.(it)}
+                          className={`${btnBase} border border-green/50 bg-white text-green`}
+                          aria-label="Éditer"
+                          type="button"
+                        >
+                          <Edit3 className="size-4" /> Éditer
+                        </button>
+                        <button
+                          onClick={() => askDelete(it)}
+                          className={`${btnBase} border border-red bg-white text-red hover:border-red/80`}
+                          aria-label="Supprimer"
+                          type="button"
+                        >
+                          <Trash2 className="size-4" /> Supprimer
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Overlay loader par-dessus la table, seulement si loading > 1s */}
+        {showSlowLoader && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-white/60">
+            <div className="flex items-center gap-2 text-darkBlue/70 text-sm">
+              <Loader2 className="size-4 animate-spin" />
+              <span>Chargement…</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Pagination */}
@@ -470,7 +489,11 @@ export default function RecipeBatchesList({
       {isDeleteModalOpen &&
         isClient &&
         createPortal(
-          <div className="fixed inset-0 z-[1000]" aria-modal="true" role="dialog">
+          <div
+            className="fixed inset-0 z-[1000]"
+            aria-modal="true"
+            role="dialog"
+          >
             <div
               onClick={closeDeleteModal}
               className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"
@@ -481,7 +504,8 @@ export default function RecipeBatchesList({
                   Supprimer ce batch ?
                 </h2>
                 <p className="mb-5 text-center text-sm text-darkBlue/70">
-                  Cette action est définitive. Le batch sera retiré de l’historique.
+                  Cette action est définitive. Le batch sera retiré de
+                  l’historique.
                 </p>
                 <div className="flex items-center justify-center gap-2">
                   <button
@@ -491,9 +515,10 @@ export default function RecipeBatchesList({
                     type="button"
                   >
                     {deleteLoading ? (
-                      <>
-                        <Loader2 className="size-4 animate-spin" /> Suppression…
-                      </>
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="size-4 animate-spin" />
+                        <span>Suppression…</span>
+                      </div>
                     ) : (
                       "Confirmer"
                     )}

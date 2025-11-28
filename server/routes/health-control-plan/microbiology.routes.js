@@ -6,7 +6,11 @@ const { Types } = mongoose;
 const authenticateToken = require("../../middleware/authentificate-token");
 const Microbiology = require("../../models/logs/microbiology.model");
 
-/* ---------- helpers (alignés sur pest-control) ---------- */
+/* ---------- helpers ---------- */
+function escapeRegExp(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function currentUserFromToken(req) {
   const u = req.user || {};
   const role = (u.role || "").toLowerCase();
@@ -14,20 +18,23 @@ function currentUserFromToken(req) {
   return {
     userId: u.id,
     role,
-    firstName: u.firstname || u.firstName || "",
-    lastName: u.lastname || u.lastName || "",
+    firstName: u.firstname || "",
+    lastName: u.lastname || "",
   };
 }
+
 const normStr = (v) => {
   if (v == null) return null;
   const s = String(v).trim();
   return s.length ? s : null;
 };
+
 const normDate = (v) => {
   if (!v) return null;
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? null : d;
 };
+
 const normBool = (v) => {
   if (v === undefined || v === null || v === "") return null;
   if (typeof v === "boolean") return v;
@@ -101,11 +108,9 @@ router.post(
       return res.status(201).json(doc);
     } catch (err) {
       console.error("POST /microbiology:", err);
-      return res
-        .status(500)
-        .json({
-          error: "Erreur lors de la création de l'analyse microbiologique",
-        });
+      return res.status(500).json({
+        error: "Erreur lors de la création de l'analyse microbiologique",
+      });
     }
   }
 );
@@ -142,11 +147,13 @@ router.get(
       if (date_from || date_to) {
         const from = date_from ? normDate(date_from) : null;
         const to = date_to ? normDate(date_to) : null;
+
         if (to) {
           // inclure toute la journée "to"
           to.setDate(to.getDate() + 1);
           to.setMilliseconds(to.getMilliseconds() - 1);
         }
+
         if (from || to) {
           query.sampledAt = {
             ...(from ? { $gte: from } : {}),
@@ -155,9 +162,11 @@ router.get(
         }
       }
 
-      // Recherche texte
+      // Recherche texte sécurisée
       if (q && String(q).trim().length) {
-        const rx = new RegExp(String(q).trim(), "i");
+        const safe = escapeRegExp(String(q).trim());
+        const rx = new RegExp(safe, "i");
+
         (query.$or ||= []).push(
           { parameter: rx },
           { result: rx },
@@ -173,29 +182,32 @@ router.get(
         );
       }
 
-      const skip = (Number(page) - 1) * Number(limit);
+      const pageNum = Number(page) || 1;
+      const limitNum = Number(limit) || 20;
+      const skip = (pageNum - 1) * limitNum;
+
       const [items, total] = await Promise.all([
         Microbiology.find(query)
           .sort(listSortExpr())
           .skip(skip)
-          .limit(Number(limit)),
+          .limit(limitNum),
         Microbiology.countDocuments(query),
       ]);
 
       return res.json({
         items,
         meta: {
-          page: Number(page),
-          limit: Number(limit),
+          page: pageNum,
+          limit: limitNum,
           total,
-          pages: Math.max(1, Math.ceil(total / Number(limit))),
+          pages: Math.max(1, Math.ceil(total / limitNum)),
         },
       });
     } catch (err) {
       console.error("GET /list-microbiology:", err);
-      return res
-        .status(500)
-        .json({ error: "Erreur lors de la récupération des analyses" });
+      return res.status(500).json({
+        error: "Erreur lors de la récupération des analyses",
+      });
     }
   }
 );

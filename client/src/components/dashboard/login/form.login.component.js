@@ -33,7 +33,7 @@ export default function FormLoginComponent() {
   const [errorMessage, setErrorMessage] = useState("");
   const [selectedRestaurant, setSelectedRestaurant] = useState("");
   const [tempToken, setTempToken] = useState(null);
-  const [tempRole, setTempRole] = useState(null);
+  const [tempRole, setTempRole] = useState(null); // "owner" | "employee"
   const [showPassword, setShowPassword] = useState(false);
 
   const { restaurantContext } = useContext(GlobalContext);
@@ -49,30 +49,40 @@ export default function FormLoginComponent() {
       );
       const { token, owner, employee } = response.data;
 
-      // On stocke token + rôle temporairement
+      restaurantContext.setRestaurantsList([]);
+      setSelectedRestaurant("");
       setTempToken(token);
+
       if (owner) {
-        // Propriétaire
+        // ----- OWNER -----
         setTempRole("owner");
-        if (owner.restaurants.length > 1) {
-          restaurantContext.setRestaurantsList(owner.restaurants);
+        const restaurants = owner.restaurants || [];
+
+        if (restaurants.length > 1) {
+          restaurantContext.setRestaurantsList(restaurants);
           restaurantContext.setIsAuth(true);
+        } else if (restaurants.length === 1) {
+          await handleRestaurantSelect("owner", restaurants[0]._id, token);
         } else {
-          // 1 resto → on redirige tout de suite
-          await handleRestaurantSelect(
-            "owner",
-            owner.restaurants[0]._id,
-            token
-          );
+          localStorage.setItem("token", token);
+          restaurantContext.setIsAuth(true);
+          router.push("/dashboard");
         }
-      } else {
-        // Employé
+      } else if (employee) {
+        // ----- EMPLOYEE -----
         setTempRole("employee");
-        await handleRestaurantSelect(
-          "employee",
-          employee.restaurant._id,
-          token
-        );
+        const restaurants = employee.restaurants || [];
+
+        if (restaurants.length > 1) {
+          restaurantContext.setRestaurantsList(restaurants);
+          restaurantContext.setIsAuth(true);
+        } else if (restaurants.length === 1) {
+          await handleRestaurantSelect("employee", restaurants[0]._id, token);
+        } else {
+          localStorage.setItem("token", token);
+          restaurantContext.setIsAuth(true);
+          router.push("/dashboard/my-space");
+        }
       }
     } catch (error) {
       if (error.response?.data?.message) {
@@ -85,23 +95,28 @@ export default function FormLoginComponent() {
     }
   }
 
-  async function handleRestaurantSelect(role, restaurantId, token) {
+  async function handleRestaurantSelect(role, restaurantId, tokenParam) {
+    if (!role) return;
+
     setLoading(true);
     setErrorMessage("");
 
     try {
+      const baseToken = tokenParam ?? tempToken;
+      if (!baseToken) {
+        throw new Error("Missing token for restaurant selection");
+      }
+
       const { data } = await axios.post(
         `${process.env.NEXT_PUBLIC_API_URL}/user/select-restaurant`,
-        { token, restaurantId }
+        { token: baseToken, restaurantId }
       );
       const newToken = data.token;
       localStorage.setItem("token", newToken);
 
-      // Recharge le contexte
       await restaurantContext.fetchRestaurantData(newToken, restaurantId);
       restaurantContext.setIsAuth(true);
 
-      // Redirige en fonction du rôle passé
       if (role === "employee") {
         router.push("/dashboard/my-space");
       } else {
@@ -114,8 +129,12 @@ export default function FormLoginComponent() {
     }
   }
 
+  const hasRestaurantsToSelect =
+    restaurantContext?.restaurantsList &&
+    restaurantContext.restaurantsList.length > 0;
+
   return (
-    <section className="relative h[380px] bg-white/15 backdrop-blur-sm flex flex-col rounded-lg p-12 drop-shadow-sm w-[500px]">
+    <section className="relative mx-4 bg-white/15   flex flex-col rounded-lg p-12 drop-shadow-sm w-[500px]">
       <div className="flex flex-col gap-2 items-center">
         <h1 className="text-4xl font-semibold text-white">
           {t("titles.main")}
@@ -126,7 +145,8 @@ export default function FormLoginComponent() {
         <div className="w-20 h-1 bg-orange mx-auto mt-2 mb-6 rounded-full"></div>
       </div>
 
-      {restaurantContext?.restaurantsList?.length === 0 ? (
+      {!hasRestaurantsToSelect ? (
+        // -------- FORM LOGIN --------
         <form
           onSubmit={handleSubmit(onSubmit)}
           className="w-full flex flex-col gap-4 mt-auto text-white"
@@ -193,6 +213,7 @@ export default function FormLoginComponent() {
           </button>
         </form>
       ) : (
+        // -------- SÉLECTION RESTAURANT --------
         <div className="w-full flex flex-col gap-4 justify-between flex-1">
           <div className="my-auto flex flex-col gap-2">
             <h2 className="font-semibold text-white mx-auto">
@@ -226,7 +247,7 @@ export default function FormLoginComponent() {
             onClick={() =>
               handleRestaurantSelect(tempRole, selectedRestaurant, tempToken)
             }
-            disabled={!selectedRestaurant}
+            disabled={!selectedRestaurant || !tempRole || !tempToken}
           >
             {loading ? t("buttons.loading") : t("buttons.access")}
           </button>

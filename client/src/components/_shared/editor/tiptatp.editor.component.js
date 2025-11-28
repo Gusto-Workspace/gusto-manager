@@ -1,4 +1,5 @@
 // TIPTAP EDITOR
+import { useEffect } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TextStyle from "@tiptap/extension-text-style";
@@ -7,6 +8,7 @@ import Underline from "@tiptap/extension-underline";
 import Placeholder from "@tiptap/extension-placeholder";
 import ListItem from "@tiptap/extension-list-item";
 
+// ICONS
 import { BoldSvg } from "../_svgs/bold.svg";
 import { ItalicSvg } from "../_svgs/italic.svg";
 import { StrikeSvg } from "../_svgs/strike.svg";
@@ -16,149 +18,182 @@ import { OrderedListSvg } from "../_svgs/ordered-list.svg";
 
 // I18N
 import { useTranslation } from "next-i18next";
-import { useEffect } from "react";
 
 function MenuBar({ editor, t }) {
-  if (!editor) {
-    return null;
-  }
+  if (!editor) return null;
+
+  const btnBase =
+    "inline-flex items-center justify-center h-8 rounded-lg px-2 text-[11px] font-medium tracking-[0.05em] uppercase transition disabled:opacity-40 disabled:cursor-not-allowed";
+  const btnNeutral = "text-darkBlue/60 hover:bg-darkBlue/5";
+  const btnActive = "bg-darkBlue text-white shadow-sm";
+
+  const iconBtnBase =
+    "inline-flex items-center justify-center h-8 w-8 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed";
+  const iconNeutral = "text-darkBlue/60 hover:bg-darkBlue/5";
+  const iconActive = "bg-darkBlue text-white shadow-sm";
 
   return (
-    <div className="control-group">
-      <div className="button-group">
-        <button
-          type="button"
-          onClick={() => editor.chain().focus().toggleBold().run()}
-          disabled={!editor.can().chain().focus().toggleBold().run()}
-          className={editor.isActive("bold") ? "is-active" : ""}
-        >
-          <BoldSvg
-            width={15}
-            height={15}
-            fillColor={editor.isActive("bold") ? "white" : ""}
-          />
-        </button>
+    <div className="rounded-2xl border border-darkBlue/10 bg-white/80 px-2 py-1.5 flex flex-wrap gap-1">
+      {/* Bold */}
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().toggleBold().run()}
+        disabled={!editor.can().chain().focus().toggleBold().run()}
+        className={`${iconBtnBase} ${
+          editor.isActive("bold") ? iconActive : iconNeutral
+        }`}
+      >
+        <BoldSvg
+          width={15}
+          height={15}
+          fillColor={editor.isActive("bold") ? "white" : "#131E36"}
+        />
+      </button>
 
-        <button
-          type="button"
-          onClick={() => editor.chain().focus().toggleItalic().run()}
-          disabled={!editor.can().chain().focus().toggleItalic().run()}
-          className={editor.isActive("italic") ? "is-active" : ""}
-        >
-          <ItalicSvg
-            width={15}
-            height={15}
-            fillColor={editor.isActive("italic") ? "white" : ""}
-          />
-        </button>
+      {/* Italic */}
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().toggleItalic().run()}
+        disabled={!editor.can().chain().focus().toggleItalic().run()}
+        className={`${iconBtnBase} ${
+          editor.isActive("italic") ? iconActive : iconNeutral
+        }`}
+      >
+        <ItalicSvg
+          width={15}
+          height={15}
+          fillColor={editor.isActive("italic") ? "white" : "#131E36"}
+        />
+      </button>
 
-        <button
-          type="button"
-          onClick={() => editor.chain().focus().toggleStrike().run()}
-          disabled={!editor.can().chain().focus().toggleStrike().run()}
-          className={editor.isActive("strike") ? "is-active" : ""}
-        >
-          <StrikeSvg
-            width={20}
-            height={20}
-            fillColor={editor.isActive("strike") ? "white" : ""}
-          />
-        </button>
+      {/* Strike */}
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().toggleStrike().run()}
+        disabled={!editor.can().chain().focus().toggleStrike().run()}
+        className={`${iconBtnBase} ${
+          editor.isActive("strike") ? iconActive : iconNeutral
+        }`}
+      >
+        <StrikeSvg
+          width={20}
+          height={20}
+          fillColor={editor.isActive("strike") ? "white" : "#131E36"}
+        />
+      </button>
 
-        <button
-          type="button"
-          onClick={() => editor.chain().focus().toggleUnderline().run()}
-          disabled={!editor.can().chain().focus().toggleUnderline().run()}
-          className={editor.isActive("underline") ? "is-active" : ""}
-        >
-          <UnderlineSvg
-            width={15}
-            height={15}
-            fillColor={editor.isActive("underline") ? "white" : ""}
-          />
-        </button>
+      {/* Underline */}
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().toggleUnderline().run()}
+        disabled={!editor.can().chain().focus().toggleUnderline().run()}
+        className={`${iconBtnBase} ${
+          editor.isActive("underline") ? iconActive : iconNeutral
+        }`}
+      >
+        <UnderlineSvg
+          width={15}
+          height={15}
+          fillColor={editor.isActive("underline") ? "white" : "#131E36"}
+        />
+      </button>
 
-        <button
-          type="button"
-          onClick={() => editor.chain().focus().setParagraph().run()}
-          className={editor.isActive("paragraph") ? "is-active" : ""}
-        >
-          {t("editor.text")}
-        </button>
+      <span className="mx-1 h-6 w-px bg-darkBlue/10 self-center" />
 
-        <button
-          type="button"
-          onClick={() =>
-            editor.chain().focus().toggleHeading({ level: 1 }).run()
-          }
-          className={
-            editor.isActive("heading", { level: 1 }) ? "is-active" : ""
-          }
-        >
-          {t("editor.title")} 1
-        </button>
+      {/* Paragraph */}
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().setParagraph().run()}
+        className={`${btnBase} ${
+          editor.isActive("paragraph") ? btnActive : btnNeutral
+        }`}
+      >
+        {t("editor.text")}
+      </button>
 
-        <button
-          type="button"
-          onClick={() =>
-            editor.chain().focus().toggleHeading({ level: 2 }).run()
-          }
-          className={
-            editor.isActive("heading", { level: 2 }) ? "is-active" : ""
-          }
-        >
-          {t("editor.title")} 2
-        </button>
+      {/* H1 */}
+      <button
+        type="button"
+        onClick={() =>
+          editor.chain().focus().toggleHeading({ level: 1 }).run()
+        }
+        className={`${btnBase} ${
+          editor.isActive("heading", { level: 1 }) ? btnActive : btnNeutral
+        }`}
+      >
+        {t("editor.title")} 1
+      </button>
 
-        <button
-          type="button"
-          onClick={() =>
-            editor.chain().focus().toggleHeading({ level: 3 }).run()
-          }
-          className={
-            editor.isActive("heading", { level: 3 }) ? "is-active" : ""
-          }
-        >
-          {t("editor.title")} 3
-        </button>
+      {/* H2 */}
+      <button
+        type="button"
+        onClick={() =>
+          editor.chain().focus().toggleHeading({ level: 2 }).run()
+        }
+        className={`${btnBase} ${
+          editor.isActive("heading", { level: 2 }) ? btnActive : btnNeutral
+        }`}
+      >
+        {t("editor.title")} 2
+      </button>
 
-        <button
-          type="button"
-          onClick={() => editor.chain().focus().toggleBulletList().run()}
-          className={editor.isActive("bulletList") ? "is-active" : ""}
-        >
-          <BulletListSvg
-            width={20}
-            height={20}
-            fillColor={editor.isActive("bulletList") ? "white" : ""}
-          />
-        </button>
+      {/* H3 */}
+      <button
+        type="button"
+        onClick={() =>
+          editor.chain().focus().toggleHeading({ level: 3 }).run()
+        }
+        className={`${btnBase} ${
+          editor.isActive("heading", { level: 3 }) ? btnActive : btnNeutral
+        }`}
+      >
+        {t("editor.title")} 3
+      </button>
 
-        <button
-          type="button"
-          onClick={() => editor.chain().focus().toggleOrderedList().run()}
-          className={editor.isActive("orderedList") ? "is-active" : ""}
-        >
-          <OrderedListSvg
-            width={25}
-            height={22}
-            fillColor={editor.isActive("orderedList") ? "white" : ""}
-          />
-        </button>
-      </div>
+      <span className="mx-1 h-6 w-px bg-darkBlue/10 self-center" />
+
+      {/* Bullet list */}
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().toggleBulletList().run()}
+        className={`${iconBtnBase} ${
+          editor.isActive("bulletList") ? iconActive : iconNeutral
+        }`}
+      >
+        <BulletListSvg
+          width={20}
+          height={20}
+          fillColor={editor.isActive("bulletList") ? "white" : "#131E36"}
+        />
+      </button>
+
+      {/* Ordered list */}
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().toggleOrderedList().run()}
+        className={`${iconBtnBase} ${
+          editor.isActive("orderedList") ? iconActive : iconNeutral
+        }`}
+      >
+        <OrderedListSvg
+          width={25}
+          height={22}
+          fillColor={editor.isActive("orderedList") ? "white" : "#131E36"}
+        />
+      </button>
     </div>
   );
 }
 
 export default function TiptapEditor({ value = "", onChange }) {
   const { t } = useTranslation("news");
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
-        listItem: false, // Désactive listItem dans StarterKit
+        listItem: false,
       }),
       ListItem.configure({
-        // Configuration de listItem
         HTMLAttributes: { class: "my-0 py-0" },
       }),
       TextStyle,
@@ -172,7 +207,7 @@ export default function TiptapEditor({ value = "", onChange }) {
     onUpdate: ({ editor }) => {
       let html = editor.getHTML();
 
-      // Utilise un conteneur temporaire pour appliquer les sauts de ligne seulement hors liste
+      // Remplace les <p> vides hors listes par <br> pour éviter les gros trous
       const container = document.createElement("div");
       container.innerHTML = html;
       container.querySelectorAll("p").forEach((p) => {
@@ -187,22 +222,27 @@ export default function TiptapEditor({ value = "", onChange }) {
     },
     editorProps: {
       attributes: {
-        class: "prose focus:outline-none",
+        class:
+          "prose max-w-none text-sm text-darkBlue focus:outline-none min-h-[160px]",
       },
     },
     immediatelyRender: false,
   });
 
+  // Sync quand tu charges un article en édition
   useEffect(() => {
-    if (editor && value && value !== editor.getHTML()) {
+    if (!editor) return;
+    if (value && value !== editor.getHTML()) {
       editor.commands.setContent(value);
     }
   }, [value, editor]);
 
   return (
-    <div className="tiptap-editor">
+    <div className="flex flex-col gap-2">
       <MenuBar editor={editor} t={t} />
-      <EditorContent editor={editor} className="editor-content tablet:w-[650px]" />
+      <div className="rounded-2xl border border-darkBlue/10 bg-white px-3 py-2 min-h-[180px] max-h-[420px] overflow-y-auto">
+        <EditorContent editor={editor} />
+      </div>
     </div>
   );
 }

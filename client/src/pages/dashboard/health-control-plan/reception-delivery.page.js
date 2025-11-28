@@ -14,6 +14,8 @@ import SettingsComponent from "@/components/_shared/settings/settings.component"
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
 import ReceptionDeliveryForm from "@/components/dashboard/health-control-plan/reception-delivery/form.component";
 import ReceptionDeliveryList from "@/components/dashboard/health-control-plan/reception-delivery/list.component";
+
+// SVG
 import { HealthSvg } from "@/components/_shared/_svgs/health.svg";
 import { useRouter } from "next/router";
 

@@ -1,8 +1,11 @@
-// components/dashboard/health-control-plan/cleaning-task/form.component.jsx
 "use client";
 import { useEffect, useState, useContext } from "react";
 import { useForm } from "react-hook-form";
+
+// AXIOS
 import axios from "axios";
+
+// ICONS
 import {
   ChevronDown,
   FileText,
@@ -14,8 +17,8 @@ import {
   ListTodo,
   History,
   FlaskConical,
-  X as XIcon, // pour Annuler (éditeur de note)
-  XCircle, // petite croix rouge (ouvrir confirmation)
+  X as XIcon,
+  XCircle,
   Check as CheckIcon,
 } from "lucide-react";
 import { GlobalContext } from "@/contexts/global.context";
@@ -232,7 +235,7 @@ export default function CleaningTaskForm({
 
   /* ---------- Styles ---------- */
   const fieldWrap =
-    "group relative rounded-xl bg-white/50 backdrop-blur-sm px-3 py-2 transition-shadow";
+    "group relative rounded-xl bg-white/50   px-3 py-2 transition-shadow";
   const labelCls =
     "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
   const inputCls =
@@ -343,7 +346,7 @@ export default function CleaningTaskForm({
             <FlaskConical className="size-4" /> Produits (1 par ligne)
           </label>
           <textarea
-            rows={10}
+            rows={6}
             {...register("productsText")}
             className={textareaCls}
             placeholder={"Détergent X\nDésinfectant Y"}
@@ -355,7 +358,7 @@ export default function CleaningTaskForm({
             <ListTodo className="size-4" /> Étapes du protocole (1 par ligne)
           </label>
           <textarea
-            rows={10}
+            rows={6}
             {...register("protocolStepsText")}
             className={textareaCls}
             placeholder={
@@ -545,10 +548,10 @@ export default function CleaningTaskForm({
                                   disabled={savingNote}
                                 >
                                   {savingNote ? (
-                                    <>
+                                    <div className="flex items-center gap-2">
                                       <Loader2 className="size-4 animate-spin" />
-                                      Enregistrement…
-                                    </>
+                                      <span>Enregistrement…</span>
+                                    </div>
                                   ) : (
                                     <>
                                       <CheckIcon className="size-4" />
@@ -578,10 +581,10 @@ export default function CleaningTaskForm({
           className="text-nowrap inline-flex items-center justify-center gap-2 h-[38px] rounded-lg bg-blue px-4 py-2 text-sm font-medium text-white shadow disabled:opacity-60"
         >
           {isSubmitting ? (
-            <>
+            <div className="flex items-center gap-2">
               <Loader2 className="size-4 animate-spin" />
-              Enregistrement…
-            </>
+              <span>Enregistrement…</span>
+            </div>
           ) : initial?._id ? (
             <>
               <FileText className="size-4" />

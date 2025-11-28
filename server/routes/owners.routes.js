@@ -3,6 +3,11 @@ const router = express.Router();
 const stripe = require("stripe")(process.env.STRIPE_API_SECRET_KEY);
 const SibApiV3Sdk = require("sib-api-v3-sdk");
 
+// CLOUDINARY
+const cloudinary = require("cloudinary").v2;
+const multer = require("multer");
+const streamifier = require("streamifier");
+
 // MODELS
 const OwnerModel = require("../models/owner.model");
 const RestaurantModel = require("../models/restaurant.model");
@@ -10,6 +15,29 @@ const RestaurantModel = require("../models/restaurant.model");
 // MIDDLEWARE
 const authenticateToken = require("../middleware/authentificate-token");
 const EmployeeModel = require("../models/employee.model");
+
+// ---------- CLOUDINARY / MULTER (pour owners) ----------
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
+
+const uploadFromBuffer = (buffer, folder) => {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      { folder, format: "webp" },
+      (error, result) => {
+        if (result) resolve(result);
+        else reject(error);
+      }
+    );
+    streamifier.createReadStream(buffer).pipe(stream);
+  });
+};
 
 // Fonction pour initialiser le client Brevo
 function instantiateClient() {
@@ -159,37 +187,86 @@ router.get("/owner/get-data", authenticateToken, async (req, res) => {
 });
 
 // UPDATE OWNER DATA
-router.put("/owner/update-data", authenticateToken, async (req, res) => {
-  const { firstname, lastname, email, phoneNumber } = req.body;
+router.put(
+  "/owner/update-data",
+  authenticateToken,
+  upload.single("profilePicture"),
+  async (req, res) => {
+    const { firstname, lastname, email, phoneNumber, removeProfilePicture } =
+      req.body;
 
-  try {
-    const owner = await OwnerModel.findById(req.user.id);
-    if (!owner) return res.status(404).json({ message: "Owner not found" });
+    try {
+      const owner = await OwnerModel.findById(req.user.id);
+      if (!owner) return res.status(404).json({ message: "Owner not found" });
 
-    const normalizedEmail = (email || "").trim().toLowerCase();
+      const normalizedEmail = (email || "").trim().toLowerCase();
 
-    // Only check if email actually changes
-    if (normalizedEmail && normalizedEmail !== owner.email) {
-      const [ownerDup, employeeDup] = await Promise.all([
-        OwnerModel.findOne({ email: normalizedEmail, _id: { $ne: owner._id } }),
-        EmployeeModel.findOne({ email: normalizedEmail }),
-      ]);
-      if (ownerDup || employeeDup) {
-        return res.status(409).json({ message: "L'adresse mail est déjà utilisée" });
+      // Only check if email actually changes
+      if (normalizedEmail && normalizedEmail !== owner.email) {
+        const [ownerDup, employeeDup] = await Promise.all([
+          OwnerModel.findOne({
+            email: normalizedEmail,
+            _id: { $ne: owner._id },
+          }),
+          EmployeeModel.findOne({ email: normalizedEmail }),
+        ]);
+        if (ownerDup || employeeDup) {
+          return res
+            .status(409)
+            .json({ message: "L'adresse mail est déjà utilisée" });
+        }
       }
-    }
 
-    owner.firstname = firstname;
-    owner.lastname = lastname;
-    owner.email = normalizedEmail || owner.email;
-    owner.phoneNumber = phoneNumber;
+      // ---------- Mise à jour des infos de base ----------
+      if (firstname !== undefined) owner.firstname = firstname;
+      if (lastname !== undefined) owner.lastname = lastname;
+      if (normalizedEmail !== undefined && normalizedEmail !== "") {
+        owner.email = normalizedEmail;
+      }
+      if (phoneNumber !== undefined) owner.phoneNumber = phoneNumber;
 
-    await owner.save();
+      // ---------- Photo de profil ----------
+      if (req.file) {
+        // suppression éventuelle de l'ancienne
+        if (owner.profilePicture?.public_id) {
+          try {
+            await cloudinary.uploader.destroy(owner.profilePicture.public_id);
+          } catch (err) {
+            console.warn(
+              "Erreur lors de la suppression de l'ancienne photo owner :",
+              err?.message || err
+            );
+          }
+        }
 
-    // fresh token (no expiry for owners)
-    const jwt = require("jsonwebtoken");
-    const token = jwt.sign(
-      {
+        const result = await uploadFromBuffer(
+          req.file.buffer,
+          `Gusto_Workspace/owners/${owner._id}`
+        );
+
+        owner.profilePicture = {
+          url: result.secure_url,
+          public_id: result.public_id,
+        };
+      } else if (removeProfilePicture === "true") {
+        if (owner.profilePicture?.public_id) {
+          try {
+            await cloudinary.uploader.destroy(owner.profilePicture.public_id);
+          } catch (err) {
+            console.warn(
+              "Erreur lors de la suppression de la photo owner :",
+              err?.message || err
+            );
+          }
+        }
+        owner.profilePicture = null;
+      }
+
+      await owner.save();
+
+      // fresh token (owners)
+      const jwt = require("jsonwebtoken");
+      const payload = {
         id: owner._id,
         role: "owner",
         restaurantId: req.user.restaurantId,
@@ -197,31 +274,34 @@ router.put("/owner/update-data", authenticateToken, async (req, res) => {
         lastname: owner.lastname,
         email: owner.email,
         phoneNumber: owner.phoneNumber,
-      },
-      process.env.JWT_SECRET
-    );
+        stripeCustomerId: owner.stripeCustomerId || null,
+        profilePictureUrl: owner.profilePicture?.url || null,
+      };
 
-    // Optional: keep Stripe in sync
-    if (owner.stripeCustomerId) {
-      try {
-        await stripe.customers.update(owner.stripeCustomerId, {
-          email: owner.email,
-          name: `${owner.firstname} ${owner.lastname}`,
-        });
-      } catch (err) {
-        console.error("Stripe update error:", err);
-        return res
-          .status(500)
-          .json({ message: "Erreur lors de la mise à jour du client Stripe" });
+      const token = jwt.sign(payload, process.env.JWT_SECRET);
+
+      // Optional: keep Stripe in sync
+      if (owner.stripeCustomerId) {
+        try {
+          await stripe.customers.update(owner.stripeCustomerId, {
+            email: owner.email,
+            name: `${owner.firstname} ${owner.lastname}`,
+          });
+        } catch (err) {
+          console.error("Stripe update error:", err);
+          return res.status(500).json({
+            message: "Erreur lors de la mise à jour du client Stripe",
+          });
+        }
       }
-    }
 
-    return res.status(200).json({ message: "Owner updated", token });
-  } catch (error) {
-    console.error("Erreur MAJ owner :", error);
-    return res.status(500).json({ message: "Erreur serveur" });
+      return res.status(200).json({ message: "Owner updated", token });
+    } catch (error) {
+      console.error("Erreur MAJ owner :", error);
+      return res.status(500).json({ message: "Erreur serveur" });
+    }
   }
-});
+);
 
 // UPDATE OWNER PASSWORD
 router.put("/owner/update-password", authenticateToken, async (req, res) => {

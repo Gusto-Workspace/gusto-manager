@@ -1,22 +1,28 @@
-// server/models/logs/recall.model.js
 const mongoose = require("mongoose");
 const { Schema } = mongoose;
 
 const itemSchema = new Schema(
   {
-    // Lien optionnel vers un lot d’inventaire existant
     inventoryLotId: { type: Schema.Types.ObjectId, ref: "InventoryLot" },
 
-    // Données “snapshot” (garde une trace même si le lot disparaît / change)
     productName: { type: String, required: true },
-    supplierName: String, // intégré dans l'item désormais
+    supplierName: String,
     lotNumber: String,
 
-    // Détails retour
     quantity: Number,
     unit: String,
-    bestBefore: Date, // DLC/DDM si connu
+    bestBefore: Date,
     note: String,
+  },
+  { _id: false }
+);
+
+const attachmentSchema = new Schema(
+  {
+    url: { type: String, required: true },
+    public_id: { type: String, required: true },
+    filename: { type: String, required: true },
+    mimetype: { type: String },
   },
   { _id: false }
 );
@@ -32,16 +38,13 @@ const recallSchema = new Schema(
 
     initiatedAt: { type: Date, default: Date.now, index: true },
 
-    // Un seul produit par retour
     item: { type: itemSchema, required: true },
 
     actionsTaken: String,
-    attachments: { type: [String], default: [] },
+    attachments: { type: [attachmentSchema], default: [] },
 
-    // Clôture
     closedAt: { type: Date, index: true },
 
-    // Traçabilité opérateur
     recordedBy: {
       userId: { type: Schema.Types.ObjectId, required: true, index: true },
       role: { type: String, enum: ["owner", "employee"], required: true },
@@ -56,7 +59,11 @@ const recallSchema = new Schema(
 );
 
 recallSchema.index({ restaurantId: 1, initiatedAt: -1 });
-recallSchema.index({ restaurantId: 1, "item.productName": 1, initiatedAt: -1 });
+recallSchema.index({
+  restaurantId: 1,
+  "item.productName": 1,
+  initiatedAt: -1,
+});
 
 recallSchema.pre("save", function (next) {
   this.updatedAt = new Date();

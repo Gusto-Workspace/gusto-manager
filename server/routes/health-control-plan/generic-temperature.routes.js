@@ -8,6 +8,10 @@ const authenticateToken = require("../../middleware/authentificate-token");
 const TemperatureGeneric = require("../../models/logs/generic-temperature.model");
 
 /* --------- helpers --------- */
+function escapeRegExp(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function currentUserFromToken(req) {
   const u = req.user || {};
   const role = (u.role || "").toLowerCase();
@@ -15,8 +19,8 @@ function currentUserFromToken(req) {
   return {
     userId: u.id,
     role,
-    firstName: u.firstname || u.firstName || "",
-    lastName: u.lastname || u.lastName || "",
+    firstName: u.firstname || "",
+    lastName: u.lastname || "",
   };
 }
 function normalizeStr(v) {
@@ -28,14 +32,6 @@ function normalizeDate(v) {
   if (!v) return null;
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? null : d;
-}
-function hasBusinessChanges(prev, next) {
-  const fields = ["location", "locationId", "value", "unit", "note"];
-  for (const f of fields)
-    if ((prev?.[f] ?? null) !== (next?.[f] ?? null)) return true;
-  const t1 = prev?.createdAt?.getTime?.() ?? null;
-  const t2 = next?.createdAt?.getTime?.() ?? null;
-  return t1 !== t2;
 }
 
 /* -------------------- CREATE -------------------- */
@@ -96,6 +92,7 @@ router.get(
 
       const query = { restaurantId };
 
+      // Filtre dates
       if (date_from || date_to) {
         query.createdAt = {};
         if (date_from) query.createdAt.$gte = new Date(date_from);
@@ -107,8 +104,11 @@ router.get(
         }
       }
 
-      if (q && String(q).trim().length) {
-        const rx = new RegExp(String(q).trim(), "i");
+      // Recherche texte sécurisée
+      const trimmedQ = String(q || "").trim();
+      if (trimmedQ) {
+        const safe = escapeRegExp(trimmedQ);
+        const rx = new RegExp(safe, "i");
         query.$or = [
           { location: rx },
           { locationId: rx },

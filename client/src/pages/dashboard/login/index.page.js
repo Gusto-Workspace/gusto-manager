@@ -56,7 +56,6 @@ export default function LoginPage() {
         />
       </Head>
 
-      {/* Écran fixe, hauteur stable minimale → pas de "bande blanche" scrollable */}
       <div
         className="
           fixed inset-0 h-[100svh] overscroll-none

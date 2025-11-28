@@ -6,7 +6,25 @@ const { Types } = mongoose;
 const authenticateToken = require("../../middleware/authentificate-token");
 const NonConformity = require("../../models/logs/non-conformity.model");
 
-/* ---------- helpers (conformes à pest-control) ---------- */
+// ---------- Cloudinary & upload (comme waste-entries) ----------
+const cloudinary = require("cloudinary").v2;
+const multer = require("multer");
+const streamifier = require("streamifier");
+const path = require("path");
+const axios = require("axios");
+
+// Cloudinary config
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+// Multer mémoire
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
+
+// ---------- Helpers généraux ----------
 function currentUserFromToken(req) {
   const u = req.user || {};
   const role = (u.role || "").toLowerCase();
@@ -14,8 +32,8 @@ function currentUserFromToken(req) {
   return {
     userId: u.id,
     role,
-    firstName: u.firstname || u.firstName || "",
-    lastName: u.lastname || u.lastName || "",
+    firstName: u.firstname || "",
+    lastName: u.lastname || "",
   };
 }
 const normStr = (v) => {
@@ -28,31 +46,15 @@ const normDate = (v) => {
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? null : d;
 };
-const normBool = (v) => {
-  if (v === undefined || v === null || v === "") return null;
-  if (typeof v === "boolean") return v;
-  const s = String(v).toLowerCase();
-  if (s === "true") return true;
-  if (s === "false") return false;
-  return null;
-};
+
 const normObjId = (v) => {
   if (!v) return null;
   const s = String(v);
   return Types.ObjectId.isValid(s) ? s : null;
 };
-function normStringArray(input) {
-  if (!input) return [];
-  if (Array.isArray(input))
-    return input
-      .map((x) => normStr(x))
-      .filter(Boolean)
-      .slice(0, 100);
-  return String(input)
-    .split(/[\n,;]+/g)
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .slice(0, 100);
+
+function escapeRegExp(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 const ALLOWED_TYPES = [
@@ -86,18 +88,88 @@ function listSortExpr() {
   return { reportedAt: -1, createdAt: -1, _id: -1 };
 }
 
+// ---------- Helpers Cloudinary (catégorie = non-conformities) ----------
+function haccpNonConformitiesFolder(restaurantId) {
+  return `Gusto_Workspace/restaurants/${restaurantId}/haccp/non-conformities`;
+}
+
+function safePublicIdFromFilename(originalname) {
+  const ext = path.extname(originalname);
+  const basename = path.basename(originalname, ext);
+  const safeBase = basename
+    .replace(/\s+/g, "_")
+    .replace(/[^a-zA-Z0-9_\-]/g, "");
+  const stamp = Date.now();
+  return `${safeBase}_${stamp}`;
+}
+
+function uploadNonConformityFile(buffer, originalname, mimetype, restaurantId) {
+  const folder = haccpNonConformitiesFolder(restaurantId);
+  const public_id = safePublicIdFromFilename(originalname);
+
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        resource_type: "raw", // PDF + images
+        folder,
+        public_id,
+        overwrite: true,
+      },
+      (err, result) => {
+        if (err) return reject(err);
+        resolve({
+          url: result.secure_url,
+          public_id: result.public_id,
+          filename: originalname,
+          mimetype,
+        });
+      }
+    );
+    streamifier.createReadStream(buffer).pipe(uploadStream);
+  });
+}
+
+async function deleteNonConformityAttachment(public_id) {
+  if (!public_id) return;
+  try {
+    await cloudinary.uploader.destroy(public_id, {
+      resource_type: "raw",
+    });
+  } catch (err) {
+    console.warn(
+      `Erreur suppression pièce jointe Cloudinary (${public_id}):`,
+      err
+    );
+  }
+}
+
 /* ------------------ CREATE ------------------ */
 router.post(
   "/restaurants/:restaurantId/non-conformities",
   authenticateToken,
+  upload.array("attachments"),
   async (req, res) => {
     try {
       const { restaurantId } = req.params;
-      const inData = { ...req.body };
 
       const currentUser = currentUserFromToken(req);
       if (!currentUser)
         return res.status(400).json({ error: "Utilisateur non reconnu" });
+
+      // On supporte un champ "payload" JSON (envoyé par le front) ou un body simple
+      let inData = {};
+      if (req.body && req.body.payload) {
+        try {
+          inData = JSON.parse(req.body.payload);
+        } catch (e) {
+          console.error("Erreur parse payload JSON non-conformité:", e);
+          return res
+            .status(400)
+            .json({ error: "Payload JSON invalide pour non-conformité" });
+        }
+      } else {
+        inData = { ...req.body };
+      }
 
       const type = ALLOWED_TYPES.includes(String(inData.type))
         ? String(inData.type)
@@ -109,9 +181,28 @@ router.post(
         ? String(inData.status)
         : "open";
 
-      const correctiveActions = Array.isArray(inData.correctiveActions)
-        ? inData.correctiveActions.map(normCorrectiveAction).filter(Boolean)
-        : [];
+      let correctiveActions = [];
+      if (Array.isArray(inData.correctiveActions)) {
+        correctiveActions = inData.correctiveActions
+          .map(normCorrectiveAction)
+          .filter(Boolean);
+      }
+
+      // Upload éventuels fichiers (Cloudinary)
+      let attachments = [];
+      if (Array.isArray(req.files) && req.files.length) {
+        const uploads = await Promise.all(
+          req.files.map((file) =>
+            uploadNonConformityFile(
+              file.buffer,
+              file.originalname,
+              file.mimetype,
+              restaurantId
+            )
+          )
+        );
+        attachments = uploads;
+      }
 
       const doc = new NonConformity({
         restaurantId,
@@ -121,7 +212,7 @@ router.post(
         severity,
         reportedAt: normDate(inData.reportedAt) ?? new Date(),
         status,
-        attachments: normStringArray(inData.attachments),
+        attachments,
         correctiveActions,
         recordedBy: currentUser,
       });
@@ -180,9 +271,10 @@ router.get(
         }
       }
 
-      // Recherche texte
+      // Recherche texte sécurisée
       if (q && String(q).trim().length) {
-        const rx = new RegExp(String(q).trim(), "i");
+        const safe = escapeRegExp(String(q).trim());
+        const rx = new RegExp(safe, "i");
         (query.$or ||= []).push(
           { referenceId: rx },
           { description: rx },
@@ -194,29 +286,32 @@ router.get(
         );
       }
 
-      const skip = (Number(page) - 1) * Number(limit);
+      const pageNum = Number(page) || 1;
+      const limitNum = Number(limit) || 20;
+      const skip = (pageNum - 1) * limitNum;
+
       const [items, total] = await Promise.all([
         NonConformity.find(query)
           .sort(listSortExpr())
           .skip(skip)
-          .limit(Number(limit)),
+          .limit(limitNum),
         NonConformity.countDocuments(query),
       ]);
 
       return res.json({
         items,
         meta: {
-          page: Number(page),
-          limit: Number(limit),
+          page: pageNum,
+          limit: limitNum,
           total,
-          pages: Math.max(1, Math.ceil(total / Number(limit))),
+          pages: Math.max(1, Math.ceil(total / limitNum)),
         },
       });
     } catch (err) {
       console.error("GET /list-non-conformities:", err);
-      return res
-        .status(500)
-        .json({ error: "Erreur lors de la récupération des non-conformités" });
+      return res.status(500).json({
+        error: "Erreur lors de la récupération des non-conformités",
+      });
     }
   }
 );
@@ -243,18 +338,37 @@ router.get(
 router.put(
   "/restaurants/:restaurantId/non-conformities/:ncId",
   authenticateToken,
+  upload.array("attachments"),
   async (req, res) => {
     try {
       const { restaurantId, ncId } = req.params;
-      const inData = { ...req.body };
+
+      // Body brut (peut contenir payload JSON)
+      let inData = {};
+      if (req.body && req.body.payload) {
+        try {
+          inData = JSON.parse(req.body.payload);
+        } catch (e) {
+          console.error("Erreur parse payload JSON non-conformité (PUT):", e);
+          return res
+            .status(400)
+            .json({ error: "Payload JSON invalide pour non-conformité" });
+        }
+      } else {
+        inData = { ...req.body };
+      }
 
       delete inData.recordedBy;
       delete inData.restaurantId;
+      delete inData.createdAt;
+      delete inData.updatedAt;
+      delete inData.attachments;
 
       const prev = await NonConformity.findOne({ _id: ncId, restaurantId });
       if (!prev)
         return res.status(404).json({ error: "Non-conformité introuvable" });
 
+      // Normalisation des champs simples
       const patch = {
         type:
           inData.type !== undefined &&
@@ -283,18 +397,75 @@ router.put(
           ALLOWED_STATUS.includes(String(inData.status))
             ? String(inData.status)
             : prev.status,
-        attachments:
-          inData.attachments !== undefined
-            ? normStringArray(inData.attachments)
-            : prev.attachments || [],
-        correctiveActions:
-          inData.correctiveActions !== undefined &&
-          Array.isArray(inData.correctiveActions)
-            ? inData.correctiveActions.map(normCorrectiveAction).filter(Boolean)
-            : prev.correctiveActions || [],
       };
 
-      Object.assign(prev, patch);
+      // Actions correctives
+      if (Array.isArray(inData.correctiveActions)) {
+        patch.correctiveActions = inData.correctiveActions
+          .map(normCorrectiveAction)
+          .filter(Boolean);
+      } else {
+        patch.correctiveActions = prev.correctiveActions || [];
+      }
+
+      // ----- Gestion des pièces jointes (comme waste-entries) -----
+      const prevAttachments = Array.isArray(prev.attachments)
+        ? prev.attachments
+        : [];
+
+      // On sépare "legacy" (strings) & objets Cloudinary
+      const legacyAttachments = prevAttachments.filter(
+        (att) => !att || typeof att === "string" || !att.public_id
+      );
+      const cloudAttachments = prevAttachments.filter(
+        (att) => att && typeof att === "object" && att.public_id
+      );
+
+      // Liste des public_id à conserver (venant du front)
+      let keep = req.body.keepAttachments || [];
+      if (!Array.isArray(keep)) keep = keep ? [keep] : [];
+      keep = keep.map((s) => String(s));
+
+      const attachmentsToKeep = cloudAttachments.filter((att) =>
+        keep.includes(String(att.public_id))
+      );
+      const attachmentsToRemove = cloudAttachments.filter(
+        (att) => !keep.includes(String(att.public_id))
+      );
+
+      // Suppression Cloudinary des pièces retirées
+      if (attachmentsToRemove.length) {
+        await Promise.all(
+          attachmentsToRemove.map((att) =>
+            deleteNonConformityAttachment(att.public_id)
+          )
+        );
+      }
+
+      // Upload nouveaux fichiers
+      let newAttachments = [];
+      if (Array.isArray(req.files) && req.files.length) {
+        const uploads = await Promise.all(
+          req.files.map((file) =>
+            uploadNonConformityFile(
+              file.buffer,
+              file.originalname,
+              file.mimetype,
+              restaurantId
+            )
+          )
+        );
+        newAttachments = uploads;
+      }
+
+      // On conserve les éventuels anciens liens "legacy" + keep + nouveaux
+      prev.attachments = [
+        ...legacyAttachments,
+        ...attachmentsToKeep,
+        ...newAttachments,
+      ];
+
+      Object.assign(prev, patch, { updatedAt: new Date() });
       await prev.save();
       return res.json(prev);
     } catch (err) {
@@ -311,16 +482,78 @@ router.delete(
   async (req, res) => {
     try {
       const { restaurantId, ncId } = req.params;
-      const doc = await NonConformity.findOneAndDelete({
+      const doc = await NonConformity.findOne({
         _id: ncId,
         restaurantId,
       });
       if (!doc)
         return res.status(404).json({ error: "Non-conformité introuvable" });
+
+      // Suppression des pièces Cloudinary éventuelles
+      if (Array.isArray(doc.attachments) && doc.attachments.length) {
+        const cloudAttachments = doc.attachments.filter(
+          (att) => att && typeof att === "object" && att.public_id
+        );
+        if (cloudAttachments.length) {
+          await Promise.all(
+            cloudAttachments.map((att) =>
+              deleteNonConformityAttachment(att.public_id)
+            )
+          );
+        }
+      }
+
+      await NonConformity.deleteOne({ _id: ncId, restaurantId });
       return res.json({ success: true });
     } catch (err) {
       console.error("DELETE /non-conformities/:ncId:", err);
       return res.status(500).json({ error: "Erreur lors de la suppression" });
+    }
+  }
+);
+
+/* ---------- DOWNLOAD ATTACHMENT (non-conformities) ---------- */
+router.get(
+  "/haccp/non-conformities/:restaurantId/documents/:public_id(*)/download",
+  async (req, res) => {
+    try {
+      const { restaurantId, public_id } = req.params;
+
+      const doc = await NonConformity.findOne(
+        {
+          restaurantId,
+          "attachments.public_id": public_id,
+        },
+        { attachments: 1 }
+      ).lean();
+
+      if (!doc) {
+        console.log(
+          "[HACCP NON-CONF] Aucune non-conformité contenant cette pièce jointe"
+        );
+        return res.status(404).json({ message: "Pièce jointe introuvable" });
+      }
+
+      const att = (doc.attachments || []).find(
+        (a) => a.public_id === public_id
+      );
+      if (!att) {
+        console.log("[HACCP NON-CONF] Attachment non trouvé dans le document");
+        return res.status(404).json({ message: "Pièce jointe introuvable" });
+      }
+
+      const response = await axios.get(att.url, { responseType: "stream" });
+
+      res.setHeader("Content-Type", response.headers["content-type"]);
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${att.filename}"`
+      );
+
+      response.data.pipe(res);
+    } catch (err) {
+      console.error("Error in HACCP non-conformities download route:", err);
+      res.status(500).json({ message: "Server error" });
     }
   }
 );

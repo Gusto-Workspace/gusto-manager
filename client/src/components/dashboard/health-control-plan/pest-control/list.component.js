@@ -1,8 +1,11 @@
-// components/dashboard/health-control-plan/pest-controls/list.component.jsx
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+
+// AXIOS
 import axios from "axios";
+
+// ICONS
 import { Search, CalendarClock, Edit3, Trash2, Loader2, X } from "lucide-react";
 
 function fmtDate(d) {
@@ -14,17 +17,41 @@ function fmtDate(d) {
       month: "2-digit",
       year: "numeric",
       hour: "2-digit",
-      minute: "2-digit",
+      minute: "numeric",
     }).format(date);
   } catch {
     return d || "—";
   }
 }
+
 function contractBadge(it) {
   if (!it?.contractEnd) return "Actif (sans fin)";
   const end = new Date(it.contractEnd);
   return end > new Date() ? "Actif" : "Expiré";
 }
+
+// Labels FR
+const FREQ_LABELS = {
+  monthly: "Mensuelle",
+  bimonthly: "Bimestrielle",
+  quarterly: "Trimestrielle",
+  semester: "Semestrielle",
+  yearly: "Annuelle",
+  on_demand: "À la demande",
+};
+
+const ACTIVITY_LABELS = {
+  none: "Aucune",
+  low: "Faible",
+  medium: "Moyenne",
+  high: "Forte",
+};
+
+const COMPLIANCE_LABELS = {
+  compliant: "Conforme",
+  non_compliant: "Non conforme",
+  pending: "En attente",
+};
 
 export default function PestControlList({
   restaurantId,
@@ -35,15 +62,21 @@ export default function PestControlList({
   const [items, setItems] = useState([]);
   const [meta, setMeta] = useState({ page: 1, limit: 20, pages: 1, total: 0 });
   const [loading, setLoading] = useState(false);
+  const [showSlowLoader, setShowSlowLoader] = useState(false);
 
-  // Filtres
+  // Filtres "affichés"
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("all"); // all|active_contract|expired_contract
-  const [freq, setFreq] = useState(""); // '', monthly|quarterly|biannual|annual
-  const [activity, setActivity] = useState(""); // '', low|medium|high
+  const [freq, setFreq] = useState(""); // '', monthly|bimonthly|quarterly|semester|yearly|on_demand
+  const [activity, setActivity] = useState(""); // '', none|low|medium|high
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
+  // Filtres date réellement appliqués côté backend
+  const [appliedDateFrom, setAppliedDateFrom] = useState("");
+  const [appliedDateTo, setAppliedDateTo] = useState("");
+
+  // Suppression
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -51,7 +84,11 @@ export default function PestControlList({
   const [isClient, setIsClient] = useState(false);
   useEffect(() => setIsClient(true), []);
 
-  const token = useMemo(() => localStorage.getItem("token"), []);
+  const token = useMemo(
+    () =>
+      typeof window !== "undefined" ? localStorage.getItem("token") : null,
+    []
+  );
   const metaRef = useRef(meta);
   useEffect(() => {
     metaRef.current = meta;
@@ -74,12 +111,31 @@ export default function PestControlList({
     });
 
   const hasActiveFilters = useMemo(
-    () => Boolean(q || status !== "all" || freq || activity || dateFrom || dateTo),
-    [q, status, freq, activity, dateFrom, dateTo]
+    () =>
+      Boolean(
+        q ||
+          status !== "all" ||
+          freq ||
+          activity ||
+          dateFrom ||
+          dateTo ||
+          appliedDateFrom ||
+          appliedDateTo
+      ),
+    [
+      q,
+      status,
+      freq,
+      activity,
+      dateFrom,
+      dateTo,
+      appliedDateFrom,
+      appliedDateTo,
+    ]
   );
   const hasFullDateRange = Boolean(dateFrom && dateTo);
 
-  /* ---------- Styles (alignés sur MicrobiologyList) ---------- */
+  /* ---------- Styles alignés sur les autres listes ---------- */
   const fieldWrap =
     "group relative rounded-xl bg-white/50 backdrop-blur-sm transition-shadow";
   const labelCls =
@@ -92,6 +148,8 @@ export default function PestControlList({
     "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition active:scale-[0.98]";
 
   const fetchData = async (page = 1, overrides = {}) => {
+    if (!restaurantId) return;
+
     setLoading(true);
     try {
       const cur = {
@@ -99,8 +157,12 @@ export default function PestControlList({
         status: overrides.status ?? status,
         freq: overrides.freq ?? freq,
         activity: overrides.activity ?? activity,
-        dateFrom: overrides.dateFrom ?? dateFrom,
-        dateTo: overrides.dateTo ?? dateTo,
+        dateFrom:
+          overrides.dateFrom !== undefined
+            ? overrides.dateFrom
+            : appliedDateFrom,
+        dateTo:
+          overrides.dateTo !== undefined ? overrides.dateTo : appliedDateTo,
       };
 
       const params = { page, limit: meta.limit || 20 };
@@ -129,9 +191,23 @@ export default function PestControlList({
     }
   };
 
+  // Loader "lent" : visible seulement si loading > 1s
+  useEffect(() => {
+    if (!loading) {
+      setShowSlowLoader(false);
+      return;
+    }
+    const id = setTimeout(() => {
+      setShowSlowLoader(true);
+    }, 1000);
+    return () => clearTimeout(id);
+  }, [loading]);
+
   // Initial fetch
   useEffect(() => {
-    if (restaurantId)
+    if (restaurantId) {
+      setAppliedDateFrom("");
+      setAppliedDateTo("");
       fetchData(1, {
         q: "",
         status: "all",
@@ -140,8 +216,27 @@ export default function PestControlList({
         dateFrom: "",
         dateTo: "",
       });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
+
+  // Debounce recherche texte → backend
+  const isFirstLoadRef = useRef(true);
+  useEffect(() => {
+    if (!restaurantId) return;
+
+    if (isFirstLoadRef.current) {
+      isFirstLoadRef.current = false;
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      fetchData(1, { q });
+    }, 500);
+
+    return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, restaurantId]);
 
   // Auto-fetch quand Contrat / Fréq. / Activité changent
   useEffect(() => {
@@ -199,32 +294,6 @@ export default function PestControlList({
       window.removeEventListener("pest-control:upsert", handleUpsert);
   }, [restaurantId]);
 
-  // Recherche locale instantanée
-  const filtered = useMemo(() => {
-    if (!q) return items;
-    const qq = q.toLowerCase();
-    return items.filter((it) =>
-      [
-        it?.provider,
-        it?.providerContactName,
-        it?.providerPhone,
-        it?.providerEmail,
-        it?.visitFrequency,
-        it?.activityLevel,
-        it?.complianceStatus,
-        String(it?.baitStationsCount ?? ""),
-        String(it?.trapsCount ?? ""),
-        ...(Array.isArray(it?.reportUrls) ? it.reportUrls : []),
-        it?.recordedBy?.firstName,
-        it?.recordedBy?.lastName,
-        it?.notes,
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(qq)
-    );
-  }, [items, q]);
-
   const askDelete = (it) => {
     setDeleteTarget(it);
     setIsDeleteModalOpen(true);
@@ -238,7 +307,9 @@ export default function PestControlList({
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      setItems((prev) => prev.filter((x) => String(x._id) !== String(deleteTarget._id)));
+      setItems((prev) =>
+        prev.filter((x) => String(x._id) !== String(deleteTarget._id))
+      );
       onDeleted?.(deleteTarget);
       setIsDeleteModalOpen(false);
       setDeleteTarget(null);
@@ -246,7 +317,7 @@ export default function PestControlList({
       setMeta((prevMeta) => {
         const limitValue = prevMeta.limit || 20;
         const total = Math.max(0, (prevMeta.total || 0) - 1);
-        const pages = total > 0 ? Math.ceil(total / limitValue) : 1;
+        const pages = total > 0 ? Math.ceil(total / Number(limitValue)) : 1;
         const page = Math.min(prevMeta.page || 1, pages);
         const nextMeta = { ...prevMeta, total, pages, page };
         metaRef.current = nextMeta;
@@ -264,9 +335,10 @@ export default function PestControlList({
     setDeleteTarget(null);
   };
 
+  /* ------------------------------ Render ------------------------------ */
   return (
     <div className="rounded-2xl border border-darkBlue/10 bg-white p-4 midTablet:p-5 shadow">
-      {/* Filtres (style MicrobiologyList) */}
+      {/* Filtres */}
       <div className="mb-4 grid grid-cols-[repeat(auto-fit,minmax(220px,_1fr))] gap-2">
         {/* Recherche */}
         <div className={fieldWrap}>
@@ -305,9 +377,11 @@ export default function PestControlList({
           >
             <option value="">Toutes</option>
             <option value="monthly">Mensuelle</option>
+            <option value="bimonthly">Bimestrielle</option>
             <option value="quarterly">Trimestrielle</option>
-            <option value="biannual">Semestrielle</option>
-            <option value="annual">Annuelle</option>
+            <option value="semester">Semestrielle</option>
+            <option value="yearly">Annuelle</option>
+            <option value="on_demand">À la demande</option>
           </select>
         </div>
 
@@ -320,6 +394,7 @@ export default function PestControlList({
             className={selectCls}
           >
             <option value="">Toutes</option>
+            <option value="none">Aucune</option>
             <option value="low">Faible</option>
             <option value="medium">Moyenne</option>
             <option value="high">Forte</option>
@@ -356,9 +431,18 @@ export default function PestControlList({
         {/* Actions filtres */}
         <div className="col-span-full flex flex-col gap-2 mobile:flex-row">
           <button
-            onClick={() => hasFullDateRange && fetchData(1)}
+            onClick={() => {
+              if (!hasFullDateRange) return;
+              setAppliedDateFrom(dateFrom);
+              setAppliedDateTo(dateTo);
+              fetchData(1, { dateFrom, dateTo });
+            }}
             disabled={!hasFullDateRange}
-            title={!hasFullDateRange ? "Sélectionnez 'Du' ET 'Au' pour filtrer" : undefined}
+            title={
+              !hasFullDateRange
+                ? "Sélectionnez 'Du' ET 'Au' pour filtrer"
+                : undefined
+            }
             className={`${btnBase} bg-blue text-white disabled:opacity-40`}
             type="button"
           >
@@ -373,6 +457,8 @@ export default function PestControlList({
               setActivity("");
               setDateFrom("");
               setDateTo("");
+              setAppliedDateFrom("");
+              setAppliedDateTo("");
               fetchData(1, {
                 q: "",
                 status: "all",
@@ -391,58 +477,77 @@ export default function PestControlList({
         </div>
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto max-w-[calc(100vw-83px)] midTablet:max-w-[calc(100vw-92px)] tablet:max-w-[calc(100vw-360px)] rounded-xl border border-darkBlue/10 p-2">
-        <table className="w-full text-[13px]">
-          <thead className="whitespace-nowrap">
-            <tr className="sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Prestataire</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Contrat</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Fréq.</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Dernière visite</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Prochaine</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Activité</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Conformité</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Parc</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Rapports</th>
-              <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">Opérateur</th>
-              <th className="py-2 pr-3 text-right font-medium text-darkBlue/70">Actions</th>
-            </tr>
-          </thead>
-
-          <tbody className="divide-y divide-darkBlue/10 [&>tr:last-child>td]:!pb-0">
-            {!loading && filtered.length === 0 && (
-              <tr>
-                <td colSpan={11} className="py-8 text-center text-darkBlue/50">
-                  Aucun suivi nuisibles
-                </td>
+      {/* Table + overlay loader */}
+      <div className="relative">
+        <div className="overflow-x-auto max-w-[calc(100vw-50px)] mobile:max-w-[calc(100vw-83px)] midTablet:max-w-[calc(100vw-92px)] tablet:max-w-[calc(100vw-360px)] rounded-xl border border-darkBlue/10">
+          <table className="w-full text-[13px]">
+            <thead className="whitespace-nowrap">
+              <tr className="text-nowrap sticky top-0 z-10 border-b border-darkBlue/10 bg-white/95 backdrop-blur">
+                <th className="py-2 pr-3 pl-2 text-left font-medium text-darkBlue/70">
+                  Prestataire
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Contrat
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Fréq.
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Dernière visite
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Prochaine
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Activité
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Conformité
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Parc
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Rapports
+                </th>
+                <th className="py-2 pr-3 text-left font-medium text-darkBlue/70">
+                  Opérateur
+                </th>
+                <th className="py-2 pr-2 text-right font-medium text-darkBlue/70">
+                  Actions
+                </th>
               </tr>
-            )}
+            </thead>
 
-            {loading && (
-              <tr>
-                <td colSpan={11} className="py-8 text-center text-darkBlue/50">
-                  <span className="inline-flex items-center gap-2">
-                    <Loader2 className="size-4 animate-spin" /> Chargement…
-                  </span>
-                </td>
-              </tr>
-            )}
+            <tbody>
+              {items.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={11}
+                    className="py-8 text-center text-darkBlue/50"
+                  >
+                    Aucun suivi nuisibles
+                  </td>
+                </tr>
+              )}
 
-            {!loading &&
-              filtered.map((it) => {
+              {items.map((it) => {
                 const cBadge = contractBadge(it);
-                const isExpired = cBadge === "Expiré";
+                const isExpired = cBadge.startsWith("Expiré");
                 return (
                   <tr
                     key={it._id}
-                    className={`transition-colors hover:bg-darkBlue/[0.03] ${
-                      editingId === it._id ? "bg-blue/5 ring-1 ring-blue/20" : ""
+                    className={`border-b border-darkBlue/10 last:border-b-0 transition-colors hover:bg-darkBlue/[0.03] ${
+                      editingId === it._id
+                        ? "bg-blue/5 ring-1 ring-blue/20"
+                        : ""
                     }`}
                   >
-                    <td className="py-2 pr-3 whitespace-nowrap">
+                    <td className="py-2 pl-2 pr-3 whitespace-nowrap">
                       <div className="flex flex-col">
-                        <span className="font-medium">{it.provider || "—"}</span>
+                        <span className="font-medium">
+                          {it.provider || "—"}
+                        </span>
                         <span className="text-xs text-darkBlue/60">
                           {it.providerContactName || "—"}{" "}
                           {it.providerPhone ? `• ${it.providerPhone}` : ""}{" "}
@@ -455,28 +560,43 @@ export default function PestControlList({
                       <div className="flex flex-col gap-1">
                         <span
                           className={`w-fit px-2 py-0.5 rounded text-xs ${
-                            isExpired ? "bg-red text-white" : "bg-green text-white"
+                            isExpired
+                              ? "bg-red text-white"
+                              : "bg-green text-white"
                           }`}
                         >
                           {cBadge}
                         </span>
                         <div className="text-xs opacity-70">
                           {it.contractStart
-                            ? new Date(it.contractStart).toLocaleDateString("fr-FR")
+                            ? new Date(it.contractStart).toLocaleDateString(
+                                "fr-FR"
+                              )
                             : "—"}{" "}
                           →{" "}
                           {it.contractEnd
-                            ? new Date(it.contractEnd).toLocaleDateString("fr-FR")
+                            ? new Date(it.contractEnd).toLocaleDateString(
+                                "fr-FR"
+                              )
                             : "—"}
                         </div>
                       </div>
                     </td>
 
-                    <td className="py-2 pr-3 whitespace-nowrap">{it.visitFrequency || "—"}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{fmtDate(it.lastVisitAt)}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{fmtDate(it.nextPlannedVisit)}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap capitalize">
-                      {it.activityLevel || "—"}
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {FREQ_LABELS[it.visitFrequency] ?? "—"}
+                    </td>
+
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {fmtDate(it.lastVisitAt)}
+                    </td>
+
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {fmtDate(it.nextPlannedVisit)}
+                    </td>
+
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {ACTIVITY_LABELS[it.activityLevel] ?? "—"}
                     </td>
 
                     <td className="py-2 pr-3 whitespace-nowrap">
@@ -485,16 +605,17 @@ export default function PestControlList({
                           it.complianceStatus === "compliant"
                             ? "bg-green text-white"
                             : it.complianceStatus === "non_compliant"
-                            ? "bg-red text-white"
-                            : "bg-orange text-white"
+                              ? "bg-red text-white"
+                              : "bg-orange text-white"
                         }`}
                       >
-                        {it.complianceStatus || "pending"}
+                        {COMPLIANCE_LABELS[it.complianceStatus] ?? "En attente"}
                       </span>
                     </td>
 
                     <td className="py-2 pr-3 whitespace-nowrap">
-                      {it.baitStationsCount ?? 0} appâts / {it.trapsCount ?? 0} pièges
+                      {it.baitStationsCount ?? 0} appâts / {it.trapsCount ?? 0}{" "}
+                      pièges
                     </td>
 
                     <td className="py-2 pr-3 whitespace-nowrap">
@@ -505,12 +626,13 @@ export default function PestControlList({
 
                     <td className="py-2 pr-3 whitespace-nowrap">
                       {it?.recordedBy
-                        ? `${it.recordedBy.firstName || ""} ${it.recordedBy.lastName || ""}`.trim() ||
-                          "—"
+                        ? `${it.recordedBy.firstName || ""} ${
+                            it.recordedBy.lastName || ""
+                          }`.trim() || "—"
                         : "—"}
                     </td>
 
-                    <td className="py-2 pr-0">
+                    <td className="py-2 pr-2">
                       <div className="flex items-center justify-end gap-2">
                         <button
                           onClick={() => onEdit?.(it)}
@@ -533,8 +655,19 @@ export default function PestControlList({
                   </tr>
                 );
               })}
-          </tbody>
-        </table>
+            </tbody>
+          </table>
+        </div>
+
+        {/* Overlay loader (seulement si loading > 1s) */}
+        {showSlowLoader && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-white/60">
+            <div className="flex items-center gap-2 text-darkBlue/70 text-sm">
+              <Loader2 className="size-4 animate-spin" />
+              <span>Chargement…</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Pagination */}
@@ -568,7 +701,11 @@ export default function PestControlList({
       {isDeleteModalOpen &&
         isClient &&
         createPortal(
-          <div className="fixed inset-0 z-[1000]" aria-modal="true" role="dialog">
+          <div
+            className="fixed inset-0 z-[1000]"
+            aria-modal="true"
+            role="dialog"
+          >
             <div
               onClick={closeDeleteModal}
               className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"
@@ -589,9 +726,10 @@ export default function PestControlList({
                     type="button"
                   >
                     {deleteLoading ? (
-                      <>
-                        <Loader2 className="size-4 animate-spin" /> Suppression…
-                      </>
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="size-4 animate-spin" />
+                        <span>Suppression…</span>
+                      </div>
                     ) : (
                       "Confirmer"
                     )}
