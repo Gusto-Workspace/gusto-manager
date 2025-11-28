@@ -765,8 +765,6 @@ router.delete(
           }
         }
 
-        // 🔹 Supprimer le dossier Cloudinary perso de l'employé
-        // (utilisé pour les avatars via /employees/update-data : Gusto_Workspace/employees/<employeeId>)
         try {
           await cloudinary.api.delete_folder(
             `Gusto_Workspace/employees/${employeeId}`
@@ -1257,7 +1255,6 @@ router.put(
         emp.profilePicture = null;
       }
 
-      // 👉 Important : on marque restaurantProfiles comme modifié
       emp.markModified("restaurantProfiles");
 
       await emp.save();
@@ -1272,6 +1269,7 @@ router.put(
         phone: emp.phone,
         restaurantId: req.user.restaurantId,
         options: req.user.options || {},
+        profilePictureUrl: emp.profilePicture?.url || null,
       };
 
       const token = jwt.sign(payload, process.env.JWT_SECRET, {

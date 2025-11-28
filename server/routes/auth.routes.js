@@ -61,6 +61,7 @@ router.post("/user/login", async (req, res) => {
           email: owner.email,
           role: "owner",
           stripeCustomerId: owner.stripeCustomerId,
+          profilePictureUrl: owner.profilePicture?.url || null,
         },
         JWT_SECRET
       );
@@ -91,6 +92,7 @@ router.post("/user/login", async (req, res) => {
         lastname: employee.lastname,
         email: employee.email,
         role: "employee",
+        profilePictureUrl: employee.profilePicture?.url || null,
         // options seront ajoutées après sélection de restaurant
       },
       JWT_SECRET,
@@ -157,6 +159,7 @@ router.post("/user/select-restaurant", async (req, res) => {
         role: "employee",
         restaurantId,
         options: profile.options || {},
+        profilePictureUrl: employee.profilePicture?.url || null,
       };
 
       const newToken = jwt.sign(newPayload, JWT_SECRET, {

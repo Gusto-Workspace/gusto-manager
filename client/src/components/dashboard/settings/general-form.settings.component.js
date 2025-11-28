@@ -82,8 +82,8 @@ export default function GeneralFormSettingsComponent({
     reset(formDefaults);
     initialValuesRef.current = formDefaults;
 
-    // 🔹 Pré-remplir la preview photo pour l'employé
-    if (role === "employee") {
+    // 🔹 Pré-remplir la preview photo pour owner + employee
+    if (role === "employee" || role === "owner") {
       const existingUrl = userData.profilePicture?.url || null;
       setProfilePreview(existingUrl);
       setProfileFile(null);
@@ -155,41 +155,19 @@ export default function GeneralFormSettingsComponent({
         ? `${process.env.NEXT_PUBLIC_API_URL}/owner/update-data`
         : `${process.env.NEXT_PUBLIC_API_URL}/employees/update-data`;
 
-    // 🔹 Cas OWNER : on reste en JSON simple
-    if (role === "owner") {
-      axios
-        .put(endpoint, data, {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-          },
-        })
-        .then(() => {
-          setSuccessMessage("Modifications effectuées");
-          fetchUserData();
-        })
-        .catch((error) => {
-          if (error.response?.status === 409) {
-            setError("email", {
-              type: "manual",
-              message: "Cet email est déjà utilisé.",
-            });
-          } else {
-            console.error("Erreur lors de la mise à jour :", error);
-          }
-        })
-        .finally(() => {
-          setIsSubmitting(false);
-        });
+    const isOwner = role === "owner";
 
-      return;
-    }
-
-    // 🔹 Cas EMPLOYEE : multipart/form-data + profilePicture optionnelle
     const formData = new FormData();
-    formData.append("firstname", data.firstname);
-    formData.append("lastname", data.lastname);
-    formData.append("email", data.email);
-    formData.append("phone", data.phoneNumber || "");
+    formData.append("firstname", data.firstname || "");
+    formData.append("lastname", data.lastname || "");
+    formData.append("email", data.email || "");
+
+    if (isOwner) {
+      formData.append("phoneNumber", data.phoneNumber || "");
+    } else {
+      // employee → le back attend "phone"
+      formData.append("phone", data.phoneNumber || "");
+    }
 
     if (profileFile) {
       formData.append("profilePicture", profileFile);
@@ -246,7 +224,7 @@ export default function GeneralFormSettingsComponent({
   }
 
   const hasPhotoChanges =
-    role === "employee" &&
+    (role === "employee" || role === "owner") &&
     (Boolean(profileFile) ||
       removeProfilePicture ||
       (initialPhotoUrlRef.current || null) !== (profilePreview || null));
@@ -349,8 +327,8 @@ export default function GeneralFormSettingsComponent({
             </div>
           </div>
 
-          {/* Photo de profil — uniquement pour les employés */}
-          {role === "employee" && (
+          {/* Photo de profil — pour owners + employees */}
+          {(role === "employee" || role === "owner") && (
             <div className="mt-2 rounded-2xl border border-darkBlue/10 bg-[#f7f8fc] px-4 py-4 flex flex-col gap-4 tablet:flex-row tablet:items-center tablet:justify-between">
               {/* Avatar + texte */}
               <div className="flex items-center gap-3">
