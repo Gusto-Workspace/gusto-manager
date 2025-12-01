@@ -87,12 +87,7 @@ export default function GlobalWinesComponent(props) {
   );
 
   const WineRow = ({ wine }) => (
-    <div
-      className="
-        flex items-center justify-between gap-4 border-b border-darkBlue/5 last:border-b-0
-        py-2
-      "
-    >
+    <div className="flex items-center justify-between gap-4 py-2">
       {/* Nom + année */}
       <div className="flex-1 flex items-center justify-between flex-nowrap gap-4 min-w-0">
         <div className="flex items-center gap-2 min-w-0">

@@ -20,7 +20,7 @@ export default function PurchasesGiftListComponent(props) {
 
   // ----- Styles communs -----
   const headerTitleCls =
-    "pl-2 text-xl tablet:text-2xl font-semibold text-darkBlue";
+    "pl-2 text-xl tablet:text-2xl text-darkBlue";
   const searchInputCls =
     "h-10 w-full rounded-xl border border-darkBlue/15 bg-white/90 px-3 pr-9 text-sm outline-none placeholder:text-darkBlue/40 shadow-sm focus:border-blue/60 focus:ring-1 focus:ring-blue/30";
   const statusChipWrap =
@@ -194,11 +194,11 @@ export default function PurchasesGiftListComponent(props) {
               </div>
 
               {items.length > 0 ? (
-                <ul className="flex flex-col gap-3 max-h-[570px] overflow-y-auto">
+                <ul className="flex flex-col gap-1 max-h-[570px] overflow-y-auto">
                   {items.map((purchase) => (
                     <li
                       key={purchase._id}
-                      className="relative flex flex-col gap-3 tablet:flex-row tablet:items-end justify-between rounded-2xl border border-darkBlue/10 bg-white/50 px-4 py-4 shadow-[0_18px_45px_rgba(19,30,54,0.06)]"
+                      className="relative flex flex-col gap-3 tablet:flex-row tablet:items-end justify-between rounded-2xl border border-darkBlue/10 bg-white/50 px-4 py-4"
                     >
                       {/* Bouton supprimer */}
                       <button
