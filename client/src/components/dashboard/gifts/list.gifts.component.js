@@ -38,12 +38,19 @@ export default function ListGiftsComponent(props) {
   const { locale } = router;
   const currencySymbol = locale === "fr" ? "€" : "$";
 
+  // ----- Initialisation giftCards depuis le contexte pour éviter le flash -----
+  const initialCards = restaurantContext?.restaurantData?.giftCards || [];
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingGift, setEditingGift] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const [giftCardsValue, setGiftCardsValue] = useState([]);
-  const [giftCardsDescription, setGiftCardsDescription] = useState([]);
+  const [giftCardsValue, setGiftCardsValue] = useState(() =>
+    initialCards.filter((giftCard) => !giftCard.description)
+  );
+  const [giftCardsDescription, setGiftCardsDescription] = useState(() =>
+    initialCards.filter((giftCard) => giftCard.description)
+  );
 
   const {
     register,
@@ -57,8 +64,7 @@ export default function ListGiftsComponent(props) {
     "inline-flex items-center justify-center rounded-xl bg-blue px-5 py-2.5 text-sm font-medium text-white shadow hover:bg-blue/90 transition disabled:opacity-60 disabled:cursor-not-allowed";
   const btnSecondary =
     "inline-flex items-center justify-center rounded-xl bg-red px-5 py-2.5 text-sm font-medium text-white shadow hover:bg-red/90 transition disabled:opacity-60 disabled:cursor-not-allowed";
-  const sectionChipWrap =
-    "flex items-center gap-3 my-6 max-w-4xl mx-auto px-2";
+  const sectionChipWrap = "flex items-center gap-3 my-6 max-w-4xl mx-auto px-2";
   const sectionChipLine = "h-px flex-1 bg-darkBlue/10";
   const sectionChipLabel =
     "inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/90 px-6 py-1.5 text-[11px] font-semibold tracking-[0.18em] text-darkBlue uppercase shadow-sm";
@@ -81,6 +87,7 @@ export default function ListGiftsComponent(props) {
   const touchSensor = useSensor(TouchSensor);
   const sensors = useSensors(mouseSensor, touchSensor);
 
+  // Met à jour les listes quand restaurantData change (après fetch ou modif)
   useEffect(() => {
     const cards = restaurantContext?.restaurantData?.giftCards || [];
     setGiftCardsValue(cards.filter((giftCard) => !giftCard.description));
@@ -331,8 +338,8 @@ export default function ListGiftsComponent(props) {
               {isDeleting
                 ? t("buttons.deleteGift")
                 : editingGift
-                ? t("buttons.editGift")
-                : t("buttons.addGift")}
+                  ? t("buttons.editGift")
+                  : t("buttons.addGift")}
             </h2>
 
             <form

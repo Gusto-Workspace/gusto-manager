@@ -47,13 +47,31 @@ export default function MonthlyCounterVisits({
   const lastPoint =
     Array.isArray(data) && data.length > 0 ? data[data.length - 1] : null;
 
+  // ----- Calcul dynamique de la largeur de l’axe Y -----
+  let maxVisits = 0;
+  if (Array.isArray(data) && data.length > 0) {
+    maxVisits = data.reduce((max, d) => {
+      const v = typeof d.visits === "number" ? d.visits : Number(d.visits) || 0;
+      return Math.max(max, v);
+    }, 0);
+  }
+
+  // On ne regarde que la partie entière pour déterminer la tranche
+  const intMax = Math.floor(Math.abs(maxVisits));
+  const digits = String(intMax || 0).length; // 0 -> "0" -> 1
+
+  const yAxisWidth =
+    digits === 1 ? 28 :
+    digits === 2 ? 34 :
+    digits === 3 ? 42 :
+    50; // 4 chiffres et plus
+
   return (
     <section
       className="
         relative overflow-hidden
         rounded-2xl border border-darkBlue/10
-       bg-white/50
-         
+        bg-white/50
         px-4 py-4 tablet:px-6 tablet:py-5
         shadow-[0_18px_45px_rgba(19,30,54,0.08)]
       "
@@ -113,7 +131,6 @@ export default function MonthlyCounterVisits({
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart
                 data={data}
-                // on réduit le margin gauche pour coller le graphe au bord
                 margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
               >
                 <defs>
@@ -139,10 +156,11 @@ export default function MonthlyCounterVisits({
                 <YAxis
                   type="number"
                   domain={[0, "auto"]}
+                  allowDecimals={false} // <- plus de 1.5 / 2.5 etc
                   tick={{ fontSize: 11, fill: "rgba(19,30,54,0.6)" }}
                   axisLine={false}
                   tickLine={false}
-                  width={35}
+                  width={yAxisWidth}
                 />
                 <Tooltip content={<VisitsTooltip />} />
                 <Area
