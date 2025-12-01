@@ -3,7 +3,7 @@ import { ReservationSvg } from "@/components/_shared/_svgs/reservation.svg";
 import { ChevronLeft } from "lucide-react";
 
 // I18N
-import { useTranslation } from "react-i18next";
+import { useTranslation } from "next-i18next";
 
 export default function DayHeaderComponent(props) {
   const { t } = useTranslation("reservations");
