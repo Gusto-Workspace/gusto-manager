@@ -46,8 +46,10 @@ export default function NavComponent() {
   const [translateX, setTranslateX] = useState(0);
   const [isTabletUp, setIsTabletUp] = useState(() => {
     if (typeof window === "undefined") return false;
-    return window.innerWidth >= 1024;
+    return window.matchMedia("(min-width: 1024px)").matches;
   });
+  const [hasHover, setHasHover] = useState(false);
+
   const navRef = useRef(null);
   const timeoutRef = useRef(null);
 
@@ -70,7 +72,7 @@ export default function NavComponent() {
   const navItemBaseCls =
     "group h-11 flex items-center rounded-xl px-2 pr-3 text-base font-medium transition";
   const navItemEnabledCls =
-    "cursor-pointer text-darkBlue/80 desktop:hover:bg-blue/10";
+    "cursor-pointer text-darkBlue/80" + (hasHover ? " hover:bg-blue/10" : "");
   const navItemDisabledCls = "cursor-not-allowed text-darkBlue/40 opacity-60";
   const navItemActiveCls = "bg-blue/10 text-blue";
   const iconChipBase =
@@ -91,14 +93,40 @@ export default function NavComponent() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const checkViewport = () => {
-      setIsTabletUp(window.innerWidth >= 1024);
+    const mediaQuery = window.matchMedia("(min-width: 1024px)");
+
+    const handleChange = (event) => {
+      setIsTabletUp(event.matches);
     };
 
-    checkViewport();
-    window.addEventListener("resize", checkViewport);
+    // valeur initiale (utile si resize / rotation)
+    setIsTabletUp(mediaQuery.matches);
 
-    return () => window.removeEventListener("resize", checkViewport);
+    // API moderne uniquement (évite les méthodes dépréciées)
+    mediaQuery.addEventListener?.("change", handleChange);
+
+    return () => {
+      mediaQuery.removeEventListener?.("change", handleChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mq = window.matchMedia("(hover: hover) and (pointer: fine)");
+
+    const handleChange = (event) => {
+      setHasHover(event.matches);
+    };
+
+    // valeur initiale
+    setHasHover(mq.matches);
+
+    mq.addEventListener?.("change", handleChange);
+
+    return () => {
+      mq.removeEventListener?.("change", handleChange);
+    };
   }, []);
 
   useEffect(() => {
