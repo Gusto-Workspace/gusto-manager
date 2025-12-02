@@ -68,7 +68,7 @@ export default function NavComponent() {
   const navItemBaseCls =
     "group h-11 flex items-center rounded-xl px-2 pr-3 text-base font-medium transition";
   const navItemEnabledCls =
-    "cursor-pointer text-darkBlue/80 hover:bg-darkBlue/5";
+    "cursor-pointer text-darkBlue/80 hover:bg-blue/10";
   const navItemDisabledCls = "cursor-not-allowed text-darkBlue/40 opacity-60";
   const navItemActiveCls = "bg-blue/10 text-blue";
   const iconChipBase =
