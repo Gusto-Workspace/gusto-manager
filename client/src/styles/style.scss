@@ -63,3 +63,18 @@ input[type="date"] {
   height: 44px; /* cible principale */
   padding: 0 12px;
 }
+
+/* style.scss ou équivalent */
+@supports (-webkit-touch-callout: none) {
+  /* iOS only */
+  @media (min-width: 1024px) {
+    html {
+      overflow: hidden;
+      height: 100%;
+    }
+    body {
+      overflow: auto;
+      height: 100%;
+    }
+  }
+}
