@@ -54,8 +54,8 @@ export default function NavComponent() {
   const timeoutRef = useRef(null);
 
   // ----- Styles communs -----
-const sidebarCls = `
-  fixed inset-y-0 left-0
+  const sidebarCls = `
+  fixed h-screen left-0
   w-[270px]
   flex flex-col
   bg-white
