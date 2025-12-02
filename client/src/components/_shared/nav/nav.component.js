@@ -44,13 +44,16 @@ export default function NavComponent() {
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [translateX, setTranslateX] = useState(0);
-
+  const [isTabletUp, setIsTabletUp] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.innerWidth >= 1024;
+  });
   const navRef = useRef(null);
   const timeoutRef = useRef(null);
 
   // ----- Styles communs -----
   const sidebarCls = `
-    fixed top-0 left-0
+    fixed top-0
     w-[270px] h-[100dvh]
     flex flex-col
     bg-white
@@ -60,7 +63,6 @@ export default function NavComponent() {
     gap-4
     overflow-y-auto custom-scrollbar
     z-[90] tablet:z-10
-    transition-transform duration-200 ease-out
   `;
   const logoWrapCls = "h-[72px] flex items-center justify-center  mb-1";
   const logoImgCls = "max-w-[50px] opacity-70";
@@ -68,7 +70,7 @@ export default function NavComponent() {
   const navItemBaseCls =
     "group h-11 flex items-center rounded-xl px-2 pr-3 text-base font-medium transition";
   const navItemEnabledCls =
-    "cursor-pointer text-darkBlue/80 hover:bg-blue/10";
+    "cursor-pointer text-darkBlue/80 desktop:hover:bg-blue/10";
   const navItemDisabledCls = "cursor-not-allowed text-darkBlue/40 opacity-60";
   const navItemActiveCls = "bg-blue/10 text-blue";
   const iconChipBase =
@@ -84,6 +86,19 @@ export default function NavComponent() {
     const margin = 24;
     const buttonWidth = 49;
     setTranslateX(windowWidth - 2 * margin - buttonWidth);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const checkViewport = () => {
+      setIsTabletUp(window.innerWidth >= 1024);
+    };
+
+    checkViewport();
+    window.addEventListener("resize", checkViewport);
+
+    return () => window.removeEventListener("resize", checkViewport);
   }, []);
 
   useEffect(() => {
@@ -256,10 +271,11 @@ export default function NavComponent() {
       {/* Sidebar */}
       <nav
         ref={navRef}
-        className={`
-          ${sidebarCls}
-          ${menuOpen ? "translate-x-0" : "-translate-x-full tablet:translate-x-0"}
-        `}
+        className={sidebarCls}
+        style={{
+          left: isTabletUp ? 0 : menuOpen ? 0 : -270,
+          transition: isTabletUp ? "none" : "left 200ms ease-out",
+        }}
       >
         {/* Logo */}
         <div className={logoWrapCls}>
