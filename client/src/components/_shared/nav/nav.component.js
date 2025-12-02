@@ -55,7 +55,7 @@ export default function NavComponent() {
 
   // ----- Styles communs -----
   const sidebarCls = `
-  fixed h-screen left-0
+  fixed inset-y-0 left-0
   w-[270px]
   flex flex-col
   bg-white
