@@ -54,18 +54,19 @@ export default function NavComponent() {
   const timeoutRef = useRef(null);
 
   // ----- Styles communs -----
-  const sidebarCls = `
-    fixed top-0
-    w-[270px] h-[100dvh]
-    flex flex-col
-    bg-white
-    border-r border-darkBlue/10
-    shadow-[3px_0_20px_rgba(19,30,54,0.06)]
-    px-2 py-4 tablet:px-4 tablet:py-6
-    gap-4
-    overflow-y-auto custom-scrollbar
-    z-[90] tablet:z-10
-  `;
+const sidebarCls = `
+  fixed inset-y-0 left-0
+  w-[270px]
+  flex flex-col
+  bg-white
+  border-r border-darkBlue/10
+  shadow-[3px_0_20px_rgba(19,30,54,0.06)]
+  px-2 py-4 tablet:px-4 tablet:py-6
+  gap-4
+  overflow-y-auto custom-scrollbar
+  z-[90] tablet:z-10
+`;
+
   const logoWrapCls = "h-[72px] flex items-center justify-center  mb-1";
   const logoImgCls = "max-w-[50px] opacity-70";
   const navListCls = "flex-1 flex flex-col gap-3 mt-1.5";
