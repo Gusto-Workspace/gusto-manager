@@ -17,14 +17,32 @@ function App({ Component, pageProps }) {
   const router = useRouter();
 
   useEffect(() => {
+    const scrollToTopEverywhere = () => {
+      if (typeof window === "undefined") return;
+
+      const doScroll = () => {
+        // scroll "classique"
+        window.scrollTo(0, 0);
+
+        // pour les cas où c'est documentElement qui gère le scroll
+        document.documentElement.scrollTop = 0;
+
+        // pour les cas où c'est le body qui scrolle (ton hack iOS)
+        document.body.scrollTop = 0;
+      };
+
+      // tout de suite
+      doScroll();
+
+      // une fois au prochain frame (Safari aime bien ça)
+      requestAnimationFrame(doScroll);
+
+      // et une petite dernière 50ms après, au cas où
+      setTimeout(doScroll, 50);
+    };
+
     const handleRouteChange = () => {
-      if (typeof window !== "undefined") {
-        window.scrollTo({
-          top: 0,
-          left: 0,
-          behavior: "auto",
-        });
-      }
+      scrollToTopEverywhere();
     };
 
     router.events.on("routeChangeComplete", handleRouteChange);
