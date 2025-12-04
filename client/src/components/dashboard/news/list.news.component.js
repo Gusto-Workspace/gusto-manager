@@ -240,9 +240,7 @@ export default function ListNewsComponent(props) {
                         fillColor="#b91c1c"
                       />
                     </div>
-                    <span className={actionLabelCls}>
-                      {t("buttons.delete")}
-                    </span>
+                    <span className={actionLabelCls}>Supprimer</span>
                   </button>
 
                   {/* Modifier */}
