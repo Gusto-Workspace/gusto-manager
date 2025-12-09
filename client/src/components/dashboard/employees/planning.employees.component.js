@@ -25,6 +25,20 @@ export default function PlanningEmployeesComponent() {
   const { restaurantContext } = useContext(GlobalContext);
   const router = useRouter();
 
+  // 🔥 FIX iOS : désactive le hack global uniquement sur cette page
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const html = document.documentElement;
+
+    // On marque la page comme "pas de hack iOS"
+    html.classList.add("gm-disable-ios-scroll-hack");
+
+    return () => {
+      html.classList.remove("gm-disable-ios-scroll-hack");
+    };
+  }, []);
+
   const restaurantId = restaurantContext.restaurantData?._id;
 
   // ─── États ─────────────────────────────────────────────────────────────────
