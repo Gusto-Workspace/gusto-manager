@@ -56,7 +56,7 @@ export default function CardCategoryListComponent(props) {
         <button
           {...listeners}
           className="
-            absolute gap-1 p-1 opacity-50
+            absolute gap-1 p-2 opacity-50 left-3 top-3
             text-darkBlue/30 hover:text-darkBlue/60
             cursor-grab active:cursor-grabbing
           "
@@ -95,9 +95,7 @@ export default function CardCategoryListComponent(props) {
         <div className="flex flex-col items-center">
           <p className="text-xs text-darkBlue/60">
             {t("labels.numberOfWines")} :{" "}
-            <span className="font-medium text-darkBlue">
-              {totalWinesCount}
-            </span>
+            <span className="font-medium text-darkBlue">{totalWinesCount}</span>
           </p>
 
           {/* Badge visibilité */}

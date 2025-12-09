@@ -517,7 +517,7 @@ export default function PlanningEmployeesComponent() {
 
       {/* ─── Liste d’employés ─────────────────────────────────────────────────── */}
       <div className="overflow-x-auto">
-        <ul className="flex gap-4 py-4">
+        <ul className="flex gap-4 pt-4">
           {employees.map((emp) => (
             <li key={emp._id} className="min-w-[200px]">
               <div
@@ -613,15 +613,26 @@ export default function PlanningEmployeesComponent() {
 
       {/* ─── Modale Ajout Shift ───────────────────────────────────────────────── */}
       {modalOpen && (
-        <div className="fixed inset-0 flex items-center justify-center z-[100]">
+        <div className="fixed inset-0 z-[120] flex items-center justify-center px-4">
+          {/* Overlay */}
           <div
             onClick={() => setModalOpen(false)}
-            className="absolute inset-0 bg-black bg-opacity-40"
+            className="absolute inset-0 bg-black/25 backdrop-blur-[1px]"
           />
-          <div className="bg-white mx-4 p-6 rounded-lg shadow-lg z-10 w-[420px]">
+
+          {/* Carte modale */}
+          <div
+            className="
+        relative w-full max-w-[460px]
+        rounded-2xl border border-darkBlue/10 bg-white/95
+        px-5 py-6 tablet:px-7 tablet:py-7
+        shadow-[0_22px_55px_rgba(19,30,54,0.20)]
+        flex flex-col gap-5
+      "
+          >
             {/* Titre / sélecteur employé */}
             {modalData.employeeId ? (
-              <h2 className="text-xl font-semibold mb-4 text-center">
+              <h2 className="text-lg tablet:text-xl font-semibold text-center text-darkBlue">
                 {(() => {
                   const emp = allEmployees.find(
                     (e) => e._id === modalData.employeeId
@@ -630,11 +641,11 @@ export default function PlanningEmployeesComponent() {
                 })()}
               </h2>
             ) : (
-              <div className="mb-4">
-                <label className="block text-xl text-center mb-2">
+              <div className="flex flex-col gap-2">
+                <label className="block text-md font-medium text-center text-darkBlue">
                   {t("planning:labels.chooseEmployee", "Choisir un employé")}
                 </label>
-                <div className="relative">
+                <div className="relative mt-1">
                   <input
                     type="text"
                     value={modalEmployeeQuery}
@@ -643,23 +654,36 @@ export default function PlanningEmployeesComponent() {
                       "planning:placeholders.searchEmployee",
                       "Rechercher un employé"
                     )}
-                    className="w-full p-2 border rounded"
+                    className="
+                w-full h-10 rounded-lg border border-darkBlue/20 bg-white/90
+                px-3 text-sm outline-none
+                placeholder:text-darkBlue/40
+                focus:border-darkBlue/50 focus:ring-1 focus:ring-darkBlue/20
+                transition
+              "
                   />
                   {modalEmployeeQuery.trim() && (
-                    <ul className="-mt-1 max-h-24 drop-shadow-xl overflow-y-auto border-b border-x rounded-b absolute bg-white left-0 right-0">
+                    <ul
+                      className="
+                  absolute left-0 right-0 mt-1 max-h-40 overflow-y-auto
+                  rounded-xl border border-darkBlue/10 bg-white
+                  shadow-[0_14px_35px_rgba(15,23,42,0.18)]
+                  text-sm z-20
+                "
+                    >
                       {modalEmployeeOptions.length === 0 && (
-                        <li className="px-3 py-2 text-sm opacity-70 italic">
+                        <li className="px-3 py-2 text-xs text-darkBlue/60 italic">
                           {t("planning:labels.noResult", "Aucun résultat")}
                         </li>
                       )}
                       {modalEmployeeOptions.map((emp) => (
                         <li
                           key={emp._id}
-                          className={`px-3 py-[6px] cursor-pointer hover:bg-lightGrey ${
-                            modalData.employeeId === emp._id
-                              ? "bg-gray-100"
-                              : ""
-                          }`}
+                          className={`
+                      px-3 py-[6px] cursor-pointer
+                      hover:bg-lightGrey/80
+                      ${modalData.employeeId === emp._id ? "bg-lightGrey" : ""}
+                    `}
                           onClick={() =>
                             setModalData((prev) => ({
                               ...prev,
@@ -677,9 +701,9 @@ export default function PlanningEmployeesComponent() {
             )}
 
             {/* Créneau */}
-            <p className="mb-4 text-center">
+            <p className="text-sm text-center text-darkBlue/80">
               {t("planning:labels.slot", "Créneau :")}&nbsp;
-              <strong>
+              <strong className="text-darkBlue">
                 {format(modalData.start, "EEEE dd MMM yyyy HH:mm", {
                   locale: frLocale,
                 })}{" "}
@@ -688,23 +712,38 @@ export default function PlanningEmployeesComponent() {
             </p>
 
             {/* Titre shift */}
-            <input
-              type="text"
-              placeholder={t(
-                "planning:placeholders.shiftTitle",
-                "Titre du shift"
-              )}
-              value={modalData.title}
-              onChange={(e) =>
-                setModalData((prev) => ({ ...prev, title: e.target.value }))
-              }
-              className="w-full p-2 border border-gray-300 rounded-lg mb-6"
-            />
+            <div className="flex flex-col gap-2">
+              <input
+                type="text"
+                placeholder={t(
+                  "planning:placeholders.shiftTitle",
+                  "Titre du shift"
+                )}
+                value={modalData.title}
+                onChange={(e) =>
+                  setModalData((prev) => ({ ...prev, title: e.target.value }))
+                }
+                className="
+            w-full h-10 rounded-lg border border-darkBlue/20 bg-white/95
+            px-3 text-sm outline-none
+            placeholder:text-darkBlue/40
+            focus:border-darkBlue/50 focus:ring-1 focus:ring-darkBlue/20
+            transition
+          "
+              />
+            </div>
 
-            <div className="flex justify-center gap-4">
+            {/* Boutons */}
+            <div className="mt-2 flex justify-center gap-3">
               <button
                 onClick={handleConfirmShift}
-                className="px-4 py-2 bg-blue text-white rounded-lg disabled:opacity-40"
+                className="
+            inline-flex items-center justify-center
+            rounded-xl bg-blue px-4 py-2.5
+            text-sm font-medium text-white shadow
+            hover:bg-blue/90 transition
+            disabled:opacity-50 disabled:cursor-not-allowed
+          "
                 disabled={
                   !modalData.title.trim() ||
                   (!modalData.employeeId && !selectedEmployeeId)
@@ -714,7 +753,12 @@ export default function PlanningEmployeesComponent() {
               </button>
               <button
                 onClick={handleCancelShift}
-                className="px-4 py-2 bg-red text-white rounded-lg"
+                className="
+            inline-flex items-center justify-center
+            rounded-xl bg-red px-4 py-2.5
+            text-sm font-medium text-white shadow
+            hover:bg-red/90 transition
+          "
               >
                 {t("buttons.cancel", "Annuler")}
               </button>
@@ -725,86 +769,117 @@ export default function PlanningEmployeesComponent() {
 
       {/* ─── Modale Suppression Shift ──────────────────────────────────────────── */}
       {deleteModalOpen && (
-        <div className="fixed inset-0 flex items-center justify-center z-[100]">
-          <div
-            onClick={handleCancelDelete}
-            className="absolute inset-0 bg-black bg-opacity-40"
-          />
-          <div className="bg-white mx-4 p-6 rounded-lg shadow-lg z-10 w-[400px]">
-            <h2 className="text-xl font-semibold mb-4 text-center">
-              {(() => {
-                const emp = allEmployees.find(
-                  (e) => e._id === deleteModalData.employeeId
-                );
-                return emp ? `${emp.firstname} ${emp.lastname}` : "";
-              })()}
-            </h2>
-            <p className="mb-4 text-center flex flex-col gap-2">
-              <span>
-                {t("planning:labels.deleteShift", "Supprimer ce shift")} :{" "}
-                {deleteModalData?.title}
-              </span>
+  <div className="fixed inset-0 z-[120] flex items-center justify-center px-4">
+    {/* Overlay */}
+    <div
+      onClick={handleCancelDelete}
+      className="absolute inset-0 bg-black/25 backdrop-blur-[1px]"
+    />
 
-              <strong>
-                {(() => {
-                  const sameDay =
-                    deleteModalData.start.toDateString() ===
-                    deleteModalData.end.toDateString();
+    {/* Carte modale */}
+    <div
+      className="
+        relative w-full max-w-[420px]
+        rounded-2xl border border-darkBlue/10 bg-white/95
+        px-5 py-6 tablet:px-7 tablet:py-7
+        shadow-[0_22px_55px_rgba(19,30,54,0.20)]
+        flex flex-col gap-5
+      "
+    >
+      {/* Nom employé */}
+      <h2 className="text-lg tablet:text-xl font-semibold text-center text-darkBlue">
+        {(() => {
+          const emp = allEmployees.find(
+            (e) => e._id === deleteModalData.employeeId
+          );
+          return emp ? `${emp.firstname} ${emp.lastname}` : "";
+        })()}
+      </h2>
 
-                  const isFullDay =
-                    deleteModalData.start.getHours() === 0 &&
-                    deleteModalData.start.getMinutes() === 0 &&
-                    deleteModalData.end.getHours() === 23 &&
-                    deleteModalData.end.getMinutes() >= 59;
+      {/* Texte + créneau */}
+      <div className="text-sm text-center text-darkBlue/80 flex flex-col gap-2">
+        <p>
+          {t("planning:labels.deleteShift", "Supprimer ce shift")} :{" "}
+          <span className="font-medium text-darkBlue">
+            {deleteModalData?.title}
+          </span>
+        </p>
 
-                  if (sameDay && isFullDay) {
-                    // 👉 Journée complète sur un seul jour
-                    return format(deleteModalData.start, "EEEE dd MMM yyyy", {
-                      locale: frLocale,
-                    });
-                  } else if (!sameDay) {
-                    // 👉 Plusieurs jours
-                    return `${format(
-                      deleteModalData.start,
-                      "EEEE dd MMM yyyy",
-                      {
-                        locale: frLocale,
-                      }
-                    )} – ${format(deleteModalData.end, "EEEE dd MMM yyyy", {
-                      locale: frLocale,
-                    })}`;
-                  } else {
-                    // 👉 Même jour mais avec heures
-                    return `${format(
-                      deleteModalData.start,
-                      "EEEE dd MMM yyyy HH:mm",
-                      {
-                        locale: frLocale,
-                      }
-                    )} – ${format(deleteModalData.end, "HH:mm", {
-                      locale: frLocale,
-                    })}`;
+        <p className="mt-1">
+          <strong className="text-darkBlue">
+            {(() => {
+              const sameDay =
+                deleteModalData.start.toDateString() ===
+                deleteModalData.end.toDateString();
+
+              const isFullDay =
+                deleteModalData.start.getHours() === 0 &&
+                deleteModalData.start.getMinutes() === 0 &&
+                deleteModalData.end.getHours() === 23 &&
+                deleteModalData.end.getMinutes() >= 59;
+
+              if (sameDay && isFullDay) {
+                // Journée complète sur un seul jour
+                return format(deleteModalData.start, "EEEE dd MMM yyyy", {
+                  locale: frLocale,
+                });
+              } else if (!sameDay) {
+                // Plusieurs jours
+                return `${format(
+                  deleteModalData.start,
+                  "EEEE dd MMM yyyy",
+                  {
+                    locale: frLocale,
                   }
-                })()}
-              </strong>
-            </p>
-            <div className="flex justify-center gap-4">
-              <button
-                onClick={handleConfirmDelete}
-                className="px-4 py-2 bg-blue text-white rounded-lg"
-              >
-                {t("buttons.delete", "Supprimer")}
-              </button>
-              <button
-                onClick={handleCancelDelete}
-                className="px-4 py-2 bg-red text-white rounded-lg"
-              >
-                {t("buttons.cancel", "Annuler")}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+                )} – ${format(deleteModalData.end, "EEEE dd MMM yyyy", {
+                  locale: frLocale,
+                })}`;
+              } else {
+                // Même jour mais avec heures
+                return `${format(
+                  deleteModalData.start,
+                  "EEEE dd MMM yyyy HH:mm",
+                  {
+                    locale: frLocale,
+                  }
+                )} – ${format(deleteModalData.end, "HH:mm", {
+                  locale: frLocale,
+                })}`;
+              }
+            })()}
+          </strong>
+        </p>
+      </div>
+
+      {/* Boutons */}
+      <div className="mt-2 flex justify-center gap-3">
+        <button
+          onClick={handleConfirmDelete}
+          className="
+            inline-flex items-center justify-center
+            rounded-xl bg-red px-4 py-2.5
+            text-sm font-medium text-white shadow
+            hover:bg-red/90 transition
+          "
+        >
+          {t("buttons.delete", "Supprimer")}
+        </button>
+        <button
+          onClick={handleCancelDelete}
+          className="
+            inline-flex items-center justify-center
+            rounded-xl bg-darkBlue/10 px-4 py-2.5
+            text-sm font-medium text-darkBlue shadow-sm
+            hover:bg-darkBlue/15 transition
+          "
+        >
+          {t("buttons.cancel", "Annuler")}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
     </section>
   );
 }
