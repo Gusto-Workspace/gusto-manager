@@ -64,16 +64,25 @@ input[type="date"] {
   padding: 0 12px;
 }
 
-// @supports (-webkit-touch-callout: none) {
-//   /* iOS only */
-//   @media (min-width: 1024px) {
-//     html {
-//       overflow: hidden;
-//       height: 100%;
-//     }
-//     body {
-//       overflow: auto;
-//       height: 100%;
-//     }
-//   }
-// }
+@supports (-webkit-touch-callout: none) {
+  /* iOS only */
+  @media (min-width: 1024px) {
+    /* ✅ Comportement par défaut (ton hack) */
+    html:not(.gm-disable-ios-scroll-hack) {
+      overflow: hidden;
+      height: 100%;
+    }
+    html:not(.gm-disable-ios-scroll-hack) body {
+      overflow: auto;
+      height: 100%;
+    }
+
+    /* ✅ Sur la page planning (classe ajoutée dans le composant),
+       on revient à un scroll "normal" que react-big-calendar comprend bien */
+    html.gm-disable-ios-scroll-hack,
+    html.gm-disable-ios-scroll-hack body {
+      overflow: auto;
+      height: auto;
+    }
+  }
+}
