@@ -60,8 +60,8 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 }
 
 input[type="date"] {
-  height: 44px; /* cible principale */
   padding: 0 12px;
+  width: -webkit-fill-available;
 }
 
 @supports (-webkit-touch-callout: none) {
