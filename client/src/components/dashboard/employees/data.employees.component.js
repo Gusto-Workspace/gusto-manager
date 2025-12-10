@@ -248,7 +248,7 @@ export default function DataEmployeesComponent(props) {
 
         {/* Boutons en mode édition */}
         {isEditing && (
-          <div className="midTablet:absolute bottom-4 right-4 flex flex-col gap-2 w-full midTablet:w-auto midTablet:flex-row">
+          <div className="midTablet:absolute bottom-4 right-4 flex gap-2 flex-row-reverse w-full midTablet:w-auto ">
             <button
               type="button"
               disabled={isSavingDetails}
@@ -257,7 +257,7 @@ export default function DataEmployeesComponent(props) {
                 resetDetails();
                 setIsEditing?.(false);
               }}
-              className="px-4 py-2 rounded-lg bg-red text-white text-sm font-medium disabled:opacity-50"
+              className="px-4 py-2 rounded-lg bg-red text-white text-sm w-full midTablet:w-auto font-medium disabled:opacity-50"
             >
               {t("buttons.cancel")}
             </button>
@@ -265,7 +265,7 @@ export default function DataEmployeesComponent(props) {
             <button
               type="submit"
               disabled={!detailsDirty || isSavingDetails}
-              className="px-4 py-2 rounded-lg bg-blue text-white text-sm font-medium disabled:opacity-40"
+              className="px-4 py-2 rounded-lg bg-blue text-white text-sm w-full midTablet:w-auto font-medium disabled:opacity-40"
             >
               {isSavingDetails ? (
                 <div className="flex items-center gap-2">
