@@ -105,18 +105,16 @@ export default function RestaurantContext() {
 
         // ——— CONGÉS ———
         if (payload.type === "leave_request_created") {
-          // 1) n'incrémente la pastille congés QUE si on n'est pas déjà sur la page congés
-          if (!isOnDaysOffPage) {
-            setNewLeaveRequestsCount((c) => {
-              const next = c + 1;
-              const rid = restaurantData?._id;
-              if (rid) {
-                const counts = readNotifCounts(rid);
-                writeNotifCounts(rid, { ...counts, leave: next });
-              }
-              return next;
-            });
-          }
+          // 1) ON INCRÉMENTE TOUJOURS le compteur brut
+          setNewLeaveRequestsCount((c) => {
+            const next = c + 1;
+            const rid = restaurantData?._id;
+            if (rid) {
+              const counts = readNotifCounts(rid);
+              writeNotifCounts(rid, { ...counts, leave: next });
+            }
+            return next;
+          });
 
           // 2) mets à jour la liste locale des demandes dans restaurantData (toujours)
           setRestaurantData((prev) => {
@@ -228,7 +226,7 @@ export default function RestaurantContext() {
             const id = String(payload.purchase._id);
             const exists = list.some((x) => String(x._id) === id);
             if (exists) return prev;
-            return { ...prev, purchasesGiftCards: [payload.purchase, ...list] };
+            return { ...prev, purchasesGiftCards: [...list, payload.purchase] };
           });
         }
       } catch (e) {
@@ -868,18 +866,29 @@ export default function RestaurantContext() {
   // Reset notifs sur Page CONGÉS
   useEffect(() => {
     if (userConnected?.role !== "owner") return;
+
     const path = router.pathname || "";
-    if (path.startsWith("/dashboard/employees/planning/days-off")) {
+    const isOnDaysOffPage = path === "/dashboard/employees/planning/days-off";
+
+    if (!isOnDaysOffPage) return;
+
+    // Si on est sur la page des congés et qu'on a un compteur > 0,
+    // on le remet à 0 (state + localStorage)
+    if (newLeaveRequestsCount > 0) {
       resetNewLeaveRequestsCount();
-      if (
-        (newReservationsCount || 0) === 0 &&
-        (newGiftPurchasesCount || 0) === 0
-      ) {
-        updateLastNotificationCheck();
-      }
+    }
+
+    // Si après ça tous les compteurs sont à 0, on met à jour lastNotificationCheck
+    if (
+      (newReservationsCount || 0) === 0 &&
+      (newGiftPurchasesCount || 0) === 0 &&
+      (newLeaveRequestsCount || 0) === 0
+    ) {
+      updateLastNotificationCheck();
     }
   }, [
     router.pathname,
+    newLeaveRequestsCount,
     newReservationsCount,
     newGiftPurchasesCount,
     userConnected?.role,
@@ -908,20 +917,26 @@ export default function RestaurantContext() {
   // Reset notifs sur Page GIFTS
   useEffect(() => {
     if (userConnected?.role !== "owner") return;
+
     const path = router.pathname || "";
-    if (path.startsWith("/dashboard/gifts")) {
+    if (!path.startsWith("/dashboard/gifts")) return;
+
+    if (newGiftPurchasesCount > 0) {
       resetNewGiftPurchasesCount();
-      if (
-        (newReservationsCount || 0) === 0 &&
-        (newLeaveRequestsCount || 0) === 0
-      ) {
-        updateLastNotificationCheck();
-      }
+    }
+
+    if (
+      (newReservationsCount || 0) === 0 &&
+      (newLeaveRequestsCount || 0) === 0 &&
+      (newGiftPurchasesCount || 0) === 0
+    ) {
+      updateLastNotificationCheck();
     }
   }, [
     router.pathname,
     newReservationsCount,
     newLeaveRequestsCount,
+    newGiftPurchasesCount,
     userConnected?.role,
   ]);
 

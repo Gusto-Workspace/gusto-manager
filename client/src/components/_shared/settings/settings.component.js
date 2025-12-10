@@ -25,7 +25,6 @@ export default function SettingsComponent() {
   const [showRestaurantList, setShowRestaurantList] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-
   const [displayedCount, setDisplayedCount] = useState(null);
 
   const { restaurantContext } = useContext(GlobalContext);
@@ -50,12 +49,14 @@ export default function SettingsComponent() {
     }
   }
 
+  // Fermeture du panneau de notifs au clic extérieur
   useEffect(() => {
     function handleClickOutside(event) {
       if (showNotifications) {
         if (
           notificationsRef.current &&
           !notificationsRef.current.contains(event.target) &&
+          notificationsButtonRef.current &&
           !notificationsButtonRef.current.contains(event.target)
         ) {
           setShowNotifications(false);
@@ -66,15 +67,40 @@ export default function SettingsComponent() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showNotifications]);
 
-  const totalCount =
-    (restaurantContext.newReservationsCount || 0) +
-    (restaurantContext.newLeaveRequestsCount || 0) +
-    (restaurantContext.newGiftPurchasesCount || 0);
+  // --- ROUTE COURANTE POUR CHAQUE TYPE DE NOTIF ---
+  const pathname = router.pathname || "";
 
+  const isOnReservationsPage = pathname.startsWith("/dashboard/reservations");
+  const isOnDaysOffPage = pathname === "/dashboard/employees/planning/days-off";
+  const isOnGiftsPage = pathname.startsWith("/dashboard/gifts");
+
+  // --- COMPTEURS BRUTS ---
+  const rawReservationsCount = restaurantContext.newReservationsCount || 0;
+  const rawLeaveRequestsCount = restaurantContext.newLeaveRequestsCount || 0;
+  const rawGiftPurchasesCount = restaurantContext.newGiftPurchasesCount || 0;
+
+  // --- COMPTEURS EFFECTIFS (0 si on est déjà sur la page dédiée) ---
+  const effectiveReservationsCount = isOnReservationsPage
+    ? 0
+    : rawReservationsCount;
+
+  const effectiveLeaveRequestsCount = isOnDaysOffPage
+    ? 0
+    : rawLeaveRequestsCount;
+
+  const effectiveGiftPurchasesCount = isOnGiftsPage ? 0 : rawGiftPurchasesCount;
+
+  const totalCount =
+    effectiveReservationsCount +
+    effectiveLeaveRequestsCount +
+    effectiveGiftPurchasesCount;
+
+  // Quand le panneau est ouvert, on suit le total "effectif"
   useEffect(() => {
     if (showNotifications) setDisplayedCount(totalCount);
   }, [totalCount, showNotifications]);
 
+  // Bloque le scroll quand la liste de restos est ouverte
   useEffect(() => {
     if (showRestaurantList) {
       document.body.classList.add("no-scroll");
@@ -102,16 +128,19 @@ export default function SettingsComponent() {
           (restaurantContext.newReservationsCount || 0) === 0 &&
           (restaurantContext.newLeaveRequestsCount || 0) === 0 &&
           (restaurantContext.newGiftPurchasesCount || 0) === 0;
+
         if (allZero) {
           restaurantContext.updateLastNotificationCheck();
         }
         setDisplayedCount(0);
       }
     }
+
     node.addEventListener("transitionend", handleTransitionEnd);
     return () => node.removeEventListener("transitionend", handleTransitionEnd);
   }, [showNotifications, restaurantContext]);
 
+  // Fermeture du menu user au clic extérieur
   useEffect(() => {
     function handleClickOutside(event) {
       if (
@@ -244,20 +273,15 @@ export default function SettingsComponent() {
                 style={{ maxHeight: showNotifications ? "200px" : "0" }}
               >
                 <div className="p-4">
-                  {displayedCount > 0 ? (
+                  {displayedCount && displayedCount > 0 ? (
                     <ul className="flex flex-col gap-4 text-nowrap">
-                      {restaurantContext.newLeaveRequestsCount > 0 && (
+                      {effectiveLeaveRequestsCount > 0 && (
                         <li className="text-sm flex items-center justify-between gap-4">
                           <span>
-                            {restaurantContext.newLeaveRequestsCount} nouvelle
-                            {restaurantContext.newLeaveRequestsCount > 1
-                              ? "s"
-                              : ""}{" "}
-                            demande
-                            {restaurantContext.newLeaveRequestsCount > 1
-                              ? "s"
-                              : ""}{" "}
-                            de congé
+                            {effectiveLeaveRequestsCount} nouvelle
+                            {effectiveLeaveRequestsCount > 1 ? "s" : ""} demande
+                            {effectiveLeaveRequestsCount > 1 ? "s" : ""} de
+                            congé
                           </span>
                           <button
                             className="shrink-0 h-6 w-6 rounded-full bg-darkBlue bg-opacity-10 flex items-center justify-center hover:bg-opacity-20"
@@ -278,17 +302,13 @@ export default function SettingsComponent() {
                         </li>
                       )}
 
-                      {restaurantContext.newReservationsCount > 0 && (
+                      {effectiveReservationsCount > 0 && (
                         <li className="text-sm flex items-center justify-between gap-4">
                           <span>
-                            {restaurantContext.newReservationsCount} nouvelle
-                            {restaurantContext.newReservationsCount > 1
-                              ? "s"
-                              : ""}{" "}
+                            {effectiveReservationsCount} nouvelle
+                            {effectiveReservationsCount > 1 ? "s" : ""}{" "}
                             réservation
-                            {restaurantContext.newReservationsCount > 1
-                              ? "s"
-                              : ""}{" "}
+                            {effectiveReservationsCount > 1 ? "s" : ""}{" "}
                           </span>
                           <button
                             className="shrink-0 h-6 w-6 rounded-full bg-darkBlue bg-opacity-10 flex items-center justify-center hover:bg-opacity-20"
@@ -307,25 +327,14 @@ export default function SettingsComponent() {
                         </li>
                       )}
 
-                      {restaurantContext.newGiftPurchasesCount > 0 && (
+                      {effectiveGiftPurchasesCount > 0 && (
                         <li className="text-sm flex items-center justify-between gap-4">
                           <span>
-                            {restaurantContext.newGiftPurchasesCount} nouvelle
-                            {restaurantContext.newGiftPurchasesCount > 1
-                              ? "s"
-                              : ""}{" "}
-                            carte
-                            {restaurantContext.newGiftPurchasesCount > 1
-                              ? "s"
-                              : ""}{" "}
-                            cadeau
-                            {restaurantContext.newGiftPurchasesCount > 1
-                              ? "x"
-                              : ""}{" "}
-                            vendue
-                            {restaurantContext.newGiftPurchasesCount > 1
-                              ? "s"
-                              : ""}{" "}
+                            {effectiveGiftPurchasesCount} nouvelle
+                            {effectiveGiftPurchasesCount > 1 ? "s" : ""} carte
+                            {effectiveGiftPurchasesCount > 1 ? "s" : ""} cadeau
+                            {effectiveGiftPurchasesCount > 1 ? "x" : ""} vendue
+                            {effectiveGiftPurchasesCount > 1 ? "s" : ""}{" "}
                           </span>
                           <button
                             className="shrink-0 h-6 w-6 rounded-full bg-darkBlue bg-opacity-10 flex items-center justify-center hover:bg-opacity-20"
@@ -369,7 +378,9 @@ export default function SettingsComponent() {
               {profilePictureUrl ? (
                 <img
                   src={profilePictureUrl}
-                  alt={`Avatar ${restaurantContext?.userConnected?.firstname || ""}`}
+                  alt={`Avatar ${
+                    restaurantContext?.userConnected?.firstname || ""
+                  }`}
                   className="w-full h-full object-cover"
                 />
               ) : (
