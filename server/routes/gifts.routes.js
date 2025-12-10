@@ -111,11 +111,16 @@ router.delete("/restaurants/:id/gifts/:giftId", async (req, res) => {
 router.post("/restaurants/:id/gifts/:giftId/purchase", async (req, res) => {
   const restaurantId = req.params.id;
   const giftId = req.params.giftId;
-  const { beneficiaryFirstName, beneficiaryLastName, sender, sendEmail } =
-    req.body;
+
+  const {
+    beneficiaryFirstName,
+    beneficiaryLastName,
+    sender,
+    sendEmail,
+    validUntil: clientValidUntil,
+  } = req.body;
 
   try {
-    // Cherche le restaurant et la carte cadeau correspondante
     const restaurant = await RestaurantModel.findOne({ _id: restaurantId })
       .populate("owner_id", "firstname")
       .populate("employees")
@@ -127,14 +132,24 @@ router.post("/restaurants/:id/gifts/:giftId/purchase", async (req, res) => {
       return res.status(404).json({ error: "Gift card not found" });
     }
 
-    // Génère un code de 6 caractères pour l'achat de la carte cadeau
     const purchaseCode = generateGiftCode();
 
-    // Calcule une validité de 3 mois CALENDAIRES (ex: 11 sept -> 11 déc)
-    const validUntil = new Date();
-    validUntil.setMonth(validUntil.getMonth() + 3);
+    let validUntil;
 
-    // Crée un nouvel objet pour l'achat
+    if (clientValidUntil) {
+      const parsed = new Date(clientValidUntil);
+      if (!isNaN(parsed.getTime())) {
+        validUntil = parsed;
+      }
+    }
+
+    // Fallback back-end si jamais rien n'est envoyé ou que la date est invalide
+    if (!validUntil) {
+      validUntil = new Date();
+      validUntil.setMonth(validUntil.getMonth() + 6);
+      validUntil.setHours(23, 59, 59, 999);
+    }
+
     const newPurchase = {
       value: gift.value,
       description: gift.description,
@@ -147,10 +162,7 @@ router.post("/restaurants/:id/gifts/:giftId/purchase", async (req, res) => {
       sendEmail,
     };
 
-    // Ajoute l'achat
     restaurant.purchasesGiftCards.push(newPurchase);
-
-    // Sauvegarde
     await restaurant.save();
 
     const created =
@@ -162,8 +174,12 @@ router.post("/restaurants/:id/gifts/:giftId/purchase", async (req, res) => {
       purchase: created,
     });
 
-    res.status(200).json({ purchaseCode, validUntil: newPurchase.validUntil });
+    res.status(200).json({
+      purchaseCode,
+      validUntil: created.validUntil,
+    });
   } catch (error) {
+    console.error("Error during gift card purchase:", error);
     res.status(500).json({ error: "Error during gift card purchase" });
   }
 });
