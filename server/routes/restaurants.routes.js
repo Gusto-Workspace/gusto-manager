@@ -84,6 +84,32 @@ async function updateExpiredStatus(restaurantId) {
   await restaurant.save();
 }
 
+// Fonction pour archiver les cartes cadeaux utilisées depuis plus de 2 mois
+async function updateArchivedStatus(restaurantId) {
+  const restaurant = await RestaurantModel.findById(restaurantId);
+
+  if (!restaurant) {
+    console.error("Restaurant not found with ID:", restaurantId);
+    return;
+  }
+
+  const now = new Date();
+
+  restaurant.purchasesGiftCards.forEach((purchase) => {
+    if (purchase.status === "Used" && purchase.useDate) {
+      const usedAt = new Date(purchase.useDate);
+      const archiveThreshold = new Date(usedAt);
+      archiveThreshold.setMonth(archiveThreshold.getMonth() + 2);
+
+      if (archiveThreshold <= now) {
+        purchase.status = "Archived";
+      }
+    }
+  });
+
+  await restaurant.save();
+}
+
 // Trouve le profil de restaurant pour cet employé
 function findRestaurantProfile(employee, restaurantId) {
   if (!Array.isArray(employee.restaurantProfiles)) return null;
@@ -181,6 +207,7 @@ router.get("/owner/restaurants/:id", authenticateToken, async (req, res) => {
 
     // Met à jour les statuts des cartes expirées avant de récupérer les données
     await updateExpiredStatus(id);
+    await updateArchivedStatus(id)
 
     const restaurant = await RestaurantModel.findById(id)
       .populate("owner_id", "firstname")

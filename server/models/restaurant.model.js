@@ -163,7 +163,7 @@ const giftCardPurchaseSchema = new mongoose.Schema({
   validUntil: { type: Date, required: true },
   status: {
     type: String,
-    enum: ["Valid", "Used", "Expired"],
+    enum: ["Valid", "Used", "Expired", "Archived"],
     default: "Valid",
   },
   useDate: { type: Date },

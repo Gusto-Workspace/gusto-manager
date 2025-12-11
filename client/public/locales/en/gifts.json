@@ -16,6 +16,7 @@
     "valid": "Valid",
     "used": "Used",
     "expired": "Expired",
+    "archived" : "Archived",
     "amount": "Amount",
     "owner": "Owner",
     "description": "Description",
