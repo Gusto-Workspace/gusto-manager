@@ -44,11 +44,25 @@ export default function NavComponent() {
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [translateX, setTranslateX] = useState(0);
-  const [isTabletUp, setIsTabletUp] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.matchMedia("(min-width: 1024px)").matches;
-  });
   const [hasHover, setHasHover] = useState(false);
+
+  const [isTabletUp, setIsTabletUp] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mediaQuery = window.matchMedia("(min-width: 1024px)");
+
+    const handleChange = (event) => {
+      setIsTabletUp(event.matches);
+    };
+
+    setIsTabletUp(mediaQuery.matches);
+
+    mediaQuery.addEventListener?.("change", handleChange);
+    return () => {
+      mediaQuery.removeEventListener?.("change", handleChange);
+    };
+  }, []);
 
   const navRef = useRef(null);
   const timeoutRef = useRef(null);

@@ -163,6 +163,12 @@ router.post("/restaurants/:id/gifts/:giftId/purchase", async (req, res) => {
     };
 
     restaurant.purchasesGiftCards.push(newPurchase);
+
+    if (!restaurant.giftCardSold) {
+      restaurant.giftCardSold = { totalSold: 0, totalRefunded: 0 };
+    }
+    restaurant.giftCardSold.totalSold += 1;
+
     await restaurant.save();
 
     const created =
@@ -172,6 +178,7 @@ router.post("/restaurants/:id/gifts/:giftId/purchase", async (req, res) => {
     broadcastToRestaurant(String(restaurant._id), {
       type: "giftcard_purchased",
       purchase: created,
+      giftCardStats: restaurant.giftCardSold,
     });
 
     res.status(200).json({

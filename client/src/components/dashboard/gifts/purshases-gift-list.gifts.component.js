@@ -8,6 +8,7 @@ import { useTranslation } from "next-i18next";
 // SVG
 import { GiftSvg } from "../../_shared/_svgs/gift.svg";
 import { TrashSvg } from "../../_shared/_svgs/trash.svg";
+import { ChevronDown } from "lucide-react";
 
 export default function PurchasesGiftListComponent(props) {
   const { t } = useTranslation("gifts");
@@ -21,6 +22,7 @@ export default function PurchasesGiftListComponent(props) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedPurchase, setSelectedPurchase] = useState(null);
   const [actionType, setActionType] = useState("");
+  const [archivedOpen, setArchivedOpen] = useState(false);
 
   // ----- Styles communs -----
   const headerTitleCls = "pl-2 text-xl tablet:text-2xl text-darkBlue";
@@ -47,6 +49,7 @@ export default function PurchasesGiftListComponent(props) {
     Valid: "bg-[#4ead7a1a] text-[#166534] border-[#4ead7a80]",
     Used: "bg-[#4f46e51a] text-[#312e81] border-[#4f46e580]",
     Expired: "bg-[#ef44441a] text-[#b91c1c] border-[#ef444480]",
+    Archived: "bg-[#e5e7eb] text-[#4b5563] border-[#d1d5db]",
   };
 
   // ----- Utils -----
@@ -69,7 +72,7 @@ export default function PurchasesGiftListComponent(props) {
 
   // Group by status
   const purchasesByStatus = useMemo(() => {
-    const groups = { Valid: [], Used: [], Expired: [] };
+    const groups = { Valid: [], Used: [], Expired: [], Archived: [] };
     const sorted = [...purchasesGiftCards].sort((a, b) => {
       const da = getCreatedDate(a)?.getTime() || 0;
       const db = getCreatedDate(b)?.getTime() || 0;
@@ -101,6 +104,7 @@ export default function PurchasesGiftListComponent(props) {
       Valid: purchasesByStatus.Valid.filter(filterFn),
       Used: purchasesByStatus.Used.filter(filterFn),
       Expired: purchasesByStatus.Expired.filter(filterFn),
+      Archived: purchasesByStatus.Archived.filter(filterFn),
     };
   }, [purchasesByStatus, searchTerm]);
 
@@ -108,6 +112,7 @@ export default function PurchasesGiftListComponent(props) {
     Valid: t("labels.valid"),
     Used: t("labels.used"),
     Expired: t("labels.expired"),
+    Archived: t("labels.archived"),
   };
 
   const handleSearchChange = (e) => setSearchTerm(e.target.value);
@@ -192,24 +197,47 @@ export default function PurchasesGiftListComponent(props) {
 
       {/* Lists par statut */}
       <div className="flex flex-col gap-10">
-        {["Valid", "Used", "Expired"].map((status) => {
+        {["Valid", "Used", "Expired", "Archived"].map((status) => {
           const items = filteredByStatus[status] || [];
+          const isArchived = status === "Archived";
 
           return (
             <div key={status} className="flex flex-col gap-4">
               {/* Badge de catégorie coloré + lignes */}
               <div className={statusChipWrap}>
                 <div className={statusChipLine} />
-                <div className={`${statusChipLabel} ${statusColor[status]}`}>
+
+                <button
+                  type="button"
+                  className={`
+                  ${statusChipLabel} ${statusColor[status]}
+                  ${isArchived ? "cursor-pointer" : ""}
+                  inline-flex items-center gap-2
+                `}
+                  onClick={
+                    isArchived
+                      ? () => setArchivedOpen((prev) => !prev)
+                      : undefined
+                  }
+                >
                   <span>{statusTranslations[status]}</span>
-                  <span className="ml-2 text-xs opacity-70">
+                  <span className="ml-1 text-xs opacity-70">
                     ({items.length})
                   </span>
-                </div>
+                  {isArchived && (
+                    <ChevronDown
+                      className={`size-3 transition-transform ${
+                        archivedOpen ? "rotate-180" : ""
+                      }`}
+                    />
+                  )}
+                </button>
+
                 <div className={statusChipLine} />
               </div>
 
-              {items.length > 0 ? (
+              {/* Si ARCHIVED est replié, on n’affiche pas la liste */}
+              {isArchived && !archivedOpen ? null : items.length > 0 ? (
                 <ul className="flex flex-col gap-1 max-h-[570px] overflow-y-auto">
                   {items.map((purchase) => {
                     const createdDate = getCreatedDate(purchase);

@@ -274,7 +274,7 @@ router.put(
         reservationId,
         updateData,
         { new: true }
-      );
+      ).populate("table");
 
       if (!updatedReservation) {
         return res.status(404).json({ message: "Reservation not found" });

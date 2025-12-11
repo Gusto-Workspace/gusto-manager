@@ -12,11 +12,6 @@ const RestaurantModel = require("../models/restaurant.model");
 const VisitCounterModel = require("../models/visit-counter.model");
 const EmployeeModel = require("../models/employee.model");
 
-/* --------------------------------------------------------
-   Helpers multi-restaurant pour Employee
-   (doivent matcher ton nouveau schema Employee)
----------------------------------------------------------*/
-
 // Ajoute le restaurant dans employee.restaurants s'il n'y est pas déjà
 function ensureEmployeeRestaurantLink(employee, restaurantId) {
   const idStr = String(restaurantId);
@@ -89,12 +84,30 @@ async function updateExpiredStatus(restaurantId) {
   await restaurant.save();
 }
 
-// Vérifie qu'un employé travaille bien dans un restaurant donné
-function employeeWorksInRestaurant(employee, restaurantId) {
-  const target = String(restaurantId);
-  return Array.isArray(employee.restaurants)
-    ? employee.restaurants.some((id) => String(id) === target)
-    : false;
+// Fonction pour archiver les cartes cadeaux utilisées depuis plus de 2 mois
+async function updateArchivedStatus(restaurantId) {
+  const restaurant = await RestaurantModel.findById(restaurantId);
+
+  if (!restaurant) {
+    console.error("Restaurant not found with ID:", restaurantId);
+    return;
+  }
+
+  const now = new Date();
+
+  restaurant.purchasesGiftCards.forEach((purchase) => {
+    if (purchase.status === "Used" && purchase.useDate) {
+      const usedAt = new Date(purchase.useDate);
+      const archiveThreshold = new Date(usedAt);
+      archiveThreshold.setMonth(archiveThreshold.getMonth() + 2);
+
+      if (archiveThreshold <= now) {
+        purchase.status = "Archived";
+      }
+    }
+  });
+
+  await restaurant.save();
 }
 
 // Trouve le profil de restaurant pour cet employé
@@ -194,6 +207,7 @@ router.get("/owner/restaurants/:id", authenticateToken, async (req, res) => {
 
     // Met à jour les statuts des cartes expirées avant de récupérer les données
     await updateExpiredStatus(id);
+    await updateArchivedStatus(id)
 
     const restaurant = await RestaurantModel.findById(id)
       .populate("owner_id", "firstname")

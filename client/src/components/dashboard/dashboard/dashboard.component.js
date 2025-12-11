@@ -282,28 +282,35 @@ export default function DashboardComponent(props) {
               monthlySales={monthlySales}
             />
           </div>
-
           <div className="grid grid-cols-1 gap-2 midTablet:gap-4 w-full">
             {giftDashboardData.map(
-              ({ title, IconComponent, getCounts, emptyLabel }) => {
-                const { total, data } = getCounts(props.restaurantData);
-                const chartData =
-                  total > 0
-                    ? data
-                    : [{ name: emptyLabel, value: 1, fill: "#E0E0E0" }];
+              ({
+                key,
+                title,
+                IconComponent,
+                getCounts,
+                emptyLabel,
+                chartType,
+              }) => {
+                const { total = 0, data = [] } =
+                  getCounts?.(props.restaurantData) ?? {};
+
+                const hasData = Array.isArray(data) && data.length > 0;
+
+                const chartData = hasData
+                  ? data
+                  : [{ name: emptyLabel, value: 1, fill: "#E0E0E0" }];
+
+            
 
                 return (
                   <DataCardCompnent
-                    key={title}
+                    key={key}
                     title={title}
                     count={total}
                     data={chartData}
                     IconComponent={IconComponent}
-                    ChartComponent={
-                      title === "Total cartes cadeaux vendues"
-                        ? StatusDonutChartComponent
-                        : DonutChartComponent
-                    }
+                    ChartComponent={DonutChartComponent}
                   />
                 );
               }
