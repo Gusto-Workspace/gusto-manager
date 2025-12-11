@@ -65,25 +65,17 @@ export default function RestaurantContext() {
 
   useEffect(() => {
     const restaurantId = restaurantData?._id;
-    if (!restaurantId) return;
+    const role = userConnected?.role;
 
-    if (userConnected?.role !== "owner") {
-      // s'assure qu'aucune SSE n'est ouverte et pas de compteur pour employé
-      if (sseRef.current) {
-        sseRef.current.close();
-        sseRef.current = null;
-      }
-      setNewLeaveRequestsCount(0);
-      setNewReservationsCount(0);
-      return;
-    }
+    if (!restaurantId || !role) return;
 
+    // --- Compteurs de notifs ---
     const persisted = readNotifCounts(restaurantId);
     setNewLeaveRequestsCount(persisted.leave);
     setNewReservationsCount(persisted.res);
     setNewGiftPurchasesCount(persisted.gifts);
 
-    // ferme une ancienne connexion si on change de resto
+    // Fermer ancienne connexion si existante
     if (sseRef.current) {
       sseRef.current.close();
       sseRef.current = null;
@@ -98,6 +90,7 @@ export default function RestaurantContext() {
         const payload = JSON.parse(evt.data);
 
         const path = currentPathRef.current;
+        const isOwner = role === "owner";
         const isOnReservationsList = path === "/dashboard/reservations";
         const isOnDaysOffPage =
           path === "/dashboard/employees/planning/days-off";
@@ -105,18 +98,20 @@ export default function RestaurantContext() {
 
         // ——— CONGÉS ———
         if (payload.type === "leave_request_created") {
-          // 1) ON INCRÉMENTE TOUJOURS le compteur brut
-          setNewLeaveRequestsCount((c) => {
-            const next = c + 1;
-            const rid = restaurantData?._id;
-            if (rid) {
-              const counts = readNotifCounts(rid);
-              writeNotifCounts(rid, { ...counts, leave: next });
-            }
-            return next;
-          });
+          // 1) pastille uniquement pour OWNER
+          if (isOwner) {
+            setNewLeaveRequestsCount((c) => {
+              const next = c + 1;
+              const rid = restaurantData?._id;
+              if (rid) {
+                const counts = readNotifCounts(rid);
+                writeNotifCounts(rid, { ...counts, leave: next });
+              }
+              return next;
+            });
+          }
 
-          // 2) mets à jour la liste locale des demandes dans restaurantData (toujours)
+          // 2) on met à jour restaurantData pour tout le monde (owner + employee)
           setRestaurantData((prev) => {
             if (!prev) return prev;
             const empId = String(payload.employeeId);
@@ -141,9 +136,8 @@ export default function RestaurantContext() {
         if (payload.type === "reservation_created" && payload.reservation) {
           const r = payload.reservation;
 
-          // 1) n'incrémente la pastille résas QUE si on n'est pas déjà sur la page résas
-          //    et uniquement pour les résas "site"
-          if (!isOnReservationsList && r.manual === false) {
+          // Pastille réservations uniquement pour OWNER + pas sur la page résas + résa non manuelle
+          if (isOwner && !isOnReservationsList && r.manual === false) {
             setNewReservationsCount((c) => {
               const next = c + 1;
               const rid = restaurantData?._id;
@@ -155,7 +149,7 @@ export default function RestaurantContext() {
             });
           }
 
-          // 2) injecte la résa dans la liste si absente (toujours)
+          // Injection dans la liste pour tout le monde
           setRestaurantData((prev) => {
             if (!prev) return prev;
             const list = prev?.reservations?.list || [];
@@ -171,7 +165,7 @@ export default function RestaurantContext() {
           });
         }
 
-        // UDPATE (statut/détails)
+        // UPDATE (statut / détails)
         if (payload.type === "reservation_updated" && payload.reservation) {
           const r = payload.reservation;
           setRestaurantData((prev) => {
@@ -207,8 +201,8 @@ export default function RestaurantContext() {
 
         // ——— CARTES CADEAUX ———
         if (payload.type === "giftcard_purchased" && payload.purchase) {
-          // 1) pastille uniquement si on n'est pas sur la page cadeaux
-          if (!isOnGiftsPage) {
+          // Pastille uniquement OWNER + pas sur page cadeaux
+          if (isOwner && !isOnGiftsPage) {
             setNewGiftPurchasesCount((c) => {
               const next = c + 1;
               const rid = restaurantData?._id;
@@ -219,7 +213,8 @@ export default function RestaurantContext() {
               return next;
             });
           }
-          // 2) injecter l'achat en tête de liste si absent
+
+          // Injection dans la liste côté restaurantData pour tout le monde
           setRestaurantData((prev) => {
             if (!prev) return prev;
             const list = prev.purchasesGiftCards || [];
@@ -229,13 +224,31 @@ export default function RestaurantContext() {
             return { ...prev, purchasesGiftCards: [...list, payload.purchase] };
           });
         }
+
+        // ——— STATS CARTES CADEAUX (ventes + remboursements) ———
+        if (
+          (payload.type === "giftcard_purchased" ||
+            payload.type === "giftcard_refunded") &&
+          payload.giftCardStats
+        ) {
+          setRestaurantData((prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              giftCardSold: {
+                ...(prev.giftCardSold || { totalSold: 0, totalRefunded: 0 }),
+                ...payload.giftCardStats,
+              },
+            };
+          });
+        }
       } catch (e) {
         console.warn("Bad SSE payload", e);
       }
     };
 
     es.onerror = () => {
-      // le navigateur va réessayer automatiquement; rien à faire
+      // le navigateur va réessayer automatiquement
     };
 
     return () => {

@@ -196,6 +196,15 @@ const socialMediaSchema = new mongoose.Schema(
   { _id: false }
 );
 
+// Sous-schéma pour les stats de cartes cadeaux
+const giftCardSoldSchema = new mongoose.Schema(
+  {
+    totalSold: { type: Number, default: 0 },
+    totalRefunded: { type: Number, default: 0 },
+  },
+  { _id: false }
+);
+
 // Schéma principal pour le restaurant
 const restaurantSchema = new mongoose.Schema({
   name: { type: String, required: true },
@@ -223,6 +232,7 @@ const restaurantSchema = new mongoose.Schema({
   reservations: { type: reservationsSchema, default: {} },
   lastNotificationCheck: { type: Date, default: Date.now },
   employees: [{ type: mongoose.Schema.Types.ObjectId, ref: "Employee" }],
+  giftCardSold: { type: giftCardSoldSchema, default: () => ({}) },
   created_at: { type: Date, default: Date.now },
 });
 

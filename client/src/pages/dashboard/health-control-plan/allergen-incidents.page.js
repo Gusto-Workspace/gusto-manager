@@ -19,7 +19,6 @@ import AllergenIncidentsList from "@/components/dashboard/health-control-plan/al
 // SVG
 import { HealthSvg } from "@/components/_shared/_svgs/health.svg";
 
-
 export default function AllergenIncidentsPage(props) {
   const { t } = useTranslation("");
   const router = useRouter();
@@ -107,13 +106,8 @@ export default function AllergenIncidentsPage(props) {
                   <AllergenIncidentsForm
                     restaurantId={restaurantContext.restaurantData?._id}
                     initial={editing}
-                    onSuccess={(doc) => {
+                    onSuccess={() => {
                       setEditing(null);
-                      window.dispatchEvent(
-                        new CustomEvent("allergen-incidents:upsert", {
-                          detail: { doc },
-                        })
-                      );
                     }}
                     onCancel={() => setEditing(null)}
                   />

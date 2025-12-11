@@ -12,11 +12,6 @@ const RestaurantModel = require("../models/restaurant.model");
 const VisitCounterModel = require("../models/visit-counter.model");
 const EmployeeModel = require("../models/employee.model");
 
-/* --------------------------------------------------------
-   Helpers multi-restaurant pour Employee
-   (doivent matcher ton nouveau schema Employee)
----------------------------------------------------------*/
-
 // Ajoute le restaurant dans employee.restaurants s'il n'y est pas déjà
 function ensureEmployeeRestaurantLink(employee, restaurantId) {
   const idStr = String(restaurantId);
@@ -87,14 +82,6 @@ async function updateExpiredStatus(restaurantId) {
   });
 
   await restaurant.save();
-}
-
-// Vérifie qu'un employé travaille bien dans un restaurant donné
-function employeeWorksInRestaurant(employee, restaurantId) {
-  const target = String(restaurantId);
-  return Array.isArray(employee.restaurants)
-    ? employee.restaurants.some((id) => String(id) === target)
-    : false;
 }
 
 // Trouve le profil de restaurant pour cet employé
