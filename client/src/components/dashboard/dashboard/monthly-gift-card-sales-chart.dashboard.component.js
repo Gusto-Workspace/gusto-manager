@@ -84,7 +84,7 @@ export default function MonthlyGiftCardSalesChart(props) {
           <p className="text-[11px] tablet:text-xs text-darkBlue/60">
             {t(
               "labels.monthlySoldSubtitle",
-              "Montant des cartes cadeaux vendues par mois."
+              "Montant des cartes cadeaux vendues les 6 derniers mois."
             )}
           </p>
         </div>
