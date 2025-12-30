@@ -99,7 +99,7 @@ export default function MonthlyCounterVisits({
           {lastPoint && (
             <div className="inline-flex items-center gap-1 rounded-full bg-white/80 border border-darkBlue/10 px-3 py-1">
               <span className="text-darkBlue/60">
-                Dernier mois :{" "}
+                Mois en cours :{" "}
                 <span className="font-semibold text-darkBlue">
                   {lastPoint.visits}
                 </span>
