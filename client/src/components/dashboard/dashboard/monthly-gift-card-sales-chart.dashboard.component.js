@@ -50,6 +50,21 @@ export default function MonthlyGiftCardSalesChart(props) {
 
   const height = 400;
 
+  // ----- Calcul dynamique de la largeur de l’axe Y (même logique que Visits) -----
+  let maxTotal = 0;
+  if (Array.isArray(data) && data.length > 0) {
+    maxTotal = data.reduce((max, d) => {
+      const v = typeof d.total === "number" ? d.total : Number(d.total) || 0;
+      return Math.max(max, v);
+    }, 0);
+  }
+
+  const intMax = Math.floor(Math.abs(maxTotal));
+  const digits = String(intMax || 0).length;
+
+  const yAxisWidth =
+    digits === 1 ? 28 : digits === 2 ? 34 : digits === 3 ? 42 : 50;
+
   return (
     <section
       className="
@@ -120,11 +135,16 @@ export default function MonthlyGiftCardSalesChart(props) {
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart
                 data={data}
-                // même principe que le graph des visites : on colle un peu à gauche
                 margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
               >
                 <defs>
-                  <linearGradient id="giftSalesColor" x1="0" y1="0" x2="0" y2="1">
+                  <linearGradient
+                    id="giftSalesColor"
+                    x1="0"
+                    y1="0"
+                    x2="0"
+                    y2="1"
+                  >
                     <stop offset="5%" stopColor="#e66430" stopOpacity={0.6} />
                     <stop offset="95%" stopColor="#e66430" stopOpacity={0} />
                   </linearGradient>
@@ -145,15 +165,14 @@ export default function MonthlyGiftCardSalesChart(props) {
                 <YAxis
                   type="number"
                   domain={[0, "auto"]}
+                  allowDecimals={false}
                   tick={{ fontSize: 11, fill: "rgba(19,30,54,0.6)" }}
                   axisLine={false}
                   tickLine={false}
-                  width={40}
+                  width={yAxisWidth}
                 />
                 <Tooltip
-                  content={
-                    <SalesTooltip currencySymbol={currencySymbol} />
-                  }
+                  content={<SalesTooltip currencySymbol={currencySymbol} />}
                 />
                 <Area
                   type="monotone"

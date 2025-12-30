@@ -26,14 +26,12 @@ export default function ListReservationsComponent(props) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState(null);
 
-  /* ---------- Nouveau : état calendrier/jour ---------- */
   const [currentMonth, setCurrentMonth] = useState(() =>
     startOfMonth(new Date())
   );
-  const [selectedDay, setSelectedDay] = useState(null); // Date | null
-  const [activeDayTab, setActiveDayTab] = useState("All"); // "All" par défaut en vue Jour
+  const [selectedDay, setSelectedDay] = useState(null);
+  const [activeDayTab, setActiveDayTab] = useState("All");
 
-  // Refs pour garder le focus sur les inputs recherche (calendrier et jour)
   const calendarSearchRef = useRef(null);
   const daySearchRef = useRef(null);
 
@@ -154,7 +152,7 @@ export default function ListReservationsComponent(props) {
           Late: 0,
           Finished: 0,
         },
-        matchCount: agg?.matchCount || 0, // <-- utilisé pour surbrillance
+        matchCount: agg?.matchCount || 0,
       });
     }
     return days;

@@ -10,7 +10,6 @@ import axios from "axios";
 // COMPONENTS
 import DataCardCompnent from "./data-card.dashboard.component";
 import DonutChartComponent from "./donut-chart.dashboard.component";
-import StatusDonutChartComponent from "./status-donut-chart.dashboard.component";
 import MonthlyGiftCardSalesChart from "./monthly-gift-card-sales-chart.dashboard.component";
 import TransactionsDashboardComponent from "./transactions.dashboard.component";
 import LastPayoutDashboardComponent from "./last-payout.dashboard.component";
@@ -300,8 +299,6 @@ export default function DashboardComponent(props) {
                 const chartData = hasData
                   ? data
                   : [{ name: emptyLabel, value: 1, fill: "#E0E0E0" }];
-
-            
 
                 return (
                   <DataCardCompnent

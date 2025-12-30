@@ -486,12 +486,23 @@ export default function ParametersReservationComponent(props) {
               <option value="1">1 {t("labels.minute")}</option>
               <option value="15">15 {t("labels.minutes")}</option>
               <option value="30">30 {t("labels.minutes")}</option>
-              <option value="45">45 {t("labels.minutes")}</option>
               <option value="60">1 {t("labels.hour")}</option>
               <option value="120">2 {t("labels.hours")}</option>
               <option value="360">6 {t("labels.hours")}</option>
               <option value="720">12 {t("labels.hours")}</option>
               <option value="1440">24 {t("labels.hours")}</option>
+              <option value={String(7 * 24 * 60)}>
+                1 {t("labels.week", "semaine")}
+              </option>
+              <option value={String(30 * 24 * 60)}>
+                1 {t("labels.month", "mois")}
+              </option>
+              <option value={String(6 * 30 * 24 * 60)}>
+                6 {t("labels.months", "mois")}
+              </option>
+              <option value={String(365 * 24 * 60)}>
+                1 {t("labels.year", "an")}
+              </option>
             </select>
           </div>
 
