@@ -380,7 +380,7 @@ export default function HoursRestaurantComponent(props) {
                     </label>
                   </div>
                 ) : (
-                  <div className="flex flex-col items-end gap-1">
+                  <div className="flex flex-col items-center midTablet:items-end gap-1">
                     {dayHour.isClosed ? (
                       <span className={closedBadgeCls}>{t("hours.close")}</span>
                     ) : (
