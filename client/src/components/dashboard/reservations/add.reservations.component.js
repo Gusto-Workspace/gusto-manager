@@ -605,7 +605,6 @@ export default function AddReservationComponent(props) {
             <Calendar
               onChange={handleDateChange}
               value={reservationData.reservationDate}
-              minDate={new Date()}
               view="month"
               locale="fr-FR"
               tileDisabled={disableClosedDays}
@@ -715,7 +714,10 @@ export default function AddReservationComponent(props) {
 
           {/* Champ Table */}
           <div className="flex flex-col gap-4">
-            <label htmlFor="table" className="text-md font-medium flex items-center gap-2">
+            <label
+              htmlFor="table"
+              className="text-md font-medium flex items-center gap-2"
+            >
               <TableSvg width={20} height={20} className="opacity-50" />
               {t("labels.add.table")}
             </label>
@@ -768,7 +770,8 @@ export default function AddReservationComponent(props) {
               value={reservationData.commentary}
               onChange={handleInputChange}
               rows={5}
-              className="w-full p-2 rounded-xl border border-darkBlue/10 bg-white/90 px-3 text-sm outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-1 focus:ring-blue/30 resize-none"/>
+              className="w-full p-2 rounded-xl border border-darkBlue/10 bg-white/90 px-3 text-sm outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-1 focus:ring-blue/30 resize-none"
+            />
           </div>
         </div>
 

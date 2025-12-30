@@ -337,6 +337,60 @@ router.put(
     const updateData = req.body;
 
     try {
+      const existingReservation =
+        await ReservationModel.findById(reservationId);
+      if (!existingReservation) {
+        return res.status(404).json({ message: "Reservation not found" });
+      }
+
+      const gracePeriod = 5 * 60000; // 5 minutes (même logique que ton front)
+
+      // On ne fait l'auto-update que si date/heure est modifiée ET qu'on ne force pas déjà status
+      const touchesDateTime =
+        Object.prototype.hasOwnProperty.call(updateData, "reservationDate") ||
+        Object.prototype.hasOwnProperty.call(updateData, "reservationTime");
+
+      const statusExplicit = Object.prototype.hasOwnProperty.call(
+        updateData,
+        "status"
+      );
+
+      if (touchesDateTime && !statusExplicit) {
+        const baseDate = updateData.reservationDate
+          ? new Date(updateData.reservationDate)
+          : new Date(existingReservation.reservationDate);
+
+        const timeStr = String(
+          updateData.reservationTime ??
+            existingReservation.reservationTime ??
+            "00:00"
+        );
+
+        const [hh = "00", mm = "00"] = timeStr.split(":");
+        baseDate.setHours(parseInt(hh, 10) || 0, parseInt(mm, 10) || 0, 0, 0);
+
+        const reservationWithGrace = new Date(baseDate.getTime() + gracePeriod);
+        const now = new Date();
+
+        // Late -> Confirmed si on repousse dans le futur
+        if (
+          existingReservation.status === "Late" &&
+          now < reservationWithGrace
+        ) {
+          updateData.status = "Confirmed";
+          updateData.finishedAt = null;
+        }
+
+        // Confirmed -> Late si on déplace dans le passé (au-delà de la marge)
+        if (
+          existingReservation.status === "Confirmed" &&
+          now >= reservationWithGrace
+        ) {
+          updateData.status = "Late";
+          updateData.finishedAt = null;
+        }
+      }
+
       // Si le champ table est une chaîne, on la transforme en objet
       // selon la configuration de manage_disponibilities.
       // On ajoute ici une vérification pour le cas d'une chaîne vide.
