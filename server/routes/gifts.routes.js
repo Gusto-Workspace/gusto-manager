@@ -7,6 +7,11 @@ const RestaurantModel = require("../models/restaurant.model");
 // SSE BUS
 const { broadcastToRestaurant } = require("../services/sse-bus.service");
 
+// MIDDLEWARE VERIFY BUYING GIFT CARDS
+const {
+  verifyPurchaseProof,
+} = require("../services/verify-buying-gift-card.service");
+
 function generateGiftCode() {
   const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   let code = "";
@@ -108,88 +113,112 @@ router.delete("/restaurants/:id/gifts/:giftId", async (req, res) => {
 });
 
 // BUY A GIFT CARD (GÉNÉRATION DU CODE)
-router.post("/restaurants/:id/gifts/:giftId/purchase", async (req, res) => {
-  const restaurantId = req.params.id;
-  const giftId = req.params.giftId;
+router.post(
+  "/restaurants/:id/gifts/:giftId/purchase",
+  verifyPurchaseProof,
+  async (req, res) => {
+    const restaurantId = req.params.id;
+    const giftId = req.params.giftId;
 
-  const {
-    beneficiaryFirstName,
-    beneficiaryLastName,
-    sender,
-    sendEmail,
-    validUntil: clientValidUntil,
-  } = req.body;
-
-  try {
-    const restaurant = await RestaurantModel.findOne({ _id: restaurantId })
-      .populate("owner_id", "firstname")
-      .populate("employees")
-      .populate("menus");
-
-    const gift = restaurant?.giftCards.id(giftId);
-
-    if (!gift) {
-      return res.status(404).json({ error: "Gift card not found" });
-    }
-
-    const purchaseCode = generateGiftCode();
-
-    let validUntil;
-
-    if (clientValidUntil) {
-      const parsed = new Date(clientValidUntil);
-      if (!isNaN(parsed.getTime())) {
-        validUntil = parsed;
-      }
-    }
-
-    // Fallback back-end si jamais rien n'est envoyé ou que la date est invalide
-    if (!validUntil) {
-      validUntil = new Date();
-      validUntil.setMonth(validUntil.getMonth() + 6);
-      validUntil.setHours(23, 59, 59, 999);
-    }
-
-    const newPurchase = {
-      value: gift.value,
-      description: gift.description,
-      purchaseCode,
-      validUntil,
-      status: "Valid",
+    const {
       beneficiaryFirstName,
       beneficiaryLastName,
       sender,
       sendEmail,
-    };
+      validUntil: clientValidUntil,
+      paymentIntentId,
+      amount,
+    } = req.body;
 
-    restaurant.purchasesGiftCards.push(newPurchase);
+    try {
+      const restaurant = await RestaurantModel.findOne({ _id: restaurantId })
+        .populate("owner_id", "firstname")
+        .populate("employees")
+        .populate("menus");
 
-    if (!restaurant.giftCardSold) {
-      restaurant.giftCardSold = { totalSold: 0, totalRefunded: 0 };
+      if (!restaurant) {
+        return res.status(404).json({ error: "Restaurant not found" });
+      }
+
+      const gift = restaurant?.giftCards.id(giftId);
+      if (!gift) {
+        return res.status(404).json({ error: "Gift card not found" });
+      }
+
+      // ✅ Anti-réutilisation du même paiement
+      const alreadyUsed = restaurant.purchasesGiftCards?.some(
+        (p) => p.paymentIntentId === paymentIntentId
+      );
+      if (alreadyUsed) {
+        return res.status(409).json({ error: "Payment already used" });
+      }
+
+      // ✅ Optionnel mais recommandé : check montant cohérent côté Gusto
+      const expectedAmount = Number(gift.value) * 100;
+      if (Number(amount) !== expectedAmount) {
+        return res.status(400).json({ error: "Amount mismatch" });
+      }
+
+      const purchaseCode = generateGiftCode();
+
+      let validUntil;
+      if (clientValidUntil) {
+        const parsed = new Date(clientValidUntil);
+        if (!isNaN(parsed.getTime())) validUntil = parsed;
+      }
+
+      // Fallback back-end si date absente/invalide
+      if (!validUntil) {
+        validUntil = new Date();
+        validUntil.setMonth(validUntil.getMonth() + 6);
+        validUntil.setHours(23, 59, 59, 999);
+      }
+
+      const newPurchase = {
+        value: gift.value,
+        description: gift.description,
+        purchaseCode,
+        validUntil,
+        status: "Valid",
+        beneficiaryFirstName,
+        beneficiaryLastName,
+        sender,
+        sendEmail,
+
+        // ✅ on stocke les infos de paiement (audit + anti-reuse)
+        paymentIntentId,
+        amount,
+      };
+
+      restaurant.purchasesGiftCards.push(newPurchase);
+
+      if (!restaurant.giftCardSold) {
+        restaurant.giftCardSold = { totalSold: 0, totalRefunded: 0 };
+      }
+      restaurant.giftCardSold.totalSold += 1;
+
+      await restaurant.save();
+
+      const created =
+        restaurant.purchasesGiftCards[restaurant.purchasesGiftCards.length - 1];
+
+      // 🔔 SSE: achat effectué
+      broadcastToRestaurant(String(restaurant._id), {
+        type: "giftcard_purchased",
+        purchase: created,
+        giftCardStats: restaurant.giftCardSold,
+      });
+
+      return res.status(200).json({
+        purchaseCode: created.purchaseCode,
+        validUntil: created.validUntil,
+      });
+    } catch (error) {
+      console.error("Error during gift card purchase:", error);
+      return res.status(500).json({ error: "Error during gift card purchase" });
     }
-    restaurant.giftCardSold.totalSold += 1;
-
-    await restaurant.save();
-
-    const created =
-      restaurant.purchasesGiftCards[restaurant.purchasesGiftCards.length - 1];
-
-    // 🔔 SSE: achat effectué
-    broadcastToRestaurant(String(restaurant._id), {
-      type: "giftcard_purchased",
-      purchase: created,
-      giftCardStats: restaurant.giftCardSold,
-    });
-
-    res.status(200).json({
-      purchaseCode,
-      validUntil: created.validUntil,
-    });
-  } catch (error) {
-    console.error("Error during gift card purchase:", error);
-    res.status(500).json({ error: "Error during gift card purchase" });
   }
-});
+);
 
 // UPDATE GIFT CARD STATUS TO USED
 router.put(

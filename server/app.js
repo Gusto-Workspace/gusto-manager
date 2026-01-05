@@ -41,6 +41,8 @@ app.use(
       "Content-Type",
       "Accept",
       "Authorization",
+      "x-gusto-timestamp",
+      "x-gusto-signature",
     ],
   })
 );
