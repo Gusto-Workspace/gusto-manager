@@ -171,6 +171,8 @@ const giftCardPurchaseSchema = new mongoose.Schema({
   beneficiaryLastName: { type: String, required: true },
   sender: { type: String },
   sendEmail: { type: String },
+  paymentIntentId: { type: String, index: true },
+  amount: { type: Number },
   created_at: { type: Date, default: Date.now },
 });
 
