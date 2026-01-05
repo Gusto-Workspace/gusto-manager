@@ -131,6 +131,13 @@ router.post(
     } = req.body;
 
     try {
+      // 0) Sanity checks (au cas où)
+      const amt = Number(amount);
+      if (!paymentIntentId || !Number.isFinite(amt) || amt <= 0) {
+        return res.status(400).json({ error: "Invalid payment data" });
+      }
+
+      // 1) Charger restaurant + gift (pour montant + infos)
       const restaurant = await RestaurantModel.findOne({ _id: restaurantId })
         .populate("owner_id", "firstname")
         .populate("employees")
@@ -140,39 +147,37 @@ router.post(
         return res.status(404).json({ error: "Restaurant not found" });
       }
 
-      const gift = restaurant?.giftCards.id(giftId);
+      const gift = restaurant.giftCards?.id(giftId);
       if (!gift) {
         return res.status(404).json({ error: "Gift card not found" });
       }
 
-      // ✅ Anti-réutilisation du même paiement
-      const alreadyUsed = restaurant.purchasesGiftCards?.some(
-        (p) => p.paymentIntentId === paymentIntentId
-      );
-      if (alreadyUsed) {
-        return res.status(409).json({ error: "Payment already used" });
-      }
-
-      // ✅ Optionnel mais recommandé : check montant cohérent côté Gusto
+      // Check montant cohérent côté Gusto
       const expectedAmount = Number(gift.value) * 100;
-      if (Number(amount) !== expectedAmount) {
+      if (amt !== expectedAmount) {
         return res.status(400).json({ error: "Amount mismatch" });
       }
 
-      const purchaseCode = generateGiftCode();
+      // 2) Init giftCardSold si absent (⚠️ séparé pour éviter conflit Mongo)
+      await RestaurantModel.updateOne(
+        { _id: restaurantId, giftCardSold: { $exists: false } },
+        { $set: { giftCardSold: { totalSold: 0, totalRefunded: 0 } } }
+      );
 
+      // 3) validUntil
       let validUntil;
       if (clientValidUntil) {
         const parsed = new Date(clientValidUntil);
         if (!isNaN(parsed.getTime())) validUntil = parsed;
       }
-
-      // Fallback back-end si date absente/invalide
       if (!validUntil) {
         validUntil = new Date();
         validUntil.setMonth(validUntil.getMonth() + 6);
         validUntil.setHours(23, 59, 59, 999);
       }
+
+      // 4) Préparer la purchase
+      const purchaseCode = generateGiftCode();
 
       const newPurchase = {
         value: gift.value,
@@ -184,34 +189,67 @@ router.post(
         beneficiaryLastName,
         sender,
         sendEmail,
-
-        // ✅ on stocke les infos de paiement (audit + anti-reuse)
         paymentIntentId,
-        amount,
+        amount: amt,
       };
 
-      restaurant.purchasesGiftCards.push(newPurchase);
+      // 5) UPDATE ATOMIQUE : push + inc MAIS seulement si ce PI n’existe pas déjà
+      const upd = await RestaurantModel.updateOne(
+        {
+          _id: restaurantId,
+          "purchasesGiftCards.paymentIntentId": { $ne: paymentIntentId },
+        },
+        {
+          $push: { purchasesGiftCards: newPurchase },
+          $inc: { "giftCardSold.totalSold": 1 },
+        }
+      );
 
-      if (!restaurant.giftCardSold) {
-        restaurant.giftCardSold = { totalSold: 0, totalRefunded: 0 };
+      const modified =
+        typeof upd.modifiedCount === "number"
+          ? upd.modifiedCount
+          : typeof upd.nModified === "number"
+            ? upd.nModified
+            : 0;
+
+      // 6) Si PAS modifié => c’est un retry (refresh) : renvoyer la purchase existante (idempotent)
+      if (modified === 0) {
+        const doc = await RestaurantModel.findOne(
+          {
+            _id: restaurantId,
+            "purchasesGiftCards.paymentIntentId": paymentIntentId,
+          },
+          { purchasesGiftCards: { $elemMatch: { paymentIntentId } } }
+        ).lean();
+
+        const existing = doc?.purchasesGiftCards?.[0];
+        if (!existing) {
+          // cas très rare/incohérent
+          return res.status(409).json({ error: "Payment already used" });
+        }
+
+        return res.status(200).json({
+          purchaseCode: existing.purchaseCode,
+          validUntil: existing.validUntil,
+          alreadyExisted: true,
+        });
       }
-      restaurant.giftCardSold.totalSold += 1;
 
-      await restaurant.save();
+      // 7) Broadcast SSE uniquement si création réelle
+      const fresh = await RestaurantModel.findById(restaurantId, {
+        giftCardSold: 1,
+      }).lean();
 
-      const created =
-        restaurant.purchasesGiftCards[restaurant.purchasesGiftCards.length - 1];
-
-      // 🔔 SSE: achat effectué
-      broadcastToRestaurant(String(restaurant._id), {
+      broadcastToRestaurant(String(restaurantId), {
         type: "giftcard_purchased",
-        purchase: created,
-        giftCardStats: restaurant.giftCardSold,
+        purchase: newPurchase,
+        giftCardStats: fresh?.giftCardSold,
       });
 
       return res.status(200).json({
-        purchaseCode: created.purchaseCode,
-        validUntil: created.validUntil,
+        purchaseCode: newPurchase.purchaseCode,
+        validUntil: newPurchase.validUntil,
+        alreadyExisted: false,
       });
     } catch (error) {
       console.error("Error during gift card purchase:", error);

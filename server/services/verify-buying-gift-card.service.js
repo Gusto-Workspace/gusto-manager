@@ -29,7 +29,7 @@ function verifyPurchaseProof(req, res, next) {
     }
 
     const payload = {
-      paymentIntentId,
+      paymentIntentId: String(paymentIntentId),
       amount: amt,
       restaurantId: String(req.params.id),
       giftId: String(req.params.giftId),
@@ -47,8 +47,9 @@ function verifyPurchaseProof(req, res, next) {
       .update(`${timestamp}.${JSON.stringify(payload)}`)
       .digest("hex");
 
-    const expBuf = Buffer.from(expected);
-    const sigBuf = Buffer.from(signature);
+    // timingSafeEqual exige la même longueur
+    const expBuf = Buffer.from(expected, "utf8");
+    const sigBuf = Buffer.from(String(signature), "utf8");
 
     if (expBuf.length !== sigBuf.length) {
       return res.status(401).json({ error: "Invalid proof" });
