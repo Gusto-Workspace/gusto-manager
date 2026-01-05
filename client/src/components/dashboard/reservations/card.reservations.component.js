@@ -34,11 +34,11 @@ export default function CardReservationComponent(props) {
 
   // Traductions labels
   const statusTranslations = {
-    Pending: t("list.status.pending"),
-    Confirmed: t("list.status.confirmed"),
-    Active: t("list.status.active"),
-    Late: t("list.status.late"),
-    Finished: t("list.status.finished"),
+    Pending: "En attente",
+    Confirmed: "Confirmée",
+    Active: "En cours",
+    Late: "En retard",
+    Finished: "Terminée",
   };
 
   const badgeClass =
