@@ -11,16 +11,20 @@ const COLORS = {
   BORDER_LIGHT: "#DDDDDD",
 };
 
+const REPORT_TZ = "Europe/Paris";
+
 function fmtDate(d) {
   if (!d) return "-";
   const date = new Date(d);
   if (Number.isNaN(date.getTime())) return "-";
   return date.toLocaleString("fr-FR", {
+    timeZone: REPORT_TZ,
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    hourCycle: "h23",
   });
 }
 
@@ -28,7 +32,12 @@ function fmtShortDate(d) {
   if (!d) return "-";
   const date = new Date(d);
   if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleDateString("fr-FR");
+  return date.toLocaleDateString("fr-FR", {
+    timeZone: REPORT_TZ,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
 }
 
 function isObjectIdLike(value) {
