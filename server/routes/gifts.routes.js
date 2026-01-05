@@ -131,18 +131,13 @@ router.post(
     } = req.body;
 
     try {
-      // 0) Sanity checks (au cas où)
       const amt = Number(amount);
       if (!paymentIntentId || !Number.isFinite(amt) || amt <= 0) {
         return res.status(400).json({ error: "Invalid payment data" });
       }
 
-      // 1) Charger restaurant + gift (pour montant + infos)
-      const restaurant = await RestaurantModel.findOne({ _id: restaurantId })
-        .populate("owner_id", "firstname")
-        .populate("employees")
-        .populate("menus");
-
+      // 1) Charger restaurant + gift (pour vérifier montant)
+      const restaurant = await RestaurantModel.findOne({ _id: restaurantId });
       if (!restaurant) {
         return res.status(404).json({ error: "Restaurant not found" });
       }
@@ -152,13 +147,12 @@ router.post(
         return res.status(404).json({ error: "Gift card not found" });
       }
 
-      // Check montant cohérent côté Gusto
       const expectedAmount = Number(gift.value) * 100;
       if (amt !== expectedAmount) {
         return res.status(400).json({ error: "Amount mismatch" });
       }
 
-      // 2) Init giftCardSold si absent (⚠️ séparé pour éviter conflit Mongo)
+      // 2) Init giftCardSold si absent (requête séparée => pas de conflit)
       await RestaurantModel.updateOne(
         { _id: restaurantId, giftCardSold: { $exists: false } },
         { $set: { giftCardSold: { totalSold: 0, totalRefunded: 0 } } }
@@ -176,7 +170,7 @@ router.post(
         validUntil.setHours(23, 59, 59, 999);
       }
 
-      // 4) Préparer la purchase
+      const createdAt = new Date();
       const purchaseCode = generateGiftCode();
 
       const newPurchase = {
@@ -191,9 +185,10 @@ router.post(
         sendEmail,
         paymentIntentId,
         amount: amt,
+        created_at: createdAt,
       };
 
-      // 5) UPDATE ATOMIQUE : push + inc MAIS seulement si ce PI n’existe pas déjà
+      // 4) Insertion atomique anti-doublon
       const upd = await RestaurantModel.updateOne(
         {
           _id: restaurantId,
@@ -212,44 +207,41 @@ router.post(
             ? upd.nModified
             : 0;
 
-      // 6) Si PAS modifié => c’est un retry (refresh) : renvoyer la purchase existante (idempotent)
-      if (modified === 0) {
-        const doc = await RestaurantModel.findOne(
-          {
-            _id: restaurantId,
-            "purchasesGiftCards.paymentIntentId": paymentIntentId,
-          },
-          { purchasesGiftCards: { $elemMatch: { paymentIntentId } } }
-        ).lean();
-
-        const existing = doc?.purchasesGiftCards?.[0];
-        if (!existing) {
-          // cas très rare/incohérent
-          return res.status(409).json({ error: "Payment already used" });
+      // 5) Relecture de la purchase (pour SSE + réponse) => elle aura created_at
+      const doc = await RestaurantModel.findOne(
+        {
+          _id: restaurantId,
+          "purchasesGiftCards.paymentIntentId": paymentIntentId,
+        },
+        {
+          purchasesGiftCards: { $elemMatch: { paymentIntentId } },
+          giftCardSold: 1,
         }
+      ).lean();
 
-        return res.status(200).json({
-          purchaseCode: existing.purchaseCode,
-          validUntil: existing.validUntil,
-          alreadyExisted: true,
+      const created = doc?.purchasesGiftCards?.[0];
+      if (!created) {
+        return res
+          .status(500)
+          .json({ error: "Purchase not found after update" });
+      }
+
+      // 6) SSE : on broadcast la vraie purchase (avec created_at)
+      // ✅ broadcast seulement si c'est une création réelle (pas un retry)
+      if (modified === 1) {
+        broadcastToRestaurant(String(restaurantId), {
+          type: "giftcard_purchased",
+          purchase: created,
+          giftCardStats: doc.giftCardSold,
         });
       }
 
-      // 7) Broadcast SSE uniquement si création réelle
-      const fresh = await RestaurantModel.findById(restaurantId, {
-        giftCardSold: 1,
-      }).lean();
-
-      broadcastToRestaurant(String(restaurantId), {
-        type: "giftcard_purchased",
-        purchase: newPurchase,
-        giftCardStats: fresh?.giftCardSold,
-      });
-
+      // 7) Réponse idempotente : si retry, on renvoie quand même 200 avec la même purchase
       return res.status(200).json({
-        purchaseCode: newPurchase.purchaseCode,
-        validUntil: newPurchase.validUntil,
-        alreadyExisted: false,
+        purchaseCode: created.purchaseCode,
+        validUntil: created.validUntil,
+        created_at: created.created_at,
+        alreadyExisted: modified === 0,
       });
     } catch (error) {
       console.error("Error during gift card purchase:", error);
