@@ -180,9 +180,7 @@ export default function AddDishesComponent(props) {
                   errors.name ? "border-red ring-1 ring-red/30" : ""
                 }`}
               />
-              {errors.name && (
-                <p className={errorTextCls}>{t("form.errors.required")}</p>
-              )}
+              {errors.name && <p className={errorTextCls}>Champs requis</p>}
             </div>
 
             {/* Description */}
@@ -204,10 +202,7 @@ export default function AddDishesComponent(props) {
 
             {/* Prix */}
             <div className={fieldWrap}>
-              <label className={labelCls}>
-                {t("form.labels.price")}
-                <span className="text-red ml-1">*</span>
-              </label>
+              <label className={labelCls}>{t("form.labels.price")}</label>
 
               <div className="flex items-stretch rounded-xl border border-darkBlue/10 bg-white/80 overflow-hidden text-sm">
                 <span
@@ -220,11 +215,17 @@ export default function AddDishesComponent(props) {
 
                 <input
                   type="number"
+                  min="0"
                   placeholder="-"
                   step="0.01"
                   onWheel={(e) => e.currentTarget.blur()}
                   {...register("price", {
-                    validate: (v) => v !== "" && v != null,
+                    validate: (v) => {
+                      if (v === "" || v == null) return true;
+
+                      const n = parseFloat(String(v).replace(",", "."));
+                      return Number.isFinite(n) && n >= 0;
+                    },
                   })}
                   className={`h-11 w-full border-l px-3 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
                     errors.price
@@ -234,9 +235,7 @@ export default function AddDishesComponent(props) {
                 />
               </div>
 
-              {errors.price && (
-                <p className={errorTextCls}>{t("form.errors.required")}</p>
-              )}
+              {errors.price && <p className={errorTextCls}>Champs requis</p>}
             </div>
           </div>
         </div>

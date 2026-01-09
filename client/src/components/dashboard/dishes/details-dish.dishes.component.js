@@ -36,7 +36,7 @@ export default function DetailsDishComponent(props) {
       className="bg-white/50 p-4 midTablet:p-6 midTablet:pl-4 rounded-lg flex flex-col midTablet:flex-row gap-1 midTablet:justify-between midTablet:items-center min-h-[100px]"
     >
       <div className="flex items-start midTablet:items-center gap-4">
-        <button {...listeners} className="opacity-50 cursor-grab">
+        <button {...listeners} className="opacity-50 cursor-grab p-3">
           <DragSvg width={25} height={25} />
         </button>
 
