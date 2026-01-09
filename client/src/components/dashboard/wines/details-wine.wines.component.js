@@ -48,7 +48,7 @@ export default function DetailsWineComponent(props) {
     >
       {/* Section principale : Drag & Informations */}
       <div className="flex gap-4 items-start midTablet:items-center">
-        <button {...listeners} className="opacity-50 cursor-grab">
+        <button {...listeners} className="opacity-50 cursor-grab p-3">
           <DragSvg width={25} height={25} />
         </button>
 

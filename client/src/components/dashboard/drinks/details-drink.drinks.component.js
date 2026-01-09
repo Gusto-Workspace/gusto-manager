@@ -33,7 +33,7 @@ export default function DetailsDrinkComponent(props) {
       className="bg-white p-4 midTablet:p-6 midTablet:pl-4 rounded-lg drop-shadow-sm flex flex-col midTablet:flex-row gap-1 midTablet:justify-between midTablet:items-center min-h-[100px]"
     >
       <div className="flex gap-4">
-        <button {...listeners} className="opacity-50 cursor-grab">
+        <button {...listeners} className="opacity-50 cursor-grab p-3">
           <DragSvg width={25} height={25} />
         </button>
 
