@@ -43,7 +43,7 @@ app.use(
       "x-gusto-timestamp",
       "x-gusto-signature",
     ],
-  })
+  }),
 );
 
 // SSE BUS
@@ -60,11 +60,13 @@ const dashboardAdminRoutes = require("./routes/admin/dashboard.routes");
 const restaurantsAdminRoutes = require("./routes/admin/restaurants.routes");
 const ownersAdminRoutes = require("./routes/admin/owners.routes");
 const subscriptionsAdminRoutes = require("./routes/admin/subscriptions.routes");
+const documentsAdminRoutes = require("./routes/admin/documents.routes");
 
 app.use(apiRoutes, dashboardAdminRoutes);
 app.use(apiRoutes, restaurantsAdminRoutes);
 app.use(apiRoutes, ownersAdminRoutes);
 app.use(apiRoutes, subscriptionsAdminRoutes);
+app.use(apiRoutes, documentsAdminRoutes);
 
 // OWNER
 const restaurantsRoutes = require("./routes/restaurants.routes");
@@ -118,8 +120,8 @@ const maintenance = require("./routes/health-control-plan/maintenance.routes");
 const waste_entries = require("./routes/health-control-plan/waste-entries.routes");
 const health_mesures = require("./routes/health-control-plan/health-mesures.routes");
 const cooking_equipments = require("./routes/health-control-plan/cooking-equipments.routes");
-const zones = require("./routes/health-control-plan/zone.routes")
-const haccp_report = require('./routes/health-control-plan/haccp-report.routes')
+const zones = require("./routes/health-control-plan/zone.routes");
+const haccp_report = require("./routes/health-control-plan/haccp-report.routes");
 
 app.use(apiRoutes, fridge_temperature);
 app.use(apiRoutes, preheat_temperature);
@@ -144,7 +146,7 @@ app.use(apiRoutes, waste_entries);
 app.use(apiRoutes, health_mesures);
 app.use(apiRoutes, cooking_equipments);
 app.use(apiRoutes, zones);
-app.use(apiRoutes, haccp_report)
+app.use(apiRoutes, haccp_report);
 
 // ÉCOUTE DU PORT
 server.listen(PORT, () => {
