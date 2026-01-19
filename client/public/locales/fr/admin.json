@@ -3,7 +3,8 @@
     "dashboard": "Dashboard",
     "restaurants": "Restaurants",
     "owners": "Propriétaires",
-    "subscriptions": "Abonnements"
+    "subscriptions": "Abonnements",
+    "documents": "Création documents"
   },
   "buttons": {
     "logout": "Déconnexion",
@@ -19,7 +20,7 @@
       "email": "Email de contact",
       "phone": "Téléphone",
       "web": "Site Web",
-      "stripeSecretKey": "Clé Stripe du restaurant (si nécessaire)",
+      "stripeSecretKey": "Clé secrète Stripe du restaurant (si nécessaire)",
       "owner": "Propriétaire",
       "contact": "Informations de contact",
       "address": {
@@ -55,6 +56,7 @@
     "form": {
       "infos": "Informations sur le propriétaire",
       "add": "Ajouter un propriéraire",
+      "edit": "Modifier un propriétaire",
       "createNew": "Créer un nouveau",
       "selectExisting": "Déjà existant",
       "select": "Sélectionner",

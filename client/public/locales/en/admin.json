@@ -3,7 +3,8 @@
     "dashboard": "Dashboard",
     "restaurants": "Restaurants",
     "owners": "Owners",
-    "subscriptions": "Subscriptions"
+    "subscriptions": "Subscriptions",
+    "documents": "Documents creation"
   },
   "buttons": {
     "logout": "Log Out",
@@ -54,7 +55,8 @@
   "owner": {
     "form": {
       "infos": "Owner Informations",
-      "add": "Ajouter un propriéraire",
+      "add": "Add an owner",
+      "edit": "Edit an owner",
       "createNew": "Create new",
       "selectExisting": "Select existing",
       "select": "Select",

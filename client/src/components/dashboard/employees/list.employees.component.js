@@ -25,13 +25,29 @@ export default function ListEmployeesComponent() {
       .trim();
 
   // filtered employees
+  const restaurantId = restaurantContext.restaurantData?._id;
+
+  const getSnapshotForRestaurant = (emp) => {
+    const profile =
+      (emp.restaurantProfiles || []).find(
+        (p) => String(p.restaurant) === String(restaurantId),
+      ) || null;
+    return profile?.snapshot || {};
+  };
+
   const filtered = useMemo(() => {
-    if (!searchTerm.trim()) return restaurantContext.restaurantData.employees;
+    const list = restaurantContext.restaurantData?.employees || [];
+    if (!searchTerm.trim()) return list;
+
     const norm = normalize(searchTerm);
-    return restaurantContext.restaurantData.employees.filter((e) =>
-      normalize(`${e.firstname} ${e.lastname}`).includes(norm)
-    );
-  }, [restaurantContext.restaurantData.employees, searchTerm]);
+
+    return list.filter((e) => {
+      const snap = getSnapshotForRestaurant(e);
+      const firstname = snap.firstname ?? e.firstname ?? "";
+      const lastname = snap.lastname ?? e.lastname ?? "";
+      return normalize(`${firstname} ${lastname}`).includes(norm);
+    });
+  }, [restaurantContext.restaurantData?.employees, restaurantId, searchTerm]);
 
   const handleSearchChange = (e) => setSearchTerm(e.target.value);
 
@@ -78,7 +94,7 @@ export default function ListEmployeesComponent() {
               type="text"
               placeholder={t(
                 "placeholders.searchEmployee",
-                "Rechercher un employé"
+                "Rechercher un employé",
               )}
               value={searchTerm}
               onChange={handleSearchChange}
@@ -118,6 +134,7 @@ export default function ListEmployeesComponent() {
           <CardEmployeesComponent
             key={emp._id}
             employee={emp}
+            restaurantId={restaurantContext.restaurantData._id}
             handleDeleteClick={handleDeleteClick}
           />
         ))}
