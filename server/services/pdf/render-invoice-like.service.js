@@ -28,8 +28,9 @@ function computeTotals(doc) {
   const computed = lines.map((l) => {
     const qty = toNumber(l.qty, 1);
     const unit = toNumber(l.unitPrice, 0);
-    const total = qty * unit;
-    return { ...l, qty, unitPrice: unit, total };
+    const offered = Boolean(l.offered);
+    const total = offered ? 0 : qty * unit;
+    return { ...l, qty, unitPrice: offered ? 0 : unit, offered, total };
   });
 
   const subtotal = computed.reduce((acc, l) => acc + (l.total || 0), 0);
@@ -171,16 +172,41 @@ async function renderInvoiceLikePdf(documentData, emitter) {
   let y = Math.max(leftAfterHeaderY, rightMetaBottomY) + 18;
   doc.y = y;
 
-  /* ---------------- Client block ---------------- */
-  doc.fontSize(11).text("Facturé à :", { underline: true });
-  doc.fontSize(10).text(documentData.party.restaurantName || "");
-  if (documentData.party.ownerName) doc.text(documentData.party.ownerName);
-  if (documentData.party.address) doc.text(documentData.party.address);
-  if (documentData.party.email) doc.text(documentData.party.email);
-  if (documentData.party.phone) doc.text(documentData.party.phone);
+  /* ---------------- Client block (RIGHT, no title, spaced lines) ---------------- */
+  // On place le bloc "client" à droite, en absolu, sans impacter doc.y
+  const clientLines = [
+    safeText(documentData?.party?.restaurantName),
+    safeText(documentData?.party?.ownerName),
+    safeText(documentData?.party?.address),
+    safeText(documentData?.party?.email),
+    safeText(documentData?.party?.phone),
+  ].filter(Boolean);
+
+  // Zone à droite : même colonne visuelle que les totaux (350 -> PAGE_RIGHT)
+  const CLIENT_BLOCK_X = 395;
+  const CLIENT_BLOCK_W = PAGE_RIGHT - CLIENT_BLOCK_X; // 195
+
+  // Y de départ : juste sous le header
+  const clientTopY = doc.y - 60;
+
+  doc.fontSize(10).fillColor("#111");
+  let cy = clientTopY;
+
+  const CLIENT_LINE_GAP = 4.5; // ✅ léger espacement vertical entre lignes
+  for (const line of clientLines) {
+    doc.text(line, CLIENT_BLOCK_X, cy, {
+      width: CLIENT_BLOCK_W,
+      align: "left",
+    });
+    cy = doc.y + CLIENT_LINE_GAP;
+  }
+
+  // On démarre la table sous le plus bas entre le bloc client et le flow courant
+  y = Math.max(doc.y, cy) + 18;
+  doc.y = cy + 75;
 
   /* ---------------- Table header ---------------- */
-  doc.moveDown(1.5);
+  doc.moveDown(0.2);
   const tableTop = doc.y;
 
   const colLabel = 50;
@@ -206,8 +232,14 @@ async function renderInvoiceLikePdf(documentData, emitter) {
   for (const l of lines) {
     doc.text(l.label || "-", colLabel, y, { width: 290 });
     doc.text(String(l.qty), colQty, y, { width: 40, align: "right" });
-    doc.text(euro(l.unitPrice), colUnit, y, { width: 60, align: "right" });
-    doc.text(euro(l.total), colTotal, y, { width: 60, align: "right" });
+    doc.text(l.offered ? "Offert" : euro(l.unitPrice), colUnit, y, {
+      width: 60,
+      align: "right",
+    });
+    doc.text(l.offered ? "Offert" : euro(l.total), colTotal, y, {
+      width: 60,
+      align: "right",
+    });
 
     y += 18;
     if (y > 700) {
@@ -345,6 +377,16 @@ async function renderInvoiceLikePdf(documentData, emitter) {
     doc.text(`IBAN : ${emitter.iban || "-"}`);
     doc.text(`BIC : ${emitter.bic || "-"}`);
   }
+
+  // ---------------- Bande bleue bas de page ----------------
+  const PAGE_HEIGHT = doc.page.height;
+  const BAND_HEIGHT = 30; // hauteur de la bande
+
+  doc
+    .save()
+    .rect(0, PAGE_HEIGHT - BAND_HEIGHT, doc.page.width, BAND_HEIGHT)
+    .fill("rgb(46, 55, 62)")
+    .restore();
 
   doc.end();
   await new Promise((resolve) => doc.on("end", resolve));

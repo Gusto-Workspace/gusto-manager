@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const multer = require("multer");
 const SibApiV3Sdk = require("sib-api-v3-sdk");
+const axios = require("axios");
 
 // CLOUDINARY
 const cloudinary = require("cloudinary").v2;
@@ -34,21 +35,40 @@ cloudinary.config({
 });
 
 // ---------- CLOUDINARY HELPERS ----------
+
+// ✅ 1 document = 1 fichier : public_id stable (basé sur doc._id)
+function getDocCloudinaryPublicId(docId) {
+  return String(docId);
+}
+
 // PDF => resource_type raw
-const uploadPdfFromBuffer = (buffer, folder, filename) => {
+const uploadPdfFromBuffer = (buffer, publicId) => {
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       {
-        folder,
         resource_type: "raw",
-        public_id: filename,
+        folder: CLOUDINARY_DOCS_FOLDER,
+        public_id: publicId,
         overwrite: true,
+        invalidate: true,
       },
       (error, result) => (result ? resolve(result) : reject(error)),
     );
     streamifier.createReadStream(buffer).pipe(stream);
   });
 };
+
+async function destroyPdfIfExists(publicId) {
+  if (!publicId) return;
+  try {
+    await cloudinary.uploader.destroy(publicId, {
+      resource_type: "raw",
+      invalidate: true,
+    });
+  } catch (e) {
+    console.error("Cloudinary destroy error:", e?.message || e);
+  }
+}
 
 // ---------- DOC NUMBER (timestamp) ----------
 function prefixByType(type) {
@@ -61,8 +81,12 @@ function getDocNumber(type) {
   const now = new Date();
   const pad = (n) => String(n).padStart(2, "0");
 
-  const datePart = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-  const timePart = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  const datePart = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(
+    now.getDate(),
+  )}`;
+  const timePart = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(
+    now.getSeconds(),
+  )}`;
 
   return `WD-${prefixByType(type)}-${datePart}-${timePart}`;
 }
@@ -107,12 +131,13 @@ async function sendDocEmail({
 
 // ---------- EMITTER (config) ----------
 const EMITTER = {
-  title: "WebDev",
+  title: "Gusto Manager - WebDev",
   address: "84 Bd Arago, 75014 Paris",
   email: "contact@gusto-manager.com",
   iban: process.env.EMITTER_IBAN || "IBAN A AJOUTER EN .ENV",
   bic: process.env.EMITTER_BIC || "BIC A AJOUTER EN .ENV",
   logoPath: "assets/logo.png",
+  signaturePath: "assets/signature.png",
 };
 
 // ---------- HELPERS ----------
@@ -212,7 +237,14 @@ router.patch("/admin/documents/:id", authenticateToken, async (req, res) => {
       doc.party.phone = body.party.phone ?? doc.party.phone;
     }
 
-    if (body.lines) doc.lines = body.lines;
+    if (body.lines) {
+      doc.lines = (body.lines || []).map((l) => ({
+        label: l?.label || "",
+        qty: Number(l?.qty ?? 1),
+        unitPrice: Number(l?.unitPrice ?? 0),
+        offered: Boolean(l?.offered),
+      }));
+    }
     if (body.totals) doc.totals = body.totals;
 
     if (body.website) doc.website = body.website;
@@ -247,10 +279,20 @@ router.patch("/admin/documents/:id", authenticateToken, async (req, res) => {
   }
 });
 
-// ---------- DELETE ----------
+// ---------- DELETE (✅ Cloudinary + Mongo) ----------
 router.delete("/admin/documents/:id", authenticateToken, async (req, res) => {
   try {
+    const doc = await DocumentModel.findById(req.params.id);
+    if (!doc) return res.status(404).json({ message: "Document introuvable" });
+
+    // ✅ supprime le PDF Cloudinary (si existant)
+    const publicId = doc?.pdf?.public_id;
+    if (publicId) {
+      await destroyPdfIfExists(publicId);
+    }
+
     await DocumentModel.findByIdAndDelete(req.params.id);
+
     res.status(200).json({ message: "Deleted" });
   } catch (e) {
     console.error(e);
@@ -283,7 +325,7 @@ router.get(
   },
 );
 
-// ✅ ---------- SEND EMAIL (GENERATES + UPLOADS + SAVES PDF DEFINITIVE) ----------
+// ✅ ---------- SEND EMAIL (GENERATES + UPLOADS (overwrite) + SAVES PDF DEFINITIVE) ----------
 router.post(
   "/admin/documents/:id/send",
   authenticateToken,
@@ -301,18 +343,21 @@ router.post(
       // 1) build PDF from current BDD
       const pdfBuffer = await buildPdfBuffer(doc);
 
-      // 2) upload cloudinary
-      const version = (doc.pdf?.version || 0) + 1;
-      const folder = CLOUDINARY_DOCS_FOLDER;
-      const filename = `${doc._id}_${doc.type.toLowerCase()}_${doc.docNumber}_v${version}`;
+      // 2) upload cloudinary (✅ public_id stable)
+      const stablePublicId = getDocCloudinaryPublicId(doc._id);
 
-      const uploaded = await uploadPdfFromBuffer(pdfBuffer, folder, filename);
+      // migration: si ancien public_id différent, on le supprime
+      if (doc.pdf?.public_id && doc.pdf.public_id !== stablePublicId) {
+        await destroyPdfIfExists(doc.pdf.public_id);
+      }
+
+      const uploaded = await uploadPdfFromBuffer(pdfBuffer, stablePublicId);
 
       // 3) save pdf info in BDD
       doc.pdf = {
         url: uploaded.secure_url,
-        public_id: uploaded.public_id,
-        version,
+        public_id: uploaded.public_id, // == stablePublicId
+        version: (doc.pdf?.version || 0) + 1, // compteur interne (optionnel)
         generatedAt: new Date(),
       };
 
@@ -331,9 +376,12 @@ router.post(
       doc.sentAt = new Date();
       await doc.save();
 
-      res
-        .status(200)
-        .json({ message: "Email envoyé", status: doc.status, pdf: doc.pdf });
+      res.status(200).json({
+        message: "Email envoyé",
+        status: doc.status,
+        pdf: doc.pdf,
+        sentAt: doc.sentAt,
+      });
     } catch (e) {
       console.error(e);
       res.status(500).json({ message: "Erreur serveur" });
@@ -341,7 +389,7 @@ router.post(
   },
 );
 
-// ✅ ---------- RESEND EMAIL (SENT ONLY) ----------
+// ✅ ---------- RESEND EMAIL (SENT ONLY) : renvoie EXACTEMENT le même PDF (sans upload) ----------
 router.post(
   "/admin/documents/:id/resend",
   authenticateToken,
@@ -352,32 +400,30 @@ router.post(
         return res.status(404).json({ message: "Document introuvable" });
 
       if (doc.status !== "SENT") {
-        return res.status(400).json({ message: "Renvoi autorisé uniquement si document envoyé" });
+        return res.status(400).json({
+          message: "Renvoi autorisé uniquement si document envoyé",
+        });
       }
 
-      // rebuild PDF from current BDD (normalement inchangé car non modifiable)
-      const pdfBuffer = await buildPdfBuffer(doc);
+      if (!doc?.pdf?.url) {
+        return res.status(400).json({
+          message:
+            "Aucun PDF enregistré pour ce document. Ré-envoyez via /send.",
+        });
+      }
 
-      // (optionnel) re-upload Cloudinary en nouvelle version
-      const version = (doc.pdf?.version || 0) + 1;
-      const folder = CLOUDINARY_DOCS_FOLDER;
-      const filename = `${doc._id}_${doc.type.toLowerCase()}_${doc.docNumber}_v${version}`;
-
-      const uploaded = await uploadPdfFromBuffer(pdfBuffer, folder, filename);
-
-      doc.pdf = {
-        url: uploaded.secure_url,
-        public_id: uploaded.public_id,
-        version,
-        generatedAt: new Date(),
-      };
+      // ✅ on retélécharge depuis Cloudinary => même binaire que le premier envoi
+      const pdfRes = await axios.get(doc.pdf.url, {
+        responseType: "arraybuffer",
+      });
+      const attachmentBase64 = Buffer.from(pdfRes.data).toString("base64");
 
       await sendDocEmail({
         toEmail: doc.party.email,
         toName: doc.party.ownerName || doc.party.restaurantName,
         subject: buildEmailSubject(doc),
         html: `<p>Bonjour,<br/>Veuillez trouver votre document en pièce jointe.</p>`,
-        attachmentBase64: pdfBuffer.toString("base64"),
+        attachmentBase64,
         attachmentName: `${doc.docNumber}.pdf`,
       });
 
@@ -396,7 +442,6 @@ router.post(
     }
   },
 );
-
 
 // ---------- SIGN CONTRACT (signature canvas -> base64 png) ----------
 router.post(
@@ -432,20 +477,20 @@ router.post(
         signatureBuffer,
       );
 
-      const version = (doc.pdf?.version || 0) + 1;
-      const folder = CLOUDINARY_DOCS_FOLDER;
-      const filename = `${doc._id}_contract_${doc.docNumber}_signed_v${version}`;
+      // ✅ 1 doc = 1 fichier => overwrite même public_id
+      const stablePublicId = getDocCloudinaryPublicId(doc._id);
 
-      const uploadedPdf = await uploadPdfFromBuffer(
-        pdfBuffer,
-        folder,
-        filename,
-      );
+      // migration: si ancien public_id différent, on le supprime
+      if (doc.pdf?.public_id && doc.pdf.public_id !== stablePublicId) {
+        await destroyPdfIfExists(doc.pdf.public_id);
+      }
+
+      const uploadedPdf = await uploadPdfFromBuffer(pdfBuffer, stablePublicId);
 
       doc.pdf = {
         url: uploadedPdf.secure_url,
         public_id: uploadedPdf.public_id,
-        version,
+        version: (doc.pdf?.version || 0) + 1,
         generatedAt: new Date(),
       };
 

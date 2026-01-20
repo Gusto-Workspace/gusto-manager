@@ -372,7 +372,7 @@ export default function ListDocumentsAdminComponent(props) {
                     <div className="absolute inset-0 bg-white/70 backdrop-blur-sm" />
 
                     <div
-                      className="absolute left-3 right-3 bottom-3 rounded-xl border border-red/20 bg-white/90
+                      className="absolute left-2 right-2 bottom-2 top-2 rounded-xl border border-red/20 bg-white/90
                       shadow-[0_18px_45px_rgba(19,30,54,0.12)] p-3"
                       onClick={(e) => e.stopPropagation()}
                     >
@@ -387,7 +387,7 @@ export default function ListDocumentsAdminComponent(props) {
                         <button
                           onClick={() => confirmDelete(doc._id)}
                           disabled={isDeleting}
-                          className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-red text-white text-sm font-semibold py-2 shadow-sm hover:bg-red/90 disabled:opacity-60"
+                          className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-red text-white text-sm font-semibold py-1 shadow-sm hover:bg-red/90 disabled:opacity-60"
                         >
                           {isDeleting ? (
                             <>
@@ -402,7 +402,7 @@ export default function ListDocumentsAdminComponent(props) {
                         <button
                           onClick={() => setDocToDelete(null)}
                           disabled={isDeleting}
-                          className="flex-1 inline-flex items-center justify-center rounded-xl bg-white border border-darkBlue/10 text-darkBlue text-sm font-semibold py-2 hover:bg-darkBlue/5 disabled:opacity-60"
+                          className="flex-1 inline-flex items-center justify-center rounded-xl bg-white border border-darkBlue/10 text-darkBlue text-sm font-semibold py-1 hover:bg-darkBlue/5 disabled:opacity-60"
                         >
                           Annuler
                         </button>

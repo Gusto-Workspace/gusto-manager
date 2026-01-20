@@ -5,6 +5,7 @@ const LineSchema = new mongoose.Schema(
     label: { type: String, default: "" },
     qty: { type: Number, default: 1 },
     unitPrice: { type: Number, default: 0 },
+    offered: { type: Boolean, default: false },
   },
   { _id: false },
 );

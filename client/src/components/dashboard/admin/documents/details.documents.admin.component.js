@@ -39,8 +39,9 @@ function computeTotals(lines, discountAmount) {
   const safeLines = (lines || []).map((l) => {
     const qty = toSafeNumber(l.qty, 1);
     const unitPrice = toSafeNumber(l.unitPrice, 0);
-    const total = qty * unitPrice;
-    return { ...l, qty, unitPrice, total };
+    const offered = Boolean(l.offered);
+    const total = offered ? 0 : qty * unitPrice;
+    return { ...l, qty, unitPrice: offered ? 0 : unitPrice, offered, total };
   });
 
   const subtotal = safeLines.reduce(
@@ -68,7 +69,6 @@ function axiosCfg() {
 
 // ✅ fallback parser (si anciennes données subsistent)
 function parseOldPriceLabelToNumber(priceLabel) {
-  // ex: "35€ / mois" -> 35, "95 / mois" -> 95
   const s = (priceLabel || "").toString().replace(",", ".").toLowerCase();
   const m = s.match(/(\d+(\.\d+)?)/);
   if (!m) return 0;
@@ -104,24 +104,30 @@ export default function DetailsDocumentAdminPage(props) {
     phone: "",
   });
 
-  // Quote/Invoice
+  // Dates (devis/facture + contrat)
   const [issueDate, setIssueDate] = useState("");
   const [dueDate, setDueDate] = useState("");
-  const [lines, setLines] = useState([{ label: "", qty: 1, unitPrice: 0 }]);
+
+  // ✅ Lignes (devis/facture + contrat)
+  const [lines, setLines] = useState([
+    { label: "", qty: 1, unitPrice: 0, offered: false },
+  ]);
+
+  // Remise (devis/facture uniquement)
   const [discountLabel, setDiscountLabel] = useState("");
   const [discountAmount, setDiscountAmount] = useState(0);
 
-  // Contract + subscription/modules
+  // (legacy contrat — conservé en back-compat, mais UI n’affiche plus ces champs)
   const [websiteOffered, setWebsiteOffered] = useState(false);
   const [websitePriceLabel, setWebsitePriceLabel] = useState("");
 
-  // ✅ NEW subscription (name + monthly number)
+  // ✅ subscription (name + monthly number)
   const [subscriptionName, setSubscriptionName] = useState("");
   const [subscriptionPriceMonthly, setSubscriptionPriceMonthly] = useState(0);
 
   const [engagementMonths, setEngagementMonths] = useState(12);
 
-  // ✅ NEW modules numeric
+  // ✅ modules numeric
   const [modules, setModules] = useState([
     { name: "", offered: false, priceMonthly: 0 },
   ]);
@@ -190,17 +196,42 @@ export default function DetailsDocumentAdminPage(props) {
           setIssueDate(todayStr);
         }
 
-        // lines / totals
-        setLines(
+        // ✅ lines (devis/facture + contrat)
+        const mappedLines =
           d.lines && d.lines.length > 0
             ? d.lines.map((l) => ({
                 label: l.label || "",
                 qty: l.qty ?? 1,
                 unitPrice: l.unitPrice ?? 0,
+                offered: Boolean(l.offered),
               }))
-            : [{ label: "", qty: 1, unitPrice: 0 }],
+            : null;
+
+        // ✅ back-compat: anciens contrats (website.*) -> créer une ligne
+        const legacyWebsiteLine =
+          d?.type === "CONTRACT" &&
+          (!mappedLines || mappedLines.length === 0) &&
+          (d?.website?.priceLabel || d?.website?.offered)
+            ? [
+                {
+                  label: "Site vitrine",
+                  qty: 1,
+                  unitPrice: d?.website?.offered
+                    ? 0
+                    : parseOldPriceLabelToNumber(d?.website?.priceLabel || ""),
+                  offered: Boolean(d?.website?.offered),
+                },
+              ]
+            : null;
+
+        setLines(
+          mappedLines ||
+            legacyWebsiteLine || [
+              { label: "", qty: 1, unitPrice: 0, offered: false },
+            ],
         );
 
+        // remise
         setDiscountLabel(d?.totals?.discountLabel || "");
         setDiscountAmount(d?.totals?.discountAmount || 0);
 
@@ -231,7 +262,7 @@ export default function DetailsDocumentAdminPage(props) {
             : [{ name: "", offered: false, priceMonthly: 0 }],
         );
 
-        // fields contrat
+        // legacy contrat (on charge quand même si existant)
         setWebsiteOffered(Boolean(d?.website?.offered));
         setWebsitePriceLabel(d?.website?.priceLabel || "");
       } catch (err) {
@@ -255,7 +286,10 @@ export default function DetailsDocumentAdminPage(props) {
   const isDiscountActive = toSafeNumber(discountAmount, 0) > 0;
 
   function addLine() {
-    setLines((prev) => [...(prev || []), { label: "", qty: 1, unitPrice: 0 }]);
+    setLines((prev) => [
+      ...(prev || []),
+      { label: "", qty: 1, unitPrice: 0, offered: false },
+    ]);
   }
   function removeLine(i) {
     setLines((prev) => (prev || []).filter((_, idx) => idx !== i));
@@ -282,12 +316,12 @@ export default function DetailsDocumentAdminPage(props) {
   }
 
   async function handleSave() {
-    if (!doc?._id) return;
+    if (!doc?._id) return false;
 
     const token = getAdminToken();
     if (!token) {
       setErrorMsg("Tu n'es pas connecté (token admin manquant).");
-      return;
+      return false;
     }
 
     setSaving(true);
@@ -308,6 +342,14 @@ export default function DetailsDocumentAdminPage(props) {
       if (issueDate) payload.issueDate = new Date(issueDate).toISOString();
       if (dueDate) payload.dueDate = new Date(dueDate).toISOString();
 
+      // ✅ lignes POUR TOUS les types (contrat inclus)
+      payload.lines = (lines || []).map((l) => ({
+        label: l.label,
+        qty: toSafeNumber(l.qty, 1),
+        unitPrice: l.offered ? 0 : toSafeNumber(l.unitPrice, 0),
+        offered: Boolean(l.offered),
+      }));
+
       // ✅ abonnement + modules (numeric) pour TOUS les types
       payload.subscription = {
         name: subscriptionName || "",
@@ -324,21 +366,25 @@ export default function DetailsDocumentAdminPage(props) {
           priceMonthly: m.offered ? 0 : toSafeNumber(m.priceMonthly, 0),
         }));
 
+      // Remise uniquement devis/facture
       if (isQuoteOrInvoice(doc.type)) {
-        payload.lines = (lines || []).map((l) => ({
-          label: l.label,
-          qty: toSafeNumber(l.qty, 1),
-          unitPrice: toSafeNumber(l.unitPrice, 0),
-        }));
-
         payload.totals = {
           discountLabel: discountLabel || "",
           discountAmount: toSafeNumber(discountAmount, 0),
         };
-      } else {
+      }
+
+      // ✅ legacy: si tu veux garder website en cohérence (optionnel)
+      // On recalcule un "website" depuis la 1ère ligne (utile pour anciens exports)
+      if (doc.type === "CONTRACT") {
+        const first = (lines || [])[0];
         payload.website = {
-          offered: Boolean(websiteOffered),
-          priceLabel: websitePriceLabel || "",
+          offered: Boolean(first?.offered),
+          priceLabel: first?.offered
+            ? "Offert"
+            : first?.unitPrice !== undefined
+              ? `${toSafeNumber(first.unitPrice, 0)}€`
+              : websitePriceLabel || "",
         };
       }
 
@@ -350,11 +396,26 @@ export default function DetailsDocumentAdminPage(props) {
 
       setDoc(data.document);
 
+      adminContext?.setDocumentsList?.((prev) => {
+        const list = prev || [];
+        const idx = list.findIndex((d) => d._id === data.document._id);
+
+        if (idx === -1) {
+          return [data.document, ...list];
+        }
+
+        const copy = [...list];
+        copy[idx] = { ...copy[idx], ...data.document };
+        return copy;
+      });
+
       setSavedOk(true);
       setTimeout(() => setSavedOk(false), 1800);
+      return true;
     } catch (err) {
       console.error(err);
       setErrorMsg("Erreur lors de l'enregistrement.");
+      return false;
     } finally {
       setSaving(false);
     }
@@ -425,6 +486,7 @@ export default function DetailsDocumentAdminPage(props) {
           d._id === doc._id
             ? {
                 ...d,
+                ...(data.document || {}),
                 status: data.status || d.status,
                 pdf: data.pdf || d.pdf,
                 sentAt: data.sentAt || new Date().toISOString(),
@@ -608,25 +670,30 @@ export default function DetailsDocumentAdminPage(props) {
                 </div>
               </div>
 
-              {/* Quote / Invoice */}
-              {isQuoteOrInvoice(doc?.type) ? (
-                <div className="mt-8">
-                  <h2 className="text-sm font-semibold text-darkBlue">
-                    Détails {doc?.type === "QUOTE" ? "devis" : "facture"}
-                  </h2>
+              {/* ✅ Dates */}
+              <div className="mt-8">
+                <h2 className="text-sm font-semibold text-darkBlue">
+                  Détails{" "}
+                  {doc?.type === "QUOTE"
+                    ? "devis"
+                    : doc?.type === "INVOICE"
+                      ? "facture"
+                      : "contrat"}
+                </h2>
 
-                  <div className="mt-3 grid grid-cols-1 midTablet:grid-cols-2 gap-3">
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs text-darkBlue/60">Date</label>
-                      <input
-                        type="date"
-                        disabled={isLocked}
-                        value={issueDate}
-                        onChange={(e) => setIssueDate(e.target.value)}
-                        className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
-                      />
-                    </div>
+                <div className="mt-3 grid grid-cols-1 midTablet:grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs text-darkBlue/60">Date</label>
+                    <input
+                      type="date"
+                      disabled={isLocked}
+                      value={issueDate}
+                      onChange={(e) => setIssueDate(e.target.value)}
+                      className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
+                    />
+                  </div>
 
+                  {isQuoteOrInvoice(doc?.type) ? (
                     <div className="flex flex-col gap-1">
                       <label className="text-xs text-darkBlue/60">
                         Échéance
@@ -639,91 +706,116 @@ export default function DetailsDocumentAdminPage(props) {
                         className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
                       />
                     </div>
+                  ) : null}
+                </div>
+
+                {/* ✅ Lines (pour devis/facture ET contrat) */}
+                <div className="mt-4 rounded-xl border border-darkBlue/10 bg-white p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold text-darkBlue">
+                      Lignes
+                    </p>
+                    <button
+                      onClick={addLine}
+                      disabled={isLocked}
+                      className="inline-flex items-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm font-semibold text-darkBlue hover:bg-darkBlue/5 disabled:opacity-60"
+                    >
+                      <Plus className="size-4 text-darkBlue/60" />
+                      Ajouter
+                    </button>
                   </div>
 
-                  {/* Lines */}
-                  <div className="mt-4 rounded-xl border border-darkBlue/10 bg-white p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold text-darkBlue">
-                        Lignes
-                      </p>
-                      <button
-                        onClick={addLine}
-                        disabled={isLocked}
-                        className="inline-flex items-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm font-semibold text-darkBlue hover:bg-darkBlue/5"
+                  <div className="hidden midTablet:grid mt-3 grid-cols-[1fr_110px_110px_140px_44px] gap-2 px-1">
+                    <p className="text-xs text-darkBlue/60 font-semibold">
+                      Description
+                    </p>
+                    <p className="text-xs text-darkBlue/60 font-semibold">
+                      Quantité
+                    </p>
+                    <p className="text-xs text-darkBlue/60 font-semibold">
+                      Offert
+                    </p>
+                    <p className="text-xs text-darkBlue/60 font-semibold">
+                      Prix (€)
+                    </p>
+                    <span />
+                  </div>
+
+                  <div className="mt-2 flex flex-col gap-2">
+                    {lines.map((l, i) => (
+                      <div
+                        key={i}
+                        className="grid grid-cols-1 midTablet:grid-cols-[1fr_110px_110px_140px_44px] gap-2"
                       >
-                        <Plus className="size-4 text-darkBlue/60" />
-                        Ajouter
-                      </button>
-                    </div>
+                        <input
+                          value={l.label}
+                          disabled={isLocked}
+                          onChange={(e) =>
+                            updateLine(i, { label: e.target.value })
+                          }
+                          className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
+                          placeholder="Description"
+                        />
 
-                    <div className="hidden midTablet:grid mt-3 grid-cols-[1fr_110px_140px_44px] gap-2 px-1">
-                      <p className="text-xs text-darkBlue/60 font-semibold">
-                        Description
-                      </p>
-                      <p className="text-xs text-darkBlue/60 font-semibold">
-                        Quantité
-                      </p>
-                      <p className="text-xs text-darkBlue/60 font-semibold">
-                        Prix (€)
-                      </p>
-                      <span />
-                    </div>
+                        <input
+                          type="number"
+                          min="1"
+                          onWheel={(e) => e.currentTarget.blur()}
+                          disabled={isLocked}
+                          value={l.qty ?? ""}
+                          onChange={(e) =>
+                            updateLine(i, {
+                              qty: toNumberOrEmpty(e.target.value),
+                            })
+                          }
+                          className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
+                          placeholder="Quantité"
+                        />
 
-                    <div className="mt-2 flex flex-col gap-2">
-                      {lines.map((l, i) => (
-                        <div
-                          key={i}
-                          className="grid grid-cols-1 midTablet:grid-cols-[1fr_110px_140px_44px] gap-2"
+                        <label className="inline-flex items-center justify-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm text-darkBlue/80">
+                          <input
+                            type="checkbox"
+                            disabled={isLocked}
+                            checked={Boolean(l.offered)}
+                            onChange={(e) =>
+                              updateLine(i, {
+                                offered: e.target.checked,
+                                ...(e.target.checked ? { unitPrice: 0 } : {}),
+                              })
+                            }
+                          />
+                          Offert
+                        </label>
+
+                        <input
+                          type="number"
+                          step="0.01"
+                          onWheel={(e) => e.currentTarget.blur()}
+                          disabled={isLocked || l.offered}
+                          value={l.unitPrice ?? ""}
+                          onChange={(e) =>
+                            updateLine(i, {
+                              unitPrice: toNumberOrEmpty(e.target.value),
+                            })
+                          }
+                          className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
+                          placeholder="Prix (€)"
+                        />
+
+                        <button
+                          onClick={() => removeLine(i)}
+                          disabled={lines.length === 1 || isLocked}
+                          className="inline-flex items-center justify-center rounded-xl border border-red/20 bg-red/10 hover:bg-red/15 transition disabled:opacity-60"
+                          title="Supprimer"
                         >
-                          <input
-                            value={l.label}
-                            disabled={isLocked}
-                            onChange={(e) =>
-                              updateLine(i, { label: e.target.value })
-                            }
-                            className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
-                            placeholder="Description"
-                          />
-                          <input
-                            type="number"
-                            min="1"
-                            disabled={isLocked}
-                            value={l.qty ?? ""}
-                            onChange={(e) =>
-                              updateLine(i, {
-                                qty: toNumberOrEmpty(e.target.value),
-                              })
-                            }
-                            className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
-                            placeholder="Quantité"
-                          />
-                          <input
-                            type="number"
-                            step="0.01"
-                            disabled={isLocked}
-                            value={l.unitPrice ?? ""}
-                            onChange={(e) =>
-                              updateLine(i, {
-                                unitPrice: toNumberOrEmpty(e.target.value),
-                              })
-                            }
-                            className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
-                            placeholder="Prix (€)"
-                          />
-                          <button
-                            onClick={() => removeLine(i)}
-                            disabled={lines.length === 1 || isLocked}
-                            className="inline-flex items-center justify-center rounded-xl border border-red/20 bg-red/10 hover:bg-red/15 transition disabled:opacity-60"
-                            title="Supprimer"
-                          >
-                            <Trash2 className="size-4 text-red" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
+                          <Trash2 className="size-4 text-red" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
 
-                    {/* Discount + Totals */}
+                  {/* ✅ Discount + Totals UNIQUEMENT devis/facture */}
+                  {isQuoteOrInvoice(doc?.type) ? (
                     <div className="mt-4 grid grid-cols-1 midTablet:grid-cols-2 gap-3">
                       <div className="rounded-xl border border-darkBlue/10 bg-white p-3">
                         <p className="text-sm font-semibold text-darkBlue">
@@ -753,6 +845,7 @@ export default function DetailsDocumentAdminPage(props) {
                               step="0.01"
                               disabled={isLocked}
                               value={discountAmount ?? ""}
+                              onWheel={(e) => e.currentTarget.blur()}
                               onChange={(e) =>
                                 setDiscountAmount(
                                   toNumberOrEmpty(e.target.value),
@@ -790,186 +883,17 @@ export default function DetailsDocumentAdminPage(props) {
                         </div>
                       </div>
                     </div>
-                  </div>
-
-                  {/* ✅ Abonnement + Modules (numeric) */}
-                  <div className="mt-6 rounded-xl border border-darkBlue/10 bg-white p-3">
-                    <p className="text-sm font-semibold text-darkBlue">
-                      Abonnement & modules (optionnel)
-                    </p>
-
-                    <div className="mt-3 flex flex-col midTablet:flex-row gap-3">
-                      <div className="rounded-xl w-full midTablet:w-1/3 border border-darkBlue/10 bg-white p-3">
-                        <p className="text-sm font-semibold text-darkBlue">
-                          Abonnement
-                        </p>
-
-                        <div className="mt-2 flex flex-col gap-2">
-                          <input
-                            value={subscriptionName}
-                            disabled={isLocked}
-                            onChange={(e) =>
-                              setSubscriptionName(e.target.value)
-                            }
-                            className="w-full rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
-                            placeholder='Nom (ex: "Essentiel")'
-                          />
-
-                          <div className="flex flex-col gap-1">
-                            <label className="text-xs text-darkBlue/60">
-                              Prix / mois (€)
-                            </label>
-                            <input
-                              type="number"
-                              step="0.01"
-                              disabled={isLocked}
-                              value={subscriptionPriceMonthly ?? ""}
-                              onChange={(e) =>
-                                setSubscriptionPriceMonthly(
-                                  toNumberOrEmpty(e.target.value),
-                                )
-                              }
-                              className="w-full rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
-                              placeholder="95"
-                            />
-                          </div>
-                        </div>
-
-                        <p className="text-sm font-semibold text-darkBlue mt-3">
-                          Engagement (mois)
-                        </p>
-                        <input
-                          type="number"
-                          min="1"
-                          disabled={isLocked}
-                          value={engagementMonths ?? ""}
-                          onChange={(e) =>
-                            setEngagementMonths(toNumberOrEmpty(e.target.value))
-                          }
-                          className="mt-2 w-full rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
-                          placeholder="12"
-                        />
-                      </div>
-
-                      <div className="rounded-xl w-full midTablet:w-2/3 border border-darkBlue/10 bg-white p-3">
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="text-sm font-semibold text-darkBlue">
-                            Modules
-                          </p>
-                          <button
-                            onClick={addModule}
-                            disabled={isLocked}
-                            className="inline-flex items-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm font-semibold text-darkBlue hover:bg-darkBlue/5"
-                          >
-                            <Plus className="size-4 text-darkBlue/60" />
-                            Ajouter
-                          </button>
-                        </div>
-
-                        <div className="mt-3 flex flex-col gap-2">
-                          {modules.map((m, i) => (
-                            <div
-                              key={i}
-                              className="grid items-end grid-cols-1 midTablet:grid-cols-[1fr_110px_140px_44px] gap-2"
-                            >
-                              <input
-                                value={m.name}
-                                disabled={isLocked}
-                                onChange={(e) =>
-                                  updateModule(i, { name: e.target.value })
-                                }
-                                className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
-                                placeholder="Nom du module"
-                              />
-
-                              <label className="inline-flex items-center justify-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm text-darkBlue/80">
-                                <input
-                                  type="checkbox"
-                                  disabled={isLocked}
-                                  checked={m.offered}
-                                  onChange={(e) =>
-                                    updateModule(i, {
-                                      offered: e.target.checked,
-                                      ...(e.target.checked
-                                        ? { priceMonthly: 0 }
-                                        : {}),
-                                    })
-                                  }
-                                />
-                                Offert
-                              </label>
-
-                              <div className="flex flex-col gap-1">
-                                {i === 0 && (
-                                  <label className="text-xs text-darkBlue/60">
-                                    Prix / mois (€)
-                                  </label>
-                                )}
-
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  value={m.priceMonthly ?? ""}
-                                  onChange={(e) =>
-                                    updateModule(i, {
-                                      priceMonthly: toNumberOrEmpty(
-                                        e.target.value,
-                                      ),
-                                    })
-                                  }
-                                  className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
-                                  placeholder="Prix / mois (€)"
-                                  disabled={m.offered || isLocked}
-                                />
-                              </div>
-
-                              <button
-                                onClick={() => removeModule(i)}
-                                disabled={modules.length === 1 || isLocked}
-                                className="inline-flex items-center justify-center rounded-xl border border-red/20 bg-red/10 hover:bg-red/15 transition disabled:opacity-60"
-                                title="Supprimer"
-                              >
-                                <Trash2 className="size-4 text-red" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  ) : null}
                 </div>
-              ) : (
-                // Contract
-                <div className="mt-8">
-                  <h2 className="text-sm font-semibold text-darkBlue">
-                    Détails contrat
-                  </h2>
 
-                  <div className="mt-3 grid grid-cols-1 midTablet:grid-cols-2 gap-3">
-                    <div className="rounded-xl border border-darkBlue/10 bg-white p-3">
-                      <p className="text-sm font-semibold text-darkBlue">
-                        Site vitrine
-                      </p>
+                {/* ✅ Abonnement + Modules (numeric) pour tous les types */}
+                <div className="mt-6 rounded-xl border border-darkBlue/10 bg-white p-3">
+                  <p className="text-sm font-semibold text-darkBlue">
+                    Abonnement & modules
+                  </p>
 
-                      <label className="mt-2 inline-flex items-center gap-2 text-sm text-darkBlue/80">
-                        <input
-                          type="checkbox"
-                          checked={websiteOffered}
-                          onChange={(e) => setWebsiteOffered(e.target.checked)}
-                        />
-                        Offert
-                      </label>
-
-                      <input
-                        value={websitePriceLabel}
-                        onChange={(e) => setWebsitePriceLabel(e.target.value)}
-                        className="mt-2 w-full rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
-                        placeholder='Prix (ex: "1500€")'
-                        disabled={websiteOffered}
-                      />
-                    </div>
-
-                    <div className="rounded-xl border border-darkBlue/10 bg-white p-3">
+                  <div className="mt-3 flex flex-col midTablet:flex-row gap-3">
+                    <div className="rounded-xl w-full midTablet:w-1/3 border border-darkBlue/10 bg-white p-3">
                       <p className="text-sm font-semibold text-darkBlue">
                         Abonnement
                       </p>
@@ -977,6 +901,7 @@ export default function DetailsDocumentAdminPage(props) {
                       <div className="mt-2 flex flex-col gap-2">
                         <input
                           value={subscriptionName}
+                          disabled={isLocked}
                           onChange={(e) => setSubscriptionName(e.target.value)}
                           className="w-full rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
                           placeholder='Nom (ex: "Essentiel")'
@@ -989,6 +914,8 @@ export default function DetailsDocumentAdminPage(props) {
                           <input
                             type="number"
                             step="0.01"
+                            onWheel={(e) => e.currentTarget.blur()}
+                            disabled={isLocked}
                             value={subscriptionPriceMonthly ?? ""}
                             onChange={(e) =>
                               setSubscriptionPriceMonthly(
@@ -1007,6 +934,8 @@ export default function DetailsDocumentAdminPage(props) {
                       <input
                         type="number"
                         min="1"
+                        onWheel={(e) => e.currentTarget.blur()}
+                        disabled={isLocked}
                         value={engagementMonths ?? ""}
                         onChange={(e) =>
                           setEngagementMonths(toNumberOrEmpty(e.target.value))
@@ -1015,82 +944,95 @@ export default function DetailsDocumentAdminPage(props) {
                         placeholder="12"
                       />
                     </div>
-                  </div>
 
-                  {/* Modules */}
-                  <div className="mt-4 rounded-xl border border-darkBlue/10 bg-white p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold text-darkBlue">
-                        Modules
-                      </p>
-                      <button
-                        onClick={addModule}
-                        className="inline-flex items-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm font-semibold text-darkBlue hover:bg-darkBlue/5"
-                      >
-                        <Plus className="size-4 text-darkBlue/60" />
-                        Ajouter
-                      </button>
-                    </div>
-
-                    <div className="mt-3 flex flex-col gap-2">
-                      {modules.map((m, i) => (
-                        <div
-                          key={i}
-                          className="grid grid-cols-1 midTablet:grid-cols-[1fr_110px_140px_44px] gap-2"
+                    <div className="rounded-xl w-full midTablet:w-2/3 border border-darkBlue/10 bg-white p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-semibold text-darkBlue">
+                          Modules
+                        </p>
+                        <button
+                          onClick={addModule}
+                          disabled={isLocked}
+                          className="inline-flex items-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm font-semibold text-darkBlue hover:bg-darkBlue/5 disabled:opacity-60"
                         >
-                          <input
-                            value={m.name}
-                            onChange={(e) =>
-                              updateModule(i, { name: e.target.value })
-                            }
-                            className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
-                            placeholder="Nom du module (ex: Réservations)"
-                          />
+                          <Plus className="size-4 text-darkBlue/60" />
+                          Ajouter
+                        </button>
+                      </div>
 
-                          <label className="inline-flex items-center justify-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm text-darkBlue/80">
-                            <input
-                              type="checkbox"
-                              checked={m.offered}
-                              onChange={(e) =>
-                                updateModule(i, {
-                                  offered: e.target.checked,
-                                  ...(e.target.checked
-                                    ? { priceMonthly: 0 }
-                                    : {}),
-                                })
-                              }
-                            />
-                            Offert
-                          </label>
-
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={m.priceMonthly ?? ""}
-                            onChange={(e) =>
-                              updateModule(i, {
-                                priceMonthly: toNumberOrEmpty(e.target.value),
-                              })
-                            }
-                            className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
-                            placeholder="Prix / mois (€)"
-                            disabled={m.offered}
-                          />
-
-                          <button
-                            onClick={() => removeModule(i)}
-                            disabled={modules.length === 1}
-                            className="inline-flex items-center justify-center rounded-xl border border-red/20 bg-red/10 hover:bg-red/15 transition disabled:opacity-60"
-                            title="Supprimer"
+                      <div className="mt-3 flex flex-col gap-2">
+                        {modules.map((m, i) => (
+                          <div
+                            key={i}
+                            className="grid items-end grid-cols-1 midTablet:grid-cols-[1fr_110px_140px_44px] gap-2"
                           >
-                            <Trash2 className="size-4 text-red" />
-                          </button>
-                        </div>
-                      ))}
+                            <input
+                              value={m.name}
+                              disabled={isLocked}
+                              onChange={(e) =>
+                                updateModule(i, { name: e.target.value })
+                              }
+                              className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
+                              placeholder="Nom du module"
+                            />
+
+                            <label className="inline-flex items-center justify-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm text-darkBlue/80">
+                              <input
+                                type="checkbox"
+                                disabled={isLocked}
+                                checked={m.offered}
+                                onChange={(e) =>
+                                  updateModule(i, {
+                                    offered: e.target.checked,
+                                    ...(e.target.checked
+                                      ? { priceMonthly: 0 }
+                                      : {}),
+                                  })
+                                }
+                              />
+                              Offert
+                            </label>
+
+                            <div className="flex flex-col gap-1">
+                              {i === 0 && (
+                                <label className="text-xs text-darkBlue/60">
+                                  Prix / mois (€)
+                                </label>
+                              )}
+
+                              <input
+                                type="number"
+                                step="0.01"
+                                onWheel={(e) => e.currentTarget.blur()}
+                                value={m.priceMonthly ?? ""}
+                                onChange={(e) =>
+                                  updateModule(i, {
+                                    priceMonthly: toNumberOrEmpty(
+                                      e.target.value,
+                                    ),
+                                  })
+                                }
+                                className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
+                                placeholder="Prix / mois (€)"
+                                disabled={m.offered || isLocked}
+                              />
+                            </div>
+
+                            <button
+                              onClick={() => removeModule(i)}
+                              disabled={modules.length === 1 || isLocked}
+                              className="inline-flex items-center justify-center rounded-xl border border-red/20 bg-red/10 hover:bg-red/15 transition disabled:opacity-60"
+                              title="Supprimer"
+                            >
+                              <Trash2 className="size-4 text-red" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
-              )}
+              </div>
             </>
           )}
         </div>
@@ -1101,7 +1043,9 @@ export default function DetailsDocumentAdminPage(props) {
         <div className="fixed inset-0 z-[1000] flex items-center justify-center px-4">
           <div
             className="absolute inset-0 bg-black/40"
-            onClick={() => (sendLoading ? null : setConfirmSendOpen(false))}
+            onClick={() =>
+              sendLoading || saving ? null : setConfirmSendOpen(false)
+            }
           />
           <div className="mx-4 relative flex flex-col gap-2 justify-center text-center w-full max-w-lg rounded-2xl bg-white shadow-xl border border-darkBlue/10 p-5">
             <p className="text-base font-semibold text-darkBlue">
@@ -1113,7 +1057,7 @@ export default function DetailsDocumentAdminPage(props) {
                 : "L’envoi va générer le PDF définitif, puis l’envoyer au client."}
               <br />
               {!canResend && (
-                <b>Assurez-vous d’avoir cliqué sur “Enregistrer” avant.</b>
+                <b>Assurez-vous d’avoir correctement saisi les informations.</b>
               )}
             </p>
 
@@ -1130,10 +1074,15 @@ export default function DetailsDocumentAdminPage(props) {
               <button
                 type="button"
                 onClick={async () => {
+                  if (doc?.status === "DRAFT") {
+                    const ok = await handleSave();
+                    if (!ok) return;
+                  }
+
                   await handleSendConfirmed();
                   setConfirmSendOpen(false);
                 }}
-                disabled={sendLoading}
+                disabled={sendLoading || saving}
                 className="inline-flex items-center gap-2 rounded-xl bg-blue px-3 py-2 text-white text-sm font-semibold shadow-sm hover:bg-blue/90 disabled:opacity-60"
               >
                 {sendLoading ? (

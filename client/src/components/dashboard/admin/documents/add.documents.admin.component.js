@@ -2,8 +2,12 @@ import { useState } from "react";
 import { useRouter } from "next/router";
 import axios from "axios";
 import { ArrowLeft, Loader2 } from "lucide-react";
+import { useContext } from "react";
+import { GlobalContext } from "@/contexts/global.context";
 
 export default function AddDocumentAdminPage() {
+  const { adminContext } = useContext(GlobalContext);
+
   const router = useRouter();
 
   const [type, setType] = useState("QUOTE");
@@ -47,6 +51,13 @@ export default function AddDocumentAdminPage() {
 
       const id = data?.document?._id;
       if (!id) throw new Error("Document id missing");
+
+      adminContext?.setDocumentsList?.((prev) => {
+        const list = prev || [];
+        const exists = list.some((d) => d._id === data.document._id);
+        if (exists) return list;
+        return [data.document, ...list];
+      });
 
       router.push(`/dashboard/admin/documents/add/${id}`);
     } catch (err) {
