@@ -218,14 +218,24 @@ router.patch("/admin/documents/:id", authenticateToken, async (req, res) => {
     const doc = await DocumentModel.findById(req.params.id);
     if (!doc) return res.status(404).json({ message: "Document introuvable" });
 
-    if (doc.status !== "DRAFT") {
+    const body = req.body || {};
+
+    // ✅ Autoriser une MAJ minimale sur contrat non-DRAFT :
+    // - placeOfSignature uniquement (ex: avant signature, ou même après, si besoin)
+    const isContractSignatureMetaUpdate =
+      doc.type === "CONTRACT" &&
+      doc.status !== "DRAFT" &&
+      Object.keys(body).every((k) => ["placeOfSignature"].includes(k));
+
+    // ⛔️ Règle générale : modifiable uniquement en DRAFT
+    // ✅ Exception : contrat => uniquement placeOfSignature si non-DRAFT
+    if (doc.status !== "DRAFT" && !isContractSignatureMetaUpdate) {
       return res
         .status(400)
         .json({ message: "Document non modifiable (déjà envoyé/signé)" });
     }
 
-    const body = req.body || {};
-
+    // ----- PARTY -----
     if (body.party) {
       doc.party.restaurantName =
         body.party.restaurantName ?? doc.party.restaurantName;
@@ -237,6 +247,7 @@ router.patch("/admin/documents/:id", authenticateToken, async (req, res) => {
       doc.party.phone = body.party.phone ?? doc.party.phone;
     }
 
+    // ----- LINES / TOTALS -----
     if (body.lines) {
       doc.lines = (body.lines || []).map((l) => ({
         label: l?.label || "",
@@ -247,9 +258,10 @@ router.patch("/admin/documents/:id", authenticateToken, async (req, res) => {
     }
     if (body.totals) doc.totals = body.totals;
 
+    // ----- CONTRACT -----
     if (body.website) doc.website = body.website;
 
-    // ✅ subscription object
+    // ✅ Subscription object
     if (body.subscription !== undefined) {
       doc.subscription = {
         name: body.subscription?.name || "",
@@ -266,8 +278,14 @@ router.patch("/admin/documents/:id", authenticateToken, async (req, res) => {
     }
 
     if (body.engagementMonths !== undefined)
-      doc.engagementMonths = body.engagementMonths;
+      doc.engagementMonths = Number(body.engagementMonths || 0);
 
+    // ✅ "Fait à"
+    if (body.placeOfSignature !== undefined) {
+      doc.placeOfSignature = String(body.placeOfSignature || "");
+    }
+
+    // ----- DATES -----
     if (body.issueDate !== undefined) doc.issueDate = body.issueDate;
     if (body.dueDate !== undefined) doc.dueDate = body.dueDate;
 
@@ -325,7 +343,7 @@ router.get(
   },
 );
 
-// ✅ ---------- SEND EMAIL (GENERATES + UPLOADS (overwrite) + SAVES PDF DEFINITIVE) ----------
+// ---------- SEND EMAIL (GENERATES + UPLOADS (overwrite) + SAVES PDF DEFINITIVE) ----------
 router.post(
   "/admin/documents/:id/send",
   authenticateToken,
@@ -335,50 +353,96 @@ router.post(
       if (!doc)
         return res.status(404).json({ message: "Document introuvable" });
 
-      // logique "définitif à l'envoi"
-      if (doc.status !== "DRAFT") {
-        return res.status(400).json({ message: "Document déjà envoyé/signé" });
+      // ✅ devis/facture : envoi autorisé uniquement en DRAFT
+      if (doc.type !== "CONTRACT") {
+        if (doc.status !== "DRAFT") {
+          return res
+            .status(400)
+            .json({ message: "Document déjà envoyé/signé" });
+        }
+
+        // 1) build PDF from current BDD
+        const pdfBuffer = await buildPdfBuffer(doc);
+
+        // 2) upload cloudinary (✅ public_id stable)
+        const stablePublicId = getDocCloudinaryPublicId(doc._id);
+
+        // migration: si ancien public_id différent, on le supprime
+        if (doc.pdf?.public_id && doc.pdf.public_id !== stablePublicId) {
+          await destroyPdfIfExists(doc.pdf.public_id);
+        }
+
+        const uploaded = await uploadPdfFromBuffer(pdfBuffer, stablePublicId);
+
+        // 3) save pdf info in BDD
+        doc.pdf = {
+          url: uploaded.secure_url,
+          public_id: uploaded.public_id, // == stablePublicId
+          version: (doc.pdf?.version || 0) + 1,
+          generatedAt: new Date(),
+        };
+
+        // 4) send email with attachment
+        await sendDocEmail({
+          toEmail: doc.party.email,
+          toName: doc.party.ownerName || doc.party.restaurantName,
+          subject: buildEmailSubject(doc),
+          html: `<p>Bonjour,<br/>Veuillez trouver votre document en pièce jointe.</p>`,
+          attachmentBase64: pdfBuffer.toString("base64"),
+          attachmentName: `${doc.docNumber}.pdf`,
+        });
+
+        // 5) status
+        doc.status = "SENT";
+        doc.sentAt = new Date();
+        await doc.save();
+
+        return res.status(200).json({
+          message: "Email envoyé",
+          status: doc.status,
+          pdf: doc.pdf,
+          sentAt: doc.sentAt,
+        });
       }
 
-      // 1) build PDF from current BDD
-      const pdfBuffer = await buildPdfBuffer(doc);
-
-      // 2) upload cloudinary (✅ public_id stable)
-      const stablePublicId = getDocCloudinaryPublicId(doc._id);
-
-      // migration: si ancien public_id différent, on le supprime
-      if (doc.pdf?.public_id && doc.pdf.public_id !== stablePublicId) {
-        await destroyPdfIfExists(doc.pdf.public_id);
+      // ✅ CONTRAT : envoi autorisé UNIQUEMENT si SIGNED + PDF déjà généré
+      // (le /sign génère le PDF signé + met status SIGNED)
+      if (doc.status !== "SIGNED") {
+        return res.status(400).json({
+          message:
+            "Le contrat doit être signé avant d’être envoyé (valider “Fait à” + signature).",
+        });
       }
 
-      const uploaded = await uploadPdfFromBuffer(pdfBuffer, stablePublicId);
+      if (!doc?.pdf?.url) {
+        return res.status(400).json({
+          message:
+            "Aucun PDF signé n’est enregistré. Veuillez re-signer le contrat.",
+        });
+      }
 
-      // 3) save pdf info in BDD
-      doc.pdf = {
-        url: uploaded.secure_url,
-        public_id: uploaded.public_id, // == stablePublicId
-        version: (doc.pdf?.version || 0) + 1, // compteur interne (optionnel)
-        generatedAt: new Date(),
-      };
+      // ✅ on retélécharge le PDF signé depuis Cloudinary => envoie exactement ce binaire
+      const pdfRes = await axios.get(doc.pdf.url, {
+        responseType: "arraybuffer",
+      });
+      const attachmentBase64 = Buffer.from(pdfRes.data).toString("base64");
 
-      // 4) send email with attachment
       await sendDocEmail({
         toEmail: doc.party.email,
         toName: doc.party.ownerName || doc.party.restaurantName,
-        subject: buildEmailSubject(doc),
-        html: `<p>Bonjour,<br/>Veuillez trouver votre document en pièce jointe.</p>`,
-        attachmentBase64: pdfBuffer.toString("base64"),
-        attachmentName: `${doc.docNumber}.pdf`,
+        subject: `Votre contrat signé ${doc.docNumber}`,
+        html: `<p>Bonjour,<br/>Veuillez trouver votre contrat signé en pièce jointe.</p>`,
+        attachmentBase64,
+        attachmentName: `${doc.docNumber}_signe.pdf`,
       });
 
-      // 5) status
-      doc.status = "SENT";
+      // ✅ on garde status SIGNED (on ne repasse pas en SENT)
       doc.sentAt = new Date();
       await doc.save();
 
-      res.status(200).json({
-        message: "Email envoyé",
-        status: doc.status,
+      return res.status(200).json({
+        message: "Contrat signé envoyé",
+        status: doc.status, // SIGNED
         pdf: doc.pdf,
         sentAt: doc.sentAt,
       });
@@ -389,7 +453,7 @@ router.post(
   },
 );
 
-// ✅ ---------- RESEND EMAIL (SENT ONLY) : renvoie EXACTEMENT le même PDF (sans upload) ----------
+// ---------- RESEND EMAIL (SENT ONLY) : renvoie EXACTEMENT le même PDF (sans upload) ----------
 router.post(
   "/admin/documents/:id/resend",
   authenticateToken,
@@ -497,15 +561,6 @@ router.post(
       doc.signature = { signedAt: new Date() };
       doc.status = "SIGNED";
       await doc.save();
-
-      await sendDocEmail({
-        toEmail: doc.party.email,
-        toName: doc.party.ownerName || doc.party.restaurantName,
-        subject: `Contrat signé ${doc.docNumber}`,
-        html: `<p>Bonjour,<br/>Votre contrat signé est en pièce jointe.</p>`,
-        attachmentBase64: pdfBuffer.toString("base64"),
-        attachmentName: `${doc.docNumber}_signe.pdf`,
-      });
 
       res.status(200).json({ message: "Contrat signé + envoyé", pdf: doc.pdf });
     } catch (e) {

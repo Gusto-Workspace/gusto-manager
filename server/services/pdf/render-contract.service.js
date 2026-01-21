@@ -120,14 +120,11 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
     // éviter un titre seul en bas
     ensureSpace(70);
     doc.x = MARGIN;
-    doc
-      .fontSize(12)
-      .fillColor("#111")
-      .text(text, MARGIN, doc.y, {
-        width: CONTENT_W,
-        underline: true,
-        align: "left",
-      });
+    doc.fontSize(12).fillColor("#111").text(text, MARGIN, doc.y, {
+      width: CONTENT_W,
+      underline: true,
+      align: "left",
+    });
     doc.moveDown(0.6);
   }
 
@@ -566,7 +563,7 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
   /* ---------------- Signatures ---------------- */
   ensureSpace(220);
 
-  const place = safeText(emitter?.city) || "Paris";
+  const place = safeText(documentData?.placeOfSignature) || "Paris";
   const when = documentData?.issueDate
     ? fmtDate(documentData.issueDate)
     : fmtDate(new Date());

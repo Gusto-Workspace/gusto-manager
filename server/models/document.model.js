@@ -98,8 +98,7 @@ const DocumentSchema = new mongoose.Schema(
 
     // Contrat
     website: { type: WebsiteSchema, default: () => ({}) },
-
-    // ✅ NEW
+    placeOfSignature: { type: String, default: "" },
     subscription: { type: SubscriptionSchema, default: () => ({}) },
     engagementMonths: { type: Number, default: 12 },
     modules: { type: [ModuleSchema], default: [] },

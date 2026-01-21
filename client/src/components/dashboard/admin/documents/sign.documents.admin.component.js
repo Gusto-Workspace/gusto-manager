@@ -20,7 +20,7 @@ function formatType(type) {
   return "Document";
 }
 
-export default function SignDocumentAdminPage({ documentId }) {
+export default function SignDocumentAdminComponent({ documentId }) {
   const router = useRouter();
 
   const canvasRef = useRef(null);
@@ -28,10 +28,12 @@ export default function SignDocumentAdminPage({ documentId }) {
 
   const [loading, setLoading] = useState(true);
   const [signing, setSigning] = useState(false);
+  const [sending, setSending] = useState(false);
 
   const [doc, setDoc] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+  const [placeOfSignature, setPlaceOfSignature] = useState("");
 
   const [hasDrawn, setHasDrawn] = useState(false);
 
@@ -42,6 +44,10 @@ export default function SignDocumentAdminPage({ documentId }) {
 
   const canSign = useMemo(() => {
     return doc?.type === "CONTRACT" && doc?.status !== "SIGNED";
+  }, [doc]);
+
+  const isSigned = useMemo(() => {
+    return Boolean(doc?.signature?.signedAt) || doc?.status === "SIGNED";
   }, [doc]);
 
   // ----- load doc -----
@@ -72,11 +78,12 @@ export default function SignDocumentAdminPage({ documentId }) {
 
         const d = data?.document;
         setDoc(d);
+        setPlaceOfSignature(d?.placeOfSignature || "");
 
         if (d?.type !== "CONTRACT") {
           setErrorMsg("La signature est réservée aux contrats.");
-        } else if (d?.status === "SIGNED") {
-          setErrorMsg("Ce contrat est déjà signé.");
+        } else if (d?.status === "SIGNED" && d?.signature?.signedAt) {
+          // OK: signé, on peut proposer l'envoi
         }
       } catch (e) {
         console.error(e);
@@ -338,6 +345,11 @@ export default function SignDocumentAdminPage({ documentId }) {
     setErrorMsg("");
     setSuccessMsg("");
 
+    if (!placeOfSignature.trim()) {
+      setErrorMsg("Merci de renseigner le champ “Fait à”.");
+      return;
+    }
+
     if (!hasDrawn) {
       setErrorMsg("Signature requise (dessine dans le cadre).");
       return;
@@ -356,18 +368,64 @@ export default function SignDocumentAdminPage({ documentId }) {
 
     setSigning(true);
     try {
+      // 1) Sauver "Fait à"
+      await axios.patch(
+        `${process.env.NEXT_PUBLIC_API_URL}/admin/documents/${doc._id}`,
+        { placeOfSignature: placeOfSignature.trim() },
+        cfg,
+      );
+
+      // 2) Signer (génère pdf signé + status SIGNED côté back)
       const { data } = await axios.post(
         `${process.env.NEXT_PUBLIC_API_URL}/admin/documents/${doc._id}/sign`,
         { signatureDataUrl },
         cfg,
       );
 
-      setSuccessMsg("Contrat signé ✅");
+      setSuccessMsg("Contrat signé ✅ (tu peux maintenant l’envoyer)");
 
+      // ✅ on met le state local en SIGNED (important pour activer "Envoyer")
       setDoc((prev) => ({
         ...(prev || {}),
         status: "SIGNED",
+        signature: { signedAt: new Date().toISOString() },
         pdf: data?.pdf || prev?.pdf,
+        placeOfSignature: placeOfSignature.trim(),
+      }));
+    } catch (e) {
+      console.error(e);
+      setErrorMsg("Erreur lors de la signature.");
+      if (e?.response?.data?.message) setErrorMsg(e.response.data.message);
+    } finally {
+      setSigning(false);
+    }
+  }
+
+  async function handleSendContract() {
+    if (!doc?._id) return;
+
+    setErrorMsg("");
+    setSuccessMsg("");
+
+    const cfg = axiosCfg();
+    if (!cfg) {
+      setErrorMsg("Tu n'es pas connecté (token admin manquant).");
+      return;
+    }
+
+    setSending(true);
+    try {
+      await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/admin/documents/${doc._id}/send`,
+        {},
+        cfg,
+      );
+
+      setSuccessMsg("Contrat envoyé ✅");
+
+      setDoc((prev) => ({
+        ...(prev || {}),
+        sentAt: new Date().toISOString(),
       }));
 
       setTimeout(() => {
@@ -375,10 +433,10 @@ export default function SignDocumentAdminPage({ documentId }) {
       }, 900);
     } catch (e) {
       console.error(e);
-      setErrorMsg("Erreur lors de la signature.");
+      setErrorMsg("Erreur lors de l'envoi.");
       if (e?.response?.data?.message) setErrorMsg(e.response.data.message);
     } finally {
-      setSigning(false);
+      setSending(false);
     }
   }
 
@@ -389,14 +447,14 @@ export default function SignDocumentAdminPage({ documentId }) {
           onClick={() =>
             router.push(`/dashboard/admin/documents/add/${documentId}`)
           }
-          className="inline-flex items-center gap-2 text-sm font-semibold text-darkBlue hover:underline"
+          className="inline-flex items-center gap-2 text-sm h-[38px] font-semibold text-darkBlue hover:underline"
         >
           <ArrowLeft className="size-4" />
           Retour
         </button>
       </div>
 
-      <div className="ml-16 mobile:ml-12 tablet:ml-0 px-4">
+      <div className="ml-16 mobile:ml-12 tablet:ml-0">
         <div className="rounded-2xl bg-white/50 border border-darkBlue/10 shadow-sm p-5">
           {loading ? (
             <div className="flex items-center gap-2 text-sm text-darkBlue/70">
@@ -427,6 +485,18 @@ export default function SignDocumentAdminPage({ documentId }) {
                 </div>
               </div>
 
+              <div className="mt-4 flex flex-col">
+                <label className="text-sm font-semibold text-darkBlue">
+                  Fait à
+                </label>
+                <input
+                  value={placeOfSignature}
+                  onChange={(e) => setPlaceOfSignature(e.target.value)}
+                  placeholder="Ex : Paris"
+                  className="mt-2 max-w-[200px] w-full rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm text-darkBlue outline-none focus:ring-2 focus:ring-blue/20"
+                />
+              </div>
+
               {errorMsg ? (
                 <div className="mt-4 rounded-xl border border-red/20 bg-red/10 px-3 py-2 text-sm text-red">
                   {errorMsg}
@@ -442,15 +512,15 @@ export default function SignDocumentAdminPage({ documentId }) {
 
               <div className="mt-6">
                 <p className="text-sm font-semibold text-darkBlue">Signature</p>
-                <p className="text-xs text-darkBlue/60 mt-1">
-                  Dessine dans le cadre (doigt / souris / stylet).
-                </p>
 
-                <div className="mt-3 rounded-2xl border border-darkBlue/10 bg-white p-3">
-                  <div className="w-full" style={{ touchAction: "none" }}>
+                <div className="mt-3 rounded-2xl border max-w-[500px] border-darkBlue/10 bg-white p-3">
+                  <div
+                    className="max-w-[500px] w-full"
+                    style={{ touchAction: "none" }}
+                  >
                     <canvas
                       ref={canvasRef}
-                      className="w-full rounded-xl border border-darkBlue/10 bg-white"
+                      className="max-w-[500px] w-full rounded-xl border border-darkBlue/10 bg-white"
                       style={{ touchAction: "none", display: "block" }}
                     />
                   </div>
@@ -459,34 +529,58 @@ export default function SignDocumentAdminPage({ documentId }) {
                     <button
                       type="button"
                       onClick={clearCanvas}
-                      disabled={!canSign || signing}
+                      disabled={!canSign || signing || sending}
                       className="inline-flex items-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm font-semibold text-darkBlue hover:bg-darkBlue/5 disabled:opacity-60"
                     >
                       <RotateCcw className="size-4 text-darkBlue/60" />
                       Effacer
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={handleSign}
-                      disabled={!canSign || signing}
-                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue px-4 py-2 text-white text-sm font-semibold shadow-sm hover:bg-blue/90 disabled:opacity-60"
-                    >
-                      {signing ? (
-                        <>
-                          <Loader2 className="size-4 animate-spin" />
-                          Signature…
-                        </>
-                      ) : (
-                        "Valider la signature"
-                      )}
-                    </button>
+                    <div className="flex flex-wrap gap-2 justify-end">
+                      <button
+                        type="button"
+                        onClick={handleSign}
+                        disabled={!canSign || signing || sending}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue px-4 py-2 text-white text-sm font-semibold shadow-sm hover:bg-blue/90 disabled:opacity-60"
+                      >
+                        {signing ? (
+                          <>
+                            <Loader2 className="size-4 animate-spin" />
+                            Signature…
+                          </>
+                        ) : (
+                          "Valider la signature"
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleSendContract}
+                        disabled={!isSigned || sending || signing}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue px-4 py-2 text-white text-sm font-semibold shadow-sm hover:bg-blue/90 disabled:opacity-60"
+                        title={
+                          !isSigned
+                            ? "Signez le contrat pour activer l’envoi"
+                            : "Envoyer le contrat signé"
+                        }
+                      >
+                        {sending ? (
+                          <>
+                            <Loader2 className="size-4 animate-spin" />
+                            Envoi…
+                          </>
+                        ) : (
+                          "Envoyer le contrat"
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </div>
 
-                <p className="mt-3 text-xs text-darkBlue/50">
-                  La signature sera incrustée dans le PDF et le contrat passera
-                  en statut <b>SIGNED</b>.
+                <p className="mt-3 text-xs text-darkBlue/60 max-w-[520px]">
+                  Le bouton <b>Envoyer le contrat</b> s’active uniquement après
+                  validation de <b>Fait à</b> + <b>signature</b>. (Le backend
+                  doit aussi refuser l’envoi si le contrat n’est pas signé.)
                 </p>
               </div>
             </>

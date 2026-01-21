@@ -5,12 +5,12 @@ import {
   ArrowLeft,
   Loader2,
   Save,
-  FileDown,
   Send,
   Plus,
   Trash2,
   FileSignature,
   CheckCircle2,
+  Eye,
 } from "lucide-react";
 
 import { GlobalContext } from "@/contexts/global.context";
@@ -518,18 +518,6 @@ export default function DetailsDocumentAdminPage(props) {
         </button>
 
         <div className="flex items-center gap-2">
-          {canSign && (
-            <button
-              onClick={() =>
-                router.push(`/dashboard/admin/documents/add/${doc?._id}/sign`)
-              }
-              className="inline-flex items-center gap-2 rounded-xl bg-blue px-3 py-2 text-white text-sm font-semibold shadow-sm hover:bg-blue/90"
-            >
-              <FileSignature className="size-4" />
-              Signer
-            </button>
-          )}
-
           {!isLocked ? (
             <button
               onClick={handleSave}
@@ -559,23 +547,37 @@ export default function DetailsDocumentAdminPage(props) {
             {pdfLoading ? (
               <Loader2 className="size-4 animate-spin" />
             ) : (
-              <FileDown className="size-4 text-darkBlue/60" />
+              <Eye className="size-4 text-darkBlue/60" />
             )}
             PDF
           </button>
 
-          <button
-            onClick={() => setConfirmSendOpen(true)}
-            disabled={sendLoading || loading || doc?.status === "SIGNED"}
-            className="inline-flex items-center gap-2 rounded-xl bg-blue px-3 py-2 text-white text-sm font-semibold shadow-sm hover:bg-blue/90 disabled:opacity-60"
-          >
-            {sendLoading ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Send className="size-4" />
-            )}
-            {sendBtnLabel}
-          </button>
+          {doc?.type !== "CONTRACT" ? (
+            <button
+              onClick={() => setConfirmSendOpen(true)}
+              disabled={sendLoading || loading || doc?.status === "SIGNED"}
+              className="inline-flex items-center gap-2 rounded-xl bg-blue px-3 py-2 text-white text-sm font-semibold shadow-sm hover:bg-blue/90 disabled:opacity-60"
+            >
+              {sendLoading ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Send className="size-4" />
+              )}
+              {sendBtnLabel}
+            </button>
+          ) : null}
+
+          {canSign && (
+            <button
+              onClick={() =>
+                router.push(`/dashboard/admin/documents/add/${doc?._id}/sign`)
+              }
+              className="inline-flex items-center gap-2 rounded-xl bg-blue px-3 py-2 text-white text-sm font-semibold shadow-sm hover:bg-blue/90"
+            >
+              <FileSignature className="size-4" />
+              Signer
+            </button>
+          )}
         </div>
       </div>
 
@@ -1039,7 +1041,7 @@ export default function DetailsDocumentAdminPage(props) {
       </div>
 
       {/* ✅ MODALE CONFIRMATION ENVOI */}
-      {confirmSendOpen ? (
+      {doc?.type !== "CONTRACT" && confirmSendOpen ? (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center px-4">
           <div
             className="absolute inset-0 bg-black/40"

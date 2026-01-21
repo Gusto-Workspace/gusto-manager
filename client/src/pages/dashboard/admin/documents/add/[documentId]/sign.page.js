@@ -7,7 +7,7 @@ import { i18n } from "next-i18next";
 import { GlobalContext } from "@/contexts/global.context";
 
 import NavAdminComponent from "@/components/dashboard/admin/_shared/nav/nav.admin.component";
-import SignDocumentAdminPage from "@/components/dashboard/admin/documents/sign.documents.admin.component";
+import SignDocumentAdminDocument from "@/components/dashboard/admin/documents/sign.documents.admin.component";
 
 export default function SignDocumentPage(props) {
   const { adminContext } = useContext(GlobalContext);
@@ -28,7 +28,7 @@ export default function SignDocumentPage(props) {
         <NavAdminComponent />
 
         <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 min-h-screen">
-          <SignDocumentAdminPage documentId={documentId} />
+          <SignDocumentAdminDocument documentId={documentId} />
         </div>
       </div>
     </>
