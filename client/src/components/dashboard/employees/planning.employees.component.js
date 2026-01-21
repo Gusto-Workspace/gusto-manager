@@ -20,6 +20,25 @@ const DnDCalendar = withDragAndDrop(Calendar);
 const shortName = (emp) =>
   `${emp?.firstname ?? ""} ${emp?.lastname ? emp.lastname[0] + "." : ""}`.trim();
 
+// Normalise un texte (enlève accents / espaces / casse)
+const normalizeTitle = (str) =>
+  (str || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+
+// Force un libellé "propre" pour l'affichage
+const canonicalizeShiftTitle = (title) => {
+  const n = normalizeTitle(title);
+
+  // Si l'utilisateur tape une variante de congés => on affiche/enregistre "Congés"
+  if (n === "conges" || n === "conge") return "Congés";
+
+  // Sinon on garde tel quel (mais trim)
+  return (title || "").trim();
+};
+
 export default function PlanningEmployeesComponent() {
   const { t } = useTranslation("employees");
   const { restaurantContext } = useContext(GlobalContext);
@@ -46,6 +65,7 @@ export default function PlanningEmployeesComponent() {
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [view, setView] = useState(Views.WEEK);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Modale d’ajout
   const [modalOpen, setModalOpen] = useState(false);
@@ -92,7 +112,7 @@ export default function PlanningEmployeesComponent() {
         profilePicture: e.profilePicture,
         shifts: e.shifts || [],
       })) || [],
-    [restaurantContext.restaurantData?.employees]
+    [restaurantContext.restaurantData?.employees],
   );
 
   // ─── HYDRATATION DES SHIFTS AU MONTAGE ─────────────────────────────────────
@@ -103,7 +123,7 @@ export default function PlanningEmployeesComponent() {
 
     // Si au moins un employé a déjà des shifts, on ne relance pas l'hydratation
     const alreadyHaveShifts = employees.some(
-      (e) => Array.isArray(e.shifts) && e.shifts.length > 0
+      (e) => Array.isArray(e.shifts) && e.shifts.length > 0,
     );
     if (alreadyHaveShifts) return;
 
@@ -115,7 +135,7 @@ export default function PlanningEmployeesComponent() {
           employees.map((emp) =>
             axios
               .get(
-                `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${emp._id}/shifts`
+                `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${emp._id}/shifts`,
               )
               .then((res) => ({
                 employeeId: emp._id,
@@ -124,8 +144,8 @@ export default function PlanningEmployeesComponent() {
               .catch((err) => {
                 console.error("Erreur fetch shifts pour", emp._id, err);
                 return { employeeId: emp._id, shifts: [] };
-              })
-          )
+              }),
+          ),
         );
 
         if (cancelled) return;
@@ -137,7 +157,7 @@ export default function PlanningEmployeesComponent() {
             ...prev,
             employees: prevEmployees.map((emp) => {
               const match = results.find(
-                (r) => String(r.employeeId) === String(emp._id)
+                (r) => String(r.employeeId) === String(emp._id),
               );
               return match ? { ...emp, shifts: match.shifts } : emp;
             }),
@@ -165,7 +185,7 @@ export default function PlanningEmployeesComponent() {
     if (!searchTerm.trim()) return allEmployees;
     const norm = normalize(searchTerm);
     return allEmployees.filter((e) =>
-      normalize(`${e.firstname} ${e.lastname}`).includes(norm)
+      normalize(`${e.firstname} ${e.lastname}`).includes(norm),
     );
   }, [allEmployees, searchTerm]);
 
@@ -184,7 +204,8 @@ export default function PlanningEmployeesComponent() {
       (emp.shifts || []).map((s) => {
         const startDate = new Date(s.start);
         const endDate = new Date(s.end);
-        const isLeave = s.title === "Congés";
+        const isLeave = normalizeTitle(s.title) === "conges";
+
         return {
           id: String(s._id),
           title: `${shortName(emp)} - ${s.title}`,
@@ -194,7 +215,7 @@ export default function PlanningEmployeesComponent() {
           leaveRequestId: s.leaveRequestId || null,
           isLeave,
         };
-      })
+      }),
     );
     setEvents(newEvents);
   }, [allEmployees]);
@@ -232,7 +253,7 @@ export default function PlanningEmployeesComponent() {
       selectedEmployeeId
         ? events.filter((ev) => ev.resourceId === selectedEmployeeId)
         : events,
-    [events, selectedEmployeeId]
+    [events, selectedEmployeeId],
   );
 
   // ─── Sélection d’un créneau ────────────────────────────────────────────────
@@ -262,14 +283,15 @@ export default function PlanningEmployeesComponent() {
   // ─── Valider l’ajout de shift ──────────────────────────────────────────────
   async function handleConfirmShift() {
     const { employeeId, start, end, title } = modalData;
+    const safeTitle = canonicalizeShiftTitle(title);
 
-    if (!title.trim()) {
+    if (!safeTitle.trim()) {
       window.alert(t("planning:errors.titleRequired", "Le titre est requis"));
       return;
     }
     if (!employeeId) {
       window.alert(
-        t("planning:errors.employeeRequired", "Sélectionnez un employé")
+        t("planning:errors.employeeRequired", "Sélectionnez un employé"),
       );
       return;
     }
@@ -281,13 +303,17 @@ export default function PlanningEmployeesComponent() {
     try {
       const response = await axios.post(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}/shifts`,
-        { title, start: start.toISOString(), end: end.toISOString() }
+        {
+          title: safeTitle,
+          start: start.toISOString(),
+          end: end.toISOString(),
+        },
       );
 
       const updatedShifts = response.data.shifts; // contient les _id
       const updatedRestaurant = { ...restaurantContext.restaurantData };
       updatedRestaurant.employees = updatedRestaurant.employees.map((emp) =>
-        emp._id === employeeId ? { ...emp, shifts: updatedShifts } : emp
+        emp._id === employeeId ? { ...emp, shifts: updatedShifts } : emp,
       );
       restaurantContext.setRestaurantData(updatedRestaurant);
 
@@ -300,14 +326,14 @@ export default function PlanningEmployeesComponent() {
         end: new Date(s.end),
         resourceId: employeeId,
         leaveRequestId: s.leaveRequestId || null,
-        isLeave: s.title === "Congés",
+        isLeave: normalizeTitle(s.title) === "conges",
       }));
       const other = events.filter((ev) => ev.resourceId !== employeeId);
       setEvents([...other, ...updatedEvents]);
     } catch (err) {
       console.error("Erreur ajout shift :", err);
       window.alert(
-        t("planning:errors.addFailed", "Impossible d’ajouter le shift")
+        t("planning:errors.addFailed", "Impossible d’ajouter le shift"),
       );
     }
     setModalOpen(false);
@@ -317,44 +343,6 @@ export default function PlanningEmployeesComponent() {
     setModalOpen(false);
     setModalData({ employeeId: null, start: null, end: null, title: "" });
     setModalEmployeeQuery("");
-  }
-
-  // ─── Drag & Drop : mise à jour du shift ───────────────────────────────────
-  async function handleEventDrop({ event, start, end }) {
-    if (event.isLeave) return; // pas de DnD sur congés
-
-    const employeeId = event.resourceId;
-    const shiftId = event.id;
-
-    // Optimiste
-    setEvents((evts) =>
-      evts.map((ev) => (ev.id === shiftId ? { ...ev, start, end } : ev))
-    );
-
-    try {
-      const response = await axios.put(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}/shifts/${shiftId}`,
-        {
-          title: event.title.split(" - ")[1],
-          start: start.toISOString(),
-          end: end.toISOString(),
-        }
-      );
-
-      const updatedShifts = response.data.shifts;
-      const updatedRestaurant = { ...restaurantContext.restaurantData };
-      updatedRestaurant.employees = updatedRestaurant.employees.map((emp) =>
-        emp._id === employeeId ? { ...emp, shifts: updatedShifts } : emp
-      );
-      restaurantContext.setRestaurantData(updatedRestaurant);
-    } catch (err) {
-      console.error("Erreur maj shift par drag:", err);
-      // rollback
-      setEvents((evts) => evts.map((ev) => (ev.id === shiftId ? event : ev)));
-      window.alert(
-        t("planning:errors.updateFailed", "Impossible de déplacer le shift")
-      );
-    }
   }
 
   // ─── Clic = modale suppression ─────────────────────────────────────────────
@@ -373,6 +361,8 @@ export default function PlanningEmployeesComponent() {
 
   // ─── Confirmer suppression ───────────────────────────────────────────────────
   async function handleConfirmDelete() {
+    if (isDeleting) return;
+    setIsDeleting(true);
     const {
       employeeId,
       eventId: shiftId,
@@ -384,7 +374,7 @@ export default function PlanningEmployeesComponent() {
       if (isLeave && leaveRequestId) {
         await axios.put(
           `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}/leave-requests/${leaveRequestId}`,
-          { status: "cancelled" }
+          { status: "cancelled" },
         );
 
         const updated = { ...restaurantContext.restaurantData };
@@ -395,17 +385,17 @@ export default function PlanningEmployeesComponent() {
             leaveRequests: (e.leaveRequests || []).map((r) =>
               String(r._id) === String(leaveRequestId)
                 ? { ...r, status: "cancelled" }
-                : r
+                : r,
             ),
             shifts: (e.shifts || []).filter(
-              (s) => String(s.leaveRequestId) !== String(leaveRequestId)
+              (s) => String(s.leaveRequestId) !== String(leaveRequestId),
             ),
           };
         });
         restaurantContext.setRestaurantData(updated);
       } else {
         await axios.delete(
-          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}/shifts/${shiftId}`
+          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}/shifts/${shiftId}`,
         );
 
         const updated = { ...restaurantContext.restaurantData };
@@ -414,7 +404,7 @@ export default function PlanningEmployeesComponent() {
           return {
             ...e,
             shifts: (e.shifts || []).filter(
-              (s) => String(s._id) !== String(shiftId)
+              (s) => String(s._id) !== String(shiftId),
             ),
           };
         });
@@ -423,16 +413,18 @@ export default function PlanningEmployeesComponent() {
 
       // Retirer l'event du calendrier
       setEvents((prev) =>
-        prev.filter((ev) => String(ev.id) !== String(shiftId))
+        prev.filter((ev) => String(ev.id) !== String(shiftId)),
       );
     } catch (err) {
       console.error("Erreur suppression shift / annulation congé :", err);
       window.alert(
         t(
           "planning:errors.deleteFailed",
-          "Impossible de supprimer le shift / annuler le congé"
-        )
+          "Impossible de supprimer le shift / annuler le congé",
+        ),
       );
+    } finally {
+      setIsDeleting(false);
     }
 
     setDeleteModalOpen(false);
@@ -499,7 +491,7 @@ export default function PlanningEmployeesComponent() {
           type="text"
           placeholder={t(
             "planning:placeholders.searchEmployee",
-            "Rechercher un employé"
+            "Rechercher un employé",
           )}
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
@@ -523,7 +515,7 @@ export default function PlanningEmployeesComponent() {
               <div
                 onClick={() =>
                   setSelectedEmployeeId((prev) =>
-                    prev === emp._id ? null : emp._id
+                    prev === emp._id ? null : emp._id,
                   )
                 }
                 className={`cursor-pointer ${
@@ -557,9 +549,8 @@ export default function PlanningEmployeesComponent() {
             defaultDate={new Date()}
             selectable="ignoreEvents"
             onSelectSlot={handleSelectSlot}
-            onEventDrop={handleEventDrop}
             onSelectEvent={handleSelectEvent}
-            draggableAccessor={(event) => !event.isLeave}
+            draggableAccessor={() => false}
             eventPropGetter={(event) => {
               const isLeave = event.isLeave;
               return {
@@ -593,7 +584,7 @@ export default function PlanningEmployeesComponent() {
                 `${format(start, "dd MMM", { locale: frLocale })} – ${format(
                   end,
                   "dd MMM yyyy",
-                  { locale: frLocale }
+                  { locale: frLocale },
                 )}`,
               dayHeaderFormat: (date) =>
                 format(date, "EEEE dd MMMM yyyy", { locale: frLocale }),
@@ -603,7 +594,7 @@ export default function PlanningEmployeesComponent() {
                   "HH:mm",
                   {
                     locale: frLocale,
-                  }
+                  },
                 )}`,
             }}
             style={{ height: "100%", width: "100%" }}
@@ -635,7 +626,7 @@ export default function PlanningEmployeesComponent() {
               <h2 className="text-lg tablet:text-xl font-semibold text-center text-darkBlue">
                 {(() => {
                   const emp = allEmployees.find(
-                    (e) => e._id === modalData.employeeId
+                    (e) => e._id === modalData.employeeId,
                   );
                   return emp ? `${emp.firstname} ${emp.lastname}` : "";
                 })()}
@@ -652,7 +643,7 @@ export default function PlanningEmployeesComponent() {
                     onChange={(e) => setModalEmployeeQuery(e.target.value)}
                     placeholder={t(
                       "planning:placeholders.searchEmployee",
-                      "Rechercher un employé"
+                      "Rechercher un employé",
                     )}
                     className="
                 w-full h-10 rounded-lg border border-darkBlue/20 bg-white/90
@@ -717,7 +708,7 @@ export default function PlanningEmployeesComponent() {
                 type="text"
                 placeholder={t(
                   "planning:placeholders.shiftTitle",
-                  "Titre du shift"
+                  "Titre du shift",
                 )}
                 value={modalData.title}
                 onChange={(e) =>
@@ -745,7 +736,7 @@ export default function PlanningEmployeesComponent() {
             disabled:opacity-50 disabled:cursor-not-allowed
           "
                 disabled={
-                  !modalData.title.trim() ||
+                  !canonicalizeShiftTitle(modalData.title).trim() ||
                   (!modalData.employeeId && !selectedEmployeeId)
                 }
               >
@@ -769,117 +760,121 @@ export default function PlanningEmployeesComponent() {
 
       {/* ─── Modale Suppression Shift ──────────────────────────────────────────── */}
       {deleteModalOpen && (
-  <div className="fixed inset-0 z-[120] flex items-center justify-center px-4">
-    {/* Overlay */}
-    <div
-      onClick={handleCancelDelete}
-      className="absolute inset-0 bg-black/25 backdrop-blur-[1px]"
-    />
+        <div className="fixed inset-0 z-[120] flex items-center justify-center px-4">
+          {/* Overlay */}
+          <div
+            onClick={() => {
+              if (isDeleting) return;
+              handleCancelDelete();
+            }}
+            className="absolute inset-0 bg-black/25 backdrop-blur-[1px]"
+          />
 
-    {/* Carte modale */}
-    <div
-      className="
+          {/* Carte modale */}
+          <div
+            className="
         relative w-full max-w-[420px]
         rounded-2xl border border-darkBlue/10 bg-white/95
         px-5 py-6 tablet:px-7 tablet:py-7
         shadow-[0_22px_55px_rgba(19,30,54,0.20)]
         flex flex-col gap-5
       "
-    >
-      {/* Nom employé */}
-      <h2 className="text-lg tablet:text-xl font-semibold text-center text-darkBlue">
-        {(() => {
-          const emp = allEmployees.find(
-            (e) => e._id === deleteModalData.employeeId
-          );
-          return emp ? `${emp.firstname} ${emp.lastname}` : "";
-        })()}
-      </h2>
+          >
+            {/* Nom employé */}
+            <h2 className="text-lg tablet:text-xl font-semibold text-center text-darkBlue">
+              {(() => {
+                const emp = allEmployees.find(
+                  (e) => e._id === deleteModalData.employeeId,
+                );
+                return emp ? `${emp.firstname} ${emp.lastname}` : "";
+              })()}
+            </h2>
 
-      {/* Texte + créneau */}
-      <div className="text-sm text-center text-darkBlue/80 flex flex-col gap-2">
-        <p>
-          {t("planning:labels.deleteShift", "Supprimer ce shift")} :{" "}
-          <span className="font-medium text-darkBlue">
-            {deleteModalData?.title}
-          </span>
-        </p>
+            {/* Texte + créneau */}
+            <div className="text-sm text-center text-darkBlue/80 flex flex-col gap-2">
+              <p>
+                {t("planning:labels.deleteShift", "Supprimer ce shift")} :{" "}
+                <span className="font-medium text-darkBlue">
+                  {deleteModalData?.title}
+                </span>
+              </p>
 
-        <p className="mt-1">
-          <strong className="text-darkBlue">
-            {(() => {
-              const sameDay =
-                deleteModalData.start.toDateString() ===
-                deleteModalData.end.toDateString();
+              <p className="mt-1">
+                <strong className="text-darkBlue">
+                  {(() => {
+                    const sameDay =
+                      deleteModalData.start.toDateString() ===
+                      deleteModalData.end.toDateString();
 
-              const isFullDay =
-                deleteModalData.start.getHours() === 0 &&
-                deleteModalData.start.getMinutes() === 0 &&
-                deleteModalData.end.getHours() === 23 &&
-                deleteModalData.end.getMinutes() >= 59;
+                    const isFullDay =
+                      deleteModalData.start.getHours() === 0 &&
+                      deleteModalData.start.getMinutes() === 0 &&
+                      deleteModalData.end.getHours() === 23 &&
+                      deleteModalData.end.getMinutes() >= 59;
 
-              if (sameDay && isFullDay) {
-                // Journée complète sur un seul jour
-                return format(deleteModalData.start, "EEEE dd MMM yyyy", {
-                  locale: frLocale,
-                });
-              } else if (!sameDay) {
-                // Plusieurs jours
-                return `${format(
-                  deleteModalData.start,
-                  "EEEE dd MMM yyyy",
-                  {
-                    locale: frLocale,
-                  }
-                )} – ${format(deleteModalData.end, "EEEE dd MMM yyyy", {
-                  locale: frLocale,
-                })}`;
-              } else {
-                // Même jour mais avec heures
-                return `${format(
-                  deleteModalData.start,
-                  "EEEE dd MMM yyyy HH:mm",
-                  {
-                    locale: frLocale,
-                  }
-                )} – ${format(deleteModalData.end, "HH:mm", {
-                  locale: frLocale,
-                })}`;
-              }
-            })()}
-          </strong>
-        </p>
-      </div>
+                    if (sameDay && isFullDay) {
+                      // Journée complète sur un seul jour
+                      return format(deleteModalData.start, "EEEE dd MMM yyyy", {
+                        locale: frLocale,
+                      });
+                    } else if (!sameDay) {
+                      // Plusieurs jours
+                      return `${format(
+                        deleteModalData.start,
+                        "EEEE dd MMM yyyy",
+                        {
+                          locale: frLocale,
+                        },
+                      )} – ${format(deleteModalData.end, "EEEE dd MMM yyyy", {
+                        locale: frLocale,
+                      })}`;
+                    } else {
+                      // Même jour mais avec heures
+                      return `${format(
+                        deleteModalData.start,
+                        "EEEE dd MMM yyyy HH:mm",
+                        {
+                          locale: frLocale,
+                        },
+                      )} – ${format(deleteModalData.end, "HH:mm", {
+                        locale: frLocale,
+                      })}`;
+                    }
+                  })()}
+                </strong>
+              </p>
+            </div>
 
-      {/* Boutons */}
-      <div className="mt-2 flex justify-center gap-3">
-        <button
-          onClick={handleConfirmDelete}
-          className="
+            {/* Boutons */}
+            <div className="mt-2 flex justify-center gap-3">
+              <button
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+                className="
             inline-flex items-center justify-center
             rounded-xl bg-red px-4 py-2.5
             text-sm font-medium text-white shadow
             hover:bg-red/90 transition
           "
-        >
-          {t("buttons.delete", "Supprimer")}
-        </button>
-        <button
-          onClick={handleCancelDelete}
-          className="
+              >
+                {t("buttons.delete", "Supprimer")}
+              </button>
+              <button
+                onClick={handleCancelDelete}
+                disabled={isDeleting}
+                className="
             inline-flex items-center justify-center
             rounded-xl bg-darkBlue/10 px-4 py-2.5
             text-sm font-medium text-darkBlue shadow-sm
             hover:bg-darkBlue/15 transition
           "
-        >
-          {t("buttons.cancel", "Annuler")}
-        </button>
-      </div>
-    </div>
-  </div>
-)}
-
+              >
+                {t("buttons.cancel", "Annuler")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

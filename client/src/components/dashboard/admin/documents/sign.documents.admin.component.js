@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import axios from "axios";
 import { ArrowLeft, Loader2, RotateCcw, CheckCircle2 } from "lucide-react";
+
+import { GlobalContext } from "@/contexts/global.context";
 
 // --- auth helpers ---
 function getAdminToken() {
@@ -20,8 +22,22 @@ function formatType(type) {
   return "Document";
 }
 
+// --- local persistence helpers (NO BDD / NO CLOUD) ---
+function sigStorageKey(documentId) {
+  return `gm_admin_signature_strokes:${documentId}`;
+}
+
+function safeJsonParse(str, fallback) {
+  try {
+    return JSON.parse(str);
+  } catch {
+    return fallback;
+  }
+}
+
 export default function SignDocumentAdminComponent({ documentId }) {
   const router = useRouter();
+  const { adminContext } = useContext(GlobalContext);
 
   const canvasRef = useRef(null);
   const ctxRef = useRef(null);
@@ -35,6 +51,9 @@ export default function SignDocumentAdminComponent({ documentId }) {
   const [successMsg, setSuccessMsg] = useState("");
   const [placeOfSignature, setPlaceOfSignature] = useState("");
 
+  const [signatureReady, setSignatureReady] = useState(false);
+  const signatureDataUrlRef = useRef(null);
+
   const [hasDrawn, setHasDrawn] = useState(false);
 
   // drawing refs
@@ -42,13 +61,95 @@ export default function SignDocumentAdminComponent({ documentId }) {
   const lastPointRef = useRef({ x: 0, y: 0 });
   const activePointerIdRef = useRef(null);
 
-  const canSign = useMemo(() => {
-    return doc?.type === "CONTRACT" && doc?.status !== "SIGNED";
-  }, [doc]);
+  // ✅ strokes persistence (lightweight)
+  // strokes: Array<{ points: Array<{x:number,y:number}> }>
+  const strokesRef = useRef([]);
+  const currentStrokeRef = useRef(null);
 
-  const isSigned = useMemo(() => {
-    return Boolean(doc?.signature?.signedAt) || doc?.status === "SIGNED";
-  }, [doc]);
+  // ✅ cache strokes loaded from localStorage
+  const persistedStrokesRef = useRef(null);
+
+  const isSigned = signatureReady;
+
+  const canDraw = useMemo(() => {
+    return doc?.type === "CONTRACT" && !isSigned;
+  }, [doc, isSigned]);
+
+  // ----- draw helpers (replay strokes exactly like canvas) -----
+  function paintWhiteBackground(width, height) {
+    const ctx = ctxRef.current;
+    if (!ctx) return;
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, width, height);
+  }
+
+  function redrawAllStrokes(strokes) {
+    const ctx = ctxRef.current;
+    const canvas = canvasRef.current;
+    if (!ctx || !canvas) return;
+
+    // use CSS pixels after ctx already scaled by DPR
+    const rect = canvas.getBoundingClientRect();
+    const w = rect.width;
+    const h = rect.height;
+
+    // reset to white then replay
+    ctx.clearRect(0, 0, w, h);
+    paintWhiteBackground(w, h);
+
+    ctx.beginPath();
+    for (const stroke of strokes || []) {
+      const pts = stroke?.points || [];
+      if (pts.length === 0) continue;
+
+      // start
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+
+      // smooth like your existing quadratic logic
+      for (let i = 1; i < pts.length; i++) {
+        const prev = pts[i - 1];
+        const cur = pts[i];
+        const midX = (prev.x + cur.x) / 2;
+        const midY = (prev.y + cur.y) / 2;
+        ctx.quadraticCurveTo(prev.x, prev.y, midX, midY);
+      }
+      ctx.stroke();
+    }
+
+    setHasDrawn(Boolean(strokes && strokes.length));
+  }
+
+  function loadPersistedStrokes() {
+    if (typeof window === "undefined") return null;
+    if (!documentId) return null;
+
+    const raw = localStorage.getItem(sigStorageKey(documentId));
+    if (!raw) return null;
+
+    const parsed = safeJsonParse(raw, null);
+    // expected shape: { strokes: [...], savedAt: "...", placeOfSignature?: "..." }
+    if (!parsed?.strokes || !Array.isArray(parsed.strokes)) return null;
+    return parsed;
+  }
+
+  function persistStrokes({ strokes, placeOfSignatureValue }) {
+    if (typeof window === "undefined") return;
+    if (!documentId) return;
+
+    const payload = {
+      strokes: strokes || [],
+      savedAt: new Date().toISOString(),
+      placeOfSignature: placeOfSignatureValue || "",
+    };
+    localStorage.setItem(sigStorageKey(documentId), JSON.stringify(payload));
+  }
+
+  function clearPersistedStrokes() {
+    if (typeof window === "undefined") return;
+    if (!documentId) return;
+    localStorage.removeItem(sigStorageKey(documentId));
+  }
 
   // ----- load doc -----
   useEffect(() => {
@@ -82,8 +183,6 @@ export default function SignDocumentAdminComponent({ documentId }) {
 
         if (d?.type !== "CONTRACT") {
           setErrorMsg("La signature est réservée aux contrats.");
-        } else if (d?.status === "SIGNED" && d?.signature?.signedAt) {
-          // OK: signé, on peut proposer l'envoi
         }
       } catch (e) {
         console.error(e);
@@ -99,7 +198,14 @@ export default function SignDocumentAdminComponent({ documentId }) {
     };
   }, [documentId]);
 
-  // ----- canvas init (IMPORTANT: run when loading becomes false AND canvas exists) -----
+  // ✅ load signature strokes from localStorage on mount / doc change
+  useEffect(() => {
+    if (!documentId) return;
+    const persisted = loadPersistedStrokes();
+    persistedStrokesRef.current = persisted; // keep cached
+  }, [documentId]);
+
+  // ----- canvas init (run when loading becomes false AND canvas exists) -----
   useEffect(() => {
     if (loading) return;
 
@@ -135,9 +241,18 @@ export default function SignDocumentAdminComponent({ documentId }) {
     ctx.fillRect(0, 0, width, height);
 
     ctxRef.current = ctx;
-    setHasDrawn(false);
 
-    // optional: resize observer to keep correct size
+    // ✅ if there is persisted signature, redraw it (even if doc is SIGNED)
+    const persisted = persistedStrokesRef.current || loadPersistedStrokes();
+    if (persisted?.strokes?.length) {
+      strokesRef.current = persisted.strokes; // keep in memory too
+      redrawAllStrokes(persisted.strokes);
+    } else {
+      strokesRef.current = [];
+      setHasDrawn(false);
+    }
+
+    // resize observer => keep signature visible after resize
     const ro = new ResizeObserver(() => {
       const newWidth = parent.clientWidth || width;
       canvas.style.width = `${newWidth}px`;
@@ -148,11 +263,13 @@ export default function SignDocumentAdminComponent({ documentId }) {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.scale(dpr, dpr);
 
-      // reset background (simple MVP)
-      ctx.fillStyle = "#FFFFFF";
-      ctx.fillRect(0, 0, newWidth, height);
+      // redraw background + strokes (IMPORTANT: don’t wipe signature)
+      const persisted2 = persistedStrokesRef.current || loadPersistedStrokes();
+      const strokesToDraw = persisted2?.strokes?.length
+        ? persisted2.strokes
+        : strokesRef.current;
 
-      setHasDrawn(false);
+      redrawAllStrokes(strokesToDraw || []);
     });
 
     ro.observe(parent);
@@ -160,7 +277,7 @@ export default function SignDocumentAdminComponent({ documentId }) {
     return () => {
       ro.disconnect();
     };
-  }, [loading]);
+  }, [loading, documentId]);
 
   // ----- utils -----
   function getCanvasPointFromClient(clientX, clientY) {
@@ -173,10 +290,18 @@ export default function SignDocumentAdminComponent({ documentId }) {
   function startStrokeAt(x, y) {
     const ctx = ctxRef.current;
     if (!ctx) return;
+
     drawingRef.current = true;
     lastPointRef.current = { x, y };
+
+    // begin paint
     ctx.beginPath();
     ctx.moveTo(x, y);
+
+    // start new stroke in memory
+    const stroke = { points: [{ x, y }] };
+    currentStrokeRef.current = stroke;
+
     setHasDrawn(true);
   }
 
@@ -184,8 +309,8 @@ export default function SignDocumentAdminComponent({ documentId }) {
     if (!drawingRef.current) return;
     const ctx = ctxRef.current;
     if (!ctx) return;
-    const last = lastPointRef.current;
 
+    const last = lastPointRef.current;
     const midX = (last.x + x) / 2;
     const midY = (last.y + y) / 2;
 
@@ -193,11 +318,25 @@ export default function SignDocumentAdminComponent({ documentId }) {
     ctx.stroke();
 
     lastPointRef.current = { x, y };
+
+    // store point
+    if (currentStrokeRef.current) {
+      currentStrokeRef.current.points.push({ x, y });
+    }
   }
 
   function endStroke() {
     drawingRef.current = false;
     activePointerIdRef.current = null;
+
+    // commit stroke
+    if (currentStrokeRef.current?.points?.length) {
+      strokesRef.current = [
+        ...(strokesRef.current || []),
+        currentStrokeRef.current,
+      ];
+    }
+    currentStrokeRef.current = null;
   }
 
   function clearCanvas() {
@@ -214,17 +353,26 @@ export default function SignDocumentAdminComponent({ documentId }) {
     ctx.fillRect(0, 0, w, h);
 
     setHasDrawn(false);
+    strokesRef.current = [];
+    currentStrokeRef.current = null;
+
+    // if you want, also clear local saved signature:
+    clearPersistedStrokes();
+    persistedStrokesRef.current = null;
   }
 
-  // ----- NATIVE EVENTS (bind AFTER loading false so canvas exists) -----
+  // ----- NATIVE EVENTS -----
   useEffect(() => {
     if (loading) return;
+
+    // ✅ if already signed => lock drawing, but still show persisted signature (done by redraw)
+    if (!canDraw) return;
 
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const onPointerDown = (e) => {
-      if (!canSign) return;
+      if (!canDraw) return;
       e.preventDefault();
 
       activePointerIdRef.current = e.pointerId;
@@ -264,7 +412,7 @@ export default function SignDocumentAdminComponent({ documentId }) {
 
     // touch fallback (iOS)
     const onTouchStart = (e) => {
-      if (!canSign) return;
+      if (!canDraw) return;
       e.preventDefault();
       const t = e.touches?.[0];
       if (!t) return;
@@ -288,7 +436,7 @@ export default function SignDocumentAdminComponent({ documentId }) {
 
     // mouse fallback
     const onMouseDown = (e) => {
-      if (!canSign) return;
+      if (!canDraw) return;
       e.preventDefault();
       const p = getCanvasPointFromClient(e.clientX, e.clientY);
       startStrokeAt(p.x, p.y);
@@ -337,7 +485,7 @@ export default function SignDocumentAdminComponent({ documentId }) {
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
     };
-  }, [loading, canSign]);
+  }, [loading, canDraw]);
 
   async function handleSign() {
     if (!doc?._id) return;
@@ -350,55 +498,17 @@ export default function SignDocumentAdminComponent({ documentId }) {
       return;
     }
 
-    if (!hasDrawn) {
+    if (!hasDrawn || !strokesRef.current?.length) {
       setErrorMsg("Signature requise (dessine dans le cadre).");
-      return;
-    }
-
-    const cfg = axiosCfg();
-    if (!cfg) {
-      setErrorMsg("Tu n'es pas connecté (token admin manquant).");
       return;
     }
 
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const signatureDataUrl = canvas.toDataURL("image/png");
-
-    setSigning(true);
-    try {
-      // 1) Sauver "Fait à"
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_URL}/admin/documents/${doc._id}`,
-        { placeOfSignature: placeOfSignature.trim() },
-        cfg,
-      );
-
-      // 2) Signer (génère pdf signé + status SIGNED côté back)
-      const { data } = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/admin/documents/${doc._id}/sign`,
-        { signatureDataUrl },
-        cfg,
-      );
-
-      setSuccessMsg("Contrat signé ✅ (tu peux maintenant l’envoyer)");
-
-      // ✅ on met le state local en SIGNED (important pour activer "Envoyer")
-      setDoc((prev) => ({
-        ...(prev || {}),
-        status: "SIGNED",
-        signature: { signedAt: new Date().toISOString() },
-        pdf: data?.pdf || prev?.pdf,
-        placeOfSignature: placeOfSignature.trim(),
-      }));
-    } catch (e) {
-      console.error(e);
-      setErrorMsg("Erreur lors de la signature.");
-      if (e?.response?.data?.message) setErrorMsg(e.response.data.message);
-    } finally {
-      setSigning(false);
-    }
+    // ✅ on prépare la signature localement, sans changer le statut en BDD
+    signatureDataUrlRef.current = canvas.toDataURL("image/png");
+    setSignatureReady(true);
   }
 
   async function handleSendContract() {
@@ -413,24 +523,54 @@ export default function SignDocumentAdminComponent({ documentId }) {
       return;
     }
 
+    if (!signatureReady || !signatureDataUrlRef.current) {
+      setErrorMsg("Valide d’abord la signature avant l’envoi.");
+      return;
+    }
+
     setSending(true);
     try {
-      await axios.post(
+      const { data } = await axios.post(
         `${process.env.NEXT_PUBLIC_API_URL}/admin/documents/${doc._id}/send`,
-        {},
+        {
+          signatureDataUrl: signatureDataUrlRef.current,
+          placeOfSignature: placeOfSignature.trim(),
+        },
         cfg,
       );
 
-      setSuccessMsg("Contrat envoyé ✅");
-
       setDoc((prev) => ({
         ...(prev || {}),
-        sentAt: new Date().toISOString(),
+        status: data?.status || "SIGNED",
+        pdf: data?.pdf || prev?.pdf,
+        signature: { signedAt: data?.sentAt || new Date().toISOString() },
       }));
 
-      setTimeout(() => {
-        router.push(`/dashboard/admin/documents/add/${doc._id}`);
-      }, 900);
+      adminContext.setDocumentsList((prev) =>
+        (prev || []).map((d) =>
+          d?._id === doc._id
+            ? {
+                ...d,
+                status: data?.status || "SIGNED",
+                pdf: data?.pdf || d?.pdf,
+                signature: {
+                  signedAt: data?.sentAt || new Date().toISOString(),
+                },
+                sentAt: data?.sentAt || new Date().toISOString(),
+              }
+            : d,
+        ),
+      );
+
+      // ✅ reset complet (re-signer possible si on revient)
+      clearPersistedStrokes();
+      persistedStrokesRef.current = null;
+      strokesRef.current = [];
+      currentStrokeRef.current = null;
+      signatureDataUrlRef.current = null;
+      setSignatureReady(false);
+
+      router.push(`/dashboard/admin/documents/add/${doc._id}`);
     } catch (e) {
       console.error(e);
       setErrorMsg("Erreur lors de l'envoi.");
@@ -440,13 +580,29 @@ export default function SignDocumentAdminComponent({ documentId }) {
     }
   }
 
+  useEffect(() => {
+    const onRouteChangeStart = () => {
+      clearPersistedStrokes();
+    };
+
+    router.events.on("routeChangeStart", onRouteChangeStart);
+    return () => {
+      router.events.off("routeChangeStart", onRouteChangeStart);
+    };
+  }, [router, documentId]);
+
   return (
     <section className="flex flex-col gap-4">
       <div className="ml-16 mobile:ml-12 tablet:ml-0 px-4 pt-4">
         <button
-          onClick={() =>
-            router.push(`/dashboard/admin/documents/add/${documentId}`)
-          }
+          onClick={() => {
+            clearPersistedStrokes();
+            persistedStrokesRef.current = null;
+            strokesRef.current = [];
+            currentStrokeRef.current = null;
+
+            router.push(`/dashboard/admin/documents/add/${documentId}`);
+          }}
           className="inline-flex items-center gap-2 text-sm h-[38px] font-semibold text-darkBlue hover:underline"
         >
           <ArrowLeft className="size-4" />
@@ -494,6 +650,7 @@ export default function SignDocumentAdminComponent({ documentId }) {
                   onChange={(e) => setPlaceOfSignature(e.target.value)}
                   placeholder="Ex : Paris"
                   className="mt-2 max-w-[200px] w-full rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm text-darkBlue outline-none focus:ring-2 focus:ring-blue/20"
+                  disabled={!canDraw}
                 />
               </div>
 
@@ -521,66 +678,73 @@ export default function SignDocumentAdminComponent({ documentId }) {
                     <canvas
                       ref={canvasRef}
                       className="max-w-[500px] w-full rounded-xl border border-darkBlue/10 bg-white"
-                      style={{ touchAction: "none", display: "block" }}
+                      style={{
+                        touchAction: "none",
+                        display: "block",
+                        // ✅ petit feedback visuel quand c'est verrouillé
+                        cursor: canDraw ? "crosshair" : "not-allowed",
+                        opacity: canDraw ? 1 : 0.95,
+                      }}
                     />
                   </div>
 
-                  <div className="mt-3 flex flex-wrap gap-2 justify-between">
-                    <button
-                      type="button"
-                      onClick={clearCanvas}
-                      disabled={!canSign || signing || sending}
-                      className="inline-flex items-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm font-semibold text-darkBlue hover:bg-darkBlue/5 disabled:opacity-60"
-                    >
-                      <RotateCcw className="size-4 text-darkBlue/60" />
-                      Effacer
-                    </button>
-
-                    <div className="flex flex-wrap gap-2 justify-end">
+                  {canDraw ? (
+                    <div className="mt-3 flex flex-wrap gap-2 justify-between">
                       <button
                         type="button"
-                        onClick={handleSign}
-                        disabled={!canSign || signing || sending}
-                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue px-4 py-2 text-white text-sm font-semibold shadow-sm hover:bg-blue/90 disabled:opacity-60"
+                        onClick={clearCanvas}
+                        disabled={signing || sending}
+                        className="inline-flex items-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm font-semibold text-darkBlue hover:bg-darkBlue/5 disabled:opacity-60"
                       >
-                        {signing ? (
-                          <>
-                            <Loader2 className="size-4 animate-spin" />
-                            Signature…
-                          </>
-                        ) : (
-                          "Valider la signature"
-                        )}
+                        <RotateCcw className="size-4 text-darkBlue/60" />
+                        Effacer
                       </button>
 
-                      <button
-                        type="button"
-                        onClick={handleSendContract}
-                        disabled={!isSigned || sending || signing}
-                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue px-4 py-2 text-white text-sm font-semibold shadow-sm hover:bg-blue/90 disabled:opacity-60"
-                        title={
-                          !isSigned
-                            ? "Signez le contrat pour activer l’envoi"
-                            : "Envoyer le contrat signé"
-                        }
-                      >
-                        {sending ? (
-                          <>
-                            <Loader2 className="size-4 animate-spin" />
-                            Envoi…
-                          </>
-                        ) : (
-                          "Envoyer le contrat"
-                        )}
-                      </button>
+                      <div className="flex flex-wrap gap-2 justify-end">
+                        <button
+                          type="button"
+                          onClick={handleSign}
+                          disabled={signing || sending}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue px-4 py-2 text-white text-sm font-semibold shadow-sm hover:bg-blue/90 disabled:opacity-60"
+                        >
+                          {signing ? (
+                            <>
+                              <Loader2 className="size-4 animate-spin" />
+                              Signature…
+                            </>
+                          ) : (
+                            "Valider la signature"
+                          )}
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  ) : null}
                 </div>
+
+                <button
+                  type="button"
+                  onClick={handleSendContract}
+                  disabled={!isSigned || sending || signing}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue px-4 py-2 mt-3 text-white text-sm font-semibold shadow-sm hover:bg-blue/90 disabled:opacity-60"
+                  title={
+                    !isSigned
+                      ? "Signez le contrat pour activer l’envoi"
+                      : "Envoyer le contrat signé"
+                  }
+                >
+                  {sending ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" />
+                      Envoi…
+                    </>
+                  ) : (
+                    "Envoyer le contrat"
+                  )}
+                </button>
 
                 <p className="mt-3 text-xs text-darkBlue/60 max-w-[520px]">
                   Le bouton <b>Envoyer le contrat</b> s’active uniquement après
-                  validation de <b>Fait à</b> + <b>signature</b>. (Le backend
-                  doit aussi refuser l’envoi si le contrat n’est pas signé.)
+                  validation de <b>Fait à</b> + <b>signature</b>.
                 </p>
               </div>
             </>

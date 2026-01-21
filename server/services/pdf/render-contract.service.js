@@ -331,16 +331,33 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
   ensureSpace(120);
 
   const tableTop = doc.y;
-  const colLabel = MARGIN;
-  const colQty = 360;
-  const colUnit = 430;
-  const colTotal = 500;
 
-  doc.fontSize(10).fillColor("#111").text("Description", colLabel, tableTop);
-  doc.text("Qté", colQty, tableTop, { width: 40, align: "right" });
-  doc.text("PU", colUnit, tableTop, { width: 60, align: "right" });
-  doc.text("Total", colTotal, tableTop, { width: 60, align: "right" });
+  // ✅ Largeurs de colonnes (ajuste si tu veux)
+  const W_QTY = 40;
+  const W_PU = 70;
+  const W_TOTAL = 80;
+  const GAP = 12;
 
+  // ✅ Colonnes ancrées à droite
+  const colTotalX = PAGE_RIGHT - W_TOTAL;
+  const colUnitX = colTotalX - GAP - W_PU;
+  const colQtyX = colUnitX - GAP - W_QTY;
+
+  // ✅ Colonne description = tout l’espace restant à gauche
+  const colLabelX = MARGIN;
+  const W_LABEL = colQtyX - GAP - colLabelX;
+
+  // --- headers ---
+  doc.fontSize(10).fillColor("#111");
+  doc.text("Description", colLabelX, tableTop, {
+    width: W_LABEL,
+    align: "left",
+  });
+  doc.text("Qté", colQtyX, tableTop, { width: W_QTY, align: "right" });
+  doc.text("PU", colUnitX, tableTop, { width: W_PU, align: "right" });
+  doc.text("Total", colTotalX, tableTop, { width: W_TOTAL, align: "right" });
+
+  // underline header
   doc
     .moveTo(MARGIN, tableTop + 14)
     .lineTo(PAGE_RIGHT, tableTop + 14)
@@ -352,17 +369,16 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
   const lines = Array.isArray(documentData?.lines) ? documentData.lines : [];
   for (const l of lines) {
     ensureSpace(30);
+
     const qty = toNumber(l.qty, 1);
     const unit = isOffered(l) ? 0 : toNumber(l.unitPrice, 0);
     const total = isOffered(l) ? 0 : qty * unit;
 
-    doc
-      .fillColor("#111")
-      .fontSize(10)
-      .text(l.label || "-", colLabel, y, { width: 290, align: "left" });
-    doc.text(String(qty), colQty, y, { width: 40, align: "right" });
-    doc.text(euro(unit), colUnit, y, { width: 60, align: "right" });
-    doc.text(euro(total), colTotal, y, { width: 60, align: "right" });
+    doc.fillColor("#111").fontSize(10);
+    doc.text(l.label || "-", colLabelX, y, { width: W_LABEL, align: "left" });
+    doc.text(String(qty), colQtyX, y, { width: W_QTY, align: "right" });
+    doc.text(euro(unit), colUnitX, y, { width: W_PU, align: "right" });
+    doc.text(euro(total), colTotalX, y, { width: W_TOTAL, align: "right" });
 
     y += 18;
     doc.y = y;

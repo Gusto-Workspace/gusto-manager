@@ -129,6 +129,19 @@ async function sendDocEmail({
   return apiInstance.sendTransacEmail(sendSmtpEmail);
 }
 
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(String(email || "").trim());
+}
+
+function isBrevoInvalidEmailError(e) {
+  const msg = e?.response?.body?.message || e?.message || "";
+  const code = e?.response?.body?.code || "";
+  return (
+    code === "invalid_parameter" &&
+    String(msg).toLowerCase().includes("email is not valid")
+  );
+}
+
 // ---------- EMITTER (config) ----------
 const EMITTER = {
   title: "Gusto Manager - WebDev",
@@ -328,6 +341,21 @@ router.get(
       if (!doc)
         return res.status(404).json({ message: "Document introuvable" });
 
+      // ✅ CONTRAT SIGNÉ => renvoyer le PDF signé enregistré (Cloudinary)
+      if (doc.type === "CONTRACT" && doc.status === "SIGNED" && doc?.pdf?.url) {
+        const pdfRes = await axios.get(doc.pdf.url, {
+          responseType: "arraybuffer",
+        });
+
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader(
+          "Content-Disposition",
+          `inline; filename="${doc.docNumber}_signe.pdf"`,
+        );
+        return res.status(200).send(Buffer.from(pdfRes.data));
+      }
+
+      // sinon => preview généré à la volée (sans save)
       const pdfBuffer = await buildPdfBuffer(doc);
 
       res.setHeader("Content-Type", "application/pdf");
@@ -335,7 +363,7 @@ router.get(
         "Content-Disposition",
         `inline; filename="${doc.docNumber}.pdf"`,
       );
-      res.status(200).send(pdfBuffer);
+      return res.status(200).send(pdfBuffer);
     } catch (e) {
       console.error(e);
       res.status(500).json({ message: "Erreur serveur" });
@@ -353,8 +381,11 @@ router.post(
       if (!doc)
         return res.status(404).json({ message: "Document introuvable" });
 
-      // ✅ devis/facture : envoi autorisé uniquement en DRAFT
+      // =========================================================
+      // ✅ QUOTE / INVOICE
+      // =========================================================
       if (doc.type !== "CONTRACT") {
+        // envoi autorisé uniquement en DRAFT
         if (doc.status !== "DRAFT") {
           return res
             .status(400)
@@ -405,38 +436,108 @@ router.post(
         });
       }
 
-      // ✅ CONTRAT : envoi autorisé UNIQUEMENT si SIGNED + PDF déjà généré
-      // (le /sign génère le PDF signé + met status SIGNED)
-      if (doc.status !== "SIGNED") {
+      // =========================================================
+      // ✅ CONTRACT : email OK => seulement là on passe SIGNED
+      // =========================================================
+      const { signatureDataUrl, placeOfSignature } = req.body || {};
+
+      if (!placeOfSignature || !String(placeOfSignature).trim()) {
+        return res
+          .status(400)
+          .json({ message: "Le champ “Fait à” est requis." });
+      }
+
+      if (!signatureDataUrl || !signatureDataUrl.startsWith("data:image/")) {
         return res.status(400).json({
           message:
-            "Le contrat doit être signé avant d’être envoyé (valider “Fait à” + signature).",
+            "Signature requise (valider “Fait à” + signature) avant l’envoi.",
         });
       }
 
-      if (!doc?.pdf?.url) {
+      // ✅ si déjà signé -> stop
+      if (doc.status === "SIGNED") {
+        return res.status(400).json({ message: "Contrat déjà signé/envoyé." });
+      }
+
+      // ✅ vérif email avant tout
+      const toEmail = String(doc?.party?.email || "")
+        .trim()
+        .toLowerCase();
+      if (!toEmail || !isValidEmail(toEmail)) {
         return res.status(400).json({
           message:
-            "Aucun PDF signé n’est enregistré. Veuillez re-signer le contrat.",
+            "Adresse email invalide ou non délivrable. Merci de la corriger.",
         });
       }
 
-      // ✅ on retélécharge le PDF signé depuis Cloudinary => envoie exactement ce binaire
-      const pdfRes = await axios.get(doc.pdf.url, {
-        responseType: "arraybuffer",
-      });
-      const attachmentBase64 = Buffer.from(pdfRes.data).toString("base64");
+      // 1) buffer signature
+      const base64 = signatureDataUrl.split(",")[1];
+      const signatureBuffer = Buffer.from(base64, "base64");
 
-      await sendDocEmail({
-        toEmail: doc.party.email,
-        toName: doc.party.ownerName || doc.party.restaurantName,
-        subject: `Votre contrat signé ${doc.docNumber}`,
-        html: `<p>Bonjour,<br/>Veuillez trouver votre contrat signé en pièce jointe.</p>`,
-        attachmentBase64,
-        attachmentName: `${doc.docNumber}_signe.pdf`,
-      });
+      // 2) build pdf signé SANS toucher la BDD (on injecte placeOfSignature dans le rendu)
+      const pdfBuffer = await renderContractPdf(
+        {
+          ...doc.toObject(),
+          placeOfSignature: String(placeOfSignature).trim(),
+        },
+        EMITTER,
+        signatureBuffer,
+      );
 
-      // ✅ on garde status SIGNED (on ne repasse pas en SENT)
+      // 3) upload Cloudinary (on garde le résultat en mémoire)
+      const stablePublicId = getDocCloudinaryPublicId(doc._id);
+
+      // migration: si ancien public_id différent, on le supprime
+      if (doc.pdf?.public_id && doc.pdf.public_id !== stablePublicId) {
+        await destroyPdfIfExists(doc.pdf.public_id);
+      }
+
+      let uploadedPdf = null;
+
+      try {
+        uploadedPdf = await uploadPdfFromBuffer(pdfBuffer, stablePublicId);
+
+        // 4) email AVANT de signer en BDD
+        await sendDocEmail({
+          toEmail,
+          toName: doc.party.ownerName || doc.party.restaurantName,
+          subject: `Votre contrat signé ${doc.docNumber}`,
+          html: `<p>Bonjour,<br/>Veuillez trouver votre contrat signé en pièce jointe.</p>`,
+          attachmentBase64: pdfBuffer.toString("base64"),
+          attachmentName: `${doc.docNumber}_signe.pdf`,
+        });
+      } catch (e) {
+        // ✅ email KO => on ne signe pas + on supprime le pdf uploadé
+        if (uploadedPdf?.public_id) {
+          await destroyPdfIfExists(uploadedPdf.public_id);
+        }
+
+        // cas Brevo: email invalide
+        if (isBrevoInvalidEmailError(e)) {
+          return res.status(400).json({
+            message:
+              "Adresse email invalide ou non délivrable. Merci de la corriger.",
+          });
+        }
+
+        console.error(e);
+        return res
+          .status(500)
+          .json({ message: "Erreur lors de l'envoi de l'email." });
+      }
+
+      // 5) ✅ COMMIT BDD UNIQUEMENT si email OK
+      doc.placeOfSignature = String(placeOfSignature).trim();
+
+      doc.pdf = {
+        url: uploadedPdf.secure_url,
+        public_id: uploadedPdf.public_id,
+        version: (doc.pdf?.version || 0) + 1,
+        generatedAt: new Date(),
+      };
+
+      doc.signature = { signedAt: new Date() };
+      doc.status = "SIGNED";
       doc.sentAt = new Date();
       await doc.save();
 
@@ -500,69 +601,6 @@ router.post(
         pdf: doc.pdf,
         sentAt: doc.sentAt,
       });
-    } catch (e) {
-      console.error(e);
-      res.status(500).json({ message: "Erreur serveur" });
-    }
-  },
-);
-
-// ---------- SIGN CONTRACT (signature canvas -> base64 png) ----------
-router.post(
-  "/admin/documents/:id/sign",
-  authenticateToken,
-  async (req, res) => {
-    try {
-      const doc = await DocumentModel.findById(req.params.id);
-      if (!doc)
-        return res.status(404).json({ message: "Document introuvable" });
-
-      if (doc.type !== "CONTRACT") {
-        return res
-          .status(400)
-          .json({ message: "Signature réservée aux contrats" });
-      }
-      if (doc.status === "SIGNED") {
-        return res.status(400).json({ message: "Contrat déjà signé" });
-      }
-
-      const { signatureDataUrl } = req.body;
-      if (!signatureDataUrl || !signatureDataUrl.startsWith("data:image/")) {
-        return res.status(400).json({ message: "Signature invalide" });
-      }
-
-      const base64 = signatureDataUrl.split(",")[1];
-      const signatureBuffer = Buffer.from(base64, "base64");
-
-      // PDF signé
-      const pdfBuffer = await renderContractPdf(
-        doc.toObject(),
-        EMITTER,
-        signatureBuffer,
-      );
-
-      // ✅ 1 doc = 1 fichier => overwrite même public_id
-      const stablePublicId = getDocCloudinaryPublicId(doc._id);
-
-      // migration: si ancien public_id différent, on le supprime
-      if (doc.pdf?.public_id && doc.pdf.public_id !== stablePublicId) {
-        await destroyPdfIfExists(doc.pdf.public_id);
-      }
-
-      const uploadedPdf = await uploadPdfFromBuffer(pdfBuffer, stablePublicId);
-
-      doc.pdf = {
-        url: uploadedPdf.secure_url,
-        public_id: uploadedPdf.public_id,
-        version: (doc.pdf?.version || 0) + 1,
-        generatedAt: new Date(),
-      };
-
-      doc.signature = { signedAt: new Date() };
-      doc.status = "SIGNED";
-      await doc.save();
-
-      res.status(200).json({ message: "Contrat signé + envoyé", pdf: doc.pdf });
     } catch (e) {
       console.error(e);
       res.status(500).json({ message: "Erreur serveur" });

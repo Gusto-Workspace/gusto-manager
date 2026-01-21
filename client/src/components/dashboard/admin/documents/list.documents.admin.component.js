@@ -274,13 +274,13 @@ export default function ListDocumentsAdminComponent(props) {
                           onClick={() => goToEdit(doc)}
                           className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2"
                           aria-label={
-                            doc.status === "SENT" ? "Voir" : "Modifier"
+                            doc.status === "DRAFT" ? "Modifier" : "Voir"
                           }
                         >
-                          {doc.status === "SENT" ? (
-                            <Eye className="size-4 text-darkBlue/70" />
-                          ) : (
+                          {doc.status === "DRAFT" ? (
                             <PenSquare className="size-4 text-darkBlue/70" />
+                          ) : (
+                            <Eye className="size-4 text-darkBlue/70" />
                           )}
                         </button>
 
@@ -345,13 +345,6 @@ export default function ListDocumentsAdminComponent(props) {
                         <FileSignature className="size-4" />
                         Signer
                       </button>
-                    )}
-
-                    {doc.status === "SIGNED" && (
-                      <span className="inline-flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm font-semibold text-green-800">
-                        <CheckCircle2 className="size-4" />
-                        Signé
-                      </span>
                     )}
                   </div>
 

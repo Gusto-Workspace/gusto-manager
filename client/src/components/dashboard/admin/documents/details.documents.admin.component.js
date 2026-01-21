@@ -486,7 +486,6 @@ export default function DetailsDocumentAdminPage(props) {
           d._id === doc._id
             ? {
                 ...d,
-                ...(data.document || {}),
                 status: data.status || d.status,
                 pdf: data.pdf || d.pdf,
                 sentAt: data.sentAt || new Date().toISOString(),
@@ -567,7 +566,7 @@ export default function DetailsDocumentAdminPage(props) {
             </button>
           ) : null}
 
-          {canSign && (
+          {doc?.type === "CONTRACT" && doc?.status !== "SIGNED" && (
             <button
               onClick={() =>
                 router.push(`/dashboard/admin/documents/add/${doc?._id}/sign`)
@@ -1055,7 +1054,7 @@ export default function DetailsDocumentAdminPage(props) {
             </p>
             <p className="text-sm text-darkBlue/70 mt-2">
               {canResend
-                ? "Le renvoi va régénérer le PDF puis renvoyer le document au client."
+                ? "Le renvoi va générer le PDF puis renvoyer le document au client."
                 : "L’envoi va générer le PDF définitif, puis l’envoyer au client."}
               <br />
               {!canResend && (
