@@ -14,12 +14,13 @@ export default function AdminContext() {
   const [subscriptionsList, setSubscriptionsList] = useState([]);
   const [restaurantsList, setRestaurantsList] = useState([]);
   const [ownersSubscriptionsList, setOwnersSubscriptionsList] = useState([]);
-
   const [ownersLoading, setOwnersLoading] = useState(true);
   const [subscriptionsLoading, setSubscriptionsLoading] = useState(true);
   const [restaurantsLoading, setRestaurantsLoading] = useState(true);
   const [ownersSubscriptionsLoading, setOwnersSubscriptionsLoading] =
     useState(true);
+  const [documentsList, setDocumentsList] = useState([]);
+  const [documentsLoading, setDocumentsLoading] = useState(true);
 
   const [isAuth, setIsAuth] = useState(false);
 
@@ -50,7 +51,7 @@ export default function AdminContext() {
           .catch((error) => {
             console.error(
               "Erreur lors de la récupération des restaurants:",
-              error
+              error,
             );
             setOwnersLoading(false);
             localStorage.removeItem("token");
@@ -100,7 +101,7 @@ export default function AdminContext() {
           } else {
             console.error(
               "Erreur lors de la récupération des restaurants:",
-              error
+              error,
             );
             setRestaurantsLoading(false);
           }
@@ -131,9 +132,35 @@ export default function AdminContext() {
           } else {
             console.error(
               "Erreur lors de la récupération des abonnements des propriétaires:",
-              error
+              error,
             );
             setOwnersSubscriptionsLoading(false);
+          }
+        });
+    }
+  }
+
+  function fetchDocumentsList() {
+    const token = localStorage.getItem("admin-token");
+
+    if (!token) {
+      router.push("/dashboard/admin/login");
+    } else {
+      axios
+        .get(`${process.env.NEXT_PUBLIC_API_URL}/admin/documents`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        .then((response) => {
+          setDocumentsList(response.data.documents);
+          setDocumentsLoading(false);
+        })
+        .catch((error) => {
+          if (error.response && error.response.status === 403) {
+            localStorage.removeItem("admin-token");
+            router.push("/dashboard/admin/login");
+          } else {
+            console.error("Erreur récupération documents:", error);
+            setDocumentsLoading(false);
           }
         });
     }
@@ -156,6 +183,7 @@ export default function AdminContext() {
       fetchSubscriptionsList();
       fetchRestaurantsList();
       fetchOwnersSubscriptionsList();
+      fetchDocumentsList();
     }
   }, []);
 
@@ -175,6 +203,10 @@ export default function AdminContext() {
     setOwnersSubscriptionsList,
     ownersSubscriptionsList,
     ownersSubscriptionsLoading,
+    fetchDocumentsList,
+    documentsList,
+    setDocumentsList,
+    documentsLoading,
     setIsAuth,
     isAuth,
     logout,

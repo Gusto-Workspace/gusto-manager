@@ -4,6 +4,7 @@ import {
   useStripe,
   useElements,
 } from "@stripe/react-stripe-js";
+import { Loader2, AlertTriangle } from "lucide-react";
 
 export default function SepaMandateForm({
   clientSecret,
@@ -12,6 +13,7 @@ export default function SepaMandateForm({
 }) {
   const stripe = useStripe();
   const elements = useElements();
+
   const [errorMessage, setErrorMessage] = useState("");
   const [confirmLoading, setConfirmLoading] = useState(false);
 
@@ -20,8 +22,8 @@ export default function SepaMandateForm({
     if (!stripe || !elements) return;
 
     setConfirmLoading(true);
+    setErrorMessage("");
 
-    // 1) On soumet d’abord le Payment Element
     const { error: submitError } = await elements.submit();
     if (submitError) {
       setErrorMessage(submitError.message || "Erreur lors du submit()");
@@ -29,7 +31,6 @@ export default function SepaMandateForm({
       return;
     }
 
-    // 2) Puis on confirme la configuration du mandat SEPA
     const { error, setupIntent } = await stripe.confirmSetup({
       clientSecret,
       elements,
@@ -38,42 +39,56 @@ export default function SepaMandateForm({
 
     if (error) {
       setErrorMessage(
-        error.message || "Erreur inattendue lors de la confirmation du SEPA"
+        error.message || "Erreur inattendue lors de la confirmation du SEPA",
       );
       setConfirmLoading(false);
-    } else {
-      const pmId = setupIntent.payment_method;
-      setErrorMessage("");
-      handleSetupSuccess(pmId); // Callback de succès
+      return;
     }
+
+    handleSetupSuccess(setupIntent.payment_method);
+    setConfirmLoading(false);
   }
 
-  // Si paymentMethodId est déjà défini => on désactive les champs
+  // Parent gère l’état “bandeau” après confirmation
   const isMandateConfirmed = !!paymentMethodId;
-  const formStyle = isMandateConfirmed
-    ? { pointerEvents: "none", opacity: 0.6 }
-    : {};
 
   return (
     <form
       onSubmit={handleSubmit}
-      className="mt-4 p-4 border rounded"
-      style={formStyle}
+      className={`
+        rounded-2xl border border-darkBlue/10 bg-white/70 p-4 mt-3
+        ${isMandateConfirmed ? "opacity-60 pointer-events-none" : ""}
+      `}
     >
-      <PaymentElement />
+      <div className="mt-1">
+        <PaymentElement />
+      </div>
 
-      {/* N'affiche plus le bouton si le mandat est confirmé */}
       {!isMandateConfirmed && (
         <button
           type="submit"
-          className="mt-2 bg-blue text-white px-4 py-2 rounded disabled:opacity-50"
+          className="mt-3 inline-flex items-center gap-2 rounded-xl bg-blue px-4 py-2 text-white text-sm font-semibold shadow-sm hover:bg-blue/90 disabled:opacity-60"
           disabled={!stripe || !elements || confirmLoading}
         >
-          {confirmLoading ? "En cours..." : "Confirmer le mandat SEPA"}
+          {confirmLoading ? (
+            <>
+              <Loader2 className="size-4 animate-spin" />
+              En cours...
+            </>
+          ) : (
+            "Confirmer le mandat SEPA"
+          )}
         </button>
       )}
 
-      {errorMessage && <div className="mt-2 text-red-600">{errorMessage}</div>}
+      {errorMessage && (
+        <div className="mt-3 rounded-xl border border-red/20 bg-red/10 p-3 text-sm text-red">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="size-4 mt-0.5" />
+            <p className="min-w-0">{errorMessage}</p>
+          </div>
+        </div>
+      )}
     </form>
   );
 }

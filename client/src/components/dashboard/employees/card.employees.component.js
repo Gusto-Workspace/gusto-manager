@@ -14,6 +14,19 @@ export default function CardEmployeesComponent(props) {
   const { t } = useTranslation("employees");
   const router = useRouter();
 
+  const restaurantId = props.restaurantId; 
+
+  const profile =
+    (props.employee.restaurantProfiles || []).find(
+      (p) => String(p.restaurant) === String(restaurantId),
+    ) || null;
+
+  const snap = profile?.snapshot || {};
+
+  const displayFirstname = snap.firstname ?? props.employee.firstname ?? "";
+  const displayLastname = snap.lastname ?? props.employee.lastname ?? "";
+  const displayPost = snap.post ?? props.employee.post ?? "—";
+
   return (
     <div className="relative bg-white rounded-lg drop-shadow-sm px-6 pt-12 pb-2 flex flex-col items-center gap-2 h-fit z-[4]">
       <div className="absolute flex items-center justify-center -top-6 left-1/2 -translate-x-1/2 border border-darkBlue/5 w-14 h-14 rounded-full bg-lightGrey overflow-hidden">
@@ -29,10 +42,10 @@ export default function CardEmployeesComponent(props) {
       </div>
 
       <h3 className="font-semibold">
-        {props.employee.firstname} {props.employee.lastname}
+        {displayFirstname} {displayLastname}
       </h3>
 
-      <h4 className="text-sm opacity-70">{props.employee.post}</h4>
+      <h4 className="text-sm opacity-70">{displayPost}</h4>
       {!props.planning && (
         <>
           <hr className="bg-darkBlue h-[1px] w-[90%] opacity-20 mx-auto" />

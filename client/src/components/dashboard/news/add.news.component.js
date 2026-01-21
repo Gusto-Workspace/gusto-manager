@@ -179,7 +179,7 @@ export default function AddNewsComponent(props) {
                 className={`${inputCls} ${
                   errors.title ? "border-red ring-1 ring-red/30" : ""
                 }`}
-                placeholder={t("form.placeholders.title") || "-"}
+                placeholder="Écrire ..."
               />
               {errors.title && (
                 <p className={errorTextCls}>{t("form.errors.required")}</p>
@@ -200,36 +200,31 @@ export default function AddNewsComponent(props) {
           </div>
         </div>
 
-      {/* Carte image */}
-<div className={cardCls}>
-  {/* Header */}
-  <div className="flex items-center justify-between gap-2 text-darkBlue">
-    <div className="flex items-center gap-2">
-      <span className="inline-flex h-7 px-3 items-center justify-center rounded-full bg-darkBlue/5 text-[11px] font-semibold uppercase tracking-[0.12em] text-darkBlue">
-        {t("form.labels.image")}
-      </span>
-      <span className="text-[11px] text-darkBlue/40 italic">
-        {t("form.labels.optional")}
-      </span>
-    </div>
+        {/* Carte image */}
+        <div className={cardCls}>
+          {/* Header */}
+          <div className="flex items-center justify-between gap-2 text-darkBlue">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex h-7 px-3 items-center justify-center rounded-full bg-darkBlue/5 text-[11px] font-semibold uppercase tracking-[0.12em] text-darkBlue">
+                {t("form.labels.image")}
+              </span>
+              <span className="text-[11px] text-darkBlue/40 italic">
+                {t("form.labels.optional")}
+              </span>
+            </div>
+          </div>
 
-    <p className="hidden tablet:block text-[11px] text-darkBlue/45">
-      {t("form.labels.imageHelper") ||
-        "Format paysage conseillé • JPG ou PNG"}
-    </p>
-  </div>
+          {/* Contenu */}
+          <div className="mt-2 grid gap-4 tablet:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] items-start">
+            {/* Zone upload */}
+            <div className="flex flex-col gap-2">
+              <label className="text-[11px] font-semibold uppercase tracking-[0.08em] text-darkBlue/70">
+                {t("Ajouter une image")}
+              </label>
 
-  {/* Contenu */}
-  <div className="mt-2 grid gap-4 tablet:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] items-start">
-    {/* Zone upload */}
-    <div className="flex flex-col gap-2">
-      <label className="text-[11px] font-semibold uppercase tracking-[0.08em] text-darkBlue/70">
-        {t("Ajouter une image")}
-      </label>
-
-      <label
-        htmlFor="image-upload"
-        className={`
+              <label
+                htmlFor="image-upload"
+                className={`
           group flex flex-col justify-center items-center
           w-full min-h-[160px] px-4
           rounded-2xl border-2 border-dashed
@@ -240,76 +235,75 @@ export default function AddNewsComponent(props) {
           }
           cursor-pointer transition
         `}
-      >
-        <div className="flex flex-col items-center justify-center gap-2 text-center">
-          <div className="rounded-full bg-darkBlue/5 p-3 group-hover:bg-darkBlue/10 transition">
-            <UploadSvg />
+              >
+                <div className="flex flex-col items-center justify-center gap-2 text-center">
+                  <div className="rounded-full bg-darkBlue/5 p-3 group-hover:bg-darkBlue/10 transition">
+                    <UploadSvg />
+                  </div>
+
+                  {selectedFile ? (
+                    <p className="text-sm font-semibold text-darkBlue">
+                      {t("form.labels.selected")}: {selectedFile.name}
+                    </p>
+                  ) : (
+                    <p className="text-sm font-semibold text-darkBlue">
+                      {t("form.labels.choose")}
+                    </p>
+                  )}
+
+                  <p className="text-[11px] text-darkBlue/50">
+                    {t("form.labels.size")}: 10 MB • JPG / PNG
+                  </p>
+                </div>
+
+                <input
+                  id="image-upload"
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  {...register("image")}
+                  onChange={handleFileChange}
+                />
+              </label>
+
+              {fileError && <p className={errorTextCls}>{fileError}</p>}
+            </div>
+
+            {/* Preview */}
+            <div className="flex flex-col gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-darkBlue/70">
+                {t("Aperçu")}
+              </span>
+
+              {imagePreview ? (
+                <div className="relative rounded-2xl overflow-hidden border border-darkBlue/10 bg-white/80 shadow-[0_10px_30px_rgba(19,30,54,0.06)]">
+                  <div className="aspect-[4/3] w-full">
+                    <img
+                      src={imagePreview}
+                      alt="Preview"
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+
+                  {!isLoading && (
+                    <button
+                      type="button"
+                      onClick={handleRemoveImage}
+                      disabled={isLoading}
+                      className="absolute inset-0 flex items-center justify-center bg-black/0 hover:bg-black/45 transition"
+                    >
+                      <RemoveSvg width={40} height={40} fillColor="white" />
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="flex h-[160px] w-full items-center justify-center rounded-2xl border border-dashed border-darkBlue/12 bg-white/60 text-[11px] text-darkBlue/40">
+                  Aucune image sélectionnée
+                </div>
+              )}
+            </div>
           </div>
-
-          {selectedFile ? (
-            <p className="text-sm font-semibold text-darkBlue">
-              {t("form.labels.selected")}: {selectedFile.name}
-            </p>
-          ) : (
-            <p className="text-sm font-semibold text-darkBlue">
-              {t("form.labels.choose")}
-            </p>
-          )}
-
-          <p className="text-[11px] text-darkBlue/50">
-            {t("form.labels.size")}: 10 MB • JPG / PNG
-          </p>
         </div>
-
-        <input
-          id="image-upload"
-          type="file"
-          accept="image/*"
-          className="hidden"
-          {...register("image")}
-          onChange={handleFileChange}
-        />
-      </label>
-
-      {fileError && <p className={errorTextCls}>{fileError}</p>}
-    </div>
-
-    {/* Preview */}
-    <div className="flex flex-col gap-2">
-      <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-darkBlue/70">
-        {t("Aperçu")}
-      </span>
-
-      {imagePreview ? (
-        <div className="relative rounded-2xl overflow-hidden border border-darkBlue/10 bg-white/80 shadow-[0_10px_30px_rgba(19,30,54,0.06)]">
-          <div className="aspect-[4/3] w-full">
-            <img
-              src={imagePreview}
-              alt="Preview"
-              className="h-full w-full object-cover"
-            />
-          </div>
-
-          {!isLoading && (
-            <button
-              type="button"
-              onClick={handleRemoveImage}
-              disabled={isLoading}
-              className="absolute inset-0 flex items-center justify-center bg-black/0 hover:bg-black/45 transition"
-            >
-              <RemoveSvg width={40} height={40} fillColor="white" />
-            </button>
-          )}
-        </div>
-      ) : (
-        <div className="flex h-[160px] w-full items-center justify-center rounded-2xl border border-dashed border-darkBlue/12 bg-white/60 text-[11px] text-darkBlue/40">
-          {t("form.labels.noImage") || "Aucune image sélectionnée"}
-        </div>
-      )}
-    </div>
-  </div>
-</div>
-
 
         {/* Boutons bas de page */}
         <div className="flex flex-col gap-3 tablet:flex-row tablet:justify-start pt-1">

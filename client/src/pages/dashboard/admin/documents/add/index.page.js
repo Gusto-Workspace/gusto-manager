@@ -10,11 +10,10 @@ import { GlobalContext } from "@/contexts/global.context";
 
 // COMPONENTS
 import NavAdminComponent from "@/components/dashboard/admin/_shared/nav/nav.admin.component";
-import ListSubscriptionsAdminComponent from "@/components/dashboard/admin/subscriptions/list-subscriptions.admin.component";
+import AddDocumentAdminPage from "@/components/dashboard/admin/documents/add.documents.admin.component";
 
-export default function SubscriptionsPage(props) {
+export default function AddSubscriptionsPage(props) {
   const { adminContext } = useContext(GlobalContext);
-
   let title;
   let description;
 
@@ -40,11 +39,7 @@ export default function SubscriptionsPage(props) {
         <NavAdminComponent />
 
         <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 min-h-screen">
-          <ListSubscriptionsAdminComponent
-            loading={adminContext.ownersSubscriptionsLoading}
-            setOwnersSubscriptionsList={adminContext.setOwnersSubscriptionsList}
-            ownersSubscriptionsList={adminContext.ownersSubscriptionsList}
-          />
+          <AddDocumentAdminPage />
         </div>
       </div>
     </>

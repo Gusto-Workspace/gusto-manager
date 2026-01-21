@@ -5,7 +5,6 @@ import Head from "next/head";
 // I18N
 import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
-import { useTranslation } from "next-i18next";
 
 // CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
@@ -17,7 +16,6 @@ import NoAvailableComponent from "@/components/_shared/options/no-available.opti
 import DetailsEmployeesComponent from "@/components/dashboard/employees/details.employees.component";
 
 export default function EmployeeDetailsPage(props) {
-  const { t } = useTranslation("");
   const { restaurantContext } = useContext(GlobalContext);
   const router = useRouter();
   const { employeeId } = router.query;

@@ -34,9 +34,8 @@ export default function FixedMenuComponent(props) {
 
   const currencySymbol = locale === "fr" ? "€" : "$";
 
-  const categories =
-    restaurantContext?.restaurantData?.dish_categories || [];
-    
+  const categories = restaurantContext?.restaurantData?.dish_categories || [];
+
   const [isLoading, setIsLoading] = useState(false);
   const [errorFields, setErrorFields] = useState([]);
 
@@ -97,7 +96,7 @@ export default function FixedMenuComponent(props) {
           }
           return catAcc;
         },
-        []
+        [],
       );
       const emptyPrice = combo.price === "";
 
@@ -232,7 +231,7 @@ export default function FixedMenuComponent(props) {
         {combinationFields.map((field, i) => {
           const hasError = hasErrorsForCombo(i);
           const priceHasError = errorFields.some(
-            (error) => error.comboIndex === i && error.emptyPrice
+            (error) => error.comboIndex === i && error.emptyPrice,
           );
           const isOpen = openIndex === i;
 
@@ -270,7 +269,7 @@ export default function FixedMenuComponent(props) {
                     {hasError && (
                       <div className="flex items-center gap-1 text-[11px] text-red">
                         <AlertCircle className="h-3.5 w-3.5" />
-                        <span>{t("form.fixed.labels.missingFields")}</span>
+                        <span>Le prix est requis</span>
                       </div>
                     )}
                   </div>

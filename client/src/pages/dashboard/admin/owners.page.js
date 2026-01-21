@@ -41,8 +41,8 @@ export default function OwnersPage(props) {
   function handleEditOwner(updatedOwner) {
     adminContext.setOwnersList((prevOwners) =>
       prevOwners.map((owner) =>
-        owner._id === updatedOwner._id ? updatedOwner : owner
-      )
+        owner._id === updatedOwner._id ? updatedOwner : owner,
+      ),
     );
     setSelectedOwner(null);
   }
@@ -71,7 +71,7 @@ export default function OwnersPage(props) {
       <div className="flex">
         <NavAdminComponent />
 
-        <div className="ml-[250px] bg-lightGrey text-darkBlue overflow-y-auto flex-1 p-6 h-screen flex flex-col gap-6">
+        <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 min-h-screen">
           <ListOwnersAdminComponent
             handleAddClick={handleAddClick}
             handleEditClick={handleEditClick}
