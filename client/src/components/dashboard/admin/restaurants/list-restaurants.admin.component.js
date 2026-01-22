@@ -42,8 +42,6 @@ function displayWebsite(input) {
 }
 
 export default function ListRestaurantsAdminComponent(props) {
-  console.log(props.isAdmin);
-
   const { t } = useTranslation("admin");
 
   const [restaurantToDelete, setRestaurantToDelete] = useState(null);
