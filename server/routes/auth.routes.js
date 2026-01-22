@@ -29,9 +29,9 @@ router.post("/admin/login", async (req, res) => {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    const token = jwt.sign({ id: admin._id, role: "admin" }, JWT_SECRET);
+    const token = jwt.sign({ id: admin._id, role: admin.role }, JWT_SECRET);
 
-    res.json({ token });
+    res.json({ token, role: admin.role });
   } catch (err) {
     res.status(500).json({ message: "Server error" });
   }
@@ -46,7 +46,7 @@ router.post("/user/login", async (req, res) => {
     // OWNER
     const owner = await OwnerModel.findOne({ email }).populate(
       "restaurants",
-      "name _id"
+      "name _id",
     );
     if (owner) {
       const isMatch = await bcrypt.compare(password, owner.password);
@@ -63,7 +63,7 @@ router.post("/user/login", async (req, res) => {
           stripeCustomerId: owner.stripeCustomerId,
           profilePictureUrl: owner.profilePicture?.url || null,
         },
-        JWT_SECRET
+        JWT_SECRET,
       );
       return res.json({ token, owner });
     }
@@ -82,7 +82,7 @@ router.post("/user/login", async (req, res) => {
     // Tous les restaurants où il est employé
     const restaurants = await RestaurantModel.find(
       { employees: employee._id },
-      "name _id"
+      "name _id",
     ).lean();
 
     const token = jwt.sign(
@@ -96,7 +96,7 @@ router.post("/user/login", async (req, res) => {
         // options seront ajoutées après sélection de restaurant
       },
       JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: "7d" },
     );
 
     const plainEmployee = employee.toObject();
@@ -116,7 +116,7 @@ function findRestaurantProfile(employee, restaurantId) {
   if (!employee || !Array.isArray(employee.restaurantProfiles)) return null;
   const target = String(restaurantId);
   return employee.restaurantProfiles.find(
-    (p) => String(p.restaurant) === target
+    (p) => String(p.restaurant) === target,
   );
 }
 
@@ -141,7 +141,7 @@ router.post("/user/select-restaurant", async (req, res) => {
       }
 
       const worksHere = (employee.restaurants || []).some(
-        (id) => String(id) === String(restaurantId)
+        (id) => String(id) === String(restaurantId),
       );
       if (!worksHere) {
         return res.status(403).json({ message: "Forbidden" });

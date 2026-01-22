@@ -82,6 +82,7 @@ export default function RestaurantsPage(props) {
             restaurants={adminContext.restaurantsList}
             setRestaurants={adminContext.setRestaurantsList}
             loading={adminContext.restaurantsLoading}
+            isAdmin={adminContext.isAdmin}
           />
         </div>
 

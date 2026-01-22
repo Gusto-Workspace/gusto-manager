@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 
 export default function ListOwnersAdminComponent(props) {
+  console.log(props.isAdmin);
+  
   const { t } = useTranslation("admin");
 
   const [ownerToDelete, setOwnerToDelete] = useState(null);
@@ -32,7 +34,9 @@ export default function ListOwnersAdminComponent(props) {
     setLoadingDeleteId(ownerId);
 
     try {
-      await axios.delete(`${process.env.NEXT_PUBLIC_API_URL}/admin/owners/${ownerId}`);
+      await axios.delete(
+        `${process.env.NEXT_PUBLIC_API_URL}/admin/owners/${ownerId}`,
+      );
 
       props.setOwners((prev) => (prev || []).filter((o) => o._id !== ownerId));
       setOwnerToDelete(null);
@@ -60,7 +64,8 @@ export default function ListOwnersAdminComponent(props) {
               {t("nav.owners")}
             </h1>
             <p className="text-xs text-darkBlue/50">
-              {owners.length} {owners.length > 1 ? "propriétaires" : "propriétaire"}
+              {owners.length}{" "}
+              {owners.length > 1 ? "propriétaires" : "propriétaire"}
             </p>
           </div>
 
@@ -117,7 +122,8 @@ export default function ListOwnersAdminComponent(props) {
                       <p className="mt-1 inline-flex items-center gap-2 text-xs text-darkBlue/50">
                         <Calendar className="size-3" />
                         <span className="truncate">
-                          {t("owner.list.createdAt", "Créé le")} {fmtDate(owner?.created_at)}
+                          {t("owner.list.createdAt", "Créé le")}{" "}
+                          {fmtDate(owner?.created_at)}
                         </span>
                       </p>
                     </div>
@@ -127,16 +133,18 @@ export default function ListOwnersAdminComponent(props) {
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => props.handleEditClick(owner)}
-                          className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2"
+                          className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2 disabled:opacity-25"
                           aria-label={t("owner.list.buttons.edit")}
+                          disabled={!props?.isAdmin}
                         >
                           <Pencil className="size-4 text-darkBlue/70" />
                         </button>
 
                         <button
                           onClick={() => setOwnerToDelete(owner._id)}
-                          className="inline-flex items-center justify-center rounded-xl border border-red/20 bg-red/10 hover:bg-red/15 transition p-2"
+                          className="inline-flex items-center justify-center rounded-xl border border-red/20 bg-red/10 hover:bg-red/15 transition p-2 disabled:opacity-25"
                           aria-label={t("buttons.delete")}
+                          disabled={!props?.isAdmin}
                         >
                           <Trash2 className="size-4 text-red" />
                         </button>
@@ -170,7 +178,9 @@ export default function ListOwnersAdminComponent(props) {
                       <Store className="size-4 mt-0.5 text-darkBlue/40" />
                       {restaurantsLabel ? (
                         <p className="min-w-0">
-                          <span className="line-clamp-2">{restaurantsLabel}</span>
+                          <span className="line-clamp-2">
+                            {restaurantsLabel}
+                          </span>
                         </p>
                       ) : (
                         <p className="italic text-darkBlue/40">
@@ -211,10 +221,16 @@ export default function ListOwnersAdminComponent(props) {
 
                         <div className="min-w-0">
                           <p className="text-sm font-semibold text-darkBlue">
-                            {t("owners.list.confirmDeleteTitle", "Supprimer ce propriétaire ?")}
+                            {t(
+                              "owners.list.confirmDeleteTitle",
+                              "Supprimer ce propriétaire ?",
+                            )}
                           </p>
                           <p className="text-xs text-darkBlue/60 mt-0.5">
-                            {t("owners.list.confirmDelete", "Cette action est irréversible.")}
+                            {t(
+                              "owners.list.confirmDelete",
+                              "Cette action est irréversible.",
+                            )}
                           </p>
                         </div>
                       </div>
