@@ -431,10 +431,14 @@ export default function DetailsDocumentAdminPage(props) {
       return;
     }
 
+    // ✅ 1) Pré-ouvrir la fenêtre SYNCHRONE (sinon Safari bloque)
+    const popup = window.open("about:blank", "_blank");
+
     setPdfLoading(true);
     setErrorMsg("");
 
     try {
+      // ✅ 2) Fetch du PDF en blob (avec Authorization)
       const res = await axios.get(
         `${process.env.NEXT_PUBLIC_API_URL}/admin/documents/${doc._id}/pdf/preview`,
         { ...axiosCfg(), responseType: "blob" },
@@ -442,10 +446,21 @@ export default function DetailsDocumentAdminPage(props) {
 
       const file = new Blob([res.data], { type: "application/pdf" });
       const url = window.URL.createObjectURL(file);
-      window.open(url, "_blank", "noopener,noreferrer");
+
+      // ✅ 3) Rediriger la popup vers le blob
+      if (popup) {
+        popup.location.href = url;
+      } else {
+        // fallback si popup quand même bloquée
+        window.location.href = url;
+      }
+
       setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
     } catch (err) {
       console.error(err);
+      try {
+        popup?.close?.();
+      } catch {}
       setErrorMsg("Erreur lors de l’aperçu PDF.");
     } finally {
       setPdfLoading(false);
