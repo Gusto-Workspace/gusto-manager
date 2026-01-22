@@ -32,7 +32,7 @@ export default function FormAdminComponent() {
       .then((response) => {
         const { token } = response.data;
         localStorage.setItem("admin-token", token);
-
+        adminContext.syncAdminFromToken();
         adminContext.fetchOwnersList();
         adminContext.fetchSubscriptionsList();
         adminContext.fetchRestaurantsList();

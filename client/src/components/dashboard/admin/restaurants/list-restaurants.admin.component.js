@@ -42,6 +42,8 @@ function displayWebsite(input) {
 }
 
 export default function ListRestaurantsAdminComponent(props) {
+  console.log(props.isAdmin);
+
   const { t } = useTranslation("admin");
 
   const [restaurantToDelete, setRestaurantToDelete] = useState(null);
@@ -181,16 +183,18 @@ export default function ListRestaurantsAdminComponent(props) {
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => props.handleEditClick(restaurant)}
-                          className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2"
+                          className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2 disabled:opacity-25"
                           aria-label={t("restaurants.form.buttons.edit")}
+                          disabled={!props?.isAdmin}
                         >
                           <Pencil className="size-4 text-darkBlue/70" />
                         </button>
 
                         <button
                           onClick={() => setRestaurantToDelete(restaurant._id)}
-                          className="inline-flex items-center justify-center rounded-xl border border-red/20 bg-red/10 hover:bg-red/15 transition p-2"
+                          className="inline-flex items-center justify-center rounded-xl border border-red/20 bg-red/10 hover:bg-red/15 transition p-2 disabled:opacity-25"
                           aria-label={t("buttons.delete")}
+                          disabled={!props?.isAdmin}
                         >
                           <Trash2 className="size-4 text-red" />
                         </button>

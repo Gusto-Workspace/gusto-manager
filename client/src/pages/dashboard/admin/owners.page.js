@@ -1,4 +1,4 @@
-import { useContext, useState } from "react";
+import { useContext, useMemo, useState } from "react";
 import Head from "next/head";
 
 // I18N
@@ -78,6 +78,7 @@ export default function OwnersPage(props) {
             owners={adminContext.ownersList}
             setOwners={adminContext.setOwnersList}
             loading={adminContext.ownersLoading}
+            isAdmin={adminContext.isAdmin}
           />
         </div>
 

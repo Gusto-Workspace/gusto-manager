@@ -24,6 +24,9 @@ export default function AdminContext() {
 
   const [isAuth, setIsAuth] = useState(false);
 
+  const [adminRole, setAdminRole] = useState(null);
+  const isAdmin = adminRole === "admin";
+
   function fetchOwnersList() {
     const token = localStorage.getItem("admin-token");
 
@@ -166,8 +169,30 @@ export default function AdminContext() {
     }
   }
 
+  function syncAdminFromToken() {
+    if (typeof window === "undefined") return null;
+
+    const token = localStorage.getItem("admin-token");
+    if (!token) {
+      setAdminRole(null);
+      return null;
+    }
+
+    try {
+      const decoded = jwtDecode(token);
+      const role = decoded?.role || null;
+      setAdminRole(role);
+      return role;
+    } catch (e) {
+      localStorage.removeItem("admin-token");
+      setAdminRole(null);
+      return null;
+    }
+  }
+
   function logout() {
     localStorage.removeItem("admin-token");
+    setAdminRole(null);
     setOwnersList([]);
     setSubscriptionsList([]);
     setRestaurantsList([]);
@@ -179,6 +204,7 @@ export default function AdminContext() {
     const { pathname } = router;
 
     if (pathname.includes("/dashboard/admin")) {
+      syncAdminFromToken();
       fetchOwnersList();
       fetchSubscriptionsList();
       fetchRestaurantsList();
@@ -208,6 +234,9 @@ export default function AdminContext() {
     setDocumentsList,
     documentsLoading,
     setIsAuth,
+    adminRole,
+    isAdmin,
+    syncAdminFromToken,
     isAuth,
     logout,
   };
