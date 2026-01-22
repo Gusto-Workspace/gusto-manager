@@ -108,6 +108,9 @@ export default function ListDocumentsAdminComponent(props) {
     const config = getAuthConfigOrRedirect();
     if (!config) return;
 
+    // ✅ pré-ouvrir direct au clic
+    const popup = window.open("about:blank", "_blank");
+
     setLoadingPreviewId(documentId);
     try {
       const res = await axios.get(
@@ -117,10 +120,17 @@ export default function ListDocumentsAdminComponent(props) {
 
       const file = new Blob([res.data], { type: "application/pdf" });
       const url = window.URL.createObjectURL(file);
-      window.open(url, "_blank", "noopener,noreferrer");
+
+      if (popup) popup.location.href = url;
+      else window.location.href = url;
+
       setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
     } catch (error) {
       console.error("Erreur lors du preview PDF:", error);
+      try {
+        popup?.close?.();
+      } catch {}
+
       if (error?.response?.status === 403) {
         localStorage.removeItem("admin-token");
         router.push("/dashboard/admin/login");
