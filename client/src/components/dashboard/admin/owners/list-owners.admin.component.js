@@ -21,8 +21,6 @@ import {
 } from "lucide-react";
 
 export default function ListOwnersAdminComponent(props) {
-  console.log(props.isAdmin);
-  
   const { t } = useTranslation("admin");
 
   const [ownerToDelete, setOwnerToDelete] = useState(null);
