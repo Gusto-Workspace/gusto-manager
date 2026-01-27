@@ -1,7 +1,7 @@
 export default function CalendarMonthComponent(props) {
   const weekDays = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
   return (
-    <div className="flex flex-col gap-3 mt-6">
+    <div className="flex flex-col gap-3 midTablet:mt-6">
       {/* en-têtes jours de semaine */}
       <div className="grid grid-cols-7 gap-1 midTablet:gap-2 text-center text-sm opacity-70">
         {weekDays.map((w) => (
@@ -24,7 +24,7 @@ export default function CalendarMonthComponent(props) {
             : "bg-white/60 border-transparent opacity-60";
 
           const matchOutline = hasMatch
-            ? " outline outline-1 outline-[#131E36]/40"
+            ? " outline outline-1 outline-[#131E36]/20"
             : "";
           const selectedOutline = isSelected
             ? " outline outline-2 outline-[#131E36]"

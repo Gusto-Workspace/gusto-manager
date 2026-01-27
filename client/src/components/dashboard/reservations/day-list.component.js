@@ -9,7 +9,6 @@ import DetailsDrawerReservationsComponent from "./details-drawer.reservations.co
 export default function DayListComponent(props) {
   const { t } = useTranslation("reservations");
 
-  // ✅ HOOKS TOUJOURS EN PREMIER (important)
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedReservation, setSelectedReservation] = useState(null);
 
@@ -76,7 +75,6 @@ export default function DayListComponent(props) {
       <div className="flex flex-col gap-6">
         {orderedTimes.map((time) => (
           <div key={time} className="flex flex-col gap-3">
-            {/* ✅ HR modernisé (celui validé) */}
             <div className="relative flex items-center gap-3">
               <div className="h-px flex-1 bg-darkBlue/10" />
 
@@ -94,7 +92,7 @@ export default function DayListComponent(props) {
             </div>
 
             {/* ✅ Mobile: liste / MidTablet+: grid */}
-            <ul className="flex flex-col gap-3 midTablet:grid midTablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-4 midTablet:gap-4">
+            <ul className="flex flex-col gap-2 midTablet:grid midTablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-4">
               {byTime[time].map((reservation) => (
                 <CardReservationComponent
                   key={reservation._id}

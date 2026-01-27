@@ -22,7 +22,7 @@ export default function DayHeaderComponent(props) {
           ✅ MOBILE WEBAPP HEADER
           (uniquement < midTablet)
           ========================= */}
-      <div className="midTablet:hidden">
+      <div className="midTablet:hidden safe-top bg-lightGrey">
         {/* Sticky container */}
         <div>
           {/* Top bar */}
@@ -110,7 +110,7 @@ export default function DayHeaderComponent(props) {
                 )}
                 value={props.searchTerm}
                 onChange={props.handleSearchChangeDay}
-                className={`h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/70 ${props.searchTerm ? "pr-10" : "pr-4"} pl-8 text-sm`}
+                className={`h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/70 ${props.searchTerm ? "pr-10" : "pr-4"} pl-8 text-base`}
               />
               {props.searchTerm && (
                 <button
