@@ -12,7 +12,7 @@ import { daysOfWeeksData } from "@/_assets/data/days-of-week.data";
 import axios from "axios";
 
 // COMPONENTS
-import DoubleSkeletonComonent from "../../_shared/skeleton/double-skeleton.component";
+import DoubleSkeletonComponent from "../../_shared/skeleton/double-skeleton.component";
 import { Edit, Loader2, Save, XCircle } from "lucide-react";
 
 export default function HoursRestaurantComponent(props) {
@@ -263,7 +263,7 @@ export default function HoursRestaurantComponent(props) {
               {/* Contenu horaire */}
               <div className="w-full">
                 {props.dataLoading ? (
-                  <DoubleSkeletonComonent
+                  <DoubleSkeletonComponent
                     justify={
                       props.reservations
                         ? "justify-center midTablet:justify-end"

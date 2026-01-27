@@ -1,76 +1,55 @@
 import { useRouter } from "next/router";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import axios from "axios";
 import { useTranslation } from "next-i18next";
 
 // COMPONENTS
 import SimpleSkeletonComponent from "@/components/_shared/skeleton/simple-skeleton.component";
-import DoubleSkeletonComonent from "@/components/_shared/skeleton/double-skeleton.component";
+import DoubleSkeletonComponent from "@/components/_shared/skeleton/double-skeleton.component";
 
 // ICONS (lucide)
 import {
   Plus,
   Receipt,
   Calendar,
-  User,
   Mail,
   Store,
-  CreditCard,
   Loader2,
   ChevronDown,
   ExternalLink,
   AlertTriangle,
   Tag,
+  X,
 } from "lucide-react";
+import InvoicesDrawerSubscriptionsComponent from "./invoices-drawer-subscriptions.admin.component";
 
 export default function ListSubscriptionsAdminComponent(props) {
   const { t } = useTranslation("admin");
   const router = useRouter();
-
-  const [invoicesBySub, setInvoicesBySub] = useState({});
-  const [openSubId, setOpenSubId] = useState(null);
-  const [loadingInvoicesId, setLoadingInvoicesId] = useState(null);
 
   const subscriptions = useMemo(
     () => props?.ownersSubscriptionsList || [],
     [props?.ownersSubscriptionsList],
   );
 
+  const [invoicesBySub, setInvoicesBySub] = useState({});
+  const [loadingInvoicesId, setLoadingInvoicesId] = useState(null);
+
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [selectedSubId, setSelectedSubId] = useState(null);
+
+  const selectedSub = useMemo(() => {
+    if (!selectedSubId) return null;
+    return subscriptions.find((s) => s.id === selectedSubId) || null;
+  }, [selectedSubId, subscriptions]);
+
+  const selectedInvoices = useMemo(() => {
+    if (!selectedSubId) return [];
+    return invoicesBySub[selectedSubId] || [];
+  }, [invoicesBySub, selectedSubId]);
+
   function handleAddClick() {
     router.push(`/dashboard/admin/subscriptions/add`);
-  }
-
-  function toggleInvoices(subscriptionId) {
-    // si déjà ouvert => fermer
-    if (openSubId === subscriptionId) {
-      setOpenSubId(null);
-      return;
-    }
-
-    // si déjà fetch => juste ouvrir
-    if (invoicesBySub[subscriptionId]) {
-      setOpenSubId(subscriptionId);
-      return;
-    }
-
-    // sinon fetch + ouvrir
-    setLoadingInvoicesId(subscriptionId);
-
-    axios
-      .get(
-        `${process.env.NEXT_PUBLIC_API_URL}/admin/subscription-invoices/${subscriptionId}`,
-      )
-      .then((response) => {
-        setInvoicesBySub((prev) => ({
-          ...prev,
-          [subscriptionId]: response.data.invoices,
-        }));
-        setOpenSubId(subscriptionId);
-      })
-      .catch((error) =>
-        console.error("Erreur lors de la récupération des factures :", error),
-      )
-      .finally(() => setLoadingInvoicesId(null));
   }
 
   const fmtStripeDate = (seconds) => {
@@ -88,10 +67,41 @@ export default function ListSubscriptionsAdminComponent(props) {
     return { cls: "text-red", label: t("subscriptions.list.unpaid") };
   };
 
+  function closeDrawer() {
+    setDrawerOpen(false);
+    // optionnel : ne pas reset selectedSubId pour garder l’item sélectionné
+    // setSelectedSubId(null);
+  }
+
+  async function openInvoicesDrawer(subscriptionId) {
+    setSelectedSubId(subscriptionId);
+    setDrawerOpen(true);
+
+    // déjà en cache => pas besoin de refetch
+    if (invoicesBySub[subscriptionId]) return;
+
+    setLoadingInvoicesId(subscriptionId);
+    try {
+      const response = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/admin/subscription-invoices/${subscriptionId}`,
+      );
+      setInvoicesBySub((prev) => ({
+        ...prev,
+        [subscriptionId]: response.data.invoices || [],
+      }));
+    } catch (error) {
+      console.error("Erreur lors de la récupération des factures :", error);
+      // on met quand même un tableau vide pour éviter refetch infini au clic
+      setInvoicesBySub((prev) => ({ ...prev, [subscriptionId]: [] }));
+    } finally {
+      setLoadingInvoicesId(null);
+    }
+  }
+
   return (
-    <section className="flex flex-col gap-4">
+    <section className="flex flex-col gap-4 relative">
       {/* Header sticky */}
-      <div className="sticky top-6 z-20 ml-16 mobile:ml-12 tablet:ml-0 px-4 pt-4 pb-3 bg-white/70 backdrop-blur border-b rounded-xl border-darkBlue/10">
+      <div className="sticky top-6 z-20 ml-16 mobile:ml-12 tablet:ml-0 px-4 pt-4 pb-3 bg-white/50 backdrop-blur border-b rounded-xl border-darkBlue/10">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <h1 className="text-lg font-semibold text-darkBlue truncate">
@@ -122,16 +132,16 @@ export default function ListSubscriptionsAdminComponent(props) {
             {Array.from({ length: 3 }, (_, i) => (
               <div
                 key={i}
-                className="rounded-2xl bg-white/60 border border-darkBlue/10 shadow-sm p-5 flex flex-col gap-3"
+                className="rounded-2xl bg-white/50 border border-darkBlue/10 shadow-sm p-5 flex flex-col gap-3"
               >
-                <DoubleSkeletonComonent justify="justify-start" />
+                <DoubleSkeletonComponent justify="justify-start" />
                 <SimpleSkeletonComponent />
                 <SimpleSkeletonComponent />
               </div>
             ))}
           </div>
         ) : subscriptions.length === 0 ? (
-          <div className="rounded-xl bg-white/60 border border-darkBlue/10 shadow-sm p-6 text-center">
+          <div className="rounded-xl bg-white/50 border border-darkBlue/10 shadow-sm p-6 text-center">
             <div className="mx-auto mb-3 size-11 rounded-2xl bg-darkBlue/5 flex items-center justify-center">
               <AlertTriangle className="size-5 text-darkBlue/60" />
             </div>
@@ -147,17 +157,15 @@ export default function ListSubscriptionsAdminComponent(props) {
             {subscriptions.map((sub) => {
               const lastInvoice = sub?.latest_invoice || null;
               const st = statusUi(lastInvoice?.status);
-
-              const isOpen = openSubId === sub.id;
               const isLoadingInv = loadingInvoicesId === sub.id;
-              const invoices = invoicesBySub[sub.id] || [];
+              const isSelected = selectedSubId === sub.id;
 
               return (
                 <li
                   key={sub.id}
-                  className="group rounded-xl bg-white/60 border border-darkBlue/10 shadow-sm hover:shadow-md transition-shadow p-4 flex flex-col gap-3 overflow-hidden"
+                  className={`group rounded-xl bg-white/50 border border-darkBlue/10 shadow-sm hover:shadow-md transition-shadow p-4 flex flex-col gap-3 overflow-hidden`}
                 >
-                  {/* Header row: Store icon + restaurant name */}
+                  {/* Header row */}
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex items-start gap-2">
                       <div className="mt-0.5 inline-flex size-9 items-center justify-center rounded-xl bg-darkBlue/5 border border-darkBlue/10">
@@ -177,27 +185,22 @@ export default function ListSubscriptionsAdminComponent(props) {
                     </div>
 
                     <button
-                      onClick={() => toggleInvoices(sub.id)}
+                      onClick={() => openInvoicesDrawer(sub.id)}
                       className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2"
-                      aria-label={
-                        isOpen
-                          ? t("subscriptions.list.hideInvoices")
-                          : t("subscriptions.list.showInvoices")
-                      }
+                      aria-label={t(
+                        "subscriptions.list.showInvoices",
+                        "Afficher les factures",
+                      )}
                     >
                       {isLoadingInv ? (
                         <Loader2 className="size-4 animate-spin text-darkBlue/70" />
                       ) : (
-                        <ChevronDown
-                          className={`size-4 text-darkBlue/70 transition-transform ${
-                            isOpen ? "rotate-180" : ""
-                          }`}
-                        />
+                        <ExternalLink className="size-4 text-darkBlue/70" />
                       )}
                     </button>
                   </div>
 
-                  {/* Subscription data (type + price) */}
+                  {/* Subscription data */}
                   <span className="w-fit inline-flex items-center gap-2 rounded-full border border-darkBlue/10 bg-white/70 px-3 py-1 text-xs font-semibold text-darkBlue">
                     <Tag className="size-3.5 text-darkBlue/50" />
                     <span className="truncate">
@@ -208,13 +211,11 @@ export default function ListSubscriptionsAdminComponent(props) {
 
                   <div className="flex flex-col gap-2">
                     {lastInvoice?.status && (
-                      <span className="inline-flex items-center gap-2  border-darkBlue/10 pt-2 text-xs font-semibold text-darkBlue">
+                      <span className="inline-flex items-center gap-2 pt-2 text-xs font-semibold text-darkBlue">
                         <Receipt className="size-3.5 text-darkBlue/50" />
                         <span className={st.cls}>{st.label}</span>
                       </span>
                     )}
-
-                    {/* Infos */}
 
                     <div className="flex items-start gap-2 text-sm text-darkBlue/80">
                       <Mail className="size-4 mt-0.5 text-darkBlue/40" />
@@ -238,78 +239,23 @@ export default function ListSubscriptionsAdminComponent(props) {
                       </div>
                     )}
                   </div>
-
-                  {/* Invoices drawer */}
-                  <div
-                    className={`transition-all duration-200 ${
-                      isOpen
-                        ? "max-h-[500px] opacity-100 mt-1"
-                        : "max-h-0 opacity-0"
-                    } overflow-hidden`}
-                  >
-                    <div className="rounded-xl border border-darkBlue/10 bg-white/70 p-3">
-                      {invoices.length === 0 && !isLoadingInv ? (
-                        <p className="text-sm text-darkBlue/60">
-                          {t(
-                            "subscriptions.list.noInvoices",
-                            "Aucune facture à afficher.",
-                          )}
-                        </p>
-                      ) : (
-                        <ul className="flex flex-col gap-2">
-                          {invoices.map((invoice) => {
-                            const inv = statusUi(invoice.status);
-                            return (
-                              <li
-                                key={invoice.id}
-                                className="rounded-xl border border-darkBlue/10 bg-white/80 p-3 flex items-center justify-between gap-3"
-                              >
-                                <div className="min-w-0">
-                                  <p className="text-sm font-semibold text-darkBlue">
-                                    {t("subscriptions.list.date")} :{" "}
-                                    {fmtStripeDate(invoice.created)}
-                                  </p>
-
-                                  <p className="text-sm text-darkBlue/80 mt-0.5">
-                                    {t("subscriptions.list.amount")} :{" "}
-                                    {invoice.amount_due / 100}{" "}
-                                    {invoice.currency?.toUpperCase?.() || ""}
-                                  </p>
-
-                                  <p className="text-sm text-darkBlue/80 mt-0.5">
-                                    {t("subscriptions.list.status")} :{" "}
-                                    <span className={inv.cls}>{inv.label}</span>
-                                  </p>
-                                </div>
-
-                                {invoice.invoice_pdf ? (
-                                  <a
-                                    href={invoice.invoice_pdf}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="shrink-0 inline-flex items-center gap-2 rounded-xl border border-blue/20 bg-blue/10 text-blue px-3 py-2 text-sm font-semibold hover:bg-blue/15 transition"
-                                  >
-                                    <ExternalLink className="size-4" />
-                                    {t("subscriptions.list.download", "PDF")}
-                                  </a>
-                                ) : (
-                                  <span className="text-xs text-darkBlue/40">
-                                    -
-                                  </span>
-                                )}
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      )}
-                    </div>
-                  </div>
                 </li>
               );
             })}
           </ul>
         )}
       </div>
+
+      <InvoicesDrawerSubscriptionsComponent
+        open={drawerOpen}
+        onClose={closeDrawer}
+        sub={selectedSub}
+        invoices={selectedInvoices}
+        loading={!!selectedSubId && loadingInvoicesId === selectedSubId}
+        t={t}
+        fmtStripeDate={fmtStripeDate}
+        statusUi={statusUi}
+      />
     </section>
   );
 }

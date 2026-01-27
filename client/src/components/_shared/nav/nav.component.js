@@ -46,24 +46,6 @@ export default function NavComponent() {
   const [translateX, setTranslateX] = useState(0);
   const [hasHover, setHasHover] = useState(false);
 
-  const [isTabletUp, setIsTabletUp] = useState(false);
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const mediaQuery = window.matchMedia("(min-width: 1024px)");
-
-    const handleChange = (event) => {
-      setIsTabletUp(event.matches);
-    };
-
-    setIsTabletUp(mediaQuery.matches);
-
-    mediaQuery.addEventListener?.("change", handleChange);
-    return () => {
-      mediaQuery.removeEventListener?.("change", handleChange);
-    };
-  }, []);
-
   const navRef = useRef(null);
   const timeoutRef = useRef(null);
 
@@ -103,26 +85,6 @@ export default function NavComponent() {
     const margin = 24;
     const buttonWidth = 49;
     setTranslateX(windowWidth - 2 * margin - buttonWidth);
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const mediaQuery = window.matchMedia("(min-width: 1024px)");
-
-    const handleChange = (event) => {
-      setIsTabletUp(event.matches);
-    };
-
-    // valeur initiale (utile si resize / rotation)
-    setIsTabletUp(mediaQuery.matches);
-
-    // API moderne uniquement (évite les méthodes dépréciées)
-    mediaQuery.addEventListener?.("change", handleChange);
-
-    return () => {
-      mediaQuery.removeEventListener?.("change", handleChange);
-    };
   }, []);
 
   useEffect(() => {
@@ -196,12 +158,12 @@ export default function NavComponent() {
     const me = employees.find(
       (e) =>
         String(e._id) === String(employeeId) ||
-        String(e.id) === String(employeeId)
+        String(e.id) === String(employeeId),
     );
 
     const profiles = me?.restaurantProfiles || [];
     const profile = profiles.find(
-      (p) => String(p.restaurant) === String(restaurantId)
+      (p) => String(p.restaurant) === String(restaurantId),
     );
 
     return profile?.options || restaurantContext.userConnected?.options || null;
@@ -237,7 +199,7 @@ export default function NavComponent() {
       restaurantContext.userConnected?.role,
       restaurantContext.restaurantData,
       currentEmployeeOptions,
-    ]
+    ],
   );
 
   const sortedNavItems = useMemo(() => {
@@ -314,11 +276,12 @@ export default function NavComponent() {
       {/* Sidebar */}
       <nav
         ref={navRef}
-        className={sidebarCls}
-        style={{
-          left: isTabletUp ? 0 : menuOpen ? 0 : -270,
-          transition: isTabletUp ? "none" : "left 200ms ease-out",
-        }}
+        className={`
+    ${sidebarCls}
+    transform transition-transform duration-200 ease-out
+    tablet:translate-x-0
+    ${menuOpen ? "translate-x-0" : "-translate-x-full"}
+  `}
       >
         {/* Logo */}
         <div className={logoWrapCls}>

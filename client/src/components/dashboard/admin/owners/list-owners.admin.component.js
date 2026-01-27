@@ -3,7 +3,7 @@ import axios from "axios";
 import { useTranslation } from "next-i18next";
 
 // COMPONENTS
-import DoubleSkeletonComonent from "@/components/_shared/skeleton/double-skeleton.component";
+import DoubleSkeletonComponent from "@/components/_shared/skeleton/double-skeleton.component";
 import SimpleSkeletonComponent from "@/components/_shared/skeleton/simple-skeleton.component";
 
 // ICONS (lucide)
@@ -81,7 +81,7 @@ export default function ListOwnersAdminComponent(props) {
       <div>
         {props?.loading ? (
           <div className="rounded-2xl bg-white/60 border border-darkBlue/10 shadow-sm p-5 flex flex-col gap-3">
-            <DoubleSkeletonComonent justify="justify-start" />
+            <DoubleSkeletonComponent justify="justify-start" />
             <SimpleSkeletonComponent />
             <SimpleSkeletonComponent />
           </div>

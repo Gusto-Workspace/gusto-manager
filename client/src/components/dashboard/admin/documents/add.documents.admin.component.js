@@ -26,8 +26,7 @@ export default function AddDocumentAdminPage() {
       return;
     }
 
-    // ✅ récup token (mets la même clé que sur tes autres pages)
-    const token = localStorage.getItem("admin-token"); // ou "adminToken" si c'est ça chez toi
+    const token = localStorage.getItem("admin-token");
 
     if (!token) {
       setErrorMsg("Tu n'es pas connecté (token manquant).");
@@ -60,11 +59,12 @@ export default function AddDocumentAdminPage() {
       });
 
       router.push(`/dashboard/admin/documents/add/${id}`);
+      setSubmitting(false);
     } catch (err) {
       console.error(err);
       setErrorMsg("Erreur lors de la création du document.");
     } finally {
-      setSubmitting(false);
+      
     }
   }
 
@@ -139,7 +139,7 @@ export default function AddDocumentAdminPage() {
             <button
               type="submit"
               disabled={submitting}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue px-4 py-2 text-white text-sm font-semibold shadow-sm hover:bg-blue/90 disabled:opacity-60"
+              className="inline-flex items-center justify-center max-w-[200px] mx-auto w-full gap-2 rounded-xl bg-blue px-4 py-2 text-white text-sm font-semibold shadow-sm hover:bg-blue/90 disabled:opacity-60"
             >
               {submitting ? (
                 <>

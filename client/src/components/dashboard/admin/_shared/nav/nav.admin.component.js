@@ -8,7 +8,7 @@ import {
   RestaurantSvg,
   EmployeesSvg,
   InvoiceSvg,
-  NewsSvg
+  NewsSvg,
 } from "@/components/_shared/_svgs/_index";
 
 const ADMIN_NAV_ITEMS = [
@@ -38,7 +38,6 @@ export default function NavAdminComponent() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [translateX, setTranslateX] = useState(0);
   const [hasHover, setHasHover] = useState(false);
-  const [isTabletUp, setIsTabletUp] = useState(false);
 
   const navRef = useRef(null);
   const timeoutRef = useRef(null);
@@ -81,16 +80,6 @@ export default function NavAdminComponent() {
     const margin = 24;
     const buttonWidth = 49;
     setTranslateX(windowWidth - 2 * margin - buttonWidth);
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const mediaQuery = window.matchMedia("(min-width: 1024px)");
-    const handleChange = (event) => setIsTabletUp(event.matches);
-
-    setIsTabletUp(mediaQuery.matches);
-    mediaQuery.addEventListener?.("change", handleChange);
-    return () => mediaQuery.removeEventListener?.("change", handleChange);
   }, []);
 
   useEffect(() => {
@@ -196,11 +185,12 @@ export default function NavAdminComponent() {
       {/* Sidebar */}
       <nav
         ref={navRef}
-        className={sidebarCls}
-        style={{
-          left: isTabletUp ? 0 : menuOpen ? 0 : -270,
-          transition: isTabletUp ? "none" : "left 200ms ease-out",
-        }}
+        className={`
+        ${sidebarCls}
+        transform transition-transform duration-200 ease-out
+        tablet:translate-x-0
+        ${menuOpen ? "translate-x-0" : "-translate-x-full"}
+        `}
       >
         {/* Logo */}
         <div className={logoWrapCls}>
