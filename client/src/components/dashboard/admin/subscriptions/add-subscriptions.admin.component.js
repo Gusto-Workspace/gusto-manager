@@ -476,7 +476,7 @@ export default function AddSubscriptionsAdminComponent() {
             {/* Content step2 */}
             <div className="">
               {!step2Enabled ? (
-                <div className="rounded-xl border border-darkBlue/10 bg-white/50 p-3 text-xs text-darkBlue/50">
+                <div className="rounded-xl border border-darkBlue/10 bg-white/50 p-3 text-xs text-darkBlue/50 mt-3">
                   Terminer l’étape 1 pour déverrouiller la saisie IBAN.
                 </div>
               ) : isStep2Done /* ✅ Rien à afficher quand c'est validé */ ? null : (

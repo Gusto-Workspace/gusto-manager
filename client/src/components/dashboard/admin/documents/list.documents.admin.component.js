@@ -4,7 +4,7 @@ import axios from "axios";
 import { useTranslation } from "next-i18next";
 
 import SimpleSkeletonComponent from "@/components/_shared/skeleton/simple-skeleton.component";
-import DoubleSkeletonComonent from "@/components/_shared/skeleton/double-skeleton.component";
+import DoubleSkeletonComponent from "@/components/_shared/skeleton/double-skeleton.component";
 
 import {
   Plus,
@@ -215,13 +215,13 @@ export default function ListDocumentsAdminComponent(props) {
 
       {/* Content */}
       <div>
-        {props.loading ? (
+        {props?.loading ? (
           <div className="rounded-2xl bg-white/50 border border-darkBlue/10 shadow-sm p-5 flex flex-col gap-3">
-            <DoubleSkeletonComonent justify="justify-start" />
+            <DoubleSkeletonComponent justify="justify-start" />
             <SimpleSkeletonComponent />
             <SimpleSkeletonComponent />
           </div>
-        ) : documents.length === 0 ? (
+        ) : documents?.length === 0 ? (
           <div className="rounded-xl bg-white/50 border border-darkBlue/10 shadow-sm p-6 text-center">
             <div className="mx-auto mb-3 size-11 rounded-2xl bg-darkBlue/5 flex items-center justify-center">
               <AlertTriangle className="size-5 text-darkBlue/60" />
@@ -232,7 +232,7 @@ export default function ListDocumentsAdminComponent(props) {
           </div>
         ) : (
           <ul className="grid grid-cols-1 gap-3 midTablet:grid-cols-2 desktop:grid-cols-3">
-            {documents.map((doc) => {
+            {documents?.map((doc) => {
               const isConfirming = docToDelete === doc._id;
 
               const isDeleting = loadingDeleteId === doc._id;

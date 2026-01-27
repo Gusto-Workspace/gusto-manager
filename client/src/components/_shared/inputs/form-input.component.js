@@ -15,7 +15,7 @@ export default function FormInputComponent(props) {
         disabled={props.disabled ?? false}
         placeholder={props.placeholder}
         {...props.register(props.name, { required: props.required })}
-        className={`${props.className || "border p-2 w-full rounded-lg"} ${
+        className={`${props.className || "border border-darkBlue/20 p-2 w-full rounded-lg"} ${
           error ? "border-red" : ""
         }`}
       />

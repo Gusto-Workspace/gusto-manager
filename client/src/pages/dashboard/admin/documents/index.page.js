@@ -12,7 +12,7 @@ import { GlobalContext } from "@/contexts/global.context";
 import NavAdminComponent from "@/components/dashboard/admin/_shared/nav/nav.admin.component";
 import ListDocumentsAdminComponent from "@/components/dashboard/admin/documents/list.documents.admin.component";
 
-export default function SubscriptionsPage(props) {
+export default function DocumentsPage(props) {
   const { adminContext } = useContext(GlobalContext);
 
   let title;

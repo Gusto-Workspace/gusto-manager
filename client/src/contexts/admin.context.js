@@ -57,12 +57,12 @@ export default function AdminContext() {
               error,
             );
             setOwnersLoading(false);
-            localStorage.removeItem("token");
+            localStorage.removeItem("admin-token");
             router.push("/dashboard/login");
           });
       } catch (error) {
         setOwnersLoading(false);
-        localStorage.removeItem("token");
+        localStorage.removeItem("admin-token");
         router.push("/dashboard/admin/login");
       }
     }
@@ -143,29 +143,34 @@ export default function AdminContext() {
     }
   }
 
-  function fetchDocumentsList() {
-    const token = localStorage.getItem("admin-token");
+  async function fetchDocumentsList() {
+    if (typeof window === "undefined") return;
 
+    setDocumentsLoading(true);
+
+    const token = localStorage.getItem("admin-token");
     if (!token) {
+      setDocumentsLoading(false);
       router.push("/dashboard/admin/login");
-    } else {
-      axios
-        .get(`${process.env.NEXT_PUBLIC_API_URL}/admin/documents`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        .then((response) => {
-          setDocumentsList(response.data.documents);
-          setDocumentsLoading(false);
-        })
-        .catch((error) => {
-          if (error.response && error.response.status === 403) {
-            localStorage.removeItem("admin-token");
-            router.push("/dashboard/admin/login");
-          } else {
-            console.error("Erreur récupération documents:", error);
-            setDocumentsLoading(false);
-          }
-        });
+      return;
+    }
+
+    try {
+      const response = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/admin/documents`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+
+      setDocumentsList(response.data.documents);
+    } catch (error) {
+      if (error?.response?.status === 403) {
+        localStorage.removeItem("admin-token");
+        router.push("/dashboard/admin/login");
+      } else {
+        console.error("Erreur récupération documents:", error);
+      }
+    } finally {
+      setDocumentsLoading(false);
     }
   }
 

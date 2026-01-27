@@ -1,4 +1,4 @@
-export default function DoubleSkeletonComonent(props) {
+export default function DoubleSkeletonComponent(props) {
   return (
     <div
       className={`flex ${props.justify ?? "justify-end"} gap-2 w-full animate-pulse`}
