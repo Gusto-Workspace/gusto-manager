@@ -117,12 +117,9 @@ export default function DetailsDocumentAdminPage(props) {
   const [discountLabel, setDiscountLabel] = useState("");
   const [discountAmount, setDiscountAmount] = useState(0);
 
-  // (legacy contrat — conservé en back-compat, mais UI n’affiche plus ces champs)
-  const [websiteOffered, setWebsiteOffered] = useState(false);
-  const [websitePriceLabel, setWebsitePriceLabel] = useState("");
+  const [comments, setComments] = useState("");
 
   // ✅ subscription (name + monthly number)
-  const [subscriptionName, setSubscriptionName] = useState("");
   const [subscriptionPriceMonthly, setSubscriptionPriceMonthly] = useState(0);
 
   const [engagementMonths, setEngagementMonths] = useState(12);
@@ -133,8 +130,8 @@ export default function DetailsDocumentAdminPage(props) {
   ]);
 
   const totalsPreview = useMemo(() => {
-    const { safeLines, subtotal, total } = computeTotals(lines, discountAmount);
-    return { safeLines, subtotal, total };
+    const { subtotal, total } = computeTotals(lines, discountAmount);
+    return { subtotal, total };
   }, [lines, discountAmount]);
 
   useEffect(() => {
@@ -245,7 +242,6 @@ export default function DetailsDocumentAdminPage(props) {
             ? parseOldPriceLabelToNumber(d.subscriptionLabel)
             : 0);
 
-        setSubscriptionName(subName || "");
         setSubscriptionPriceMonthly(subPrice ?? 0);
 
         setEngagementMonths(d?.engagementMonths ?? 12);
@@ -262,9 +258,7 @@ export default function DetailsDocumentAdminPage(props) {
             : [{ name: "", offered: false, priceMonthly: 0 }],
         );
 
-        // legacy contrat (on charge quand même si existant)
-        setWebsiteOffered(Boolean(d?.website?.offered));
-        setWebsitePriceLabel(d?.website?.priceLabel || "");
+        setComments(d?.comments || "");
       } catch (err) {
         console.error(err);
         setErrorMsg("Impossible de charger le document.");
@@ -279,7 +273,6 @@ export default function DetailsDocumentAdminPage(props) {
     };
   }, [props.documentId]);
 
-  const canSign = doc?.type === "CONTRACT" && doc?.status !== "SIGNED";
   const isLocked = doc?.status === "SENT" || doc?.status === "SIGNED";
   const canResend = doc?.status === "SENT";
   const sendBtnLabel = canResend ? "Renvoyer" : "Envoyer";
@@ -352,7 +345,6 @@ export default function DetailsDocumentAdminPage(props) {
 
       // ✅ abonnement + modules (numeric) pour TOUS les types
       payload.subscription = {
-        name: subscriptionName || "",
         priceMonthly: toSafeNumber(subscriptionPriceMonthly, 0),
       };
 
@@ -372,19 +364,16 @@ export default function DetailsDocumentAdminPage(props) {
           discountLabel: discountLabel || "",
           discountAmount: toSafeNumber(discountAmount, 0),
         };
+        payload.comments = comments || "";
       }
 
-      // ✅ legacy: si tu veux garder website en cohérence (optionnel)
-      // On recalcule un "website" depuis la 1ère ligne (utile pour anciens exports)
       if (doc.type === "CONTRACT") {
         const first = (lines || [])[0];
         payload.website = {
           offered: Boolean(first?.offered),
-          priceLabel: first?.offered
+          priceLabel: Boolean(first?.offered)
             ? "Offert"
-            : first?.unitPrice !== undefined
-              ? `${toSafeNumber(first.unitPrice, 0)}€`
-              : websitePriceLabel || "",
+            : `${toSafeNumber(first?.unitPrice, 0)}€`,
         };
       }
 
@@ -915,14 +904,6 @@ export default function DetailsDocumentAdminPage(props) {
                       </p>
 
                       <div className="mt-2 flex flex-col gap-2">
-                        <input
-                          value={subscriptionName}
-                          disabled={isLocked}
-                          onChange={(e) => setSubscriptionName(e.target.value)}
-                          className="w-full rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
-                          placeholder='Nom (ex: "Essentiel")'
-                        />
-
                         <div className="flex flex-col gap-1">
                           <label className="text-xs text-darkBlue/60">
                             Prix / mois (€)
@@ -978,17 +959,14 @@ export default function DetailsDocumentAdminPage(props) {
 
                       <div className="mt-3 flex flex-col gap-2">
                         {modules.map((m, i) => (
-                          <div
-                            key={i}
-                            className="grid items-end grid-cols-1 midTablet:grid-cols-[1fr_110px_140px_44px] gap-2"
-                          >
+                          <div key={i} className="flex items-end gap-2">
                             <input
                               value={m.name}
                               disabled={isLocked}
                               onChange={(e) =>
                                 updateModule(i, { name: e.target.value })
                               }
-                              className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
+                              className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm w-full"
                               placeholder="Nom du module"
                             />
 
@@ -1028,7 +1006,7 @@ export default function DetailsDocumentAdminPage(props) {
                                     ),
                                   })
                                 }
-                                className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
+                                className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm w-[100px]"
                                 placeholder="Prix / mois (€)"
                                 disabled={m.offered || isLocked}
                               />
@@ -1037,7 +1015,7 @@ export default function DetailsDocumentAdminPage(props) {
                             <button
                               onClick={() => removeModule(i)}
                               disabled={modules.length === 1 || isLocked}
-                              className="inline-flex items-center justify-center rounded-xl border border-red/20 bg-red/10 hover:bg-red/15 transition disabled:opacity-60"
+                              className="inline-flex items-center px-3 h-[38px] justify-center rounded-xl border border-red/20 bg-red/10 hover:bg-red/15 transition disabled:opacity-60"
                               title="Supprimer"
                             >
                               <Trash2 className="size-4 text-red" />
@@ -1048,6 +1026,23 @@ export default function DetailsDocumentAdminPage(props) {
                     </div>
                   </div>
                 </div>
+
+                {isQuoteOrInvoice(doc?.type) ? (
+                  <div className="mt-6 rounded-xl border border-darkBlue/10 bg-white p-3">
+                    <p className="text-sm font-semibold text-darkBlue">
+                      Commentaires
+                    </p>
+
+                    <textarea
+                      value={comments}
+                      disabled={isLocked}
+                      onChange={(e) => setComments(e.target.value)}
+                      rows={5}
+                      className="mt-2 resize-none w-full rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
+                      placeholder="Ex: Conditions de paiement, précisions sur la prestation, mention particulière…"
+                    />
+                  </div>
+                ) : null}
               </div>
             </>
           )}

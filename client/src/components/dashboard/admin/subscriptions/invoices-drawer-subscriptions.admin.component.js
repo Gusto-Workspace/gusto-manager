@@ -110,7 +110,7 @@ export default function InvoicesDrawerSubscriptionsComponent({
           flex flex-col
           overflow-hidden
 
-          left-0 right-0 bottom-0 w-full min-h-[32vh] max-h-[86vh]
+          left-0 right-0 bottom-0 w-full min-h-[35vh] max-h-[86vh] tablet:max-h-[100vh]
           rounded-t-3xl
 
           tablet:top-0 tablet:bottom-0 tablet:left-auto tablet:right-0
