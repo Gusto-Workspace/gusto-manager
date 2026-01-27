@@ -120,7 +120,7 @@ export default function CardReservationComponent(props) {
               <button
                 type="button"
                 onClick={openDetails}
-                className="shrink-0 inline-flex items-center gap-2 rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition px-3 py-2 text-xs font-semibold text-darkBlue"
+                className="shrink-0 inline-flex items-center gap-2 rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2 text-xs font-semibold text-darkBlue"
               >
                 <ExternalLink className="size-4 text-darkBlue/60" />
               </button>

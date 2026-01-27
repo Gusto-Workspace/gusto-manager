@@ -182,12 +182,12 @@ async function renderInvoiceLikePdf(documentData, emitter) {
     safeText(documentData?.party?.phone),
   ].filter(Boolean);
 
-  // Zone à droite : même colonne visuelle que les totaux (350 -> PAGE_RIGHT)
-  const CLIENT_BLOCK_X = 395;
-  const CLIENT_BLOCK_W = PAGE_RIGHT - CLIENT_BLOCK_X; // 195
+  // Zone à droite : même colonne visuelle que les totaux (360 -> PAGE_RIGHT)
+  const CLIENT_BLOCK_X = 360;
+  const CLIENT_BLOCK_W = PAGE_RIGHT - CLIENT_BLOCK_X;
 
   // Y de départ : juste sous le header
-  const clientTopY = doc.y - 60;
+  const clientTopY = doc.y - 30;
 
   doc.fontSize(10).fillColor("#111");
   let cy = clientTopY;
