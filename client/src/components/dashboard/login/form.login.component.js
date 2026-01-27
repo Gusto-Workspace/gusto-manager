@@ -199,14 +199,14 @@ export default function FormLoginComponent() {
           </div>
 
           {errorMessage && (
-            <p className="absolute bottom-5 italic text-xs w-full text-center left-1/2 -translate-x-1/2 text-red">
+            <p className="absolute bottom-3 italic text-xs w-full text-center left-1/2 -translate-x-1/2 text-red">
               {t(`form.${errorMessage}`)}
             </p>
           )}
 
           <button
             type="submit"
-            className="bg-orange mx-auto text-white rounded-lg py-2 px-12 hover:bg-opacity-70 transition-all duration-300 w-fit"
+            className="bg-orange mx-auto text-white rounded-lg py-2 px-12 mb-6 hover:bg-opacity-70 transition-all duration-300 w-fit"
             disabled={loading}
           >
             {loading ? t("buttons.loading") : t("buttons.login")}

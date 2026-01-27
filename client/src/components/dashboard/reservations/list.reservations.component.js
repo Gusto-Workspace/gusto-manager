@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { useRouter } from "next/router";
 
 // I18N
@@ -27,7 +27,7 @@ export default function ListReservationsComponent(props) {
   const [error, setError] = useState(null);
 
   const [currentMonth, setCurrentMonth] = useState(() =>
-    startOfMonth(new Date())
+    startOfMonth(new Date()),
   );
   const [selectedDay, setSelectedDay] = useState(null);
   const [activeDayTab, setActiveDayTab] = useState("All");
@@ -74,6 +74,11 @@ export default function ListReservationsComponent(props) {
     if (!s) return s;
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
+
+  // ✅ informe la page si on est en vue Jour ou non
+  useEffect(() => {
+    props.onDayViewChange?.(!!selectedDay);
+  }, [selectedDay, props]);
 
   /* =========================================================
    * Agrégats calendrier (pack par jour) + surbrillance recherche
@@ -219,7 +224,7 @@ export default function ListReservationsComponent(props) {
     });
 
     const counts = Object.fromEntries(
-      dayStatusTabs.map((s) => [s, by[s].length])
+      dayStatusTabs.map((s) => [s, by[s].length]),
     );
     return { byStatus: by, counts };
   }, [props.reservations, selectedDay, searchTerm]);
@@ -263,7 +268,7 @@ export default function ListReservationsComponent(props) {
               Authorization: `Bearer ${token}`,
               "Content-Type": "application/json",
             },
-          }
+          },
         )
         .then((response) => {
           props.setRestaurantData(response.data.restaurant);
@@ -278,7 +283,7 @@ export default function ListReservationsComponent(props) {
                 customerName: selectedReservation.customerName,
                 customerEmail: selectedReservation.customerEmail,
                 reservationDate: new Date(
-                  selectedReservation.reservationDate
+                  selectedReservation.reservationDate,
                 ).toLocaleDateString("fr-FR"),
                 reservationTime: selectedReservation.reservationTime,
                 numberOfGuests: selectedReservation.numberOfGuests,
@@ -287,7 +292,7 @@ export default function ListReservationsComponent(props) {
               .catch((err) => {
                 console.error(
                   "Erreur lors de l'envoi de l'email de confirmation :",
-                  err
+                  err,
                 );
               });
           }
@@ -297,14 +302,14 @@ export default function ListReservationsComponent(props) {
         .catch((error) => {
           console.error(`Error updating status to ${newStatus}:`, error);
           setError(
-            "Une erreur est survenue lors de la mise à jour du statut de la réservation."
+            "Une erreur est survenue lors de la mise à jour du statut de la réservation.",
           );
         })
         .finally(() => {
           setIsProcessing(false);
         });
     },
-    [selectedReservation, props.restaurantData, props.setRestaurantData]
+    [selectedReservation, props.restaurantData, props.setRestaurantData],
   );
 
   function deleteReservation() {
@@ -320,7 +325,7 @@ export default function ListReservationsComponent(props) {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
-        }
+        },
       )
       .then((response) => {
         props.setRestaurantData(response.data.restaurant);
@@ -329,7 +334,7 @@ export default function ListReservationsComponent(props) {
       .catch((error) => {
         console.error("Error deleting reservation:", error);
         setError(
-          "Une erreur est survenue lors de la suppression de la réservation."
+          "Une erreur est survenue lors de la suppression de la réservation.",
         );
       })
       .finally(() => {
@@ -375,7 +380,7 @@ export default function ListReservationsComponent(props) {
 
   return (
     <section className="flex flex-col gap-6">
-      <hr className="opacity-20" />
+      <hr className="hidden midTablet:block opacity-20" />
 
       {!selectedDay ? (
         <>

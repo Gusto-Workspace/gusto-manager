@@ -1,4 +1,4 @@
-import { useContext } from "react";
+import { useContext, useState } from "react";
 import Head from "next/head";
 
 // I18N
@@ -16,6 +16,9 @@ import ListReservationsComponent from "@/components/dashboard/reservations/list.
 
 export default function ReservationsPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
+
+  // ✅ NEW: savoir si on est en vue "Jour"
+  const [isDayView, setIsDayView] = useState(false);
 
   let title;
   let description;
@@ -43,35 +46,40 @@ export default function ReservationsPage(props) {
 
   if (isEmployee && restaurant) {
     const employeeInRestaurant = restaurant.employees?.find(
-      (emp) => String(emp._id) === String(user.id)
+      (emp) => String(emp._id) === String(user.id),
     );
 
     const profile = employeeInRestaurant?.restaurantProfiles?.find(
-      (p) => String(p.restaurant) === String(restaurant._id)
+      (p) => String(p.restaurant) === String(restaurant._id),
     );
 
     employeeHasReservationsAccess = profile?.options?.reservations === true;
   }
 
+  const hideChromeOnMobile = isDayView;
+
   return (
     <>
       <Head>
         <title>{title}</title>
-        {/* metas si besoin */}
       </Head>
 
       <div>
         <div className="flex">
-          <NavComponent />
+          <div className={hideChromeOnMobile ? "hidden midTablet:block" : ""}>
+            <NavComponent />
+          </div>
 
           <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 min-h-screen">
-            <SettingsComponent
-              dataLoading={restaurantContext.dataLoading}
-              setDataLoading={restaurantContext.setDataLoading}
-              closeEditing={restaurantContext.closeEditing}
-              setRestaurantData={restaurantContext.setRestaurantData}
-              restaurantData={restaurantContext.restaurantData}
-            />
+            <div className={hideChromeOnMobile ? "hidden midTablet:block" : ""}>
+              <SettingsComponent
+                dataLoading={restaurantContext.dataLoading}
+                setDataLoading={restaurantContext.setDataLoading}
+                closeEditing={restaurantContext.closeEditing}
+                setRestaurantData={restaurantContext.setRestaurantData}
+                restaurantData={restaurantContext.restaurantData}
+              />
+            </div>
 
             {!hasReservationsModule ? (
               <NoAvailableComponent
@@ -90,6 +98,7 @@ export default function ReservationsPage(props) {
                 reservations={
                   restaurantContext?.restaurantData?.reservations?.list
                 }
+                onDayViewChange={setIsDayView}
               />
             )}
           </div>
