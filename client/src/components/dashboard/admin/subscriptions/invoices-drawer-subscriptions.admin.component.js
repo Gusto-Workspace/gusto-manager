@@ -177,9 +177,9 @@ export default function InvoicesDrawerSubscriptionsComponent({
         <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
           {loading ? (
             <div className="rounded-2xl bg-white/60 border border-darkBlue/10 shadow-sm p-4 flex flex-col gap-3">
-              <DoubleSkeletonComponent justify="justify-start" />
-              <SimpleSkeletonComponent />
-              <SimpleSkeletonComponent />
+              <DoubleSkeletonComponent justify="justify-start" height="h-4"/>
+              <SimpleSkeletonComponent height="h-4"/>
+              <SimpleSkeletonComponent height="h-4" />
             </div>
           ) : invoices?.length === 0 ? (
             <div className="rounded-xl bg-white/60 border border-darkBlue/10 shadow-sm p-6 text-center">

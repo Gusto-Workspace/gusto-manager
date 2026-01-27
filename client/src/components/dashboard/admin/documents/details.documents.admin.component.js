@@ -232,10 +232,6 @@ export default function DetailsDocumentAdminPage(props) {
         setDiscountLabel(d?.totals?.discountLabel || "");
         setDiscountAmount(d?.totals?.discountAmount || 0);
 
-        // ✅ subscription/modules numeric (avec fallback ancien format)
-        const subName =
-          d?.subscription?.name ??
-          (d?.subscriptionLabel ? String(d.subscriptionLabel) : "");
         const subPrice =
           d?.subscription?.priceMonthly ??
           (d?.subscriptionLabel

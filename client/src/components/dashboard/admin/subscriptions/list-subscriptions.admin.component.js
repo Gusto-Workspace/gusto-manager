@@ -128,15 +128,15 @@ export default function ListSubscriptionsAdminComponent(props) {
       {/* Content */}
       <div>
         {props?.loading ? (
-          <div className="flex flex-col gap-3">
+          <div className="flex gap-3">
             {Array.from({ length: 3 }, (_, i) => (
               <div
                 key={i}
-                className="rounded-2xl bg-white/50 border border-darkBlue/10 shadow-sm p-5 flex flex-col gap-3"
+                className="rounded-2xl w-full bg-white/50 border border-darkBlue/10 shadow-sm p-5 flex flex-col gap-3"
               >
-                <DoubleSkeletonComponent justify="justify-start" />
-                <SimpleSkeletonComponent />
-                <SimpleSkeletonComponent />
+                <DoubleSkeletonComponent height="h-4" justify="justify-start" />
+                <SimpleSkeletonComponent height="h-4" />
+                <SimpleSkeletonComponent height="h-4" />
               </div>
             ))}
           </div>
