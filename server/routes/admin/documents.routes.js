@@ -160,6 +160,43 @@ function buildEmailSubject(doc) {
   return `Votre contrat ${doc.docNumber}`;
 }
 
+// ✅ Nouveau: HTML "tone of voice" Gusto Manager (sans docNumber dans le texte)
+function buildEmailHtml(doc) {
+  if (doc.type === "QUOTE") {
+    return `
+      <p>Bonjour,</p>
+      <p>Vous trouverez en pièce jointe votre devis.</p>
+      <p>
+        Il détaille la solution que nous avons préparée pour vous.<br/>
+        Si vous avez la moindre question ou souhaitez ajuster certains points, nous sommes là pour vous accompagner.
+      </p>
+      <p>À très vite,<br/>L’équipe Gusto Manager</p>
+    `;
+  }
+
+  if (doc.type === "INVOICE") {
+    return `
+      <p>Bonjour,</p>
+      <p>Votre facture est disponible en pièce jointe.</p>
+      <p>
+        Merci pour votre confiance 🤝<br/>
+        Si quelque chose n’est pas clair ou si vous avez besoin d’un complément d’information, nous restons à votre écoute.
+      </p>
+      <p>Bien cordialement,<br/>L’équipe Gusto Manager</p>
+    `;
+  }
+
+  // CONTRACT (signed)
+  return `
+    <p>Bonjour,</p>
+    <p>Votre contrat signé est disponible en pièce jointe.</p>
+    <p>
+      Ce document officialise le début de notre collaboration, et nous sommes ravis de vous accompagner dans la suite de votre projet.
+    </p>
+    <p>À très bientôt,<br/>L’équipe Gusto Manager</p>
+  `;
+}
+
 async function buildPdfBuffer(doc) {
   if (doc.type === "QUOTE" || doc.type === "INVOICE") {
     return renderInvoiceLikePdf(doc.toObject(), EMITTER);
@@ -417,12 +454,12 @@ router.post(
           generatedAt: new Date(),
         };
 
-        // 4) send email with attachment
+        // 4) send email with attachment (✅ HTML selon type QUOTE/INVOICE)
         await sendDocEmail({
           toEmail: doc.party.email,
           toName: doc.party.ownerName || doc.party.restaurantName,
           subject: buildEmailSubject(doc),
-          html: `<p>Bonjour,<br/>Veuillez trouver votre document en pièce jointe.</p>`,
+          html: buildEmailHtml(doc),
           attachmentBase64: pdfBuffer.toString("base64"),
           attachmentName: `${doc.docNumber}.pdf`,
         });
@@ -501,12 +538,12 @@ router.post(
       try {
         uploadedPdf = await uploadPdfFromBuffer(pdfBuffer, stablePublicId);
 
-        // 4) email AVANT de signer en BDD
+        // 4) email AVANT de signer en BDD (✅ HTML "contrat signé")
         await sendDocEmail({
           toEmail,
           toName: doc.party.ownerName || doc.party.restaurantName,
           subject: `Votre contrat signé ${doc.docNumber}`,
-          html: `<p>Bonjour,<br/>Veuillez trouver votre contrat signé en pièce jointe.</p>`,
+          html: buildEmailHtml({ ...doc.toObject(), type: "CONTRACT" }),
           attachmentBase64: pdfBuffer.toString("base64"),
           attachmentName: `${doc.docNumber}_signe.pdf`,
         });
@@ -591,7 +628,7 @@ router.post(
         toEmail: doc.party.email,
         toName: doc.party.ownerName || doc.party.restaurantName,
         subject: buildEmailSubject(doc),
-        html: `<p>Bonjour,<br/>Veuillez trouver votre document en pièce jointe.</p>`,
+        html: buildEmailHtml(doc), // ✅ HTML selon QUOTE/INVOICE
         attachmentBase64,
         attachmentName: `${doc.docNumber}.pdf`,
       });
