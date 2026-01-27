@@ -95,6 +95,7 @@ const DocumentSchema = new mongoose.Schema(
     dueDate: { type: Date },
     lines: { type: [LineSchema], default: [] },
     totals: { type: TotalsSchema, default: () => ({}) },
+    comments: { type: String, default: "" },
 
     // Contrat
     website: { type: WebsiteSchema, default: () => ({}) },

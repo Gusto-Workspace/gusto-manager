@@ -271,13 +271,17 @@ router.patch("/admin/documents/:id", authenticateToken, async (req, res) => {
     }
     if (body.totals) doc.totals = body.totals;
 
+    if (body.comments !== undefined) {
+      doc.comments = String(body.comments || "");
+    }
+
     // ----- CONTRACT -----
     if (body.website) doc.website = body.website;
 
     // ✅ Subscription object
     if (body.subscription !== undefined) {
       doc.subscription = {
-        name: body.subscription?.name || "",
+        ...doc.subscription,
         priceMonthly: Number(body.subscription?.priceMonthly || 0),
       };
     }

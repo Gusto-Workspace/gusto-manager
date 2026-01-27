@@ -259,28 +259,21 @@ async function renderInvoiceLikePdf(documentData, emitter) {
     doc.strokeColor("#eee").moveTo(50, y).lineTo(PAGE_RIGHT, y).stroke();
     y += 14;
 
-    doc
-      .fontSize(11)
-      .fillColor("#111")
-      .text("Abonnement & modules (récurrent)", 50, y);
+    doc.fontSize(11).fillColor("#111").text("Abonnement & modules", 50, y);
     y += 18;
 
-    const subName = safeText(documentData?.subscription?.name);
     const subPrice = toNumber(documentData?.subscription?.priceMonthly, 0);
 
     // ✅ espacement réduit entre "Abonnement :" et valeur
-    if (subName || subPrice > 0) {
+    if (subPrice > 0) {
       doc.fontSize(10).fillColor("#111");
 
-      const label = "Abonnement :";
+      const label = "Abonnement";
       const labelX = 50;
       doc.text(label, labelX, y);
 
       // on calcule où commencer le nom (juste après le label)
       const labelW = doc.widthOfString(label);
-      const valueX = labelX + labelW + 8; // ✅ petit gap
-
-      doc.text(subName || "-", valueX, y, { width: 260 });
 
       doc.text(subPrice > 0 ? `${euro(subPrice)} / mois` : "-", 410, y, {
         width: 135,
@@ -363,8 +356,34 @@ async function renderInvoiceLikePdf(documentData, emitter) {
   doc.fontSize(11).fillColor("#111").text("Total", 350, y, { width: 120 });
   doc.text(euro(totals.total), 470, y, { width: 75, align: "right" });
 
+  // ✅ Commentaires (QUOTE/INVOICE)
+  const comments = safeText(documentData?.comments);
+  if (comments) {
+    y += 40;
+
+    // retour ligne si bas de page
+    if (y > 700) {
+      doc.addPage();
+      y = 60;
+    }
+
+    doc.fontSize(10).fillColor("#111").text("Commentaires :", 50, y);
+
+    y += 14;
+
+    doc
+      .fontSize(10)
+      .fillColor("#444")
+      .text(comments, 50, y, {
+        width: PAGE_RIGHT - 50,
+        align: "left",
+      });
+
+    y = doc.y; // ✅ important: on récupère la hauteur réelle
+  }
+
   /* ---------------- Footer ---------------- */
-  doc.y = y + 28;
+  doc.y = (y || doc.y) + 28;
 
   doc
     .fontSize(9)
