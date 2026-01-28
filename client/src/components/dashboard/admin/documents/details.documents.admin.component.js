@@ -35,6 +35,10 @@ function toSafeNumber(v, fallback = 0) {
   return Number.isNaN(n) ? fallback : n;
 }
 
+function trimText(v) {
+  return typeof v === "string" ? v.trim() : v;
+}
+
 function computeTotals(lines, discountAmount) {
   const safeLines = (lines || []).map((l) => {
     const qty = toSafeNumber(l.qty, 1);
@@ -320,11 +324,11 @@ export default function DetailsDocumentAdminPage(props) {
     try {
       const payload = {
         party: {
-          restaurantName: party.restaurantName,
-          address: party.address,
-          ownerName: party.ownerName,
-          email: party.email,
-          phone: party.phone,
+          restaurantName: trimText(party.restaurantName),
+          address: trimText(party.address),
+          ownerName: trimText(party.ownerName),
+          email: trimText(party.email).toLowerCase(),
+          phone: trimText(party.phone).replace(/\s+/g, ""),
         },
       };
 
@@ -333,7 +337,7 @@ export default function DetailsDocumentAdminPage(props) {
 
       // ✅ lignes POUR TOUS les types (contrat inclus)
       payload.lines = (lines || []).map((l) => ({
-        label: l.label,
+        label: trimText(l.label),
         qty: toSafeNumber(l.qty, 1),
         unitPrice: l.offered ? 0 : toSafeNumber(l.unitPrice, 0),
         offered: Boolean(l.offered),
@@ -347,9 +351,9 @@ export default function DetailsDocumentAdminPage(props) {
       payload.engagementMonths = Number(engagementMonths || 0);
 
       payload.modules = (modules || [])
-        .filter((m) => (m.name || "").trim())
+        .filter((m) => trimText(m.name))
         .map((m) => ({
-          name: m.name,
+          name: trimText(m.name),
           offered: Boolean(m.offered),
           priceMonthly: m.offered ? 0 : toSafeNumber(m.priceMonthly, 0),
         }));
@@ -357,10 +361,11 @@ export default function DetailsDocumentAdminPage(props) {
       // Remise uniquement devis/facture
       if (isQuoteOrInvoice(doc.type)) {
         payload.totals = {
-          discountLabel: discountLabel || "",
+          discountLabel: trimText(discountLabel),
           discountAmount: toSafeNumber(discountAmount, 0),
         };
-        payload.comments = comments || "";
+
+        payload.comments = trimText(comments);
       }
 
       if (doc.type === "CONTRACT") {
@@ -629,6 +634,12 @@ export default function DetailsDocumentAdminPage(props) {
                         restaurantName: e.target.value,
                       }))
                     }
+                    onBlur={(e) =>
+                      setParty((p) => ({
+                        ...p,
+                        restaurantName: trimText(e.target.value),
+                      }))
+                    }
                     className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
                     placeholder="Nom du restaurant"
                   />
@@ -637,6 +648,12 @@ export default function DetailsDocumentAdminPage(props) {
                     disabled={isLocked}
                     onChange={(e) =>
                       setParty((p) => ({ ...p, ownerName: e.target.value }))
+                    }
+                    onBlur={(e) =>
+                      setParty((p) => ({
+                        ...p,
+                        ownerName: trimText(e.target.value),
+                      }))
                     }
                     className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
                     placeholder="Nom du dirigeant"
@@ -647,8 +664,17 @@ export default function DetailsDocumentAdminPage(props) {
                     onChange={(e) =>
                       setParty((p) => ({ ...p, email: e.target.value }))
                     }
+                    onBlur={(e) =>
+                      setParty((p) => ({
+                        ...p,
+                        email: trimText(e.target.value).toLowerCase(),
+                      }))
+                    }
                     className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
                     placeholder="Email"
+                    type="email"
+                    inputMode="email"
+                    autoComplete="email"
                   />
                   <input
                     value={party.phone}
@@ -656,14 +682,29 @@ export default function DetailsDocumentAdminPage(props) {
                     onChange={(e) =>
                       setParty((p) => ({ ...p, phone: e.target.value }))
                     }
+                    onBlur={(e) =>
+                      setParty((p) => ({
+                        ...p,
+                        phone: trimText(e.target.value),
+                      }))
+                    }
                     className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
                     placeholder="Téléphone"
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="tel"
                   />
                   <input
                     value={party.address}
                     disabled={isLocked}
                     onChange={(e) =>
                       setParty((p) => ({ ...p, address: e.target.value }))
+                    }
+                    onBlur={(e) =>
+                      setParty((p) => ({
+                        ...p,
+                        address: trimText(e.target.value).replace(/\s+/g, ""),
+                      }))
                     }
                     className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm midTablet:col-span-2"
                     placeholder="Adresse"
@@ -754,6 +795,9 @@ export default function DetailsDocumentAdminPage(props) {
                           onChange={(e) =>
                             updateLine(i, { label: e.target.value })
                           }
+                          onBlur={(e) =>
+                            updateLine(i, { label: trimText(e.target.value) })
+                          }
                           className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
                           placeholder="Description"
                         />
@@ -832,6 +876,9 @@ export default function DetailsDocumentAdminPage(props) {
                               value={discountLabel}
                               disabled={isLocked}
                               onChange={(e) => setDiscountLabel(e.target.value)}
+                              onBlur={(e) =>
+                                setDiscountLabel(trimText(e.target.value))
+                              }
                               className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
                               placeholder="Ex: Offre promotionnelle"
                             />
@@ -962,6 +1009,11 @@ export default function DetailsDocumentAdminPage(props) {
                               onChange={(e) =>
                                 updateModule(i, { name: e.target.value })
                               }
+                              onBlur={(e) =>
+                                updateModule(i, {
+                                  name: trimText(e.target.value),
+                                })
+                              }
                               className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm w-full"
                               placeholder="Nom du module"
                             />
@@ -1033,6 +1085,7 @@ export default function DetailsDocumentAdminPage(props) {
                       value={comments}
                       disabled={isLocked}
                       onChange={(e) => setComments(e.target.value)}
+                      onBlur={(e) => setComments(trimText(e.target.value))}
                       rows={5}
                       className="mt-2 resize-none w-full rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
                       placeholder="Ex: Conditions de paiement, précisions sur la prestation, mention particulière…"

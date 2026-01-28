@@ -30,11 +30,18 @@ import {
   TableSvg,
 } from "../../_shared/_svgs/_index";
 
+// LUCIDE
+import { Loader2, Save, X, ChevronLeft } from "lucide-react";
+
 export default function AddReservationComponent(props) {
   const { t } = useTranslation("reservations");
   const router = useRouter();
 
   const isEditing = !!props.reservation;
+
+  const subtitle = isEditing
+    ? t("buttons.edit", "Modifier une réservation")
+    : t("buttons.add", "Ajouter une réservation");
 
   const [reservationData, setReservationData] = useState({
     reservationDate: new Date(),
@@ -53,7 +60,6 @@ export default function AddReservationComponent(props) {
   const [error, setError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Fonction pour vérifier si une date est aujourd'hui
   function isToday(date) {
     const today = new Date();
     return (
@@ -64,27 +70,24 @@ export default function AddReservationComponent(props) {
   }
 
   useEffect(() => {
-    // Si nous sommes en mode création (pas en mode édition)
     if (!props.reservation) {
       const manageDisponibilities =
         props.restaurantData?.reservations?.parameters?.manage_disponibilities;
-      // Si la gestion des disponibilités est activée, on initialise à "auto"
-      // Sinon, on laisse le champ vide.
+
       setReservationData((prevData) => ({
         ...prevData,
         table: manageDisponibilities ? "auto" : "",
       }));
     }
-  }, [props.reservation]);
+  }, [props.reservation, props.restaurantData]);
 
-  // Pré-remplir le formulaire si on est en mode édition
   useEffect(() => {
     if (props.reservation) {
       let tableValue = "";
       const manageDisponibilities =
         props.restaurantData?.reservations?.parameters?.manage_disponibilities;
+
       if (manageDisponibilities) {
-        // Si manage_disponibilities est true, on cherche dans les tables paramétrées celle qui a le même nom
         if (props?.reservation?.table?.name) {
           if (
             props.restaurantData?.reservations?.parameters &&
@@ -92,7 +95,7 @@ export default function AddReservationComponent(props) {
           ) {
             const foundTable =
               props.restaurantData.reservations.parameters.tables.find(
-                (t) => t.name === props.reservation.table.name
+                (t) => t.name === props.reservation.table.name,
               );
             if (foundTable && foundTable._id) {
               tableValue = foundTable._id.toString();
@@ -100,11 +103,11 @@ export default function AddReservationComponent(props) {
           }
         }
       } else {
-        // Si manage_disponibilities est false, on affiche directement le nom de la table
         if (props.reservation.table && props.reservation.table.name) {
           tableValue = props.reservation.table.name;
         }
       }
+
       setReservationData({
         reservationDate: props.reservation.reservationDate
           ? new Date(props.reservation.reservationDate)
@@ -118,9 +121,8 @@ export default function AddReservationComponent(props) {
         table: tableValue,
       });
     }
-  }, [props.reservation]);
+  }, [props.reservation, props.restaurantData]);
 
-  // Calcul des heures disponibles (avec gestion de la durée et exclusion de la réservation en cours)
   useEffect(() => {
     if (
       !props?.restaurantData?.reservations ||
@@ -141,10 +143,9 @@ export default function AddReservationComponent(props) {
       if (Array.isArray(dayHours.hours) && dayHours.hours.length > 0) {
         const interval = parameters.interval || 30;
         let allAvailableTimes = dayHours.hours.flatMap(({ open, close }) =>
-          generateTimeOptions(open, close, interval)
+          generateTimeOptions(open, close, interval),
         );
 
-        // Filtrer les créneaux déjà passés si la date sélectionnée est aujourd'hui
         if (isToday(reservationData.reservationDate)) {
           const now = new Date();
           const currentMinutes = now.getHours() * 60 + now.getMinutes();
@@ -155,7 +156,6 @@ export default function AddReservationComponent(props) {
           });
         }
 
-        // Si l'option manage_disponibilities est activée
         if (parameters.manage_disponibilities) {
           if (reservationData.numberOfGuests) {
             const numGuests = Number(reservationData.numberOfGuests);
@@ -163,7 +163,7 @@ export default function AddReservationComponent(props) {
               numGuests % 2 === 0 ? numGuests : numGuests + 1;
             const formattedSelectedDate = format(
               reservationData.reservationDate,
-              "yyyy-MM-dd"
+              "yyyy-MM-dd",
             );
 
             if (parameters.reservation_duration) {
@@ -182,7 +182,7 @@ export default function AddReservationComponent(props) {
                         return false;
                       if (
                         !["Confirmed", "Late", "Active"].includes(
-                          reservation.status
+                          reservation.status,
                         )
                       )
                         return false;
@@ -191,27 +191,29 @@ export default function AddReservationComponent(props) {
                         Number(reservation.table.seats) !== requiredTableSize
                       )
                         return false;
-                      // Exclure la réservation en cours de modification
                       if (
                         isEditing &&
                         reservation._id === props.reservation._id
                       )
                         return false;
+
                       const [resHour, resMinute] = reservation.reservationTime
                         .split(":")
                         .map(Number);
                       const reservationStart = resHour * 60 + resMinute;
                       const reservationEnd = reservationStart + duration;
+
                       return (
                         candidateMinutes < reservationEnd &&
                         candidateEnd > reservationStart
                       );
-                    }
+                    },
                   );
+
                 return (
                   reservationsForSlot.length <
                   parameters.tables.filter(
-                    (table) => Number(table.seats) === requiredTableSize
+                    (table) => Number(table.seats) === requiredTableSize,
                   ).length
                 );
               });
@@ -227,7 +229,7 @@ export default function AddReservationComponent(props) {
                       if (reservation.reservationTime !== time) return false;
                       if (
                         !["Confirmed", "Late", "Active"].includes(
-                          reservation.status
+                          reservation.status,
                         )
                       )
                         return false;
@@ -242,12 +244,13 @@ export default function AddReservationComponent(props) {
                       )
                         return false;
                       return true;
-                    }
+                    },
                   );
+
                 return (
                   reservationsForSlot.length <
                   parameters.tables.filter(
-                    (table) => Number(table.seats) === requiredTableSize
+                    (table) => Number(table.seats) === requiredTableSize,
                   ).length
                 );
               });
@@ -269,9 +272,14 @@ export default function AddReservationComponent(props) {
     props.restaurantData.reservations.parameters.interval,
     props.restaurantData.reservations.parameters.manage_disponibilities,
     props.restaurantData.reservations.parameters.reservation_duration,
+    props.restaurantData.reservations.parameters.reservation_duration_minutes,
+    props.restaurantData.reservations.parameters.same_hours_as_restaurant,
+    props.restaurantData.reservations.parameters.tables,
+    props.restaurantData.reservations.list,
+    isEditing,
+    props.reservation,
   ]);
 
-  // Calcul des tables disponibles (uniquement si manage_disponibilities est activé)
   useEffect(() => {
     const parameters = props.restaurantData.reservations.parameters;
     if (!parameters.manage_disponibilities) {
@@ -286,11 +294,12 @@ export default function AddReservationComponent(props) {
       setAvailableTables([]);
       return;
     }
+
     const numGuests = Number(reservationData.numberOfGuests);
     const requiredTableSize = numGuests % 2 === 0 ? numGuests : numGuests + 1;
-    // Récupérer les tables éligibles
+
     const eligibleTables = parameters.tables.filter(
-      (table) => Number(table.seats) === requiredTableSize
+      (table) => Number(table.seats) === requiredTableSize,
     );
 
     let duration = 0;
@@ -300,7 +309,7 @@ export default function AddReservationComponent(props) {
 
     const formattedSelectedDate = format(
       reservationData.reservationDate,
-      "yyyy-MM-dd"
+      "yyyy-MM-dd",
     );
     const [selectedHour, selectedMinute] = reservationData.reservationTime
       .split(":")
@@ -309,7 +318,6 @@ export default function AddReservationComponent(props) {
     const candidateEnd = candidateStart + duration;
 
     const available = eligibleTables.filter((table) => {
-      // Pour chaque table éligible, on vérifie qu'aucune réservation existante ne bloque ce créneau.
       const overlappingReservation =
         props.restaurantData.reservations.list.find((reservation) => {
           const resDate = new Date(reservation.reservationDate);
@@ -317,8 +325,6 @@ export default function AddReservationComponent(props) {
           if (formattedResDate !== formattedSelectedDate) return false;
           if (!reservation.table) return false;
 
-          // Comparaison des tables : si _id est présent, on compare par _id,
-          // sinon on compare par le nom
           if (reservation.table._id) {
             if (reservation.table._id.toString() !== table._id.toString())
               return false;
@@ -335,6 +341,7 @@ export default function AddReservationComponent(props) {
               .map(Number);
             const reservationStart = resHour * 60 + resMinute;
             const reservationEnd = reservationStart + duration;
+
             return (
               candidateStart < reservationEnd && candidateEnd > reservationStart
             );
@@ -344,6 +351,7 @@ export default function AddReservationComponent(props) {
             );
           }
         });
+
       return !overlappingReservation;
     });
 
@@ -354,9 +362,10 @@ export default function AddReservationComponent(props) {
     reservationData.numberOfGuests,
     isEditing,
     props.reservation,
+    props.restaurantData.reservations.list,
+    props.restaurantData.reservations.parameters,
   ]);
 
-  // Générer les options d'heures disponibles
   function generateTimeOptions(openTime, closeTime, interval) {
     const times = [];
     const [openHour, openMinute] = openTime.split(":").map(Number);
@@ -366,10 +375,7 @@ export default function AddReservationComponent(props) {
     const end = closeHour * 60 + closeMinute;
 
     const intervalMinutes = parseInt(interval, 10);
-    if (isNaN(intervalMinutes) || intervalMinutes <= 0) {
-      console.error("Intervalle de réservation invalide :", interval);
-      return times;
-    }
+    if (isNaN(intervalMinutes) || intervalMinutes <= 0) return times;
 
     for (
       let minutes = start;
@@ -382,35 +388,9 @@ export default function AddReservationComponent(props) {
       const minute = (minutes % 60).toString().padStart(2, "0");
       times.push(`${hour}:${minute}`);
     }
-
     return times;
   }
 
-  // Sélectionner une heure de réservation
-  function handleTimeSelect(reservationTime) {
-    setReservationData((prevData) => ({
-      ...prevData,
-      reservationTime,
-    }));
-  }
-
-  // Formater l'affichage de l'heure
-  function formatTimeDisplay(reservationTime) {
-    const [hour, minute] = reservationTime.split(":");
-    return `${hour}h${minute}`;
-  }
-
-  // Gérer les changements dans les champs du formulaire
-  function handleInputChange(e) {
-    const { name, value } = e.target;
-    setReservationData((prevData) => ({
-      ...prevData,
-      [name]: value,
-      ...(name === "numberOfGuests" ? { reservationTime: "" } : {}),
-    }));
-  }
-
-  // Gérer le changement de date dans le calendrier
   function handleDateChange(selectedDate) {
     setReservationData((prevData) => ({
       ...prevData,
@@ -419,11 +399,8 @@ export default function AddReservationComponent(props) {
     }));
   }
 
-  // Désactiver les jours fermés dans le calendrier
   function disableClosedDays({ date, view }) {
-    if (view !== "month") {
-      return false;
-    }
+    if (view !== "month") return false;
 
     const selectedDay = date.getDay();
     const dayIndex = selectedDay === 0 ? 6 : selectedDay - 1;
@@ -435,9 +412,18 @@ export default function AddReservationComponent(props) {
     return dayHours.isClosed;
   }
 
-  // Gérer la soumission du formulaire
+  function handleInputChange(e) {
+    const { name, value } = e.target;
+    setReservationData((prevData) => ({
+      ...prevData,
+      [name]: value,
+      ...(name === "numberOfGuests" ? { reservationTime: "" } : {}),
+    }));
+  }
+
   async function handleFormSubmit(e) {
     e.preventDefault();
+    setError(null);
 
     if (!reservationData.reservationTime) {
       setError(t("errors.selectTime"));
@@ -446,17 +432,10 @@ export default function AddReservationComponent(props) {
 
     setIsSubmitting(true);
 
-    // Copie des données de réservation pour la transformation
     const updatedData = { ...reservationData };
 
-    // Vérifier si en création (non editing) et que la valeur du champ table est "auto"
     if (!isEditing && updatedData.table === "auto") {
-      if (
-        availableTables &&
-        availableTables.length > 0 &&
-        availableTables[0] &&
-        availableTables[0]._id
-      ) {
+      if (availableTables?.[0]?._id) {
         updatedData.table = availableTables[0]._id.toString();
       } else {
         updatedData.table = null;
@@ -480,6 +459,7 @@ export default function AddReservationComponent(props) {
     try {
       const token = localStorage.getItem("token");
       let response;
+
       if (isEditing) {
         response = await axios.put(
           `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${props.restaurantData._id}/reservations/${props.reservation._id}`,
@@ -489,7 +469,7 @@ export default function AddReservationComponent(props) {
               Authorization: `Bearer ${token}`,
               "Content-Type": "application/json",
             },
-          }
+          },
         );
       } else {
         response = await axios.post(
@@ -500,17 +480,16 @@ export default function AddReservationComponent(props) {
               Authorization: `Bearer ${token}`,
               "Content-Type": "application/json",
             },
-          }
+          },
         );
 
-        // Envoyer l'email de confirmation uniquement si un email est renseigné
         if (reservationData.customerEmail) {
           await axios.post("/api/confirm-reservation-email", {
             customerName: reservationData.customerName,
             customerEmail: reservationData.customerEmail,
             reservationDate: format(
               reservationData.reservationDate,
-              "dd/MM/yyyy"
+              "dd/MM/yyyy",
             ),
             reservationTime: reservationData.reservationTime,
             numberOfGuests: reservationData.numberOfGuests,
@@ -524,28 +503,99 @@ export default function AddReservationComponent(props) {
     } catch (error) {
       setError(
         error.response?.data?.message ||
-          "Une erreur est survenue lors de la soumission de la réservation."
+          "Une erreur est survenue lors de la soumission de la réservation.",
       );
     } finally {
-      // Désactiver le loader
       setIsSubmitting(false);
     }
   }
 
-  // Rendu du composant
+  function formatTimeDisplay(reservationTime) {
+    const [hour, minute] = reservationTime.split(":");
+    return `${hour}h${minute}`;
+  }
+
+  function handleTimeSelect(reservationTime) {
+    setReservationData((prevData) => ({
+      ...prevData,
+      reservationTime,
+    }));
+  }
+
+  const manageDisponibilities =
+    props.restaurantData?.reservations?.parameters?.manage_disponibilities;
+
+  const canPickTime = Boolean(reservationData.numberOfGuests);
+  const canSubmit = Boolean(reservationData.reservationTime) && !isSubmitting;
+
+  const reservationDateLabel = reservationData?.reservationDate
+    ? new Intl.DateTimeFormat("fr-FR", {
+        weekday: "short",
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      }).format(reservationData.reservationDate)
+    : "";
+
   if (isLoading) {
     return (
       <section className="flex items-center justify-center flex-1">
-        <p className="italic">{t("messages.loading")}</p>
+        <div className="inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-4 py-3 text-sm text-darkBlue/70">
+          <Loader2 className="size-4 animate-spin" />
+          <span className="italic">{t("messages.loading")}</span>
+        </div>
       </section>
     );
   }
 
   return (
     <section className="flex flex-col gap-6">
-      <hr className="opacity-20" />
+      {/* =========================
+          ✅ MOBILE HEADER (copie du style DayHeader)
+          ========================= */}
+      <div className="midTablet:hidden safe-top bg-lightGrey">
+        <div className="flex items-center justify-between gap-3 h-[50px]">
+          {/* Left: back */}
+          <button
+            onClick={() => router.push("/dashboard/reservations")}
+            className="shrink-0 inline-flex items-center justify-center rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition p-2"
+            aria-label={t("calendar.back", "Retour au calendrier")}
+            title={t("calendar.back", "Retour au calendrier")}
+          >
+            <ChevronLeft className="size-5 text-darkBlue/70" />
+          </button>
 
-      <div className="flex gap-4 flex-wrap justify-between">
+          {/* Center: title + subtitle */}
+          <div className="min-w-0 flex-1 flex items-center gap-2">
+            <ReservationSvg
+              width={26}
+              height={26}
+              className="min-h-[26px] min-w-[26px]"
+              fillColor="#131E3690"
+            />
+
+            <div className="min-w-0">
+              <p className="text-xl font-semibold text-darkBlue truncate">
+                {t("titles.main")}
+              </p>
+              <p className="text-sm text-darkBlue/50 truncate">
+                {subtitle}
+                {reservationDateLabel ? ` · ${reservationDateLabel}` : ""}
+              </p>
+            </div>
+          </div>
+
+          {/* Right: placeholder (pour garder le centrage visuel) */}
+          <div className="shrink-0 w-[40px]" />
+        </div>
+      </div>
+
+      {/* =========================
+          ✅ midTablet+ (header desktop)
+          ========================= */}
+      <hr className="opacity-20 hidden midTablet:block" />
+
+      <div className="hidden midTablet:flex items-center justify-between gap-4 flex-wrap">
         <div className="flex gap-2 items-center min-h-[40px]">
           <ReservationSvg
             width={30}
@@ -561,23 +611,38 @@ export default function AddReservationComponent(props) {
             >
               {t("titles.main")}
             </span>
-            <span>/</span>
-            <span>{isEditing ? t("buttons.edit") : t("buttons.add")}</span>
+            <span className="text-darkBlue/30 select-none">/</span>
+            <span className="font-semibold">{subtitle}</span>
           </h1>
         </div>
+
+        <button
+          type="button"
+          onClick={() => router.push("/dashboard/reservations")}
+          className="inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition px-4 py-2 text-sm font-semibold text-darkBlue"
+        >
+          <ChevronLeft className="size-4 text-darkBlue/60" />
+          {t("buttons.cancel")}
+        </button>
       </div>
 
+      {/* =========================
+          ✅ FORM (inchangé)
+          ========================= */}
       <form onSubmit={handleFormSubmit} className="flex flex-col gap-8">
-        {/* Nombre de personnes */}
-        <div className="flex flex-col gap-4">
-          <label
-            htmlFor="numberOfGuests"
-            className="text-md font-medium flex gap-2"
-          >
-            <CommunitySvg width={20} height={20} className="opacity-50" />
-            {t("labels.add.guests")}
-          </label>
-          <div className="grid grid-cols-1 midTablet:grid-cols-2 gap-8">
+        {/* 1) Nombre de personnes */}
+        <div className="w-full midTablet:max-w-[550px] rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm p-4 midTablet:p-6">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="inline-flex items-center gap-2 text-base font-semibold text-darkBlue">
+              <CommunitySvg width={20} height={20} className="opacity-50" />
+              <span>{t("labels.add.guests")}</span>
+            </div>
+            <span className="text-xs text-darkBlue/50">
+              {t("messages.guestsHint", "Étape 1")}
+            </span>
+          </div>
+
+          <div className="w-full mt-4 grid grid-cols-1">
             <input
               type="number"
               id="numberOfGuests"
@@ -586,22 +651,24 @@ export default function AddReservationComponent(props) {
               onWheel={(e) => e.target.blur()}
               onChange={handleInputChange}
               required
-              className="h-11 w-full rounded-xl border border-darkBlue/10 bg-white/90 px-3 text-sm outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-1 focus:ring-blue/30"
+              className="h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 text-base outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-2 focus:ring-blue/20"
             />
           </div>
         </div>
 
-        {/* Date et Heure */}
-        <div className="grid grid-cols-1 midTablet:grid-cols-2 gap-8">
-          {/* Date de réservation */}
-          <div className="flex flex-col gap-4">
-            <label
-              htmlFor="reservationDate"
-              className="text-md font-medium flex gap-2"
-            >
+        {/* 2) Date */}
+        <div className="rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm p-4 midTablet:p-6">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="inline-flex items-center gap-2 text-base font-semibold text-darkBlue">
               <CalendarSvg width={20} height={20} className="opacity-50" />
-              {t("labels.add.date")}
-            </label>
+              <span>{t("labels.add.date")}</span>
+            </div>
+            <span className="text-xs text-darkBlue/50">
+              {t("messages.dateHintStep", "Étape 2")}
+            </span>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-darkBlue/10 bg-white/80 p-2">
             <Calendar
               onChange={handleDateChange}
               value={reservationData.reservationDate}
@@ -611,199 +678,226 @@ export default function AddReservationComponent(props) {
               className="drop-shadow-sm"
             />
           </div>
+        </div>
 
-          {/* Sélection de l'heure */}
-          <div className="flex flex-col gap-4">
-            <label
-              htmlFor="reservationTime"
-              className="text-md font-medium flex gap-2"
-            >
+        {/* 3) Créneau */}
+        <div className="rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm p-4 midTablet:p-6">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="inline-flex items-center gap-2 text-base font-semibold text-darkBlue">
               <ClockSvg width={20} height={20} className="opacity-50" />
-              {t("labels.add.time")}
-            </label>
-            {availableTimes.length > 0 ? (
-              <div className="flex flex-wrap gap-4">
-                {availableTimes.map((reservationTime) => (
-                  <button
-                    type="button"
-                    key={reservationTime}
-                    onClick={() => handleTimeSelect(reservationTime)}
-                    disabled={!reservationData.numberOfGuests}
-                    className={`px-3 py-1 transition-all duration-200 ease-in-out rounded-md drop-shadow-md text-sm disabled:hover:bg-white disabled:opacity-40 ${
-                      reservationData.reservationTime === reservationTime
-                        ? "bg-blue text-white border-blue"
-                        : "bg-white text-black hover:bg-blue hover:bg-opacity-10"
-                    }`}
-                    aria-pressed={
-                      reservationData.reservationTime === reservationTime
-                    }
-                  >
-                    {formatTimeDisplay(reservationTime)}
-                  </button>
-                ))}
+              <span>{t("labels.add.time")}</span>
+            </div>
+            <span className="text-xs text-darkBlue/50">
+              {t("messages.timeHintStep", "Étape 3")}
+            </span>
+          </div>
+
+          <div className="mt-4">
+            {!canPickTime ? (
+              <div className="rounded-2xl border border-darkBlue/10 bg-white/70 p-4 text-sm text-darkBlue/60">
+                {t(
+                  "messages.guestsFirst",
+                  "Renseignez d’abord le nombre de personnes pour voir les créneaux.",
+                )}
+              </div>
+            ) : availableTimes.length > 0 ? (
+              <div className="grid grid-cols-5 midTablet:grid-cols-6 gap-2">
+                {availableTimes.map((reservationTime) => {
+                  const selected =
+                    reservationData.reservationTime === reservationTime;
+                  return (
+                    <button
+                      type="button"
+                      key={reservationTime}
+                      onClick={() => handleTimeSelect(reservationTime)}
+                      className={[
+                        "inline-flex items-center justify-center",
+                        "h-10 px-4 rounded-lg midTablet:rounded-xl text-sm font-semibold",
+                        "border transition",
+                        selected
+                          ? "bg-blue text-white border-blue shadow-sm"
+                          : "bg-white/80 text-darkBlue border-darkBlue/10 hover:bg-darkBlue/5",
+                      ].join(" ")}
+                      aria-pressed={selected}
+                    >
+                      {formatTimeDisplay(reservationTime)}
+                    </button>
+                  );
+                })}
               </div>
             ) : (
-              <p className="">{t("labels.add.close")}</p>
+              <div className="rounded-2xl border border-darkBlue/10 bg-white/70 p-4 text-sm text-darkBlue/60">
+                {t("labels.add.close")}
+              </div>
             )}
           </div>
         </div>
 
         {/* Informations Client et Table */}
-        <div className="grid grid-cols-1 midTablet:grid-cols-2 gap-8">
-          {/* Nom */}
-          <div className="flex flex-col gap-4">
-            <label
-              htmlFor="customerName"
-              className="text-md font-medium flex gap-2"
-            >
-              <UserSvg width={20} height={20} className="opacity-50" />
-              {t("labels.add.name")}
-            </label>
-            <input
-              type="text"
-              id="customerName"
-              name="customerName"
-              value={reservationData.customerName}
-              onChange={handleInputChange}
-              required
-              className="h-11 w-full rounded-xl border border-darkBlue/10 bg-white/90 px-3 text-sm outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-1 focus:ring-blue/30"
-            />
-          </div>
-
-          {/* Email */}
-          <div className="flex flex-col gap-4">
-            <label
-              htmlFor="customerEmail"
-              className="text-md font-medium flex items-center gap-2"
-            >
-              <EmailSvg width={20} height={20} className="opacity-50" />
-              {t("labels.add.email")}{" "}
-              <span className="text-xs opacity-50 italic">
-                {t("labels.optional")}
-              </span>
-            </label>
-            <input
-              type="email"
-              id="customerEmail"
-              name="customerEmail"
-              value={reservationData.customerEmail}
-              onChange={handleInputChange}
-              className="h-11 w-full rounded-xl border border-darkBlue/10 bg-white/90 px-3 text-sm outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-1 focus:ring-blue/30"
-            />
-          </div>
-
-          {/* Téléphone */}
-          <div className="flex flex-col gap-4">
-            <label
-              htmlFor="customerPhone"
-              className="text-md font-medium flex items-center gap-2"
-            >
-              <PhoneSvg width={20} height={20} className="opacity-50" />
-              {t("labels.add.phone")}
-            </label>
-            <input
-              type="tel"
-              id="customerPhone"
-              name="customerPhone"
-              value={reservationData.customerPhone}
-              onChange={handleInputChange}
-              required
-              className="h-11 w-full rounded-xl border border-darkBlue/10 bg-white/90 px-3 text-sm outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-1 focus:ring-blue/30"
-            />
-          </div>
-
-          {/* Champ Table */}
-          <div className="flex flex-col gap-4">
-            <label
-              htmlFor="table"
-              className="text-md font-medium flex items-center gap-2"
-            >
-              <TableSvg width={20} height={20} className="opacity-50" />
-              {t("labels.add.table")}
-            </label>
-            {props.restaurantData.reservations.parameters
-              .manage_disponibilities ? (
-              <select
-                id="table"
-                name="table"
-                value={reservationData.table}
-                onChange={handleInputChange}
-                required
-                className="h-11 w-full rounded-xl border border-darkBlue/10 bg-white/90 px-3 text-sm outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-1 focus:ring-blue/30"
+        <div className="rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm p-4 midTablet:p-6">
+          <div className="grid grid-cols-1 midTablet:grid-cols-2 gap-6 midTablet:gap-8">
+            <div className="flex flex-col gap-3">
+              <label
+                htmlFor="customerName"
+                className="text-base font-semibold text-darkBlue inline-flex items-center gap-2"
               >
-                {/* En création, on affiche une option "Automatique" dont la valeur est "auto" */}
-                {!isEditing && (
-                  <option value="auto">{t("labels.add.automatic")}</option>
-                )}
-                {availableTables.map((table) => (
-                  <option key={table._id} value={table._id}>
-                    {table.name ? table.name : `Table de ${table.seats} places`}
-                  </option>
-                ))}
-              </select>
-            ) : (
+                <UserSvg width={20} height={20} className="opacity-50" />
+                {t("labels.add.name")}
+              </label>
               <input
                 type="text"
-                id="table"
-                name="table"
-                value={reservationData.table}
+                id="customerName"
+                name="customerName"
+                value={reservationData.customerName}
                 onChange={handleInputChange}
-                className="h-11 w-full rounded-xl border border-darkBlue/10 bg-white/90 px-3 text-sm outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-1 focus:ring-blue/30"
+                required
+                className="h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 text-base outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-2 focus:ring-blue/20"
               />
-            )}
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <label
+                htmlFor="customerEmail"
+                className="text-base font-semibold text-darkBlue inline-flex items-center gap-2"
+              >
+                <EmailSvg width={20} height={20} className="opacity-50" />
+                {t("labels.add.email")}
+              </label>
+              <input
+                type="email"
+                id="customerEmail"
+                name="customerEmail"
+                value={reservationData.customerEmail}
+                onChange={handleInputChange}
+                className="h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 text-base outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-2 focus:ring-blue/20"
+              />
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <label
+                htmlFor="customerPhone"
+                className="text-base font-semibold text-darkBlue inline-flex items-center gap-2"
+              >
+                <PhoneSvg width={20} height={20} className="opacity-50" />
+                {t("labels.add.phone")}
+              </label>
+              <input
+                type="tel"
+                id="customerPhone"
+                name="customerPhone"
+                value={reservationData.customerPhone}
+                onChange={handleInputChange}
+                className="h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 text-base outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-2 focus:ring-blue/20"
+              />
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <label
+                htmlFor="table"
+                className="text-base font-semibold text-darkBlue inline-flex items-center gap-2"
+              >
+                <TableSvg width={20} height={20} className="opacity-50" />
+                {t("labels.add.table")}
+              </label>
+
+              {manageDisponibilities ? (
+                <select
+                  id="table"
+                  name="table"
+                  value={reservationData.table}
+                  onChange={handleInputChange}
+                  required
+                  className="h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 text-base outline-none transition focus:border-blue/60 focus:ring-2 focus:ring-blue/20"
+                >
+                  {!isEditing && (
+                    <option value="auto">{t("labels.add.automatic")}</option>
+                  )}
+                  {availableTables.map((table) => (
+                    <option key={table._id} value={table._id}>
+                      {table.name
+                        ? table.name
+                        : `Table de ${table.seats} places`}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  id="table"
+                  name="table"
+                  value={reservationData.table}
+                  onChange={handleInputChange}
+                  className="h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 text-base outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-2 focus:ring-blue/20"
+                />
+              )}
+            </div>
           </div>
         </div>
 
         {/* Commentaire */}
-        <div className="grid grid-cols-1 midTablet:grid-cols-2 gap-8">
-          <div className="flex flex-col gap-4">
+        <div className="rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm p-4 midTablet:p-6">
+          <div className="flex flex-col gap-3">
             <label
               htmlFor="commentary"
-              className="text-md font-medium flex gap-2"
+              className="text-base font-semibold text-darkBlue inline-flex items-center gap-2"
             >
               <CommentarySvg width={20} height={20} className="opacity-50" />
               {t("labels.add.commentary")}
             </label>
+
             <textarea
               id="commentary"
               name="commentary"
               value={reservationData.commentary}
               onChange={handleInputChange}
               rows={5}
-              className="w-full p-2 rounded-xl border border-darkBlue/10 bg-white/90 px-3 text-sm outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-1 focus:ring-blue/30 resize-none"
+              className="w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 py-3 text-base outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-2 focus:ring-blue/20 resize-none"
             />
           </div>
         </div>
 
-        {/* Boutons Valider et Annuler */}
-        <div className="flex justify-center gap-4 mt-4">
-          <button
-            type="submit"
-            className={`px-4 py-2 rounded-lg bg-blue text-white w-[150px] ${
-              !reservationData.reservationTime
-                ? "opacity-50 cursor-not-allowed"
-                : ""
-            }`}
-            disabled={
-              !reservationData.reservationTime || isLoading || isSubmitting
-            }
-          >
-            {isSubmitting
-              ? t("buttons.loading")
-              : isEditing
-                ? t("buttons.update")
-                : t("buttons.validate")}
-          </button>
+        {/* Actions */}
+        {error && (
+          <div className="rounded-2xl border border-red/20 bg-red/5 px-4 py-3 text-sm text-red">
+            {error}
+          </div>
+        )}
+
+        <div className="flex flex-col midTablet:flex-row items-stretch midTablet:items-center justify-end gap-3">
           <button
             type="button"
             onClick={() => router.push("/dashboard/reservations")}
-            className="px-4 py-2 rounded-lg bg-red text-white w-[150px]"
+            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition px-5 h-11 text-sm font-semibold text-darkBlue"
           >
+            <X className="size-4 text-darkBlue/60" />
             {t("buttons.cancel")}
           </button>
-        </div>
 
-        {error && <p className="text-red text-center mt-4">{error}</p>}
+          <button
+            type="submit"
+            disabled={!canSubmit || isLoading || isSubmitting}
+            className={[
+              "inline-flex items-center justify-center gap-2 rounded-2xl px-5 h-11",
+              "text-sm font-semibold text-white",
+              "bg-blue hover:bg-blue/90 active:scale-[0.98] transition",
+              !canSubmit || isLoading || isSubmitting
+                ? "opacity-50 cursor-not-allowed"
+                : "",
+            ].join(" ")}
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                {t("buttons.loading")}
+              </>
+            ) : (
+              <>
+                <Save className="size-4" />
+                {isEditing ? t("buttons.update") : t("buttons.validate")}
+              </>
+            )}
+          </button>
+        </div>
       </form>
     </section>
   );

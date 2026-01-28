@@ -75,11 +75,6 @@ export default function ListReservationsComponent(props) {
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
 
-  // ✅ informe la page si on est en vue Jour ou non
-  useEffect(() => {
-    props.onDayViewChange?.(!!selectedDay);
-  }, [selectedDay, props]);
-
   /* =========================================================
    * Agrégats calendrier (pack par jour) + surbrillance recherche
    * =======================================================*/
