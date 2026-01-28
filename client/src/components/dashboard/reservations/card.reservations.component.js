@@ -1,14 +1,8 @@
-// SVG
 import {
-  CheckSvg,
-  DoubleCheckSvg,
   CommentarySvg,
   CommunitySvg,
-  DeleteSvg,
-  EditSvg,
   TableSvg,
   UserSvg,
-  ActiveSvg,
 } from "../../_shared/_svgs/_index";
 
 // I18N

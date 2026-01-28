@@ -372,7 +372,7 @@ export default function DashboardHealthControlPlanComponent() {
         </div>
 
         {/* Tiles grid */}
-        <div className="grid grid-cols-1 midTablet:grid-cols-2 tablet:grid-cols-3 desktop:grid-cols-4 ultraWild:grid-cols-5 gap-2 midTablet:gap-4 w-full">
+        <div className="grid grid-cols-2 midTablet:grid-cols-3 tablet:grid-cols-3 desktop:grid-cols-4 ultraWild:grid-cols-5 gap-2 midTablet:gap-4 w-full">
           {filteredTiles.map((tile) => {
             const tone = tile.tone;
             return (

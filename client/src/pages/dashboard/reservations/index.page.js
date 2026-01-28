@@ -17,9 +17,6 @@ import ListReservationsComponent from "@/components/dashboard/reservations/list.
 export default function ReservationsPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
 
-  // ✅ NEW: savoir si on est en vue "Jour"
-  const [isDayView, setIsDayView] = useState(false);
-
   let title;
   let description;
 
@@ -56,8 +53,6 @@ export default function ReservationsPage(props) {
     employeeHasReservationsAccess = profile?.options?.reservations === true;
   }
 
-  const hideChromeOnMobile = isDayView;
-
   return (
     <>
       <Head>
@@ -66,20 +61,16 @@ export default function ReservationsPage(props) {
 
       <div>
         <div className="flex">
-          <div className={hideChromeOnMobile ? "hidden midTablet:block" : ""}>
-            <NavComponent />
-          </div>
+          <NavComponent />
 
           <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 min-h-screen">
-            <div className={hideChromeOnMobile ? "hidden midTablet:block" : ""}>
-              <SettingsComponent
-                dataLoading={restaurantContext.dataLoading}
-                setDataLoading={restaurantContext.setDataLoading}
-                closeEditing={restaurantContext.closeEditing}
-                setRestaurantData={restaurantContext.setRestaurantData}
-                restaurantData={restaurantContext.restaurantData}
-              />
-            </div>
+            <SettingsComponent
+              dataLoading={restaurantContext.dataLoading}
+              setDataLoading={restaurantContext.setDataLoading}
+              closeEditing={restaurantContext.closeEditing}
+              setRestaurantData={restaurantContext.setRestaurantData}
+              restaurantData={restaurantContext.restaurantData}
+            />
 
             {!hasReservationsModule ? (
               <NoAvailableComponent
@@ -98,7 +89,6 @@ export default function ReservationsPage(props) {
                 reservations={
                   restaurantContext?.restaurantData?.reservations?.list
                 }
-                onDayViewChange={setIsDayView}
               />
             )}
           </div>

@@ -5,32 +5,57 @@
   border: none !important;
 
   &__navigation {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+
+    /* Label mois/année */
     &__label {
-      text-transform: capitalize;
-      pointer-events: none;
       cursor: default;
+      text-transform: capitalize;
+      font-weight: 700;
+      font-size: 14px;
+      color: rgba(19, 30, 54, 0.85);
+      border-radius: 999px;
 
       &:hover {
-        background-color: white !important;
+        background-color: transparent !important;
       }
     }
 
     button {
-      &:disabled {
-        opacity: 0;
+      border-radius: 999px;
+      border: 1px solid rgba(19, 30, 54, 0.1) !important;
+      background: rgba(255, 255, 255, 0.8) !important;
+      min-width: 40px;
+      height: 40px;
+      padding: 0 12px;
+      transition:
+        transform 0.12s ease,
+        background 0.12s ease,
+        border 0.12s ease;
+
+      &:enabled:hover,
+      &:enabled:focus {
+        background: rgba(19, 30, 54, 0.04) !important;
+        border-color: rgba(19, 30, 54, 0.18) !important;
+        transform: translateY(-1px);
       }
-      &:enabled {
-        &:hover,
-        &:focus {
-          background-color: white !important;
-        }
+
+      &:enabled:active {
+        transform: translateY(0px) scale(0.98);
+      }
+
+      &:disabled {
+        opacity: 0.25;
       }
     }
   }
 
   &__tile {
     border-radius: 12px;
-
+    
     &--now {
       background: hsla(249, 59%, 57%, 0.2) !important;
     }
@@ -47,6 +72,9 @@
 
   &__month-view {
     &__days {
+      display: grid !important;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 6px; /* ✅ ajuste ici: 4px / 6px / 8px */
       &__day--weekend {
         color: inherit !important;
 

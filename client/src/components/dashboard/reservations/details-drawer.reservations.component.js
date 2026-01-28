@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { X, Phone, Mail, Users, Clock, Calendar, Table, MessageSquare } from "lucide-react";
+import { X, Phone, Mail, Users, Clock, Calendar } from "lucide-react";
+import { TableSvg } from "@/components/_shared/_svgs/table.svg";
+import { CommentarySvg } from "@/components/_shared/_svgs/commentary.svg";
 
 const CLOSE_MS = 280;
 
@@ -77,19 +79,41 @@ export default function DetailsDrawerReservationsComponent({
   const status = reservation?.status || null;
 
   const statusUi = useMemo(() => {
-    if (status === "Pending") return { cls: "bg-blue/10 text-blue border-blue/30", label: "En attente" };
-    if (status === "Confirmed") return { cls: "bg-blue/15 text-blue border-blue/40", label: "Confirmée" };
-    if (status === "Active") return { cls: "bg-green/10 text-green border-green/30", label: "En cours" };
-    if (status === "Late") return { cls: "bg-[#FF914D22] text-[#B95E1C] border-[#FF914D66]", label: "En retard" };
-    if (status === "Finished") return { cls: "bg-darkBlue/5 text-darkBlue/70 border-darkBlue/20", label: "Terminée" };
-    return { cls: "bg-darkBlue/5 text-darkBlue/70 border-darkBlue/20", label: status || "-" };
+    if (status === "Pending")
+      return {
+        cls: "bg-blue/10 text-blue border-blue/30",
+        label: "En attente",
+      };
+    if (status === "Confirmed")
+      return { cls: "bg-blue/15 text-blue border-blue/40", label: "Confirmée" };
+    if (status === "Active")
+      return {
+        cls: "bg-green/10 text-green border-green/30",
+        label: "En cours",
+      };
+    if (status === "Late")
+      return {
+        cls: "bg-[#FF914D22] text-[#B95E1C] border-[#FF914D66]",
+        label: "En retard",
+      };
+    if (status === "Finished")
+      return {
+        cls: "bg-darkBlue/5 text-darkBlue/70 border-darkBlue/20",
+        label: "Terminée",
+      };
+    return {
+      cls: "bg-darkBlue/5 text-darkBlue/70 border-darkBlue/20",
+      label: status || "-",
+    };
   }, [status]);
 
   const primaryAction = useMemo(() => {
-    if (status === "Pending") return { type: "confirm", label: t?.("buttons.confirm") || "Confirmer" };
+    if (status === "Pending")
+      return { type: "confirm", label: t?.("buttons.confirm") || "Confirmer" };
     if (status === "Confirmed" || status === "Late")
       return { type: "active", label: t?.("buttons.active") || "Activer" };
-    if (status === "Active") return { type: "finish", label: t?.("buttons.finish") || "Terminer" };
+    if (status === "Active")
+      return { type: "finish", label: t?.("buttons.finish") || "Terminer" };
     return null;
   }, [status, t]);
 
@@ -144,7 +168,8 @@ export default function DetailsDrawerReservationsComponent({
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-xs text-darkBlue/50">
-                {t?.("buttons.details", "Détails")} — {t?.("titles.main", "Réservations")}
+                {t?.("buttons.details", "Détails")} —{" "}
+                {t?.("titles.main", "Réservations")}
               </p>
 
               <h3 className="text-base font-semibold text-darkBlue truncate">
@@ -152,7 +177,9 @@ export default function DetailsDrawerReservationsComponent({
               </h3>
 
               <div className="mt-1 flex flex-wrap items-center gap-2">
-                <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${statusUi.cls}`}>
+                <span
+                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${statusUi.cls}`}
+                >
                   {statusUi.label}
                 </span>
 
@@ -184,7 +211,9 @@ export default function DetailsDrawerReservationsComponent({
           <div className="rounded-2xl bg-white/60 border border-darkBlue/10 shadow-sm p-4 flex flex-col gap-3">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-xs text-darkBlue/50">{t?.("labels.customer", "Client")}</p>
+                <p className="text-xs text-darkBlue/50">
+                  {t?.("labels.customer", "Client")}
+                </p>
                 <p className="text-sm font-semibold text-darkBlue truncate">
                   {reservation?.customerName || "-"}
                 </p>
@@ -200,23 +229,27 @@ export default function DetailsDrawerReservationsComponent({
             <div className="grid grid-cols-1 gap-2">
               <div className="flex items-start gap-2 text-sm text-darkBlue/80">
                 <Phone className="size-4 mt-0.5 text-darkBlue/40" />
-                <p className="min-w-0 truncate">{reservation?.customerPhone || "-"}</p>
+                <p className="min-w-0 truncate">
+                  {reservation?.customerPhone || "-"}
+                </p>
               </div>
 
               <div className="flex items-start gap-2 text-sm text-darkBlue/80">
                 <Mail className="size-4 mt-0.5 text-darkBlue/40" />
-                <p className="min-w-0 truncate">{reservation?.customerEmail || "-"}</p>
+                <p className="min-w-0 truncate">
+                  {reservation?.customerEmail || "-"}
+                </p>
               </div>
 
               <div className="flex items-start gap-2 text-sm text-darkBlue/80">
-                <Table className="size-4 mt-0.5 text-darkBlue/40" />
+                <TableSvg className="size-4 mt-0.5 text-darkBlue/40 opacity-40" />
                 <p className="min-w-0 truncate">
                   {reservation?.table?.name || "-"}
                 </p>
               </div>
 
               <div className="flex items-start gap-2 text-sm text-darkBlue/80">
-                <MessageSquare className="size-4 mt-0.5 text-darkBlue/40" />
+                <CommentarySvg className="size-4 mt-0.5 text-darkBlue/40 opacity-40" />
                 <p className="min-w-0">
                   {reservation?.commentary?.trim?.()
                     ? reservation.commentary
@@ -228,7 +261,9 @@ export default function DetailsDrawerReservationsComponent({
 
           {/* Actions secondaires (desktop aussi) */}
           <div className="mt-4 rounded-2xl bg-white/60 border border-darkBlue/10 shadow-sm p-4">
-            <p className="text-xs text-darkBlue/50 mb-3">{t?.("labels.actions", "Actions")}</p>
+            <p className="text-xs text-darkBlue/50 mb-3">
+              {t?.("labels.actions", "Actions")}
+            </p>
 
             <div className="flex gap-2">
               {primaryAction ? (
