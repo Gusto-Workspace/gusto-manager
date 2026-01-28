@@ -11,7 +11,7 @@ import { GlobalContext } from "@/contexts/global.context";
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
-import ListGiftsComponent from "@/components/dashboard/gifts/list.gifts.component";
+import ListGiftsComponent from "@/components/dashboard/gift-cards/list.gift-cards.component";
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
 
 export default function GiftsPage(props) {

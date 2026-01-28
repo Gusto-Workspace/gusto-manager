@@ -1,19 +1,18 @@
 {
-  "name": "Gusto – Cartes cadeaux",
-  "short_name": "Cartes",
-  "start_url": "/gift-cards",
-  "scope": "/gift-cards",
+  "name": "Gusto Manager",
+  "short_name": "Gusto",
+  "start_url": "/dashboard",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#131E36",
   "icons": [
     {
-      "src": "/icons/android/gift-cards-192.png",
+      "src": "/icons/android/gusto-192.png",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "/icons/android/gift-cards-512.png",
+      "src": "/icons/android/gusto-512.png",
       "sizes": "512x512",
       "type": "image/png"
     }

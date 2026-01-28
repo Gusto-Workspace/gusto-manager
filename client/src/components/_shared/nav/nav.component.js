@@ -31,7 +31,7 @@ const HREF_TO_OPTION_KEY = {
   "/dashboard/wines": "wines",
   "/dashboard/news": "news",
   "/dashboard/employees": "employees",
-  "/dashboard/gifts": "gift_card",
+  "/dashboard/gift-cards": "gift_card",
   "/dashboard/reservations": "reservations",
   "/dashboard/take-away": "take_away",
   "/dashboard/health-control-plan": "health_control_plan",
