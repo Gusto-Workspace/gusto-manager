@@ -57,6 +57,20 @@ export default function ReservationsPage(props) {
     <>
       <Head>
         <title>{title}</title>
+
+        {/* iOS: raccourci écran d'accueil */}
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <meta name="apple-mobile-web-app-title" content="Réservations" />
+
+        {/* Icône iOS dédiée au module */}
+        <link
+          rel="apple-touch-icon"
+          href="/icons/ios/reservations-180.png?v=1"
+        />
+
+        {/* (Optionnel) Empêche Safari de “détecter” certains formats */}
+        <meta name="format-detection" content="telephone=no" />
       </Head>
 
       <div>

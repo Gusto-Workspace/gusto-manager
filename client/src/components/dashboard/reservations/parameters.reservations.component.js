@@ -403,7 +403,7 @@ export default function ParametersReservationComponent(props) {
     return (
       <section className="flex items-center justify-center flex-1">
         <div className="inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-4 py-3 text-sm text-darkBlue/70">
-          <Loader2 className="size-4 animate-spin" />
+          <Loader2 className="size-4 shrink-0 animate-spin" />
           <span className="italic">
             {t("reservations:messages.loading", "Chargement…")}
           </span>
@@ -474,7 +474,7 @@ export default function ParametersReservationComponent(props) {
           onClick={handleBack}
           className="inline-flex items-center gap-2 rounded-lg border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition px-4 py-2 text-sm font-semibold text-darkBlue"
         >
-          <ChevronLeft className="size-4 text-darkBlue/60" />
+          <ChevronLeft className="size-4 shrink-0 text-darkBlue/60" />
           {t("reservations:buttons.back", "Retour")}
         </button>
       </div>
@@ -489,7 +489,7 @@ export default function ParametersReservationComponent(props) {
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <p className={sectionTitle}>
-                  <CalendarDays className="size-4 w-[28px] opacity-60" />
+                  <CalendarDays className="size-4 shrink-0 opacity-60" />
                   {t(
                     "reservations:labels.sameHoursAsRestaurant",
                     "Heures de réservation",
@@ -553,7 +553,7 @@ export default function ParametersReservationComponent(props) {
         <div className={card}>
           <div className={cardInner}>
             <p className={sectionTitle}>
-              <Clock className="size-4 opacity-60" />
+              <Clock className="size-4 shrink-0 opacity-60" />
               {t("reservations:titles.slots", "Créneaux")}
             </p>
             <p className={hint}>
@@ -691,7 +691,7 @@ export default function ParametersReservationComponent(props) {
         <div className={card}>
           <div className={cardInner}>
             <p className={sectionTitle}>
-              <Settings2 className="size-4 opacity-60" />
+              <Settings2 className="size-4 shrink-0 opacity-60" />
               {t("reservations:titles.automation", "Automatisations")}
             </p>
             <p className={hint}>
@@ -911,7 +911,7 @@ export default function ParametersReservationComponent(props) {
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <p className={sectionTitle}>
-                  <Wand2 className="size-4 opacity-60" />
+                  <Wand2 className="size-4 shrink-0 opacity-60" />
                   {t(
                     "reservations:labels.manageDisponibilities",
                     "Gestion intelligente",
@@ -954,7 +954,7 @@ export default function ParametersReservationComponent(props) {
 
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <div className={chip}>
-                    <CheckCircle2 className="size-4 opacity-60" />
+                    <CheckCircle2 className="size-4 shrink-0 opacity-60" />
                     <span>
                       {tablesCount}{" "}
                       {t(
@@ -977,7 +977,7 @@ export default function ParametersReservationComponent(props) {
                       "Ajouter une table",
                     )}
                   >
-                    <Plus className="size-4" />
+                    <Plus className="size-4 shrink-0" />
                   </button>
                 </div>
 
@@ -1033,7 +1033,7 @@ export default function ParametersReservationComponent(props) {
                               "Supprimer",
                             )}
                           >
-                            <Trash2 className="size-4" />
+                            <Trash2 className="size-4 shrink-0" />
                           </button>
                         </div>
                       </div>
@@ -1053,7 +1053,7 @@ export default function ParametersReservationComponent(props) {
             disabled={isLoading}
             className="inline-flex items-center justify-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition px-5 h-11 text-sm font-semibold text-darkBlue"
           >
-            <X className="size-4 text-darkBlue/60" />
+            <X className="size-4 shrink-0 text-darkBlue/60" />
             {t("reservations:buttons.back", "Retour")}
           </button>
 
@@ -1069,7 +1069,7 @@ export default function ParametersReservationComponent(props) {
           >
             {isLoading ? (
               <>
-                <Loader2 className="size-4 animate-spin" />
+                <Loader2 className="size-4 shrink-0 animate-spin" />
                 {t("reservations:buttons.loading", "En cours…")}
               </>
             ) : (

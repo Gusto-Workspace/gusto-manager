@@ -4,8 +4,9 @@ import "@/styles/tailwind.css";
 import "@/styles/custom/_index.scss";
 
 // REACT
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useRouter } from "next/router";
+import Head from "next/head";
 
 // I18N
 import { appWithTranslation } from "next-i18next";
@@ -16,28 +17,29 @@ import { GlobalProvider } from "@/contexts/global.context";
 function App({ Component, pageProps }) {
   const router = useRouter();
 
+  // ✅ Choix du manifest selon le module (Android)
+  const manifestHref = useMemo(() => {
+    const p = router.pathname || "";
+
+    if (p.startsWith("/reservations"))
+      return "/manifest-reservations.webmanifest";
+    if (p.startsWith("/gift-cards")) return "/manifest-giftcards.webmanifest";
+    // ajoute ici les autres modules...
+    return "/manifest.webmanifest";
+  }, [router.pathname]);
+
   useEffect(() => {
     const scrollToTopEverywhere = () => {
       if (typeof window === "undefined") return;
 
       const doScroll = () => {
-        // scroll "classique"
         window.scrollTo(0, 0);
-
-        // pour les cas où c'est documentElement qui gère le scroll
         document.documentElement.scrollTop = 0;
-
-        // pour les cas où c'est le body qui scrolle (ton hack iOS)
         document.body.scrollTop = 0;
       };
 
-      // tout de suite
       doScroll();
-
-      // une fois au prochain frame (Safari aime bien ça)
       requestAnimationFrame(doScroll);
-
-      // et une petite dernière 50ms après, au cas où
       setTimeout(doScroll, 50);
     };
 
@@ -55,9 +57,19 @@ function App({ Component, pageProps }) {
   }, [router]);
 
   return (
-    <GlobalProvider>
-      <Component {...pageProps} />
-    </GlobalProvider>
+    <>
+      <Head>
+        {/* ✅ Android/Chrome : manifest par module */}
+        <link rel="manifest" href={manifestHref} />
+
+        {/* (optionnel) utile pour l'UI navigateur Android */}
+        <meta name="theme-color" content="#131E36" />
+      </Head>
+
+      <GlobalProvider>
+        <Component {...pageProps} />
+      </GlobalProvider>
+    </>
   );
 }
 
