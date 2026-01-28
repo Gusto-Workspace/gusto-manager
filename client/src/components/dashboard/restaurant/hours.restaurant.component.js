@@ -55,12 +55,12 @@ export default function HoursRestaurantComponent(props) {
       prev.map((item) => {
         if (item.day === day) {
           const updatedHours = item.hours.map((hour, i) =>
-            i === index ? { ...hour, [field]: value } : hour
+            i === index ? { ...hour, [field]: value } : hour,
           );
           return { ...item, hours: updatedHours, isClosed: false };
         }
         return item;
-      })
+      }),
     );
   }
 
@@ -78,8 +78,8 @@ export default function HoursRestaurantComponent(props) {
                   ]
                 : [{ open: "", close: "" }],
             }
-          : item
-      )
+          : item,
+      ),
     );
   }
 
@@ -88,8 +88,8 @@ export default function HoursRestaurantComponent(props) {
       prev.map((item) =>
         item.day === day
           ? { ...item, hours: [...item.hours, { open: "", close: "" }] }
-          : item
-      )
+          : item,
+      ),
     );
   }
 
@@ -105,7 +105,7 @@ export default function HoursRestaurantComponent(props) {
           };
         }
         return item;
-      })
+      }),
     );
   }
 
@@ -114,7 +114,7 @@ export default function HoursRestaurantComponent(props) {
     // Nettoyage : on supprime les créneaux vides
     const cleanedHours = localHours.map((dayHour) => {
       const filteredHours = dayHour.hours.filter(
-        (hour) => hour.open !== "" || hour.close !== ""
+        (hour) => hour.open !== "" || hour.close !== "",
       );
       const isClosed = filteredHours.length === 0 ? true : dayHour.isClosed;
       return {
@@ -155,7 +155,7 @@ export default function HoursRestaurantComponent(props) {
           headers: {
             Authorization: `Bearer ${token}`,
           },
-        }
+        },
       );
       props.handleUpdateData?.(res.data.restaurant);
       setEditing(false);
@@ -189,11 +189,11 @@ export default function HoursRestaurantComponent(props) {
             {props.reservations
               ? t(
                   "hours.reservationsSubtitle",
-                  "Définissez les créneaux disponibles pour les réservations en ligne."
+                  "Définissez les créneaux disponibles pour les réservations en ligne.",
                 )
               : t(
                   "hours.openingSubtitle",
-                  "Configurez les horaires affichés sur votre site et vos modules."
+                  "Configurez les horaires affichés sur votre site et vos modules.",
                 )}
           </p>
         </div>
@@ -273,14 +273,14 @@ export default function HoursRestaurantComponent(props) {
                 ) : editing ? (
                   <div className="flex flex-col midTablet:flex-row items-center justify-end gap-3 desktop:gap-6">
                     {dayHour.isClosed ? (
-                      <div className="flex flex-col midTablet:flex-row items-center gap-1 midTablet:gap-2">
+                      <div className="flex items-center gap-1 midTablet:gap-2">
                         <input
                           type="time"
                           value=""
                           disabled
                           className={`${timeInputCls} opacity-50`}
                         />
-                        <span className="text-xs text-darkBlue/60">
+                        <span className="text-xs text-darkBlue/60 mx-2">
                           {t("hours.to")}
                         </span>
                         <input
@@ -291,26 +291,26 @@ export default function HoursRestaurantComponent(props) {
                         />
                       </div>
                     ) : (
-                      <div className="flex flex-col midTablet:flex-row items-center gap-4">
+                      <div className="flex items-center gap-2">
                         <div className="flex flex-col gap-3 midTablet:gap-2">
                           {dayHour.hours.map((hour, index) => (
                             <div
                               key={index}
-                              className="relative flex flex-col midTablet:flex-row items-center gap-1 midTablet:gap-2 w-full"
+                              className="relative flex items-center gap-1 midTablet:gap-2 w-full"
                             >
-                              {dayHour.hours.length > 1 && (
+                            
                                 <button
                                   type="button"
                                   onClick={() =>
                                     handleRemoveTimeSlot(dayHour.day, index)
                                   }
-                                  className="text-red bg-red/30 min-w-6 h-6 rounded-full flex items-center justify-center ml-2 absolute -right-8 top-1/2 -translate-y-1/2 midTablet:static midTablet:right-auto midTablet:top-auto midTablet:translate-y-0"
+                                  className={`text-red bg-red/30 min-w-6 h-6 rounded-full flex items-center justify-center mr-2 ${dayHour.hours.length > 1 ? "block" : "opacity-0 pointer-events-none"}`}
                                   aria-label={t("hours.removeTimeSlot")}
                                   disabled={saving}
                                 >
                                   &times;
                                 </button>
-                              )}
+                          
 
                               <input
                                 type="time"
@@ -320,7 +320,7 @@ export default function HoursRestaurantComponent(props) {
                                     dayHour.day,
                                     index,
                                     "open",
-                                    e.target.value
+                                    e.target.value,
                                   )
                                 }
                                 disabled={dayHour.isClosed || saving}
@@ -329,7 +329,7 @@ export default function HoursRestaurantComponent(props) {
                                 }`}
                               />
 
-                              <span className="text-xs text-darkBlue/70">
+                              <span className="text-xs text-darkBlue/70 mx-2">
                                 {t("hours.to")}
                               </span>
 
@@ -341,7 +341,7 @@ export default function HoursRestaurantComponent(props) {
                                     dayHour.day,
                                     index,
                                     "close",
-                                    e.target.value
+                                    e.target.value,
                                   )
                                 }
                                 disabled={dayHour.isClosed || saving}

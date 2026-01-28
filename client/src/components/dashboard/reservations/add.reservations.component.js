@@ -619,7 +619,7 @@ export default function AddReservationComponent(props) {
         <button
           type="button"
           onClick={() => router.push("/dashboard/reservations")}
-          className="inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition px-4 py-2 text-sm font-semibold text-darkBlue"
+          className="inline-flex items-center gap-2 rounded-lg border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition px-4 py-2 text-sm font-semibold text-darkBlue"
         >
           <ChevronLeft className="size-4 text-darkBlue/60" />
           {t("buttons.cancel")}
@@ -629,7 +629,7 @@ export default function AddReservationComponent(props) {
       {/* =========================
           ✅ FORM (inchangé)
           ========================= */}
-      <form onSubmit={handleFormSubmit} className="flex flex-col gap-8">
+      <form onSubmit={handleFormSubmit} className="flex flex-col gap-4">
         {/* 1) Nombre de personnes */}
         <div className="w-full midTablet:max-w-[550px] rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm p-4 midTablet:p-6">
           <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -647,6 +647,7 @@ export default function AddReservationComponent(props) {
               type="number"
               id="numberOfGuests"
               name="numberOfGuests"
+              min={0}
               value={reservationData.numberOfGuests}
               onWheel={(e) => e.target.blur()}
               onChange={handleInputChange}

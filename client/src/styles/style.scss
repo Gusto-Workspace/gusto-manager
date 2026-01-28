@@ -53,10 +53,6 @@ input[type="month"] {
   font: inherit;
 }
 
-input[type="time"] {
-  min-width: 190px;
-}
-
 /* WebKit (Chrome/Safari) : aligne la valeur à l'intérieur sans rogner */
 input[type="time"]::-webkit-datetime-edit,
 input[type="datetime-local"]::-webkit-datetime-edit,
