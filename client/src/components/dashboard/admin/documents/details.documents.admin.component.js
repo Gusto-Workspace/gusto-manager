@@ -703,7 +703,7 @@ export default function DetailsDocumentAdminPage(props) {
                     onBlur={(e) =>
                       setParty((p) => ({
                         ...p,
-                        address: trimText(e.target.value).replace(/\s+/g, ""),
+                        address: trimText(e.target.value),
                       }))
                     }
                     className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm midTablet:col-span-2"
