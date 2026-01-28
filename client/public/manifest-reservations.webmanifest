@@ -1,8 +1,8 @@
 {
-  "name": "Gusto – Réservations",
+  "name": "Gusto Manager – Réservations",
   "short_name": "Réservations",
-  "start_url": "/dashboard/reservations",
-  "scope": "/dashboard/reservations",
+  "start_url": "/dashboard/webapp/reservations",
+  "scope": "/dashboard/webapp/reservations",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#131E36",

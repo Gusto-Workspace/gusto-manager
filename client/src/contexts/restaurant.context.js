@@ -91,7 +91,9 @@ export default function RestaurantContext() {
 
         const path = currentPathRef.current;
         const isOwner = role === "owner";
-        const isOnReservationsList = path === "/dashboard/reservations";
+        const isOnReservationsList =
+          path === "/dashboard/reservations" ||
+          path === "/dashboard/webapp/reservations";
         const isOnDaysOffPage =
           path === "/dashboard/employees/planning/days-off";
         const isOnGiftsPage = path === "/dashboard/gift-cards";
@@ -122,7 +124,7 @@ export default function RestaurantContext() {
                 if (String(e._id) !== empId) return e;
                 const existing = e.leaveRequests || [];
                 const already = existing.some(
-                  (r) => String(r._id) === String(lr._id)
+                  (r) => String(r._id) === String(lr._id),
                 );
                 if (already) return e;
                 return { ...e, leaveRequests: [...existing, lr] };
@@ -137,7 +139,9 @@ export default function RestaurantContext() {
           const r = payload.reservation;
 
           // Pastille réservations uniquement pour OWNER + pas sur la page résas + résa non manuelle
-          if (isOwner && !isOnReservationsList && r.manual === false) {
+          const isManual = r.manual === true;
+
+          if (isOwner && !isOnReservationsList && !isManual) {
             setNewReservationsCount((c) => {
               const next = c + 1;
               const rid = restaurantData?._id;
@@ -176,7 +180,7 @@ export default function RestaurantContext() {
               reservations: {
                 ...prev.reservations,
                 list: list.map((x) =>
-                  String(x._id) === String(r._id) ? r : x
+                  String(x._id) === String(r._id) ? r : x,
                 ),
               },
             };
@@ -273,7 +277,7 @@ export default function RestaurantContext() {
         `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${restaurantId}`,
         {
           headers: { Authorization: `Bearer ${token}` },
-        }
+        },
       )
       .then(async (response) => {
         const restaurant = response.data.restaurant;
@@ -289,7 +293,7 @@ export default function RestaurantContext() {
 
           // Réservations depuis lastCheck
           const newCount = restaurant.reservations.list.filter(
-            (r) => !r.manual && new Date(r.createdAt) > new Date(lastCheck)
+            (r) => !r.manual && new Date(r.createdAt) > new Date(lastCheck),
           ).length;
           setNewReservationsCount(newCount);
           writeNotifCounts(rid, { ...readNotifCounts(rid), res: newCount });
@@ -314,7 +318,7 @@ export default function RestaurantContext() {
               {
                 params: { since: lastCheck },
                 headers: { Authorization: `Bearer ${token}` },
-              }
+              },
             );
             const unreadLeaves = data?.unreadLeaveRequests || 0;
             setNewLeaveRequestsCount(unreadLeaves);
@@ -341,7 +345,7 @@ export default function RestaurantContext() {
         else {
           console.error(
             "Erreur lors de la récupération des données du restaurant:",
-            error
+            error,
           );
           setDataLoading(false);
         }
@@ -409,7 +413,7 @@ export default function RestaurantContext() {
           } else {
             console.error(
               "Erreur lors de la récupération des restaurants (owner):",
-              error
+              error,
             );
             setDataLoading(false);
           }
@@ -440,7 +444,7 @@ export default function RestaurantContext() {
           } else {
             console.error(
               "Erreur lors de la récupération des restaurants (employee):",
-              error
+              error,
             );
             setDataLoading(false);
           }
@@ -478,7 +482,7 @@ export default function RestaurantContext() {
         .post(
           `${process.env.NEXT_PUBLIC_API_URL}/owner/change-restaurant`,
           { restaurantId },
-          { headers: { Authorization: `Bearer ${token}` } }
+          { headers: { Authorization: `Bearer ${token}` } },
         )
         .then((response) => {
           const { token: updatedToken } = response.data;
@@ -493,7 +497,7 @@ export default function RestaurantContext() {
           } else {
             console.error(
               "Erreur lors de la sélection du restaurant (owner):",
-              error
+              error,
             );
             setDataLoading(false);
             setCloseEditing(false);
@@ -508,7 +512,7 @@ export default function RestaurantContext() {
         .post(
           `${process.env.NEXT_PUBLIC_API_URL}/employees/change-restaurant`,
           { restaurantId },
-          { headers: { Authorization: `Bearer ${token}` } }
+          { headers: { Authorization: `Bearer ${token}` } },
         )
         .then((response) => {
           const { token: updatedToken } = response.data;
@@ -530,7 +534,7 @@ export default function RestaurantContext() {
             .catch((err) => {
               console.error(
                 "Erreur lors de la récupération des données employé après changement de resto:",
-                err
+                err,
               );
               setDataLoading(false);
               setCloseEditing(false);
@@ -542,7 +546,7 @@ export default function RestaurantContext() {
           } else {
             console.error(
               "Erreur lors de la sélection du restaurant (employee):",
-              error
+              error,
             );
             setDataLoading(false);
             setCloseEditing(false);
@@ -570,7 +574,7 @@ export default function RestaurantContext() {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
-        }
+        },
       )
       .catch((error) => {
         console.error("Error updating lastNotificationCheck:", error);
@@ -592,7 +596,7 @@ export default function RestaurantContext() {
         if (reservation.status === "Finished" && reservation.finishedAt) {
           const finishedAt = new Date(reservation.finishedAt);
           const deletionThreshold = new Date(
-            finishedAt.getTime() + deletionDurationMinutes * 60000
+            finishedAt.getTime() + deletionDurationMinutes * 60000,
           );
           if (now >= deletionThreshold) {
             autoDeleteReservation(reservation);
@@ -624,12 +628,12 @@ export default function RestaurantContext() {
             parseInt(hours, 10),
             parseInt(minutes, 10),
             0,
-            0
+            0,
           );
 
           // On ajoute la marge de 5 minutes à la date de réservation
           const reservationDateWithGrace = new Date(
-            reservationDate.getTime() + gracePeriod
+            reservationDate.getTime() + gracePeriod,
           );
 
           if (now >= reservationDateWithGrace) {
@@ -667,11 +671,11 @@ export default function RestaurantContext() {
             parseInt(hours, 10),
             parseInt(minutes, 10),
             0,
-            0
+            0,
           );
 
           const finishThreshold = new Date(
-            reservationStart.getTime() + reservationDurationMinutes * 60000
+            reservationStart.getTime() + reservationDurationMinutes * 60000,
           );
 
           if (now >= finishThreshold) {
@@ -699,7 +703,7 @@ export default function RestaurantContext() {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
-        }
+        },
       )
       .then((response) => {
         setRestaurantData((prevData) => ({
@@ -730,7 +734,7 @@ export default function RestaurantContext() {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
-        }
+        },
       )
       .then((response) => {
         setRestaurantData((prevData) => ({
@@ -746,7 +750,7 @@ export default function RestaurantContext() {
       })
       .finally(() => {
         setAutoUpdatingReservations((prev) =>
-          prev.filter((id) => id !== reservation._id)
+          prev.filter((id) => id !== reservation._id),
         );
       });
   }
@@ -765,7 +769,7 @@ export default function RestaurantContext() {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
-        }
+        },
       )
       .then((response) => {
         setRestaurantData((prevData) => ({
@@ -781,7 +785,7 @@ export default function RestaurantContext() {
       })
       .finally(() => {
         setAutoDeletingReservations((prev) =>
-          prev.filter((id) => id !== reservation._id)
+          prev.filter((id) => id !== reservation._id),
         );
       });
   }
@@ -907,18 +911,25 @@ export default function RestaurantContext() {
     userConnected?.role,
   ]);
 
-  // Reset notifs sur Page RÉSERVATIONS
+  // Reset notifs sur Page RÉSERVATIONS et WEBAPP RESERVATIONS
   useEffect(() => {
     if (userConnected?.role !== "owner") return;
+
     const path = router.pathname || "";
-    if (path.startsWith("/dashboard/reservations")) {
-      resetNewReservationsCount();
-      if (
-        (newLeaveRequestsCount || 0) === 0 &&
-        (newGiftPurchasesCount || 0) === 0
-      ) {
-        updateLastNotificationCheck();
-      }
+
+    const isReservationsRoute =
+      path.startsWith("/dashboard/reservations") ||
+      path.startsWith("/dashboard/webapp/reservations");
+
+    if (!isReservationsRoute) return;
+
+    resetNewReservationsCount();
+
+    if (
+      (newLeaveRequestsCount || 0) === 0 &&
+      (newGiftPurchasesCount || 0) === 0
+    ) {
+      updateLastNotificationCheck();
     }
   }, [
     router.pathname,

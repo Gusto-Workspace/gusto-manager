@@ -8,13 +8,16 @@ import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 // CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
 
+// AXIOS
+import axios from "axios";
+
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
-import ListGiftsComponent from "@/components/dashboard/gift-cards/list.gift-cards.component";
+import WebAppAddReservationComponent from "@/components/dashboard/webapp/reservations/add.reservations.component";
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
 
-export default function GiftsPage(props) {
+export default function AddReservationsPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
 
   let title;
@@ -30,29 +33,6 @@ export default function GiftsPage(props) {
       description = "";
   }
 
-  if (!restaurantContext.isAuth) return null;
-
-  const restaurant = restaurantContext.restaurantData;
-  const restaurantOptions = restaurant?.options || {};
-  const hasGiftCardModule = !!restaurantOptions.gift_card;
-
-  const user = restaurantContext.userConnected;
-  const isEmployee = user?.role === "employee";
-
-  let employeeHasGiftCardAccess = true;
-
-  if (isEmployee && restaurant) {
-    const employeeInRestaurant = restaurant.employees?.find(
-      (emp) => String(emp._id) === String(user.id),
-    );
-
-    const profile = employeeInRestaurant?.restaurantProfiles?.find(
-      (p) => String(p.restaurant) === String(restaurant._id),
-    );
-
-    employeeHasGiftCardAccess = profile?.options?.gift_card === true;
-  }
-
   return (
     <>
       <Head>
@@ -61,7 +41,7 @@ export default function GiftsPage(props) {
 
       <div>
         <div className="flex">
-          <NavComponent />
+          {/* <NavComponent /> */}
 
           <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 min-h-screen">
             <SettingsComponent
@@ -72,18 +52,17 @@ export default function GiftsPage(props) {
               restaurantData={restaurantContext.restaurantData}
             />
 
-            {!hasGiftCardModule ? (
-              <NoAvailableComponent
+            {restaurantContext?.restaurantData?.options?.reservations ? (
+              <WebAppAddReservationComponent
                 dataLoading={restaurantContext.dataLoading}
-                emptyText="Vous n'avez pas souscrit à cette option"
-              />
-            ) : !employeeHasGiftCardAccess ? (
-              <NoAvailableComponent
-                dataLoading={restaurantContext.dataLoading}
-                emptyText="Vous n'avez pas accès à cette section"
+                restaurantData={restaurantContext.restaurantData}
+                setRestaurantData={restaurantContext.setRestaurantData}
+                reservation={props.reservation}
               />
             ) : (
-              <ListGiftsComponent />
+              <NoAvailableComponent
+                dataLoading={restaurantContext.dataLoading}
+              />
             )}
           </div>
         </div>
@@ -92,10 +71,32 @@ export default function GiftsPage(props) {
   );
 }
 
-export async function getStaticProps({ locale }) {
-  return {
-    props: {
-      ...(await serverSideTranslations(locale, ["common", "gifts"])),
-    },
-  };
+export async function getServerSideProps({ query, locale }) {
+  const { reservationId } = query;
+
+  try {
+    let reservation = null;
+
+    if (reservationId) {
+      const response = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/reservations/${reservationId}`,
+      );
+      reservation = response.data.reservation;
+    }
+
+    return {
+      props: {
+        reservation,
+        ...(await serverSideTranslations(locale, ["common", "reservations"])),
+      },
+    };
+  } catch (error) {
+    console.error("Error fetching reservations data:", error);
+    return {
+      props: {
+        reservation: null,
+        ...(await serverSideTranslations(locale, ["common", "reservations"])),
+      },
+    };
+  }
 }

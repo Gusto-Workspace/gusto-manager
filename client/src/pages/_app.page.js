@@ -21,9 +21,9 @@ function App({ Component, pageProps }) {
   const manifestHref = useMemo(() => {
     const p = router.pathname || "";
 
-    if (p.startsWith("/dashboard/reservations"))
+    if (p.startsWith("/dashboard/webapp/reservations"))
       return "/manifest-reservations.webmanifest";
-    if (p.startsWith("/dashboard/gift-cards")) return "/manifest-gift-cards.webmanifest";
+    if (p.startsWith("/dashboard/webapp/gift-cards")) return "/manifest-gift-cards.webmanifest";
     // ajoute ici les autres modules...
     return "/manifest.webmanifest";
   }, [router.pathname]);

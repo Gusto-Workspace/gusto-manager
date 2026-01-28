@@ -11,10 +11,10 @@ import { GlobalContext } from "@/contexts/global.context";
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
-import ListGiftsComponent from "@/components/dashboard/gift-cards/list.gift-cards.component";
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
+import WebAppParametersReservationComponent from "@/components/dashboard/webapp/reservations/parameters.reservations.component";
 
-export default function GiftsPage(props) {
+export default function ParametersReservationsPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
 
   let title;
@@ -32,36 +32,17 @@ export default function GiftsPage(props) {
 
   if (!restaurantContext.isAuth) return null;
 
-  const restaurant = restaurantContext.restaurantData;
-  const restaurantOptions = restaurant?.options || {};
-  const hasGiftCardModule = !!restaurantOptions.gift_card;
-
-  const user = restaurantContext.userConnected;
-  const isEmployee = user?.role === "employee";
-
-  let employeeHasGiftCardAccess = true;
-
-  if (isEmployee && restaurant) {
-    const employeeInRestaurant = restaurant.employees?.find(
-      (emp) => String(emp._id) === String(user.id),
-    );
-
-    const profile = employeeInRestaurant?.restaurantProfiles?.find(
-      (p) => String(p.restaurant) === String(restaurant._id),
-    );
-
-    employeeHasGiftCardAccess = profile?.options?.gift_card === true;
-  }
-
   return (
     <>
       <Head>
         <title>{title}</title>
+
+     
       </Head>
 
       <div>
         <div className="flex">
-          <NavComponent />
+          {/* <NavComponent /> */}
 
           <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 min-h-screen">
             <SettingsComponent
@@ -72,18 +53,15 @@ export default function GiftsPage(props) {
               restaurantData={restaurantContext.restaurantData}
             />
 
-            {!hasGiftCardModule ? (
-              <NoAvailableComponent
-                dataLoading={restaurantContext.dataLoading}
-                emptyText="Vous n'avez pas souscrit à cette option"
-              />
-            ) : !employeeHasGiftCardAccess ? (
-              <NoAvailableComponent
-                dataLoading={restaurantContext.dataLoading}
-                emptyText="Vous n'avez pas accès à cette section"
+            {restaurantContext?.restaurantData?.options?.reservations ? (
+              <WebAppParametersReservationComponent
+                setRestaurantData={restaurantContext.setRestaurantData}
+                restaurantData={restaurantContext.restaurantData}
               />
             ) : (
-              <ListGiftsComponent />
+              <NoAvailableComponent
+                dataLoading={restaurantContext.dataLoading}
+              />
             )}
           </div>
         </div>
@@ -95,7 +73,11 @@ export default function GiftsPage(props) {
 export async function getStaticProps({ locale }) {
   return {
     props: {
-      ...(await serverSideTranslations(locale, ["common", "gifts"])),
+      ...(await serverSideTranslations(locale, [
+        "common",
+        "reservations",
+        "restaurant",
+      ])),
     },
   };
 }

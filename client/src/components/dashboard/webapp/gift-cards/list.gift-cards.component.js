@@ -218,7 +218,7 @@ export default function ListGiftsComponent(props) {
 
   return (
     <section className="flex flex-col gap-6">
-      <hr className="hidden midTablet:block opacity-20" />
+      <hr className="opacity-20" />
 
       {/* Header page */}
       <div className="flex flex-wrap items-center justify-between gap-4">

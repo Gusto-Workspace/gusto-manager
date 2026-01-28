@@ -70,7 +70,9 @@ export default function SettingsComponent() {
   // --- ROUTE COURANTE POUR CHAQUE TYPE DE NOTIF ---
   const pathname = router.pathname || "";
 
-  const isOnReservationsPage = pathname.startsWith("/dashboard/reservations");
+  const isOnReservationsPage =
+    pathname.startsWith("/dashboard/reservations") ||
+    pathname.startsWith("/dashboard/webapp/reservations");
   const isOnDaysOffPage = pathname === "/dashboard/employees/planning/days-off";
   const isOnGiftsPage = pathname.startsWith("/dashboard/gift-cards");
 
@@ -213,7 +215,7 @@ export default function SettingsComponent() {
                         router.push(targetPath);
                         setShowRestaurantList(false);
                         restaurantContext.handleRestaurantSelect(
-                          restaurant._id
+                          restaurant._id,
                         );
                       }}
                     >
@@ -289,7 +291,7 @@ export default function SettingsComponent() {
                               e.stopPropagation();
                               setShowNotifications(false);
                               router.push(
-                                "/dashboard/employees/planning/days-off"
+                                "/dashboard/employees/planning/days-off",
                               );
                             }}
                             aria-label="Voir les demandes de congés"
