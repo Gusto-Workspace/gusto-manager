@@ -43,11 +43,11 @@ export default function GiftsPage(props) {
 
   if (isEmployee && restaurant) {
     const employeeInRestaurant = restaurant.employees?.find(
-      (emp) => String(emp._id) === String(user.id),
+      (emp) => String(emp._id) === String(user.id)
     );
 
     const profile = employeeInRestaurant?.restaurantProfiles?.find(
-      (p) => String(p.restaurant) === String(restaurant._id),
+      (p) => String(p.restaurant) === String(restaurant._id)
     );
 
     employeeHasGiftCardAccess = profile?.options?.gift_card === true;
@@ -55,13 +55,27 @@ export default function GiftsPage(props) {
 
   return (
     <>
-      <Head>
+     <Head>
         <title>{title}</title>
+
+        {/* iOS: raccourci écran d'accueil */}
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <meta name="apple-mobile-web-app-title" content="Cartes cadeaux" />
+
+        {/* Icône iOS dédiée au module */}
+        <link
+          rel="apple-touch-icon"
+          href="/icons/ios/gift-cards-180.png?v=1"
+        />
+
+        {/* (Optionnel) Empêche Safari de “détecter” certains formats */}
+        <meta name="format-detection" content="telephone=no" />
       </Head>
 
       <div>
         <div className="flex">
-          <NavComponent />
+          {/* <NavComponent /> */}
 
           <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 min-h-screen">
             <SettingsComponent

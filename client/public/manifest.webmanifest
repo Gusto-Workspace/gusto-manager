@@ -1,6 +1,6 @@
 {
   "name": "Gusto Manager",
-  "short_name": "Gusto",
+  "short_name": "Gusto Manager",
   "start_url": "/dashboard",
   "display": "standalone",
   "background_color": "#ffffff",

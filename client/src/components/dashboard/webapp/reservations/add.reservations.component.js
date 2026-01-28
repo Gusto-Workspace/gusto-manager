@@ -12,9 +12,6 @@ import { useTranslation } from "next-i18next";
 const Calendar = dynamic(() => import("react-calendar"), { ssr: false });
 import "react-calendar/dist/Calendar.css";
 
-// SVG
-import { ReservationSvg } from "../../_shared/_svgs/reservation.svg";
-
 // AXIOS
 import axios from "axios";
 
@@ -28,12 +25,13 @@ import {
   ClockSvg,
   CalendarSvg,
   TableSvg,
-} from "../../_shared/_svgs/_index";
+  ReservationSvg,
+} from "../../../_shared/_svgs/_index";
 
 // LUCIDE
 import { Loader2, Save, X, ChevronLeft } from "lucide-react";
 
-export default function AddReservationComponent(props) {
+export default function WebAppAddReservationComponent(props) {
   const { t } = useTranslation("reservations");
   const router = useRouter();
 
@@ -499,7 +497,7 @@ export default function AddReservationComponent(props) {
       }
 
       props.setRestaurantData(response.data.restaurant);
-      router.push("/dashboard/reservations");
+      router.push("/dashboard/webapp/reservations");
     } catch (error) {
       setError(
         error.response?.data?.message ||
@@ -557,7 +555,7 @@ export default function AddReservationComponent(props) {
         <div className="flex items-center justify-between gap-3 h-[50px]">
           {/* Left: back */}
           <button
-            onClick={() => router.push("/dashboard/reservations")}
+            onClick={() => router.push("/dashboard/webapp/reservations")}
             className="shrink-0 inline-flex items-center justify-center rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition p-2"
             aria-label={t("calendar.back", "Retour au calendrier")}
             title={t("calendar.back", "Retour au calendrier")}
@@ -607,7 +605,7 @@ export default function AddReservationComponent(props) {
           <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2 flex-wrap">
             <span
               className="cursor-pointer hover:underline"
-              onClick={() => router.push("/dashboard/reservations")}
+              onClick={() => router.push("/dashboard/webapp/reservations")}
             >
               {t("titles.main")}
             </span>
@@ -618,7 +616,7 @@ export default function AddReservationComponent(props) {
 
         <button
           type="button"
-          onClick={() => router.push("/dashboard/reservations")}
+          onClick={() => router.push("/dashboard/webapp/reservations")}
           className="inline-flex items-center gap-2 rounded-lg border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition px-4 py-2 text-sm font-semibold text-darkBlue"
         >
           <ChevronLeft className="size-4 text-darkBlue/60" />

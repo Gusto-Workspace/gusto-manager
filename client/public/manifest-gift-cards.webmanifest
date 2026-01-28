@@ -1,8 +1,8 @@
 {
-  "name": "Gusto – Cartes cadeaux",
-  "short_name": "Cartes",
-  "start_url": "/dashboard/gift-cards",
-  "scope": "/dashboard/gift-cards",
+  "name": "Gusto Manager – Cartes cadeaux",
+  "short_name": "Cartes Cadeaux",
+  "start_url": "/dashboard/webapp/gift-cards",
+  "scope": "/dashboard/webapp/gift-cards",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#131E36",
