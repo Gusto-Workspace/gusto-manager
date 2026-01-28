@@ -28,8 +28,8 @@ import {
 import { arrayMove, SortableContext } from "@dnd-kit/sortable";
 
 // COMPONENTS
-import PurchasesGiftListComponent from "./purshases-gift-list.gifts.component";
-import CardGiftsComponent from "./card.gifts.component";
+import PurchasesGiftListComponent from "./purshases-gift-list.gift-cards.component";
+import CardGiftsComponent from "./card.gift-cards.component";
 
 export default function ListGiftsComponent(props) {
   const { t } = useTranslation("gifts");

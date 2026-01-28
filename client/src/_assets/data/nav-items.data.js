@@ -16,7 +16,7 @@ export const navItemsData = [
   { href: "/dashboard/drinks", label: "nav.drinks", icon: "DrinkSvg" },
   { href: "/dashboard/wines", label: "nav.wines", icon: "WineSvg" },
   { href: "/dashboard/news", label: "nav.news", icon: "NewsSvg" },
-  { href: "/dashboard/gifts", label: "nav.giftCards", icon: "GiftSvg" },
+  { href: "/dashboard/gift-cards", label: "nav.giftCards", icon: "GiftSvg" },
   {
     href: "/dashboard/reservations",
     label: "nav.reservations",

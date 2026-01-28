@@ -72,7 +72,7 @@ export default function SettingsComponent() {
 
   const isOnReservationsPage = pathname.startsWith("/dashboard/reservations");
   const isOnDaysOffPage = pathname === "/dashboard/employees/planning/days-off";
-  const isOnGiftsPage = pathname.startsWith("/dashboard/gifts");
+  const isOnGiftsPage = pathname.startsWith("/dashboard/gift-cards");
 
   // --- COMPTEURS BRUTS ---
   const rawReservationsCount = restaurantContext.newReservationsCount || 0;
@@ -341,7 +341,7 @@ export default function SettingsComponent() {
                             onClick={(e) => {
                               e.stopPropagation();
                               setShowNotifications(false);
-                              router.push("/dashboard/gifts");
+                              router.push("/dashboard/gift-cards");
                             }}
                             aria-label="Voir les cartes cadeaux"
                             title="Voir les cartes cadeaux"

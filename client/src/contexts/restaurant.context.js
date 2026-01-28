@@ -94,7 +94,7 @@ export default function RestaurantContext() {
         const isOnReservationsList = path === "/dashboard/reservations";
         const isOnDaysOffPage =
           path === "/dashboard/employees/planning/days-off";
-        const isOnGiftsPage = path === "/dashboard/gifts";
+        const isOnGiftsPage = path === "/dashboard/gift-cards";
 
         // ——— CONGÉS ———
         if (payload.type === "leave_request_created") {
@@ -932,7 +932,7 @@ export default function RestaurantContext() {
     if (userConnected?.role !== "owner") return;
 
     const path = router.pathname || "";
-    if (!path.startsWith("/dashboard/gifts")) return;
+    if (!path.startsWith("/dashboard/gift-cards")) return;
 
     if (newGiftPurchasesCount > 0) {
       resetNewGiftPurchasesCount();
