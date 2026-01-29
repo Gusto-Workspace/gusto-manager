@@ -11,7 +11,7 @@ import { GlobalContext } from "@/contexts/global.context";
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
-import ListGiftsComponent from "@/components/dashboard/gift-cards/list.gift-cards.component";
+import WebAppListGiftCardsComponent from "@/components/dashboard/webapp/gift-cards/list.gift-cards.component";
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
 import SplashScreenWebAppComponent from "@/components/dashboard/webapp/_shared/splashscreen.webapp.component";
 import NotGoodDeviceWebAppComponent from "@/components/dashboard/webapp/_shared/not-good-device.webapp.component";
@@ -84,7 +84,7 @@ export default function GiftsPage(props) {
               emptyText="Vous n'avez pas accès à cette section"
             />
           ) : (
-            <ListGiftsComponent />
+            <WebAppListGiftCardsComponent restaurantName={restaurantContext?.restaurantData?.name}/>
           )}
         </div>
       </div>

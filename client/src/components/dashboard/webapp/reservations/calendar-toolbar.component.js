@@ -58,7 +58,7 @@ export default function CalendarToolbarComponent(props) {
             />
           </div>
           <h1 className="text-xl flex items-center gap-2">
-            <span className="select-none">{props?.restaurantName}</span>
+            {props?.restaurantName}
           </h1>
         </div>
 

@@ -261,9 +261,7 @@ export default function DetailsDrawerReservationsComponent({
 
           {/* Actions secondaires (desktop aussi) */}
           <div className="mt-4 rounded-2xl bg-white/60 border border-darkBlue/10 shadow-sm p-4">
-            <p className="text-xs text-darkBlue/50 mb-3">
-              {t?.("labels.actions", "Actions")}
-            </p>
+            <p className="text-xs text-darkBlue/50 mb-3">Actions</p>
 
             <div className="flex gap-2">
               {primaryAction ? (
@@ -279,26 +277,26 @@ export default function DetailsDrawerReservationsComponent({
                 onClick={() => onAction?.(reservation, "edit")}
                 className="w-full inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition px-4 py-3 text-sm font-semibold text-darkBlue"
               >
-                {t?.("buttons.edit", "Modifier")}
+                Modifier
               </button>
 
               <button
                 onClick={() => onAction?.(reservation, "delete")}
                 className="w-full inline-flex items-center justify-center rounded-xl border border-red/20 bg-red/10 text-red hover:bg-red/15 transition px-4 py-3 text-sm font-semibold"
               >
-                {t?.("buttons.delete", "Supprimer")}
+                Supprimer
               </button>
             </div>
           </div>
         </div>
 
         {/* Footer mobile */}
-        <div className="tablet:hidden border-t border-darkBlue/10 bg-white/70 px-4 py-3">
+        <div className="tablet:hidden border-t border-darkBlue/10 bg-white/70 px-4 pt-3 pb-6">
           <button
             onClick={closeWithAnimation}
             className="w-full inline-flex items-center justify-center rounded-xl bg-blue px-4 py-3 text-white text-sm font-semibold shadow-sm hover:bg-blue/90 active:scale-[0.98] transition"
           >
-            {t?.("buttons.back", "Retour")}
+            Retour
           </button>
         </div>
       </div>

@@ -11,7 +11,7 @@ import {
   NoVisibleSvg,
   DeleteSvg,
   DragMultiSvg,
-} from "../../_shared/_svgs/_index";
+} from "../../../_shared/_svgs/_index";
 
 export default function CardGiftsComponent(props) {
   const { t } = useTranslation("gifts");
