@@ -74,6 +74,14 @@ export default function WepAppReservationsPage(props) {
       <Head>
         <title>{title}</title>
 
+        <meta name="theme-color" content="#131E36" />
+        <style>{`
+              html, body {
+                background: #131E36 !important;
+                background-color: #131E36 !important;
+              }
+        `}</style>
+
         {/* iOS: raccourci écran d'accueil */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -124,7 +132,6 @@ export default function WepAppReservationsPage(props) {
         loading={restaurantContext.dataLoading}
         storageKey="gm:splash:webapp:reservations"
         bgColor="#131E36"
-        finalBgColor="#F3f2f8"
         logoSrc="/img/logo-blanc.png"
       />
     </>
