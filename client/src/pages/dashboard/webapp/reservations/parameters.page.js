@@ -38,32 +38,30 @@ export default function ParametersReservationsPage(props) {
         <title>{title}</title>
       </Head>
 
-      <div>
-        <div className="flex">
-          {/* <NavComponent /> */}
+      <div className="block mobile:hidden">
+        <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 min-h-screen">
+          <SettingsComponent
+            dataLoading={restaurantContext.dataLoading}
+            setDataLoading={restaurantContext.setDataLoading}
+            closeEditing={restaurantContext.closeEditing}
+            setRestaurantData={restaurantContext.setRestaurantData}
+            restaurantData={restaurantContext.restaurantData}
+          />
 
-          <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 min-h-screen">
-            <SettingsComponent
-              dataLoading={restaurantContext.dataLoading}
-              setDataLoading={restaurantContext.setDataLoading}
-              closeEditing={restaurantContext.closeEditing}
+          {restaurantContext?.restaurantData?.options?.reservations ? (
+            <WebAppParametersReservationComponent
               setRestaurantData={restaurantContext.setRestaurantData}
               restaurantData={restaurantContext.restaurantData}
             />
-
-            {restaurantContext?.restaurantData?.options?.reservations ? (
-              <WebAppParametersReservationComponent
-                setRestaurantData={restaurantContext.setRestaurantData}
-                restaurantData={restaurantContext.restaurantData}
-              />
-            ) : (
-              <NoAvailableComponent
-                dataLoading={restaurantContext.dataLoading}
-              />
-            )}
-          </div>
+          ) : (
+            <NoAvailableComponent dataLoading={restaurantContext.dataLoading} />
+          )}
         </div>
       </div>
+      
+      <p className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white italic">
+        Seulement disponible sur téléphone
+      </p>
     </>
   );
 }
