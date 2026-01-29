@@ -10,8 +10,8 @@
 
 html,
 body {
-  background: #131E36;
-  background-color: #131E36;
+  background: #131e36;
+  background-color: #131e36;
   overscroll-behavior: none;
 }
 
@@ -104,16 +104,20 @@ input[type="date"] {
   }
 }
 
-.gm-splash-host {
-  position: relative;
-  min-height: 100vh;
-}
-
 .gm-splash-layer {
-  position: absolute;
+  position: fixed;
   inset: 0;
   z-index: 9999;
+
   display: flex;
   align-items: center;
   justify-content: center;
+
+  height: 100dvh;
+  width: 100vw;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+
+  /* évite les micro scrolls */
+  overscroll-behavior: none;
 }
