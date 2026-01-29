@@ -14,7 +14,8 @@ import { GlobalContext } from "@/contexts/global.context";
 import { useTranslation } from "next-i18next";
 
 // SVG
-import { GiftSvg } from "../../_shared/_svgs/_index";
+import { GiftSvg } from "../../../_shared/_svgs/_index";
+import { Plus } from "lucide-react";
 
 // DND
 import {
@@ -30,8 +31,9 @@ import { arrayMove, SortableContext } from "@dnd-kit/sortable";
 // COMPONENTS
 import PurchasesGiftListComponent from "./purshases-gift-list.gift-cards.component";
 import CardGiftsComponent from "./card.gift-cards.component";
+import BottomSheetGiftCardsComponent from "./bottom-sheet.gift-cards.component";
 
-export default function ListGiftsComponent(props) {
+export default function WebAppListGiftCardsComponent(props) {
   const { t } = useTranslation("gifts");
   const { restaurantContext } = useContext(GlobalContext);
   const router = useRouter();
@@ -46,10 +48,10 @@ export default function ListGiftsComponent(props) {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const [giftCardsValue, setGiftCardsValue] = useState(() =>
-    initialCards.filter((giftCard) => !giftCard.description)
+    initialCards.filter((giftCard) => !giftCard.description),
   );
   const [giftCardsDescription, setGiftCardsDescription] = useState(() =>
-    initialCards.filter((giftCard) => giftCard.description)
+    initialCards.filter((giftCard) => giftCard.description),
   );
 
   const {
@@ -150,7 +152,7 @@ export default function ListGiftsComponent(props) {
     axios
       .put(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/gifts/${gift._id}`,
-        { visible: updatedVisibility }
+        { visible: updatedVisibility },
       )
       .then((response) => {
         restaurantContext.setRestaurantData((prev) => ({
@@ -171,20 +173,20 @@ export default function ListGiftsComponent(props) {
     const allGiftCards = [...giftCardsValue, ...giftCardsDescription];
 
     const oldIndex = allGiftCards.findIndex(
-      (giftCard) => giftCard._id === active.id
+      (giftCard) => giftCard._id === active.id,
     );
     const newIndex = allGiftCards.findIndex(
-      (giftCard) => giftCard._id === over.id
+      (giftCard) => giftCard._id === over.id,
     );
 
     if (oldIndex !== -1 && newIndex !== -1) {
       const newOrder = arrayMove(allGiftCards, oldIndex, newIndex);
 
       const newGiftCardsValue = newOrder.filter(
-        (giftCard) => !giftCard.description
+        (giftCard) => !giftCard.description,
       );
       const newGiftCardsDescription = newOrder.filter(
-        (giftCard) => giftCard.description
+        (giftCard) => giftCard.description,
       );
 
       setGiftCardsValue(newGiftCardsValue);
@@ -200,7 +202,7 @@ export default function ListGiftsComponent(props) {
     axios
       .put(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/gifts/giftCards-list/order`,
-        { orderedGiftCardIds }
+        { orderedGiftCardIds },
       )
       .then((response) => {
         restaurantContext.setRestaurantData(response.data.restaurant);
@@ -217,9 +219,7 @@ export default function ListGiftsComponent(props) {
   };
 
   return (
-    <section className="flex flex-col gap-6">
-      <hr className="opacity-20" />
-
+    <section className="flex flex-col gap-2">
       {/* Header page */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex gap-2 items-center min-h-[40px]">
@@ -230,8 +230,8 @@ export default function ListGiftsComponent(props) {
             fillColor="#131E3690"
           />
 
-          <h1 className="pl-2 text-xl tablet:text-2xl text-darkBlue">
-            {t("titles.main")}
+          <h1 className="text-xl flex items-center gap-2">
+            {props?.restaurantName}
           </h1>
         </div>
 
@@ -241,9 +241,9 @@ export default function ListGiftsComponent(props) {
             setIsDeleting(false);
             setIsModalOpen(true);
           }}
-          className={btnPrimary}
+          className="inline-flex items-center justify-center rounded-full bg-blue text-white shadow-sm hover:bg-blue/90 active:scale-[0.98] transition p-4"
         >
-          {t("buttons.addGift")}
+          <Plus className="size-4" />
         </button>
       </div>
 
@@ -266,7 +266,7 @@ export default function ListGiftsComponent(props) {
             <SortableContext
               items={giftCardsValue.map((giftCard) => giftCard._id)}
             >
-              <div className="mt-6 mb-10 grid grid-cols-1 tablet:grid-cols-3 desktop:grid-cols-4 ultraWild:grid-cols-5 gap-3 tablet:gap-4">
+              <div className="mb-2 grid grid-cols-2 gap-2">
                 {giftCardsValue.map((giftCard) => (
                   <CardGiftsComponent
                     key={giftCard._id}
@@ -285,7 +285,7 @@ export default function ListGiftsComponent(props) {
 
       {/* Cartes type “menu / expérience” */}
       {giftCardsDescription?.length > 0 && (
-        <div className="mb-10">
+        <div>
           <div className={sectionChipWrap}>
             <div className={sectionChipLine} />
             <div className={sectionChipLabel}>{t("titles.menuCard")}</div>
@@ -301,7 +301,7 @@ export default function ListGiftsComponent(props) {
             <SortableContext
               items={giftCardsDescription.map((giftCard) => giftCard._id)}
             >
-              <div className="mt-6 mb-10 grid grid-cols-1 tablet:grid-cols-3 desktop:grid-cols-4 ultraWild:grid-cols-5 gap-3 tablet:gap-4">
+              <div className="mt-2 grid grid-cols-2 gap-2">
                 {giftCardsDescription.map((giftCard) => (
                   <CardGiftsComponent
                     key={giftCard._id}
@@ -327,95 +327,25 @@ export default function ListGiftsComponent(props) {
 
       {/* MODALE ajout / édition / suppression */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center px-4">
-          <div
-            onClick={closeModal}
-            className="fixed inset-0 bg-black/25 backdrop-blur-[1px]"
-          />
-
-          <div className={modalCardCls}>
-            <h2 className="text-lg tablet:text-xl font-semibold text-center text-darkBlue">
-              {isDeleting
-                ? t("buttons.deleteGift")
-                : editingGift
-                  ? t("buttons.editGift")
-                  : t("buttons.addGift")}
-            </h2>
-
-            <form
-              onSubmit={handleSubmit(onSubmit)}
-              className="flex flex-col gap-5"
-            >
-              {/* Description */}
-              <div className={fieldWrap}>
-                <label className={labelCls}>
-                  <span>{t("form.labels.description")}</span>
-                  <span className="ml-2 text-[11px] text-darkBlue/40 italic">
-                    {t("form.labels.optional")}
-                  </span>
-                </label>
-
-                <textarea
-                  className={`${textAreaCls} ${
-                    isDeleting ? "opacity-60 cursor-not-allowed" : ""
-                  }`}
-                  {...register("description")}
-                  disabled={isDeleting}
-                  placeholder={t("Commencer à écrire...")}
-                />
-              </div>
-
-              {/* Valeur */}
-              <div className={fieldWrap}>
-                <label className={labelCls}>{t("form.labels.value")}</label>
-
-                <div className="flex items-stretch rounded-xl border border-darkBlue/15 bg-white/90 overflow-hidden text-sm">
-                  <span
-                    className={`px-3 inline-flex items-center text-darkBlue/70 select-none ${
-                      isDeleting ? "opacity-60" : ""
-                    }`}
-                  >
-                    {currencySymbol}
-                  </span>
-
-                  <input
-                    type="number"
-                    step="0.01"
-                    onWheel={(e) => e.currentTarget.blur()}
-                    placeholder="-"
-                    defaultValue={editingGift?.value || ""}
-                    disabled={isDeleting}
-                    {...register("value", { required: !isDeleting })}
-                    className={`h-10 w-full border-l px-3 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
-                      errors.value
-                        ? "border-red text-red"
-                        : "border-darkBlue/10 text-darkBlue"
-                    } ${isDeleting ? "opacity-60 cursor-not-allowed" : ""}`}
-                  />
-                </div>
-
-                {errors.value && !isDeleting && (
-                  <p className={errorTextCls}>{t("form.errors.required")}</p>
-                )}
-              </div>
-
-              {/* Actions */}
-              <div className="mt-1 flex flex-col gap-2 tablet:flex-row tablet:justify-center">
-                <button type="submit" className={btnPrimary}>
-                  {isDeleting ? t("buttons.confirm") : t("buttons.save")}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  className={btnSecondary}
-                >
-                  {t("buttons.cancel")}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <BottomSheetGiftCardsComponent
+          open={isModalOpen}
+          onClose={closeModal}
+          title={
+            isDeleting
+              ? t("buttons.deleteGift")
+              : editingGift
+                ? t("buttons.editGift")
+                : t("buttons.addGift")
+          }
+          subtitle={t("titles.main") || "Cartes cadeaux"}
+          onSubmit={handleSubmit(onSubmit)}
+          register={register}
+          errors={errors}
+          currencySymbol={currencySymbol}
+          isDeleting={isDeleting}
+          editingGift={editingGift}
+          t={t}
+        />
       )}
     </section>
   );

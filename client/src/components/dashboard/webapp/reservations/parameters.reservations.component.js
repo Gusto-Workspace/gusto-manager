@@ -997,7 +997,7 @@ export default function WebAppParametersReservationComponent(props) {
         </div>
 
         {/* --- Actions --- */}
-        <div className="flex flex-col midTablet:flex-row items-stretch midTablet:items-center justify-end gap-3 pt-2">
+        <div className="flex flex-col midTablet:flex-row items-stretch midTablet:items-center justify-end gap-3 pt-3 pb-6">
           <button
             type="button"
             onClick={handleBack}

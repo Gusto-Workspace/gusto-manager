@@ -15,6 +15,7 @@ import { useTranslation } from "next-i18next";
 
 // SVG
 import { GiftSvg } from "../../_shared/_svgs/_index";
+import { Plus } from "lucide-react";
 
 // DND
 import {
@@ -46,10 +47,10 @@ export default function ListGiftsComponent(props) {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const [giftCardsValue, setGiftCardsValue] = useState(() =>
-    initialCards.filter((giftCard) => !giftCard.description)
+    initialCards.filter((giftCard) => !giftCard.description),
   );
   const [giftCardsDescription, setGiftCardsDescription] = useState(() =>
-    initialCards.filter((giftCard) => giftCard.description)
+    initialCards.filter((giftCard) => giftCard.description),
   );
 
   const {
@@ -61,7 +62,7 @@ export default function ListGiftsComponent(props) {
 
   // Styles communs
   const btnPrimary =
-    "inline-flex items-center justify-center rounded-xl bg-blue px-5 py-2.5 text-sm font-medium text-white shadow hover:bg-blue/90 transition disabled:opacity-60 disabled:cursor-not-allowed";
+    "inline-flex items-center justify-center rounded-xl bg-blue px-5 py-2.5 text-sm font-medium text-white shadow hover:bg-blue/90 transition disabled:opacity-60 disabled:cursor-not-allowed gap-2";
   const btnSecondary =
     "inline-flex items-center justify-center rounded-xl bg-red px-5 py-2.5 text-sm font-medium text-white shadow hover:bg-red/90 transition disabled:opacity-60 disabled:cursor-not-allowed";
   const sectionChipWrap = "flex items-center gap-3 my-6 max-w-4xl mx-auto px-2";
@@ -150,7 +151,7 @@ export default function ListGiftsComponent(props) {
     axios
       .put(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/gifts/${gift._id}`,
-        { visible: updatedVisibility }
+        { visible: updatedVisibility },
       )
       .then((response) => {
         restaurantContext.setRestaurantData((prev) => ({
@@ -171,20 +172,20 @@ export default function ListGiftsComponent(props) {
     const allGiftCards = [...giftCardsValue, ...giftCardsDescription];
 
     const oldIndex = allGiftCards.findIndex(
-      (giftCard) => giftCard._id === active.id
+      (giftCard) => giftCard._id === active.id,
     );
     const newIndex = allGiftCards.findIndex(
-      (giftCard) => giftCard._id === over.id
+      (giftCard) => giftCard._id === over.id,
     );
 
     if (oldIndex !== -1 && newIndex !== -1) {
       const newOrder = arrayMove(allGiftCards, oldIndex, newIndex);
 
       const newGiftCardsValue = newOrder.filter(
-        (giftCard) => !giftCard.description
+        (giftCard) => !giftCard.description,
       );
       const newGiftCardsDescription = newOrder.filter(
-        (giftCard) => giftCard.description
+        (giftCard) => giftCard.description,
       );
 
       setGiftCardsValue(newGiftCardsValue);
@@ -200,7 +201,7 @@ export default function ListGiftsComponent(props) {
     axios
       .put(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/gifts/giftCards-list/order`,
-        { orderedGiftCardIds }
+        { orderedGiftCardIds },
       )
       .then((response) => {
         restaurantContext.setRestaurantData(response.data.restaurant);
@@ -243,7 +244,8 @@ export default function ListGiftsComponent(props) {
           }}
           className={btnPrimary}
         >
-          {t("buttons.addGift")}
+          <Plus className="size-4" />
+          <span className="hidden mobile:block">{t("buttons.addGift")}</span>
         </button>
       </div>
 
@@ -266,7 +268,7 @@ export default function ListGiftsComponent(props) {
             <SortableContext
               items={giftCardsValue.map((giftCard) => giftCard._id)}
             >
-              <div className="mt-6 mb-10 grid grid-cols-1 tablet:grid-cols-3 desktop:grid-cols-4 ultraWild:grid-cols-5 gap-3 tablet:gap-4">
+              <div className="mt-6 mb-10 grid grid-cols-2 tablet:grid-cols-3 desktop:grid-cols-4 ultraWild:grid-cols-5 gap-3 tablet:gap-4">
                 {giftCardsValue.map((giftCard) => (
                   <CardGiftsComponent
                     key={giftCard._id}
@@ -301,7 +303,7 @@ export default function ListGiftsComponent(props) {
             <SortableContext
               items={giftCardsDescription.map((giftCard) => giftCard._id)}
             >
-              <div className="mt-6 mb-10 grid grid-cols-1 tablet:grid-cols-3 desktop:grid-cols-4 ultraWild:grid-cols-5 gap-3 tablet:gap-4">
+              <div className="mt-6 mb-10 grid grid-cols-2 tablet:grid-cols-3 desktop:grid-cols-4 ultraWild:grid-cols-5 gap-3 tablet:gap-4">
                 {giftCardsDescription.map((giftCard) => (
                   <CardGiftsComponent
                     key={giftCard._id}

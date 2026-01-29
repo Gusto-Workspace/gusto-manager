@@ -6,8 +6,7 @@ import { GlobalContext } from "@/contexts/global.context";
 // I18N
 import { useTranslation } from "next-i18next";
 // SVG
-import { GiftSvg } from "../../_shared/_svgs/gift.svg";
-import { TrashSvg } from "../../_shared/_svgs/trash.svg";
+import { GiftSvg , TrashSvg} from "../../../_shared/_svgs/_index"
 import { ChevronDown } from "lucide-react";
 
 export default function PurchasesGiftListComponent(props) {
@@ -165,7 +164,7 @@ export default function PurchasesGiftListComponent(props) {
   }
 
   return (
-    <div className="flex flex-col gap-6 mt-4">
+    <div className="flex flex-col gap-6 mt-10">
       {/* Header + search */}
       <div className="flex flex-col gap-3 tablet:flex-row tablet:items-center tablet:justify-between">
         <div className="flex gap-2 items-center min-h-[40px]">
