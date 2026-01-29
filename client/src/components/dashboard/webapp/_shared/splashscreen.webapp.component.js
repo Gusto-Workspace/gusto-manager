@@ -78,12 +78,12 @@ export default function SplashScreenWebAppComponent(props) {
         pointerEvents: fadeOut ? "none" : "auto",
       }}
     >
-      <div className="animate-gm-splash-scale">
+      <div className="animate-gm-splash-scale -mt-24">
         <Image
           src="/img/logo-blanc.png"
           alt="App logo"
-          width={250}
-          height={250}
+          width={175}
+          height={175}
           priority
         />
       </div>
