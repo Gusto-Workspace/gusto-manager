@@ -375,7 +375,6 @@ export default function ListReservationsComponent(props) {
 
   return (
     <section className="flex flex-col gap-6">
-      <hr className="hidden midTablet:block opacity-20" />
 
       {!selectedDay ? (
         <>
@@ -392,6 +391,7 @@ export default function ListReservationsComponent(props) {
             searchTerm={searchTerm}
             handleSearchChangeCalendar={handleSearchChangeCalendar}
             setSearchTerm={setSearchTerm}
+            restaurantName={props.restaurantData?.name}
           />
           {/* Calendrier mois (pack) */}
           <CalendarMonthComponent

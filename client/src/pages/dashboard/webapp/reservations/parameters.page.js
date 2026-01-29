@@ -13,6 +13,7 @@ import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
 import WebAppParametersReservationComponent from "@/components/dashboard/webapp/reservations/parameters.reservations.component";
+import NotGoodDeviceWebAppComponent from "@/components/dashboard/webapp/_shared/not-good-device.webapp.component";
 
 export default function ParametersReservationsPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
@@ -40,14 +41,6 @@ export default function ParametersReservationsPage(props) {
 
       <div className="block mobile:hidden">
         <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 min-h-screen">
-          <SettingsComponent
-            dataLoading={restaurantContext.dataLoading}
-            setDataLoading={restaurantContext.setDataLoading}
-            closeEditing={restaurantContext.closeEditing}
-            setRestaurantData={restaurantContext.setRestaurantData}
-            restaurantData={restaurantContext.restaurantData}
-          />
-
           {restaurantContext?.restaurantData?.options?.reservations ? (
             <WebAppParametersReservationComponent
               setRestaurantData={restaurantContext.setRestaurantData}
@@ -58,10 +51,8 @@ export default function ParametersReservationsPage(props) {
           )}
         </div>
       </div>
-      
-      <p className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white italic">
-        Seulement disponible sur téléphone
-      </p>
+
+      <NotGoodDeviceWebAppComponent />
     </>
   );
 }
