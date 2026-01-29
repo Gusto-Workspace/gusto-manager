@@ -8,9 +8,14 @@
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+html,
+body {
+  background: #f3f2f8;
+  background-color: #f3f2f8;
+}
+
 body {
   font-family: "Nunito", sans-serif;
-  background: red;
 }
 
 .no-scroll {
@@ -105,7 +110,6 @@ input[type="date"] {
 .gm-splash-host {
   position: relative;
   min-height: 100vh;
- 
 }
 
 .gm-splash-layer {
@@ -115,7 +119,4 @@ input[type="date"] {
   display: flex;
   align-items: center;
   justify-content: center;
-
-
 }
-
