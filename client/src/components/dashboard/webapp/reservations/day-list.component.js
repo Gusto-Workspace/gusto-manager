@@ -49,26 +49,7 @@ export default function DayListComponent(props) {
     return { orderedTimes: times, byTime: map };
   }, [list]);
 
-  // ✅ EARLY RETURN APRES LES HOOKS
   if (!props.selectedDay) return null;
-
-  if (!list.length) {
-    return (
-      <>
-        <div className="p-6 bg-white bg-opacity-70 drop-shadow-sm rounded-lg w-full mx-auto text-center">
-          <p className="italic">{t("list.card.empty")}</p>
-        </div>
-
-        <DetailsDrawerReservationsComponent
-          open={detailsOpen}
-          onClose={closeDetails}
-          reservation={selectedReservation}
-          t={t}
-          onAction={handleDrawerAction}
-        />
-      </>
-    );
-  }
 
   return (
     <>
@@ -91,8 +72,7 @@ export default function DayListComponent(props) {
               <div className="h-px flex-1 bg-darkBlue/10" />
             </div>
 
-            {/* ✅ Mobile: liste / MidTablet+: grid */}
-            <ul className="flex flex-col gap-2 midTablet:grid midTablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-4">
+            <ul className="flex flex-col gap-2">
               {byTime[time].map((reservation) => (
                 <CardReservationComponent
                   key={reservation._id}
