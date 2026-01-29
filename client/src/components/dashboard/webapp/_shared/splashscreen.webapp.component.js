@@ -4,7 +4,13 @@ import Image from "next/image";
 const FADE_MS = 550;
 
 export default function SplashScreenWebAppComponent(props) {
-  const [visible, setVisible] = useState(true);
+  const minDuration = 1750;
+
+  const [visible, setVisible] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return sessionStorage.getItem(props.storageKey) !== "1";
+  });
+
   const [minTimeDone, setMinTimeDone] = useState(false);
   const [fadeOut, setFadeOut] = useState(false);
 
@@ -12,21 +18,27 @@ export default function SplashScreenWebAppComponent(props) {
 
   // Force le body bg pendant le splash (important iOS)
   useEffect(() => {
+    if (!visible) return;
     if (typeof document === "undefined") return;
+
     prevBodyBg.current = document.body.style.backgroundColor || "";
     document.body.style.backgroundColor = props.bgColor;
 
     return () => {
       document.body.style.backgroundColor = prevBodyBg.current;
     };
-  }, [props.bgColor]);
+  }, [props.bgColor, visible]);
 
+  // Durée min d’affichage
   useEffect(() => {
-    const t = setTimeout(() => setMinTimeDone(true), 1750);
+    if (!visible) return;
+    const t = setTimeout(() => setMinTimeDone(true), minDuration);
     return () => clearTimeout(t);
-  }, [1750]);
+  }, [minDuration, visible]);
 
+  // Fin: fade + unmount + set sessionStorage
   useEffect(() => {
+    if (!visible) return;
     if (!minTimeDone) return;
     if (props.loading) return;
 
@@ -36,9 +48,22 @@ export default function SplashScreenWebAppComponent(props) {
     }
 
     setFadeOut(true);
-    const t = setTimeout(() => setVisible(false), FADE_MS);
+
+    const t = setTimeout(() => {
+      try {
+        sessionStorage.setItem(props.storageKey, "1");
+      } catch {}
+      setVisible(false);
+    }, FADE_MS);
+
     return () => clearTimeout(t);
-  }, [minTimeDone, props.loading, props.finalBgColor]);
+  }, [
+    visible,
+    minTimeDone,
+    props.loading,
+    props.finalBgColor,
+    props.storageKey,
+  ]);
 
   if (!visible) return null;
 
@@ -50,12 +75,12 @@ export default function SplashScreenWebAppComponent(props) {
         opacity: fadeOut ? 0 : 1,
       }}
     >
-      <div className="animate-gm-splash-scale -mt-12">
+      <div className="animate-gm-splash-scale">
         <Image
           src={props.logoSrc}
           alt="App logo"
-          width={200}
-          height={200}
+          width={250}
+          height={250}
           priority
         />
       </div>

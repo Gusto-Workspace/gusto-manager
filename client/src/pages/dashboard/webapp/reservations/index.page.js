@@ -15,7 +15,7 @@ import NoAvailableComponent from "@/components/_shared/options/no-available.opti
 import ListReservationsComponent from "@/components/dashboard/webapp/reservations/list.reservations.component";
 import SplashScreenWebAppComponent from "@/components/dashboard/webapp/_shared/splashscreen.webapp.component";
 
-export default function ReservationsPage(props) {
+export default function WepAppReservationsPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
 
   let title;
@@ -122,6 +122,7 @@ export default function ReservationsPage(props) {
 
       <SplashScreenWebAppComponent
         loading={restaurantContext.dataLoading}
+        storageKey="gm:splash:webapp:reservations"
         bgColor="#131E36"
         finalBgColor="#F3f2f8"
         logoSrc="/img/logo-blanc.png"
