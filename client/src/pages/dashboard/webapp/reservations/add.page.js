@@ -35,21 +35,6 @@ export default function AddReservationsPage(props) {
 
   if (!restaurantContext.isAuth) return null;
 
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-
-    const html = document.documentElement;
-    const body = document.body;
-
-    html.classList.add("hide-scrollbar", "no-overscroll");
-    body.classList.add("hide-scrollbar", "no-overscroll");
-
-    return () => {
-      html.classList.remove("hide-scrollbar", "no-overscroll");
-      body.classList.remove("hide-scrollbar", "no-overscroll");
-    };
-  }, []);
-
   return (
     <>
       <Head>
