@@ -22,17 +22,17 @@ export default function CalendarToolbarComponent(props) {
     new Intl.DateTimeFormat("fr-FR", {
       month: "long",
       year: "numeric",
-    }).format(props.currentMonth)
+    }).format(props.currentMonth),
   );
 
   const goPrev = () =>
     props.setCurrentMonth(
-      (m) => new Date(m.getFullYear(), m.getMonth() - 1, 1)
+      (m) => new Date(m.getFullYear(), m.getMonth() - 1, 1),
     );
 
   const goNext = () =>
     props.setCurrentMonth(
-      (m) => new Date(m.getFullYear(), m.getMonth() + 1, 1)
+      (m) => new Date(m.getFullYear(), m.getMonth() + 1, 1),
     );
 
   const goToday = () => {
@@ -101,9 +101,12 @@ export default function CalendarToolbarComponent(props) {
             <ChevronLeft className="size-5 text-darkBlue/70" />
           </button>
 
-          <div className="flex-1 h-12 inline-flex items-center justify-center rounded-2xl border border-darkBlue/10 bg-white/70 text-darkBlue font-semibold text-sm">
+          <button
+            onClick={goToday}
+            className="flex-1 h-12 inline-flex items-center justify-center rounded-2xl border border-darkBlue/10 bg-white/70 text-darkBlue font-semibold text-sm"
+          >
             {monthYearLabel}
-          </div>
+          </button>
 
           <button
             onClick={goNext}
@@ -112,15 +115,6 @@ export default function CalendarToolbarComponent(props) {
             title={t("calendar.next", "Mois suivant")}
           >
             <ChevronRight className="size-5 text-darkBlue/70" />
-          </button>
-
-          <button
-            onClick={goToday}
-            className="shrink-0 inline-flex items-center justify-center rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition p-3"
-            aria-label={t("calendar.today", "Aujourd’hui")}
-            title={t("calendar.today", "Aujourd’hui")}
-          >
-            <CalendarDays className="size-5 text-darkBlue/70" />
           </button>
         </div>
 
@@ -133,7 +127,7 @@ export default function CalendarToolbarComponent(props) {
             inputMode="search"
             placeholder={t(
               "filters.search.placeholder",
-              "Rechercher nom, email, tel, code…"
+              "Rechercher nom, email, tel, code…",
             )}
             value={props.searchTerm}
             onChange={props.handleSearchChangeCalendar}
@@ -195,7 +189,7 @@ export default function CalendarToolbarComponent(props) {
             <button
               onClick={() =>
                 props.setCurrentMonth(
-                  (m) => new Date(m.getFullYear(), m.getMonth() - 1, 1)
+                  (m) => new Date(m.getFullYear(), m.getMonth() - 1, 1),
                 )
               }
               className="px-3 py-2 rounded-lg border border-[#131E3690] bg-white flex items-center gap-2"
@@ -215,7 +209,7 @@ export default function CalendarToolbarComponent(props) {
             <button
               onClick={() =>
                 props.setCurrentMonth(
-                  (m) => new Date(m.getFullYear(), m.getMonth() + 1, 1)
+                  (m) => new Date(m.getFullYear(), m.getMonth() + 1, 1),
                 )
               }
               className="px-3 py-2 rounded-lg border border-[#131E3690] bg-white flex items-center gap-2"
@@ -248,7 +242,7 @@ export default function CalendarToolbarComponent(props) {
               type="text"
               placeholder={t(
                 "filters.search.placeholder",
-                "Rechercher nom, email, tel, code…"
+                "Rechercher nom, email, tel, code…",
               )}
               value={props.searchTerm}
               onChange={props.handleSearchChangeCalendar}

@@ -22,7 +22,7 @@ export default function DayHeaderComponent(props) {
           ✅ MOBILE WEBAPP HEADER
           (uniquement < midTablet)
           ========================= */}
-      <div className="midTablet:hidden safe-top bg-lightGrey">
+      <div className="midTablet:hidden bg-lightGrey">
         {/* Sticky container */}
         <div>
           {/* Top bar */}

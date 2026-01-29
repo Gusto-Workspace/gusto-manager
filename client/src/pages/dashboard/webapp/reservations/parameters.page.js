@@ -1,4 +1,4 @@
-import { useContext } from "react";
+import { useContext, useEffect } from "react";
 import Head from "next/head";
 
 // I18N
@@ -32,12 +32,25 @@ export default function ParametersReservationsPage(props) {
 
   if (!restaurantContext.isAuth) return null;
 
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const html = document.documentElement;
+    const body = document.body;
+
+    html.classList.add("hide-scrollbar", "no-overscroll");
+    body.classList.add("hide-scrollbar", "no-overscroll");
+
+    return () => {
+      html.classList.remove("hide-scrollbar", "no-overscroll");
+      body.classList.remove("hide-scrollbar", "no-overscroll");
+    };
+  }, []);
+
   return (
     <>
       <Head>
         <title>{title}</title>
-
-     
       </Head>
 
       <div>

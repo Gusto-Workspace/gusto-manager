@@ -417,7 +417,7 @@ export default function WebAppParametersReservationComponent(props) {
       {/* =========================
           ✅ HEADER (ne pas toucher)
           ========================= */}
-      <div className="midTablet:hidden safe-top bg-lightGrey">
+      <div className="midTablet:hidden  bg-lightGrey">
         <div className="flex items-center justify-between gap-3 h-[50px]">
           <button
             onClick={handleBack}

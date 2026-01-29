@@ -551,7 +551,7 @@ export default function WebAppAddReservationComponent(props) {
       {/* =========================
           ✅ MOBILE HEADER (copie du style DayHeader)
           ========================= */}
-      <div className="midTablet:hidden safe-top bg-lightGrey">
+      <div className="midTablet:hidden  bg-lightGrey">
         <div className="flex items-center justify-between gap-3 h-[50px]">
           {/* Left: back */}
           <button
