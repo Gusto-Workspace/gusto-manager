@@ -102,6 +102,7 @@ export default function GiftsPage(props) {
         bgColor="#131E36"
         finalBgColor="#F3f2f8"
         logoSrc="/img/logo-blanc.png"
+        storageKey="gm:splash:webapp:giftcards"
       />
     </>
   );
