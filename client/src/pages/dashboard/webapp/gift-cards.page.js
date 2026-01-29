@@ -59,6 +59,15 @@ export default function GiftsPage(props) {
       <Head>
         <title>{title}</title>
 
+        <meta name="theme-color" content="#131E36" />
+        <style>{`
+              html, body {
+                background: #131E36 !important;
+                background-color: #131E36 !important;
+              }
+        `}</style>
+    
+
         {/* iOS: raccourci écran d'accueil */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -67,7 +76,6 @@ export default function GiftsPage(props) {
         {/* Icône iOS dédiée au module */}
         <link rel="apple-touch-icon" href="/icons/ios/gift-cards-180.png?v=1" />
 
-        {/* (Optionnel) Empêche Safari de “détecter” certains formats */}
         <meta name="format-detection" content="telephone=no" />
       </Head>
 
@@ -100,7 +108,6 @@ export default function GiftsPage(props) {
       <SplashScreenWebAppComponent
         loading={restaurantContext.dataLoading}
         bgColor="#131E36"
-        finalBgColor="#F3f2f8"
         logoSrc="/img/logo-blanc.png"
         storageKey="gm:splash:webapp:giftcards"
       />

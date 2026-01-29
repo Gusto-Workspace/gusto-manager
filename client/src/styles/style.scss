@@ -10,8 +10,9 @@
 
 html,
 body {
-  background: #f3f2f8;
-  background-color: #f3f2f8;
+  background: #131E36;
+  background-color: #131E36;
+  overscroll-behavior: none;
 }
 
 body {
@@ -20,10 +21,6 @@ body {
 
 .no-scroll {
   overflow: hidden;
-}
-
-.no-overscroll {
-  overscroll-behavior: none;
 }
 
 ::-webkit-input-placeholder {

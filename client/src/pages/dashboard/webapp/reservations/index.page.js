@@ -54,33 +54,10 @@ export default function WepAppReservationsPage(props) {
     employeeHasReservationsAccess = profile?.options?.reservations === true;
   }
 
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-
-    const html = document.documentElement;
-    const body = document.body;
-
-    html.classList.add("hide-scrollbar", "no-overscroll");
-    body.classList.add("hide-scrollbar", "no-overscroll");
-
-    return () => {
-      html.classList.remove("hide-scrollbar", "no-overscroll");
-      body.classList.remove("hide-scrollbar", "no-overscroll");
-    };
-  }, []);
-
   return (
     <>
       <Head>
         <title>{title}</title>
-
-        <meta name="theme-color" content="#131E36" />
-        <style>{`
-              html, body {
-                background: #131E36 !important;
-                background-color: #131E36 !important;
-              }
-        `}</style>
 
         {/* iOS: raccourci écran d'accueil */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
