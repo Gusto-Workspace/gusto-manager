@@ -1,27 +1,19 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 
 const FADE_MS = 550;
-const DEFAULT_MIN_DURATION = 1750;
+const MIN_DURATION = 1750;
 
 export default function SplashScreenWebAppComponent(props) {
-  const minDuration = props.minDuration ?? DEFAULT_MIN_DURATION;
-  const storageKey = props.storageKey ?? "gm:splash:webapp:default";
-  const bgColor = props.bgColor ?? "#131E36";
-  const logoSrc = props.logoSrc ?? "/img/logo-blanc.png";
-
   const [visible, setVisible] = useState(() => {
     if (typeof window === "undefined") return true;
-    return sessionStorage.getItem(storageKey) !== "1";
+    return sessionStorage.getItem(props.storageKey) !== "1";
   });
 
   const [minTimeDone, setMinTimeDone] = useState(false);
   const [fadeOut, setFadeOut] = useState(false);
 
-  const prevBodyBg = useRef("");
-  const prevHtmlBg = useRef("");
-
-  // ✅ Force html+body bg pendant le splash (important iOS)
+  // ✅ lock scroll pendant le splash
   useEffect(() => {
     if (!visible) return;
     if (typeof document === "undefined") return;
@@ -29,26 +21,35 @@ export default function SplashScreenWebAppComponent(props) {
     const html = document.documentElement;
     const body = document.body;
 
-    prevHtmlBg.current = html.style.backgroundColor || "";
-    prevBodyBg.current = body.style.backgroundColor || "";
+    const prevHtmlOverflow = html.style.overflow || "";
+    const prevBodyOverflow = body.style.overflow || "";
+    const prevTouchAction = body.style.touchAction || "";
 
-    html.style.backgroundColor = bgColor;
-    body.style.backgroundColor = bgColor;
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    body.style.touchAction = "none";
+
+    const preventTouchMove = (e) => e.preventDefault();
+    document.addEventListener("touchmove", preventTouchMove, {
+      passive: false,
+    });
 
     return () => {
-      html.style.backgroundColor = prevHtmlBg.current;
-      body.style.backgroundColor = prevBodyBg.current;
+      document.removeEventListener("touchmove", preventTouchMove);
+      html.style.overflow = prevHtmlOverflow;
+      body.style.overflow = prevBodyOverflow;
+      body.style.touchAction = prevTouchAction;
     };
-  }, [bgColor, visible]);
+  }, [visible]);
 
-  // ✅ Durée min d’affichage
+  // durée minimum
   useEffect(() => {
     if (!visible) return;
-    const t = setTimeout(() => setMinTimeDone(true), minDuration);
+    const t = setTimeout(() => setMinTimeDone(true), MIN_DURATION);
     return () => clearTimeout(t);
-  }, [minDuration, visible]);
+  }, [visible]);
 
-  // ✅ Fin: fade + unmount + set sessionStorage
+  // fin: fade + unmount + sessionStorage
   useEffect(() => {
     if (!visible) return;
     if (!minTimeDone) return;
@@ -58,13 +59,13 @@ export default function SplashScreenWebAppComponent(props) {
 
     const t = setTimeout(() => {
       try {
-        sessionStorage.setItem(storageKey, "1");
+        sessionStorage.setItem(props.storageKey, "1");
       } catch {}
       setVisible(false);
     }, FADE_MS);
 
     return () => clearTimeout(t);
-  }, [visible, minTimeDone, props.loading, storageKey]);
+  }, [visible, minTimeDone, props.loading, props.storageKey]);
 
   if (!visible) return null;
 
@@ -72,12 +73,19 @@ export default function SplashScreenWebAppComponent(props) {
     <div
       className="gm-splash-layer transition-opacity duration-[550ms]"
       style={{
-        backgroundColor: bgColor,
+        backgroundColor: "#131E36",
         opacity: fadeOut ? 0 : 1,
+        pointerEvents: fadeOut ? "none" : "auto",
       }}
     >
       <div className="animate-gm-splash-scale">
-        <Image src={logoSrc} alt="App logo" width={250} height={250} priority />
+        <Image
+          src="/img/logo-blanc.png"
+          alt="App logo"
+          width={250}
+          height={250}
+          priority
+        />
       </div>
     </div>
   );
