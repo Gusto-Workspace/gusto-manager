@@ -89,39 +89,36 @@ export default function ReservationsPage(props) {
       </Head>
 
       <div className="gm-splash-host">
-        
+        <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 min-h-screen">
+          <SettingsComponent
+            dataLoading={restaurantContext.dataLoading}
+            setDataLoading={restaurantContext.setDataLoading}
+            closeEditing={restaurantContext.closeEditing}
+            setRestaurantData={restaurantContext.setRestaurantData}
+            restaurantData={restaurantContext.restaurantData}
+          />
 
-          <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 min-h-screen">
-            <SettingsComponent
+          {!hasReservationsModule ? (
+            <NoAvailableComponent
               dataLoading={restaurantContext.dataLoading}
-              setDataLoading={restaurantContext.setDataLoading}
-              closeEditing={restaurantContext.closeEditing}
-              setRestaurantData={restaurantContext.setRestaurantData}
-              restaurantData={restaurantContext.restaurantData}
+              emptyText="Vous n'avez pas souscrit à cette option"
             />
-
-            {!hasReservationsModule ? (
-              <NoAvailableComponent
-                dataLoading={restaurantContext.dataLoading}
-                emptyText="Vous n'avez pas souscrit à cette option"
-              />
-            ) : !employeeHasReservationsAccess ? (
-              <NoAvailableComponent
-                dataLoading={restaurantContext.dataLoading}
-                emptyText="Vous n'avez pas accès à cette section"
-              />
-            ) : (
-              <ListReservationsComponent
-                restaurantData={restaurantContext.restaurantData}
-                setRestaurantData={restaurantContext.setRestaurantData}
-                reservations={
-                  restaurantContext?.restaurantData?.reservations?.list
-                }
-              />
-            )}
-          </div>
+          ) : !employeeHasReservationsAccess ? (
+            <NoAvailableComponent
+              dataLoading={restaurantContext.dataLoading}
+              emptyText="Vous n'avez pas accès à cette section"
+            />
+          ) : (
+            <ListReservationsComponent
+              restaurantData={restaurantContext.restaurantData}
+              setRestaurantData={restaurantContext.setRestaurantData}
+              reservations={
+                restaurantContext?.restaurantData?.reservations?.list
+              }
+            />
+          )}
         </div>
-     
+      </div>
 
       <SplashScreenWebAppComponent
         loading={restaurantContext.dataLoading}
