@@ -413,10 +413,7 @@ export default function WebAppParametersReservationComponent(props) {
   }
 
   return (
-    <section className="flex flex-col gap-6">
-      {/* =========================
-          ✅ HEADER (ne pas toucher)
-          ========================= */}
+    <section className="flex flex-col gap-4">
       <div className="midTablet:hidden  bg-lightGrey">
         <div className="flex items-center justify-between gap-3 h-[50px]">
           <button
@@ -429,59 +426,13 @@ export default function WebAppParametersReservationComponent(props) {
           </button>
 
           <div className="min-w-0 flex-1 flex items-center gap-2">
-            <ReservationSvg
-              width={26}
-              height={26}
-              className="min-h-[26px] min-w-[26px]"
-              fillColor="#131E3690"
-            />
-            <div className="min-w-0">
-              <p className="text-xl font-semibold text-darkBlue truncate">
-                {t("reservations:titles.main", "Réservations")}
-              </p>
-              <p className="text-sm text-darkBlue/50 truncate">{subtitle}</p>
-            </div>
+            <p className="text-xl font-semibold text-darkBlue truncate">
+              {subtitle}
+            </p>
           </div>
-
-          <div className="shrink-0 w-[40px]" />
         </div>
       </div>
 
-      <hr className="opacity-20 hidden midTablet:block" />
-
-      <div className="hidden midTablet:flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex gap-2 items-center min-h-[40px]">
-          <ReservationSvg
-            width={30}
-            height={30}
-            className="min-h-[30px] min-w-[30px]"
-            fillColor="#131E3690"
-          />
-          <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2 flex-wrap">
-            <span
-              className="cursor-pointer hover:underline"
-              onClick={handleBack}
-            >
-              {t("reservations:titles.main", "Réservations")}
-            </span>
-            <span className="text-darkBlue/30 select-none">/</span>
-            <span className="font-semibold">{subtitle}</span>
-          </h1>
-        </div>
-
-        <button
-          type="button"
-          onClick={handleBack}
-          className="inline-flex items-center gap-2 rounded-lg border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition px-4 py-2 text-sm font-semibold text-darkBlue"
-        >
-          <ChevronLeft className="size-4 shrink-0 text-darkBlue/60" />
-          {t("reservations:buttons.back", "Retour")}
-        </button>
-      </div>
-
-      {/* =========================
-          ✅ FORM (refonte UX mobile-first)
-          ========================= */}
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
         {/* --- Bloc: Heures --- */}
         <div className={card}>

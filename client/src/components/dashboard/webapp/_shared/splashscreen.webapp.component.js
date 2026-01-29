@@ -82,8 +82,8 @@ export default function SplashScreenWebAppComponent(props) {
         <Image
           src="/img/logo-blanc.png"
           alt="App logo"
-          width={175}
-          height={175}
+          width={150}
+          height={150}
           priority
         />
       </div>

@@ -63,8 +63,8 @@ export default function CalendarToolbarComponent(props) {
               className="min-h-[30px] min-w-[30px]"
               fillColor="#131E3690"
             />
-            <h1 className="pl-2 text-xl flex items-center gap-2">
-              <span className="select-none">{t("titles.main")}</span>
+            <h1 className="text-xl flex items-center gap-2">
+              <span className="select-none">{props?.restaurantName}</span>
             </h1>
           </div>
 
