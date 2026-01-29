@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { X, Trash2, Save } from "lucide-react";
 
-const CLOSE_MS = 280;
+const CLOSE_MS = 160;
 
 // Swipe config
 const SWIPE_VELOCITY = 0.6; // px/ms
@@ -219,7 +219,6 @@ export default function BottomSheetGiftCardsComponent({
       className="fixed inset-0 z-[140] tablet:hidden"
       role="dialog"
       aria-modal="true"
-      onTouchMove={(e) => e.preventDefault()}
     >
       {/* Overlay */}
       <div
@@ -227,7 +226,7 @@ export default function BottomSheetGiftCardsComponent({
           absolute inset-0
           bg-black/35
           backdrop-blur-[2px]
-          transition-opacity duration-200
+          transition-opacity duration-150
           ${isVisible ? "opacity-100" : "opacity-0"}
         `}
         style={{ opacity: overlayOpacity }}
@@ -251,7 +250,7 @@ export default function BottomSheetGiftCardsComponent({
           transform: isVisible ? `translateY(${dragY}px)` : "translateY(100%)",
           transition: dragStateRef.current.active
             ? "none"
-            : "transform 300ms ease-out",
+            : "transform 200ms ease-out",
           willChange: "transform",
         }}
         onClick={(e) => e.stopPropagation()}
@@ -371,9 +370,7 @@ export default function BottomSheetGiftCardsComponent({
               </div>
 
               {errors?.value && !isDeleting ? (
-                <p className="mt-2 text-[12px] text-red">
-                 Champ requis
-                </p>
+                <p className="mt-2 text-[12px] text-red">Champ requis</p>
               ) : null}
 
               <p className="mt-2 text-[12px] text-darkBlue/45">

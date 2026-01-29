@@ -337,7 +337,6 @@ export default function WebAppListGiftCardsComponent(props) {
                 ? t("buttons.editGift")
                 : t("buttons.addGift")
           }
-          subtitle={t("titles.main") || "Cartes cadeaux"}
           onSubmit={handleSubmit(onSubmit)}
           register={register}
           errors={errors}
