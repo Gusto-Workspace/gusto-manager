@@ -563,7 +563,9 @@ export default function WebAppAddReservationComponent(props) {
             <div className="min-w-0">
               <p className="text-xl font-semibold text-darkBlue truncate">
                 {subtitle}
-                {reservationDateLabel ? ` · ${reservationDateLabel}` : ""}
+              </p>
+              <p className="text-sm text-darkBlue/50 truncate">
+                {reservationDateLabel ? `${reservationDateLabel}` : ""}
               </p>
             </div>
           </div>
