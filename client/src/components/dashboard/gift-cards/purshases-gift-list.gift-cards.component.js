@@ -27,7 +27,7 @@ export default function PurchasesGiftListComponent(props) {
   // ----- Styles communs -----
   const headerTitleCls = "pl-2 text-xl tablet:text-2xl text-darkBlue";
   const searchInputCls =
-    "h-10 w-full rounded-xl border border-darkBlue/15 bg-white/90 px-3 pr-9 text-sm outline-none placeholder:text-darkBlue/40 shadow-sm focus:border-blue/60 focus:ring-1 focus:ring-blue/30";
+    "h-10 w-full rounded-xl border border-darkBlue/15 bg-white/90 px-3 pr-9 text-base outline-none placeholder:text-darkBlue/40 shadow-sm focus:border-blue/60 focus:ring-1 focus:ring-blue/30";
   const statusChipWrap = "flex items-center gap-3 my-4 max-w-3xl mx-auto px-2";
   const statusChipLine = "h-px flex-1 bg-darkBlue/10";
   const statusChipLabel =

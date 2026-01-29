@@ -208,7 +208,7 @@ export default function AddRestaurantModal(props) {
           border border-darkBlue/10
           shadow-[0_18px_45px_rgba(19,30,54,0.18)]
           rounded-t-2xl tablet:rounded-2xl
-          custom-scrollbar
+          hide-scrollbar
 
           transform transition-transform duration-300 ease-out
           ${isVisible ? "translate-y-0" : "translate-y-full"}

@@ -167,7 +167,7 @@ export default function ListNewsComponent(props) {
                 <div className="flex flex-col gap-3">
                   <div
                     dangerouslySetInnerHTML={{ __html: data.description }}
-                    className="prose prose-sm max-w-none text-darkBlue/80 h-[210px] overflow-y-auto custom-scrollbar"
+                    className="prose prose-sm max-w-none text-darkBlue/80 h-[210px] overflow-y-auto hide-scrollbar"
                   />
 
                   <div className="flex flex-col gap-2">

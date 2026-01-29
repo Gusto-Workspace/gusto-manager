@@ -206,7 +206,7 @@ export default function DetailsDrawerReservationsComponent({
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto p-4 hide-scrollbar">
           {/* Résumé */}
           <div className="rounded-2xl bg-white/60 border border-darkBlue/10 shadow-sm p-4 flex flex-col gap-3">
             <div className="flex items-start justify-between gap-3">

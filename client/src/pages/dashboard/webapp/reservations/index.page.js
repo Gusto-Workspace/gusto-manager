@@ -1,4 +1,4 @@
-import { useContext, useState } from "react";
+import { useContext, useState, useEffect } from "react";
 import Head from "next/head";
 
 // I18N
@@ -12,7 +12,8 @@ import { GlobalContext } from "@/contexts/global.context";
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
-import ListReservationsComponent from "@/components/dashboard/webapp/reservations/list.reservations.component"
+import ListReservationsComponent from "@/components/dashboard/webapp/reservations/list.reservations.component";
+import SplashScreenWebAppComponent from "@/components/dashboard/webapp/_shared/splashscreen.webapp.component";
 
 export default function ReservationsPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
@@ -53,6 +54,21 @@ export default function ReservationsPage(props) {
     employeeHasReservationsAccess = profile?.options?.reservations === true;
   }
 
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const html = document.documentElement;
+    const body = document.body;
+
+    html.classList.add("hide-scrollbar", "no-overscroll");
+    body.classList.add("hide-scrollbar", "no-overscroll");
+
+    return () => {
+      html.classList.remove("hide-scrollbar", "no-overscroll");
+      body.classList.remove("hide-scrollbar", "no-overscroll");
+    };
+  }, []);
+
   return (
     <>
       <Head>
@@ -69,13 +85,11 @@ export default function ReservationsPage(props) {
           href="/icons/ios/reservations-180.png?v=1"
         />
 
-        {/* (Optionnel) Empêche Safari de “détecter” certains formats */}
         <meta name="format-detection" content="telephone=no" />
       </Head>
 
-      <div>
-        <div className="flex">
-          {/* <NavComponent /> */}
+      <div className="gm-splash-host">
+        
 
           <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 min-h-screen">
             <SettingsComponent
@@ -107,7 +121,14 @@ export default function ReservationsPage(props) {
             )}
           </div>
         </div>
-      </div>
+     
+
+      <SplashScreenWebAppComponent
+        loading={restaurantContext.dataLoading}
+        bgColor="#131E36"
+        finalBgColor="#F3f2f8"
+        logoSrc="/img/logo-blanc.png"
+      />
     </>
   );
 }

@@ -52,7 +52,7 @@ export default function NavAdminComponent() {
     shadow-[3px_0_20px_rgba(19,30,54,0.06)]
     px-2 py-4 tablet:px-4 tablet:py-6
     gap-4
-    overflow-y-auto custom-scrollbar
+    overflow-y-auto hide-scrollbar
     z-[90] tablet:z-10
   `;
 

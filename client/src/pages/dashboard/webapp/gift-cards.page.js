@@ -13,6 +13,7 @@ import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import ListGiftsComponent from "@/components/dashboard/gift-cards/list.gift-cards.component";
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
+import SplashScreenWebAppComponent from "@/components/dashboard/webapp/_shared/splashscreen.webapp.component";
 
 export default function GiftsPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
@@ -43,11 +44,11 @@ export default function GiftsPage(props) {
 
   if (isEmployee && restaurant) {
     const employeeInRestaurant = restaurant.employees?.find(
-      (emp) => String(emp._id) === String(user.id)
+      (emp) => String(emp._id) === String(user.id),
     );
 
     const profile = employeeInRestaurant?.restaurantProfiles?.find(
-      (p) => String(p.restaurant) === String(restaurant._id)
+      (p) => String(p.restaurant) === String(restaurant._id),
     );
 
     employeeHasGiftCardAccess = profile?.options?.gift_card === true;
@@ -55,7 +56,7 @@ export default function GiftsPage(props) {
 
   return (
     <>
-     <Head>
+      <Head>
         <title>{title}</title>
 
         {/* iOS: raccourci écran d'accueil */}
@@ -64,44 +65,44 @@ export default function GiftsPage(props) {
         <meta name="apple-mobile-web-app-title" content="Cartes cadeaux" />
 
         {/* Icône iOS dédiée au module */}
-        <link
-          rel="apple-touch-icon"
-          href="/icons/ios/gift-cards-180.png?v=1"
-        />
+        <link rel="apple-touch-icon" href="/icons/ios/gift-cards-180.png?v=1" />
 
         {/* (Optionnel) Empêche Safari de “détecter” certains formats */}
         <meta name="format-detection" content="telephone=no" />
       </Head>
 
-      <div>
-        <div className="flex">
-          {/* <NavComponent /> */}
+      <div className="gm-splash-host">
+        <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 min-h-screen">
+          <SettingsComponent
+            dataLoading={restaurantContext.dataLoading}
+            setDataLoading={restaurantContext.setDataLoading}
+            closeEditing={restaurantContext.closeEditing}
+            setRestaurantData={restaurantContext.setRestaurantData}
+            restaurantData={restaurantContext.restaurantData}
+          />
 
-          <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 min-h-screen">
-            <SettingsComponent
+          {!hasGiftCardModule ? (
+            <NoAvailableComponent
               dataLoading={restaurantContext.dataLoading}
-              setDataLoading={restaurantContext.setDataLoading}
-              closeEditing={restaurantContext.closeEditing}
-              setRestaurantData={restaurantContext.setRestaurantData}
-              restaurantData={restaurantContext.restaurantData}
+              emptyText="Vous n'avez pas souscrit à cette option"
             />
-
-            {!hasGiftCardModule ? (
-              <NoAvailableComponent
-                dataLoading={restaurantContext.dataLoading}
-                emptyText="Vous n'avez pas souscrit à cette option"
-              />
-            ) : !employeeHasGiftCardAccess ? (
-              <NoAvailableComponent
-                dataLoading={restaurantContext.dataLoading}
-                emptyText="Vous n'avez pas accès à cette section"
-              />
-            ) : (
-              <ListGiftsComponent />
-            )}
-          </div>
+          ) : !employeeHasGiftCardAccess ? (
+            <NoAvailableComponent
+              dataLoading={restaurantContext.dataLoading}
+              emptyText="Vous n'avez pas accès à cette section"
+            />
+          ) : (
+            <ListGiftsComponent />
+          )}
         </div>
       </div>
+
+      <SplashScreenWebAppComponent
+        loading={restaurantContext.dataLoading}
+        bgColor="#131E36"
+        finalBgColor="#F3f2f8"
+        logoSrc="/img/logo-blanc.png"
+      />
     </>
   );
 }
