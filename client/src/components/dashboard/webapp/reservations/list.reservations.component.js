@@ -18,8 +18,9 @@ export default function ListReservationsComponent(props) {
   const { t } = useTranslation("reservations");
   const router = useRouter();
 
-  console.log(props.restaurantData);
-  
+  const selectedDayKey =
+    typeof router.query.day === "string" ? router.query.day : null;
+
   /* ---------- States (général) ---------- */
   const [isConfirmationModalOpen, setIsConfirmationModalOpen] = useState(false);
   const [selectedReservation, setSelectedReservation] = useState(null);
@@ -48,6 +49,19 @@ export default function ListReservationsComponent(props) {
     Late: t("list.status.late"),
     Finished: t("list.status.finished"),
   };
+
+  useEffect(() => {
+    if (!selectedDayKey) {
+      setSelectedDay(null);
+      return;
+    }
+
+    const [y, m, d] = selectedDayKey.split("-").map(Number);
+    if (!y || !m || !d) return;
+
+    // midi pour éviter bugs fuseaux
+    setSelectedDay(new Date(y, m - 1, d, 12, 0, 0, 0));
+  }, [selectedDayKey]);
 
   /* =========================================================
    * Utilitaires date/heure
@@ -236,7 +250,9 @@ export default function ListReservationsComponent(props) {
     router.push(`/dashboard/webapp/reservations/parameters`);
   }
   function handleEditClick(reservation) {
-    router.push(`/dashboard/webapp/reservations/add?reservationId=${reservation._id}`);
+    router.push(
+      `/dashboard/webapp/reservations/add?reservationId=${reservation._id}`,
+    );
   }
   function openModalForAction(reservation, action) {
     setSelectedReservation(reservation);
@@ -377,7 +393,6 @@ export default function ListReservationsComponent(props) {
 
   return (
     <section className="flex flex-col gap-6">
-
       {!selectedDay ? (
         <>
           {/* Header calendrier */}

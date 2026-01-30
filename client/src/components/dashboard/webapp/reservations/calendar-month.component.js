@@ -1,5 +1,10 @@
+import { useRouter } from "next/router";
+
 export default function CalendarMonthComponent(props) {
+  const router = useRouter();
+
   const weekDays = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+
   return (
     <div className="flex flex-col gap-3 midTablet:mt-6">
       {/* en-têtes jours de semaine */}
@@ -34,7 +39,18 @@ export default function CalendarMonthComponent(props) {
             <button
               key={d.key}
               onClick={() => {
-                props.setSelectedDay(new Date(d.date));
+                const date = new Date(d.date);
+                const key = props.toDateKey(date);
+
+                router.push(
+                  {
+                    pathname: router.pathname,
+                    query: { ...router.query, day: key },
+                  },
+                  undefined,
+                  { shallow: true },
+                );
+
                 props.setActiveDayTab("All");
               }}
               className={`relative p-1 midTablet:p-2 rounded-md midTablet:rounded-xl text-left transition ${baseInMonth}${matchOutline}${selectedOutline}`}

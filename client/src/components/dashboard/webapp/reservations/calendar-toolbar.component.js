@@ -26,7 +26,6 @@ import BottomSheetChangeRestaurantComponent from "../_shared/bottom-sheet-change
 export default function CalendarToolbarComponent(props) {
   const { t } = useTranslation("reservations");
   const { restaurantContext } = useContext(GlobalContext);
-  console.log(restaurantContext.restaurantsList);
 
   const [sheetOpen, setSheetOpen] = useState(false);
 

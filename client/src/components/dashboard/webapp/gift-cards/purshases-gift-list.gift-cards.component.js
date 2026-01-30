@@ -1,4 +1,4 @@
-import { useContext, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 // AXIOS
 import axios from "axios";
 // CONTEXT
@@ -45,6 +45,9 @@ export default function WebAppPurchasesGiftListComponent(props) {
     Archived: STEP,
   });
 
+  // ✅ Active status (for sticky header chip)
+  const [activeStatus, setActiveStatus] = useState(null);
+
   // ----- Styles -----
   const headerTitleCls = "pl-2 text-xl tablet:text-2xl text-darkBlue";
 
@@ -63,20 +66,20 @@ export default function WebAppPurchasesGiftListComponent(props) {
     "inline-flex items-center justify-center rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition px-4 h-11 text-sm font-semibold text-darkBlue";
 
   // ✅ Sticky header (webapp feel)
-  // - top-0 : colle au haut du scroll container
-  // - bg-white/50 : ton style webapp
-  // - backdrop-blur : effet “app”
-  // - z-20 : au-dessus des listes
   const stickyHeaderWrap =
     "sticky top-0 z-20 -mx-2 px-2 pt-2 pb-3 bg-white/50 backdrop-blur-md border-b border-darkBlue/10";
 
-  // Statuts couleurs (inchangé)
+  // Statuts couleurs
   const statusColor = {
     Valid: "bg-[#4ead7a1a] text-[#166534] border-[#4ead7a80]",
     Used: "bg-[#4f46e51a] text-[#312e81] border-[#4f46e580]",
     Expired: "bg-[#ef44441a] text-[#b91c1c] border-[#ef444480]",
     Archived: "bg-[#e5e7eb] text-[#4b5563] border-[#d1d5db]",
   };
+
+  // Small chip in header
+  const headerStatusChip =
+    "inline-flex items-center justify-center rounded-full border px-3 py-1 text-[10px] font-semibold tracking-[0.18em] uppercase";
 
   // ----- Utils -----
   const normalize = (str = "") =>
@@ -110,26 +113,27 @@ export default function WebAppPurchasesGiftListComponent(props) {
     });
   }, [purchasesGiftCards]);
 
+  // ✅ Search across ALL data + supports "Paul S" typed across two fields
   const filteredSortedPurchases = useMemo(() => {
     const norm = normalize(searchTerm);
     if (!norm) return sortedPurchases;
 
     const filterFn = (p) => {
-      const fullName =
-        `${p?.beneficiaryFirstName || ""} ${p?.beneficiaryLastName || ""}`.trim();
-      const fullNameRev =
-        `${p?.beneficiaryLastName || ""} ${p?.beneficiaryFirstName || ""}`.trim();
+      const fullName = `${p?.beneficiaryFirstName || ""} ${
+        p?.beneficiaryLastName || ""
+      }`.trim();
+      const fullNameRev = `${p?.beneficiaryLastName || ""} ${
+        p?.beneficiaryFirstName || ""
+      }`.trim();
 
       const haystacks = [
         p.purchaseCode,
         p.beneficiaryFirstName,
         p.beneficiaryLastName,
 
-        // ✅ champ virtuel prénom + nom
         fullName,
         fullNameRev,
 
-        // ✅ versions sans espaces (si l’utilisateur tape "pauls")
         fullName.replace(/\s+/g, ""),
         fullNameRev.replace(/\s+/g, ""),
 
@@ -167,11 +171,9 @@ export default function WebAppPurchasesGiftListComponent(props) {
     const next = e?.target?.value ?? "";
     setSearchTerm(next);
 
-    // ✅ reset pagination pour éviter des sections “vides” après search
     setVisibleCount({ Valid: STEP, Used: STEP, Expired: STEP, Archived: STEP });
 
-    // ✅ si on cherche, on ouvre automatiquement Archived pour éviter “je trouve rien”
-    // (sinon tu peux le retirer)
+    // en recherche: ouvre archived pour ne pas “rater” des résultats
     if (normalize(next)) setArchivedOpen(true);
   };
 
@@ -205,12 +207,10 @@ export default function WebAppPurchasesGiftListComponent(props) {
     }));
   };
 
-  // ✅ Actions from bottomsheet
   const handleDrawerAction = async (purchase, type) => {
     setDetailsOpen(false);
-
     try {
-      await runAction(purchase, type); // "Used" | "Valid" | "Delete"
+      await runAction(purchase, type);
     } catch (e) {
       console.error("Erreur action carte cadeau :", e);
     }
@@ -220,15 +220,14 @@ export default function WebAppPurchasesGiftListComponent(props) {
   const metaPill =
     "inline-flex items-center gap-1 rounded-full border border-darkBlue/10 bg-white/70 px-2.5 py-1 text-[11px] font-semibold text-darkBlue/80";
 
-  // ✅ Webapp UX: when searching, show ALL results (no “show more” limit)
-  // -> This is the key fix for your issue: search must feel exhaustive.
+  // ✅ Search mode = show ALL results
   const isSearching = Boolean(normalize(searchTerm));
   const getVisibleForStatus = (status, total) => {
-    if (isSearching) return total; // show all matched results
+    if (isSearching) return total;
     return Math.min(visibleCount[status] || STEP, total);
   };
 
-  // Optional: total results badge in header
+  // Total results badge
   const totalResults = useMemo(() => {
     if (!isSearching) return null;
     return (
@@ -239,20 +238,87 @@ export default function WebAppPurchasesGiftListComponent(props) {
     );
   }, [filteredByStatus, isSearching]);
 
+  // ✅ Refs for scroll tracking (section headers)
+  const sectionRefs = useRef({
+    Valid: null,
+    Used: null,
+    Expired: null,
+    Archived: null,
+  });
+
+  useEffect(() => {
+    if (isSearching) return;
+
+    const statuses = ["Valid", "Used", "Expired", "Archived"];
+
+    let ticking = false;
+
+    const getHeaderOffset = () => {
+      // hauteur “réelle” de ton sticky header
+      // si un jour tu changes son padding/typo, ça reste robuste
+      const headerEl = document.querySelector("[data-sticky-gifts-header]");
+      return headerEl ? headerEl.getBoundingClientRect().height : 92;
+    };
+
+    const computeActive = () => {
+      const headerOffset = getHeaderOffset();
+      const refY = headerOffset + 8;
+
+      let current = null;
+
+      for (const st of statuses) {
+        const el = sectionRefs.current[st];
+        if (!el) continue;
+
+        const top = el.getBoundingClientRect().top;
+
+        // tant que rien n'est passé sous le header => current reste null
+        if (top <= refY) current = st;
+      }
+
+      setActiveStatus((prev) => (prev === current ? prev : current));
+    };
+
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        computeActive();
+        ticking = false;
+      });
+    };
+
+    // initial
+    computeActive();
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+    };
+  }, [isSearching]);
+
   return (
     <>
-      <div className="flex flex-col gap-6 mt-6 px-2">
-        {/* ✅ Sticky header + search */}
-        <div className={stickyHeaderWrap}>
+      <div className="flex flex-col mt-6 px-2">
+        {/* ✅ Sticky header + search + active status chip */}
+        <div className={stickyHeaderWrap} data-sticky-gifts-header>
           <div className="flex flex-col gap-3 tablet:flex-row tablet:items-center tablet:justify-between">
             <div className="flex gap-2 items-center min-h-[40px]">
               <GiftSvg width={30} height={30} fillColor="#131E3690" />
-              <div className="flex items-baseline gap-2">
+
+              <div className="flex w-full justify-between items-center gap-2 min-w-0">
                 <h1 className={headerTitleCls}>{t("titles.second")}</h1>
 
-                {isSearching ? (
-                  <span className="text-xs font-semibold text-darkBlue/50">
-                    {totalResults != null ? `(${totalResults})` : null}
+                {/* ✅ Active status pill (changes on scroll) */}
+                {!isSearching && activeStatus ? (
+                  <span
+                    className={`${headerStatusChip} ${statusColor[activeStatus]}`}
+                    title={statusTranslations[activeStatus]}
+                  >
+                    {statusTranslations[activeStatus]}
                   </span>
                 ) : null}
               </div>
@@ -282,7 +348,6 @@ export default function WebAppPurchasesGiftListComponent(props) {
             </div>
           </div>
 
-          {/* ✅ Small helper line (webapp feel) */}
           {isSearching ? (
             <div className="mt-2 text-xs text-darkBlue/60">
               {t("labels.searching", "Recherche en cours")} :{" "}
@@ -294,7 +359,7 @@ export default function WebAppPurchasesGiftListComponent(props) {
         </div>
 
         {/* Lists par statut */}
-        <div className="flex flex-col gap-10 pb-2">
+        <div className="flex flex-col pb-2">
           {["Valid", "Used", "Expired", "Archived"].map((status) => {
             const itemsAll = filteredByStatus[status] || [];
             const isArchived = status === "Archived";
@@ -302,11 +367,19 @@ export default function WebAppPurchasesGiftListComponent(props) {
             const visible = getVisibleForStatus(status, itemsAll.length);
             const items = itemsAll.slice(0, visible);
 
-            // In search mode, no "show more"
             const hasMore = !isSearching && visible < itemsAll.length;
 
             return (
               <div key={status} className="flex flex-col gap-4">
+                {/* ✅ Section marker for scroll tracking (place just before chip) */}
+                <div
+                  ref={(el) => {
+                    sectionRefs.current[status] = el;
+                  }}
+                  data-status={status}
+                  className="h-px"
+                />
+
                 {/* Badge de catégorie */}
                 <div className={statusChipWrap}>
                   <div className={statusChipLine} />
@@ -352,7 +425,6 @@ export default function WebAppPurchasesGiftListComponent(props) {
                             <div className="w-full text-left rounded-2xl border border-darkBlue/10 bg-white/70 shadow-sm hover:shadow-md transition-shadow p-3">
                               <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0 flex-1">
-                                  {/* Top row: beneficiary */}
                                   <div className="flex justify-between gap-3">
                                     <div className="flex items-center gap-2 min-w-0">
                                       <User className="size-4 text-darkBlue/45 shrink-0" />
@@ -362,7 +434,6 @@ export default function WebAppPurchasesGiftListComponent(props) {
                                     </div>
                                   </div>
 
-                                  {/* Meta pills + CTA */}
                                   <div className="mt-2 flex flex-wrap justify-between items-center gap-2">
                                     <div className="flex gap-1 flex-wrap">
                                       <span className={metaPill}>
@@ -387,7 +458,6 @@ export default function WebAppPurchasesGiftListComponent(props) {
                                       ) : null}
                                     </div>
 
-                                    {/* ✅ CTA “détails” ONLY */}
                                     <button
                                       type="button"
                                       onClick={() => openDetails(purchase)}
@@ -409,7 +479,6 @@ export default function WebAppPurchasesGiftListComponent(props) {
                       })}
                     </ul>
 
-                    {/* ✅ UX: Afficher plus (disabled in search mode) */}
                     {hasMore ? (
                       <button
                         type="button"
@@ -443,7 +512,7 @@ export default function WebAppPurchasesGiftListComponent(props) {
         onClose={closeDetails}
         purchase={selectedPurchase}
         t={t}
-        onAction={handleDrawerAction} // (purchase, "Used"|"Valid"|"Delete")
+        onAction={handleDrawerAction}
       />
     </>
   );
