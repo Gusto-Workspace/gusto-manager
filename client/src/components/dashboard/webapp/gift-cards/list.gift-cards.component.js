@@ -1,5 +1,5 @@
 import { useRouter } from "next/router";
-import { useState, useContext, useEffect, useId } from "react";
+import { useState, useContext, useEffect, useId, useMemo } from "react";
 
 // REACT HOOK FORM
 import { useForm } from "react-hook-form";
@@ -15,7 +15,7 @@ import { useTranslation } from "next-i18next";
 
 // SVG
 import { GiftSvg } from "../../../_shared/_svgs/_index";
-import { Plus } from "lucide-react";
+import { ChevronDown, Plus } from "lucide-react";
 
 // DND
 import {
@@ -26,12 +26,21 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
+
 import { arrayMove, SortableContext } from "@dnd-kit/sortable";
 
+import {
+  restrictToFirstScrollableAncestor,
+  restrictToWindowEdges,
+} from "@dnd-kit/modifiers";
+
 // COMPONENTS
-import PurchasesGiftListComponent from "./purshases-gift-list.gift-cards.component";
+import WebAppPurchasesGiftListComponent from "./purshases-gift-list.gift-cards.component";
 import CardGiftsComponent from "./card.gift-cards.component";
-import BottomSheetGiftCardsComponent from "./bottom-sheet.gift-cards.component";
+import BottomSheetCreateGiftCardsComponent from "./bottom-sheet-create.gift-cards.component";
+
+// ✅ New: change restaurant bottom sheet (same behavior as reservations)
+import BottomSheetChangeRestaurantComponent from "../_shared/bottom-sheet-change-restaurant.webapp.component";
 
 export default function WebAppListGiftCardsComponent(props) {
   const { t } = useTranslation("gifts");
@@ -42,6 +51,9 @@ export default function WebAppListGiftCardsComponent(props) {
 
   // ----- Initialisation giftCards depuis le contexte pour éviter le flash -----
   const initialCards = restaurantContext?.restaurantData?.giftCards || [];
+
+  // ✅ BottomSheet change restaurant
+  const [changeRestaurantOpen, setChangeRestaurantOpen] = useState(false);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingGift, setEditingGift] = useState(null);
@@ -88,6 +100,26 @@ export default function WebAppListGiftCardsComponent(props) {
   const mouseSensor = useSensor(MouseSensor);
   const touchSensor = useSensor(TouchSensor);
   const sensors = useSensors(mouseSensor, touchSensor);
+
+  // ✅ Restos éligibles au module gift_card (utile pour activer/désactiver le bouton)
+  const giftCardRestaurants = useMemo(() => {
+    const list = restaurantContext?.restaurantsList || [];
+    return list.filter((r) => r?.options?.gift_card === true);
+  }, [restaurantContext?.restaurantsList]);
+
+  const canSwitchRestaurant = giftCardRestaurants.length > 1;
+
+  const currentName =
+    restaurantContext?.restaurantData?.name ||
+    props?.restaurantName ||
+    t?.("titles.main", "Cartes cadeaux");
+
+  const openChangeRestaurant = () => {
+    if (!canSwitchRestaurant) return;
+    setChangeRestaurantOpen(true);
+  };
+
+  const closeChangeRestaurant = () => setChangeRestaurantOpen(false);
 
   // Met à jour les listes quand restaurantData change (après fetch ou modif)
   useEffect(() => {
@@ -167,7 +199,6 @@ export default function WebAppListGiftCardsComponent(props) {
 
   function handleDragEnd(event) {
     const { active, over } = event;
-
     if (!active || !over) return;
 
     const allGiftCards = [...giftCardsValue, ...giftCardsDescription];
@@ -220,6 +251,19 @@ export default function WebAppListGiftCardsComponent(props) {
 
   return (
     <section className="flex flex-col gap-2">
+      {/* ✅ Change restaurant bottom sheet (même comportement que réservations) */}
+      <BottomSheetChangeRestaurantComponent
+        open={changeRestaurantOpen}
+        onClose={closeChangeRestaurant}
+        restaurantContext={restaurantContext}
+        currentName={currentName}
+        t={t}
+        // ✅ important: filtre sur gift_card (pas reservations)
+        optionKey="gift_card"
+        // ✅ labels module (sinon il va afficher “Réservations”)
+        moduleLabel={t?.("titles.main", "Cartes cadeaux")}
+      />
+
       {/* Header page */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex gap-2 items-center min-h-[40px]">
@@ -230,9 +274,27 @@ export default function WebAppListGiftCardsComponent(props) {
             fillColor="#131E3690"
           />
 
-          <h1 className="text-xl flex items-center gap-2">
-            {props?.restaurantName}
-          </h1>
+          {/* ✅ Le titre devient aussi le trigger du changement de restaurant */}
+          <button
+            type="button"
+            onClick={openChangeRestaurant}
+            className={`min-w-0 inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-3 py-2 hover:bg-darkBlue/5 transition ${
+              canSwitchRestaurant
+                ? "cursor-pointer"
+                : "cursor-default opacity-90"
+            }`}
+            aria-label={
+              canSwitchRestaurant ? "Changer de restaurant" : "Restaurant"
+            }
+            title={canSwitchRestaurant ? "Changer de restaurant" : undefined}
+          >
+            <span className="truncate text-base font-semibold text-darkBlue">
+              {currentName}
+            </span>
+            {canSwitchRestaurant ? (
+              <ChevronDown className="size-4 text-darkBlue/50 shrink-0" />
+            ) : null}
+          </button>
         </div>
 
         <button
@@ -250,7 +312,6 @@ export default function WebAppListGiftCardsComponent(props) {
       {/* Cartes montant fixe */}
       {giftCardsValue?.length > 0 && (
         <div>
-          {/* Header type ligne + pill */}
           <div className={sectionChipWrap}>
             <div className={sectionChipLine} />
             <div className={sectionChipLabel}>{t("titles.amountCard")}</div>
@@ -262,6 +323,10 @@ export default function WebAppListGiftCardsComponent(props) {
             sensors={sensors}
             collisionDetection={closestCenter}
             onDragEnd={handleDragEnd}
+            modifiers={[
+              restrictToFirstScrollableAncestor,
+              restrictToWindowEdges,
+            ]}
           >
             <SortableContext
               items={giftCardsValue.map((giftCard) => giftCard._id)}
@@ -297,6 +362,10 @@ export default function WebAppListGiftCardsComponent(props) {
             sensors={sensors}
             collisionDetection={closestCenter}
             onDragEnd={handleDragEnd}
+            modifiers={[
+              restrictToFirstScrollableAncestor,
+              restrictToWindowEdges,
+            ]}
           >
             <SortableContext
               items={giftCardsDescription.map((giftCard) => giftCard._id)}
@@ -319,7 +388,7 @@ export default function WebAppListGiftCardsComponent(props) {
       )}
 
       {/* Achats de cartes cadeaux */}
-      <PurchasesGiftListComponent
+      <WebAppPurchasesGiftListComponent
         purchasesGiftCards={
           restaurantContext?.restaurantData?.purchasesGiftCards
         }
@@ -327,7 +396,7 @@ export default function WebAppListGiftCardsComponent(props) {
 
       {/* MODALE ajout / édition / suppression */}
       {isModalOpen && (
-        <BottomSheetGiftCardsComponent
+        <BottomSheetCreateGiftCardsComponent
           open={isModalOpen}
           onClose={closeModal}
           title={

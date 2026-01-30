@@ -1,22 +1,34 @@
+import { useContext, useMemo, useState } from "react";
+
 // I18N
 import { useTranslation } from "next-i18next";
+
+// CONTEXT
+import { GlobalContext } from "@/contexts/global.context";
 
 // SVG
 import { ReservationSvg } from "@/components/_shared/_svgs/reservation.svg";
 
 // LUCIDE
 import {
-  CalendarDays,
   ChevronLeft,
   ChevronRight,
   Search,
   SlidersHorizontal,
   Plus,
   X,
+  ChevronDown,
 } from "lucide-react";
+
+// COMPONENNTS
+import BottomSheetChangeRestaurantComponent from "../_shared/bottom-sheet-change-restaurant.webapp.component";
 
 export default function CalendarToolbarComponent(props) {
   const { t } = useTranslation("reservations");
+  const { restaurantContext } = useContext(GlobalContext);
+console.log(restaurantContext.restaurantsList);
+
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const monthYearLabel = props.capitalizeFirst(
     new Intl.DateTimeFormat("fr-FR", {
@@ -45,8 +57,36 @@ export default function CalendarToolbarComponent(props) {
     props.calendarSearchRef?.current?.focus?.();
   };
 
+  // ✅ Restos éligibles réservations
+  const reservationsRestaurants = useMemo(() => {
+    const list = restaurantContext?.restaurantsList || [];
+    return list.filter((r) => r?.options?.reservations === true);
+  }, [restaurantContext?.restaurantsList]);
+
+  const canSwitchRestaurant = reservationsRestaurants.length > 1;
+
+  const openSheet = () => {
+    if (!canSwitchRestaurant) return;
+    setSheetOpen(true);
+  };
+
+  const closeSheet = () => setSheetOpen(false);
+
+  const currentName =
+    restaurantContext?.restaurantData?.name || props.restaurantData?.name || "";
+
   return (
-    <div>
+    <div className="relative">
+      {/* ✅ Bottom sheet séparée */}
+      <BottomSheetChangeRestaurantComponent
+        open={sheetOpen}
+        onClose={closeSheet}
+        restaurantContext={restaurantContext}
+        currentName={currentName}
+        t={t}
+      />
+
+      {/* ================= Toolbar ================= */}
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1 flex items-center gap-2">
           <div>
@@ -57,12 +97,29 @@ export default function CalendarToolbarComponent(props) {
               fillColor="#131E3690"
             />
           </div>
-          <h1 className="text-xl flex items-center gap-2">
-            {props?.restaurantName}
-          </h1>
+
+          <button
+            type="button"
+            onClick={openSheet}
+            className={`min-w-0 inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-3 py-2 hover:bg-darkBlue/5 transition ${
+              canSwitchRestaurant
+                ? "cursor-pointer"
+                : "cursor-default opacity-90"
+            }`}
+            aria-label={
+              canSwitchRestaurant ? "Changer de restaurant" : "Restaurant"
+            }
+            title={canSwitchRestaurant ? "Changer de restaurant" : undefined}
+          >
+            <span className="truncate text-base font-semibold text-darkBlue">
+              {currentName}
+            </span>
+            {canSwitchRestaurant ? (
+              <ChevronDown className="size-4 text-darkBlue/50 shrink-0" />
+            ) : null}
+          </button>
         </div>
 
-        {/* Right: actions (icônes) */}
         <div className="shrink-0 flex items-center gap-2">
           <button
             onClick={props.handleParametersClick}
@@ -84,7 +141,7 @@ export default function CalendarToolbarComponent(props) {
         </div>
       </div>
 
-      {/* Month controls (pills) */}
+      {/* Month controls */}
       <div className="mt-3 flex items-center gap-2">
         <button
           onClick={goPrev}
@@ -112,7 +169,7 @@ export default function CalendarToolbarComponent(props) {
         </button>
       </div>
 
-      {/* Search (webapp) */}
+      {/* Search (calendar) */}
       <div className="mt-3 relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40" />
         <input

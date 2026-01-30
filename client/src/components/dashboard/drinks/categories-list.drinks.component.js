@@ -25,7 +25,13 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
+
 import { arrayMove, SortableContext } from "@dnd-kit/sortable";
+
+import {
+  restrictToFirstScrollableAncestor,
+  restrictToWindowEdges,
+} from "@dnd-kit/modifiers";
 
 // COMPONENTS
 import CardCategoryListComponent from "./card-category-list.drinks.component";
@@ -41,7 +47,7 @@ export default function CategoriesListDrinksComponent() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [categories, setCategories] = useState(
-    restaurantContext?.restaurantData?.drink_categories
+    restaurantContext?.restaurantData?.drink_categories,
   );
   const [catAlreadyExist, setCatAlreadyExist] = useState(false);
 
@@ -94,7 +100,7 @@ export default function CategoriesListDrinksComponent() {
     axios
       .put(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/categories/${category._id}`,
-        { visible: updatedVisibility }
+        { visible: updatedVisibility },
       )
       .then((response) => {
         restaurantContext.setRestaurantData((prev) => ({
@@ -134,7 +140,7 @@ export default function CategoriesListDrinksComponent() {
         } else {
           alert(
             "Une erreur inattendue est survenue, merci de réessayer ultérieurement. " +
-              "Si le problème persiste, veuillez contacter votre interlocuteur Gusto Manager."
+              "Si le problème persiste, veuillez contacter votre interlocuteur Gusto Manager.",
           );
         }
       })
@@ -153,14 +159,14 @@ export default function CategoriesListDrinksComponent() {
     if (active.id !== over.id) {
       setCategories((prevCategories) => {
         const oldIndex = prevCategories.findIndex(
-          (cat) => cat._id === active.id
+          (cat) => cat._id === active.id,
         );
         const newIndex = prevCategories.findIndex((cat) => cat._id === over.id);
 
         const newCategoriesOrder = arrayMove(
           prevCategories,
           oldIndex,
-          newIndex
+          newIndex,
         );
 
         saveNewCategoryOrder(newCategoriesOrder);
@@ -172,13 +178,13 @@ export default function CategoriesListDrinksComponent() {
 
   function saveNewCategoryOrder(updatedCategories) {
     const orderedCategoryIds = updatedCategories.map(
-      (category) => category._id
+      (category) => category._id,
     );
 
     axios
       .put(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/categories-list/order`,
-        { orderedCategoryIds }
+        { orderedCategoryIds },
       )
       .then((response) => {
         restaurantContext.setRestaurantData((prev) => ({
@@ -225,6 +231,10 @@ export default function CategoriesListDrinksComponent() {
             sensors={sensors}
             collisionDetection={closestCenter}
             onDragEnd={handleDragEnd}
+            modifiers={[
+              restrictToFirstScrollableAncestor,
+              restrictToWindowEdges,
+            ]}
           >
             <SortableContext
               items={categories?.map((category) => category._id)}

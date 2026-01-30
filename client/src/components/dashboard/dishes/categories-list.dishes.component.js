@@ -25,7 +25,13 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
+
 import { arrayMove, SortableContext } from "@dnd-kit/sortable";
+
+import {
+  restrictToFirstScrollableAncestor,
+  restrictToWindowEdges,
+} from "@dnd-kit/modifiers";
 
 // COMPONENTS
 import CardCategoryListComponent from "./card-category-list.dishes.component";
@@ -43,7 +49,7 @@ export default function CategoriesListDishesComponent() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [categories, setCategories] = useState(
-    restaurantContext?.restaurantData?.dish_categories || []
+    restaurantContext?.restaurantData?.dish_categories || [],
   );
   const [catAlreadyExist, setCatAlreadyExist] = useState(false);
 
@@ -102,7 +108,7 @@ export default function CategoriesListDishesComponent() {
     axios
       .put(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes/categories/${category._id}`,
-        { visible: updatedVisibility }
+        { visible: updatedVisibility },
       )
       .then((response) => {
         restaurantContext.setRestaurantData((prev) => ({
@@ -143,7 +149,7 @@ export default function CategoriesListDishesComponent() {
         } else {
           alert(
             "Une erreur inattendue est survenue, merci de réessayer ultérieurement. " +
-              "Si le problème persiste, veuillez contacter votre interlocuteur Gusto Manager."
+              "Si le problème persiste, veuillez contacter votre interlocuteur Gusto Manager.",
           );
         }
       })
@@ -174,13 +180,13 @@ export default function CategoriesListDishesComponent() {
 
   function saveNewCategoryOrder(updatedCategories) {
     const orderedCategoryIds = updatedCategories.map(
-      (category) => category._id
+      (category) => category._id,
     );
 
     axios
       .put(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes/categories-list/order`,
-        { orderedCategoryIds }
+        { orderedCategoryIds },
       )
       .then((response) => {
         restaurantContext.setRestaurantData((prev) => ({
@@ -214,9 +220,7 @@ export default function CategoriesListDishesComponent() {
         <div className="flex flex-col gap-2">
           <div className="flex gap-2 items-center min-h-[40px]">
             <DishSvg width={30} height={30} fillColor="#131E3690" />
-            <h1 className="pl-2 text-xl tablet:text-2xl">
-              {t("titles.main")}
-            </h1>
+            <h1 className="pl-2 text-xl tablet:text-2xl">{t("titles.main")}</h1>
           </div>
 
           {hiddenCount > 0 && (
@@ -260,6 +264,10 @@ export default function CategoriesListDishesComponent() {
             sensors={sensors}
             collisionDetection={closestCenter}
             onDragEnd={handleDragEnd}
+            modifiers={[
+              restrictToFirstScrollableAncestor,
+              restrictToWindowEdges,
+            ]}
           >
             <SortableContext
               items={displayedCategories.map((category) => category._id)}

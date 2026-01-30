@@ -19,7 +19,7 @@ function ensureEmployeeRestaurantLink(employee, restaurantId) {
     employee.restaurants = [];
   }
   const alreadyLinked = employee.restaurants.some(
-    (rId) => String(rId) === idStr
+    (rId) => String(rId) === idStr,
   );
   if (!alreadyLinked) {
     employee.restaurants.push(restaurantId);
@@ -35,7 +35,7 @@ function getOrCreateRestaurantProfile(employee, restaurantId) {
   }
 
   let profile = employee.restaurantProfiles.find(
-    (p) => String(p.restaurant) === idStr
+    (p) => String(p.restaurant) === idStr,
   );
 
   if (!profile) {
@@ -115,7 +115,7 @@ function findRestaurantProfile(employee, restaurantId) {
   if (!Array.isArray(employee.restaurantProfiles)) return null;
   const target = String(restaurantId);
   return employee.restaurantProfiles.find(
-    (p) => String(p.restaurant) === target
+    (p) => String(p.restaurant) === target,
   );
 }
 
@@ -126,7 +126,7 @@ router.get("/owner/restaurants", authenticateToken, async (req, res) => {
   try {
     const restaurants = await RestaurantModel.find(
       { owner_id: ownerId },
-      "name _id"
+      "name _id options.reservations options.gift_card",
     );
 
     res.status(200).json({ restaurants });
@@ -169,7 +169,7 @@ router.post(
 
       // Sécurité : l'employé doit vraiment être rattaché à ce resto
       const worksHere = (emp.restaurants || []).some(
-        (id) => String(id) === String(restaurantId)
+        (id) => String(id) === String(restaurantId),
       );
       if (!worksHere) {
         return res.status(403).json({
@@ -197,7 +197,7 @@ router.post(
       console.error("Error in /employees/change-restaurant:", e);
       return res.status(500).json({ message: "Internal server error" });
     }
-  }
+  },
 );
 
 // GET RESTAURANT DETAILS FROM PANEL
@@ -207,7 +207,7 @@ router.get("/owner/restaurants/:id", authenticateToken, async (req, res) => {
 
     // Met à jour les statuts des cartes expirées avant de récupérer les données
     await updateExpiredStatus(id);
-    await updateArchivedStatus(id)
+    await updateArchivedStatus(id);
 
     const restaurant = await RestaurantModel.findById(id)
       .populate("owner_id", "firstname")
@@ -260,7 +260,7 @@ router.get("/restaurants/:id", async (req, res) => {
         dishes: menu.dishes.map((dishId) => {
           for (const category of restaurant.dish_categories) {
             const dish = category.dishes.find(
-              (dish) => dish._id.toString() === dishId.toString()
+              (dish) => dish._id.toString() === dishId.toString(),
             );
             if (dish) {
               return {
@@ -310,7 +310,7 @@ router.get("/restaurant-subscription", authenticateToken, async (req, res) => {
 
     // Cherche l'abonnement correspondant dans les métadonnées
     const restaurantSubscription = subscriptions.data.find(
-      (subscription) => subscription.metadata.restaurantId === restaurantId
+      (subscription) => subscription.metadata.restaurantId === restaurantId,
     );
 
     if (!restaurantSubscription) {
@@ -362,7 +362,7 @@ router.put(
     try {
       await RestaurantModel.updateOne(
         { _id: id },
-        { $set: { lastNotificationCheck: new Date() } }
+        { $set: { lastNotificationCheck: new Date() } },
       );
       res
         .status(200)
@@ -371,7 +371,7 @@ router.put(
       console.error("Error updating lastNotificationCheck:", error);
       res.status(500).json({ message: "Internal server error" });
     }
-  }
+  },
 );
 
 // COUNT ANALYTICS VISITS FROM WEBSITE
@@ -381,14 +381,14 @@ router.post("/restaurants/:id/visits", async (req, res) => {
   // Format YYYY-MM, ex. "2025-07"
   const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
     2,
-    "0"
+    "0",
   )}`;
 
   try {
     // 1) On essaye d'incrémenter dans le sous-doc "periods" existant
     const updateResult = await VisitCounterModel.updateOne(
       { restaurant: restaurantId, "periods.period": period },
-      { $inc: { "periods.$.count": 1 } }
+      { $inc: { "periods.$.count": 1 } },
     );
 
     // Si aucun count n'a été modifié, c'est qu'il n'y a pas encore de document pour ce mois
@@ -401,7 +401,7 @@ router.post("/restaurants/:id/visits", async (req, res) => {
           // On pousse la nouvelle période avec count = 1
           $push: { periods: { period, count: 1 } },
         },
-        { upsert: true }
+        { upsert: true },
       );
     }
 
@@ -423,7 +423,7 @@ router.get("/restaurants/:id/visits/monthly", async (req, res) => {
   for (let i = months - 1; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     periods.push(
-      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
     );
   }
 
@@ -466,7 +466,7 @@ router.get("/owner/employees", async (req, res) => {
     // Tous les restos du propriétaire
     const restaurants = await RestaurantModel.find(
       { owner_id: ownerId },
-      "_id name"
+      "_id name",
     ).lean();
 
     const restaurantIds = restaurants.map((r) => r._id);
@@ -483,7 +483,7 @@ router.get("/owner/employees", async (req, res) => {
         firstname lastname email phone secuNumber address emergencyContact
         post dateOnPost profilePicture
         restaurants restaurantProfiles
-      `
+      `,
       )
       .populate("restaurants", "name _id")
       .lean();

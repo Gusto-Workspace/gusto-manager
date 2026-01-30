@@ -18,6 +18,8 @@ export default function ListReservationsComponent(props) {
   const { t } = useTranslation("reservations");
   const router = useRouter();
 
+  console.log(props.restaurantData);
+  
   /* ---------- States (général) ---------- */
   const [isConfirmationModalOpen, setIsConfirmationModalOpen] = useState(false);
   const [selectedReservation, setSelectedReservation] = useState(null);
@@ -391,7 +393,7 @@ export default function ListReservationsComponent(props) {
             searchTerm={searchTerm}
             handleSearchChangeCalendar={handleSearchChangeCalendar}
             setSearchTerm={setSearchTerm}
-            restaurantName={props.restaurantData?.name}
+            restaurantData={props.restaurantData}
           />
           {/* Calendrier mois (pack) */}
           <CalendarMonthComponent
