@@ -7,7 +7,7 @@ const CLOSE_MS = 160;
 const SWIPE_VELOCITY = 0.6; // px/ms
 const CLOSE_RATIO = 0.25; // 25% panel height => close
 
-export default function BottomSheetGiftCardsComponent({
+export default function BottomSheeCreatetGiftCardsComponent({
   open,
   onClose,
 

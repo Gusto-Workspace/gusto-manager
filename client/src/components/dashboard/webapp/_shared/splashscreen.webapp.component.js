@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 
 const FADE_MS = 550;
-const MIN_DURATION = 1750;
+const MIN_DURATION = 1250;
 
 export default function SplashScreenWebAppComponent(props) {
   const [visible, setVisible] = useState(() => {

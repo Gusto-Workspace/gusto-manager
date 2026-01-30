@@ -26,7 +26,13 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
+
 import { arrayMove, SortableContext } from "@dnd-kit/sortable";
+
+import {
+  restrictToFirstScrollableAncestor,
+  restrictToWindowEdges,
+} from "@dnd-kit/modifiers";
 
 // COMPONENTS
 import PurchasesGiftListComponent from "./purshases-gift-list.gift-cards.component";
@@ -264,6 +270,10 @@ export default function ListGiftsComponent(props) {
             sensors={sensors}
             collisionDetection={closestCenter}
             onDragEnd={handleDragEnd}
+            modifiers={[
+              restrictToFirstScrollableAncestor,
+              restrictToWindowEdges,
+            ]}
           >
             <SortableContext
               items={giftCardsValue.map((giftCard) => giftCard._id)}
@@ -299,6 +309,10 @@ export default function ListGiftsComponent(props) {
             sensors={sensors}
             collisionDetection={closestCenter}
             onDragEnd={handleDragEnd}
+            modifiers={[
+              restrictToFirstScrollableAncestor,
+              restrictToWindowEdges,
+            ]}
           >
             <SortableContext
               items={giftCardsDescription.map((giftCard) => giftCard._id)}
