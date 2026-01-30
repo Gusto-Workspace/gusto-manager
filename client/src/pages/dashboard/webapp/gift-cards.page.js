@@ -60,6 +60,12 @@ export default function GiftsPage(props) {
       <Head>
         <title>{title}</title>
 
+        {/* Empeche le zoom / dezoom */}
+        <meta
+          name="viewport"
+          content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+        />
+
         {/* iOS: raccourci écran d'accueil */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -84,7 +90,9 @@ export default function GiftsPage(props) {
               emptyText="Vous n'avez pas accès à cette section"
             />
           ) : (
-            <WebAppListGiftCardsComponent restaurantName={restaurantContext?.restaurantData?.name}/>
+            <WebAppListGiftCardsComponent
+              restaurantName={restaurantContext?.restaurantData?.name}
+            />
           )}
         </div>
       </div>

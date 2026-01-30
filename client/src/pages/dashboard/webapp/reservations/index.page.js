@@ -60,6 +60,12 @@ export default function WepAppReservationsPage(props) {
       <Head>
         <title>{title}</title>
 
+        {/* Empeche le zoom / dezoom */}
+        <meta
+          name="viewport"
+          content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+        />
+
         {/* iOS: raccourci écran d'accueil */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -75,7 +81,7 @@ export default function WepAppReservationsPage(props) {
       </Head>
 
       <div className="block mobile:hidden">
-        <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 min-h-screen">
+        <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 h-[100dvh] overflow-y-auto hide-scrollbar">
           {!hasReservationsModule ? (
             <NoAvailableComponent
               dataLoading={restaurantContext.dataLoading}
@@ -97,7 +103,7 @@ export default function WepAppReservationsPage(props) {
           )}
         </div>
       </div>
-      
+
       <NotGoodDeviceWebAppComponent />
 
       <SplashScreenWebAppComponent
