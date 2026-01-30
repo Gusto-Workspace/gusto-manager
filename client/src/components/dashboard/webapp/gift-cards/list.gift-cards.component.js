@@ -278,9 +278,9 @@ export default function WebAppListGiftCardsComponent(props) {
           <button
             type="button"
             onClick={openChangeRestaurant}
-            className={`min-w-0 inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-3 py-2 hover:bg-darkBlue/5 transition ${
+            className={`min-w-0 inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-3 py-2 transition ${
               canSwitchRestaurant
-                ? "cursor-pointer"
+                ? "cursor-pointer hover:bg-darkBlue/5"
                 : "cursor-default opacity-90"
             }`}
             disabled={!canSwitchRestaurant}
