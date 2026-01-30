@@ -51,40 +51,50 @@ export default function DayListComponent(props) {
 
   if (!props.selectedDay) return null;
 
+  const isEmpty = orderedTimes.length === 0;
+
   return (
     <>
       <div className="flex flex-col gap-6">
-        {orderedTimes.map((time) => (
-          <div key={time} className="flex flex-col gap-3">
-            <div className="relative flex items-center gap-3">
-              <div className="h-px flex-1 bg-darkBlue/10" />
+        {isEmpty ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <p className="text-lg font-semibold text-darkBlue/70">
+              Auncune réservation ce jour-là
+            </p>
+          </div>
+        ) : (
+          orderedTimes.map((time) => (
+            <div key={time} className="flex flex-col gap-3">
+              <div className="relative flex items-center gap-3">
+                <div className="h-px flex-1 bg-darkBlue/10" />
 
-              <div className="inline-flex items-center gap-2 rounded-full border border-darkBlue/10 bg-white shadow-sm px-4 py-1.5">
-                <span className="text-sm font-semibold text-darkBlue tracking-wide">
-                  {time}
-                </span>
-                <span className="h-4 w-px bg-darkBlue/10" />
-                <span className="text-xs text-darkBlue/60">
-                  {byTime[time].length}
-                </span>
+                <div className="inline-flex items-center gap-2 rounded-full border border-darkBlue/10 bg-white shadow-sm px-4 py-1.5">
+                  <span className="text-sm font-semibold text-darkBlue tracking-wide">
+                    {time}
+                  </span>
+                  <span className="h-4 w-px bg-darkBlue/10" />
+                  <span className="text-xs text-darkBlue/60">
+                    {byTime[time].length}
+                  </span>
+                </div>
+
+                <div className="h-px flex-1 bg-darkBlue/10" />
               </div>
 
-              <div className="h-px flex-1 bg-darkBlue/10" />
+              <ul className="flex flex-col gap-2">
+                {byTime[time].map((reservation) => (
+                  <CardReservationComponent
+                    key={reservation._id}
+                    reservation={reservation}
+                    openModalForAction={props.openModalForAction}
+                    handleEditClick={props.handleEditClick}
+                    onOpenDetails={openDetails}
+                  />
+                ))}
+              </ul>
             </div>
-
-            <ul className="flex flex-col gap-2">
-              {byTime[time].map((reservation) => (
-                <CardReservationComponent
-                  key={reservation._id}
-                  reservation={reservation}
-                  openModalForAction={props.openModalForAction}
-                  handleEditClick={props.handleEditClick}
-                  onOpenDetails={openDetails}
-                />
-              ))}
-            </ul>
-          </div>
-        ))}
+          ))
+        )}
       </div>
 
       <BottomSheetDetailsReservationsComponent
