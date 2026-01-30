@@ -1,3 +1,5 @@
+import { useRouter } from "next/router";
+
 // SVG
 import { ReservationSvg } from "@/components/_shared/_svgs/reservation.svg";
 import { ChevronLeft, Plus, SlidersHorizontal, Search, X } from "lucide-react";
@@ -7,6 +9,8 @@ import { useTranslation } from "next-i18next";
 
 export default function DayHeaderComponent(props) {
   const { t } = useTranslation("reservations");
+  const router = useRouter();
+
   if (!props.selectedDay) return null;
 
   const dateStrLong = new Intl.DateTimeFormat("fr-FR", {
@@ -23,9 +27,7 @@ export default function DayHeaderComponent(props) {
           <div className="flex items-center justify-between gap-3">
             <button
               onClick={() => {
-                props.setSelectedDay(null);
-                props.setSearchTerm("");
-                props.keepFocus(props.calendarSearchRef);
+                router.back();
               }}
               className="shrink-0 inline-flex items-center justify-center rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition p-2"
               aria-label={t("calendar.back", "Retour au calendrier")}
