@@ -26,7 +26,7 @@ import BottomSheetChangeRestaurantComponent from "../_shared/bottom-sheet-change
 export default function CalendarToolbarComponent(props) {
   const { t } = useTranslation("reservations");
   const { restaurantContext } = useContext(GlobalContext);
-console.log(restaurantContext.restaurantsList);
+  console.log(restaurantContext.restaurantsList);
 
   const [sheetOpen, setSheetOpen] = useState(false);
 
@@ -101,17 +101,18 @@ console.log(restaurantContext.restaurantsList);
           <button
             type="button"
             onClick={openSheet}
-            className={`min-w-0 inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-3 py-2 hover:bg-darkBlue/5 transition ${
+            className={`min-w-0 inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-3 py-2 transition ${
               canSwitchRestaurant
-                ? "cursor-pointer"
+                ? "cursor-pointer hover:bg-darkBlue/5"
                 : "cursor-default opacity-90"
             }`}
+            disabled={!canSwitchRestaurant}
             aria-label={
               canSwitchRestaurant ? "Changer de restaurant" : "Restaurant"
             }
             title={canSwitchRestaurant ? "Changer de restaurant" : undefined}
           >
-            <span className="truncate text-base font-semibold text-darkBlue">
+            <span className="truncate text-lg font-semibold text-darkBlue">
               {currentName}
             </span>
             {canSwitchRestaurant ? (

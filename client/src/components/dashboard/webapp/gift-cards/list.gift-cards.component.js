@@ -283,12 +283,13 @@ export default function WebAppListGiftCardsComponent(props) {
                 ? "cursor-pointer"
                 : "cursor-default opacity-90"
             }`}
+            disabled={!canSwitchRestaurant}
             aria-label={
               canSwitchRestaurant ? "Changer de restaurant" : "Restaurant"
             }
             title={canSwitchRestaurant ? "Changer de restaurant" : undefined}
           >
-            <span className="truncate text-base font-semibold text-darkBlue">
+            <span className="truncate text-lg font-semibold text-darkBlue">
               {currentName}
             </span>
             {canSwitchRestaurant ? (
