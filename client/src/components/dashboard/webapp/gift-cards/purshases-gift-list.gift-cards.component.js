@@ -218,7 +218,7 @@ export default function WebAppPurchasesGiftListComponent(props) {
 
   // Card helpers
   const metaPill =
-    "inline-flex items-center gap-1 rounded-full border border-darkBlue/10 bg-white/70 px-2.5 py-1 text-[14px] font-semibold text-darkBlue/80";
+    "inline-flex items-center gap-1 rounded-full border border-darkBlue/10 bg-white/70 px-2.5 py-1 text-[12px] font-semibold text-darkBlue/80";
 
   // ✅ Search mode = show ALL results
   const isSearching = Boolean(normalize(searchTerm));
@@ -443,7 +443,7 @@ export default function WebAppPurchasesGiftListComponent(props) {
 
                                       <span className={metaPill}>
                                         <Hash className="size-3.5 opacity-50" />
-                                        <span className="font-mono text-[14px]">
+                                        <span className="font-mono text-[12px]">
                                           {purchase?.purchaseCode || "-"}
                                         </span>
                                       </span>
