@@ -261,13 +261,45 @@ export default function RestaurantContext() {
     };
   }, [restaurantData?._id, userConnected?.role]);
 
+  function inferRequiredModuleFromPath(pathname = "") {
+    if (pathname.startsWith("/dashboard/webapp/reservations"))
+      return "reservations";
+    if (pathname.startsWith("/dashboard/webapp/gift-cards")) return "gift_card";
+    return null;
+  }
+
   function handleInvalidToken() {
     setRestaurantsList([]);
-    localStorage.removeItem("token");
+    setRestaurantData(null);
+    setUserConnected(null);
+    setIsAuth(false);
+
+    // ✅ stop le loader (sinon splash infini)
+    setDataLoading(false);
+
     try {
       clearAllNotifCounts();
     } catch {}
-    router.push("/dashboard/login");
+
+    localStorage.removeItem("token");
+
+    // ✅ Si on est déjà sur /dashboard/login => pas de redirect param
+    const path = typeof window !== "undefined" ? window.location.pathname : "";
+
+    if (path.startsWith("/dashboard/login")) {
+      router.replace("/dashboard/login");
+      return;
+    }
+
+    // ✅ sinon, on fait un redirect propre vers la page courante
+    const returnTo =
+      typeof window !== "undefined"
+        ? window.location.pathname +
+          window.location.search +
+          window.location.hash
+        : "/dashboard";
+
+    router.replace(`/dashboard/login?redirect=${encodeURIComponent(returnTo)}`);
   }
 
   function fetchRestaurantData(token, restaurantId) {
@@ -400,11 +432,22 @@ export default function RestaurantContext() {
             return;
           }
 
-          // resto déjà dans le token ou premier de la liste
-          const selectedRestaurantId =
-            decodedToken.restaurantId || restaurants[0]._id;
+          const requiredModule = inferRequiredModuleFromPath(router.pathname);
+
+          let selectedRestaurantId = decodedToken.restaurantId;
+
+          if (!selectedRestaurantId && requiredModule) {
+            const eligible = restaurants.find(
+              (r) => r?.options?.[requiredModule] === true,
+            );
+
+            if (eligible?._id) selectedRestaurantId = eligible._id;
+          }
+
+          if (!selectedRestaurantId) selectedRestaurantId = restaurants[0]._id;
 
           fetchRestaurantData(token, selectedRestaurantId);
+
           setIsAuth(true);
         })
         .catch((error) => {
@@ -834,11 +877,13 @@ export default function RestaurantContext() {
 
   useEffect(() => {
     const handleRouteChangeComplete = (url) => {
-      if (
-        url.startsWith("/dashboard") &&
-        !url.startsWith("/dashboard/admin") &&
-        !hasFetchedDashboardDataRef.current
-      ) {
+      if (!url.startsWith("/dashboard")) return;
+      if (url.startsWith("/dashboard/admin")) return;
+
+      // ✅ NE PAS FETCH sur login
+      if (url.startsWith("/dashboard/login")) return;
+
+      if (!hasFetchedDashboardDataRef.current) {
         fetchRestaurantsList();
         hasFetchedDashboardDataRef.current = true;
       }
@@ -854,11 +899,13 @@ export default function RestaurantContext() {
   useEffect(() => {
     const path = router.pathname;
 
-    if (
-      path.startsWith("/dashboard") &&
-      !path.startsWith("/dashboard/admin") &&
-      !hasFetchedDashboardDataRef.current
-    ) {
+    if (!path.startsWith("/dashboard")) return;
+    if (path.startsWith("/dashboard/admin")) return;
+
+    // ✅ NE PAS FETCH sur login
+    if (path.startsWith("/dashboard/login")) return;
+
+    if (!hasFetchedDashboardDataRef.current) {
       fetchRestaurantsList();
       hasFetchedDashboardDataRef.current = true;
     }

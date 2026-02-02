@@ -8,11 +8,36 @@ import FormLoginComponent from "@/components/dashboard/login/form.login.componen
 export default function LoginPage() {
   const router = useRouter();
 
+  function getSafeRedirect(router) {
+    const r = router.query.redirect;
+    if (!r) return null;
+
+    const val = Array.isArray(r) ? r[0] : r;
+    try {
+      const decoded = decodeURIComponent(val);
+
+      // sécurité: seulement chemins internes dashboard
+      if (!decoded.startsWith("/dashboard")) return null;
+
+      // ✅ IMPORTANT: on refuse toute redirection vers la page login
+      if (decoded.startsWith("/dashboard/login")) return null;
+
+      return decoded;
+    } catch {
+      return null;
+    }
+  }
+
   // Redirection si déjà connecté
   useEffect(() => {
+    if (!router.isReady) return;
+
     const token = localStorage.getItem("token");
-    if (token) router.push("/dashboard");
-  }, [router]);
+    if (!token) return;
+
+    const to = getSafeRedirect(router) || "/dashboard";
+    router.replace(to);
+  }, [router.isReady, router.query.redirect]);
 
   // 🔒 Empêche tout scroll "derrière" (fix Chrome iPad bande blanche)
   useEffect(() => {

@@ -258,9 +258,7 @@ export default function WebAppListGiftCardsComponent(props) {
         restaurantContext={restaurantContext}
         currentName={currentName}
         t={t}
-        // ✅ important: filtre sur gift_card (pas reservations)
         optionKey="gift_card"
-        // ✅ labels module (sinon il va afficher “Réservations”)
         moduleLabel={t?.("titles.main", "Cartes cadeaux")}
       />
 

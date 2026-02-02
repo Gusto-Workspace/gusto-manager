@@ -1,6 +1,6 @@
 import { useForm } from "react-hook-form";
 import { useRouter } from "next/router";
-import { useContext, useState } from "react";
+import { useContext, useMemo, useState } from "react";
 
 // AXIOS
 import axios from "axios";
@@ -28,7 +28,9 @@ export default function FormLoginComponent() {
     handleSubmit,
     formState: { errors },
   } = useForm();
+
   const router = useRouter();
+
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [selectedRestaurant, setSelectedRestaurant] = useState("");
@@ -38,6 +40,59 @@ export default function FormLoginComponent() {
 
   const { restaurantContext } = useContext(GlobalContext);
 
+  function getSafeRedirect(router) {
+    const r = router.query.redirect;
+    if (!r) return null;
+
+    const val = Array.isArray(r) ? r[0] : r;
+    try {
+      const decoded = decodeURIComponent(val);
+
+      // sécurité: seulement chemins internes dashboard
+      if (!decoded.startsWith("/dashboard")) return null;
+
+      // ✅ IMPORTANT: on refuse toute redirection vers la page login
+      if (decoded.startsWith("/dashboard/login")) return null;
+
+      return decoded;
+    } catch {
+      return null;
+    }
+  }
+
+  // ✅ On déduit le module à partir du redirect (webapp)
+  function inferModuleFromRedirect(redirectTo) {
+    if (!redirectTo) return null;
+
+    if (redirectTo.startsWith("/dashboard/webapp/reservations")) {
+      return "reservations";
+    }
+    if (redirectTo.startsWith("/dashboard/webapp/gift-cards")) {
+      return "gift_card";
+    }
+    return null;
+  }
+
+  // ✅ Filtre les restos selon l’option requise
+  function filterRestaurantsByModule(restaurants, moduleKey) {
+    const list = restaurants || [];
+    if (!moduleKey) return list;
+    return list.filter((r) => r?.options?.[moduleKey] === true);
+  }
+
+  const redirectTo = router.isReady ? getSafeRedirect(router) : null;
+
+  // ✅ null = login classique (pas de filtre)
+  const requiredModuleKey = useMemo(
+    () => inferModuleFromRedirect(redirectTo),
+    [redirectTo],
+  );
+
+  function goAfterLogin(role) {
+    const fallback = role === "employee" ? "/dashboard/my-space" : "/dashboard";
+    router.replace(redirectTo || fallback);
+  }
+
   async function onSubmit(data) {
     setLoading(true);
     setErrorMessage("");
@@ -45,45 +100,71 @@ export default function FormLoginComponent() {
     try {
       const response = await axios.post(
         `${process.env.NEXT_PUBLIC_API_URL}/user/login`,
-        data
+        data,
       );
+
       const { token, owner, employee } = response.data;
 
+      // reset state selection
       restaurantContext.setRestaurantsList([]);
       setSelectedRestaurant("");
       setTempToken(token);
 
       if (owner) {
-        // ----- OWNER -----
         setTempRole("owner");
+
         const restaurants = owner.restaurants || [];
+        const eligible = filterRestaurantsByModule(
+          restaurants,
+          requiredModuleKey,
+        );
 
-        if (restaurants.length > 1) {
-          restaurantContext.setRestaurantsList(restaurants);
+        if (eligible.length > 1) {
+          restaurantContext.setRestaurantsList(eligible);
           restaurantContext.setIsAuth(true);
-        } else if (restaurants.length === 1) {
-          await handleRestaurantSelect("owner", restaurants[0]._id, token);
-        } else {
-          localStorage.setItem("token", token);
-          restaurantContext.setIsAuth(true);
-          router.push("/dashboard");
+          return;
         }
-      } else if (employee) {
-        // ----- EMPLOYEE -----
-        setTempRole("employee");
-        const restaurants = employee.restaurants || [];
 
-        if (restaurants.length > 1) {
-          restaurantContext.setRestaurantsList(restaurants);
-          restaurantContext.setIsAuth(true);
-        } else if (restaurants.length === 1) {
-          await handleRestaurantSelect("employee", restaurants[0]._id, token);
-        } else {
-          localStorage.setItem("token", token);
-          restaurantContext.setIsAuth(true);
-          router.push("/dashboard/my-space");
+        if (eligible.length === 1) {
+          await handleRestaurantSelect("owner", eligible[0]._id, token);
+          return;
         }
+
+        localStorage.setItem("token", token);
+        restaurantContext.setIsAuth(true);
+        goAfterLogin("owner");
+        return;
       }
+
+      if (employee) {
+        setTempRole("employee");
+
+        const restaurants = employee.restaurants || [];
+        const eligible = filterRestaurantsByModule(
+          restaurants,
+          requiredModuleKey,
+        );
+
+        if (eligible.length > 1) {
+          restaurantContext.setRestaurantsList(eligible);
+          restaurantContext.setIsAuth(true);
+          return;
+        }
+
+        if (eligible.length === 1) {
+          await handleRestaurantSelect("employee", eligible[0]._id, token);
+          return;
+        }
+
+        localStorage.setItem("token", token);
+        restaurantContext.setIsAuth(true);
+        goAfterLogin("employee");
+        return;
+      }
+
+      localStorage.setItem("token", token);
+      restaurantContext.setIsAuth(true);
+      router.replace(redirectTo || "/dashboard");
     } catch (error) {
       if (error.response?.data?.message) {
         setErrorMessage(error.response.data.message);
@@ -109,19 +190,17 @@ export default function FormLoginComponent() {
 
       const { data } = await axios.post(
         `${process.env.NEXT_PUBLIC_API_URL}/user/select-restaurant`,
-        { token: baseToken, restaurantId }
+        { token: baseToken, restaurantId },
       );
+
       const newToken = data.token;
       localStorage.setItem("token", newToken);
 
+      // ✅ fetch data resto puis redirection
       await restaurantContext.fetchRestaurantData(newToken, restaurantId);
       restaurantContext.setIsAuth(true);
 
-      if (role === "employee") {
-        router.push("/dashboard/my-space");
-      } else {
-        router.push("/dashboard");
-      }
+      goAfterLogin(role);
     } catch (error) {
       console.error("Erreur lors de la sélection du restaurant :", error);
       setErrorMessage("errors.server");
@@ -142,7 +221,7 @@ export default function FormLoginComponent() {
 
         <h2 className="text-white text-center">{t("descriptions.main")}</h2>
 
-        <div className="w-20 h-1 bg-orange mx-auto mt-2 mb-6 rounded-full"></div>
+        <div className="w-20 h-1 bg-orange mx-auto mt-2 mb-6 rounded-full" />
       </div>
 
       {!hasRestaurantsToSelect ? (
@@ -152,21 +231,25 @@ export default function FormLoginComponent() {
           className="w-full flex flex-col gap-4 mt-auto text-white"
         >
           <div
-            className={`flex gap-2 pl-2 items-center border w-full rounded-lg  ${errors.email ? "border-red" : ""}`}
+            className={`flex gap-2 pl-2 items-center border w-full rounded-lg ${
+              errors.email ? "border-red" : ""
+            }`}
           >
             <EmailSvg width={22} height={22} strokeColor="white" />
             <input
               id="email"
               type="email"
               placeholder={t("form.labels.email")}
-              className="py-2 w-full rounded-r-lg  border-l pl-2 text-darkBlue"
+              className="py-2 w-full rounded-r-lg border-l pl-2 text-darkBlue"
               {...register("email", { required: true })}
             />
           </div>
 
           <div className="relative">
             <div
-              className={`flex gap-2 pl-2 items-center border w-full rounded-lg ${errors.password ? "border-red" : ""}`}
+              className={`flex gap-2 pl-2 items-center border w-full rounded-lg ${
+                errors.password ? "border-red" : ""
+              }`}
             >
               <PasswordSvg width={22} height={22} strokeColor="white" />
               <input
@@ -178,7 +261,7 @@ export default function FormLoginComponent() {
               />
               <button
                 type="button"
-                onClick={() => setShowPassword(!showPassword)}
+                onClick={() => setShowPassword((v) => !v)}
                 className="absolute right-1 p-1 bg-white"
               >
                 {showPassword ? (
@@ -241,13 +324,13 @@ export default function FormLoginComponent() {
           </div>
 
           <button
-            className={`bg-orange mx-auto text-white rounded-lg py-2 px-12  transition-all duration-300 w-fit ${
+            className={`bg-orange mx-auto text-white rounded-lg py-2 px-12 transition-all duration-300 w-fit ${
               !selectedRestaurant ? "opacity-50 cursor-not-allowed" : ""
             }`}
             onClick={() =>
               handleRestaurantSelect(tempRole, selectedRestaurant, tempToken)
             }
-            disabled={!selectedRestaurant || !tempRole || !tempToken}
+            disabled={!selectedRestaurant || !tempRole || !tempToken || loading}
           >
             {loading ? t("buttons.loading") : t("buttons.access")}
           </button>

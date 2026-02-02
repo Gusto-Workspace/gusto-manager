@@ -15,7 +15,7 @@ export default function BottomSheetChangeRestaurantComponent(props) {
   const t = props.t;
 
   // ✅ NEW (reusable): which option toggles eligibility
-  const optionKey = props.optionKey || "reservations"; // "gift_card" for gift cards
+  const optionKey = props.optionKey || "reservations";
   const moduleLabel =
     props.moduleLabel || t?.("titles.main", "Réservations") || "Réservations";
 
@@ -387,11 +387,6 @@ export default function BottomSheetChangeRestaurantComponent(props) {
                     <div className="min-w-0 text-left">
                       <p className="truncate text-sm font-semibold text-darkBlue">
                         {r.name}
-                      </p>
-                      <p className="text-xs text-darkBlue/45">
-                        {optionKey === "gift_card"
-                          ? "Cartes cadeaux activées"
-                          : "Réservations activées"}
                       </p>
                     </div>
                   </div>

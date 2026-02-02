@@ -1,4 +1,5 @@
-import { useContext } from "react";
+import { useContext, useEffect } from "react";
+import { useRouter } from "next/router";
 import Head from "next/head";
 
 // I18N
@@ -17,7 +18,24 @@ import SplashScreenWebAppComponent from "@/components/dashboard/webapp/_shared/s
 import NotGoodDeviceWebAppComponent from "@/components/dashboard/webapp/_shared/not-good-device.webapp.component";
 
 export default function GiftsPage(props) {
+  const router = useRouter();
   const { restaurantContext } = useContext(GlobalContext);
+
+  // ✅ Redirect vers login si pas de token (1ère ouverture via raccourci)
+  useEffect(() => {
+    if (!router.isReady) return;
+
+    const token = localStorage.getItem("token");
+    if (!token) {
+      const returnTo = router.asPath;
+      router.replace(
+        `/dashboard/login?redirect=${encodeURIComponent(returnTo)}`,
+      );
+    }
+  }, [router.isReady, router.asPath]);
+
+  if (!router.isReady) return null;
+  if (!restaurantContext.isAuth) return null;
 
   let title;
   let description;
@@ -31,8 +49,6 @@ export default function GiftsPage(props) {
       title = "Gusto Manager";
       description = "";
   }
-
-  if (!restaurantContext.isAuth) return null;
 
   const restaurant = restaurantContext.restaurantData;
   const restaurantOptions = restaurant?.options || {};
@@ -60,18 +76,15 @@ export default function GiftsPage(props) {
       <Head>
         <title>{title}</title>
 
-        {/* Empeche le zoom / dezoom */}
         <meta
           name="viewport"
           content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
         />
 
-        {/* iOS: raccourci écran d'accueil */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="Cartes cadeaux" />
 
-        {/* Icône iOS dédiée au module */}
         <link rel="apple-touch-icon" href="/icons/ios/gift-cards-180.png?v=1" />
 
         <meta name="format-detection" content="telephone=no" />

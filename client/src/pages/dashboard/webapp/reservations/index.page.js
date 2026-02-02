@@ -1,3 +1,4 @@
+import { useRouter } from "next/router";
 import { useContext, useState, useEffect } from "react";
 import Head from "next/head";
 
@@ -17,7 +18,22 @@ import SplashScreenWebAppComponent from "@/components/dashboard/webapp/_shared/s
 import NotGoodDeviceWebAppComponent from "@/components/dashboard/webapp/_shared/not-good-device.webapp.component";
 
 export default function WepAppReservationsPage(props) {
+  const router = useRouter();
   const { restaurantContext } = useContext(GlobalContext);
+
+  useEffect(() => {
+    if (!router.isReady) return;
+
+    const token = localStorage.getItem("token");
+    if (!token) {
+      const returnTo = router.asPath;
+      router.replace(
+        `/dashboard/login?redirect=${encodeURIComponent(returnTo)}`,
+      );
+    }
+  }, [router.isReady, router.asPath]);
+
+  if (!restaurantContext.isAuth) return null;  
 
   let title;
   let description;
@@ -31,8 +47,6 @@ export default function WepAppReservationsPage(props) {
       title = "Gusto Manager";
       description = "";
   }
-
-  if (!restaurantContext.isAuth) return null;
 
   const restaurant = restaurantContext.restaurantData;
   const restaurantOptions = restaurant?.options || {};
