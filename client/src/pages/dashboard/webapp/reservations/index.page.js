@@ -49,13 +49,13 @@ export default function WepAppReservationsPage(props) {
     }
   }, [router.isReady, router.asPath]);
 
-  // ✅ Refetch quand on revient au 1er plan après > 1 min
+  // ✅ Refetch quand on revient au 1er plan après > 5 min
   useEffect(() => {
     if (!restaurantContext?.isAuth) return;
     if (typeof window === "undefined") return;
 
-    const KEY = "gm:lastActive:webapp";
-    const THRESHOLD_MS = 60 * 1000;
+    const KEY = "gm:lastActive:webapp:reservations";
+    const THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
 
     const mark = () => {
       try {

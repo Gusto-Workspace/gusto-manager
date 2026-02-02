@@ -585,14 +585,14 @@ export default function WebAppParametersReservationComponent(props) {
                 className={[
                   "shrink-0 inline-flex items-center gap-2 rounded-2xl border px-3 py-2 text-xs",
                   hasActivePause
-                    ? "border-red/20 bg-red/10 text-red"
+                    ? "border-green/20 bg-green/10 text-green"
                     : "border-darkBlue/10 bg-white/60 text-darkBlue/60",
                 ].join(" ")}
               >
                 <span
                   className={[
                     "size-2 rounded-full",
-                    hasActivePause ? "bg-red" : "bg-darkBlue/25",
+                    hasActivePause ? "bg-green" : "bg-darkBlue/25",
                   ].join(" ")}
                 />
                 {hasActivePause

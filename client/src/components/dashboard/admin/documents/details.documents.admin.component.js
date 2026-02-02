@@ -35,24 +35,52 @@ function toSafeNumber(v, fallback = 0) {
   return Number.isNaN(n) ? fallback : n;
 }
 
+function clampMin(n, min = 0) {
+  const x = toSafeNumber(n, 0);
+  return x < min ? min : x;
+}
+
 function trimText(v) {
   return typeof v === "string" ? v.trim() : v;
 }
 
+/**
+ * ✅ Règle OFFERED (effective) — uniquement au SAVE/SUBMIT :
+ * - si unitPrice <= 0 (ou vide) => offert
+ * - si checkbox offert cochée => offert
+ *
+ * ⚠️ IMPORTANT : l'UI NE DOIT PAS auto-cocher "Offert" quand le prix passe à 0.
+ */
+function normalizeOfferedForSave(offered, unitPrice) {
+  const price = toSafeNumber(unitPrice, 0); // "" => 0
+  return Boolean(offered) || price <= 0;
+}
+
 function computeTotals(lines, discountAmount) {
   const safeLines = (lines || []).map((l) => {
-    const qty = toSafeNumber(l.qty, 1);
-    const unitPrice = toSafeNumber(l.unitPrice, 0);
-    const offered = Boolean(l.offered);
-    const total = offered ? 0 : qty * unitPrice;
-    return { ...l, qty, unitPrice: offered ? 0 : unitPrice, offered, total };
+    const qty = clampMin(l.qty, 1);
+    const unitPrice = clampMin(l.unitPrice, 0);
+
+    // On calcule l'effectif pour les totaux (même si UI ne coche pas auto)
+    const offeredEffective = normalizeOfferedForSave(l.offered, unitPrice);
+
+    const normalizedUnit = offeredEffective ? 0 : unitPrice;
+    const total = offeredEffective ? 0 : qty * normalizedUnit;
+
+    return {
+      ...l,
+      qty,
+      unitPrice: normalizedUnit,
+      offered: offeredEffective,
+      total,
+    };
   });
 
   const subtotal = safeLines.reduce(
     (acc, l) => acc + (Number(l.total) || 0),
     0,
   );
-  const disc = toSafeNumber(discountAmount, 0);
+  const disc = clampMin(discountAmount, 0);
   const total = subtotal - disc;
 
   return { safeLines, subtotal, total };
@@ -78,6 +106,13 @@ function parseOldPriceLabelToNumber(priceLabel) {
   if (!m) return 0;
   const n = Number(m[1]);
   return Number.isNaN(n) ? 0 : n;
+}
+
+// ✅ empêche le changement au scroll sur input number
+function preventWheelChange(e) {
+  // évite l'incrément/décrément via molette
+  e.preventDefault?.();
+  e.currentTarget.blur();
 }
 
 export default function DetailsDocumentAdminPage(props) {
@@ -112,31 +147,52 @@ export default function DetailsDocumentAdminPage(props) {
   const [issueDate, setIssueDate] = useState("");
   const [dueDate, setDueDate] = useState("");
 
-  // ✅ Lignes (devis/facture + contrat)
+  /**
+   * ✅ Lignes "classiques"
+   * - unitPrice par défaut = "" (affiche "-" via placeholder)
+   * - offered par défaut = false (jamais coché automatiquement)
+   */
   const [lines, setLines] = useState([
-    { label: "", qty: 1, unitPrice: 0, offered: false },
+    { label: "", qty: 1, unitPrice: "", offered: false, _lastPaidUnitPrice: 0 },
   ]);
+
+  // ✅ Site internet (contrat uniquement)
+  const [hasWebsite, setHasWebsite] = useState(false);
+  const [websiteLine, setWebsiteLine] = useState({
+    label: "Site internet",
+    qty: 1,
+    unitPrice: "",
+    offered: false,
+    _lastPaidUnitPrice: 0,
+  });
+
+  // ✅ paiement site vitrine : 1 / 2 / 3
+  const [sitePaymentSplit, setSitePaymentSplit] = useState(1);
 
   // Remise (devis/facture uniquement)
   const [discountLabel, setDiscountLabel] = useState("");
-  const [discountAmount, setDiscountAmount] = useState(0);
+  const [discountAmount, setDiscountAmount] = useState("");
 
   const [comments, setComments] = useState("");
 
   // ✅ subscription (name + monthly number)
-  const [subscriptionPriceMonthly, setSubscriptionPriceMonthly] = useState(0);
-
+  const [subscriptionPriceMonthly, setSubscriptionPriceMonthly] = useState("");
   const [engagementMonths, setEngagementMonths] = useState(12);
 
   // ✅ modules numeric
   const [modules, setModules] = useState([
-    { name: "", offered: false, priceMonthly: 0 },
+    { name: "", offered: false, priceMonthly: "", _lastPaidPriceMonthly: 0 },
   ]);
 
   const totalsPreview = useMemo(() => {
     const { subtotal, total } = computeTotals(lines, discountAmount);
     return { subtotal, total };
   }, [lines, discountAmount]);
+
+  // ✅ Offert UI website : UNIQUEMENT checkbox (pas auto si prix=0)
+  const websiteOfferedUi = useMemo(() => {
+    return Boolean(websiteLine.offered);
+  }, [websiteLine.offered]);
 
   useEffect(() => {
     if (!props.documentId) return;
@@ -197,44 +253,114 @@ export default function DetailsDocumentAdminPage(props) {
           setIssueDate(todayStr);
         }
 
-        // ✅ lines (devis/facture + contrat)
-        const mappedLines =
+        /**
+         * ✅ lines classiques (on ignore les WEBSITE)
+         * UI:
+         * - offered = valeur back (checkbox)
+         * - unitPrice = "" si 0 ou vide (affiche "-")
+         */
+        const mappedClassicLines =
           d.lines && d.lines.length > 0
-            ? d.lines.map((l) => ({
-                label: l.label || "",
-                qty: l.qty ?? 1,
-                unitPrice: l.unitPrice ?? 0,
-                offered: Boolean(l.offered),
-              }))
-            : null;
+            ? d.lines
+                .filter((l) => (l?.kind ? l.kind !== "WEBSITE" : true))
+                .map((l) => {
+                  const unit = toSafeNumber(l?.unitPrice, 0);
+                  const offeredUi = Boolean(l?.offered);
 
-        // ✅ back-compat: anciens contrats (website.*) -> créer une ligne
-        const legacyWebsiteLine =
-          d?.type === "CONTRACT" &&
-          (!mappedLines || mappedLines.length === 0) &&
-          (d?.website?.priceLabel || d?.website?.offered)
-            ? [
-                {
-                  label: "Site vitrine",
-                  qty: 1,
-                  unitPrice: d?.website?.offered
-                    ? 0
-                    : parseOldPriceLabelToNumber(d?.website?.priceLabel || ""),
-                  offered: Boolean(d?.website?.offered),
-                },
-              ]
+                  return {
+                    label: l?.label || "",
+                    qty: clampMin(l?.qty ?? 1, 1),
+                    unitPrice: offeredUi ? "" : unit > 0 ? unit : "",
+                    offered: offeredUi,
+                    _lastPaidUnitPrice: unit > 0 ? unit : 0,
+                  };
+                })
             : null;
 
         setLines(
-          mappedLines ||
-            legacyWebsiteLine || [
-              { label: "", qty: 1, unitPrice: 0, offered: false },
-            ],
+          mappedClassicLines && mappedClassicLines.length > 0
+            ? mappedClassicLines
+            : [
+                {
+                  label: "",
+                  qty: 1,
+                  unitPrice: "",
+                  offered: false,
+                  _lastPaidUnitPrice: 0,
+                },
+              ],
         );
+
+        // ✅ website enabled (back-compat)
+        const websiteEnabled =
+          Boolean(d?.website?.enabled) ||
+          Boolean(d?.website?.line) ||
+          Boolean(d?.website?.priceLabel) ||
+          Boolean(d?.website?.offered) ||
+          (Array.isArray(d?.lines) &&
+            d.lines.some((l) => /site\s*vitrine/i.test(l?.label || "")));
+
+        setHasWebsite(d?.type === "CONTRACT" ? websiteEnabled : false);
+
+        // ✅ récupérer une "website line" (priorité à d.website.line)
+        let wLine = null;
+
+        if (d?.website?.line) {
+          const unit = toSafeNumber(d.website.line.unitPrice, 0);
+          const offeredUi = Boolean(d.website.line.offered);
+
+          wLine = {
+            label: d.website.line.label || "Site vitrine",
+            qty: 1,
+            unitPrice: offeredUi ? "" : unit > 0 ? unit : "",
+            offered: offeredUi,
+            _lastPaidUnitPrice: unit > 0 ? unit : 0,
+          };
+        } else {
+          // ancien: website.* label
+          const legacyUnit = d?.website?.offered
+            ? 0
+            : parseOldPriceLabelToNumber(d?.website?.priceLabel || "");
+
+          const legacyLineFromLines = (d?.lines || []).find((l) =>
+            /site\s*vitrine/i.test(l?.label || ""),
+          );
+
+          if (legacyLineFromLines) {
+            const unit = toSafeNumber(legacyLineFromLines.unitPrice, 0);
+            const offeredUi = Boolean(legacyLineFromLines.offered);
+
+            wLine = {
+              label: legacyLineFromLines.label || "Site vitrine",
+              qty: 1,
+              unitPrice: offeredUi ? "" : unit > 0 ? unit : "",
+              offered: offeredUi,
+              _lastPaidUnitPrice: unit > 0 ? unit : 0,
+            };
+          } else if (websiteEnabled) {
+            const offeredUi = Boolean(d?.website?.offered);
+            wLine = {
+              label: "Site vitrine",
+              qty: 1,
+              unitPrice: offeredUi ? "" : legacyUnit > 0 ? legacyUnit : "",
+              offered: offeredUi,
+              _lastPaidUnitPrice: legacyUnit > 0 ? legacyUnit : 0,
+            };
+          }
+        }
+
+        if (wLine) setWebsiteLine(wLine);
+
+        // ✅ payment split
+        setSitePaymentSplit(Number(d?.website?.paymentSplit || 1));
 
         // remise
         setDiscountLabel(d?.totals?.discountLabel || "");
-        setDiscountAmount(d?.totals?.discountAmount || 0);
+        setDiscountAmount(
+          toSafeNumber(d?.totals?.discountAmount, 0) > 0
+            ? toSafeNumber(d?.totals?.discountAmount, 0)
+            : "",
+        );
 
         const subPrice =
           d?.subscription?.priceMonthly ??
@@ -242,20 +368,29 @@ export default function DetailsDocumentAdminPage(props) {
             ? parseOldPriceLabelToNumber(d.subscriptionLabel)
             : 0);
 
-        setSubscriptionPriceMonthly(subPrice ?? 0);
-
-        setEngagementMonths(d?.engagementMonths ?? 12);
+        setSubscriptionPriceMonthly(subPrice > 0 ? subPrice : "");
+        setEngagementMonths(clampMin(d?.engagementMonths ?? 12, 1));
 
         setModules(
           d?.modules && d.modules.length > 0
-            ? d.modules.map((m) => ({
-                name: m.name || "",
-                offered: Boolean(m.offered),
-                priceMonthly:
-                  m.priceMonthly ??
-                  (m.priceLabel ? parseOldPriceLabelToNumber(m.priceLabel) : 0),
-              }))
-            : [{ name: "", offered: false, priceMonthly: 0 }],
+            ? d.modules.map((m) => {
+                const pm = toSafeNumber(m.priceMonthly, 0);
+                const offeredUi = Boolean(m.offered);
+                return {
+                  name: m.name || "",
+                  offered: offeredUi,
+                  priceMonthly: offeredUi ? "" : pm > 0 ? pm : "",
+                  _lastPaidPriceMonthly: pm > 0 ? pm : 0,
+                };
+              })
+            : [
+                {
+                  name: "",
+                  offered: false,
+                  priceMonthly: "",
+                  _lastPaidPriceMonthly: 0,
+                },
+              ],
         );
 
         setComments(d?.comments || "");
@@ -276,35 +411,167 @@ export default function DetailsDocumentAdminPage(props) {
   const isLocked = doc?.status === "SENT" || doc?.status === "SIGNED";
   const canResend = doc?.status === "SENT";
   const sendBtnLabel = canResend ? "Renvoyer" : "Envoyer";
-  const isDiscountActive = toSafeNumber(discountAmount, 0) > 0;
+  const isDiscountActive = clampMin(discountAmount, 0) > 0;
 
   function addLine() {
     setLines((prev) => [
       ...(prev || []),
-      { label: "", qty: 1, unitPrice: 0, offered: false },
+      {
+        label: "",
+        qty: 1,
+        unitPrice: "",
+        offered: false,
+        _lastPaidUnitPrice: 0,
+      },
     ]);
   }
   function removeLine(i) {
     setLines((prev) => (prev || []).filter((_, idx) => idx !== i));
   }
+
+  /**
+   * ✅ Update line classique
+   * - "Offert" UI = checkbox uniquement
+   * - unitPrice peut être "" (affiche "-")
+   * - pas de bascule auto en "Offert" quand le prix passe à 0
+   * - clamp prix >= 0
+   */
   function updateLine(i, patch) {
     setLines((prev) =>
-      (prev || []).map((l, idx) => (idx === i ? { ...l, ...patch } : l)),
+      (prev || []).map((l, idx) => {
+        if (idx !== i) return l;
+
+        const next = { ...l, ...patch };
+
+        // qty >= 1
+        if ("qty" in patch) {
+          const q = patch.qty === "" ? "" : clampMin(patch.qty, 1);
+          next.qty = q === "" ? "" : q;
+        } else {
+          next.qty = clampMin(next.qty, 1);
+        }
+
+        // unitPrice >= 0 (mais peut être "")
+        if ("unitPrice" in patch) {
+          if (patch.unitPrice === "") {
+            next.unitPrice = "";
+          } else {
+            const up = clampMin(patch.unitPrice, 0);
+            next.unitPrice = up;
+            if (up > 0) next._lastPaidUnitPrice = up;
+          }
+        }
+
+        // toggle offered
+        if (patch?.offered === true) {
+          next.offered = true;
+          // quand on coche offert, on force à 0 en data (mais on affichera "-" via value "")
+          next.unitPrice = 0;
+        }
+        if (patch?.offered === false) {
+          next.offered = false;
+          // si on décoches offert, on restaure un prix payant s'il existe sinon "-"
+          const restore = toSafeNumber(next._lastPaidUnitPrice, 0);
+          next.unitPrice = restore > 0 ? restore : "";
+        }
+
+        return {
+          ...next,
+          label: next.label ?? "",
+          offered: Boolean(next.offered),
+        };
+      }),
     );
+  }
+
+  /**
+   * ✅ Update site internet
+   * - qty forcée à 1
+   * - "Offert" UI = checkbox uniquement
+   * - clamp prix >= 0
+   */
+  function updateWebsiteLine(patch) {
+    setWebsiteLine((prev) => {
+      const next = { ...prev, ...patch };
+
+      // force qty = 1
+      next.qty = 1;
+
+      if ("unitPrice" in patch) {
+        if (patch.unitPrice === "") {
+          next.unitPrice = "";
+        } else {
+          const up = clampMin(patch.unitPrice, 0);
+          next.unitPrice = up;
+          if (up > 0) next._lastPaidUnitPrice = up;
+        }
+      }
+
+      if (patch?.offered === true) {
+        next.offered = true;
+        next.unitPrice = 0;
+      }
+      if (patch?.offered === false) {
+        next.offered = false;
+        const restore = toSafeNumber(next._lastPaidUnitPrice, 0);
+        next.unitPrice = restore > 0 ? restore : "";
+      }
+
+      return {
+        ...next,
+        offered: Boolean(next.offered),
+      };
+    });
   }
 
   function addModule() {
     setModules((prev) => [
       ...(prev || []),
-      { name: "", offered: false, priceMonthly: 0 },
+      { name: "", offered: false, priceMonthly: "", _lastPaidPriceMonthly: 0 },
     ]);
   }
   function removeModule(i) {
     setModules((prev) => (prev || []).filter((_, idx) => idx !== i));
   }
+
+  /**
+   * ✅ Update module
+   * - "Offert" UI = checkbox uniquement
+   * - priceMonthly peut être "" (affiche "-")
+   * - clamp prix >= 0
+   */
   function updateModule(i, patch) {
     setModules((prev) =>
-      (prev || []).map((m, idx) => (idx === i ? { ...m, ...patch } : m)),
+      (prev || []).map((m, idx) => {
+        if (idx !== i) return m;
+
+        const next = { ...m, ...patch };
+
+        if ("priceMonthly" in patch) {
+          if (patch.priceMonthly === "") {
+            next.priceMonthly = "";
+          } else {
+            const pm = clampMin(patch.priceMonthly, 0);
+            next.priceMonthly = pm;
+            if (pm > 0) next._lastPaidPriceMonthly = pm;
+          }
+        }
+
+        if (patch?.offered === true) {
+          next.offered = true;
+          next.priceMonthly = 0;
+        }
+        if (patch?.offered === false) {
+          next.offered = false;
+          const restore = toSafeNumber(next._lastPaidPriceMonthly, 0);
+          next.priceMonthly = restore > 0 ? restore : "";
+        }
+
+        return {
+          ...next,
+          offered: Boolean(next.offered),
+        };
+      }),
     );
   }
 
@@ -322,6 +589,35 @@ export default function DetailsDocumentAdminPage(props) {
     setSavedOk(false);
 
     try {
+      // ✅ normalisation lignes avant payload (SEULEMENT ICI on transforme prix=0 => offert)
+      const normalizedClassicLines = (lines || []).map((l) => {
+        const offeredEffective = normalizeOfferedForSave(
+          l.offered,
+          l.unitPrice,
+        );
+        return {
+          label: trimText(l.label),
+          qty: clampMin(l.qty, 1),
+          unitPrice: offeredEffective ? 0 : clampMin(l.unitPrice, 0),
+          offered: offeredEffective,
+          kind: "NORMAL",
+        };
+      });
+
+      const normalizedWebsiteLine = (() => {
+        const offeredEffective = normalizeOfferedForSave(
+          websiteLine.offered,
+          websiteLine.unitPrice,
+        );
+        return {
+          label: trimText(websiteLine.label || "Site vitrine"),
+          qty: 1,
+          unitPrice: offeredEffective ? 0 : clampMin(websiteLine.unitPrice, 0),
+          offered: offeredEffective,
+          kind: "WEBSITE",
+        };
+      })();
+
       const payload = {
         party: {
           restaurantName: trimText(party.restaurantName),
@@ -335,46 +631,52 @@ export default function DetailsDocumentAdminPage(props) {
       if (issueDate) payload.issueDate = new Date(issueDate).toISOString();
       if (dueDate) payload.dueDate = new Date(dueDate).toISOString();
 
-      // ✅ lignes POUR TOUS les types (contrat inclus)
-      payload.lines = (lines || []).map((l) => ({
-        label: trimText(l.label),
-        qty: toSafeNumber(l.qty, 1),
-        unitPrice: l.offered ? 0 : toSafeNumber(l.unitPrice, 0),
-        offered: Boolean(l.offered),
-      }));
+      payload.lines =
+        hasWebsite && doc?.type === "CONTRACT"
+          ? [...normalizedClassicLines, normalizedWebsiteLine]
+          : normalizedClassicLines;
 
-      // ✅ abonnement + modules (numeric) pour TOUS les types
+      // ✅ abonnement + modules (numeric)
       payload.subscription = {
-        priceMonthly: toSafeNumber(subscriptionPriceMonthly, 0),
+        priceMonthly: clampMin(subscriptionPriceMonthly, 0),
       };
-
-      payload.engagementMonths = Number(engagementMonths || 0);
+      payload.engagementMonths = clampMin(engagementMonths, 1);
 
       payload.modules = (modules || [])
         .filter((m) => trimText(m.name))
-        .map((m) => ({
-          name: trimText(m.name),
-          offered: Boolean(m.offered),
-          priceMonthly: m.offered ? 0 : toSafeNumber(m.priceMonthly, 0),
-        }));
+        .map((m) => {
+          const offeredEffective = normalizeOfferedForSave(
+            m.offered,
+            m.priceMonthly,
+          );
+          return {
+            name: trimText(m.name),
+            offered: offeredEffective,
+            priceMonthly: offeredEffective ? 0 : clampMin(m.priceMonthly, 0),
+          };
+        });
 
       // Remise uniquement devis/facture
       if (isQuoteOrInvoice(doc.type)) {
         payload.totals = {
           discountLabel: trimText(discountLabel),
-          discountAmount: toSafeNumber(discountAmount, 0),
+          discountAmount: clampMin(discountAmount, 0),
         };
-
         payload.comments = trimText(comments);
       }
 
+      // ✅ CONTRAT: website meta + line
       if (doc.type === "CONTRACT") {
-        const first = (lines || [])[0];
         payload.website = {
-          offered: Boolean(first?.offered),
-          priceLabel: Boolean(first?.offered)
-            ? "Offert"
-            : `${toSafeNumber(first?.unitPrice, 0)}€`,
+          enabled: Boolean(hasWebsite),
+          paymentSplit: Number(sitePaymentSplit || 1),
+          line: hasWebsite ? normalizedWebsiteLine : null,
+          offered: hasWebsite ? normalizedWebsiteLine.offered : false,
+          priceLabel: hasWebsite
+            ? normalizedWebsiteLine.offered
+              ? "Offert"
+              : `${clampMin(normalizedWebsiteLine.unitPrice, 0)}€`
+            : "",
         };
       }
 
@@ -390,9 +692,7 @@ export default function DetailsDocumentAdminPage(props) {
         const list = prev || [];
         const idx = list.findIndex((d) => d._id === data.document._id);
 
-        if (idx === -1) {
-          return [data.document, ...list];
-        }
+        if (idx === -1) return [data.document, ...list];
 
         const copy = [...list];
         copy[idx] = { ...copy[idx], ...data.document };
@@ -421,14 +721,12 @@ export default function DetailsDocumentAdminPage(props) {
       return;
     }
 
-    // ✅ 1) Pré-ouvrir la fenêtre SYNCHRONE (sinon Safari bloque)
     const popup = window.open("about:blank", "_blank");
 
     setPdfLoading(true);
     setErrorMsg("");
 
     try {
-      // ✅ 2) Fetch du PDF en blob (avec Authorization)
       const res = await axios.get(
         `${process.env.NEXT_PUBLIC_API_URL}/admin/documents/${doc._id}/pdf/preview`,
         { ...axiosCfg(), responseType: "blob" },
@@ -437,13 +735,8 @@ export default function DetailsDocumentAdminPage(props) {
       const file = new Blob([res.data], { type: "application/pdf" });
       const url = window.URL.createObjectURL(file);
 
-      // ✅ 3) Rediriger la popup vers le blob
-      if (popup) {
-        popup.location.href = url;
-      } else {
-        // fallback si popup quand même bloquée
-        window.location.href = url;
-      }
+      if (popup) popup.location.href = url;
+      else window.location.href = url;
 
       setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
     } catch (err) {
@@ -477,7 +770,6 @@ export default function DetailsDocumentAdminPage(props) {
 
       const { data } = await axios.post(endpoint, {}, axiosCfg());
 
-      // ✅ MAJ doc local
       setDoc((prev) => ({
         ...(prev || {}),
         status: data.status || prev?.status,
@@ -485,7 +777,6 @@ export default function DetailsDocumentAdminPage(props) {
         sentAt: data.sentAt || new Date().toISOString(),
       }));
 
-      // ✅ MAJ liste context
       adminContext?.setDocumentsList?.((prev) =>
         (prev || []).map((d) =>
           d._id === doc._id
@@ -712,7 +1003,7 @@ export default function DetailsDocumentAdminPage(props) {
                 </div>
               </div>
 
-              {/* ✅ Dates */}
+              {/* Dates + détails */}
               <div className="mt-8">
                 <h2 className="text-sm font-semibold text-darkBlue">
                   Détails{" "}
@@ -751,12 +1042,144 @@ export default function DetailsDocumentAdminPage(props) {
                   ) : null}
                 </div>
 
-                {/* ✅ Lines (pour devis/facture ET contrat) */}
-                <div className="mt-4 rounded-xl border border-darkBlue/10 bg-white p-3">
+                {/* ✅ BLOC SITE INTERNET (CONTRAT UNIQUEMENT) */}
+                {doc?.type === "CONTRACT" ? (
+                  <div className="mt-6 rounded-xl border border-darkBlue/10 bg-white p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-darkBlue">
+                        Site internet
+                      </p>
+
+                      <label className="inline-flex items-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm text-darkBlue/80">
+                        <input
+                          type="checkbox"
+                          disabled={isLocked}
+                          checked={hasWebsite}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setHasWebsite(checked);
+                            if (checked) {
+                              setWebsiteLine((prev) => ({
+                                ...prev,
+                                label: prev?.label || "Site vitrine",
+                                qty: 1,
+                                unitPrice: prev?.unitPrice ?? "",
+                                offered: Boolean(prev?.offered),
+                                _lastPaidUnitPrice: toSafeNumber(
+                                  prev?._lastPaidUnitPrice,
+                                  0,
+                                ),
+                              }));
+                            }
+                          }}
+                        />
+                        Activer
+                      </label>
+                    </div>
+
+                    {hasWebsite ? (
+                      <>
+                        <div className="hidden midTablet:grid mt-3 grid-cols-[1fr_110px_140px] gap-2 px-1">
+                          <p className="text-xs text-darkBlue/60 font-semibold">
+                            Description
+                          </p>
+                          <p className="text-xs text-darkBlue/60 font-semibold">
+                            Offert
+                          </p>
+                          <p className="text-xs text-darkBlue/60 font-semibold">
+                            Prix (€)
+                          </p>
+                        </div>
+
+                        <div className="mt-2 grid grid-cols-1 midTablet:grid-cols-[1fr_110px_140px] gap-2">
+                          <input
+                            value={websiteLine.label}
+                            disabled={isLocked}
+                            onChange={(e) =>
+                              updateWebsiteLine({ label: e.target.value })
+                            }
+                            onBlur={(e) =>
+                              updateWebsiteLine({
+                                label: trimText(e.target.value),
+                              })
+                            }
+                            className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
+                            placeholder="Description"
+                          />
+
+                          <label className="inline-flex items-center justify-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm text-darkBlue/80">
+                            <input
+                              type="checkbox"
+                              disabled={isLocked}
+                              checked={websiteOfferedUi}
+                              onChange={(e) =>
+                                updateWebsiteLine({
+                                  offered: e.target.checked,
+                                })
+                              }
+                            />
+                            Offert
+                          </label>
+
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            onWheel={preventWheelChange}
+                            disabled={isLocked || websiteOfferedUi}
+                            value={
+                              websiteOfferedUi
+                                ? ""
+                                : (websiteLine.unitPrice ?? "")
+                            }
+                            onChange={(e) =>
+                              updateWebsiteLine({
+                                unitPrice: toNumberOrEmpty(e.target.value),
+                              })
+                            }
+                            className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
+                            placeholder="-"
+                          />
+                        </div>
+
+                        {/* ✅ Options de paiement : seulement si pas offert (UI) */}
+                        {!websiteOfferedUi ? (
+                          <div className="mt-3 rounded-xl border border-darkBlue/10 bg-white p-3">
+                            <p className="text-sm font-semibold text-darkBlue">
+                              Options de paiement (site internet)
+                            </p>
+                            <div className="mt-2 flex flex-col gap-1">
+                              <label className="text-xs text-darkBlue/60">
+                                Paiement
+                              </label>
+                              <select
+                                disabled={isLocked}
+                                value={sitePaymentSplit}
+                                onChange={(e) =>
+                                  setSitePaymentSplit(Number(e.target.value))
+                                }
+                                className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
+                              >
+                                <option value={1}>Paiement en 1 fois</option>
+                                <option value={2}>Paiement en 2 fois</option>
+                                <option value={3}>Paiement en 3 fois</option>
+                              </select>
+                              
+                            </div>
+                          </div>
+                        ) : null}
+                      </>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {/* ✅ Lignes classiques */}
+                <div className="mt-6 rounded-xl border border-darkBlue/10 bg-white p-3">
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-sm font-semibold text-darkBlue">
-                      Lignes
+                      Autre
                     </p>
+
                     <button
                       onClick={addLine}
                       disabled={isLocked}
@@ -784,79 +1207,83 @@ export default function DetailsDocumentAdminPage(props) {
                   </div>
 
                   <div className="mt-2 flex flex-col gap-2">
-                    {lines.map((l, i) => (
-                      <div
-                        key={i}
-                        className="grid grid-cols-1 midTablet:grid-cols-[1fr_110px_110px_140px_44px] gap-2"
-                      >
-                        <input
-                          value={l.label}
-                          disabled={isLocked}
-                          onChange={(e) =>
-                            updateLine(i, { label: e.target.value })
-                          }
-                          onBlur={(e) =>
-                            updateLine(i, { label: trimText(e.target.value) })
-                          }
-                          className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
-                          placeholder="Description"
-                        />
+                    {lines.map((l, i) => {
+                      const offeredUi = Boolean(l.offered);
 
-                        <input
-                          type="number"
-                          min="1"
-                          onWheel={(e) => e.currentTarget.blur()}
-                          disabled={isLocked}
-                          value={l.qty ?? ""}
-                          onChange={(e) =>
-                            updateLine(i, {
-                              qty: toNumberOrEmpty(e.target.value),
-                            })
-                          }
-                          className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
-                          placeholder="Quantité"
-                        />
-
-                        <label className="inline-flex items-center justify-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm text-darkBlue/80">
+                      return (
+                        <div
+                          key={i}
+                          className="grid grid-cols-1 midTablet:grid-cols-[1fr_110px_110px_140px_44px] gap-2"
+                        >
                           <input
-                            type="checkbox"
+                            value={l.label}
                             disabled={isLocked}
-                            checked={Boolean(l.offered)}
+                            onChange={(e) =>
+                              updateLine(i, { label: e.target.value })
+                            }
+                            onBlur={(e) =>
+                              updateLine(i, { label: trimText(e.target.value) })
+                            }
+                            className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
+                            placeholder="Description"
+                          />
+
+                          <input
+                            type="number"
+                            min="1"
+                            onWheel={preventWheelChange}
+                            disabled={isLocked}
+                            value={l.qty ?? ""}
                             onChange={(e) =>
                               updateLine(i, {
-                                offered: e.target.checked,
-                                ...(e.target.checked ? { unitPrice: 0 } : {}),
+                                qty: toNumberOrEmpty(e.target.value),
                               })
                             }
+                            className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
+                            placeholder="Quantité"
                           />
-                          Offert
-                        </label>
 
-                        <input
-                          type="number"
-                          step="0.01"
-                          onWheel={(e) => e.currentTarget.blur()}
-                          disabled={isLocked || l.offered}
-                          value={l.unitPrice ?? ""}
-                          onChange={(e) =>
-                            updateLine(i, {
-                              unitPrice: toNumberOrEmpty(e.target.value),
-                            })
-                          }
-                          className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
-                          placeholder="Prix (€)"
-                        />
+                          <label className="inline-flex items-center justify-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm text-darkBlue/80">
+                            <input
+                              type="checkbox"
+                              disabled={isLocked}
+                              checked={offeredUi}
+                              onChange={(e) =>
+                                updateLine(i, {
+                                  offered: e.target.checked,
+                                })
+                              }
+                            />
+                            Offert
+                          </label>
 
-                        <button
-                          onClick={() => removeLine(i)}
-                          disabled={lines.length === 1 || isLocked}
-                          className="inline-flex items-center justify-center rounded-xl border border-red/20 bg-red/10 hover:bg-red/15 transition disabled:opacity-60"
-                          title="Supprimer"
-                        >
-                          <Trash2 className="size-4 text-red" />
-                        </button>
-                      </div>
-                    ))}
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            onWheel={preventWheelChange}
+                            disabled={isLocked || offeredUi}
+                            value={offeredUi ? "" : (l.unitPrice ?? "")}
+                            onChange={(e) =>
+                              updateLine(i, {
+                                unitPrice: toNumberOrEmpty(e.target.value),
+                              })
+                            }
+                            className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
+                            placeholder="-"
+                          />
+
+                          <button
+                            onClick={() => removeLine(i)}
+                            disabled={lines.length === 1 || isLocked}
+                            className="inline-flex items-center justify-center rounded-xl border border-red/20 bg-red/10 hover:bg-red/15 transition disabled:opacity-60"
+                            title="Supprimer"
+                          >
+                            <Trash2 className="size-4 text-red" />
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
 
                   {/* ✅ Discount + Totals UNIQUEMENT devis/facture */}
@@ -890,17 +1317,18 @@ export default function DetailsDocumentAdminPage(props) {
                             </label>
                             <input
                               type="number"
+                              min="0"
                               step="0.01"
                               disabled={isLocked}
                               value={discountAmount ?? ""}
-                              onWheel={(e) => e.currentTarget.blur()}
+                              onWheel={preventWheelChange}
                               onChange={(e) =>
                                 setDiscountAmount(
                                   toNumberOrEmpty(e.target.value),
                                 )
                               }
                               className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
-                              placeholder="Ex: 100"
+                              placeholder="-"
                             />
                           </div>
                         </div>
@@ -934,7 +1362,7 @@ export default function DetailsDocumentAdminPage(props) {
                   ) : null}
                 </div>
 
-                {/* ✅ Abonnement + Modules (numeric) pour tous les types */}
+                {/* ✅ Abonnement + Modules */}
                 <div className="mt-6 rounded-xl border border-darkBlue/10 bg-white p-3">
                   <p className="text-sm font-semibold text-darkBlue">
                     Abonnement & modules
@@ -953,8 +1381,9 @@ export default function DetailsDocumentAdminPage(props) {
                           </label>
                           <input
                             type="number"
+                            min="0"
                             step="0.01"
-                            onWheel={(e) => e.currentTarget.blur()}
+                            onWheel={preventWheelChange}
                             disabled={isLocked}
                             value={subscriptionPriceMonthly ?? ""}
                             onChange={(e) =>
@@ -963,7 +1392,7 @@ export default function DetailsDocumentAdminPage(props) {
                               )
                             }
                             className="w-full rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
-                            placeholder="95"
+                            placeholder="-"
                           />
                         </div>
                       </div>
@@ -974,7 +1403,7 @@ export default function DetailsDocumentAdminPage(props) {
                       <input
                         type="number"
                         min="1"
-                        onWheel={(e) => e.currentTarget.blur()}
+                        onWheel={preventWheelChange}
                         disabled={isLocked}
                         value={engagementMonths ?? ""}
                         onChange={(e) =>
@@ -1001,75 +1430,79 @@ export default function DetailsDocumentAdminPage(props) {
                       </div>
 
                       <div className="mt-3 flex flex-col gap-2">
-                        {modules.map((m, i) => (
-                          <div key={i} className="flex items-end gap-2">
-                            <input
-                              value={m.name}
-                              disabled={isLocked}
-                              onChange={(e) =>
-                                updateModule(i, { name: e.target.value })
-                              }
-                              onBlur={(e) =>
-                                updateModule(i, {
-                                  name: trimText(e.target.value),
-                                })
-                              }
-                              className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm w-full"
-                              placeholder="Nom du module"
-                            />
+                        {modules.map((m, i) => {
+                          const offeredUi = Boolean(m.offered);
 
-                            <label className="inline-flex items-center justify-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm text-darkBlue/80">
+                          return (
+                            <div key={i} className="flex items-end gap-2">
                               <input
-                                type="checkbox"
+                                value={m.name}
                                 disabled={isLocked}
-                                checked={m.offered}
                                 onChange={(e) =>
+                                  updateModule(i, { name: e.target.value })
+                                }
+                                onBlur={(e) =>
                                   updateModule(i, {
-                                    offered: e.target.checked,
-                                    ...(e.target.checked
-                                      ? { priceMonthly: 0 }
-                                      : {}),
+                                    name: trimText(e.target.value),
                                   })
                                 }
+                                className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm w-full"
+                                placeholder="Nom du module"
                               />
-                              Offert
-                            </label>
 
-                            <div className="flex flex-col gap-1">
-                              {i === 0 && (
-                                <label className="text-xs text-darkBlue/60">
-                                  Prix / mois (€)
-                                </label>
-                              )}
+                              <label className="inline-flex items-center justify-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm text-darkBlue/80">
+                                <input
+                                  type="checkbox"
+                                  disabled={isLocked}
+                                  checked={offeredUi}
+                                  onChange={(e) =>
+                                    updateModule(i, {
+                                      offered: e.target.checked,
+                                    })
+                                  }
+                                />
+                                Offert
+                              </label>
 
-                              <input
-                                type="number"
-                                step="0.01"
-                                onWheel={(e) => e.currentTarget.blur()}
-                                value={m.priceMonthly ?? ""}
-                                onChange={(e) =>
-                                  updateModule(i, {
-                                    priceMonthly: toNumberOrEmpty(
-                                      e.target.value,
-                                    ),
-                                  })
-                                }
-                                className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm w-[100px]"
-                                placeholder="Prix / mois (€)"
-                                disabled={m.offered || isLocked}
-                              />
+                              <div className="flex flex-col gap-1">
+                                {i === 0 && (
+                                  <label className="text-xs text-darkBlue/60">
+                                    Prix / mois (€)
+                                  </label>
+                                )}
+
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  onWheel={preventWheelChange}
+                                  value={
+                                    offeredUi ? "" : (m.priceMonthly ?? "")
+                                  }
+                                  onChange={(e) =>
+                                    updateModule(i, {
+                                      priceMonthly: toNumberOrEmpty(
+                                        e.target.value,
+                                      ),
+                                    })
+                                  }
+                                  className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm w-[100px]"
+                                  placeholder="-"
+                                  disabled={offeredUi || isLocked}
+                                />
+                              </div>
+
+                              <button
+                                onClick={() => removeModule(i)}
+                                disabled={modules.length === 1 || isLocked}
+                                className="inline-flex items-center px-3 h-[38px] justify-center rounded-xl border border-red/20 bg-red/10 hover:bg-red/15 transition disabled:opacity-60"
+                                title="Supprimer"
+                              >
+                                <Trash2 className="size-4 text-red" />
+                              </button>
                             </div>
-
-                            <button
-                              onClick={() => removeModule(i)}
-                              disabled={modules.length === 1 || isLocked}
-                              className="inline-flex items-center px-3 h-[38px] justify-center rounded-xl border border-red/20 bg-red/10 hover:bg-red/15 transition disabled:opacity-60"
-                              title="Supprimer"
-                            >
-                              <Trash2 className="size-4 text-red" />
-                            </button>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
@@ -1138,7 +1571,6 @@ export default function DetailsDocumentAdminPage(props) {
                     const ok = await handleSave();
                     if (!ok) return;
                   }
-
                   await handleSendConfirmed();
                   setConfirmSendOpen(false);
                 }}

@@ -6,6 +6,12 @@ const LineSchema = new mongoose.Schema(
     qty: { type: Number, default: 1 },
     unitPrice: { type: Number, default: 0 },
     offered: { type: Boolean, default: false },
+    active: { type: Boolean, default: true },
+    kind: {
+      type: String,
+      enum: ["NORMAL", "WEBSITE"],
+      default: "NORMAL",
+    },
   },
   { _id: false },
 );
@@ -31,8 +37,12 @@ const PartySchema = new mongoose.Schema(
 
 const WebsiteSchema = new mongoose.Schema(
   {
+    enabled: { type: Boolean, default: false },
     offered: { type: Boolean, default: false },
     priceLabel: { type: String, default: "" },
+    paymentSplit: { type: Number, enum: [1, 2, 3], default: 1 },
+
+    line: { type: LineSchema, default: null },
   },
   { _id: false },
 );

@@ -28,7 +28,7 @@ function computeTotals(doc) {
   const computed = lines.map((l) => {
     const qty = toNumber(l.qty, 1);
     const unit = toNumber(l.unitPrice, 0);
-    const offered = Boolean(l.offered);
+    const offered = Boolean(l.offered) || unit <= 0;
     const total = offered ? 0 : qty * unit;
     return { ...l, qty, unitPrice: offered ? 0 : unit, offered, total };
   });

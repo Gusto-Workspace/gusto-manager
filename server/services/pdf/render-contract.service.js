@@ -24,8 +24,29 @@ function euro(n) {
     .replace(".", ",")} €`;
 }
 
-function isOffered(x) {
-  return Boolean(x?.offered);
+function isOfferedLine(x) {
+  const unit = Number(x?.unitPrice ?? 0);
+  return Boolean(x?.offered) || unit <= 0;
+}
+
+function isOfferedModule(x) {
+  const pm = Number(x?.priceMonthly ?? 0);
+  return Boolean(x?.offered) || pm <= 0;
+}
+
+function isActiveLine(l) {
+  return l?.active !== false;
+}
+
+function sitePaymentText(paymentSplit) {
+  const n = Number(paymentSplit || 1);
+  if (n === 1)
+    return "Le paiement s’effectuera par virement bancaire en une (1) fois.";
+  if (n === 2)
+    return "Le paiement s’effectuera par virement bancaire en deux (2) fois sans frais.";
+  if (n === 3)
+    return "Le paiement s’effectuera par virement bancaire en trois (3) fois sans frais.";
+  return "Le paiement s’effectuera par virement bancaire.";
 }
 
 function computeSiteTotal(lines) {
@@ -33,7 +54,7 @@ function computeSiteTotal(lines) {
   return arr.reduce((acc, l) => {
     const qty = toNumber(l.qty, 1);
     const unit = toNumber(l.unitPrice, 0);
-    const offered = Boolean(l.offered);
+    const offered = isOfferedLine(l);
     return acc + (offered ? 0 : qty * unit);
   }, 0);
 }
@@ -44,7 +65,7 @@ function computeMonthlyAmount(documentData) {
 
   const modsSum = mods.reduce((acc, m) => {
     if (!safeText(m?.name)) return acc;
-    if (isOffered(m)) return acc;
+    if (isOfferedModule(m)) return acc;
     return acc + toNumber(m?.priceMonthly, 0);
   }, 0);
 
@@ -64,7 +85,6 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
   const BAND_HEIGHT = 30;
   const BAND_COLOR = "#2E373E";
 
-  // On augmente la marge basse pour ne jamais écrire dans le bandeau
   const doc = new PDFDocument({
     size: "A4",
     margins: {
@@ -79,7 +99,6 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
   doc.on("data", (c) => chunks.push(c));
 
   const PAGE_W = doc.page.width;
-  const PAGE_H = doc.page.height;
   const PAGE_RIGHT = PAGE_W - MARGIN;
   const CONTENT_W = PAGE_RIGHT - MARGIN;
 
@@ -90,11 +109,9 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
     doc.restore();
   }
 
-  // bandeau page 1 + pages suivantes
   drawBottomBand();
   doc.on("pageAdded", () => {
     drawBottomBand();
-    // reset "safe" cursor en haut de page
     doc.x = MARGIN;
     doc.y = MARGIN;
   });
@@ -117,7 +134,6 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
   }
 
   function sectionTitle(text) {
-    // éviter un titre seul en bas
     ensureSpace(70);
     doc.x = MARGIN;
     doc.fontSize(12).fillColor("#111").text(text, MARGIN, doc.y, {
@@ -149,7 +165,6 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
 
     ensureSpace(22);
 
-    // on dessine un petit point aligné avec la première ligne
     const y = doc.y + 6;
     doc.save();
     doc.fillColor("#111");
@@ -164,7 +179,6 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
     });
 
     doc.moveDown(options.after ?? 0.2);
-    // IMPORTANT: reset x pour éviter les décalages de titres ensuite
     doc.x = MARGIN;
   }
 
@@ -178,9 +192,67 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
     doc.moveDown(0.8);
   }
 
+  // ✅ Helper table unique (site ou prestations)
+  function renderLinesTable(lines) {
+    ensureSpace(120);
+
+    const tableTop = doc.y;
+
+    const W_QTY = 40;
+    const W_PU = 70;
+    const W_TOTAL = 80;
+    const GAP = 12;
+
+    const colTotalX = PAGE_RIGHT - W_TOTAL;
+    const colUnitX = colTotalX - GAP - W_PU;
+    const colQtyX = colUnitX - GAP - W_QTY;
+
+    const colLabelX = MARGIN;
+    const W_LABEL = colQtyX - GAP - colLabelX;
+
+    doc.fontSize(10).fillColor("#111");
+    doc.text("Description", colLabelX, tableTop, {
+      width: W_LABEL,
+      align: "left",
+    });
+    doc.text("Qté", colQtyX, tableTop, { width: W_QTY, align: "right" });
+    doc.text("PU", colUnitX, tableTop, { width: W_PU, align: "right" });
+    doc.text("Total", colTotalX, tableTop, { width: W_TOTAL, align: "right" });
+
+    doc
+      .moveTo(MARGIN, tableTop + 14)
+      .lineTo(PAGE_RIGHT, tableTop + 14)
+      .strokeColor("#ddd")
+      .stroke();
+
+    let y = tableTop + 22;
+
+    for (const l of lines) {
+      ensureSpace(30);
+
+      const qty = toNumber(l.qty, 1);
+      const unit = isOfferedLine(l) ? 0 : toNumber(l.unitPrice, 0);
+      const total = isOfferedLine(l) ? 0 : qty * unit;
+
+      doc.fillColor("#111").fontSize(10);
+      doc.text(l.label || "-", colLabelX, y, { width: W_LABEL, align: "left" });
+      doc.text(String(qty), colQtyX, y, { width: W_QTY, align: "right" });
+      doc.text(isOfferedLine(l) ? "Offert" : euro(unit), colUnitX, y, {
+        width: W_PU,
+        align: "right",
+      });
+      doc.text(euro(total), colTotalX, y, { width: W_TOTAL, align: "right" });
+
+      y += 18;
+      doc.y = y;
+    }
+
+    doc.moveDown(0.2); // ✅ moins d’air, évite le look “vide”
+  }
+
   /* ---------------- Header (logo + meta) ---------------- */
   const HEADER_TOP_Y = MARGIN;
-  const LOGO_HEIGHT = 70; // ✅ réduit pour ne plus chevaucher
+  const LOGO_HEIGHT = 70;
 
   let leftBlockBottomY = HEADER_TOP_Y;
 
@@ -196,7 +268,6 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
     leftBlockBottomY = HEADER_TOP_Y + 24;
   }
 
-  // Coordonnées sous logo
   doc
     .fontSize(10)
     .fillColor("#444")
@@ -210,7 +281,6 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
 
   const leftAfterHeaderY = doc.y;
 
-  // Meta à droite
   const docNumber = safeText(documentData?.docNumber);
   const issueDate = documentData?.issueDate
     ? fmtDate(documentData.issueDate)
@@ -232,7 +302,6 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
       align: "right",
     });
 
-  // Start body under header
   const rightMetaBottomY = HEADER_TOP_Y + 40;
   doc.y = Math.max(leftAfterHeaderY, rightMetaBottomY) + 18;
 
@@ -243,7 +312,6 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
   /* ---------------- Parties ---------------- */
   ensureSpace(120);
 
-  doc.x = MARGIN;
   doc
     .fontSize(10)
     .fillColor("#111")
@@ -251,18 +319,16 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
 
   paragraph(
     `${emitter?.title || "WebDev"}, Entreprise Individuelle, ci-après désigné « le Prestataire »,`,
-    { size: 10, color: "#111", after: 0.1 },
+    { size: 10, after: 0.1 },
   );
 
   paragraph(`ayant son siège au ${emitter?.address || "-"},`, {
     size: 10,
-    color: "#111",
     after: 0.1,
   });
 
   paragraph(`et joignable à l’adresse email ${emitter?.email || "-"}.`, {
     size: 10,
-    color: "#111",
     after: 0.6,
   });
 
@@ -302,17 +368,38 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
     });
   }
 
-  paragraph("Il a été convenu ce qui suit :", {
-    size: 10,
-    color: "#111",
-    after: 0.6,
-  });
+  paragraph("Il a été convenu ce qui suit :", { size: 10, after: 0.6 });
+
+  // ✅ Lignes filtrées
+  const allLines = Array.isArray(documentData?.lines) ? documentData.lines : [];
+  const websiteLines = allLines.filter(
+    (l) => isActiveLine(l) && l?.kind === "WEBSITE",
+  );
+  const classicLines = allLines.filter(
+    (l) => isActiveLine(l) && (l?.kind === "NORMAL" || !l?.kind),
+  );
+
+  const hasWebsite = websiteLines.length > 0;
+  const hasPrestations = classicLines.length > 0;
 
   /* ---------------- 1. Objet ---------------- */
   sectionTitle("1. Objet du Contrat");
   paragraph("Le présent contrat a pour objet :", { size: 10, after: 0.2 });
 
-  bullet("la création d’un site vitrine pour le Client,");
+  // ✅ Site vitrine seulement si activé
+  if (hasWebsite) {
+    bullet("la création d’un site vitrine pour le Client,");
+  }
+
+  // ✅ Prestations seulement si présentes
+  if (hasPrestations) {
+    bullet(
+      hasWebsite
+        ? "la réalisation de prestations complémentaires définies au présent contrat,"
+        : "la réalisation de prestations définies au présent contrat,",
+    );
+  }
+
   bullet(
     "la fourniture d’un accès à un dashboard numérique de gestion de restaurant,",
   );
@@ -320,131 +407,101 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
     after: 0.6,
   });
 
-  /* ---------------- 2. Site vitrine ---------------- */
-  sectionTitle("2. Création du Site Vitrine");
-  paragraph(
-    "Le Prestataire s’engage à réaliser et livrer un site vitrine pour le Client, conformément aux spécifications convenues.",
-    { size: 10, after: 0.6 },
-  );
+  /* ---------------- 2. Site vitrine (conditionnel) ---------------- */
+  if (hasWebsite) {
+    sectionTitle("2. Création du Site Vitrine");
+    paragraph(
+      "Le Prestataire s’engage à réaliser et livrer un site vitrine pour le Client, conformément aux spécifications convenues.",
+      { size: 10, after: 0.6 },
+    );
 
-  // Table lignes (site vitrine)
-  ensureSpace(120);
+    renderLinesTable(websiteLines);
 
-  const tableTop = doc.y;
+    const siteTotal = computeSiteTotal(websiteLines);
+    const siteIsOffered = siteTotal <= 0;
 
-  // ✅ Largeurs de colonnes (ajuste si tu veux)
-  const W_QTY = 40;
-  const W_PU = 70;
-  const W_TOTAL = 80;
-  const GAP = 12;
+    ensureSpace(60);
+    doc
+      .strokeColor("#ddd")
+      .moveTo(350, doc.y + 6)
+      .lineTo(PAGE_RIGHT, doc.y + 6)
+      .stroke();
 
-  // ✅ Colonnes ancrées à droite
-  const colTotalX = PAGE_RIGHT - W_TOTAL;
-  const colUnitX = colTotalX - GAP - W_PU;
-  const colQtyX = colUnitX - GAP - W_QTY;
+    doc.moveDown(1);
 
-  // ✅ Colonne description = tout l’espace restant à gauche
-  const colLabelX = MARGIN;
-  const W_LABEL = colQtyX - GAP - colLabelX;
+    const totalsY = doc.y;
+    doc
+      .fontSize(10)
+      .fillColor("#444")
+      .text("Total site vitrine", 350, totalsY, { width: 120, align: "left" });
+    doc
+      .fillColor("#111")
+      .text(euro(siteTotal), 470, totalsY, { width: 75, align: "right" });
+    doc.y = totalsY + 18;
 
-  // --- headers ---
-  doc.fontSize(10).fillColor("#111");
-  doc.text("Description", colLabelX, tableTop, {
-    width: W_LABEL,
-    align: "left",
-  });
-  doc.text("Qté", colQtyX, tableTop, { width: W_QTY, align: "right" });
-  doc.text("PU", colUnitX, tableTop, { width: W_PU, align: "right" });
-  doc.text("Total", colTotalX, tableTop, { width: W_TOTAL, align: "right" });
+    doc.moveDown(0.4);
 
-  // underline header
-  doc
-    .moveTo(MARGIN, tableTop + 14)
-    .lineTo(PAGE_RIGHT, tableTop + 14)
-    .strokeColor("#ddd")
-    .stroke();
+    paragraph("Modalités de paiement :", { size: 10, after: 0.2 });
+    if (!siteIsOffered) {
+      bullet(sitePaymentText(documentData?.website?.paymentSplit), {
+        after: 0.1,
+      });
+      bullet(
+        "Les informations de virement seront transmises au Client après signature du présent contrat.",
+        { after: 0.5 },
+      );
+    } else {
+      bullet("Le site vitrine est offert.", { after: 0.5 });
+    }
 
-  let y = tableTop + 22;
+    paragraph("Délais de livraison :", { size: 10, after: 0.2 });
+    bullet(
+      "Le site sera livré sous 14 jours ouvrés à compter de la signature du contrat et de la réception du paiement.",
+      { after: 0.5 },
+    );
 
-  const lines = Array.isArray(documentData?.lines) ? documentData.lines : [];
-  for (const l of lines) {
-    ensureSpace(30);
-
-    const qty = toNumber(l.qty, 1);
-    const unit = isOffered(l) ? 0 : toNumber(l.unitPrice, 0);
-    const total = isOffered(l) ? 0 : qty * unit;
-
-    doc.fillColor("#111").fontSize(10);
-    doc.text(l.label || "-", colLabelX, y, { width: W_LABEL, align: "left" });
-    doc.text(String(qty), colQtyX, y, { width: W_QTY, align: "right" });
-    doc.text(euro(unit), colUnitX, y, { width: W_PU, align: "right" });
-    doc.text(euro(total), colTotalX, y, { width: W_TOTAL, align: "right" });
-
-    y += 18;
-    doc.y = y;
+    paragraph("Retours visuels :", { size: 10, after: 0.2 });
+    bullet(
+      "Le Client dispose de trois (3) retours pour des retouches mineures du visuel.",
+      { after: 0.1 },
+    );
+    bullet(
+      "Une fois la maquette validée, aucune modification de structure ne pourra être effectuée.",
+      { after: 0.6 },
+    );
   }
 
-  // Total site vitrine (aligné propre, sans chevauchement)
-  const siteTotal = computeSiteTotal(lines);
+  /* ---------------- 2 / 2.1 Prestations (selon site) ---------------- */
+  if (hasPrestations) {
+    const title = hasWebsite
+      ? "2.1 Prestations complémentaires"
+      : "2. Prestations";
+    sectionTitle(title);
 
-  ensureSpace(60);
-  doc
-    .strokeColor("#ddd")
-    .moveTo(350, doc.y + 6)
-    .lineTo(PAGE_RIGHT, doc.y + 6)
-    .stroke();
+    paragraph(
+      hasWebsite
+        ? "Les prestations complémentaires suivantes ont été convenues :"
+        : "Les prestations suivantes ont été convenues :",
+      { size: 10, after: 0.35 },
+    );
 
-  doc.moveDown(1);
-
-  const totalsY = doc.y;
-  doc
-    .fontSize(10)
-    .fillColor("#444")
-    .text("Total site vitrine", 350, totalsY, { width: 120, align: "left" });
-  doc
-    .fillColor("#111")
-    .text(euro(siteTotal), 470, totalsY, { width: 75, align: "right" });
-  doc.y = totalsY + 18;
-
-  doc.moveDown(0.6);
-
-  // Modalités / délais / retours (alignés à gauche)
-  paragraph("Modalités de paiement :", { size: 10, color: "#111", after: 0.2 });
-  bullet(
-    "Le paiement s’effectuera par virement bancaire, avec possibilité de règlement en deux (2) à trois (3) fois sans frais.",
-    { after: 0.1 },
-  );
-  bullet(
-    "Les informations de virement seront transmises au Client après signature du présent contrat.",
-    { after: 0.5 },
-  );
-
-  paragraph("Délais de livraison :", { size: 10, color: "#111", after: 0.2 });
-  bullet(
-    "Le site sera livré sous 14 jours ouvrés à compter de la signature du contrat et de la réception du paiement.",
-    { after: 0.5 },
-  );
-
-  paragraph("Retours visuels :", { size: 10, color: "#111", after: 0.2 });
-  bullet(
-    "Le Client dispose de trois (3) retours pour des retouches mineures du visuel.",
-    { after: 0.1 },
-  );
-  bullet(
-    "Une fois la maquette validée, aucune modification de structure ne pourra être effectuée.",
-    { after: 0.8 },
-  );
+    renderLinesTable(classicLines);
+  }
 
   /* ---------------- 3. Abonnement ---------------- */
-  // éviter titre seul en bas
-  ensureSpace(260);
+  // ✅ IMPORTANT: réduit pour éviter le grand blanc
+  ensureSpace(120);
+  doc.moveDown(1.2);
+
   sectionTitle("3. Abonnement au Dashboard et aux Modules");
 
   paragraph("Le Prestataire met en place un abonnement mensuel incluant :", {
     size: 10,
     after: 0.2,
   });
-  bullet("L’hébergement du site vitrine");
+
+  // ✅ Hébergement du site vitrine seulement si site activé
+  if (hasWebsite) bullet("L’hébergement du site vitrine");
   bullet("La maintenance fonctionnelle (hors retouches visuelles)");
   bullet("L’accès au dashboard de gestion");
   bullet("L’accès aux modules sélectionnés par le Client", { after: 0.6 });
@@ -456,7 +513,6 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
     after: 0.2,
   });
 
-  // tableau modules
   ensureSpace(140);
 
   const modTop = doc.y;
@@ -480,10 +536,11 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
   const modules = Array.isArray(documentData?.modules)
     ? documentData.modules
     : [];
+
   for (const m of modules.filter((x) => safeText(x?.name))) {
     ensureSpace(30);
 
-    const price = isOffered(m)
+    const price = isOfferedModule(m)
       ? "Offert"
       : `${euro(toNumber(m.priceMonthly, 0))} / mois`;
 
@@ -497,20 +554,16 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
     doc.y = my;
   }
 
-  doc.moveDown(0.8);
+  doc.moveDown(0.3);
 
-  // phrase (alignée à gauche, pas de débordement)
   doc.fontSize(9).fillColor("#444");
   doc.text(
     "(La liste est définie lors de la signature et peut être modifiée ultérieurement.)",
     MARGIN,
     doc.y,
-    {
-      width: CONTENT_W,
-      align: "left",
-    },
+    { width: CONTENT_W, align: "left" },
   );
-  doc.moveDown(0.8);
+  doc.moveDown(1.8);
 
   /* ---------------- 3.2 Évolution ---------------- */
   sectionTitle("3.2 Évolution des modules");
@@ -534,7 +587,7 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
   const monthlyTotal = computeMonthlyAmount(documentData);
 
   bullet(
-    `Prix de l’abonnement mensuel : ${subName} — ${euro(subPrice)} / mois (exonéré de TVA)`,
+    `Prix de l’abonnement mensuel : ${euro(subPrice)} / mois (exonéré de TVA)`,
   );
   bullet(
     `Durée d’engagement : ${engagementMonths} mois à compter de la date de souscription`,
@@ -544,7 +597,7 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
     { after: 0.6 },
   );
 
-  paragraph("Modalités de paiement", { size: 10, color: "#111", after: 0.2 });
+  paragraph("Modalités de paiement", { size: 10, after: 0.2 });
   bullet("Le paiement est effectué par prélèvement SEPA mensuel automatique");
   bullet(
     "En cas de changement de moyen de paiement, le Client s’engage à en informer le Prestataire avant le prochain prélèvement",
@@ -583,6 +636,7 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
   const when = documentData?.issueDate
     ? fmtDate(documentData.issueDate)
     : fmtDate(new Date());
+
   doc
     .fontSize(10)
     .fillColor("#111")
@@ -594,25 +648,19 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
 
   const baseY = doc.y;
 
-  // Titres
   doc
     .fontSize(10)
     .fillColor("#111")
     .text("Le Prestataire", MARGIN, baseY, { width: 200, align: "left" });
   doc.text("Le Client", 320, baseY, { width: 200, align: "left" });
 
-  // Cadres
   const boxY = baseY + 18;
   const boxW = 220;
   const boxH = 90;
 
-  // Prestataire box
   doc.strokeColor("#cfd5dd").rect(MARGIN, boxY, boxW, boxH).stroke();
-
-  // Client box
   doc.strokeColor("#cfd5dd").rect(320, boxY, boxW, boxH).stroke();
 
-  // ✅ Signature prestataire (image via emitter.signaturePath)
   const providerSigAbs = absIfExists(emitter?.signaturePath);
   if (providerSigAbs) {
     try {
@@ -621,9 +669,7 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
         align: "center",
         valign: "center",
       });
-    } catch (e) {
-      // ignore image errors
-    }
+    } catch {}
   } else {
     doc
       .fontSize(9)
@@ -634,7 +680,6 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
       });
   }
 
-  // Signature client (buffer fourni)
   if (signatureImageBuffer) {
     try {
       doc.image(signatureImageBuffer, 320 + 10, boxY + 10, {
@@ -642,9 +687,7 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
         align: "center",
         valign: "center",
       });
-    } catch (e) {
-      // ignore image errors
-    }
+    } catch {}
   } else {
     doc
       .fontSize(9)
@@ -657,7 +700,6 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
 
   doc.y = boxY + boxH + 18;
 
-  // Footer texte TVA
   doc
     .fontSize(9)
     .fillColor("#444")
