@@ -299,13 +299,21 @@ router.patch("/admin/documents/:id", authenticateToken, async (req, res) => {
 
     // ----- LINES / TOTALS -----
     if (body.lines) {
-      doc.lines = (body.lines || []).map((l) => ({
-        label: l?.label || "",
-        qty: Number(l?.qty ?? 1),
-        unitPrice: Number(l?.unitPrice ?? 0),
-        offered: Boolean(l?.offered),
-      }));
+      doc.lines = (body.lines || []).map((l) => {
+        const unitPrice = Number(l?.unitPrice ?? 0);
+        const offered = Boolean(l?.offered) || unitPrice <= 0;
+
+        return {
+          label: l?.label || "",
+          qty: Number(l?.qty ?? 1),
+          unitPrice: offered ? 0 : unitPrice,
+          offered,
+          active: l?.active === undefined ? true : Boolean(l.active),
+          kind: ["NORMAL", "WEBSITE"].includes(l?.kind) ? l.kind : "NORMAL",
+        };
+      });
     }
+
     if (body.totals) doc.totals = body.totals;
 
     if (body.comments !== undefined) {
@@ -313,7 +321,98 @@ router.patch("/admin/documents/:id", authenticateToken, async (req, res) => {
     }
 
     // ----- CONTRACT -----
-    if (body.website) doc.website = body.website;
+    if (body.website) {
+      // ✅ enabled
+      const enabled =
+        body.website.enabled === undefined
+          ? Boolean(doc.website?.enabled)
+          : Boolean(body.website.enabled);
+
+      // ✅ line (si fournie) + règle prix 0 => offert
+      const incomingLine = body.website.line || null;
+
+      const mappedLine = incomingLine
+        ? (() => {
+            const unitPrice = Number(incomingLine?.unitPrice ?? 0);
+            const offered = Boolean(incomingLine?.offered) || unitPrice <= 0;
+
+            return {
+              label: incomingLine?.label || "Site internet",
+              qty: Number(incomingLine?.qty ?? 1),
+              unitPrice: offered ? 0 : unitPrice,
+              offered,
+              active:
+                incomingLine?.active === undefined
+                  ? true
+                  : Boolean(incomingLine.active),
+              kind: "WEBSITE", // ✅ important (ton enum mongoose line.kind)
+            };
+          })()
+        : null;
+
+      // ✅ offered global : prioritaire si explicitement envoyé, sinon déduit de la ligne (prix 0), sinon garde l’existant
+      const offeredGlobal =
+        body.website.offered !== undefined
+          ? Boolean(body.website.offered)
+          : mappedLine
+            ? Boolean(mappedLine.offered)
+            : Boolean(doc.website?.offered);
+
+      // ✅ paymentSplit : seulement 1/2/3 (et si offert => on force 1)
+      const splitCandidate = Number(
+        body.website?.paymentSplit ?? doc.website?.paymentSplit ?? 1,
+      );
+      const paymentSplit = offeredGlobal
+        ? 1
+        : [1, 2, 3].includes(splitCandidate)
+          ? splitCandidate
+          : 1;
+
+      // ✅ priceLabel (optionnel)
+      const priceLabel =
+        body.website.priceLabel !== undefined
+          ? String(body.website.priceLabel || "")
+          : String(doc.website?.priceLabel || "");
+
+      // ✅ SAVE website object
+      doc.website = {
+        ...doc.website,
+        enabled,
+        offered: offeredGlobal,
+        priceLabel,
+        paymentSplit,
+        line: enabled ? mappedLine : null, // si disabled => on vide
+      };
+
+      const currentLines = Array.isArray(doc.lines) ? doc.lines : [];
+
+      if (!enabled) {
+        doc.lines = currentLines.map((l) =>
+          l?.kind === "WEBSITE" ? { ...l, active: false } : l,
+        );
+      } else {
+        // on veut 1 ligne WEBSITE active
+        const idx = currentLines.findIndex((l) => l?.kind === "WEBSITE");
+
+        const websiteLineForLines = {
+          label: mappedLine?.label || "Site internet",
+          qty: mappedLine?.qty ?? 1,
+          unitPrice: offeredGlobal ? 0 : Number(mappedLine?.unitPrice ?? 0),
+          offered:
+            Boolean(offeredGlobal) || Number(mappedLine?.unitPrice ?? 0) <= 0,
+          active: true,
+          kind: "WEBSITE",
+        };
+
+        if (idx === -1) {
+          doc.lines = [...currentLines, websiteLineForLines];
+        } else {
+          doc.lines = currentLines.map((l, i) =>
+            i === idx ? { ...l, ...websiteLineForLines } : l,
+          );
+        }
+      }
+    }
 
     // ✅ Subscription object
     if (body.subscription !== undefined) {

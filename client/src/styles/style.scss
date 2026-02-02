@@ -53,14 +53,26 @@ body {
 }
 
 /* Taille uniforme pour tous les champs date-like */
+/* ✅ Force les inputs date-like à ne jamais dépasser leur parent */
 input[type="datetime-local"],
+input[type="date"],
+input[type="time"],
 input[type="month"] {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;          /* important */
   box-sizing: border-box;
-  height: 44px; /* cible principale */
-  padding: 0 12px;
-  min-width: 216px;
-  font: inherit;
+
+  /* Safari iOS: enlève certaines contraintes natives */
+  -webkit-appearance: none;
+  appearance: none;
+
+  /* Certaines versions utilisent inline-size/min-inline-size */
+  inline-size: 100%;
+  max-inline-size: 100%;
+  min-inline-size: 0;
 }
+
 
 /* WebKit (Chrome/Safari) : aligne la valeur à l'intérieur sans rogner */
 input[type="time"]::-webkit-datetime-edit,

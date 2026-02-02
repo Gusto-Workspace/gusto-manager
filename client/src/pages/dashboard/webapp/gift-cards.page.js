@@ -1,4 +1,4 @@
-import { useContext, useEffect } from "react";
+import { useContext, useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
 
@@ -10,10 +10,8 @@ import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import { GlobalContext } from "@/contexts/global.context";
 
 // COMPONENTS
-import NavComponent from "@/components/_shared/nav/nav.component";
-import SettingsComponent from "@/components/_shared/settings/settings.component";
-import WebAppListGiftCardsComponent from "@/components/dashboard/webapp/gift-cards/list.gift-cards.component";
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
+import WebAppListGiftCardsComponent from "@/components/dashboard/webapp/gift-cards/list.gift-cards.component";
 import SplashScreenWebAppComponent from "@/components/dashboard/webapp/_shared/splashscreen.webapp.component";
 import NotGoodDeviceWebAppComponent from "@/components/dashboard/webapp/_shared/not-good-device.webapp.component";
 
@@ -21,11 +19,15 @@ export default function GiftsPage(props) {
   const router = useRouter();
   const { restaurantContext } = useContext(GlobalContext);
 
+  const [showRefetchSplash, setShowRefetchSplash] = useState(false);
+
   // ✅ Redirect vers login si pas de token (1ère ouverture via raccourci)
   useEffect(() => {
     if (!router.isReady) return;
 
-    const token = localStorage.getItem("token");
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("token") : null;
+
     if (!token) {
       const returnTo = router.asPath;
       router.replace(
@@ -34,8 +36,67 @@ export default function GiftsPage(props) {
     }
   }, [router.isReady, router.asPath]);
 
+  // ✅ Refetch quand retour au 1er plan après > 5 min
+  useEffect(() => {
+    if (!restaurantContext?.isAuth) return;
+    if (typeof window === "undefined") return;
+
+    const KEY = "gm:lastActive:webapp:giftcards";
+    const THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+
+    const mark = () => {
+      try {
+        localStorage.setItem(KEY, String(Date.now()));
+      } catch {}
+    };
+
+    const shouldRefetch = () => {
+      try {
+        const prev = Number(localStorage.getItem(KEY) || 0);
+        return Date.now() - prev > THRESHOLD_MS;
+      } catch {
+        return true;
+      }
+    };
+
+    // ✅ initialise / refresh la date au montage
+    mark();
+
+    const onVis = () => {
+      if (document.visibilityState === "hidden") {
+        mark();
+        return;
+      }
+
+      if (document.visibilityState === "visible" && shouldRefetch()) {
+        setShowRefetchSplash(true);
+        restaurantContext.refetchCurrentRestaurant?.();
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("pagehide", mark);
+    window.addEventListener("blur", mark);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("pagehide", mark);
+      window.removeEventListener("blur", mark);
+    };
+  }, [restaurantContext?.isAuth]);
+
+  // ✅ Quand le loading finit, on coupe le forceShow (avec anti-clignotement)
+  useEffect(() => {
+    if (!showRefetchSplash) return;
+
+    if (!restaurantContext?.dataLoading) {
+      const t = setTimeout(() => setShowRefetchSplash(false), 350);
+      return () => clearTimeout(t);
+    }
+  }, [restaurantContext?.dataLoading, showRefetchSplash]);
+
   if (!router.isReady) return null;
-  if (!restaurantContext.isAuth) return null;
+  if (!restaurantContext?.isAuth) return null;
 
   let title;
   let description;
@@ -115,6 +176,7 @@ export default function GiftsPage(props) {
       <SplashScreenWebAppComponent
         loading={restaurantContext.dataLoading}
         storageKey="gm:splash:webapp:giftcards"
+        forceShow={showRefetchSplash}
       />
     </>
   );
