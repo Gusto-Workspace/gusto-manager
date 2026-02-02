@@ -693,7 +693,7 @@ export default function WebAppParametersReservationComponent(props) {
                       <div
                         key={String(r._id)}
                         className={[
-                          "rounded-2xl border p-3 flex items-start justify-between gap-3",
+                          "rounded-2xl border p-3 flex items-center justify-between gap-3",
                           active
                             ? "border-red/20 bg-red/10"
                             : "border-darkBlue/10 bg-white/60",

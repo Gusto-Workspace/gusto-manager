@@ -599,7 +599,7 @@ export default function ParametersReservationComponent(props) {
               {t("reservations:titles.main", "Réservations")}
             </span>
             <span className="text-darkBlue/30 select-none">/</span>
-            <span className="font-semibold">{subtitle}</span>
+            <span className="">{subtitle}</span>
           </h1>
         </div>
 
@@ -755,7 +755,7 @@ export default function ParametersReservationComponent(props) {
                       <div
                         key={String(r._id)}
                         className={[
-                          "rounded-2xl border p-3 flex items-start justify-between gap-3",
+                          "rounded-2xl border p-3 flex items-center justify-between gap-3",
                           active
                             ? "border-red/20 bg-red/10"
                             : "border-darkBlue/10 bg-white/60",
