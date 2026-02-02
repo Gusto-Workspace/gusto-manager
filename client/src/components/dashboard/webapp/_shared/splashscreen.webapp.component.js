@@ -4,16 +4,26 @@ import Image from "next/image";
 const FADE_MS = 550;
 const MIN_DURATION = 1250;
 
-export default function SplashScreenWebAppComponent(props) {
+export default function SplashScreenWebAppComponent({
+  loading,
+  storageKey,
+  forceShow = false,
+}) {
   const [visible, setVisible] = useState(() => {
     if (typeof window === "undefined") return true;
-    return sessionStorage.getItem(props.storageKey) !== "1";
+    return forceShow ? true : sessionStorage.getItem(storageKey) !== "1";
   });
 
   const [minTimeDone, setMinTimeDone] = useState(false);
   const [fadeOut, setFadeOut] = useState(false);
 
-  // ✅ lock scroll pendant le splash
+  useEffect(() => {
+    if (!forceShow) return;
+    setFadeOut(false);
+    setMinTimeDone(false);
+    setVisible(true);
+  }, [forceShow]);
+
   useEffect(() => {
     if (!visible) return;
     if (typeof document === "undefined") return;
@@ -42,30 +52,34 @@ export default function SplashScreenWebAppComponent(props) {
     };
   }, [visible]);
 
-  // durée minimum
+  // ✅ durée minimum
   useEffect(() => {
     if (!visible) return;
     const t = setTimeout(() => setMinTimeDone(true), MIN_DURATION);
     return () => clearTimeout(t);
   }, [visible]);
 
-  // fin: fade + unmount + sessionStorage
+  // ✅ fin: fade + unmount + (boot only) sessionStorage
   useEffect(() => {
     if (!visible) return;
     if (!minTimeDone) return;
-    if (props.loading) return;
+    if (loading) return;
 
     setFadeOut(true);
 
     const t = setTimeout(() => {
-      try {
-        sessionStorage.setItem(props.storageKey, "1");
-      } catch {}
+      // Boot: on persiste "déjà vu"
+      if (!forceShow) {
+        try {
+          sessionStorage.setItem(storageKey, "1");
+        } catch {}
+      }
+
       setVisible(false);
     }, FADE_MS);
 
     return () => clearTimeout(t);
-  }, [visible, minTimeDone, props.loading, props.storageKey]);
+  }, [visible, minTimeDone, loading, storageKey, forceShow]);
 
   if (!visible) return null;
 

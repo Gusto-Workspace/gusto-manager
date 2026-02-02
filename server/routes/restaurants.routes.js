@@ -110,6 +110,23 @@ async function updateArchivedStatus(restaurantId) {
   await restaurant.save();
 }
 
+// fonction pour supprimer les blocages horaires manuels des réservations
+async function purgeExpiredBlockedRanges(restaurantId) {
+  const restaurant = await RestaurantModel.findById(restaurantId);
+  if (!restaurant) return;
+
+  const now = new Date();
+  const ranges = restaurant?.reservations?.parameters?.blocked_ranges || [];
+
+  const filtered = ranges.filter((r) => new Date(r.endAt) > now);
+
+  if (filtered.length !== ranges.length) {
+    restaurant.reservations.parameters.blocked_ranges = filtered;
+    await restaurant.save();
+  }
+}
+
+
 // Trouve le profil de restaurant pour cet employé
 function findRestaurantProfile(employee, restaurantId) {
   if (!Array.isArray(employee.restaurantProfiles)) return null;
@@ -208,6 +225,8 @@ router.get("/owner/restaurants/:id", authenticateToken, async (req, res) => {
     // Met à jour les statuts des cartes expirées avant de récupérer les données
     await updateExpiredStatus(id);
     await updateArchivedStatus(id);
+    await purgeExpiredBlockedRanges(id);
+
 
     const restaurant = await RestaurantModel.findById(id)
       .populate("owner_id", "firstname")
@@ -233,6 +252,8 @@ router.get("/owner/restaurants/:id", authenticateToken, async (req, res) => {
 router.get("/restaurants/:id", async (req, res) => {
   try {
     const { id } = req.params;
+
+    await purgeExpiredBlockedRanges(id);
 
     const restaurant = await RestaurantModel.findById(id)
       .populate("owner_id", "firstname")
