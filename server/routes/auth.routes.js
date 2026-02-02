@@ -46,7 +46,7 @@ router.post("/user/login", async (req, res) => {
     // OWNER
     const owner = await OwnerModel.findOne({ email }).populate(
       "restaurants",
-      "name _id",
+      "name _id options",
     );
     if (owner) {
       const isMatch = await bcrypt.compare(password, owner.password);
@@ -82,7 +82,7 @@ router.post("/user/login", async (req, res) => {
     // Tous les restaurants où il est employé
     const restaurants = await RestaurantModel.find(
       { employees: employee._id },
-      "name _id",
+      "name _id options",
     ).lean();
 
     const token = jwt.sign(

@@ -1,15 +1,9 @@
 import { useContext, useMemo, useState } from "react";
-
-// I18N
 import { useTranslation } from "next-i18next";
-
-// CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
 
-// SVG
 import { ReservationSvg } from "@/components/_shared/_svgs/reservation.svg";
 
-// LUCIDE
 import {
   ChevronLeft,
   ChevronRight,
@@ -20,7 +14,6 @@ import {
   ChevronDown,
 } from "lucide-react";
 
-// COMPONENNTS
 import BottomSheetChangeRestaurantComponent from "../_shared/bottom-sheet-change-restaurant.webapp.component";
 
 export default function CalendarToolbarComponent(props) {
@@ -56,7 +49,7 @@ export default function CalendarToolbarComponent(props) {
     props.calendarSearchRef?.current?.focus?.();
   };
 
-  // ✅ Restos éligibles réservations
+  // ✅ Restos éligibles réservations (sert juste à savoir si on affiche le chevron / bottomsheet)
   const reservationsRestaurants = useMemo(() => {
     const list = restaurantContext?.restaurantsList || [];
     return list.filter((r) => r?.options?.reservations === true);
@@ -76,13 +69,14 @@ export default function CalendarToolbarComponent(props) {
 
   return (
     <div className="relative">
-      {/* ✅ Bottom sheet séparée */}
       <BottomSheetChangeRestaurantComponent
         open={sheetOpen}
         onClose={closeSheet}
         restaurantContext={restaurantContext}
         currentName={currentName}
         t={t}
+        optionKey="reservations"
+        moduleLabel={t("titles.main", "Réservations")}
       />
 
       {/* ================= Toolbar ================= */}
