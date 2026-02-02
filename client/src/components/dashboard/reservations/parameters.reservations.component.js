@@ -25,6 +25,7 @@ import {
   Clock,
   CalendarDays,
   Wand2,
+  Ban,
 } from "lucide-react";
 
 // COMPONENTS
@@ -33,9 +34,6 @@ import HoursRestaurantComponent from "../restaurant/hours.restaurant.component";
 // AXIOS
 import axios from "axios";
 
-/* -----------------------------------------
-   Tooltip (click only) for disabled toggles
------------------------------------------ */
 function DisabledToggleTooltip({ open, text }) {
   if (!open) return null;
   return (
@@ -43,6 +41,38 @@ function DisabledToggleTooltip({ open, text }) {
       {text}
     </span>
   );
+}
+
+// Helpers
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+function toLocalDatetimeInputValue(date) {
+  // "YYYY-MM-DDTHH:mm" (local)
+  const d = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(
+    d.getHours(),
+  )}:${pad2(d.getMinutes())}`;
+}
+function fmtShortFR(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleString("fr-FR", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+function isRangeActive(range) {
+  const now = new Date();
+  const start = new Date(range.startAt);
+  const end = new Date(range.endAt);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()))
+    return false;
+  return now >= start && now < end;
 }
 
 export default function ParametersReservationComponent(props) {
@@ -102,8 +132,7 @@ export default function ParametersReservationComponent(props) {
   };
 
   const openHint = (key) => {
-    // ferme tout puis ouvre celui demandé
-    setDisabledHint((prev) => ({
+    setDisabledHint(() => ({
       autoAccept: false,
       reservationDuration: false,
       [key]: true,
@@ -116,8 +145,7 @@ export default function ParametersReservationComponent(props) {
   };
 
   useEffect(() => {
-    const onDocClick = (e) => {
-      // si un tooltip est ouvert -> un clic ailleurs le ferme
+    const onDocClick = () => {
       if (disabledHint.autoAccept || disabledHint.reservationDuration) {
         closeHints();
       }
@@ -129,6 +157,116 @@ export default function ParametersReservationComponent(props) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [disabledHint.autoAccept, disabledHint.reservationDuration]);
+
+  // -----------------------------
+  // ✅ BLOCKED RANGES (pause)
+  // -----------------------------
+  const [blockedStart, setBlockedStart] = useState("");
+  const [blockedEnd, setBlockedEnd] = useState("");
+  const [blockedNote, setBlockedNote] = useState("");
+  const [blockedError, setBlockedError] = useState("");
+  const [blockedLoading, setBlockedLoading] = useState(false);
+
+  const blockedRanges = useMemo(() => {
+    const r =
+      restaurantContext?.restaurantData?.reservations?.parameters
+        ?.blocked_ranges || [];
+    return Array.isArray(r) ? r : [];
+  }, [
+    restaurantContext?.restaurantData?.reservations?.parameters?.blocked_ranges,
+  ]);
+
+  const hasActivePause = useMemo(() => {
+    return blockedRanges.some(isRangeActive);
+  }, [blockedRanges]);
+
+  // init: start/end par défaut (ex: maintenant -> +2h)
+  useEffect(() => {
+    const now = new Date();
+    const plus2h = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+    setBlockedStart((v) => v || toLocalDatetimeInputValue(now));
+    setBlockedEnd((v) => v || toLocalDatetimeInputValue(plus2h));
+  }, []);
+
+  function validateBlockedForm(startStr, endStr) {
+    setBlockedError("");
+    if (!startStr || !endStr) return "Veuillez renseigner un début et une fin.";
+    const start = new Date(startStr);
+    const end = new Date(endStr);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()))
+      return "Dates invalides.";
+    if (end <= start) return "La fin doit être après le début.";
+    return "";
+  }
+
+  async function addBlockedRange() {
+    const msg = validateBlockedForm(blockedStart, blockedEnd);
+    if (msg) {
+      setBlockedError(msg);
+      return;
+    }
+
+    try {
+      setBlockedLoading(true);
+      setBlockedError("");
+
+      const token = localStorage.getItem("token");
+      const restaurantId = props.restaurantData?._id;
+      if (!restaurantId) return;
+
+      const res = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/reservations/blocked-ranges`,
+        {
+          startAt: new Date(blockedStart).toISOString(),
+          endAt: new Date(blockedEnd).toISOString(),
+          note: (blockedNote || "").trim(),
+        },
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+
+      // met à jour le contexte
+      props.setRestaurantData(res.data.restaurant);
+
+      // reset note uniquement (on garde les dates)
+      setBlockedNote("");
+    } catch (e) {
+      console.error("Error adding blocked range:", e);
+      setBlockedError(
+        e?.response?.data?.message ||
+          "Erreur lors de l’ajout de la pause. Réessayez.",
+      );
+    } finally {
+      setBlockedLoading(false);
+    }
+  }
+
+  async function deleteBlockedRange(rangeId) {
+    if (!rangeId) return;
+
+    try {
+      setBlockedLoading(true);
+      setBlockedError("");
+
+      const token = localStorage.getItem("token");
+      const restaurantId = props.restaurantData?._id;
+      if (!restaurantId) return;
+
+      const res = await axios.delete(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/reservations/blocked-ranges/${rangeId}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+
+      props.setRestaurantData(res.data.restaurant);
+    } catch (e) {
+      console.error("Error deleting blocked range:", e);
+      setBlockedError(
+        e?.response?.data?.message ||
+          "Erreur lors de la suppression. Réessayez.",
+      );
+    } finally {
+      setBlockedLoading(false);
+    }
+  }
 
   // Init depuis le contexte
   useEffect(() => {
@@ -331,7 +469,7 @@ export default function ParametersReservationComponent(props) {
     const formData = {
       same_hours_as_restaurant: data.same_hours_as_restaurant,
       auto_accept: data.auto_accept,
-      interval: data.interval,
+      interval: Number(data.interval),
       reservation_duration: data.reservation_duration,
       deletion_duration: data.deletion_duration,
       reservation_hours: data.same_hours_as_restaurant
@@ -356,11 +494,7 @@ export default function ParametersReservationComponent(props) {
       const response = await axios.put(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${props.restaurantData._id}/reservations/parameters`,
         { parameters: formData },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
+        { headers: { Authorization: `Bearer ${token}` } },
       );
 
       props.setRestaurantData(response.data.restaurant);
@@ -480,9 +614,198 @@ export default function ParametersReservationComponent(props) {
       </div>
 
       {/* =========================
-          ✅ FORM (refonte UX mobile-first)
+          ✅ FORM
           ========================= */}
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+        {/* -----------------------------------------
+            ✅ Mise en pause (blocked ranges)
+           ----------------------------------------- */}
+        <div className={card}>
+          <div className={cardInner}>
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className={sectionTitle}>
+                  <Ban className="size-4 shrink-0 opacity-60" />
+                  {t(
+                    "reservations:titles.pause",
+                    "Mise en pause des réservations",
+                  )}
+                </p>
+                <p className={hint}>
+                  {t(
+                    "reservations:messages.pauseHelp",
+                    "Ajoute des plages où le site ne peut plus prendre temporairement de réservations.",
+                  )}
+                </p>
+              </div>
+
+              {/* Badge état */}
+              <span
+                className={[
+                  "shrink-0 inline-flex items-center gap-2 rounded-2xl border px-3 py-2 text-xs",
+                  hasActivePause
+                    ? "border-red/20 bg-red/10 text-red"
+                    : "border-darkBlue/10 bg-white/60 text-darkBlue/60",
+                ].join(" ")}
+              >
+                <span
+                  className={[
+                    "size-2 rounded-full",
+                    hasActivePause ? "bg-red" : "bg-darkBlue/25",
+                  ].join(" ")}
+                />
+                {hasActivePause
+                  ? t("reservations:labels.pauseActive", "Pause active")
+                  : t("reservations:labels.pauseInactive", "Aucune pause")}
+              </span>
+            </div>
+
+            <div className={divider} />
+
+            {/* Form add */}
+            <div className="grid grid-cols-1 midTablet:grid-cols-3 gap-3">
+              <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3">
+                <p className="text-sm font-semibold text-darkBlue">
+                  {t("reservations:labels.pauseStart", "Début")}
+                </p>
+                <input
+                  type="datetime-local"
+                  value={blockedStart}
+                  onChange={(e) => setBlockedStart(e.target.value)}
+                  className={inputBase}
+                />
+              </div>
+
+              <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3">
+                <p className="text-sm font-semibold text-darkBlue">
+                  {t("reservations:labels.pauseEnd", "Fin")}
+                </p>
+                <input
+                  type="datetime-local"
+                  value={blockedEnd}
+                  onChange={(e) => setBlockedEnd(e.target.value)}
+                  className={inputBase}
+                />
+              </div>
+
+              <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3">
+                <p className="text-sm font-semibold text-darkBlue">
+                  {t("reservations:labels.pauseNote", "Note (optionnel)")}
+                </p>
+                <input
+                  type="text"
+                  value={blockedNote}
+                  onChange={(e) => setBlockedNote(e.target.value)}
+                  placeholder={t(
+                    "reservations:placeholders.pauseNote",
+                    "Ex: service complet, privatisation…",
+                  )}
+                  className={inputBase}
+                />
+              </div>
+            </div>
+
+            {blockedError && (
+              <p className="mt-3 text-xs text-red">{blockedError}</p>
+            )}
+
+            <div className="mt-3 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={addBlockedRange}
+                disabled={blockedLoading}
+                className={[
+                  "inline-flex items-center justify-center gap-2 rounded-2xl px-5 h-11",
+                  "text-sm font-semibold text-white",
+                  "bg-blue hover:bg-blue/90 active:scale-[0.98] transition",
+                  blockedLoading ? "opacity-50 cursor-not-allowed" : "",
+                ].join(" ")}
+              >
+                {blockedLoading ? (
+                  <>
+                    <Loader2 className="size-4 shrink-0 animate-spin" />
+                    {t("reservations:buttons.loading", "En cours…")}
+                  </>
+                ) : (
+                  <>
+                    <Plus className="size-4 shrink-0" />
+                    {t("reservations:buttons.addPause", "Ajouter une pause")}
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* List */}
+            <div className={divider} />
+            <div className="flex flex-col gap-3">
+              {blockedRanges.length === 0 ? (
+                <p className="text-sm text-darkBlue/55">
+                  {t(
+                    "reservations:messages.noPause",
+                    "Aucune plage de pause configurée.",
+                  )}
+                </p>
+              ) : (
+                blockedRanges
+                  .slice()
+                  .sort((a, b) => new Date(a.startAt) - new Date(b.startAt))
+                  .map((r) => {
+                    const active = isRangeActive(r);
+                    return (
+                      <div
+                        key={String(r._id)}
+                        className={[
+                          "rounded-2xl border p-3 flex items-start justify-between gap-3",
+                          active
+                            ? "border-red/20 bg-red/10"
+                            : "border-darkBlue/10 bg-white/60",
+                        ].join(" ")}
+                      >
+                        <div className="min-w-0">
+                          <p
+                            className={[
+                              "text-sm font-semibold",
+                              active ? "text-red" : "text-darkBlue",
+                            ].join(" ")}
+                          >
+                            {fmtShortFR(r.startAt)} → {fmtShortFR(r.endAt)}
+                          </p>
+                          {r.note ? (
+                            <p className="mt-1 text-xs text-darkBlue/60 break-words">
+                              {r.note}
+                            </p>
+                          ) : null}
+                          {active ? (
+                            <p className="mt-1 text-xs text-red/80">
+                              {t(
+                                "reservations:labels.pauseNow",
+                                "En cours (le site ne peut pas accepter de réservations sur ce créneau).",
+                              )}
+                            </p>
+                          ) : null}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => deleteBlockedRange(r._id)}
+                          disabled={blockedLoading}
+                          className="min-w-[44px] flex items-center justify-center size-11 rounded-2xl bg-red text-white shadow-sm hover:opacity-75 active:scale-[0.98] transition disabled:opacity-50 disabled:cursor-not-allowed"
+                          aria-label={t(
+                            "reservations:buttons.delete",
+                            "Supprimer",
+                          )}
+                          title={t("reservations:buttons.delete", "Supprimer")}
+                        >
+                          <Trash2 className="size-4 shrink-0" />
+                        </button>
+                      </div>
+                    );
+                  })
+              )}
+            </div>
+          </div>
+        </div>
+
         {/* --- Bloc: Heures --- */}
         <div className={card}>
           <div className={cardInner}>
@@ -525,7 +848,7 @@ export default function ParametersReservationComponent(props) {
                   <span
                     className={[
                       toggleDot,
-                      same_hours_as_restaurant ? toggleDotOff : toggleDotOn,
+                      same_hours_as_restaurant ? toggleDotOn : toggleDotOff,
                     ].join(" ")}
                   />
                 </span>
@@ -769,7 +1092,6 @@ export default function ParametersReservationComponent(props) {
                   </span>
                 </div>
 
-                {/* ✅ line: input + unit */}
                 <div className="mt-3 flex items-center gap-2">
                   <input
                     type="number"

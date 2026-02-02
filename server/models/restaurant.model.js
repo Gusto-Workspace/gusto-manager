@@ -19,7 +19,18 @@ const openingHoursSchema = new mongoose.Schema(
       },
     ],
   },
-  { _id: false }
+  { _id: false },
+);
+
+// Sous-schéma pour les plages de blocage
+const blockedRangeSchema = new mongoose.Schema(
+  {
+    startAt: { type: Date, required: true },
+    endAt: { type: Date, required: true },
+    note: { type: String, default: "" },
+    createdAt: { type: Date, default: Date.now },
+  },
+  { _id: true },
 );
 
 // Sous-schéma pour les paramètres de réservation
@@ -39,6 +50,7 @@ const reservationParametersSchema = new mongoose.Schema({
   reservation_duration_minutes: { type: Number, min: 1 },
   deletion_duration_minutes: { type: Number, min: 1, default: 1440 },
   reservation_hours: { type: [openingHoursSchema], default: [] },
+  blocked_ranges: { type: [blockedRangeSchema], default: [] },
 });
 
 // Sous-schéma pour les réservations
@@ -47,7 +59,7 @@ const reservationsSchema = new mongoose.Schema(
     parameters: { type: reservationParametersSchema, default: () => ({}) },
     list: [{ type: mongoose.Schema.Types.ObjectId, ref: "Reservation" }],
   },
-  { _id: false }
+  { _id: false },
 );
 
 // Sous-schéma pour les options
@@ -64,7 +76,7 @@ const optionsSchema = new mongoose.Schema(
     employees: { type: Boolean, default: false },
     health_control_plan: { type: Boolean, default: false },
   },
-  { _id: false }
+  { _id: false },
 );
 
 // Sous-schéma pour les plats
@@ -195,7 +207,7 @@ const socialMediaSchema = new mongoose.Schema(
     linkedIn: { type: String, default: null },
     youtube: { type: String, default: null },
   },
-  { _id: false }
+  { _id: false },
 );
 
 // Sous-schéma pour les stats de cartes cadeaux
@@ -204,7 +216,7 @@ const giftCardSoldSchema = new mongoose.Schema(
     totalSold: { type: Number, default: 0 },
     totalRefunded: { type: Number, default: 0 },
   },
-  { _id: false }
+  { _id: false },
 );
 
 // Schéma principal pour le restaurant

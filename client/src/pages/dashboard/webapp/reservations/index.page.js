@@ -10,31 +10,12 @@ import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import { GlobalContext } from "@/contexts/global.context";
 
 // COMPONENTS
-import NavComponent from "@/components/_shared/nav/nav.component";
-import SettingsComponent from "@/components/_shared/settings/settings.component";
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
 import ListReservationsComponent from "@/components/dashboard/webapp/reservations/list.reservations.component";
 import SplashScreenWebAppComponent from "@/components/dashboard/webapp/_shared/splashscreen.webapp.component";
 import NotGoodDeviceWebAppComponent from "@/components/dashboard/webapp/_shared/not-good-device.webapp.component";
 
 export default function WepAppReservationsPage(props) {
-  const router = useRouter();
-  const { restaurantContext } = useContext(GlobalContext);
-
-  useEffect(() => {
-    if (!router.isReady) return;
-
-    const token = localStorage.getItem("token");
-    if (!token) {
-      const returnTo = router.asPath;
-      router.replace(
-        `/dashboard/login?redirect=${encodeURIComponent(returnTo)}`,
-      );
-    }
-  }, [router.isReady, router.asPath]);
-
-  if (!restaurantContext.isAuth) return null;  
-
   let title;
   let description;
 
@@ -47,6 +28,86 @@ export default function WepAppReservationsPage(props) {
       title = "Gusto Manager";
       description = "";
   }
+
+  const router = useRouter();
+  const { restaurantContext } = useContext(GlobalContext);
+
+  const [showRefetchSplash, setShowRefetchSplash] = useState(false);
+
+  // ✅ Protection token (redirect login)
+  useEffect(() => {
+    if (!router.isReady) return;
+
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("token") : null;
+
+    if (!token) {
+      const returnTo = router.asPath;
+      router.replace(
+        `/dashboard/login?redirect=${encodeURIComponent(returnTo)}`,
+      );
+    }
+  }, [router.isReady, router.asPath]);
+
+  // ✅ Refetch quand on revient au 1er plan après > 1 min
+  useEffect(() => {
+    if (!restaurantContext?.isAuth) return;
+    if (typeof window === "undefined") return;
+
+    const KEY = "gm:lastActive:webapp";
+    const THRESHOLD_MS = 60 * 1000;
+
+    const mark = () => {
+      try {
+        localStorage.setItem(KEY, String(Date.now()));
+      } catch {}
+    };
+
+    const shouldRefetch = () => {
+      try {
+        const prev = Number(localStorage.getItem(KEY) || 0);
+        return Date.now() - prev > THRESHOLD_MS;
+      } catch {
+        return true;
+      }
+    };
+
+    mark();
+
+    const onVis = () => {
+      if (document.visibilityState === "hidden") {
+        mark();
+        return;
+      }
+
+      if (document.visibilityState === "visible" && shouldRefetch()) {
+        setShowRefetchSplash(true);
+        restaurantContext.refetchCurrentRestaurant?.();
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("pagehide", mark);
+    window.addEventListener("blur", mark);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("pagehide", mark);
+      window.removeEventListener("blur", mark);
+    };
+  }, [restaurantContext?.isAuth]);
+
+  // ✅ Quand le loading finit, on coupe le forceShow (avec anti-clignotement)
+  useEffect(() => {
+    if (!showRefetchSplash) return;
+
+    if (!restaurantContext?.dataLoading) {
+      const t = setTimeout(() => setShowRefetchSplash(false), 350);
+      return () => clearTimeout(t);
+    }
+  }, [restaurantContext?.dataLoading, showRefetchSplash]);
+
+  if (!restaurantContext?.isAuth) return null;
 
   const restaurant = restaurantContext.restaurantData;
   const restaurantOptions = restaurant?.options || {};
@@ -74,7 +135,7 @@ export default function WepAppReservationsPage(props) {
       <Head>
         <title>{title}</title>
 
-        {/* Empeche le zoom / dezoom */}
+        {/* Empêche zoom iOS */}
         <meta
           name="viewport"
           content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
@@ -123,6 +184,7 @@ export default function WepAppReservationsPage(props) {
       <SplashScreenWebAppComponent
         loading={restaurantContext.dataLoading}
         storageKey="gm:splash:webapp:reservations"
+        forceShow={showRefetchSplash}
       />
     </>
   );

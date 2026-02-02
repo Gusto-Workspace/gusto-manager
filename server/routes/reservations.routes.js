@@ -14,7 +14,31 @@ const ReservationModel = require("../models/reservation.model");
 // SSE BUS
 const { broadcastToRestaurant } = require("../services/sse-bus.service");
 
-// UPDATE RESTAURANT RESERVATIONS PARAMETERS
+/* ---------------------------------------------------------
+   Helpers: blocked ranges (pause réservations)
+--------------------------------------------------------- */
+
+function buildReservationDateTime(reservationDate, reservationTime) {
+  const d = new Date(reservationDate);
+  const [hh = "00", mm = "00"] = String(reservationTime || "00:00").split(":");
+  d.setHours(parseInt(hh, 10) || 0, parseInt(mm, 10) || 0, 0, 0);
+  return d;
+}
+
+function isDateTimeBlocked(parameters, candidateDT) {
+  const ranges = parameters?.blocked_ranges || [];
+  const t = candidateDT.getTime();
+
+  return ranges.some((r) => {
+    const start = new Date(r.startAt).getTime();
+    const end = new Date(r.endAt).getTime();
+    return t >= start && t < end; // [start, end)
+  });
+}
+
+/* ---------------------------------------------------------
+   UPDATE RESTAURANT RESERVATIONS PARAMETERS
+--------------------------------------------------------- */
 router.put(
   "/restaurants/:id/reservations/parameters",
   authenticateToken,
@@ -23,25 +47,33 @@ router.put(
     const { parameters } = req.body;
 
     try {
-      // Validation basique des paramètres
-      if (typeof parameters !== "object") {
+      if (!parameters || typeof parameters !== "object") {
         return res.status(400).json({ message: "Invalid parameters format" });
       }
 
-      // Récupérer le document du restaurant
       const restaurant = await RestaurantModel.findById(restaurantId);
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found" });
       }
 
-      // Affecter les paramètres (les sous-documents de "tables" seront automatiquement castés
-      // en instances de tableSubSchema et recevront leur _id si non fourni)
-      restaurant.reservations.parameters = parameters;
+      restaurant.reservations = restaurant.reservations || {};
+      restaurant.reservations.parameters =
+        restaurant.reservations.parameters || {};
 
-      // Sauvegarder le document pour que Mongoose applique les defaults et le casting
+      const existing = restaurant.reservations.parameters?.toObject?.()
+        ? restaurant.reservations.parameters.toObject()
+        : restaurant.reservations.parameters || {};
+
+      restaurant.reservations.parameters = {
+        ...existing,
+        ...parameters,
+        blocked_ranges: Array.isArray(parameters.blocked_ranges)
+          ? parameters.blocked_ranges
+          : existing.blocked_ranges || [],
+      };
+
       await restaurant.save();
 
-      // (Optionnel) Recharger et peupler le document pour la réponse
       const updatedRestaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
         .populate("menus")
@@ -59,10 +91,124 @@ router.put(
       console.error("Error updating reservation parameters:", error);
       res.status(500).json({ message: "Internal server error" });
     }
-  }
+  },
 );
 
-// CREATE A NEW RESERVATION
+/* ---------------------------------------------------------
+   BLOCKED RANGES: ADD
+   POST /restaurants/:id/reservations/blocked-ranges
+--------------------------------------------------------- */
+router.post(
+  "/restaurants/:id/reservations/blocked-ranges",
+  authenticateToken,
+  async (req, res) => {
+    const restaurantId = req.params.id;
+    const { startAt, endAt, note } = req.body;
+
+    try {
+      if (!startAt || !endAt) {
+        return res
+          .status(400)
+          .json({ message: "startAt and endAt are required" });
+      }
+
+      const start = new Date(startAt);
+      const end = new Date(endAt);
+
+      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+        return res.status(400).json({ message: "Invalid dates" });
+      }
+
+      if (end <= start) {
+        return res.status(400).json({ message: "endAt must be after startAt" });
+      }
+
+      const restaurant = await RestaurantModel.findById(restaurantId);
+      if (!restaurant) {
+        return res.status(404).json({ message: "Restaurant not found" });
+      }
+
+      // Optionnel: purge rapide avant ajout (évite d'accumuler)
+      const now = new Date();
+      const ranges = restaurant?.reservations?.parameters?.blocked_ranges || [];
+      restaurant.reservations.parameters.blocked_ranges = ranges.filter(
+        (r) => new Date(r.endAt) > now,
+      );
+
+      restaurant.reservations.parameters.blocked_ranges.push({
+        startAt: start,
+        endAt: end,
+        note: (note || "").toString(),
+      });
+
+      await restaurant.save();
+
+      const updatedRestaurant = await RestaurantModel.findById(restaurantId)
+        .populate("owner_id", "firstname")
+        .populate("menus")
+        .populate("employees")
+        .populate({
+          path: "reservations.list",
+          populate: { path: "table" },
+        });
+
+      return res.status(201).json({
+        message: "Blocked range added",
+        restaurant: updatedRestaurant,
+      });
+    } catch (e) {
+      console.error("Error adding blocked range:", e);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  },
+);
+
+/* ---------------------------------------------------------
+   BLOCKED RANGES: DELETE
+   DELETE /restaurants/:id/reservations/blocked-ranges/:rangeId
+--------------------------------------------------------- */
+router.delete(
+  "/restaurants/:id/reservations/blocked-ranges/:rangeId",
+  authenticateToken,
+  async (req, res) => {
+    const { id: restaurantId, rangeId } = req.params;
+
+    try {
+      const restaurant = await RestaurantModel.findById(restaurantId);
+      if (!restaurant) {
+        return res.status(404).json({ message: "Restaurant not found" });
+      }
+
+      const ranges = restaurant?.reservations?.parameters?.blocked_ranges || [];
+      restaurant.reservations.parameters.blocked_ranges = ranges.filter(
+        (r) => String(r._id) !== String(rangeId),
+      );
+
+      await restaurant.save();
+
+      const updatedRestaurant = await RestaurantModel.findById(restaurantId)
+        .populate("owner_id", "firstname")
+        .populate("menus")
+        .populate("employees")
+        .populate({
+          path: "reservations.list",
+          populate: { path: "table" },
+        });
+
+      return res.status(200).json({
+        message: "Blocked range removed",
+        restaurant: updatedRestaurant,
+      });
+    } catch (e) {
+      console.error("Error deleting blocked range:", e);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  },
+);
+
+/* ---------------------------------------------------------
+   CREATE A NEW RESERVATION (site public)
+--------------------------------------------------------- */
 router.post("/restaurants/:id/reservations", async (req, res) => {
   const restaurantId = req.params.id;
   const reservationData = req.body;
@@ -83,45 +229,51 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
 
     const parameters = restaurant.reservations.parameters;
 
+    // ✅ CHECK: créneau bloqué (pause)
+    const candidateDT = buildReservationDateTime(
+      reservationData.reservationDate,
+      reservationData.reservationTime,
+    );
+
+    if (isDateTimeBlocked(parameters, candidateDT)) {
+      return res.status(409).json({
+        message:
+          "Les réservations sont temporairement indisponibles sur ce créneau.",
+      });
+    }
+
     if (parameters.manage_disponibilities) {
-      // Détermination du nombre de personnes et de la taille de table requise.
       const numGuests = Number(reservationData.numberOfGuests);
       const requiredTableSize = numGuests % 2 === 0 ? numGuests : numGuests + 1;
 
-      // Filtrer les tables éligibles (telles dont le nombre de places correspond)
       const eligibleTables = parameters.tables.filter(
-        (table) => Number(table.seats) === requiredTableSize
+        (table) => Number(table.seats) === requiredTableSize,
       );
 
-      // Format de la date pour la comparaison (ex : "2025-02-10")
       const formattedDate = format(
         new Date(reservationData.reservationDate),
-        "yyyy-MM-dd"
+        "yyyy-MM-dd",
       );
 
-      // Calcul de l'intervalle candidat en minutes depuis minuit.
       const candidateTime = reservationData.reservationTime;
       const [candidateHour, candidateMinute] = candidateTime
         .split(":")
         .map(Number);
       const candidateStart = candidateHour * 60 + candidateMinute;
 
-      // Si la gestion de la durée est activée, définir la durée de réservation.
       const duration = parameters.reservation_duration
         ? Number(parameters.reservation_duration_minutes)
         : 0;
       const candidateEnd = candidateStart + duration;
 
       if (reservationData.table) {
-        // --- Le restaurateur a sélectionné une table via le select.
-        // Vérifier que la table fournie figure parmi les tables éligibles.
         const providedTable = eligibleTables.find(
-          (table) => table._id.toString() === reservationData.table
+          (table) => table._id.toString() === reservationData.table,
         );
         if (!providedTable) {
           return res.status(400).json({ message: "Table invalide." });
         }
-        // Vérifier la disponibilité de la table sélectionnée pour le créneau demandé.
+
         const conflictingReservation = restaurant.reservations.list.find(
           (r) => {
             const rDate = new Date(r.reservationDate);
@@ -130,13 +282,14 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
             if (!["Confirmed", "Active", "Late"].includes(r.status))
               return false;
             if (!r.table) return false;
-            // Comparaison des tables
+
             if (r.table._id) {
               if (r.table._id.toString() !== providedTable._id.toString())
                 return false;
             } else {
               if (r.table.name !== providedTable.name) return false;
             }
+
             if (parameters.reservation_duration) {
               const [rHour, rMinute] = r.reservationTime.split(":").map(Number);
               const rStart = rHour * 60 + rMinute;
@@ -145,17 +298,17 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
             } else {
               return r.reservationTime === candidateTime;
             }
-          }
+          },
         );
+
         if (conflictingReservation) {
           return res.status(409).json({
             message: "La table sélectionnée n'est plus disponible.",
           });
         }
-        // On utilise la table sélectionnée.
+
         reservationData.table = providedTable;
       } else {
-        // --- Affectation automatique : aucune table n'a été fournie.
         const conflictingReservations = restaurant.reservations.list.filter(
           (r) => {
             const rDate = new Date(r.reservationDate);
@@ -165,6 +318,7 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
               return false;
             if (!r.table || Number(r.table.seats) !== requiredTableSize)
               return false;
+
             if (parameters.reservation_duration) {
               const [rHour, rMinute] = r.reservationTime.split(":").map(Number);
               const rStart = rHour * 60 + rMinute;
@@ -173,7 +327,7 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
             } else {
               return r.reservationTime === candidateTime;
             }
-          }
+          },
         );
 
         if (conflictingReservations.length >= eligibleTables.length) {
@@ -182,14 +336,12 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
           });
         }
 
-        // Récupérer les identifiants des tables déjà réservées pour ce créneau.
         const reservedTableIds = conflictingReservations
           .map((r) => (r.table ? r.table._id.toString() : null))
           .filter(Boolean);
 
-        // Sélectionner une table parmi les éligibles qui n'est pas déjà réservée.
         const assignedTable = eligibleTables.find(
-          (table) => !reservedTableIds.includes(table._id.toString())
+          (table) => !reservedTableIds.includes(table._id.toString()),
         );
 
         if (assignedTable) {
@@ -201,18 +353,13 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
         }
       }
     } else {
-      // Si manage_disponibilities est false, le restaurateur saisit manuellement le nom de la table.
-      // Ici, le champ n'est pas obligatoire.
       if (reservationData.table) {
-        // S'il y a une valeur, la convertir en objet.
         reservationData.table = { name: reservationData.table };
       } else {
-        // Sinon, on autorise le champ à rester vide (null)
         reservationData.table = null;
       }
     }
 
-    // Créer la réservation.
     const isManual = Boolean(reservationData?.manual === true);
 
     const newReservation = new ReservationModel({
@@ -224,7 +371,7 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
     const savedReservation = await newReservation.save();
 
     const populatedReservation = await ReservationModel.findById(
-      savedReservation._id
+      savedReservation._id,
     ).populate("table");
 
     // 🔔 push temps réel
@@ -234,7 +381,6 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
       reservation: populatedReservation,
     });
 
-    // Ajouter l'ID de la réservation à la liste du restaurant.
     restaurant.reservations.list.push(savedReservation._id);
     await restaurant.save();
 
@@ -254,7 +400,9 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
   }
 });
 
-// UPDATE RESERVATION STATUS
+/* ---------------------------------------------------------
+   UPDATE RESERVATION STATUS
+--------------------------------------------------------- */
 router.put(
   "/restaurants/:id/reservations/:reservationId/status",
   authenticateToken,
@@ -264,7 +412,6 @@ router.put(
     const { status } = req.body;
 
     try {
-      // Définition de l'objet de mise à jour
       const updateData = {
         status,
         finishedAt: status === "Finished" ? new Date() : null,
@@ -273,7 +420,7 @@ router.put(
       const updatedReservation = await ReservationModel.findByIdAndUpdate(
         reservationId,
         updateData,
-        { new: true }
+        { new: true },
       ).populate("table");
 
       if (!updatedReservation) {
@@ -299,23 +446,23 @@ router.put(
         return res.status(404).json({ message: "Restaurant not found" });
       }
 
-      res.status(200).json({
-        restaurant,
-      });
+      res.status(200).json({ restaurant });
     } catch (error) {
       console.error("Error updating reservation status:", error);
       res.status(500).json({ message: "Internal server error" });
     }
-  }
+  },
 );
 
-// GET A SINGLE RESERVATION
+/* ---------------------------------------------------------
+   GET A SINGLE RESERVATION
+--------------------------------------------------------- */
 router.get("/reservations/:reservationId", async (req, res) => {
   const { reservationId } = req.params;
 
   try {
     const reservation =
-      await ReservationModel.findById(reservationId).populate("table"); // Populate si vous avez des références comme "table"
+      await ReservationModel.findById(reservationId).populate("table");
 
     if (!reservation) {
       return res.status(404).json({ message: "Reservation not found" });
@@ -328,7 +475,9 @@ router.get("/reservations/:reservationId", async (req, res) => {
   }
 });
 
-// UPDATE RESERVATION DETAILS
+/* ---------------------------------------------------------
+   UPDATE RESERVATION DETAILS
+--------------------------------------------------------- */
 router.put(
   "/restaurants/:id/reservations/:reservationId",
   authenticateToken,
@@ -343,16 +492,15 @@ router.put(
         return res.status(404).json({ message: "Reservation not found" });
       }
 
-      const gracePeriod = 5 * 60000; // 5 minutes (même logique que ton front)
+      const gracePeriod = 5 * 60000;
 
-      // On ne fait l'auto-update que si date/heure est modifiée ET qu'on ne force pas déjà status
       const touchesDateTime =
         Object.prototype.hasOwnProperty.call(updateData, "reservationDate") ||
         Object.prototype.hasOwnProperty.call(updateData, "reservationTime");
 
       const statusExplicit = Object.prototype.hasOwnProperty.call(
         updateData,
-        "status"
+        "status",
       );
 
       if (touchesDateTime && !statusExplicit) {
@@ -363,7 +511,7 @@ router.put(
         const timeStr = String(
           updateData.reservationTime ??
             existingReservation.reservationTime ??
-            "00:00"
+            "00:00",
         );
 
         const [hh = "00", mm = "00"] = timeStr.split(":");
@@ -372,7 +520,6 @@ router.put(
         const reservationWithGrace = new Date(baseDate.getTime() + gracePeriod);
         const now = new Date();
 
-        // Late -> Confirmed si on repousse dans le futur
         if (
           existingReservation.status === "Late" &&
           now < reservationWithGrace
@@ -381,7 +528,6 @@ router.put(
           updateData.finishedAt = null;
         }
 
-        // Confirmed -> Late si on déplace dans le passé (au-delà de la marge)
         if (
           existingReservation.status === "Confirmed" &&
           now >= reservationWithGrace
@@ -391,36 +537,28 @@ router.put(
         }
       }
 
-      // Si le champ table est une chaîne, on la transforme en objet
-      // selon la configuration de manage_disponibilities.
-      // On ajoute ici une vérification pour le cas d'une chaîne vide.
       if (typeof updateData.table === "string") {
         if (updateData.table.trim() === "") {
-          // Si la chaîne est vide, on assigne null.
           updateData.table = null;
         } else {
           const restaurantDoc = await RestaurantModel.findById(restaurantId);
           if (restaurantDoc?.reservations?.parameters?.manage_disponibilities) {
-            // Si l'option est true, on cherche la table dans les paramètres (par _id)
             const tableDef = restaurantDoc.reservations.parameters.tables.find(
-              (t) => t._id.toString() === updateData.table
+              (t) => t._id.toString() === updateData.table,
             );
             if (tableDef) {
               updateData.table = tableDef;
             }
           } else {
-            // Si manage_disponibilities est false, on attend que l'input contienne le nom de la table
-            // On transforme alors la chaîne en un objet avec le nom seulement
             updateData.table = { name: updateData.table };
           }
         }
       }
 
-      // Trouver et mettre à jour la réservation
       const updatedReservation = await ReservationModel.findByIdAndUpdate(
         reservationId,
         updateData,
-        { new: true, runValidators: true }
+        { new: true, runValidators: true },
       ).populate("table");
 
       if (!updatedReservation) {
@@ -433,7 +571,6 @@ router.put(
         reservation: updatedReservation,
       });
 
-      // Vérifier que le restaurant existe et récupérer ses données actualisées
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
         .populate("menus")
@@ -452,10 +589,12 @@ router.put(
       console.error("Error updating reservation:", error);
       res.status(500).json({ message: "Internal server error" });
     }
-  }
+  },
 );
 
-// DELETE A RESERVATION
+/* ---------------------------------------------------------
+   DELETE A RESERVATION
+--------------------------------------------------------- */
 router.delete(
   "/restaurants/:id/reservations/:reservationId",
   authenticateToken,
@@ -472,9 +611,8 @@ router.delete(
         return res.status(404).json({ message: "Restaurant not found" });
       }
 
-      // Vérifier que la réservation existe dans le tableau
       const reservationExists = restaurant.reservations.list.some(
-        (resv) => resv._id.toString() === reservationId
+        (resv) => resv._id.toString() === reservationId,
       );
 
       if (!reservationExists) {
@@ -483,14 +621,12 @@ router.delete(
           .json({ message: "Reservation not found in this restaurant" });
       }
 
-      // Supprimer la réservation de la collection Reservations
       await ReservationModel.findByIdAndDelete(reservationId);
 
-      // Retirer l'ID de la réservation du tableau de réservations du restaurant de façon atomique
       await RestaurantModel.findByIdAndUpdate(
         restaurantId,
         { $pull: { "reservations.list": reservationId } },
-        { new: true }
+        { new: true },
       );
 
       broadcastToRestaurant(restaurantId, {
@@ -516,10 +652,12 @@ router.delete(
       console.error("Error deleting reservation:", error);
       res.status(500).json({ message: "Internal server error" });
     }
-  }
+  },
 );
 
-// Récupérer la liste des réservations d'un restaurant
+/* ---------------------------------------------------------
+   GET RESERVATIONS LIST
+--------------------------------------------------------- */
 router.get(
   "/restaurants/:id/reservations",
   authenticateToken,
@@ -541,7 +679,7 @@ router.get(
       console.error("Error fetching reservations:", error);
       res.status(500).json({ message: "Internal server error" });
     }
-  }
+  },
 );
 
 module.exports = router;

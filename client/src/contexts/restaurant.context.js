@@ -603,6 +603,20 @@ export default function RestaurantContext() {
     setCloseEditing(false);
   }
 
+  function refetchCurrentRestaurant() {
+    const token = localStorage.getItem("token");
+    const rid = restaurantData?._id;
+
+    if (!token || !rid) return;
+
+    // Si pas auth (ou login), on évite
+    const path = typeof window !== "undefined" ? window.location.pathname : "";
+    if (!path.startsWith("/dashboard")) return;
+    if (path.startsWith("/dashboard/login")) return;
+
+    fetchRestaurantData(token, rid);
+  }
+
   // Fonction pour mettre à jour le champ lastNotificationCheck dans la BDD
   function updateLastNotificationCheck() {
     if (userConnected?.role !== "owner") return;
@@ -1034,5 +1048,6 @@ export default function RestaurantContext() {
     resetNewLeaveRequestsCount,
     newGiftPurchasesCount,
     resetNewGiftPurchasesCount,
+    refetchCurrentRestaurant,
   };
 }
