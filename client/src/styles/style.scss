@@ -52,29 +52,36 @@ body {
   scrollbar-width: none;
 }
 
-/* Taille uniforme pour tous les champs date-like */
-/* ✅ Force les inputs date-like à ne jamais dépasser leur parent */
 input[type="datetime-local"],
 input[type="date"],
-input[type="time"],
 input[type="month"] {
   width: 100%;
   max-width: 100%;
-  min-width: 0;          /* important */
+  min-width: 0;
   box-sizing: border-box;
 
-  /* Safari iOS: enlève certaines contraintes natives */
   -webkit-appearance: none;
   appearance: none;
 
-  /* Certaines versions utilisent inline-size/min-inline-size */
   inline-size: 100%;
   max-inline-size: 100%;
   min-inline-size: 0;
 }
 
+input[type="time"] {
+  width: auto;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 
-/* WebKit (Chrome/Safari) : aligne la valeur à l'intérieur sans rogner */
+  -webkit-appearance: auto;
+  appearance: auto;
+
+  inline-size: auto;
+  max-inline-size: 100%;
+  min-inline-size: 0;
+}
+
 input[type="time"]::-webkit-datetime-edit,
 input[type="datetime-local"]::-webkit-datetime-edit,
 input[type="month"]::-webkit-datetime-edit {
@@ -82,7 +89,6 @@ input[type="month"]::-webkit-datetime-edit {
   line-height: 44px;
 }
 
-/* Garde l’icône calendrier centrée */
 input[type="date"]::-webkit-calendar-picker-indicator {
   margin: 0;
 }

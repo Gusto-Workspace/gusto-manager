@@ -1,9 +1,9 @@
-import { useState, useMemo, useContext, useEffect } from "react";
+import { useState, useMemo, useContext, useEffect, useRef } from "react";
 import { useRouter } from "next/router";
 
 import { Calendar, dateFnsLocalizer, Views } from "react-big-calendar";
 import withDragAndDrop from "react-big-calendar/lib/addons/dragAndDrop";
-import { format, parse, startOfWeek, getDay } from "date-fns";
+import { format, parse, startOfWeek, addDays, getDay } from "date-fns";
 import frLocale from "date-fns/locale/fr";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import "react-big-calendar/lib/addons/dragAndDrop/styles.css";
@@ -13,6 +13,15 @@ import { useTranslation } from "next-i18next";
 import { EmployeesSvg } from "../../_shared/_svgs/_index";
 import CardEmployeesComponent from "./card.employees.component";
 import axios from "axios";
+
+import {
+  Search,
+  X,
+  ChevronLeft,
+  ChevronRight,
+  CalendarDays,
+  Plus,
+} from "lucide-react";
 
 const DnDCalendar = withDragAndDrop(Calendar);
 
@@ -31,11 +40,7 @@ const normalizeTitle = (str) =>
 // Force un libellé "propre" pour l'affichage
 const canonicalizeShiftTitle = (title) => {
   const n = normalizeTitle(title);
-
-  // Si l'utilisateur tape une variante de congés => on affiche/enregistre "Congés"
   if (n === "conges" || n === "conge") return "Congés";
-
-  // Sinon on garde tel quel (mais trim)
   return (title || "").trim();
 };
 
@@ -47,15 +52,9 @@ export default function PlanningEmployeesComponent() {
   // 🔥 FIX iOS : désactive le hack global uniquement sur cette page
   useEffect(() => {
     if (typeof document === "undefined") return;
-
     const html = document.documentElement;
-
-    // On marque la page comme "pas de hack iOS"
     html.classList.add("gm-disable-ios-scroll-hack");
-
-    return () => {
-      html.classList.remove("gm-disable-ios-scroll-hack");
-    };
+    return () => html.classList.remove("gm-disable-ios-scroll-hack");
   }, []);
 
   const restaurantId = restaurantContext.restaurantData?._id;
@@ -65,6 +64,7 @@ export default function PlanningEmployeesComponent() {
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [view, setView] = useState(Views.WEEK);
+  const [date, setDate] = useState(new Date());
   const [isDeleting, setIsDeleting] = useState(false);
 
   // Modale d’ajout
@@ -75,7 +75,6 @@ export default function PlanningEmployeesComponent() {
     end: null,
     title: "",
   });
-  // Recherche employé dans la modale quand aucun n’est pré-sélectionné
   const [modalEmployeeQuery, setModalEmployeeQuery] = useState("");
 
   // Modale de suppression
@@ -90,12 +89,29 @@ export default function PlanningEmployeesComponent() {
     isLeave: false,
   });
 
+  // ✅ détecter mobile (avant midTablet)
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(max-width: 767px)"); // adapte si besoin
+    const onChange = () => setIsMobile(mq.matches);
+    onChange();
+    mq.addEventListener?.("change", onChange);
+    return () => mq.removeEventListener?.("change", onChange);
+  }, []);
+
+  // ✅ Sur mobile: par défaut Jour (sinon week view illisible)
+  useEffect(() => {
+    if (isMobile) setView(Views.DAY);
+    else setView(Views.WEEK);
+  }, [isMobile]);
+
   // date‐fns localizer (FR)
   const locales = { fr: frLocale };
   const localizer = dateFnsLocalizer({
     format,
     parse,
-    startOfWeek: (date) => startOfWeek(date, { locale: frLocale }),
+    startOfWeek: (d) => startOfWeek(d, { locale: frLocale }),
     getDay,
     locales,
   });
@@ -121,7 +137,6 @@ export default function PlanningEmployeesComponent() {
     const employees = restaurantContext.restaurantData?.employees || [];
     if (!employees.length) return;
 
-    // Si au moins un employé a déjà des shifts, on ne relance pas l'hydratation
     const alreadyHaveShifts = employees.some(
       (e) => Array.isArray(e.shifts) && e.shifts.length > 0,
     );
@@ -258,7 +273,6 @@ export default function PlanningEmployeesComponent() {
 
   // ─── Sélection d’un créneau ────────────────────────────────────────────────
   function handleSelectSlot(slotInfo) {
-    // Si un employé est sélectionné, on pré-remplit l’employé
     if (selectedEmployeeId) {
       setModalData({
         employeeId: selectedEmployeeId,
@@ -269,11 +283,23 @@ export default function PlanningEmployeesComponent() {
       setModalOpen(true);
       return;
     }
-    // Sinon : on ouvre la modale avec recherche d’employé
+
     setModalData({
       employeeId: null,
       start: slotInfo.start,
       end: slotInfo.end,
+      title: "",
+    });
+    setModalEmployeeQuery("");
+    setModalOpen(true);
+  }
+
+  // ✅ AJOUT MANUEL via bouton "+"
+  function openManualAdd() {
+    setModalData({
+      employeeId: selectedEmployeeId || null,
+      start: null,
+      end: null,
       title: "",
     });
     setModalEmployeeQuery("");
@@ -317,7 +343,6 @@ export default function PlanningEmployeesComponent() {
       );
       restaurantContext.setRestaurantData(updatedRestaurant);
 
-      // rebuild events pour cet employé
       const employee = allEmployees.find((e) => e._id === employeeId) || {};
       const updatedEvents = updatedShifts.map((s) => ({
         id: String(s._id),
@@ -359,7 +384,7 @@ export default function PlanningEmployeesComponent() {
     setDeleteModalOpen(true);
   }
 
-  // ─── Confirmer suppression ───────────────────────────────────────────────────
+  // ─── Confirmer suppression ─────────────────────────────────────────────────
   async function handleConfirmDelete() {
     if (isDeleting) return;
     setIsDeleting(true);
@@ -411,7 +436,6 @@ export default function PlanningEmployeesComponent() {
         restaurantContext.setRestaurantData(updated);
       }
 
-      // Retirer l'event du calendrier
       setEvents((prev) =>
         prev.filter((ev) => String(ev.id) !== String(shiftId)),
       );
@@ -446,22 +470,80 @@ export default function PlanningEmployeesComponent() {
   const CustomEvent = ({ event }) => {
     const isCompressedLeave =
       event.isLeave && event.end - event.start === 1000 * 60 * 60;
-    if (isCompressedLeave) return <div>{event.title}</div>;
-    return (
-      <div className="flex flex-col gap-1">
-        <span>{event.title}</span>
-      </div>
-    );
+    if (isCompressedLeave) return <div className="text-xs">{event.title}</div>;
+    return <div className="text-xs">{event.title}</div>;
   };
 
-  // Responsive
-  const minTableWidth = view === Views.DAY ? "auto" : `${7 * 100}px`;
+  // ─── Toolbar mobile compacte ────────────────────────────────────────────────
+  const today = new Date();
+  const isToday =
+    date && today.toDateString && date.toDateString() === today.toDateString();
+
+  const rangeLabel = useMemo(() => {
+    if (!date) return "";
+    if (view === Views.DAY)
+      return format(date, "EEE dd MMM yyyy", { locale: frLocale });
+    if (view === Views.MONTH)
+      return format(date, "MMMM yyyy", { locale: frLocale });
+
+    const start = startOfWeek(date, { locale: frLocale, weekStartsOn: 1 });
+    const end = addDays(start, 6);
+    const left = format(start, "dd MMM", { locale: frLocale });
+    const right = format(end, "dd MMM yyyy", { locale: frLocale });
+    return `${left} – ${right}`;
+  }, [date, view]);
+
+  const goToday = () => setDate(new Date());
+
+  const goPrev = () => {
+    if (view === Views.MONTH)
+      setDate((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1));
+    else if (view === Views.DAY)
+      setDate((d) => new Date(d.getTime() - 24 * 60 * 60 * 1000));
+    else setDate((d) => new Date(d.getTime() - 7 * 24 * 60 * 60 * 1000));
+  };
+
+  const goNext = () => {
+    if (view === Views.MONTH)
+      setDate((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1));
+    else if (view === Views.DAY)
+      setDate((d) => new Date(d.getTime() + 24 * 60 * 60 * 1000));
+    else setDate((d) => new Date(d.getTime() + 7 * 24 * 60 * 60 * 1000));
+  };
+
+  // ─── Search UI ─────────────────────────────────────────────────────────────
+  const searchRef = useRef(null);
+  const clearSearch = () => {
+    setSearchTerm("");
+    searchRef.current?.focus?.();
+  };
+
+  const pad2 = (n) => String(n).padStart(2, "0");
+
+  function dateToLocalInputValue(d) {
+    if (!d) return "";
+    const y = d.getFullYear();
+    const m = pad2(d.getMonth() + 1);
+    const day = pad2(d.getDate());
+    const hh = pad2(d.getHours());
+    const mm = pad2(d.getMinutes());
+    return `${y}-${m}-${day}T${hh}:${mm}`;
+  }
+
+  function localInputValueToDate(v) {
+    if (!v) return null;
+    const d = new Date(v);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  // ─── Hauteur calendrier : évite le “gros blanc” ─────────────────────────────
+  const calendarHeight = isMobile ? "calc(100vh - 160px)" : "75vh";
 
   return (
     <section className="flex flex-col gap-4 min-w-0">
-      {/* ─── En-tête ───────────────────────────────────────────────────────────── */}
-      <div className="flex justify-between flex-wrap gap-4">
-        <div className="flex flex-col gap-4">
+      {/* ================= Header ================= */}
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2 min-h-[40px]">
             <EmployeesSvg width={30} height={30} fillColor="#131E3690" />
             <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2 flex-wrap">
@@ -477,39 +559,150 @@ export default function PlanningEmployeesComponent() {
           </div>
         </div>
 
+        {/* ✅ Actions desktop/tablette */}
+        <div className="hidden midTablet:flex items-center gap-2">
+          {/* + Ajouter un créneau (ouvre ta modale) */}
+          <button
+            type="button"
+            onClick={openManualAdd}
+            className="
+      inline-flex items-center gap-2
+      rounded-2xl bg-white text-blue
+      px-4 py-2 text-sm font-semibold border border-blue
+      shadow-sm hover:bg-darkBlue/5 active:scale-[0.98] transition
+    "
+            aria-label={t("planning:buttons.addShift", "Ajouter un créneau")}
+            title={t("planning:buttons.addShift", "Ajouter un créneau")}
+          >
+            <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15">
+              <Plus className="size-4" />
+            </span>
+            <span className="whitespace-nowrap">
+              {t("planning:buttons.addShift", "Ajouter un créneau")}
+            </span>
+          </button>
+
+          {/* Demandes de congés */}
+          <button
+            type="button"
+            onClick={() =>
+              router.push("/dashboard/employees/planning/days-off")
+            }
+            className="
+      inline-flex items-center gap-2
+      rounded-2xl border border-darkBlue/10 bg-white/70
+      px-4 py-2 text-sm font-semibold text-darkBlue
+      hover:bg-darkBlue/5 transition
+    "
+          >
+            <span className="inline-flex items-center justify-center size-9 rounded-full bg-violet text-white">
+              <CalendarDays className="size-4" />
+            </span>
+            <span className="whitespace-nowrap">{t("titles.daysOff")}</span>
+          </button>
+        </div>
+
+        {/* ✅ Mobile : on garde uniquement le bouton congés (ton bouton existant) */}
         <button
+          type="button"
           onClick={() => router.push("/dashboard/employees/planning/days-off")}
-          className="bg-violet h-fit px-6 py-2 rounded-lg text-white cursor-pointer hover:opacity-80 transition-all ease-in-out"
+          className="
+    midTablet:hidden
+    inline-flex items-center gap-2
+    rounded-2xl border border-darkBlue/10 bg-white/70
+    px-4 py-3 text-sm font-semibold text-darkBlue
+    hover:bg-darkBlue/5 transition
+  "
         >
-          {t("titles.daysOff")}
+          <span className="inline-flex items-center justify-center size-9 rounded-full bg-violet text-white">
+            <CalendarDays className="size-4" />
+          </span>
+          <span className="whitespace-nowrap">{t("titles.daysOff")}</span>
         </button>
       </div>
 
-      {/* ─── Barre de recherche ───────────────────────────────────────────────── */}
-      <div className="relative midTablet:w-[350px]">
+      {/* ================= Search ================= */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40" />
         <input
+          ref={searchRef}
           type="text"
+          inputMode="search"
           placeholder={t(
             "planning:placeholders.searchEmployee",
             "Rechercher un employé",
           )}
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full p-2 pr-10 border border-[#131E3690] rounded-lg"
+          className={`h-12 w-full rounded-2xl border border-darkBlue/10 bg-white/70 ${
+            searchTerm ? "pr-12" : "pr-4"
+          } pl-9 text-base`}
         />
         {searchTerm && (
           <button
-            onClick={() => setSearchTerm("")}
-            className="absolute right-3 top-1/2 transform -translate-y-1/2 w-6 h-6 bg-black bg-opacity-30 text-white rounded-full flex items-center justify-center"
+            onClick={clearSearch}
+            className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center size-9 rounded-2xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition"
+            aria-label={t("buttons.clear", "Effacer")}
+            title={t("buttons.clear", "Effacer")}
           >
-            &times;
+            <X className="size-4 text-darkBlue/60" />
           </button>
         )}
       </div>
 
-      {/* ─── Liste d’employés ─────────────────────────────────────────────────── */}
-      <div className="overflow-x-auto">
-        <ul className="flex gap-4 pt-4">
+      {/* ================= Employees selector ================= */}
+      <div className="-mx-3 px-3 midTablet:hidden">
+        <div className="flex items-center gap-2">
+          {/* Liste scrollable */}
+          <div className="flex-1 min-w-0 overflow-x-auto">
+            <div className="flex gap-2 py-1 px-px">
+              {employees.map((emp) => {
+                const active = selectedEmployeeId === emp._id;
+
+                return (
+                  <button
+                    key={emp._id}
+                    type="button"
+                    onClick={() =>
+                      setSelectedEmployeeId((prev) =>
+                        prev === emp._id ? null : emp._id,
+                      )
+                    }
+                    className={`
+        shrink-0 p-0 bg-transparent
+        rounded-xl transition
+        ${active ? "ring-2 ring-blue" : "ring-1 ring-darkBlue/10"}
+      `}
+                    aria-pressed={active}
+                  >
+                    <CardEmployeesComponent
+                      employee={emp}
+                      planning={true}
+                      restaurantId={restaurantId}
+                      planningCompact={true}
+                    />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Bouton + fixe (ne scrolle pas) */}
+          <button
+            type="button"
+            onClick={openManualAdd}
+            className="shrink-0 h-11 w-11 inline-flex items-center justify-center rounded-2xl bg-blue text-white shadow-sm hover:bg-blue/90 active:scale-[0.98] transition"
+            aria-label={t("planning:buttons.addShift", "Ajouter un créneau")}
+            title={t("planning:buttons.addShift", "Ajouter un créneau")}
+          >
+            <Plus className="size-5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Desktop : cards */}
+      <div className="hidden midTablet:block overflow-x-auto">
+        <ul className="flex gap-4 pt-2">
           {employees.map((emp) => (
             <li key={emp._id} className="min-w-[200px]">
               <div
@@ -531,97 +724,172 @@ export default function PlanningEmployeesComponent() {
         </ul>
       </div>
 
-      {/* ─── Calendrier Drag & Drop ───────────────────────────────────────────── */}
-      <div className="overflow-x-auto">
-        <div style={{ minWidth: minTableWidth }} className="h-[75vh]">
-          <DnDCalendar
-            view={view}
-            onView={(v) => setView(v)}
-            components={{ event: CustomEvent }}
-            showMultiDayTimes
-            localizer={localizer}
-            culture="fr"
-            events={visibleEvents}
-            defaultView={Views.WEEK}
-            views={[Views.WEEK, Views.DAY, Views.MONTH]}
-            step={30}
-            timeslots={2}
-            defaultDate={new Date()}
-            selectable="ignoreEvents"
-            onSelectSlot={handleSelectSlot}
-            onSelectEvent={handleSelectEvent}
-            draggableAccessor={() => false}
-            eventPropGetter={(event) => {
-              const isLeave = event.isLeave;
-              return {
-                className: "",
-                style: {
-                  backgroundColor: isLeave
-                    ? "#FFD19C"
-                    : employeeColorMap[event.resourceId],
-                  border: `2px solid ${isLeave ? "#FDBA74" : "#FFFFFF"}`,
-                  borderRadius: "4px",
-                  outline: "none",
-                },
-              };
-            }}
-            messages={{
-              today: "Aujourd’hui",
-              previous: "<",
-              next: ">",
-              month: "Mois",
-              week: "Semaine",
-              day: "Jour",
-              date: "Date",
-              time: "Heure",
-            }}
-            formats={{
-              timeGutterFormat: (date) =>
-                format(date, "HH:mm", { locale: frLocale }),
-              weekdayFormat: (date) =>
-                format(date, "EEE dd/MM", { locale: frLocale }),
-              dayRangeHeaderFormat: ({ start, end }) =>
-                `${format(start, "dd MMM", { locale: frLocale })} – ${format(
-                  end,
-                  "dd MMM yyyy",
-                  { locale: frLocale },
-                )}`,
-              dayHeaderFormat: (date) =>
-                format(date, "EEEE dd MMMM yyyy", { locale: frLocale }),
-              eventTimeRangeFormat: ({ start, end }) =>
-                `${format(start, "HH:mm", { locale: frLocale })} – ${format(
-                  end,
-                  "HH:mm",
-                  {
-                    locale: frLocale,
-                  },
-                )}`,
-            }}
-            style={{ height: "100%", width: "100%" }}
-          />
+      {/* ================= Calendar toolbar compact ================= */}
+      <div className="rounded-3xl border border-darkBlue/10 bg-white/70 p-3">
+        {/* Ligne 1 : prev + date (tap=goToday) + plus + next */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={goPrev}
+            className="h-11 w-11 shrink-0 inline-flex items-center justify-center rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition"
+            aria-label={t("calendar.prev", "Précédent")}
+          >
+            <ChevronLeft className="size-5 text-darkBlue/70" />
+          </button>
+
+          <button
+            type="button"
+            onClick={goToday}
+            className="h-11 flex-1 min-w-0 inline-flex items-center justify-center rounded-2xl border border-darkBlue/10 px-3 bg-white/70 hover:bg-darkBlue/5"
+            aria-label={t("calendar.today", "Aller à aujourd’hui")}
+            title={t("calendar.today", "Aller à aujourd’hui")}
+          >
+            <span className="truncate text-sm font-semibold">{rangeLabel}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={goNext}
+            className="h-11 w-11 shrink-0 inline-flex items-center justify-center rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition"
+            aria-label={t("calendar.next", "Suivant")}
+          >
+            <ChevronRight className="size-5 text-darkBlue/70" />
+          </button>
+        </div>
+
+        {/* Ligne 2 : Segmented control */}
+        <div className="mt-2 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setView(Views.WEEK)}
+            className={`flex-1 h-11 rounded-2xl border border-darkBlue/10 font-semibold text-sm transition ${
+              view === Views.WEEK
+                ? "bg-blue text-white"
+                : "bg-white/70 text-darkBlue hover:bg-darkBlue/5"
+            }`}
+          >
+            {t("calendar.week", "Semaine")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setView(Views.DAY)}
+            className={`flex-1 h-11 rounded-2xl border border-darkBlue/10 font-semibold text-sm transition ${
+              view === Views.DAY
+                ? "bg-blue text-white"
+                : "bg-white/70 text-darkBlue hover:bg-darkBlue/5"
+            }`}
+          >
+            {t("calendar.day", "Jour")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setView(Views.MONTH)}
+            className={`flex-1 h-11 rounded-2xl border border-darkBlue/10 font-semibold text-sm transition ${
+              view === Views.MONTH
+                ? "bg-blue text-white"
+                : "bg-white/70 text-darkBlue hover:bg-darkBlue/5"
+            }`}
+          >
+            {t("calendar.month", "Mois")}
+          </button>
         </div>
       </div>
 
-      {/* ─── Modale Ajout Shift ───────────────────────────────────────────────── */}
+      {/* ================= Calendar ================= */}
+      <div className="rounded-3xl border border-darkBlue/10 bg-white/70 overflow-hidden">
+        <div className="overflow-x-auto">
+          <div
+            style={{ height: calendarHeight, minHeight: isMobile ? 420 : 520 }}
+          >
+            <DnDCalendar
+              date={date}
+              onNavigate={(d) => setDate(d)}
+              view={view}
+              onView={(v) => setView(v)}
+              components={{ event: CustomEvent, toolbar: () => null }}
+              showMultiDayTimes
+              localizer={localizer}
+              culture="fr"
+              events={visibleEvents}
+              defaultView={Views.WEEK}
+              views={[Views.WEEK, Views.DAY, Views.MONTH]}
+              step={30}
+              timeslots={2}
+              defaultDate={new Date()}
+              selectable="ignoreEvents"
+              onSelectSlot={handleSelectSlot}
+              onSelectEvent={handleSelectEvent}
+              draggableAccessor={() => false}
+              eventPropGetter={(event) => {
+                const isLeave = event.isLeave;
+                return {
+                  style: {
+                    backgroundColor: isLeave
+                      ? "#FFD19C"
+                      : employeeColorMap[event.resourceId],
+                    border: `1px solid ${
+                      isLeave ? "#FDBA74" : "rgba(255,255,255,0.9)"
+                    }`,
+                    borderRadius: 12,
+                    outline: "none",
+                    fontSize: 12,
+                    padding: "2px 6px",
+                  },
+                };
+              }}
+              messages={{
+                today: "Aujourd’hui",
+                previous: "<",
+                next: ">",
+                month: "Mois",
+                week: "Semaine",
+                day: "Jour",
+                date: "Date",
+                time: "Heure",
+              }}
+              formats={{
+                timeGutterFormat: (d) =>
+                  format(d, "HH:mm", { locale: frLocale }),
+                weekdayFormat: (d) =>
+                  format(d, "EEE dd/MM", { locale: frLocale }),
+                dayRangeHeaderFormat: ({ start, end }) =>
+                  `${format(start, "dd MMM", { locale: frLocale })} – ${format(
+                    end,
+                    "dd MMM yyyy",
+                    { locale: frLocale },
+                  )}`,
+                dayHeaderFormat: (d) =>
+                  format(d, "EEEE dd MMMM yyyy", { locale: frLocale }),
+                eventTimeRangeFormat: ({ start, end }) =>
+                  `${format(start, "HH:mm", { locale: frLocale })} – ${format(
+                    end,
+                    "HH:mm",
+                    { locale: frLocale },
+                  )}`,
+              }}
+              style={{ height: "100%", width: "100%" }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* ─── Modale Ajout Shift (inchangée) ───────────────────────────────────── */}
       {modalOpen && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center px-4">
-          {/* Overlay */}
           <div
             onClick={() => setModalOpen(false)}
             className="absolute inset-0 bg-black/25 backdrop-blur-[1px]"
           />
 
-          {/* Carte modale */}
           <div
             className="
-        relative w-full max-w-[460px]
-        rounded-2xl border border-darkBlue/10 bg-white/95
-        px-5 py-6 tablet:px-7 tablet:py-7
-        shadow-[0_22px_55px_rgba(19,30,54,0.20)]
-        flex flex-col gap-5
-      "
+              relative w-full max-w-[460px]
+              rounded-2xl border border-darkBlue/10 bg-white/95
+              px-5 py-6 tablet:px-7 tablet:py-7
+              shadow-[0_22px_55px_rgba(19,30,54,0.20)]
+              flex flex-col gap-5
+            "
           >
-            {/* Titre / sélecteur employé */}
             {modalData.employeeId ? (
               <h2 className="text-lg tablet:text-xl font-semibold text-center text-darkBlue">
                 {(() => {
@@ -646,21 +914,21 @@ export default function PlanningEmployeesComponent() {
                       "Rechercher un employé",
                     )}
                     className="
-                w-full h-10 rounded-lg border border-darkBlue/20 bg-white/90
-                px-3 text-sm outline-none
-                placeholder:text-darkBlue/40
-                focus:border-darkBlue/50 focus:ring-1 focus:ring-darkBlue/20
-                transition
-              "
+                      w-full h-10 rounded-lg border border-darkBlue/20 bg-white/90
+                      px-3 text-base outline-none
+                      placeholder:text-darkBlue/40
+                      focus:border-darkBlue/50 focus:ring-1 focus:ring-darkBlue/20
+                      transition
+                    "
                   />
                   {modalEmployeeQuery.trim() && (
                     <ul
                       className="
-                  absolute left-0 right-0 mt-1 max-h-40 overflow-y-auto
-                  rounded-xl border border-darkBlue/10 bg-white
-                  shadow-[0_14px_35px_rgba(15,23,42,0.18)]
-                  text-sm z-20
-                "
+                        absolute left-0 right-0 mt-1 max-h-40 overflow-y-auto
+                        rounded-xl border border-darkBlue/10 bg-white
+                        shadow-[0_14px_35px_rgba(15,23,42,0.18)]
+                        text-sm z-20
+                      "
                     >
                       {modalEmployeeOptions.length === 0 && (
                         <li className="px-3 py-2 text-xs text-darkBlue/60 italic">
@@ -671,10 +939,14 @@ export default function PlanningEmployeesComponent() {
                         <li
                           key={emp._id}
                           className={`
-                      px-3 py-[6px] cursor-pointer
-                      hover:bg-lightGrey/80
-                      ${modalData.employeeId === emp._id ? "bg-lightGrey" : ""}
-                    `}
+                            px-3 py-[6px] cursor-pointer
+                            hover:bg-lightGrey/80
+                            ${
+                              modalData.employeeId === emp._id
+                                ? "bg-lightGrey"
+                                : ""
+                            }
+                          `}
                           onClick={() =>
                             setModalData((prev) => ({
                               ...prev,
@@ -691,18 +963,64 @@ export default function PlanningEmployeesComponent() {
               </div>
             )}
 
-            {/* Créneau */}
-            <p className="text-sm text-center text-darkBlue/80">
-              {t("planning:labels.slot", "Créneau :")}&nbsp;
-              <strong className="text-darkBlue">
-                {format(modalData.start, "EEEE dd MMM yyyy HH:mm", {
-                  locale: frLocale,
-                })}{" "}
-                – {format(modalData.end, "HH:mm", { locale: frLocale })}
-              </strong>
-            </p>
+            <div className="grid gap-2">
+              <p className="text-sm text-center text-darkBlue/80">
+                {t("planning:labels.slot", "Créneau :")}
+              </p>
 
-            {/* Titre shift */}
+              <div className="grid grid-cols-1 gap-2">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-darkBlue/60">
+                    {t("planning:labels.start", "Début")}
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={dateToLocalInputValue(modalData.start)}
+                    onChange={(e) => {
+                      const nextStart = localInputValueToDate(e.target.value);
+                      setModalData((prev) => {
+                        const next = { ...prev, start: nextStart };
+                        // auto end si vide ou si end <= start
+                        if (nextStart && (!next.end || next.end <= nextStart)) {
+                          next.end = new Date(
+                            nextStart.getTime() + 60 * 60 * 1000,
+                          ); // +1h
+                        }
+                        return next;
+                      });
+                    }}
+                    className="
+          w-full h-11 rounded-lg border border-darkBlue/20 bg-white/95
+          px-3 text-base outline-none
+          focus:border-darkBlue/50 focus:ring-1 focus:ring-darkBlue/20
+          transition
+        "
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-darkBlue/60">
+                    {t("planning:labels.end", "Fin")}
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={dateToLocalInputValue(modalData.end)}
+                    min={dateToLocalInputValue(modalData.start)}
+                    onChange={(e) => {
+                      const nextEnd = localInputValueToDate(e.target.value);
+                      setModalData((prev) => ({ ...prev, end: nextEnd }));
+                    }}
+                    className="
+          w-full h-11 rounded-lg border border-darkBlue/20 bg-white/95
+          px-3 text-base outline-none
+          focus:border-darkBlue/50 focus:ring-1 focus:ring-darkBlue/20
+          transition
+        "
+                  />
+                </div>
+              </div>
+            </div>
+
             <div className="flex flex-col gap-2">
               <input
                 type="text"
@@ -715,28 +1033,32 @@ export default function PlanningEmployeesComponent() {
                   setModalData((prev) => ({ ...prev, title: e.target.value }))
                 }
                 className="
-            w-full h-10 rounded-lg border border-darkBlue/20 bg-white/95
-            px-3 text-sm outline-none
-            placeholder:text-darkBlue/40
-            focus:border-darkBlue/50 focus:ring-1 focus:ring-darkBlue/20
-            transition
-          "
+                  w-full h-10 rounded-lg border border-darkBlue/20 bg-white/95
+                  px-3 text-base outline-none
+                  placeholder:text-darkBlue/40
+                  focus:border-darkBlue/50 focus:ring-1 focus:ring-darkBlue/20
+                  transition
+                "
               />
             </div>
 
-            {/* Boutons */}
             <div className="mt-2 flex justify-center gap-3">
               <button
                 onClick={handleConfirmShift}
                 className="
-            inline-flex items-center justify-center
-            rounded-xl bg-blue px-4 py-2.5
-            text-sm font-medium text-white shadow
-            hover:bg-blue/90 transition
-            disabled:opacity-50 disabled:cursor-not-allowed
-          "
+                  inline-flex items-center justify-center
+                  rounded-xl bg-blue px-4 py-2.5
+                  text-sm font-medium text-white shadow
+                  hover:bg-blue/90 transition
+                  disabled:opacity-50 disabled:cursor-not-allowed
+                "
                 disabled={
                   !canonicalizeShiftTitle(modalData.title).trim() ||
+                  !modalData.start ||
+                  !modalData.end ||
+                  (modalData.end &&
+                    modalData.start &&
+                    modalData.end <= modalData.start) ||
                   (!modalData.employeeId && !selectedEmployeeId)
                 }
               >
@@ -745,11 +1067,11 @@ export default function PlanningEmployeesComponent() {
               <button
                 onClick={handleCancelShift}
                 className="
-            inline-flex items-center justify-center
-            rounded-xl bg-red px-4 py-2.5
-            text-sm font-medium text-white shadow
-            hover:bg-red/90 transition
-          "
+                  inline-flex items-center justify-center
+                  rounded-xl bg-red px-4 py-2.5
+                  text-sm font-medium text-white shadow
+                  hover:bg-red/90 transition
+                "
               >
                 {t("buttons.cancel", "Annuler")}
               </button>
@@ -758,10 +1080,9 @@ export default function PlanningEmployeesComponent() {
         </div>
       )}
 
-      {/* ─── Modale Suppression Shift ──────────────────────────────────────────── */}
+      {/* ─── Modale Suppression Shift (inchangée) ─────────────────────────────── */}
       {deleteModalOpen && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center px-4">
-          {/* Overlay */}
           <div
             onClick={() => {
               if (isDeleting) return;
@@ -770,17 +1091,15 @@ export default function PlanningEmployeesComponent() {
             className="absolute inset-0 bg-black/25 backdrop-blur-[1px]"
           />
 
-          {/* Carte modale */}
           <div
             className="
-        relative w-full max-w-[420px]
-        rounded-2xl border border-darkBlue/10 bg-white/95
-        px-5 py-6 tablet:px-7 tablet:py-7
-        shadow-[0_22px_55px_rgba(19,30,54,0.20)]
-        flex flex-col gap-5
-      "
+              relative w-full max-w-[420px]
+              rounded-2xl border border-darkBlue/10 bg-white/95
+              px-5 py-6 tablet:px-7 tablet:py-7
+              shadow-[0_22px_55px_rgba(19,30,54,0.20)]
+              flex flex-col gap-5
+            "
           >
-            {/* Nom employé */}
             <h2 className="text-lg tablet:text-xl font-semibold text-center text-darkBlue">
               {(() => {
                 const emp = allEmployees.find(
@@ -790,7 +1109,6 @@ export default function PlanningEmployeesComponent() {
               })()}
             </h2>
 
-            {/* Texte + créneau */}
             <div className="text-sm text-center text-darkBlue/80 flex flex-col gap-2">
               <p>
                 {t("planning:labels.deleteShift", "Supprimer ce shift")} :{" "}
@@ -813,29 +1131,22 @@ export default function PlanningEmployeesComponent() {
                       deleteModalData.end.getMinutes() >= 59;
 
                     if (sameDay && isFullDay) {
-                      // Journée complète sur un seul jour
                       return format(deleteModalData.start, "EEEE dd MMM yyyy", {
                         locale: frLocale,
                       });
                     } else if (!sameDay) {
-                      // Plusieurs jours
                       return `${format(
                         deleteModalData.start,
                         "EEEE dd MMM yyyy",
-                        {
-                          locale: frLocale,
-                        },
+                        { locale: frLocale },
                       )} – ${format(deleteModalData.end, "EEEE dd MMM yyyy", {
                         locale: frLocale,
                       })}`;
                     } else {
-                      // Même jour mais avec heures
                       return `${format(
                         deleteModalData.start,
                         "EEEE dd MMM yyyy HH:mm",
-                        {
-                          locale: frLocale,
-                        },
+                        { locale: frLocale },
                       )} – ${format(deleteModalData.end, "HH:mm", {
                         locale: frLocale,
                       })}`;
@@ -845,17 +1156,16 @@ export default function PlanningEmployeesComponent() {
               </p>
             </div>
 
-            {/* Boutons */}
             <div className="mt-2 flex justify-center gap-3">
               <button
                 onClick={handleConfirmDelete}
                 disabled={isDeleting}
                 className="
-            inline-flex items-center justify-center
-            rounded-xl bg-red px-4 py-2.5
-            text-sm font-medium text-white shadow
-            hover:bg-red/90 transition
-          "
+                  inline-flex items-center justify-center
+                  rounded-xl bg-red px-4 py-2.5
+                  text-sm font-medium text-white shadow
+                  hover:bg-red/90 transition
+                "
               >
                 {t("buttons.delete", "Supprimer")}
               </button>
@@ -863,11 +1173,11 @@ export default function PlanningEmployeesComponent() {
                 onClick={handleCancelDelete}
                 disabled={isDeleting}
                 className="
-            inline-flex items-center justify-center
-            rounded-xl bg-darkBlue/10 px-4 py-2.5
-            text-sm font-medium text-darkBlue shadow-sm
-            hover:bg-darkBlue/15 transition
-          "
+                  inline-flex items-center justify-center
+                  rounded-xl bg-darkBlue/10 px-4 py-2.5
+                  text-sm font-medium text-darkBlue shadow-sm
+                  hover:bg-darkBlue/15 transition
+                "
               >
                 {t("buttons.cancel", "Annuler")}
               </button>
