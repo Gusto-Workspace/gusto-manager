@@ -83,6 +83,7 @@ const menusRoutes = require("./routes/menus.routes");
 const transactionsRoutes = require("./routes/transactions.routes");
 const reservationsRoutes = require("./routes/reservations.routes");
 const employeesRoutes = require("./routes/employees.routes");
+const notificationsRoutes = require("./routes/notifications.routes");
 
 app.use(apiRoutes, restaurantsRoutes);
 app.use(apiRoutes, hoursRoutes);
@@ -97,6 +98,7 @@ app.use(apiRoutes, menusRoutes);
 app.use(apiRoutes, transactionsRoutes);
 app.use(apiRoutes, reservationsRoutes);
 app.use(apiRoutes, employeesRoutes);
+app.use(apiRoutes, notificationsRoutes);
 
 // HACCP
 const fridge_temperature = require("./routes/health-control-plan/fridge-temperature.routes");

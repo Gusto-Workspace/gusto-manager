@@ -1,4 +1,4 @@
-const clientsPerRestaurant = new Map(); // Map<restaurantId(string), Set<res>>
+const clientsPerRestaurant = new Map();
 
 function addClient(restaurantId, res) {
   const key = String(restaurantId);
@@ -42,7 +42,7 @@ function mountSseRoute(appOrRouter, opts = {}) {
   appOrRouter.get(path, (req, res) => {
     const { restaurantId } = req.params;
 
-    // headers SSE 
+    // headers SSE
     res.set({
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",

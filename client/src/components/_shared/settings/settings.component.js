@@ -1,4 +1,11 @@
-import { Fragment, useState, useContext, useRef, useEffect } from "react";
+import {
+  Fragment,
+  useState,
+  useContext,
+  useRef,
+  useEffect,
+  useMemo,
+} from "react";
 import { useRouter } from "next/router";
 import { useTranslation } from "next-i18next";
 
@@ -10,7 +17,6 @@ import {
   InvoiceSvg,
   NotificationSvg,
   SettingsSvg,
-  VisibleSvg,
 } from "../_svgs/_index";
 
 // CONTEXT
@@ -18,21 +24,20 @@ import { GlobalContext } from "@/contexts/global.context";
 
 // COMPONENTS
 import SimpleSkeletonComponent from "../skeleton/simple-skeleton.component";
+import NotificationsDrawerComponent from "../notifications/notifications-drawer.component";
 
 export default function SettingsComponent() {
   const { t } = useTranslation("");
   const router = useRouter();
+
   const [showRestaurantList, setShowRestaurantList] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [displayedCount, setDisplayedCount] = useState(null);
+  const [openNotificationsDrawer, setOpenNotificationsDrawer] = useState(false);
 
   const { restaurantContext } = useContext(GlobalContext);
 
   const userMenuRef = useRef(null);
   const userNameRef = useRef(null);
-  const notificationsRef = useRef(null);
-  const notificationsButtonRef = useRef(null);
 
   const isSubRoute =
     router.pathname !== "/dashboard" && router.pathname.split("/").length > 3;
@@ -49,59 +54,6 @@ export default function SettingsComponent() {
     }
   }
 
-  // Fermeture du panneau de notifs au clic extérieur
-  useEffect(() => {
-    function handleClickOutside(event) {
-      if (showNotifications) {
-        if (
-          notificationsRef.current &&
-          !notificationsRef.current.contains(event.target) &&
-          notificationsButtonRef.current &&
-          !notificationsButtonRef.current.contains(event.target)
-        ) {
-          setShowNotifications(false);
-        }
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [showNotifications]);
-
-  // --- ROUTE COURANTE POUR CHAQUE TYPE DE NOTIF ---
-  const pathname = router.pathname || "";
-
-  const isOnReservationsPage =
-    pathname.startsWith("/dashboard/reservations") ||
-    pathname.startsWith("/dashboard/webapp/reservations");
-  const isOnDaysOffPage = pathname === "/dashboard/employees/planning/days-off";
-  const isOnGiftsPage = pathname.startsWith("/dashboard/gift-cards");
-
-  // --- COMPTEURS BRUTS ---
-  const rawReservationsCount = restaurantContext.newReservationsCount || 0;
-  const rawLeaveRequestsCount = restaurantContext.newLeaveRequestsCount || 0;
-  const rawGiftPurchasesCount = restaurantContext.newGiftPurchasesCount || 0;
-
-  // --- COMPTEURS EFFECTIFS (0 si on est déjà sur la page dédiée) ---
-  const effectiveReservationsCount = isOnReservationsPage
-    ? 0
-    : rawReservationsCount;
-
-  const effectiveLeaveRequestsCount = isOnDaysOffPage
-    ? 0
-    : rawLeaveRequestsCount;
-
-  const effectiveGiftPurchasesCount = isOnGiftsPage ? 0 : rawGiftPurchasesCount;
-
-  const totalCount =
-    effectiveReservationsCount +
-    effectiveLeaveRequestsCount +
-    effectiveGiftPurchasesCount;
-
-  // Quand le panneau est ouvert, on suit le total "effectif"
-  useEffect(() => {
-    if (showNotifications) setDisplayedCount(totalCount);
-  }, [totalCount, showNotifications]);
-
   // Bloque le scroll quand la liste de restos est ouverte
   useEffect(() => {
     if (showRestaurantList) {
@@ -114,33 +66,6 @@ export default function SettingsComponent() {
       document.body.classList.remove("no-scroll");
     };
   }, [showRestaurantList]);
-
-  // Écoute de la fin de transition pour lancer la réinitialisation ET mettre à jour lastNotificationCheck
-  useEffect(() => {
-    const node = notificationsRef.current;
-    if (!node) return;
-
-    function handleTransitionEnd(e) {
-      if (e.propertyName === "max-height" && !showNotifications) {
-        restaurantContext.resetNewReservationsCount();
-        restaurantContext.resetNewLeaveRequestsCount();
-        restaurantContext.resetNewGiftPurchasesCount();
-
-        const allZero =
-          (restaurantContext.newReservationsCount || 0) === 0 &&
-          (restaurantContext.newLeaveRequestsCount || 0) === 0 &&
-          (restaurantContext.newGiftPurchasesCount || 0) === 0;
-
-        if (allZero) {
-          restaurantContext.updateLastNotificationCheck();
-        }
-        setDisplayedCount(0);
-      }
-    }
-
-    node.addEventListener("transitionend", handleTransitionEnd);
-    return () => node.removeEventListener("transitionend", handleTransitionEnd);
-  }, [showNotifications, restaurantContext]);
 
   // Fermeture du menu user au clic extérieur
   useEffect(() => {
@@ -161,6 +86,12 @@ export default function SettingsComponent() {
 
   const profilePictureUrl =
     restaurantContext?.userConnected?.profilePictureUrl || null;
+
+  const unreadCount = restaurantContext?.unreadCounts?.total || 0;
+
+  const token =
+    typeof window !== "undefined" ? localStorage.getItem("token") : null; // adapte si ton token owner a un autre nom
+  const restaurantId = restaurantContext?.restaurantData?._id || null;
 
   return (
     <section className="flex flex-col-reverse tablet:flex-row min-h-16 gap-6 tablet:gap-7 justify-between items-center relative">
@@ -242,129 +173,44 @@ export default function SettingsComponent() {
             </button>
           </div>
 
-          {restaurantContext?.userConnected?.role === "owner" && (
+          {/* ✅ NOTIFS : owner only  --> pour employee aussi, ["owner", "employee"] */}
+          {["owner"].includes(
+            restaurantContext?.userConnected?.role,
+          ) && (
             <div className="relative pl-3">
               <div className="relative">
                 <button
-                  ref={notificationsButtonRef}
                   className="bg-blue p-3 rounded-lg bg-opacity-40"
-                  onClick={() => {
-                    if (!showNotifications) {
-                      setDisplayedCount(totalCount);
-                      setShowNotifications(true);
-                    } else {
-                      setShowNotifications(false);
-                    }
-                  }}
+                  onClick={() => setOpenNotificationsDrawer(true)}
+                  aria-label="Ouvrir les notifications"
+                  title="Notifications"
                 >
                   <NotificationSvg width={25} height={25} fillColor="#4583FF" />
                 </button>
-                {/* Badge de notification */}
-                {totalCount > 0 && (
+
+                {unreadCount > 0 && (
                   <span className="absolute top-0 right-0 inline-flex items-center justify-center px-1 py-0.5 text-xs font-bold leading-none text-white transform translate-x-1/2 -translate-y-1/2 bg-red rounded-full">
-                    {totalCount}
+                    {unreadCount}
                   </span>
                 )}
               </div>
 
-              <div
-                ref={notificationsRef}
-                className={`absolute -left-[100px] tablet:right-0 top-full mt-4 bg-white shadow-lg rounded-lg w-fit z-[60] tablet:z-10 transition-all duration-300 overflow-hidden ${
-                  showNotifications ? "max-h-[200px]" : "max-h-0"
-                }`}
-                style={{ maxHeight: showNotifications ? "200px" : "0" }}
-              >
-                <div className="p-4">
-                  {displayedCount && displayedCount > 0 ? (
-                    <ul className="flex flex-col gap-4 text-nowrap">
-                      {effectiveLeaveRequestsCount > 0 && (
-                        <li className="text-sm flex items-center justify-between gap-4">
-                          <span>
-                            {effectiveLeaveRequestsCount} nouvelle
-                            {effectiveLeaveRequestsCount > 1 ? "s" : ""} demande
-                            {effectiveLeaveRequestsCount > 1 ? "s" : ""} de
-                            congé
-                          </span>
-                          <button
-                            className="shrink-0 h-6 w-6 rounded-full bg-darkBlue bg-opacity-10 flex items-center justify-center hover:bg-opacity-20"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setShowNotifications(false);
-                              router.push(
-                                "/dashboard/employees/planning/days-off",
-                              );
-                            }}
-                            aria-label="Voir les demandes de congés"
-                            title="Voir les demandes de congés"
-                          >
-                            <span className="text-sm font-bold leading-none">
-                              <VisibleSvg width={12} />
-                            </span>
-                          </button>
-                        </li>
-                      )}
-
-                      {effectiveReservationsCount > 0 && (
-                        <li className="text-sm flex items-center justify-between gap-4">
-                          <span>
-                            {effectiveReservationsCount} nouvelle
-                            {effectiveReservationsCount > 1 ? "s" : ""}{" "}
-                            réservation
-                            {effectiveReservationsCount > 1 ? "s" : ""}{" "}
-                          </span>
-                          <button
-                            className="shrink-0 h-6 w-6 rounded-full bg-darkBlue bg-opacity-10 flex items-center justify-center hover:bg-opacity-20"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setShowNotifications(false);
-                              router.push("/dashboard/reservations");
-                            }}
-                            aria-label="Voir les réservations"
-                            title="Voir les réservations"
-                          >
-                            <span className="text-sm font-bold leading-none">
-                              <VisibleSvg width={12} />
-                            </span>
-                          </button>
-                        </li>
-                      )}
-
-                      {effectiveGiftPurchasesCount > 0 && (
-                        <li className="text-sm flex items-center justify-between gap-4">
-                          <span>
-                            {effectiveGiftPurchasesCount} nouvelle
-                            {effectiveGiftPurchasesCount > 1 ? "s" : ""} carte
-                            {effectiveGiftPurchasesCount > 1 ? "s" : ""} cadeau
-                            {effectiveGiftPurchasesCount > 1 ? "x" : ""} vendue
-                            {effectiveGiftPurchasesCount > 1 ? "s" : ""}{" "}
-                          </span>
-                          <button
-                            className="shrink-0 h-6 w-6 rounded-full bg-darkBlue bg-opacity-10 flex items-center justify-center hover:bg-opacity-20"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setShowNotifications(false);
-                              router.push("/dashboard/gift-cards");
-                            }}
-                            aria-label="Voir les cartes cadeaux"
-                            title="Voir les cartes cadeaux"
-                          >
-                            <span className="text-sm font-bold leading-none">
-                              <VisibleSvg width={12} />
-                            </span>
-                          </button>
-                        </li>
-                      )}
-                    </ul>
-                  ) : (
-                    <p className="opacity-40 italic text-sm w-48">
-                      Aucune notification
-                    </p>
-                  )}
-                </div>
-              </div>
+              {/* ✅ Drawer notifications */}
+              <NotificationsDrawerComponent
+                open={openNotificationsDrawer}
+                onClose={() => setOpenNotificationsDrawer(false)}
+                notifications={restaurantContext?.notifications}
+                nextCursor={restaurantContext?.notificationsNextCursor}
+                loading={restaurantContext?.notificationsLoading}
+                fetchNotifications={restaurantContext?.fetchNotifications}
+                markNotificationRead={restaurantContext?.markNotificationRead}
+                markAllRead={restaurantContext?.markAllRead}
+                role={restaurantContext?.userConnected?.role}
+              />
             </div>
           )}
 
+          {/* USER MENU */}
           <div
             ref={userNameRef}
             className="tablet:border-l tablet:border-black/30 pl-2 ml-6 tablet:pl-4 flex items-center gap-2 tablet:gap-4 text-sm cursor-pointer"
@@ -380,9 +226,7 @@ export default function SettingsComponent() {
               {profilePictureUrl ? (
                 <img
                   src={profilePictureUrl}
-                  alt={`Avatar ${
-                    restaurantContext?.userConnected?.firstname || ""
-                  }`}
+                  alt={`Avatar ${restaurantContext?.userConnected?.firstname || ""}`}
                   className="w-full h-full object-cover"
                 />
               ) : (
@@ -406,6 +250,7 @@ export default function SettingsComponent() {
                 <SettingsSvg width={20} height={20} />
                 {t("settings.settings")}
               </li>
+
               {restaurantContext?.userConnected?.role === "owner" && (
                 <>
                   <hr className="h-[1px] bg-darkBlue opacity-20 mx-4" />
@@ -418,6 +263,7 @@ export default function SettingsComponent() {
                   </li>
                 </>
               )}
+
               <hr className="h-[1px] bg-darkBlue opacity-20 mx-4" />
               <li
                 className="cursor-pointer flex gap-4 items-center hover:bg-darkBlue hover:bg-opacity-10 px-4 py-2 my-2"

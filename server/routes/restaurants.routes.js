@@ -126,7 +126,6 @@ async function purgeExpiredBlockedRanges(restaurantId) {
   }
 }
 
-
 // Trouve le profil de restaurant pour cet employé
 function findRestaurantProfile(employee, restaurantId) {
   if (!Array.isArray(employee.restaurantProfiles)) return null;
@@ -226,7 +225,6 @@ router.get("/owner/restaurants/:id", authenticateToken, async (req, res) => {
     await updateExpiredStatus(id);
     await updateArchivedStatus(id);
     await purgeExpiredBlockedRanges(id);
-
 
     const restaurant = await RestaurantModel.findById(id)
       .populate("owner_id", "firstname")
@@ -373,27 +371,6 @@ router.get("/restaurant-subscription", authenticateToken, async (req, res) => {
       .json({ message: "Erreur lors de la récupération de l'abonnement" });
   }
 });
-
-// Route pour mettre à jour le lastNotificationCheck
-router.put(
-  "/restaurants/:id/notification-check",
-  authenticateToken,
-  async (req, res) => {
-    const { id } = req.params;
-    try {
-      await RestaurantModel.updateOne(
-        { _id: id },
-        { $set: { lastNotificationCheck: new Date() } },
-      );
-      res
-        .status(200)
-        .json({ message: "Notification check updated successfully" });
-    } catch (error) {
-      console.error("Error updating lastNotificationCheck:", error);
-      res.status(500).json({ message: "Internal server error" });
-    }
-  },
-);
 
 // COUNT ANALYTICS VISITS FROM WEBSITE
 router.post("/restaurants/:id/visits", async (req, res) => {

@@ -12,6 +12,11 @@ const {
   verifyPurchaseProof,
 } = require("../services/verify-buying-gift-card.service");
 
+// SERVICE NOTIFS
+const {
+  createAndBroadcastNotification,
+} = require("../services/notifications.service");
+
 function generateGiftCode() {
   const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   let code = "";
@@ -37,7 +42,7 @@ router.post("/restaurants/:id/gifts", async (req, res) => {
     const restaurant = await RestaurantModel.findByIdAndUpdate(
       restaurantId,
       { $push: { giftCards: newGiftCard } },
-      { new: true }
+      { new: true },
     )
       .populate("owner_id", "firstname")
       .populate("employees")
@@ -66,7 +71,7 @@ router.put("/restaurants/:id/gifts/:giftId", async (req, res) => {
           "giftCards.$.visible": visible,
         },
       },
-      { new: true }
+      { new: true },
     )
       .populate("owner_id", "firstname")
       .populate("employees")
@@ -94,7 +99,7 @@ router.delete("/restaurants/:id/gifts/:giftId", async (req, res) => {
     const restaurant = await RestaurantModel.findByIdAndUpdate(
       restaurantId,
       { $pull: { giftCards: { _id: giftId } } },
-      { new: true }
+      { new: true },
     )
       .populate("owner_id", "firstname")
       .populate("employees")
@@ -155,7 +160,7 @@ router.post(
       // 2) Init giftCardSold si absent (requête séparée => pas de conflit)
       await RestaurantModel.updateOne(
         { _id: restaurantId, giftCardSold: { $exists: false } },
-        { $set: { giftCardSold: { totalSold: 0, totalRefunded: 0 } } }
+        { $set: { giftCardSold: { totalSold: 0, totalRefunded: 0 } } },
       );
 
       // 3) validUntil
@@ -197,7 +202,7 @@ router.post(
         {
           $push: { purchasesGiftCards: newPurchase },
           $inc: { "giftCardSold.totalSold": 1 },
-        }
+        },
       );
 
       const modified =
@@ -216,7 +221,7 @@ router.post(
         {
           purchasesGiftCards: { $elemMatch: { paymentIntentId } },
           giftCardSold: 1,
-        }
+        },
       ).lean();
 
       const created = doc?.purchasesGiftCards?.[0];
@@ -234,6 +239,22 @@ router.post(
           purchase: created,
           giftCardStats: doc.giftCardSold,
         });
+
+        await createAndBroadcastNotification({
+          restaurantId: String(restaurantId),
+          module: "gift_cards",
+          type: "giftcard_purchased",
+          data: {
+            purchaseId: String(created?._id),
+            amount: created?.amount,
+            value: created?.value,
+            beneficiaryFirstName: created?.beneficiaryFirstName,
+            beneficiaryLastName: created?.beneficiaryLastName,
+            purchaseCode: created?.purchaseCode,
+            status: created?.status,
+            created_at: created?.created_at,
+          },
+        });
       }
 
       // 7) Réponse idempotente : si retry, on renvoie quand même 200 avec la même purchase
@@ -247,7 +268,7 @@ router.post(
       console.error("Error during gift card purchase:", error);
       return res.status(500).json({ error: "Error during gift card purchase" });
     }
-  }
+  },
 );
 
 // UPDATE GIFT CARD STATUS TO USED
@@ -269,7 +290,7 @@ router.put(
             "purchasesGiftCards.$.useDate": new Date(),
           },
         },
-        { new: true }
+        { new: true },
       )
         .populate("owner_id", "firstname")
         .populate("employees")
@@ -286,7 +307,7 @@ router.put(
       console.error("Error updating gift card status:", error);
       res.status(500).json({ error: "Error updating gift card status" });
     }
-  }
+  },
 );
 
 // UPDATE GIFT CARD STATUS TO VALID
@@ -305,7 +326,7 @@ router.put(
         {
           $set: { "purchasesGiftCards.$.status": "Valid" },
         },
-        { new: true }
+        { new: true },
       )
         .populate("owner_id", "firstname")
         .populate("employees")
@@ -322,7 +343,7 @@ router.put(
       console.error("Error updating gift card status:", error);
       res.status(500).json({ error: "Error updating gift card status" });
     }
-  }
+  },
 );
 
 // DELETE PURCHASED GIFT CARD
@@ -336,7 +357,7 @@ router.delete(
       const restaurant = await RestaurantModel.findOneAndUpdate(
         { _id: restaurantId },
         { $pull: { purchasesGiftCards: { _id: purchaseId } } },
-        { new: true }
+        { new: true },
       )
         .populate("owner_id", "firstname")
         .populate("employees")
@@ -355,7 +376,7 @@ router.delete(
       console.error("Error deleting purchased gift card:", error);
       res.status(500).json({ error: "Error deleting purchased gift card" });
     }
-  }
+  },
 );
 
 // UPDATE GIFTCARDS ORDER
@@ -377,7 +398,7 @@ router.put(
 
       // Réorganiser les catégories selon l'ordre donné
       restaurant.giftCards = orderedGiftCardIds.map((giftCardId) =>
-        restaurant.giftCards.find((cat) => cat._id.toString() === giftCardId)
+        restaurant.giftCards.find((cat) => cat._id.toString() === giftCardId),
       );
 
       await restaurant.save();
@@ -392,7 +413,7 @@ router.put(
         .status(500)
         .json({ message: "Server error. Please try again later." });
     }
-  }
+  },
 );
 
 module.exports = router;

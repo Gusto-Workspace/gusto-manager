@@ -14,6 +14,11 @@ const ReservationModel = require("../models/reservation.model");
 // SSE BUS
 const { broadcastToRestaurant } = require("../services/sse-bus.service");
 
+// SERVICE NOTIFS
+const {
+  createAndBroadcastNotification,
+} = require("../services/notifications.service");
+
 /* ---------------------------------------------------------
    Helpers: blocked ranges (pause réservations)
 --------------------------------------------------------- */
@@ -381,6 +386,23 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
       reservation: populatedReservation,
     });
 
+    if (!isManual) {
+      await createAndBroadcastNotification({
+        restaurantId,
+        module: "reservations",
+        type: "reservation_created",
+        data: {
+          reservationId: String(populatedReservation?._id),
+          customerName: populatedReservation?.customerName,
+          numberOfGuests: populatedReservation?.numberOfGuests,
+          reservationDate: populatedReservation?.reservationDate,
+          reservationTime: populatedReservation?.reservationTime,
+          status: populatedReservation?.status,
+          tableName: populatedReservation?.table?.name || null,
+        },
+      });
+    }
+
     restaurant.reservations.list.push(savedReservation._id);
     await restaurant.save();
 
@@ -426,12 +448,6 @@ router.put(
       if (!updatedReservation) {
         return res.status(404).json({ message: "Reservation not found" });
       }
-
-      broadcastToRestaurant(String(restaurantId), {
-        type: "reservation_updated",
-        restaurantId: String(restaurantId),
-        reservation: updatedReservation,
-      });
 
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
@@ -565,12 +581,6 @@ router.put(
         return res.status(404).json({ message: "Reservation not found" });
       }
 
-      broadcastToRestaurant(restaurantId, {
-        type: "reservation_updated",
-        restaurantId,
-        reservation: updatedReservation,
-      });
-
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
         .populate("menus")
@@ -628,12 +638,6 @@ router.delete(
         { $pull: { "reservations.list": reservationId } },
         { new: true },
       );
-
-      broadcastToRestaurant(restaurantId, {
-        type: "reservation_deleted",
-        restaurantId,
-        reservationId,
-      });
 
       const updatedRestaurant = await RestaurantModel.findById(restaurantId)
         .populate({

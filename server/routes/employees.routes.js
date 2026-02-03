@@ -17,6 +17,11 @@ const RestaurantModel = require("../models/restaurant.model");
 const OwnerModel = require("../models/owner.model");
 const TrainingSession = require("../models/logs/training-session.model");
 
+// SERVICE NOTIFS
+const {
+  createAndBroadcastNotification,
+} = require("../services/notifications.service");
+
 // ---------- HELPERS MULTI-RESTAURANTS / PROFILES ----------
 
 function normalizeEmail(email) {
@@ -44,7 +49,7 @@ function findRestaurantProfile(employee, restaurantId) {
   if (!Array.isArray(employee.restaurantProfiles)) return null;
   const target = String(restaurantId);
   return employee.restaurantProfiles.find(
-    (p) => String(p.restaurant) === target
+    (p) => String(p.restaurant) === target,
   );
 }
 
@@ -84,7 +89,7 @@ const uploadFromBuffer = (buffer, folder) => {
       (error, result) => {
         if (result) resolve(result);
         else reject(error);
-      }
+      },
     );
     streamifier.createReadStream(buffer).pipe(stream);
   });
@@ -176,7 +181,7 @@ router.post(
       if (req.file) {
         const cloudinaryResponse = await uploadFromBuffer(
           req.file.buffer,
-          `Gusto_Workspace/restaurants/${restaurantId}/employees`
+          `Gusto_Workspace/restaurants/${restaurantId}/employees`,
         );
         profilePicture = {
           url: cloudinaryResponse.secure_url,
@@ -262,7 +267,7 @@ router.post(
           sendTransactionalEmail(emailParams)
             .then(() => console.log("Mail création employé envoyé"))
             .catch((err) =>
-              console.error("Erreur mail création employé :", err)
+              console.error("Erreur mail création employé :", err),
             );
         }
 
@@ -322,7 +327,7 @@ router.post(
       // 🔹 Profil spécifique à CE restaurant
       const profile = getOrCreateRestaurantProfile(
         existingEmployee,
-        restaurantId
+        restaurantId,
       );
 
       if (!profile.snapshot) {
@@ -382,7 +387,7 @@ router.post(
 
       if (
         !restaurant.employees.some(
-          (id) => String(id) === String(existingEmployee._id)
+          (id) => String(id) === String(existingEmployee._id),
         )
       ) {
         restaurant.employees.push(existingEmployee._id);
@@ -403,7 +408,7 @@ router.post(
       console.error("Error creating/importing employee:", error);
       res.status(500).json({ message: "Internal server error" });
     }
-  }
+  },
 );
 
 // ---------- UPDATE EMPLOYEE POUR UN RESTO DONNÉ (options par resto) ----------
@@ -439,7 +444,7 @@ router.patch(
         }
         const result = await uploadFromBuffer(
           req.file.buffer,
-          `Gusto_Workspace/restaurants/${restaurantId}/employees`
+          `Gusto_Workspace/restaurants/${restaurantId}/employees`,
         );
         employee.profilePicture = {
           url: result.secure_url,
@@ -499,7 +504,7 @@ router.patch(
       console.error("Error updating employee:", error);
       res.status(500).json({ message: "Internal server error" });
     }
-  }
+  },
 );
 
 // ---------- DOCUMENTS (par restaurant) ----------
@@ -549,7 +554,7 @@ router.post(
             (err, r) => {
               if (err) return reject(err);
               resolve(r);
-            }
+            },
           );
           streamifier.createReadStream(file.buffer).pipe(uploadStream);
         });
@@ -572,7 +577,7 @@ router.post(
       console.error("Error uploading documents:", err);
       return res.status(500).json({ message: "Internal server error" });
     }
-  }
+  },
 );
 
 // LIST DOCUMENTS
@@ -588,7 +593,7 @@ router.get(
       }
 
       const profile = (employee.restaurantProfiles || []).find(
-        (p) => String(p.restaurant) === String(restaurantId)
+        (p) => String(p.restaurant) === String(restaurantId),
       );
 
       return res.json({ documents: profile?.documents || [] });
@@ -596,7 +601,7 @@ router.get(
       console.error("Error fetching employee documents:", err);
       return res.status(500).json({ message: "Internal server error" });
     }
-  }
+  },
 );
 
 // DOWNLOAD DOCUMENT
@@ -616,7 +621,7 @@ router.get(
       }
 
       const doc = (profile.documents || []).find(
-        (d) => d.public_id === public_id
+        (d) => d.public_id === public_id,
       );
       if (!doc) {
         return res.status(404).json({ message: "Document not found" });
@@ -627,7 +632,7 @@ router.get(
       res.setHeader("Content-Type", response.headers["content-type"]);
       res.setHeader(
         "Content-Disposition",
-        `attachment; filename="${doc.filename}"`
+        `attachment; filename="${doc.filename}"`,
       );
 
       response.data.pipe(res);
@@ -635,7 +640,7 @@ router.get(
       console.error("Error in download route:", err);
       res.status(500).json({ message: "Server error" });
     }
-  }
+  },
 );
 
 // DELETE DOCUMENT
@@ -660,7 +665,7 @@ router.delete(
       });
 
       profile.documents = profile.documents.filter(
-        (doc) => doc.public_id !== public_id
+        (doc) => doc.public_id !== public_id,
       );
 
       await employee.save();
@@ -680,7 +685,7 @@ router.delete(
         .status(500)
         .json({ message: "Internal server error", error: err.message });
     }
-  }
+  },
 );
 
 // ---------- DELETE EMPLOYEE D'UN RESTO (multi-resto) ----------
@@ -705,7 +710,7 @@ router.delete(
       // 🔹 0) Récupérer le profil pour CE restaurant (pour supprimer ses docs)
       const profileForRestaurant =
         (employee.restaurantProfiles || []).find(
-          (p) => String(p.restaurant) === String(restaurantId)
+          (p) => String(p.restaurant) === String(restaurantId),
         ) || null;
 
       // 🔹 1) Supprimer les documents Cloudinary du profil de CE restaurant
@@ -722,7 +727,7 @@ router.delete(
           } catch (err) {
             console.warn(
               `Erreur lors de la suppression du document employé ${employeeId} (resto ${restaurantId}) :`,
-              err?.message || err
+              err?.message || err,
             );
           }
         }
@@ -730,19 +735,19 @@ router.delete(
 
       // 2) Détacher l'employé du restaurant
       restaurant.employees = restaurant.employees.filter(
-        (e) => String(e._id || e) !== String(employeeId)
+        (e) => String(e._id || e) !== String(employeeId),
       );
       await restaurant.save();
 
       // 3) Retirer ce restaurant de la liste de l'employé
       employee.restaurants = (employee.restaurants || []).filter(
-        (id) => String(id) !== String(restaurantId)
+        (id) => String(id) !== String(restaurantId),
       );
 
       // 4) Supprimer le profil pour ce restaurant
       employee.restaurantProfiles =
         employee.restaurantProfiles?.filter(
-          (p) => String(p.restaurant) !== String(restaurantId)
+          (p) => String(p.restaurant) !== String(restaurantId),
         ) || [];
 
       // 5) Si l'employé n'est plus rattaché à aucun resto → suppression totale
@@ -751,12 +756,12 @@ router.delete(
         if (employee.profilePicture?.public_id) {
           try {
             await cloudinary.uploader.destroy(
-              employee.profilePicture.public_id
+              employee.profilePicture.public_id,
             );
           } catch (err) {
             console.warn(
               "Erreur lors de la suppression de la photo employé :",
-              err?.message || err
+              err?.message || err,
             );
           }
         }
@@ -774,7 +779,7 @@ router.delete(
               } catch (err) {
                 console.warn(
                   `Erreur lors de la suppression d'un document (cleanup total employé ${employeeId}) :`,
-                  err?.message || err
+                  err?.message || err,
                 );
               }
             }
@@ -783,7 +788,7 @@ router.delete(
 
         try {
           await cloudinary.api.delete_folder(
-            `Gusto_Workspace/employees/${employeeId}`
+            `Gusto_Workspace/employees/${employeeId}`,
           );
         } catch (err) {
           const httpCode = err?.http_code || err?.error?.http_code;
@@ -792,7 +797,7 @@ router.delete(
           } else {
             console.warn(
               `Erreur lors de la suppression du dossier Cloudinary de l'employé ${employeeId} :`,
-              err?.error?.message || err?.message || err
+              err?.error?.message || err?.message || err,
             );
           }
         }
@@ -822,7 +827,7 @@ router.delete(
       console.error("Error deleting employee:", error);
       res.status(500).json({ message: "Internal server error" });
     }
-  }
+  },
 );
 
 // ---------- SHIFTS (par restaurant) ----------
@@ -839,7 +844,7 @@ router.get(
       }
 
       const profile = (employee.restaurantProfiles || []).find(
-        (p) => String(p.restaurant) === String(restaurantId)
+        (p) => String(p.restaurant) === String(restaurantId),
       );
 
       return res.json({ shifts: profile?.shifts || [] });
@@ -847,7 +852,7 @@ router.get(
       console.error("Erreur fetch shifts:", err);
       return res.status(500).json({ message: "Internal server error" });
     }
-  }
+  },
 );
 
 // POST SHIFT
@@ -874,7 +879,7 @@ router.post(
     await emp.save();
     const created = profile.shifts[profile.shifts.length - 1];
     return res.status(201).json({ shift: created, shifts: profile.shifts });
-  }
+  },
 );
 
 // PUT SHIFT
@@ -899,7 +904,7 @@ router.put(
 
     await emp.save();
     return res.json({ shift, shifts: profile.shifts });
-  }
+  },
 );
 
 // DELETE SHIFT
@@ -920,7 +925,7 @@ router.delete(
     shift.deleteOne();
     await emp.save();
     return res.json({ shifts: profile.shifts });
-  }
+  },
 );
 
 // ---------- DEMANDES DE CONGÉS (par restaurant) ----------
@@ -962,12 +967,27 @@ router.post(
         leaveRequest: last,
       });
 
+      await createAndBroadcastNotification({
+        restaurantId: String(restaurantId),
+        module: "employees",
+        type: "leave_request_created",
+        data: {
+          employeeName: `${emp?.firstname || ""} ${emp?.lastname || ""}`.trim(),
+          employeeId: String(emp._id),
+          leaveRequestId: String(last._id),
+          start: last?.start,
+          end: last?.end,
+          type: last?.type,
+          status: last?.status,
+        },
+      });
+
       return res.status(201).json(profile.leaveRequests);
     } catch (err) {
       console.error("Erreur création leaveRequest:", err);
       return res.status(500).json({ message: "Internal server error" });
     }
-  }
+  },
 );
 
 // LIST LEAVE-REQUESTS
@@ -982,7 +1002,7 @@ router.get(
       }
 
       const profile = (emp.restaurantProfiles || []).find(
-        (p) => String(p.restaurant) === String(restaurantId)
+        (p) => String(p.restaurant) === String(restaurantId),
       );
 
       return res.json(profile?.leaveRequests || []);
@@ -990,7 +1010,7 @@ router.get(
       console.error("Erreur list leaveRequests:", err);
       return res.status(500).json({ message: "Internal server error" });
     }
-  }
+  },
 );
 
 // UPDATE LEAVE-REQUEST STATUS
@@ -1016,7 +1036,7 @@ router.put(
 
     if (status === "approved") {
       const already = profile.shifts.some(
-        (s) => String(s.leaveRequestId) === String(lr._id)
+        (s) => String(s.leaveRequestId) === String(lr._id),
       );
       if (!already) {
         profile.shifts.push({
@@ -1030,7 +1050,7 @@ router.put(
 
     if (status === "cancelled") {
       profile.shifts = profile.shifts.filter(
-        (s) => String(s.leaveRequestId) !== String(lr._id)
+        (s) => String(s.leaveRequestId) !== String(lr._id),
       );
     }
 
@@ -1039,7 +1059,7 @@ router.put(
       leaveRequest: lr,
       shifts: profile.shifts,
     });
-  }
+  },
 );
 
 // DELETE LEAVE-REQUEST
@@ -1058,7 +1078,7 @@ router.delete(
     if (!lr) return res.status(404).json({ message: "Request not found" });
 
     profile.shifts = profile.shifts.filter(
-      (s) => String(s.leaveRequestId) !== String(reqId)
+      (s) => String(s.leaveRequestId) !== String(reqId),
     );
 
     lr.deleteOne();
@@ -1068,46 +1088,8 @@ router.delete(
       leaveRequests: profile.leaveRequests,
       shifts: profile.shifts,
     });
-  }
+  },
 );
-
-// Récupérer les notifications non lues des demandes de congés (par resto)
-router.get("/restaurants/:id/leave-requests/unread-count", async (req, res) => {
-  try {
-    const restaurantId = req.params.id;
-    const since = req.query.since ? new Date(req.query.since) : null;
-    if (!since)
-      return res.status(400).json({ message: "since is required (ISO)" });
-
-    const employees = await EmployeeModel.find(
-      { restaurants: restaurantId },
-      { restaurantProfiles: 1 }
-    ).lean();
-
-    const objectIdToDate = (oid) =>
-      new Date(parseInt(String(oid).substring(0, 8), 16) * 1000);
-
-    let count = 0;
-    for (const emp of employees) {
-      const profile = (emp.restaurantProfiles || []).find(
-        (p) => String(p.restaurant) === String(restaurantId)
-      );
-      if (!profile) continue;
-
-      for (const lr of profile.leaveRequests || []) {
-        const createdAt = lr.createdAt
-          ? new Date(lr.createdAt)
-          : objectIdToDate(lr._id);
-        if (createdAt > since) count++;
-      }
-    }
-
-    return res.json({ unreadLeaveRequests: count });
-  } catch (err) {
-    console.error("Error unread-count leaveRequests:", err);
-    return res.status(500).json({ message: "Internal server error" });
-  }
-});
 
 // ---------- EMPLOYEE ME / UPDATE DATA / PASSWORD ----------
 
@@ -1259,14 +1241,14 @@ router.put(
           } catch (err) {
             console.warn(
               "Erreur lors de la suppression de l'ancienne photo employé :",
-              err?.message || err
+              err?.message || err,
             );
           }
         }
 
         const result = await uploadFromBuffer(
           req.file.buffer,
-          `Gusto_Workspace/employees/${emp._id}`
+          `Gusto_Workspace/employees/${emp._id}`,
         );
 
         emp.profilePicture = {
@@ -1280,7 +1262,7 @@ router.put(
           } catch (err) {
             console.warn(
               "Erreur lors de la suppression de la photo employé :",
-              err?.message || err
+              err?.message || err,
             );
           }
         }
@@ -1313,7 +1295,7 @@ router.put(
       console.error(e);
       return res.status(500).json({ message: "Server error" });
     }
-  }
+  },
 );
 
 router.put(
@@ -1341,7 +1323,7 @@ router.put(
       console.error(e);
       return res.status(500).json({ message: "Server error" });
     }
-  }
+  },
 );
 
 // ---------- TRAINING SESSIONS (global, pas par resto) ----------
@@ -1353,7 +1335,7 @@ router.get("/employees/:employeeId/training-sessions", async (req, res) => {
     const page = Math.max(parseInt(req.query.page || "1", 10), 1);
     const limit = Math.min(
       Math.max(parseInt(req.query.limit || "50", 10), 1),
-      100
+      100,
     );
     const skip = (page - 1) * limit;
 
@@ -1378,7 +1360,7 @@ router.get("/employees/:employeeId/training-sessions", async (req, res) => {
 
     const trainingSessions = items.map((s) => {
       const me = (s.attendees || []).find(
-        (a) => String(a.employeeId) === String(employeeId)
+        (a) => String(a.employeeId) === String(employeeId),
       );
       return {
         ...s,

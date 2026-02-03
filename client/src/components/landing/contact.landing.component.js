@@ -44,51 +44,51 @@ export default function ContactLandingComponent() {
       <div className="w-full tablet:w-1/2 container mx-auto px-4 md:px-6">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-5 pt-8">
-            <h2 className="text-3xl tablet:text-4xl font-bold text-darkBlue mb-4">
+            <h2 className="text-3xl tablet:text-4xl font-bold text-lightGrey mb-4">
               Nous contacter
             </h2>
 
             <div className="w-20 h-1 bg-orange my-6 rounded-full"></div>
 
-            <p className="text-lg text-darkBlue mb-4 font-light">
+            <p className="text-lg text-lightGrey mb-4 font-light">
               Découvrez comment Gusto Manager peut améliorer la gestion de votre
               restaurant. Remplissez le formulaire pour qu'un expert vous
               contacte.
             </p>
-            <p className="text-lg text-darkBlue mb-4">
+            <p className="text-lg text-lightGrey mb-4">
               Réservez une démo produit avec notre équipe et découvrez{" "}
-              <span className="font-semibold text-gusto-secondary">
+              <span className="font-semibold text-lightGrey">
                 la meilleure plateforme de gestion pour votre restaurant, bar ou
                 café.
               </span>
             </p>
 
-            <h3 className="font-semibold text-gusto-secondary text-xl mb-4">
+            <h3 className="font-semibold text-lightGrey text-xl mb-4">
               Prenez rendez-vous avec notre équipe pour :
             </h3>
 
             <ul className="space-y-4 mb-8 font-light text-lg">
               <li className="flex items-start gap-3">
-                <div className="bg-gusto-primary text-white bg-orange rounded-full p-0.5 mt-1">
+                <div className="text-white bg-orange rounded-full p-0.5 mt-1">
                   <Check className="h-4 w-4" />
                 </div>
-                <span>
+                <span className="text-lightGrey">
                   Un appel (d'environ 30 minutes) pour discuter de vos besoins
                 </span>
               </li>
 
               <li className="flex items-start gap-3">
-                <div className="bg-gusto-primary text-white bg-orange rounded-full p-0.5 mt-1">
+                <div className="text-white bg-orange rounded-full p-0.5 mt-1">
                   <Check className="h-4 w-4" />
                 </div>
-                <span>Une démo gratuite de notre plateforme de gestion</span>
+                <span className="text-lightGrey">Une démo gratuite de notre plateforme de gestion</span>
               </li>
 
               <li className="flex items-start gap-3">
-                <div className="bg-gusto-primary text-white bg-orange rounded-full p-0.5 mt-1">
+                <div className="text-white bg-orange rounded-full p-0.5 mt-1">
                   <Check className="h-4 w-4" />
                 </div>
-                <span>Toutes les informations pour vous aider à démarrer</span>
+                <span className="text-lightGrey">Toutes les informations pour vous aider à démarrer</span>
               </li>
             </ul>
           </div>
