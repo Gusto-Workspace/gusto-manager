@@ -63,7 +63,7 @@ export default function NavbarLanding(props) {
     >
       <div className="container mx-auto px-4 tablet:px-6 flex justify-between items-center">
         <div className="text-2xl md:text-3xl font-display font-bold flex gap-2">
-          <a href="/" className={isScrolled || props.isContact ? "text-darkBlue" : "text-white"}>
+          <a href="/" className={isScrolled ? "text-darkBlue" : "text-white"}>
             Gusto Manager
           </a>
         </div>
@@ -75,12 +75,12 @@ export default function NavbarLanding(props) {
                 key={i}
                 onClick={() => handleScrollToSection(id)}
                 className={`cursor-pointer ${
-                  isScrolled || props.isContact ? "text-darkBlue" : "text-white"
+                  isScrolled ? "text-darkBlue" : "text-white"
                 } hover:text-orange transition-colors`}
               >
                 {id.replace("#", "").charAt(0).toUpperCase() + id.slice(2)}{" "}
               </a>
-            )
+            ),
           )}
           <button
             onClick={() => {
@@ -97,7 +97,7 @@ export default function NavbarLanding(props) {
 
         <button
           className={`tablet:hidden ${
-            isScrolled || props.isContact ? "text-darkBlue" : "text-white"
+            isScrolled ? "text-darkBlue" : "text-white"
           }`}
           onClick={() => setIsMobileMenuOpen(true)}
         >
@@ -141,7 +141,7 @@ export default function NavbarLanding(props) {
               >
                 {id.replace("#", "").charAt(0).toUpperCase() + id.slice(2)}
               </a>
-            )
+            ),
           )}
           <button
             onClick={() => {

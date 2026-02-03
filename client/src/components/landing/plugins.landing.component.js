@@ -9,14 +9,14 @@ export default function PluginsLandingComponent() {
     <section className="py-16 tablet:py-24 bg-darkBlue/5" id="modules">
       <div className="container mx-auto px-4 tablet:px-6">
         <div className="text-center max-w-3xl mx-auto mb-16">
-          <h2 className="text-3xl tablet:text-4xl font-bold text-darkBlue mb-4">
+          <h2 className="text-3xl tablet:text-4xl font-bold text-lightGrey mb-4">
             Modules Gusto Manager
           </h2>
-          <p className="text-lg text-darkBlue mb-4">
+          <p className="text-lg text-lightGrey mb-4">
             Choisissez uniquement les modules qui vous conviennent, et ne payez
             que pour ce que vous utilisez.
           </p>
-          <p className="text-md text-darkBlue">
+          <p className="text-md text-lightGrey">
             Notre approche modulaire vous permet d'adapter la plateforme
             précisément à vos besoins, avec la possibilité d'ajouter des
             fonctionnalités à mesure que votre entreprise évolue.
@@ -66,7 +66,7 @@ export default function PluginsLandingComponent() {
         </div>
 
         <div className="mt-16 text-center">
-          <p className="text-lg text-darkBlue mb-8 max-w-2xl mx-auto">
+          <p className="text-lg text-lightGrey mb-8 max-w-2xl mx-auto">
             Modules additionnels à venir : HACCP, Vente à emporter, Marketing
             Direct, Analyse Avancée des Données etc. Contactez-nous pour en
             savoir plus !

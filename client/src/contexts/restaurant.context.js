@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/router";
 
 // AXIOS
@@ -9,6 +9,7 @@ import { jwtDecode } from "jwt-decode";
 
 export default function RestaurantContext() {
   const router = useRouter();
+
   const [restaurantData, setRestaurantData] = useState(null);
   const [userConnected, setUserConnected] = useState(null);
   const [restaurantsList, setRestaurantsList] = useState([]);
@@ -19,61 +20,208 @@ export default function RestaurantContext() {
   const [autoDeletingReservations, setAutoDeletingReservations] = useState([]);
   const [autoUpdatingReservations, setAutoUpdatingReservations] = useState([]);
 
-  const [newReservationsCount, setNewReservationsCount] = useState(0);
-  const [newLeaveRequestsCount, setNewLeaveRequestsCount] = useState(0);
-  const [newGiftPurchasesCount, setNewGiftPurchasesCount] = useState(0);
+  const [unreadCounts, setUnreadCounts] = useState({
+    total: 0,
+    byModule: { reservations: 0, gift_cards: 0, employees: 0 },
+  });
+
+  // ✅ Liste de notifications (pour le drawer)
+  const [notifications, setNotifications] = useState([]);
+  const [notificationsNextCursor, setNotificationsNextCursor] = useState(null);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+
+  // ✅ si tu veux garder tes variables existantes (compat UI)
+  const newReservationsCount = unreadCounts.byModule.reservations || 0;
+  const newGiftPurchasesCount = unreadCounts.byModule.gift_cards || 0;
+  const newLeaveRequestsCount = unreadCounts.byModule.employees || 0;
 
   const initialReservationsLoadedRef = useRef(false);
   const hasFetchedDashboardDataRef = useRef(false);
   const sseRef = useRef(null);
   const currentPathRef = useRef("");
 
-  const NOTIF_KEY = (rid) => `gm:notifs:${rid}`;
-
   useEffect(() => {
     currentPathRef.current = router.pathname || "";
   }, [router.pathname]);
 
-  function readNotifCounts(rid) {
+  // ---------------------------
+  // Notifications helpers (NEW)
+  // ---------------------------
+
+  const fetchNotifications = useCallback(
+    async ({
+      module = null,
+      unreadOnly = false,
+      limit = 30,
+      cursor = null,
+      reset = true,
+    } = {}) => {
+      const token =
+        typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const rid = restaurantData?._id;
+      if (!token || !rid) return;
+
+      if (reset) setNotificationsNextCursor(null);
+
+      setNotificationsLoading(true);
+
+      try {
+        const { data } = await axios.get(
+          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${rid}/notifications`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+            params: {
+              limit,
+              unreadOnly: unreadOnly ? "true" : "false",
+              ...(module ? { module } : {}),
+              ...(cursor ? { cursor } : {}),
+            },
+          },
+        );
+
+        const items = Array.isArray(data?.notifications)
+          ? data.notifications
+          : [];
+        const next = data?.nextCursor ?? null;
+
+        setNotificationsNextCursor(next);
+
+        setNotifications((prev) => {
+          if (reset) return items;
+
+          const map = new Map(prev.map((n) => [String(n._id), n]));
+          for (const n of items) map.set(String(n._id), n);
+
+          return Array.from(map.values()).sort(
+            (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
+          );
+        });
+      } catch (e) {
+        console.warn("Failed to fetch notifications list", e);
+      } finally {
+        setNotificationsLoading(false);
+      }
+    },
+    [restaurantData?._id],
+  );
+
+  async function fetchUnreadCounts(token, rid) {
+    if (!token || !rid) return;
+
     try {
-      const raw = localStorage.getItem(NOTIF_KEY(rid));
-      if (!raw) return { leave: 0, res: 0, gifts: 0 };
-      const obj = JSON.parse(raw);
-      return {
-        leave: Number(obj.leave) || 0,
-        res: Number(obj.res) || 0,
-        gifts: Number(obj.gifts) || 0,
-      };
-    } catch {
-      return { leave: 0, res: 0, gifts: 0 };
+      const { data } = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${rid}/notifications/unread-counts`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+
+      // attendu : { total, byModule: { reservations, gift_cards, employees } }
+      setUnreadCounts({
+        total: data?.total ?? 0,
+        byModule: {
+          reservations: data?.byModule?.reservations ?? 0,
+          gift_cards: data?.byModule?.gift_cards ?? 0,
+          employees: data?.byModule?.employees ?? 0,
+        },
+      });
+    } catch (e) {
+      console.warn("Failed to fetch unread notifications counts", e);
+      // en cas d'erreur -> on garde l'état précédent
     }
   }
 
-  function writeNotifCounts(rid, counts) {
-    try {
-      localStorage.setItem(NOTIF_KEY(rid), JSON.stringify(counts));
-    } catch {}
+  function bumpUnreadLocal(moduleKey) {
+    if (!moduleKey) return;
+
+    setUnreadCounts((prev) => {
+      const nextBy = {
+        ...(prev?.byModule || { reservations: 0, gift_cards: 0, employees: 0 }),
+      };
+      nextBy[moduleKey] = (nextBy[moduleKey] || 0) + 1;
+
+      const total =
+        (nextBy.reservations || 0) +
+        (nextBy.gift_cards || 0) +
+        (nextBy.employees || 0);
+
+      return { total, byModule: nextBy };
+    });
   }
 
-  function clearAllNotifCounts() {
-    try {
-      Object.keys(localStorage).forEach((key) => {
-        if (key.startsWith("gm:notifs:")) localStorage.removeItem(key);
-      });
-    } catch {}
-  }
+  const markNotificationRead = useCallback(
+    async (notifId) => {
+      const token =
+        typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const rid = restaurantData?._id;
+      if (!token || !rid || !notifId) return;
 
+      try {
+        const { data } = await axios.post(
+          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${rid}/notifications/${notifId}/read`,
+          {},
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+
+        const updated = data?.notification;
+
+        setNotifications((prev) =>
+          prev.map((n) =>
+            String(n._id) === String(notifId)
+              ? updated
+                ? updated
+                : { ...n, read: true, readAt: new Date() }
+              : n,
+          ),
+        );
+
+        await fetchUnreadCounts(token, rid);
+      } catch (e) {
+        console.warn("Failed to mark notification read", e);
+      }
+    },
+    [restaurantData?._id],
+  );
+
+  const markAllRead = useCallback(
+    async (module = null) => {
+      const token =
+        typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const rid = restaurantData?._id;
+      if (!token || !rid) return;
+
+      try {
+        await axios.post(
+          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${rid}/notifications/read-all`,
+          {},
+          {
+            headers: { Authorization: `Bearer ${token}` },
+            params: module ? { module } : {},
+          },
+        );
+
+        setNotifications((prev) =>
+          prev.map((n) => {
+            if (n.read) return n;
+            if (module && n.module !== module) return n;
+            return { ...n, read: true, readAt: n.readAt || new Date() };
+          }),
+        );
+
+        await fetchUnreadCounts(token, rid);
+      } catch (e) {
+        console.warn("Failed to mark all notifications read", e);
+      }
+    },
+    [restaurantData?._id],
+  );
+
+  // --------------------------------------------------------
+  // SSE: keep real-time injections + NEW notification events
+  // --------------------------------------------------------
   useEffect(() => {
     const restaurantId = restaurantData?._id;
     const role = userConnected?.role;
 
     if (!restaurantId || !role) return;
-
-    // --- Compteurs de notifs ---
-    const persisted = readNotifCounts(restaurantId);
-    setNewLeaveRequestsCount(persisted.leave);
-    setNewReservationsCount(persisted.res);
-    setNewGiftPurchasesCount(persisted.gifts);
 
     // Fermer ancienne connexion si existante
     if (sseRef.current) {
@@ -89,31 +237,20 @@ export default function RestaurantContext() {
       try {
         const payload = JSON.parse(evt.data);
 
-        const path = currentPathRef.current;
-        const isOwner = role === "owner";
-        const isOnReservationsList =
-          path === "/dashboard/reservations" ||
-          path === "/dashboard/webapp/reservations";
-        const isOnDaysOffPage =
-          path === "/dashboard/employees/planning/days-off";
-        const isOnGiftsPage = path === "/dashboard/gift-cards";
+        if (payload.type === "notification_created" && payload.notification) {
+          const n = payload.notification;
 
-        // ——— CONGÉS ———
+          bumpUnreadLocal(n.module);
+
+          setNotifications((prev) => {
+            const id = String(n._id);
+            if (prev.some((x) => String(x._id) === id)) return prev;
+            return [n, ...prev].slice(0, 60);
+          });
+        }
+
+        // ——— CONGÉS (temps réel, inchangé) ———
         if (payload.type === "leave_request_created") {
-          // 1) pastille uniquement pour OWNER
-          if (isOwner) {
-            setNewLeaveRequestsCount((c) => {
-              const next = c + 1;
-              const rid = restaurantData?._id;
-              if (rid) {
-                const counts = readNotifCounts(rid);
-                writeNotifCounts(rid, { ...counts, leave: next });
-              }
-              return next;
-            });
-          }
-
-          // 2) on met à jour restaurantData pour tout le monde (owner + employee)
           setRestaurantData((prev) => {
             if (!prev) return prev;
             const empId = String(payload.employeeId);
@@ -133,27 +270,10 @@ export default function RestaurantContext() {
           });
         }
 
-        // ——— RÉSERVATIONS ———
-        // CREATION
+        // ——— RÉSERVATIONS (temps réel, inchangé) ———
         if (payload.type === "reservation_created" && payload.reservation) {
           const r = payload.reservation;
 
-          // Pastille réservations uniquement pour OWNER + pas sur la page résas + résa non manuelle
-          const isManual = r.manual === true;
-
-          if (isOwner && !isOnReservationsList && !isManual) {
-            setNewReservationsCount((c) => {
-              const next = c + 1;
-              const rid = restaurantData?._id;
-              if (rid) {
-                const counts = readNotifCounts(rid);
-                writeNotifCounts(rid, { ...counts, res: next });
-              }
-              return next;
-            });
-          }
-
-          // Injection dans la liste pour tout le monde
           setRestaurantData((prev) => {
             if (!prev) return prev;
             const list = prev?.reservations?.list || [];
@@ -169,56 +289,8 @@ export default function RestaurantContext() {
           });
         }
 
-        // UPDATE (statut / détails)
-        if (payload.type === "reservation_updated" && payload.reservation) {
-          const r = payload.reservation;
-          setRestaurantData((prev) => {
-            if (!prev) return prev;
-            const list = prev?.reservations?.list || [];
-            return {
-              ...prev,
-              reservations: {
-                ...prev.reservations,
-                list: list.map((x) =>
-                  String(x._id) === String(r._id) ? r : x,
-                ),
-              },
-            };
-          });
-        }
-
-        // DELETE
-        if (payload.type === "reservation_deleted") {
-          const id = payload.reservationId;
-          setRestaurantData((prev) => {
-            if (!prev) return prev;
-            const list = prev?.reservations?.list || [];
-            return {
-              ...prev,
-              reservations: {
-                ...prev.reservations,
-                list: list.filter((x) => String(x._id) !== String(id)),
-              },
-            };
-          });
-        }
-
-        // ——— CARTES CADEAUX ———
+        // ——— CARTES CADEAUX (temps réel, inchangé) ———
         if (payload.type === "giftcard_purchased" && payload.purchase) {
-          // Pastille uniquement OWNER + pas sur page cadeaux
-          if (isOwner && !isOnGiftsPage) {
-            setNewGiftPurchasesCount((c) => {
-              const next = c + 1;
-              const rid = restaurantData?._id;
-              if (rid) {
-                const counts = readNotifCounts(rid);
-                writeNotifCounts(rid, { ...counts, gifts: next });
-              }
-              return next;
-            });
-          }
-
-          // Injection dans la liste côté restaurantData pour tout le monde
           setRestaurantData((prev) => {
             if (!prev) return prev;
             const list = prev.purchasesGiftCards || [];
@@ -226,24 +298,6 @@ export default function RestaurantContext() {
             const exists = list.some((x) => String(x._id) === id);
             if (exists) return prev;
             return { ...prev, purchasesGiftCards: [...list, payload.purchase] };
-          });
-        }
-
-        // ——— STATS CARTES CADEAUX (ventes + remboursements) ———
-        if (
-          (payload.type === "giftcard_purchased" ||
-            payload.type === "giftcard_refunded") &&
-          payload.giftCardStats
-        ) {
-          setRestaurantData((prev) => {
-            if (!prev) return prev;
-            return {
-              ...prev,
-              giftCardSold: {
-                ...(prev.giftCardSold || { totalSold: 0, totalRefunded: 0 }),
-                ...payload.giftCardStats,
-              },
-            };
           });
         }
       } catch (e) {
@@ -259,12 +313,17 @@ export default function RestaurantContext() {
       es.close();
       sseRef.current = null;
     };
-  }, [restaurantData?._id, userConnected?.role]);
+  }, [restaurantData?._id, userConnected?.role]); // ok
+
+  // ---------------------------
+  // Misc helpers
+  // ---------------------------
 
   function inferRequiredModuleFromPath(pathname = "") {
     if (pathname.startsWith("/dashboard/webapp/reservations"))
       return "reservations";
-    if (pathname.startsWith("/dashboard/webapp/gift-cards")) return "gift_card";
+    if (pathname.startsWith("/dashboard/webapp/gift-cards"))
+      return "gift_cards";
     return null;
   }
 
@@ -272,18 +331,22 @@ export default function RestaurantContext() {
     setRestaurantsList([]);
     setRestaurantData(null);
     setUserConnected(null);
+    setNotifications([]);
+    setNotificationsNextCursor(null);
+    setNotificationsLoading(false);
     setIsAuth(false);
 
     // ✅ stop le loader (sinon splash infini)
     setDataLoading(false);
 
-    try {
-      clearAllNotifCounts();
-    } catch {}
-
     localStorage.removeItem("token");
 
-    // ✅ Si on est déjà sur /dashboard/login => pas de redirect param
+    // ✅ reset counts
+    setUnreadCounts({
+      total: 0,
+      byModule: { reservations: 0, gift_cards: 0, employees: 0 },
+    });
+
     const path = typeof window !== "undefined" ? window.location.pathname : "";
 
     if (path.startsWith("/dashboard/login")) {
@@ -291,7 +354,6 @@ export default function RestaurantContext() {
       return;
     }
 
-    // ✅ sinon, on fait un redirect propre vers la page courante
     const returnTo =
       typeof window !== "undefined"
         ? window.location.pathname +
@@ -302,14 +364,16 @@ export default function RestaurantContext() {
     router.replace(`/dashboard/login?redirect=${encodeURIComponent(returnTo)}`);
   }
 
+  // ---------------------------
+  // Fetch restaurant data
+  // ---------------------------
   function fetchRestaurantData(token, restaurantId) {
     setDataLoading(true);
+
     axios
       .get(
         `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${restaurantId}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
+        { headers: { Authorization: `Bearer ${token}` } },
       )
       .then(async (response) => {
         const restaurant = response.data.restaurant;
@@ -320,56 +384,23 @@ export default function RestaurantContext() {
           role = jwtDecode(token)?.role || null;
         } catch {}
 
-        if (role === "owner") {
-          const lastCheck = restaurant.lastNotificationCheck;
-
-          // Réservations depuis lastCheck
-          const newCount = restaurant.reservations.list.filter(
-            (r) => !r.manual && new Date(r.createdAt) > new Date(lastCheck),
-          ).length;
-          setNewReservationsCount(newCount);
-          writeNotifCounts(rid, { ...readNotifCounts(rid), res: newCount });
-
-          // Cartes cadeaux : backfill côté front
-          const giftsList = restaurant.purchasesGiftCards || [];
-          const giftsSince = giftsList.filter((g) => {
-            const created = g.created_at
-              ? new Date(g.created_at)
-              : g.createdAt
-                ? new Date(g.createdAt)
-                : new Date(parseInt(String(g._id).slice(0, 8), 16) * 1000);
-            return created > new Date(lastCheck);
-          }).length;
-          setNewGiftPurchasesCount(giftsSince);
-          writeNotifCounts(rid, { ...readNotifCounts(rid), gifts: giftsSince });
-
-          // Backfill congés ratés pendant la déconnexion
-          try {
-            const { data } = await axios.get(
-              `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${rid}/leave-requests/unread-count`,
-              {
-                params: { since: lastCheck },
-                headers: { Authorization: `Bearer ${token}` },
-              },
-            );
-            const unreadLeaves = data?.unreadLeaveRequests || 0;
-            setNewLeaveRequestsCount(unreadLeaves);
-            writeNotifCounts(rid, {
-              ...readNotifCounts(rid),
-              leave: unreadLeaves,
-            });
-          } catch (e) {
-            console.warn("Failed to fetch unread leave-requests count", e);
-          }
-        } else {
-          // Employé : pas de compteurs ni persistance
-          setNewReservationsCount(0);
-          setNewLeaveRequestsCount(0);
-          setNewGiftPurchasesCount(0);
-          writeNotifCounts(rid, { leave: 0, res: 0, gifts: 0 });
-        }
+        setNotifications([]);
+        setNotificationsNextCursor(null);
+        setNotificationsLoading(false);
 
         setRestaurantData(restaurant);
+
+        // ✅ NEW: counts depuis l'API (owner)
+        if (role === "owner") {
+          await fetchUnreadCounts(token, rid);
+        } else {
+          // employés: pas de pastilles
+          setUnreadCounts({
+            total: 0,
+            byModule: { reservations: 0, gift_cards: 0, employees: 0 },
+          });
+        }
+
         setDataLoading(false);
       })
       .catch((error) => {
@@ -414,12 +445,8 @@ export default function RestaurantContext() {
     if (role === "owner") {
       axios
         .get(`${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-          params: {
-            ownerId: decodedToken.id,
-          },
+          headers: { Authorization: `Bearer ${token}` },
+          params: { ownerId: decodedToken.id },
         })
         .then((response) => {
           const restaurants = response.data.restaurants || [];
@@ -440,14 +467,12 @@ export default function RestaurantContext() {
             const eligible = restaurants.find(
               (r) => r?.options?.[requiredModule] === true,
             );
-
             if (eligible?._id) selectedRestaurantId = eligible._id;
           }
 
           if (!selectedRestaurantId) selectedRestaurantId = restaurants[0]._id;
 
           fetchRestaurantData(token, selectedRestaurantId);
-
           setIsAuth(true);
         })
         .catch((error) => {
@@ -471,12 +496,26 @@ export default function RestaurantContext() {
         .get(`${process.env.NEXT_PUBLIC_API_URL}/employees/me`, {
           headers: { Authorization: `Bearer ${token}` },
         })
-        .then((res) => {
+        .then(async (res) => {
           const { restaurant, restaurants } = res.data;
 
           setRestaurantsList(restaurants || []);
-
           setRestaurantData(restaurant || null);
+
+          // ✅ notifications counts aussi pour employee
+          if (restaurant?._id) {
+            await fetchUnreadCounts(token, String(restaurant._id));
+          } else {
+            setUnreadCounts({
+              total: 0,
+              byModule: { reservations: 0, gift_cards: 0, employees: 0 },
+            });
+          }
+
+          // ✅ reset liste notifs (propre)
+          setNotifications([]);
+          setNotificationsNextCursor(null);
+          setNotificationsLoading(false);
 
           setIsAuth(true);
           setDataLoading(false);
@@ -496,7 +535,6 @@ export default function RestaurantContext() {
       return;
     }
 
-    // ----- ROLE INCONNU -----
     console.warn("Unknown role in token:", role);
     handleInvalidToken();
   }
@@ -561,16 +599,30 @@ export default function RestaurantContext() {
           const { token: updatedToken } = response.data;
           localStorage.setItem("token", updatedToken);
 
-          // On va re-fetch le resto courant via /employees/me
-          // pour avoir restaurantData aligné avec le nouveau token
           axios
             .get(`${process.env.NEXT_PUBLIC_API_URL}/employees/me`, {
               headers: { Authorization: `Bearer ${updatedToken}` },
             })
-            .then((res) => {
+            .then(async (res) => {
               const { restaurant, restaurants } = res.data;
               setRestaurantsList(restaurants || []);
               setRestaurantData(restaurant || null);
+
+              // ✅ reset drawer list
+              setNotifications([]);
+              setNotificationsNextCursor(null);
+              setNotificationsLoading(false);
+
+              // ✅ refresh counts for new restaurant
+              if (restaurant?._id) {
+                await fetchUnreadCounts(updatedToken, String(restaurant._id));
+              } else {
+                setUnreadCounts({
+                  total: 0,
+                  byModule: { reservations: 0, gift_cards: 0, employees: 0 },
+                });
+              }
+
               setDataLoading(false);
               setCloseEditing(false);
             })
@@ -598,7 +650,6 @@ export default function RestaurantContext() {
       return;
     }
 
-    // rôle inconnu → on reset
     setDataLoading(false);
     setCloseEditing(false);
   }
@@ -609,7 +660,6 @@ export default function RestaurantContext() {
 
     if (!token || !rid) return;
 
-    // Si pas auth (ou login), on évite
     const path = typeof window !== "undefined" ? window.location.pathname : "";
     if (!path.startsWith("/dashboard")) return;
     if (path.startsWith("/dashboard/login")) return;
@@ -617,28 +667,9 @@ export default function RestaurantContext() {
     fetchRestaurantData(token, rid);
   }
 
-  // Fonction pour mettre à jour le champ lastNotificationCheck dans la BDD
-  function updateLastNotificationCheck() {
-    if (userConnected?.role !== "owner") return;
-    if (!restaurantData?._id) return;
-    const token = localStorage.getItem("token");
-    axios
-      .put(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantData._id}/notification-check`,
-        {},
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        },
-      )
-      .catch((error) => {
-        console.error("Error updating lastNotificationCheck:", error);
-      });
-  }
-
-  // VERIFICATION DES RESERVATIONS TERMINEES A SUPPRIMER
+  // ------------------------------------------------------------
+  // Auto reservation updates (inchangé)
+  // ------------------------------------------------------------
   useEffect(() => {
     if (!restaurantData) return;
 
@@ -655,28 +686,24 @@ export default function RestaurantContext() {
           const deletionThreshold = new Date(
             finishedAt.getTime() + deletionDurationMinutes * 60000,
           );
-          if (now >= deletionThreshold) {
-            autoDeleteReservation(reservation);
-          }
+          if (now >= deletionThreshold) autoDeleteReservation(reservation);
         }
       });
     };
 
     checkExpiredReservations();
-
     const intervalId = setInterval(checkExpiredReservations, 30000);
-
     return () => clearInterval(intervalId);
   }, [restaurantData]);
 
-  // VERIFICATION DES RESERVATIONS EN RETARD
   useEffect(() => {
     if (!restaurantData) return;
 
     const checkLateReservations = () => {
       const now = new Date();
-      const gracePeriod = 5 * 60000; // 5 minutes de marge
+      const gracePeriod = 5 * 60000;
       const reservations = restaurantData.reservations.list || [];
+
       reservations.forEach((reservation) => {
         if (reservation.status === "Confirmed") {
           const reservationDate = new Date(reservation.reservationDate);
@@ -688,14 +715,11 @@ export default function RestaurantContext() {
             0,
           );
 
-          // On ajoute la marge de 5 minutes à la date de réservation
           const reservationDateWithGrace = new Date(
             reservationDate.getTime() + gracePeriod,
           );
 
-          if (now >= reservationDateWithGrace) {
-            autoUpdateToLate(reservation);
-          }
+          if (now >= reservationDateWithGrace) autoUpdateToLate(reservation);
         }
       });
     };
@@ -705,7 +729,6 @@ export default function RestaurantContext() {
     return () => clearInterval(updateIntervalId);
   }, [restaurantData]);
 
-  // VERIFICATION DES RESERVATIONS EN COURS A PASSER EN FINISHED SI LE PARAMETER EST TRUE
   useEffect(() => {
     if (!restaurantData) return;
 
@@ -720,6 +743,7 @@ export default function RestaurantContext() {
     const checkAutoFinishReservations = () => {
       const now = new Date();
       const reservations = restaurantData.reservations.list || [];
+
       reservations.forEach((reservation) => {
         if (reservation.status === "Active") {
           const reservationStart = new Date(reservation.reservationDate);
@@ -735,9 +759,7 @@ export default function RestaurantContext() {
             reservationStart.getTime() + reservationDurationMinutes * 60000,
           );
 
-          if (now >= finishThreshold) {
-            autoUpdateToFinished(reservation);
-          }
+          if (now >= finishThreshold) autoUpdateToFinished(reservation);
         }
       });
     };
@@ -747,7 +769,6 @@ export default function RestaurantContext() {
     return () => clearInterval(intervalId);
   }, [restaurantData]);
 
-  // FONCTION POUR CHANGER LE STATUS D'UNE RESERVATION A FINISHED
   function autoUpdateToFinished(reservation) {
     const token = localStorage.getItem("token");
 
@@ -776,7 +797,6 @@ export default function RestaurantContext() {
       });
   }
 
-  // FONCTION POUR CHANGER LE STATUS D'UNE RESERVATION A "LATE"
   function autoUpdateToLate(reservation) {
     if (autoUpdatingReservations.includes(reservation._id)) return;
     setAutoUpdatingReservations((prev) => [...prev, reservation._id]);
@@ -812,7 +832,6 @@ export default function RestaurantContext() {
       });
   }
 
-  // FONCTION POUR SUPPRIMER UNE RESERVATION TERMINEE
   function autoDeleteReservation(reservation) {
     if (autoDeletingReservations.includes(reservation._id)) return;
     setAutoDeletingReservations((prev) => [...prev, reservation._id]);
@@ -847,54 +866,35 @@ export default function RestaurantContext() {
       });
   }
 
-  const resetNewReservationsCount = () => {
-    setNewReservationsCount(0);
-    const rid = restaurantData?._id;
-    if (rid) {
-      const counts = readNotifCounts(rid);
-      writeNotifCounts(rid, { ...counts, res: 0 });
-    }
-  };
-
-  const resetNewLeaveRequestsCount = () => {
-    setNewLeaveRequestsCount(0);
-    const rid = restaurantData?._id;
-    if (rid) {
-      const counts = readNotifCounts(rid);
-      writeNotifCounts(rid, { ...counts, leave: 0 });
-    }
-  };
-
-  const resetNewGiftPurchasesCount = () => {
-    setNewGiftPurchasesCount(0);
-    const rid = restaurantData?._id;
-    if (rid) {
-      const counts = readNotifCounts(rid);
-      writeNotifCounts(rid, { ...counts, gifts: 0 });
-    }
-  };
-
   function logout() {
     localStorage.removeItem("token");
-    try {
-      clearAllNotifCounts();
-    } catch {}
+
     if (sseRef.current) {
       sseRef.current.close();
       sseRef.current = null;
     }
+
+    setUnreadCounts({
+      total: 0,
+      byModule: { reservations: 0, gift_cards: 0, employees: 0 },
+    });
+
     setRestaurantData(null);
     setRestaurantsList([]);
+    setNotifications([]);
+    setNotificationsNextCursor(null);
+    setNotificationsLoading(false);
     setIsAuth(false);
     router.replace("/dashboard/login");
   }
 
+  // ----------------------------------------
+  // Bootstrap fetch on dashboard navigation
+  // ----------------------------------------
   useEffect(() => {
     const handleRouteChangeComplete = (url) => {
       if (!url.startsWith("/dashboard")) return;
       if (url.startsWith("/dashboard/admin")) return;
-
-      // ✅ NE PAS FETCH sur login
       if (url.startsWith("/dashboard/login")) return;
 
       if (!hasFetchedDashboardDataRef.current) {
@@ -909,14 +909,11 @@ export default function RestaurantContext() {
     };
   }, [router.events]);
 
-  // Au montage initial, si l'URL courante est déjà /dashboard, lance le fetch
   useEffect(() => {
     const path = router.pathname;
 
     if (!path.startsWith("/dashboard")) return;
     if (path.startsWith("/dashboard/admin")) return;
-
-    // ✅ NE PAS FETCH sur login
     if (path.startsWith("/dashboard/login")) return;
 
     if (!hasFetchedDashboardDataRef.current) {
@@ -941,90 +938,6 @@ export default function RestaurantContext() {
     }
   }, [router.pathname]);
 
-  // Reset notifs sur Page CONGÉS
-  useEffect(() => {
-    if (userConnected?.role !== "owner") return;
-
-    const path = router.pathname || "";
-    const isOnDaysOffPage = path === "/dashboard/employees/planning/days-off";
-
-    if (!isOnDaysOffPage) return;
-
-    // Si on est sur la page des congés et qu'on a un compteur > 0,
-    // on le remet à 0 (state + localStorage)
-    if (newLeaveRequestsCount > 0) {
-      resetNewLeaveRequestsCount();
-    }
-
-    // Si après ça tous les compteurs sont à 0, on met à jour lastNotificationCheck
-    if (
-      (newReservationsCount || 0) === 0 &&
-      (newGiftPurchasesCount || 0) === 0 &&
-      (newLeaveRequestsCount || 0) === 0
-    ) {
-      updateLastNotificationCheck();
-    }
-  }, [
-    router.pathname,
-    newLeaveRequestsCount,
-    newReservationsCount,
-    newGiftPurchasesCount,
-    userConnected?.role,
-  ]);
-
-  // Reset notifs sur Page RÉSERVATIONS et WEBAPP RESERVATIONS
-  useEffect(() => {
-    if (userConnected?.role !== "owner") return;
-
-    const path = router.pathname || "";
-
-    const isReservationsRoute =
-      path.startsWith("/dashboard/reservations") ||
-      path.startsWith("/dashboard/webapp/reservations");
-
-    if (!isReservationsRoute) return;
-
-    resetNewReservationsCount();
-
-    if (
-      (newLeaveRequestsCount || 0) === 0 &&
-      (newGiftPurchasesCount || 0) === 0
-    ) {
-      updateLastNotificationCheck();
-    }
-  }, [
-    router.pathname,
-    newLeaveRequestsCount,
-    newGiftPurchasesCount,
-    userConnected?.role,
-  ]);
-
-  // Reset notifs sur Page GIFTS
-  useEffect(() => {
-    if (userConnected?.role !== "owner") return;
-
-    const path = router.pathname || "";
-    if (!path.startsWith("/dashboard/gift-cards")) return;
-
-    if (newGiftPurchasesCount > 0) {
-      resetNewGiftPurchasesCount();
-    }
-
-    if (
-      (newReservationsCount || 0) === 0 &&
-      (newLeaveRequestsCount || 0) === 0 &&
-      (newGiftPurchasesCount || 0) === 0
-    ) {
-      updateLastNotificationCheck();
-    }
-  }, [
-    router.pathname,
-    newReservationsCount,
-    newLeaveRequestsCount,
-    newGiftPurchasesCount,
-    userConnected?.role,
-  ]);
-
   return {
     restaurantData,
     setRestaurantData,
@@ -1036,18 +949,26 @@ export default function RestaurantContext() {
     handleRestaurantSelect,
     fetchRestaurantsList,
     fetchRestaurantData,
-    updateLastNotificationCheck,
     logout,
     setCloseEditing,
     closeEditing,
     isAuth,
     setIsAuth,
+
     newReservationsCount,
-    resetNewReservationsCount,
     newLeaveRequestsCount,
-    resetNewLeaveRequestsCount,
     newGiftPurchasesCount,
-    resetNewGiftPurchasesCount,
+
+    unreadCounts,
+
+    notifications,
+    notificationsNextCursor,
+    notificationsLoading,
+    fetchNotifications,
+
+    markNotificationRead,
+    markAllRead,
+
     refetchCurrentRestaurant,
   };
 }
