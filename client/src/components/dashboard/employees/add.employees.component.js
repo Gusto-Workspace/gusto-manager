@@ -222,7 +222,7 @@ export default function AddEmployeesComponent() {
             />
             <section
               onClick={(e) => e.stopPropagation()}
-              className="relative w-full max-w-2xl rounded-2xl bg-white p-6 shadow-xl flex flex-col gap-4"
+              className="relative w-full max-w-2xl mx-4 rounded-2xl bg-white p-6 shadow-xl flex flex-col gap-4"
             >
               <button
                 type="button"

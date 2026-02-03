@@ -120,7 +120,7 @@ export default function DaysOffMySpaceComponent({ employeeId, restaurantId }) {
         </div>
       </div>
 
-      <div className="">
+      <div className="max-h-[65vh] overflow-y-scroll">
         {requests.length === 0 ? (
           <p className="text-center italic text-sm text-darkBlue/60">
             {t("daysOff.noRequests", "Aucune demande pour le moment")}

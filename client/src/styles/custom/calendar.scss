@@ -89,3 +89,24 @@
     }
   }
 }
+
+
+.rbc-toolbar {
+          display: none !important;
+        }
+        .rbc-time-view,
+        .rbc-month-view {
+          border-radius: 18px;
+          overflow: hidden;
+        }
+        .rbc-time-header,
+        .rbc-time-content,
+        .rbc-timeslot-group,
+        .rbc-day-slot .rbc-time-slot,
+        .rbc-time-header-content,
+        .rbc-time-header-gutter {
+          border-color: rgba(19, 30, 54, 0.08) !important;
+        }
+        .rbc-event {
+          box-shadow: none !important;
+        }

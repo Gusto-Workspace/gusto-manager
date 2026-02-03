@@ -188,14 +188,14 @@ export default function DocumentsEmployeeComponent(props) {
             {t("Documents enregistrés")}
           </h4>
 
-          <ul className="grid grid-cols-1 mobile:grid-cols-2 midTablet:grid-cols-3 tablet:grid-cols-4 gap-3">
+          <ul className="grid grid-cols-2 mobile:grid-cols-3 midTablet:grid-cols-4 tablet:grid-cols-5 gap-2">
             {currentDocuments.map((doc, i) => (
               <li
                 key={i}
                 className="flex flex-col justify-between gap-3 rounded-xl bg-white/70 border border-darkBlue/10 px-4 py-3 shadow-sm"
               >
                 <div className="flex flex-col gap-1">
-                  <p className="text-sm font-semibold text-darkBlue line-clamp-2 break-words">
+                  <p className="text-sm text-center font-semibold text-darkBlue line-clamp-2 break-words">
                     {truncate(doc.title) || truncate(doc.filename)}
                   </p>
                   <span

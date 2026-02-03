@@ -254,9 +254,9 @@ export default function DaysOffEmployeesComponent() {
             )}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full h-10 rounded-lg border border-darkBlue/20 bg-white/90 px-3 pr-9 text-[14px] outline-none transition placeholder:text-darkBlue/40 focus:border-darkBlue/50"
+            className="w-full h-10 rounded-lg border border-darkBlue/20 bg-white/90 px-3 pr-9 text-base outline-none transition placeholder:text-darkBlue/40 focus:border-darkBlue/50"
           />
-          <Search className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/30" />
+          {!searchTerm && <Search className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/30" />}
           {searchTerm && (
             <button
               type="button"

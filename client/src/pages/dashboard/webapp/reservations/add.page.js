@@ -18,6 +18,9 @@ import WebAppAddReservationComponent from "@/components/dashboard/webapp/reserva
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
 import NotGoodDeviceWebAppComponent from "@/components/dashboard/webapp/_shared/not-good-device.webapp.component";
 
+// HOOK REFRESH
+import useRefetchOnReturn from "@/_assets/utils/useRefetchOnReturn";
+
 export default function AddReservationsPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
 
@@ -33,6 +36,17 @@ export default function AddReservationsPage(props) {
       title = "Gusto Manager";
       description = "";
   }
+
+  // ✅ Refetch quand on revient au 1er plan après > 5 min
+  useRefetchOnReturn({
+    enabled: restaurantContext?.isAuth,
+    storageKey: "gm:lastActive:webapp:reservations",
+    thresholdMs: 5 * 60 * 1000,
+    onRefetch: () => {
+      setShowRefetchSplash(true);
+      restaurantContext.refetchCurrentRestaurant?.();
+    },
+  });
 
   if (!restaurantContext.isAuth) return null;
 

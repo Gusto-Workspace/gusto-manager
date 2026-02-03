@@ -1,5 +1,3 @@
-// HoursRestaurantComponent.jsx
-
 import { Fragment, useEffect, useState } from "react";
 
 // I18N
@@ -298,19 +296,17 @@ export default function HoursRestaurantComponent(props) {
                               key={index}
                               className="relative flex items-center gap-1 midTablet:gap-2 w-full"
                             >
-                            
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleRemoveTimeSlot(dayHour.day, index)
-                                  }
-                                  className={`text-red bg-red/30 min-w-6 h-6 rounded-full flex items-center justify-center mr-2 ${dayHour.hours.length > 1 ? "block" : "opacity-0 pointer-events-none"}`}
-                                  aria-label={t("hours.removeTimeSlot")}
-                                  disabled={saving}
-                                >
-                                  &times;
-                                </button>
-                          
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleRemoveTimeSlot(dayHour.day, index)
+                                }
+                                className={`text-red bg-red/30 min-w-6 h-6 rounded-full flex items-center justify-center mr-2 ${dayHour.hours.length > 1 ? "block" : "opacity-0 pointer-events-none"}`}
+                                aria-label={t("hours.removeTimeSlot")}
+                                disabled={saving}
+                              >
+                                &times;
+                              </button>
 
                               <input
                                 type="time"
