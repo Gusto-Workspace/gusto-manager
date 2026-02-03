@@ -101,10 +101,7 @@ export default function PlanningEmployeesComponent() {
   }, []);
 
   // ✅ Sur mobile: par défaut Jour (sinon week view illisible)
-  useEffect(() => {
-    if (isMobile) setView(Views.DAY);
-    else setView(Views.WEEK);
-  }, [isMobile]);
+
 
   // date‐fns localizer (FR)
   const locales = { fr: frLocale };
@@ -651,7 +648,7 @@ export default function PlanningEmployeesComponent() {
       </div>
 
       {/* ================= Employees selector ================= */}
-      <div className="-mx-3 px-3 midTablet:hidden">
+      <div className="midTablet:hidden">
         <div className="flex items-center gap-2">
           {/* Liste scrollable */}
           <div className="flex-1 min-w-0 overflow-x-auto">
@@ -811,7 +808,7 @@ export default function PlanningEmployeesComponent() {
               localizer={localizer}
               culture="fr"
               events={visibleEvents}
-              defaultView={Views.WEEK}
+              defaultView={Views.MONTH}
               views={[Views.WEEK, Views.DAY, Views.MONTH]}
               step={30}
               timeslots={2}
