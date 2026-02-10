@@ -649,7 +649,7 @@ export default function ParametersReservationWebApp(props) {
         return;
       }
 
-      router.push("/dashboard/reservations");
+      router.push("/dashboard/webapp/reservations");
     } catch (error) {
       console.error("Erreur mise à jour paramètres réservation :", error);
     }
