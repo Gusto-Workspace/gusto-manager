@@ -1,6 +1,6 @@
 import { useRouter } from "next/router";
 
-export default function CalendarMonthComponent(props) {
+export default function CalendarMonthReservationsWebapp(props) {
   const router = useRouter();
 
   const weekDays = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
@@ -93,7 +93,9 @@ export default function CalendarMonthComponent(props) {
                                   ? "#3b82f6"
                                   : s === "Pending"
                                     ? "#93c5fd"
-                                    : "#cbd5e1",
+                                    : s === "Canceled"
+                                      ? "#ff7664"
+                                      : "#cbd5e1",
                         }}
                       />
                     </div>

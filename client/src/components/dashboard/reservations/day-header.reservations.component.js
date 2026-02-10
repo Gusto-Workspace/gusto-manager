@@ -5,7 +5,7 @@ import { ChevronLeft, Plus, SlidersHorizontal, Search, X } from "lucide-react";
 // I18N
 import { useTranslation } from "next-i18next";
 
-export default function DayHeaderComponent(props) {
+export default function DayHeaderReservationsComponent(props) {
   const { t } = useTranslation("reservations");
   if (!props.selectedDay) return null;
 
@@ -53,7 +53,9 @@ export default function DayHeaderComponent(props) {
                 <p className="text-xl font-semibold text-darkBlue truncate">
                   {t("titles.main")}
                 </p>
-                <p className="text-sm text-darkBlue/50 truncate">{dateStrLong}</p>
+                <p className="text-sm text-darkBlue/50 truncate">
+                  {dateStrLong}
+                </p>
               </div>
             </div>
 
@@ -106,7 +108,7 @@ export default function DayHeaderComponent(props) {
                 type="text"
                 placeholder={t(
                   "filters.search.placeholder",
-                  "Rechercher nom, email, tel, code…"
+                  "Rechercher nom, email, tel, code…",
                 )}
                 value={props.searchTerm}
                 onChange={props.handleSearchChangeDay}
@@ -212,7 +214,7 @@ export default function DayHeaderComponent(props) {
               type="text"
               placeholder={t(
                 "filters.search.placeholder",
-                "Rechercher nom, email, tel, code…"
+                "Rechercher nom, email, tel, code…",
               )}
               value={props.searchTerm}
               onChange={props.handleSearchChangeDay}

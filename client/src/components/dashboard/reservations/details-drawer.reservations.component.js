@@ -23,7 +23,8 @@ export default function DetailsDrawerReservationsComponent({
   onClose,
   reservation,
   t,
-  onAction, // (reservation, actionType) => void
+  onAction,
+  errorMessage,
 }) {
   const [isVisible, setIsVisible] = useState(false);
 
@@ -101,6 +102,10 @@ export default function DetailsDrawerReservationsComponent({
         cls: "bg-darkBlue/5 text-darkBlue/70 border-darkBlue/20",
         label: "Terminée",
       };
+    if (status === "Canceled")
+      return { cls: "bg-red/10 text-red border-red/20", label: "Annulée" };
+    if (status === "Rejected")
+      return { cls: "bg-red/10 text-red border-red/20", label: "Refusée" };
     return {
       cls: "bg-darkBlue/5 text-darkBlue/70 border-darkBlue/20",
       label: status || "-",
@@ -205,6 +210,14 @@ export default function DetailsDrawerReservationsComponent({
           </div>
         </div>
 
+        {errorMessage ? (
+          <div className="px-4 pt-4">
+            <div className="rounded-2xl border border-red/20 bg-red/10 px-4 py-3 text-sm font-semibold text-red">
+              {errorMessage}
+            </div>
+          </div>
+        ) : null}
+
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-4 hide-scrollbar">
           {/* Résumé */}
@@ -275,19 +288,61 @@ export default function DetailsDrawerReservationsComponent({
                 </button>
               ) : null}
 
-              <button
-                onClick={() => onAction?.(reservation, "edit")}
-                className="w-full inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition px-4 py-3 text-sm font-semibold text-darkBlue"
-              >
-                {t?.("buttons.edit", "Modifier")}
-              </button>
+              {status !== "Canceled" &&
+              status !== "Finished" &&
+              status !== "Rejected" ? (
+                <button
+                  onClick={() => onAction?.(reservation, "edit")}
+                  className="w-full inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition px-4 py-3 text-sm font-semibold text-darkBlue"
+                >
+                  {t?.("buttons.edit", "Modifier")}
+                </button>
+              ) : null}
 
-              <button
-                onClick={() => onAction?.(reservation, "delete")}
-                className="w-full inline-flex items-center justify-center rounded-xl border border-red/20 bg-red/10 text-red hover:bg-red/15 transition px-4 py-3 text-sm font-semibold"
-              >
-                {t?.("buttons.delete", "Supprimer")}
-              </button>
+              {status === "Canceled" || status === "Rejected" ? (
+                <>
+                  <button
+                    onClick={() => onAction?.(reservation, "restore_confirmed")}
+                    className="w-full inline-flex items-center justify-center rounded-xl bg-blue px-4 py-3 text-white text-sm font-semibold shadow-sm hover:bg-blue/90 active:scale-[0.98] transition"
+                  >
+                    Repasser en "Confirmée"
+                  </button>
+
+                  <button
+                    onClick={() => onAction?.(reservation, "delete")}
+                    className="w-full inline-flex items-center justify-center rounded-xl border border-red/20 bg-red/10 text-red hover:bg-red/15 transition px-4 py-3 text-sm font-semibold"
+                  >
+                    Supprimer
+                  </button>
+                </>
+              ) : status === "Finished" ? (
+                <button
+                  onClick={() => onAction?.(reservation, "delete")}
+                  className="w-full inline-flex items-center justify-center rounded-xl border border-red/20 bg-red/10 text-red hover:bg-red/15 transition px-4 py-3 text-sm font-semibold"
+                >
+                  Supprimer
+                </button>
+              ) : (
+                <button
+                  onClick={() =>
+                    onAction?.(
+                      reservation,
+                      status === "Pending"
+                        ? "reject"
+                        : status === "Active"
+                          ? "delete"
+                          : "cancel",
+                    )
+                  }
+                  className="w-full inline-flex items-center justify-center rounded-xl border border-red/20 bg-red/10 text-red hover:bg-red/15 transition px-4 py-3 text-sm font-semibold"
+                >
+                  {status === "Pending"
+                    ? "Refuser"
+                    : status === "Active"
+                      ? "Supprimer"
+                      : "Annuler"}
+                </button>
+              )}
             </div>
           </div>
         </div>

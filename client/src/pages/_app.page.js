@@ -24,6 +24,7 @@ function App({ Component, pageProps }) {
     if (p.startsWith("/dashboard/webapp/reservations"))
       return "/manifest-reservations.webmanifest";
     if (p.startsWith("/dashboard/webapp/gift-cards")) return "/manifest-gift-cards.webmanifest";
+    if (p.startsWith("/dashboard/admin")) return "/manifest-admin.webmanifest";
     // ajoute ici les autres modules...
     return "/manifest.webmanifest";
   }, [router.pathname]);

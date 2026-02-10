@@ -16,7 +16,7 @@ import {
 
 import BottomSheetChangeRestaurantComponent from "../_shared/bottom-sheet-change-restaurant.webapp.component";
 
-export default function CalendarToolbarComponent(props) {
+export default function CalendarToolbarReservationsWebapp(props) {
   const { t } = useTranslation("reservations");
   const { restaurantContext } = useContext(GlobalContext);
 

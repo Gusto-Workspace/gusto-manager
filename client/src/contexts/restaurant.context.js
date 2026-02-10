@@ -249,7 +249,7 @@ export default function RestaurantContext() {
           });
         }
 
-        // ——— CONGÉS (temps réel, inchangé) ———
+        // ——— CONGÉS (création) ———
         if (payload.type === "leave_request_created") {
           setRestaurantData((prev) => {
             if (!prev) return prev;
@@ -270,7 +270,7 @@ export default function RestaurantContext() {
           });
         }
 
-        // ——— RÉSERVATIONS (temps réel, inchangé) ———
+        // ——— RÉSERVATIONS (création) ———
         if (payload.type === "reservation_created" && payload.reservation) {
           const r = payload.reservation;
 
@@ -284,6 +284,46 @@ export default function RestaurantContext() {
               reservations: {
                 ...prev.reservations,
                 list: [r, ...list],
+              },
+            };
+          });
+        }
+
+        // ——— RÉSERVATIONS (mise à jour statut) ———
+
+        if (payload.type === "reservation_updated" && payload.reservation) {
+          const r = payload.reservation;
+
+          setRestaurantData((prev) => {
+            if (!prev) return prev;
+
+            const list = prev?.reservations?.list || [];
+            const id = String(r._id);
+
+            const nextList = list.map((x) => (String(x._id) === id ? r : x));
+
+            return {
+              ...prev,
+              reservations: {
+                ...prev.reservations,
+                list: nextList,
+              },
+            };
+          });
+        }
+
+        // ——— RÉSERVATIONS (suppression) ———
+        if (payload.type === "reservation_deleted" && payload.reservationId) {
+          const deletedId = String(payload.reservationId);
+
+          setRestaurantData((prev) => {
+            if (!prev) return prev;
+            const list = prev?.reservations?.list || [];
+            return {
+              ...prev,
+              reservations: {
+                ...prev.reservations,
+                list: list.filter((x) => String(x._id) !== deletedId),
               },
             };
           });
@@ -667,15 +707,27 @@ export default function RestaurantContext() {
     fetchRestaurantData(token, rid);
   }
 
+  function getDeletionMinutes(parameters) {
+    const enabled = parameters?.deletion_duration === true;
+
+    // Si le switch est ON → on utilise la durée configurée
+    if (enabled) {
+      const n = Number(parameters?.deletion_duration_minutes || 1440);
+      return Number.isFinite(n) && n > 0 ? n : 1440;
+    }
+
+    // Si le switch est OFF → suppression auto quand même à 24h
+    return 1440;
+  }
+
   // ------------------------------------------------------------
-  // Auto reservation updates (inchangé)
+  // Auto reservation updates
   // ------------------------------------------------------------
   useEffect(() => {
     if (!restaurantData) return;
 
-    const deletionDurationMinutes =
-      restaurantData?.reservations?.parameters?.deletion_duration_minutes;
-    if (!deletionDurationMinutes) return;
+    const parameters = restaurantData?.reservations?.parameters || {};
+    const deletionDurationMinutes = getDeletionMinutes(parameters);
 
     const checkExpiredReservations = () => {
       const now = new Date();
@@ -694,7 +746,43 @@ export default function RestaurantContext() {
     checkExpiredReservations();
     const intervalId = setInterval(checkExpiredReservations, 30000);
     return () => clearInterval(intervalId);
-  }, [restaurantData]);
+  }, [
+    restaurantData?._id,
+    restaurantData?.reservations?.list,
+    restaurantData?.reservations?.parameters?.deletion_duration,
+    restaurantData?.reservations?.parameters?.deletion_duration_minutes,
+  ]);
+
+  useEffect(() => {
+    if (!restaurantData) return;
+
+    const DELETE_MINUTES = 10;
+    const STATUS_TO_DATE_FIELD = {
+      Canceled: "canceledAt",
+      Rejected: "rejectedAt",
+    };
+
+    const checkAutoDeleteShortLived = () => {
+      const now = new Date();
+      const reservations = restaurantData?.reservations?.list || [];
+
+      reservations.forEach((r) => {
+        const dateField = STATUS_TO_DATE_FIELD[r.status];
+        if (!dateField) return;
+
+        const baseRaw = r?.[dateField];
+        const base = baseRaw ? new Date(baseRaw) : null;
+        if (!base || Number.isNaN(base.getTime())) return;
+
+        const threshold = new Date(base.getTime() + DELETE_MINUTES * 60000);
+        if (now >= threshold) autoDeleteReservation(r);
+      });
+    };
+
+    checkAutoDeleteShortLived();
+    const id = setInterval(checkAutoDeleteShortLived, 30000);
+    return () => clearInterval(id);
+  }, [restaurantData?._id, restaurantData?.reservations?.list]);
 
   useEffect(() => {
     if (!restaurantData) return;
@@ -727,49 +815,83 @@ export default function RestaurantContext() {
     checkLateReservations();
     const updateIntervalId = setInterval(checkLateReservations, 30000);
     return () => clearInterval(updateIntervalId);
-  }, [restaurantData]);
+  }, [restaurantData?._id, restaurantData?.reservations?.list]);
+
+  function getServiceBucketFromTime(reservationTime) {
+    const [hh = "0"] = String(reservationTime || "00:00").split(":");
+    return Number(hh) < 16 ? "lunch" : "dinner";
+  }
+
+  function getOccupancyMinutesFromRestaurant(restaurantData, reservationTime) {
+    const p = restaurantData?.reservations?.parameters || {};
+    const bucket = getServiceBucketFromTime(reservationTime);
+
+    const v =
+      bucket === "lunch"
+        ? p.table_occupancy_lunch_minutes
+        : p.table_occupancy_dinner_minutes;
+
+    const n = Number(v || 0);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }
 
   useEffect(() => {
     if (!restaurantData) return;
 
-    const reservationDurationEnabled =
-      restaurantData?.reservations?.parameters?.reservation_duration;
-    if (!reservationDurationEnabled) return;
-
-    const reservationDurationMinutes =
-      restaurantData?.reservations?.parameters?.reservation_duration_minutes;
-    if (!reservationDurationMinutes) return;
+    const autoFinishEnabled =
+      restaurantData?.reservations?.parameters?.auto_finish_reservations;
+    if (!autoFinishEnabled) return;
 
     const checkAutoFinishReservations = () => {
       const now = new Date();
       const reservations = restaurantData.reservations.list || [];
 
       reservations.forEach((reservation) => {
-        if (reservation.status === "Active") {
-          const reservationStart = new Date(reservation.reservationDate);
-          const [hours, minutes] = reservation.reservationTime.split(":");
-          reservationStart.setHours(
-            parseInt(hours, 10),
-            parseInt(minutes, 10),
-            0,
-            0,
-          );
+        if (reservation.status !== "Active") return;
 
-          const finishThreshold = new Date(
-            reservationStart.getTime() + reservationDurationMinutes * 60000,
-          );
+        const minutes = getOccupancyMinutesFromRestaurant(
+          restaurantData,
+          reservation.reservationTime,
+        );
 
-          if (now >= finishThreshold) autoUpdateToFinished(reservation);
-        }
+        // sécurité : si pas de durée définie, on ne fait rien
+        if (!minutes) return;
+
+        const reservationStart = new Date(reservation.reservationDate);
+        const [hours, mins] = String(
+          reservation.reservationTime || "00:00",
+        ).split(":");
+        reservationStart.setHours(
+          parseInt(hours, 10),
+          parseInt(mins, 10),
+          0,
+          0,
+        );
+
+        const finishThreshold = new Date(
+          reservationStart.getTime() + minutes * 60000,
+        );
+
+        if (now >= finishThreshold) autoUpdateToFinished(reservation);
       });
     };
 
     checkAutoFinishReservations();
     const intervalId = setInterval(checkAutoFinishReservations, 30000);
     return () => clearInterval(intervalId);
-  }, [restaurantData]);
+  }, [
+    restaurantData?._id,
+    restaurantData?.reservations?.list,
+    restaurantData?.reservations?.parameters?.auto_finish_reservations,
+    restaurantData?.reservations?.parameters?.table_occupancy_lunch_minutes,
+    restaurantData?.reservations?.parameters?.table_occupancy_dinner_minutes,
+  ]);
 
   function autoUpdateToFinished(reservation) {
+    const id = String(reservation._id);
+
+    if (autoUpdatingReservations.includes(id)) return;
+    setAutoUpdatingReservations((prev) => [...prev, id]);
     const token = localStorage.getItem("token");
 
     axios
@@ -794,12 +916,17 @@ export default function RestaurantContext() {
       })
       .catch((error) => {
         console.error("Error auto-updating reservation to Finished:", error);
+      })
+      .finally(() => {
+        setAutoUpdatingReservations((prev) => prev.filter((x) => x !== id));
       });
   }
 
   function autoUpdateToLate(reservation) {
-    if (autoUpdatingReservations.includes(reservation._id)) return;
-    setAutoUpdatingReservations((prev) => [...prev, reservation._id]);
+    const id = String(reservation._id);
+
+    if (autoUpdatingReservations.includes(id)) return;
+    setAutoUpdatingReservations((prev) => [...prev, id]);
 
     const token = localStorage.getItem("token");
     axios
@@ -826,17 +953,18 @@ export default function RestaurantContext() {
         console.error("Error auto-updating reservation to Late:", error);
       })
       .finally(() => {
-        setAutoUpdatingReservations((prev) =>
-          prev.filter((id) => id !== reservation._id),
-        );
+        setAutoUpdatingReservations((prev) => prev.filter((x) => x !== id));
       });
   }
 
   function autoDeleteReservation(reservation) {
-    if (autoDeletingReservations.includes(reservation._id)) return;
-    setAutoDeletingReservations((prev) => [...prev, reservation._id]);
+    const id = String(reservation._id);
+
+    if (autoDeletingReservations.includes(id)) return;
+    setAutoDeletingReservations((prev) => [...prev, id]);
 
     const token = localStorage.getItem("token");
+
     axios
       .delete(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantData._id}/reservations/${reservation._id}`,
@@ -860,9 +988,7 @@ export default function RestaurantContext() {
         console.error("Error auto-deleting reservation:", error);
       })
       .finally(() => {
-        setAutoDeletingReservations((prev) =>
-          prev.filter((id) => id !== reservation._id),
-        );
+        setAutoDeletingReservations((prev) => prev.filter((x) => x !== id)); // ✅
       });
   }
 

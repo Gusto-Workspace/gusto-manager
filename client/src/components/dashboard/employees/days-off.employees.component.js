@@ -35,7 +35,7 @@ export default function DaysOffEmployeesComponent() {
     );
     if (alreadyHaveLeave) return;
 
-    let cancelled = false;
+    let canceled = false;
 
     (async () => {
       try {
@@ -60,7 +60,7 @@ export default function DaysOffEmployeesComponent() {
           )
         );
 
-        if (cancelled) return;
+        if (canceled) return;
 
         restaurantContext.setRestaurantData((prev) => {
           if (!prev) return prev;
@@ -83,7 +83,7 @@ export default function DaysOffEmployeesComponent() {
     })();
 
     return () => {
-      cancelled = true;
+      canceled = true;
     };
   }, [restaurantId, allEmployees.length]);
 
@@ -131,7 +131,7 @@ export default function DaysOffEmployeesComponent() {
         if (acc[req.status]) acc[req.status].push(req);
         return acc;
       },
-      { pending: [], approved: [], rejected: [], cancelled: [] }
+      { pending: [], approved: [], rejected: [], canceled: [] }
     );
   }, [requests]);
 
@@ -198,7 +198,7 @@ export default function DaysOffEmployeesComponent() {
     pending: t("daysOff.labels.pending", "En attente"),
     approved: t("daysOff.labels.approved", "Confirmées"),
     rejected: t("daysOff.labels.rejected", "Rejetées"),
-    cancelled: t("daysOff.labels.cancelled", "Annulées"),
+    canceled: t("daysOff.labels.canceled", "Annulées"),
   };
 
   const sectionCard =
@@ -270,7 +270,7 @@ export default function DaysOffEmployeesComponent() {
       </div>
 
       {/* ─── Sections par statut ──────────────────────────────────── */}
-      {["pending", "approved", "rejected", "cancelled"].map((status) => (
+      {["pending", "approved", "rejected", "canceled"].map((status) => (
         <div key={status} className="flex flex-col gap-3">
           {/* Titre de section avec ligne */}
           <div className="relative mb-1">
@@ -286,7 +286,7 @@ export default function DaysOffEmployeesComponent() {
                 {status === "rejected" && (
                   <XCircle className="size-3.5 text-red-500" />
                 )}
-                {status === "cancelled" && (
+                {status === "canceled" && (
                   <XCircle className="size-3.5 text-slate-500" />
                 )}
                 <span>{statusLabels[status]}</span>

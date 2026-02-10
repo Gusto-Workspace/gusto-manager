@@ -14,7 +14,7 @@ import axios from "axios";
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
-import WebAppAddReservationComponent from "@/components/dashboard/webapp/reservations/add.reservations.component";
+import AddReservationsWebapp from "@/components/dashboard/webapp/reservations/add.reservations.webapp";
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
 import NotGoodDeviceWebAppComponent from "@/components/dashboard/webapp/_shared/not-good-device.webapp.component";
 
@@ -65,7 +65,7 @@ export default function AddReservationsPage(props) {
       <div className="block mobile:hidden">
         <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 h-[100dvh] overflow-y-auto hide-scrollbar">
           {restaurantContext?.restaurantData?.options?.reservations ? (
-            <WebAppAddReservationComponent
+            <AddReservationsWebapp
               dataLoading={restaurantContext.dataLoading}
               restaurantData={restaurantContext.restaurantData}
               setRestaurantData={restaurantContext.setRestaurantData}

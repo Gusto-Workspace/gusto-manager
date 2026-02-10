@@ -197,7 +197,7 @@ export default function DetailsDocumentAdminPage(props) {
   useEffect(() => {
     if (!props.documentId) return;
 
-    let cancelled = false;
+    let canceled = false;
 
     async function load() {
       setLoading(true);
@@ -216,7 +216,7 @@ export default function DetailsDocumentAdminPage(props) {
           axiosCfg(),
         );
 
-        if (cancelled) return;
+        if (canceled) return;
 
         const d = data?.document;
         setDoc(d);
@@ -398,13 +398,13 @@ export default function DetailsDocumentAdminPage(props) {
         console.error(err);
         setErrorMsg("Impossible de charger le document.");
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!canceled) setLoading(false);
       }
     }
 
     load();
     return () => {
-      cancelled = true;
+      canceled = true;
     };
   }, [props.documentId]);
 

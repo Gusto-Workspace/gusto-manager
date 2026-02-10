@@ -1,3 +1,5 @@
+import axios from "axios";
+
 // I18N
 import { useTranslation } from "next-i18next";
 import { useMemo, useState } from "react";
@@ -6,16 +8,18 @@ import { useMemo, useState } from "react";
 import CardReservationComponent from "./card.reservations.component";
 import DetailsDrawerReservationsComponent from "./details-drawer.reservations.component";
 
-export default function DayListComponent(props) {
+export default function DayListReservationsComponent(props) {
   const { t } = useTranslation("reservations");
 
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedReservation, setSelectedReservation] = useState(null);
+  const [actionError, setActionError] = useState("");
 
   const list = props?.dayData?.byStatus?.[props.activeDayTab] || [];
 
   const openDetails = (reservation) => {
     setSelectedReservation(reservation);
+    setActionError(""); // reset quand on ouvre
     setDetailsOpen(true);
   };
 
@@ -24,15 +28,65 @@ export default function DayListComponent(props) {
   };
 
   // Actions depuis le drawer
-  const handleDrawerAction = (reservation, actionType) => {
-    setDetailsOpen(false);
+  const handleDrawerAction = async (reservation, actionType) => {
+    setActionError("");
     if (!reservation) return;
 
+    // ✅ interdit d'édit une canceled
+    if (actionType === "edit" && reservation.status === "Canceled") {
+      setActionError(
+        "Impossible de modifier une réservation annulée. Repasse-la en confirmée d’abord.",
+      );
+      return; // ✅ drawer reste ouvert, message dedans
+    }
+
+    // ✅ restore canceled -> confirmed (avec vérif backend)
+    if (actionType === "restore_confirmed") {
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) {
+          setActionError("Session expirée. Reconnecte-toi.");
+          return; // ✅ drawer reste ouvert
+        }
+
+        const rid =
+          reservation.restaurant_id ||
+          props?.restaurantId ||
+          props?.dayData?.restaurantId;
+
+        if (!rid) {
+          setActionError("Restaurant introuvable (rid manquant).");
+          return; // ✅ drawer reste ouvert
+        }
+
+        await axios.put(
+          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${rid}/reservations/${reservation._id}/status`,
+          { status: "Confirmed" },
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+
+        // ✅ succès -> on peut fermer (SSE met à jour)
+        setDetailsOpen(false);
+        return;
+      } catch (e) {
+        // ✅ slot plus dispo -> afficher DANS le drawer
+        const msg =
+          e?.response?.status === 409
+            ? "Le créneau n’est plus disponible."
+            : "Erreur lors de la remise en confirmé.";
+        setActionError(msg);
+        return; // ✅ drawer reste ouvert
+      }
+    }
+
+    // edit normal
     if (actionType === "edit") {
+      setDetailsOpen(false);
       props.handleEditClick(reservation);
       return;
     }
 
+    setDetailsOpen(false);
     props.openModalForAction(reservation, actionType);
   };
 
@@ -65,6 +119,7 @@ export default function DayListComponent(props) {
           reservation={selectedReservation}
           t={t}
           onAction={handleDrawerAction}
+          errorMessage={actionError} // ✅ maintenant dans le drawer
         />
       </>
     );
@@ -113,6 +168,7 @@ export default function DayListComponent(props) {
         reservation={selectedReservation}
         t={t}
         onAction={handleDrawerAction}
+        errorMessage={actionError}
       />
     </>
   );

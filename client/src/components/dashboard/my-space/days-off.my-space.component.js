@@ -87,7 +87,7 @@ export default function DaysOffMySpaceComponent({ employeeId, restaurantId }) {
       cls += " bg-[#4ead7a1a] text-[#166534] border border-[#4ead7a80]";
     } else if (status === "rejected") {
       cls += " bg-[#ef44441a] text-[#b91c1c] border border-[#ef444480]";
-    } else if (status === "cancelled") {
+    } else if (status === "canceled") {
       cls += " bg-slate-100 text-slate-700 border border-slate-200";
     } else {
       cls += " bg-lightGrey text-darkBlue/70";

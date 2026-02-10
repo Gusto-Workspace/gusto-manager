@@ -139,7 +139,7 @@ export default function PlanningEmployeesComponent() {
     );
     if (alreadyHaveShifts) return;
 
-    let cancelled = false;
+    let canceled = false;
 
     (async () => {
       try {
@@ -160,7 +160,7 @@ export default function PlanningEmployeesComponent() {
           ),
         );
 
-        if (cancelled) return;
+        if (canceled) return;
 
         restaurantContext.setRestaurantData((prev) => {
           if (!prev) return prev;
@@ -181,7 +181,7 @@ export default function PlanningEmployeesComponent() {
     })();
 
     return () => {
-      cancelled = true;
+      canceled = true;
     };
   }, [restaurantId, restaurantContext.restaurantData?.employees?.length]);
 
@@ -396,7 +396,7 @@ export default function PlanningEmployeesComponent() {
       if (isLeave && leaveRequestId) {
         await axios.put(
           `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}/leave-requests/${leaveRequestId}`,
-          { status: "cancelled" },
+          { status: "canceled" },
         );
 
         const updated = { ...restaurantContext.restaurantData };
@@ -406,7 +406,7 @@ export default function PlanningEmployeesComponent() {
             ...e,
             leaveRequests: (e.leaveRequests || []).map((r) =>
               String(r._id) === String(leaveRequestId)
-                ? { ...r, status: "cancelled" }
+                ? { ...r, status: "canceled" }
                 : r,
             ),
             shifts: (e.shifts || []).filter(

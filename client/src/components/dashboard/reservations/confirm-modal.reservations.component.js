@@ -3,7 +3,7 @@ import { AlertTriangle, CheckCircle2, Trash2, X } from "lucide-react";
 
 const CLOSE_MS = 220;
 
-export default function ConfirmationModalReservationComponent(props) {
+export default function ConfirmModalReservationsComponent(props) {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -18,35 +18,53 @@ export default function ConfirmationModalReservationComponent(props) {
 
   if (!props.isOpen) return null;
 
+  const name = props.reservation?.customerName || "ce client";
+
   const isDelete = props.actionType === "delete";
   const isActive = props.actionType === "active";
   const isConfirm = props.actionType === "confirm";
   const isFinish =
     props.actionType === "finish" || props.actionType === "finished";
+  const isCancel =
+    props.actionType === "cancel" || props.actionType === "canceled";
+  const isReject =
+    props.actionType === "reject" || props.actionType === "rejected";
 
-  const title = isDelete
-    ? props.t("labels.deleteReservation.title")
-    : isActive
-      ? props.t("labels.activeReservation.title")
-      : isConfirm
-        ? props.t("labels.confirmReservation.title")
-        : props.t("labels.finishedReservation.title");
+  // --- UI texts (FR hardcodé) ---
+  let title = "Action";
+  let content = "Cette action est irréversible.";
+  let confirmLabel = "Confirmer";
 
-  const content = isDelete
-    ? props.t("labels.deleteReservation.content", {
-        reservationTitle: props.reservation?.customerName,
-      })
-    : isActive
-      ? props.t("labels.activeReservation.content", {
-          reservationTitle: props.reservation?.customerName,
-        })
-      : isConfirm
-        ? props.t("labels.confirmReservation.content", {
-            reservationTitle: props.reservation?.customerName,
-          })
-        : props.t("labels.finishedReservation.content", {
-            reservationTitle: props.reservation?.customerName,
-          });
+  if (isDelete) {
+    title = "Supprimer la réservation";
+    content = `La réservation de ${name} sera supprimée définitivement. Cette action est irréversible.`;
+    confirmLabel = props.isProcessing ? "Chargement..." : "Supprimer";
+  } else if (isConfirm) {
+    title = "Confirmer la réservation";
+    content = `La réservation de ${name} sera marquée comme confirmée. Cette action est irréversible.`;
+    confirmLabel = props.isProcessing ? "Chargement..." : "Confirmer";
+  } else if (isActive) {
+    title = "Activer la réservation";
+    content = `La réservation de ${name} sera marquée comme “En cours”. Cette action est irréversible.`;
+    confirmLabel = props.isProcessing ? "Chargement..." : "Activer";
+  } else if (isFinish) {
+    title = "Terminer la réservation";
+    content = `Les clients ont quitté la table et cette réservation sera terminée. Cette action est irréversible.`;
+    confirmLabel = props.isProcessing ? "Chargement..." : "Terminer";
+  } else if (isCancel) {
+    title = "Annuler la réservation";
+    content = `La réservation de ${name} sera marquée comme annulée. Elle sera supprimée automatiquement dans 10 minutes. Vous pouvez la repasser en confirmer entre temps si besoin.`;
+    confirmLabel = props.isProcessing ? "Chargement..." : "Confirmer";
+  } else if (isReject) {
+    title = "Refuser la réservation";
+    content = `La réservation de ${name} sera marquée comme refusée. Elle sera supprimée automatiquement dans 10 minutes. Vous pouvez la repasser en confirmer entre temps si besoin.`;
+    confirmLabel = props.isProcessing ? "Chargement..." : "Refuser";
+  } else {
+    // fallback si actionType inconnu
+    title = "Confirmer l’action";
+    content = "Cette action est irréversible.";
+    confirmLabel = props.isProcessing ? "Chargement..." : "Confirmer";
+  }
 
   const Icon = isDelete
     ? Trash2
@@ -106,6 +124,16 @@ export default function ConfirmationModalReservationComponent(props) {
               <p className="mt-1 text-sm text-darkBlue/70">{content}</p>
             </div>
           </div>
+
+          <button
+            onClick={closeIfAllowed}
+            disabled={props.isProcessing}
+            className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2 disabled:opacity-50"
+            aria-label="Fermer"
+            type="button"
+          >
+            <X className="size-4 text-darkBlue/70" />
+          </button>
         </div>
 
         {/* Error */}
@@ -121,11 +149,12 @@ export default function ConfirmationModalReservationComponent(props) {
         <div className="px-5 pb-5 pt-5">
           <div className="flex-row-reverse flex gap-3">
             <button
-              className="w-full inline-flex items-center justify-center rounded-2xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition px-4 py-3 text-sm font-semibold text-darkBlue"
+              className="w-full inline-flex items-center justify-center rounded-2xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition px-4 py-3 text-sm font-semibold text-darkBlue disabled:opacity-60"
               onClick={closeIfAllowed}
               disabled={props.isProcessing}
+              type="button"
             >
-              {props.t("buttons.cancel")}
+              Retour
             </button>
 
             <button
@@ -138,10 +167,9 @@ export default function ConfirmationModalReservationComponent(props) {
               `}
               onClick={props.onConfirm}
               disabled={props.isProcessing}
+              type="button"
             >
-              {props.isProcessing
-                ? props.t("buttons.loading")
-                : props.t("buttons.confirm")}
+              {confirmLabel}
             </button>
           </div>
         </div>

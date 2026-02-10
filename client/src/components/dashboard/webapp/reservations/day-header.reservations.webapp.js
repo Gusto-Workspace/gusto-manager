@@ -7,7 +7,7 @@ import { ChevronLeft, Plus, SlidersHorizontal, Search, X } from "lucide-react";
 // I18N
 import { useTranslation } from "next-i18next";
 
-export default function DayHeaderComponent(props) {
+export default function DayHeaderReservationsWebapp(props) {
   const { t } = useTranslation("reservations");
   const router = useRouter();
 

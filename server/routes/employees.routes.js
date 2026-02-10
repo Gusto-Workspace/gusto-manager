@@ -1019,7 +1019,7 @@ router.put(
   async (req, res) => {
     const { restaurantId, employeeId, reqId } = req.params;
     const { status } = req.body;
-    if (!["pending", "approved", "rejected", "cancelled"].includes(status)) {
+    if (!["pending", "approved", "rejected", "canceled"].includes(status)) {
       return res.status(400).json({ message: "status invalide" });
     }
 
@@ -1048,7 +1048,7 @@ router.put(
       }
     }
 
-    if (status === "cancelled") {
+    if (status === "canceled") {
       profile.shifts = profile.shifts.filter(
         (s) => String(s.leaveRequestId) !== String(lr._id),
       );
