@@ -15,7 +15,7 @@ import {
   X,
 } from "lucide-react";
 
-export default function CalendarToolbarComponent(props) {
+export default function CalendarToolbarReservationsComponent(props) {
   const { t } = useTranslation("reservations");
 
   const monthYearLabel = props.capitalizeFirst(

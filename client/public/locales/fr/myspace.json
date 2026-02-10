@@ -13,7 +13,7 @@
       "pending": "En attente",
       "approved": "Confirmée",
       "rejected": "Rejetée",
-      "cancelled" : "Annulée"
+      "canceled" : "Annulée"
     }
   }
 }

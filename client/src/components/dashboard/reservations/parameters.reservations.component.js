@@ -1,4 +1,4 @@
-import { useContext, useState, useEffect, useMemo, useRef } from "react";
+import { useContext, useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/router";
 
 // CONTEXT
@@ -34,27 +34,35 @@ import HoursRestaurantComponent from "../restaurant/hours.restaurant.component";
 // AXIOS
 import axios from "axios";
 
-function DisabledToggleTooltip({ open, text }) {
-  if (!open) return null;
-  return (
-    <span className="absolute z-20 right-0 top-11 w-[285px] rounded-2xl border border-darkBlue/10 bg-white shadow-lg px-4 py-3 text-xs text-darkBlue/70">
-      {text}
-    </span>
-  );
-}
-
 // Helpers
+const statusLabel = (status) => {
+  const s = String(status || "").trim();
+  if (!s) return "";
+
+  const map = {
+    Pending: "En attente",
+    Confirmed: "Confirmée",
+    Active: "En cours",
+    Late: "En retard",
+    Finished: "Terminée",
+    Canceled: "Annulée",
+    NoShow: "No-show",
+  };
+
+  return map[s] || s;
+};
+
 function pad2(n) {
   return String(n).padStart(2, "0");
 }
 function toLocalDatetimeInputValue(date) {
-  // "YYYY-MM-DDTHH:mm" (local)
   const d = date instanceof Date ? date : new Date(date);
   if (Number.isNaN(d.getTime())) return "";
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(
-    d.getHours(),
-  )}:${pad2(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(
+    d.getDate(),
+  )}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
+
 function fmtShortFR(date) {
   const d = date instanceof Date ? date : new Date(date);
   if (Number.isNaN(d.getTime())) return "-";
@@ -66,6 +74,7 @@ function fmtShortFR(date) {
     minute: "2-digit",
   });
 }
+
 function isRangeActive(range) {
   const now = new Date();
   const start = new Date(range.startAt);
@@ -90,19 +99,32 @@ export default function ParametersReservationComponent(props) {
     reset,
     formState: { errors },
   } = useForm({
+    shouldUnregister: false,
     defaultValues: {
       same_hours_as_restaurant: true,
-      reservation_duration: false,
-      deletion_duration: false,
+
+      // Créneaux
       auto_accept: true,
       interval: "30",
+      pending_duration_minutes: 120,
+
+      // Automatisations
+      auto_finish_reservations: false,
+
+      deletion_duration: false,
+      deletion_duration_minutes: 1440,
+
+      // Gestion intelligente
       manage_disponibilities: false,
+
+      // ✅ Durée d’occupation (sert aussi à l’auto-finish)
+      table_occupancy_lunch_minutes: "",
+      table_occupancy_dinner_minutes: "",
+
       tables: [
         { name: "", seats: "" },
         { name: "", seats: "" },
       ],
-      reservation_duration_minutes: null,
-      deletion_duration_minutes: 1440,
     },
   });
 
@@ -113,50 +135,19 @@ export default function ParametersReservationComponent(props) {
 
   const [reservationHours, setReservationHours] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [manualTablesNeedingAssignment, setManualTablesNeedingAssignment] =
+    useState(0);
+  const [manualToFix, setManualToFix] = useState([]);
+  const [manualToFixLoading, setManualToFixLoading] = useState(false);
+  const [manualToFixError, setManualToFixError] = useState("");
 
   // UX errors (pas RHF)
   const [submitted, setSubmitted] = useState(false);
   const [tableErrors, setTableErrors] = useState({});
-  const [durationError, setDurationError] = useState(false);
-
-  // ✅ tooltips on disabled toggles (click)
-  const [disabledHint, setDisabledHint] = useState({
-    autoAccept: false,
-    reservationDuration: false,
+  const [durationError, setDurationError] = useState({
+    lunch: false,
+    dinner: false,
   });
-
-  const hintTimerRef = useRef(null);
-
-  const closeHints = () => {
-    setDisabledHint({ autoAccept: false, reservationDuration: false });
-  };
-
-  const openHint = (key) => {
-    setDisabledHint(() => ({
-      autoAccept: false,
-      reservationDuration: false,
-      [key]: true,
-    }));
-
-    if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
-    hintTimerRef.current = setTimeout(() => {
-      closeHints();
-    }, 2200);
-  };
-
-  useEffect(() => {
-    const onDocClick = () => {
-      if (disabledHint.autoAccept || disabledHint.reservationDuration) {
-        closeHints();
-      }
-    };
-    document.addEventListener("click", onDocClick);
-    return () => {
-      document.removeEventListener("click", onDocClick);
-      if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [disabledHint.autoAccept, disabledHint.reservationDuration]);
 
   // -----------------------------
   // ✅ BLOCKED RANGES (pause)
@@ -169,24 +160,48 @@ export default function ParametersReservationComponent(props) {
 
   const blockedRanges = useMemo(() => {
     const r =
-      restaurantContext?.restaurantData?.reservations?.parameters
-        ?.blocked_ranges || [];
+      props.restaurantData?.reservations?.parameters?.blocked_ranges || [];
     return Array.isArray(r) ? r : [];
-  }, [
-    restaurantContext?.restaurantData?.reservations?.parameters?.blocked_ranges,
-  ]);
+  }, [props.restaurantData?.reservations?.parameters?.blocked_ranges]);
 
   const hasActivePause = useMemo(() => {
     return blockedRanges.some(isRangeActive);
   }, [blockedRanges]);
 
-  // init: start/end par défaut (ex: maintenant -> +2h)
   useEffect(() => {
     const now = new Date();
     const plus2h = new Date(now.getTime() + 2 * 60 * 60 * 1000);
     setBlockedStart((v) => v || toLocalDatetimeInputValue(now));
     setBlockedEnd((v) => v || toLocalDatetimeInputValue(plus2h));
   }, []);
+
+  async function fetchManualTablesToFix() {
+    try {
+      setManualToFixLoading(true);
+      setManualToFixError("");
+
+      const token = localStorage.getItem("token");
+      const restaurantId = props.restaurantData?._id;
+      if (!restaurantId) return;
+
+      const res = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/reservations/manual-tables`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+
+      setManualToFix(
+        Array.isArray(res.data?.reservations) ? res.data.reservations : [],
+      );
+    } catch (e) {
+      console.error("Error fetching manual tables to fix:", e);
+      setManualToFixError(
+        e?.response?.data?.message ||
+          "Impossible de récupérer la liste des réservations à corriger.",
+      );
+    } finally {
+      setManualToFixLoading(false);
+    }
+  }
 
   function validateBlockedForm(startStr, endStr) {
     setBlockedError("");
@@ -224,10 +239,7 @@ export default function ParametersReservationComponent(props) {
         { headers: { Authorization: `Bearer ${token}` } },
       );
 
-      // met à jour le contexte
       props.setRestaurantData(res.data.restaurant);
-
-      // reset note uniquement (on garde les dates)
       setBlockedNote("");
     } catch (e) {
       console.error("Error adding blocked range:", e);
@@ -273,13 +285,39 @@ export default function ParametersReservationComponent(props) {
     if (restaurantContext?.restaurantData?.reservations) {
       const { parameters } = restaurantContext.restaurantData.reservations;
 
+      const nextLunch =
+        parameters?.table_occupancy_lunch_minutes === 0 ||
+        parameters?.table_occupancy_lunch_minutes
+          ? String(parameters.table_occupancy_lunch_minutes)
+          : "";
+
+      const nextDinner =
+        parameters?.table_occupancy_dinner_minutes === 0 ||
+        parameters?.table_occupancy_dinner_minutes
+          ? String(parameters.table_occupancy_dinner_minutes)
+          : "";
+
+      const nextAutoFinishEnabled = Boolean(
+        parameters?.auto_finish_reservations,
+      );
+
       reset({
-        same_hours_as_restaurant: parameters.same_hours_as_restaurant,
-        reservation_duration: parameters.reservation_duration,
-        deletion_duration: parameters.deletion_duration,
-        auto_accept: parameters.auto_accept,
-        interval: parameters.interval,
-        manage_disponibilities: parameters.manage_disponibilities,
+        same_hours_as_restaurant: parameters.same_hours_as_restaurant ?? true,
+
+        auto_accept: parameters.auto_accept ?? true,
+        interval: String(parameters.interval ?? "30"),
+        pending_duration_minutes: parameters.pending_duration_minutes ?? 120,
+
+        auto_finish_reservations: nextAutoFinishEnabled,
+
+        deletion_duration: parameters.deletion_duration ?? false,
+        deletion_duration_minutes: parameters.deletion_duration_minutes ?? 1440,
+
+        manage_disponibilities: parameters.manage_disponibilities ?? false,
+
+        table_occupancy_lunch_minutes: nextLunch,
+        table_occupancy_dinner_minutes: nextDinner,
+
         tables: parameters.tables?.length
           ? parameters.tables.map((tt) => ({
               name: tt?.name ?? "",
@@ -292,25 +330,22 @@ export default function ParametersReservationComponent(props) {
               { name: "", seats: "" },
               { name: "", seats: "" },
             ],
-        reservation_duration_minutes:
-          parameters.reservation_duration_minutes ?? "",
-        deletion_duration_minutes: parameters.deletion_duration_minutes ?? 1440,
       });
 
-      setReservationHours(parameters.reservation_hours);
+      setReservationHours(parameters.reservation_hours || []);
       setIsLoading(false);
       setSubmitted(false);
       setTableErrors({});
-      setDurationError(false);
-      closeHints();
+      setDurationError({ lunch: false, dinner: false });
     }
   }, [restaurantContext.restaurantData?._id, reset]);
 
   const same_hours_as_restaurant = watch("same_hours_as_restaurant");
   const manage_disponibilities = watch("manage_disponibilities");
-  const reservation_duration = watch("reservation_duration");
   const deletion_duration = watch("deletion_duration");
+  const auto_finish_reservations = watch("auto_finish_reservations");
   const tablesWatch = watch("tables");
+  const auto_accept = watch("auto_accept");
 
   const subtitle = t("reservations:buttons.parameters", "Paramètres");
 
@@ -324,14 +359,25 @@ export default function ParametersReservationComponent(props) {
     }).length;
   }, [tablesWatch]);
 
-  // Quand la gestion intelligente est activée :
-  // - forcer reservation_duration & auto_accept à true
-  // - s'il n'y a pas de tables, injecter 2 lignes vides
+  // Pré-remplissage métier si vide (dès qu’on active soit auto-finish, soit gestion intelligente)
+  useEffect(() => {
+    const lunch = (watch("table_occupancy_lunch_minutes") ?? "").toString();
+    const dinner = (watch("table_occupancy_dinner_minutes") ?? "").toString();
+
+    if (
+      (auto_finish_reservations || manage_disponibilities) &&
+      !lunch &&
+      !dinner
+    ) {
+      setValue("table_occupancy_lunch_minutes", "90");
+      setValue("table_occupancy_dinner_minutes", "120");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auto_finish_reservations, manage_disponibilities]);
+
+  // Quand on active la gestion intelligente: s'assurer d'avoir 2 lignes
   useEffect(() => {
     if (manage_disponibilities) {
-      setValue("reservation_duration", true);
-      setValue("auto_accept", true);
-
       const hasAnyRow = Array.isArray(tablesWatch) && tablesWatch.length > 0;
       if (!hasAnyRow) {
         append({ name: "", seats: "" });
@@ -340,8 +386,8 @@ export default function ParametersReservationComponent(props) {
     } else {
       setSubmitted(false);
       setTableErrors({});
-      setDurationError(false);
-      closeHints();
+      setDurationError({ lunch: false, dinner: false });
+      setManualTablesNeedingAssignment(0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manage_disponibilities]);
@@ -379,33 +425,25 @@ export default function ParametersReservationComponent(props) {
 
   // Sauvegarde immédiate des heures de réservation (appelée par l'enfant)
   async function saveReservationHoursImmediate(newHours) {
-    try {
-      const token = localStorage.getItem("token");
+    const token = localStorage.getItem("token");
 
-      const currentParams =
-        restaurantContext?.restaurantData?.reservations?.parameters || {};
+    const currentParams =
+      restaurantContext?.restaurantData?.reservations?.parameters || {};
 
-      const payload = {
-        ...currentParams,
-        same_hours_as_restaurant: false,
-        reservation_hours: newHours,
-      };
+    const payload = {
+      ...currentParams,
+      same_hours_as_restaurant: false,
+      reservation_hours: newHours,
+    };
 
-      const response = await axios.put(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${props.restaurantData._id}/reservations/parameters`,
-        { parameters: payload },
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
+    const response = await axios.put(
+      `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${props.restaurantData._id}/reservations/parameters`,
+      { parameters: payload },
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
 
-      props.setRestaurantData(response.data.restaurant);
-      setReservationHours(newHours);
-    } catch (err) {
-      console.error(
-        "Erreur lors de l’enregistrement immédiat des heures :",
-        err,
-      );
-      throw err;
-    }
+    props.setRestaurantData(response.data.restaurant);
+    setReservationHours(newHours);
   }
 
   function handleAddTable() {
@@ -419,7 +457,9 @@ export default function ParametersReservationComponent(props) {
   async function onSubmit(data) {
     setSubmitted(true);
 
-    // Validation tables
+    // --------------------
+    // ✅ Tables validation (seulement si gestion intelligente)
+    // --------------------
     const rawTables = Array.isArray(data.tables) ? data.tables : [];
 
     const sanitizedTables = rawTables
@@ -438,54 +478,115 @@ export default function ParametersReservationComponent(props) {
             : Number.parseInt(r.seatsRaw, 10),
       }));
 
-    const partialErrors = {};
-    rawTables.forEach((row, i) => {
-      const name = (row?.name || "").trim();
-      const seatsEmpty =
-        row?.seats === "" || row?.seats === null || row?.seats === undefined;
-      const nameEmpty = name === "";
-      const bothEmpty = nameEmpty && seatsEmpty;
+    if (manage_disponibilities) {
+      const partialErrors = {};
+      rawTables.forEach((row, i) => {
+        const name = (row?.name || "").trim();
+        const seatsEmpty =
+          row?.seats === "" || row?.seats === null || row?.seats === undefined;
+        const nameEmpty = name === "";
+        const bothEmpty = nameEmpty && seatsEmpty;
 
-      if (!bothEmpty && (nameEmpty || seatsEmpty)) {
-        partialErrors[i] = { name: nameEmpty, seats: seatsEmpty };
+        if (!bothEmpty && (nameEmpty || seatsEmpty)) {
+          partialErrors[i] = { name: nameEmpty, seats: seatsEmpty };
+        }
+      });
+
+      if (Object.keys(partialErrors).length > 0) {
+        setTableErrors(partialErrors);
+        return;
       }
-    });
-
-    if (Object.keys(partialErrors).length > 0) {
-      setTableErrors(partialErrors);
-      return;
     }
 
-    // Validation durée si gestion intelligente active
-    const duration = data.reservation_duration_minutes;
-    if (manage_disponibilities && (!duration || Number(duration) < 1)) {
-      setDurationError(true);
-      setFocus("reservation_duration_minutes");
-      return;
+    // --------------------
+    // ✅ Durées (midi/soir)
+    // --------------------
+    let lunch = (data.table_occupancy_lunch_minutes ?? "").toString().trim();
+    let dinner = (data.table_occupancy_dinner_minutes ?? "").toString().trim();
+
+    const lunchHas = lunch !== "" && Number(lunch) >= 1;
+    const dinnerHas = dinner !== "" && Number(dinner) >= 1;
+
+    const mustHaveDurations = Boolean(
+      auto_finish_reservations || manage_disponibilities,
+    );
+
+    const shouldStoreDurations = mustHaveDurations || (lunchHas && dinnerHas);
+
+    if (mustHaveDurations) {
+      const lunchMissing = !lunchHas;
+      const dinnerMissing = !dinnerHas;
+
+      if (lunchMissing || dinnerMissing) {
+        setDurationError({ lunch: lunchMissing, dinner: dinnerMissing });
+        setFocus(
+          lunchMissing
+            ? "table_occupancy_lunch_minutes"
+            : "table_occupancy_dinner_minutes",
+        );
+        return;
+      }
+
+      setDurationError({ lunch: false, dinner: false });
     } else {
-      setDurationError(false);
+      const bothEmpty = lunch === "" && dinner === "";
+      const bothFilled = lunchHas && dinnerHas;
+
+      if (!bothEmpty && !bothFilled) {
+        setDurationError({ lunch: !lunchHas, dinner: !dinnerHas });
+        setFocus(
+          !lunchHas
+            ? "table_occupancy_lunch_minutes"
+            : "table_occupancy_dinner_minutes",
+        );
+        return;
+      }
+
+      setDurationError({ lunch: false, dinner: false });
     }
+
+    const currentParams =
+      restaurantContext?.restaurantData?.reservations?.parameters || {};
+
+    const manageNext = Boolean(data.manage_disponibilities);
+
+    const tablesToSave = manageNext
+      ? sanitizedTables.map((tt) => ({ name: tt.name, seats: tt.seats }))
+      : currentParams.tables || [];
 
     const formData = {
-      same_hours_as_restaurant: data.same_hours_as_restaurant,
-      auto_accept: data.auto_accept,
+      same_hours_as_restaurant: Boolean(data.same_hours_as_restaurant),
+
+      // Créneaux
+      auto_accept: Boolean(data.auto_accept),
       interval: Number(data.interval),
-      reservation_duration: data.reservation_duration,
-      deletion_duration: data.deletion_duration,
-      reservation_hours: data.same_hours_as_restaurant
-        ? restaurantContext.restaurantData?.opening_hours
-        : reservationHours,
-      manage_disponibilities: data.manage_disponibilities,
-      tables: sanitizedTables.map((tt) => ({
-        name: tt.name,
-        seats: tt.seats,
-      })),
-      reservation_duration_minutes: data.reservation_duration
-        ? Number(data.reservation_duration_minutes)
-        : null,
+
+      pending_duration_minutes: data.auto_accept
+        ? currentParams.pending_duration_minutes || 120
+        : Number(data.pending_duration_minutes),
+
+      // Automatisations
+      auto_finish_reservations: Boolean(data.auto_finish_reservations),
+
+      deletion_duration: Boolean(data.deletion_duration),
       deletion_duration_minutes: data.deletion_duration
         ? Number(data.deletion_duration_minutes)
         : 1440,
+
+      reservation_hours: data.same_hours_as_restaurant
+        ? restaurantContext.restaurantData?.opening_hours
+        : reservationHours,
+
+      manage_disponibilities: manageNext,
+      tables: tablesToSave,
+
+      // ✅ Durées (stockées dès qu'on en a besoin)
+      table_occupancy_lunch_minutes: shouldStoreDurations
+        ? Number(lunch)
+        : null,
+      table_occupancy_dinner_minutes: shouldStoreDurations
+        ? Number(dinner)
+        : null,
     };
 
     try {
@@ -498,12 +599,19 @@ export default function ParametersReservationComponent(props) {
       );
 
       props.setRestaurantData(response.data.restaurant);
+
+      const count = Number(response?.data?.manualTablesNeedingAssignment || 0);
+      setManualTablesNeedingAssignment(count);
+
+      if (count > 0) {
+        // ✅ on reste sur la page pour que le restaurateur voie le message
+        // (sinon il ne le verra jamais)
+        return;
+      }
+
       router.push("/dashboard/reservations");
     } catch (error) {
-      console.error(
-        "Erreur lors de la mise à jour des paramètres de réservation :",
-        error,
-      );
+      console.error("Erreur mise à jour paramètres réservation :", error);
     }
   }
 
@@ -639,7 +747,6 @@ export default function ParametersReservationComponent(props) {
                 </p>
               </div>
 
-              {/* Badge état */}
               <span
                 className={[
                   "shrink-0 inline-flex items-center gap-2 rounded-2xl border px-3 py-2 text-xs",
@@ -662,7 +769,6 @@ export default function ParametersReservationComponent(props) {
 
             <div className={divider} />
 
-            {/* Form add */}
             <div className="grid grid-cols-1 midTablet:grid-cols-2 gap-3">
               <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3">
                 <p className="text-sm font-semibold text-darkBlue">
@@ -735,7 +841,6 @@ export default function ParametersReservationComponent(props) {
               </button>
             </div>
 
-            {/* List */}
             <div className={divider} />
             <div className="flex flex-col gap-3">
               {blockedRanges.length === 0 ? (
@@ -831,7 +936,6 @@ export default function ParametersReservationComponent(props) {
                 </p>
               </div>
 
-              {/* Toggle */}
               <label className={toggleWrap}>
                 <span
                   className={[
@@ -879,34 +983,23 @@ export default function ParametersReservationComponent(props) {
               <Clock className="size-4 shrink-0 opacity-60" />
               {t("reservations:titles.slots", "Créneaux")}
             </p>
-            <p className={hint}>
-              {t(
-                "reservations:messages.slotsHelp",
-                "Configure l’intervalle et les règles d’acceptation.",
-              )}
-            </p>
 
             <div className={divider} />
 
             <div className="grid grid-cols-1 midTablet:grid-cols-2 gap-3">
-              {/* Interval */}
               <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="font-semibold text-darkBlue">
-                      {t(
-                        "reservations:labels.intervalTitle",
-                        "Intervalle entre les créneaux",
-                      )}
-                    </p>
-                    <p className="text-xs text-darkBlue/50">
-                      {t(
-                        "reservations:messages.intervalHelp",
-                        "Temps minimum entre deux créneaux.",
-                      )}
-                    </p>
-                  </div>
-                </div>
+                <p className="font-semibold text-darkBlue">
+                  {t(
+                    "reservations:labels.intervalTitle",
+                    "Intervalle entre les créneaux",
+                  )}
+                </p>
+                <p className="text-xs text-darkBlue/50">
+                  {t(
+                    "reservations:messages.intervalHelp",
+                    "Temps minimum entre deux créneaux.",
+                  )}
+                </p>
 
                 <div className="mt-3">
                   <select
@@ -938,7 +1031,6 @@ export default function ParametersReservationComponent(props) {
                 </div>
               </div>
 
-              {/* Auto accept */}
               <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -948,7 +1040,7 @@ export default function ParametersReservationComponent(props) {
                         "Acceptation automatique",
                       )}
                     </p>
-                    <p className="text-xs text-darkBlue/50">
+                    <p className="text-xs text-darkBlue/50 mt-1">
                       {t(
                         "reservations:messages.autoAcceptHelp",
                         "Les réservations du site passent directement en “Confirmée”.",
@@ -956,78 +1048,80 @@ export default function ParametersReservationComponent(props) {
                     </p>
                   </div>
 
-                  {/* ✅ click on disabled toggle => show tooltip */}
-                  <span
-                    className="relative inline-flex"
-                    onClick={(e) => {
-                      if (!manage_disponibilities) return;
-                      e.stopPropagation();
-                      openHint("autoAccept");
-                    }}
-                  >
-                    <label className={toggleWrap}>
+                  <label className={toggleWrap}>
+                    <span
+                      className={[
+                        toggleBase,
+                        watch("auto_accept") ? toggleOn : toggleOff,
+                      ].join(" ")}
+                    >
+                      <input
+                        type="checkbox"
+                        className="sr-only"
+                        id="auto_accept"
+                        {...register("auto_accept")}
+                      />
                       <span
                         className={[
-                          toggleBase,
-                          watch("auto_accept") ? toggleOn : toggleOff,
-                          manage_disponibilities
-                            ? "opacity-50 cursor-pointer"
-                            : "",
+                          toggleDot,
+                          watch("auto_accept") ? toggleDotOn : toggleDotOff,
                         ].join(" ")}
-                        title={
-                          manage_disponibilities
-                            ? "Activé automatiquement (gestion intelligente)"
-                            : undefined
-                        }
-                      >
-                        <input
-                          type="checkbox"
-                          className="sr-only"
-                          id="auto_accept"
-                          {...register("auto_accept")}
-                          disabled={manage_disponibilities}
-                        />
-                        <span
-                          className={[
-                            toggleDot,
-                            watch("auto_accept") ? toggleDotOn : toggleDotOff,
-                          ].join(" ")}
-                        />
-                      </span>
-                    </label>
-
-                    <DisabledToggleTooltip
-                      open={disabledHint.autoAccept}
-                      text={t(
-                        "reservations:messages.autoAcceptForced",
-                        "Activé automatiquement (gestion intelligente)",
-                      )}
-                    />
-                  </span>
+                      />
+                    </span>
+                  </label>
                 </div>
               </div>
+
+              {!auto_accept && (
+                <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3">
+                  <div className="mt-4">
+                    <p className="font-semibold text-darkBlue mb-3">
+                      Durée de maintien d’une réservation en attente (minutes)
+                    </p>
+
+                    <input
+                      type="number"
+                      min="1"
+                      onWheel={(e) => e.currentTarget.blur()}
+                      className={inputBase}
+                      {...register("pending_duration_minutes", {
+                        required: !auto_accept,
+                        min: 1,
+                        valueAsNumber: true,
+                      })}
+                    />
+
+                    <p className="text-xs text-darkBlue/50 mt-2">
+                      Lorsqu’une réservation est en attente de validation, elle
+                      bloque la table pendant cette durée. Si la fermeture
+                      survient avant la fin du délai, le temps restant est
+                      reporté au prochain créneau d’ouverture.
+                    </p>
+
+                    {errors.pending_duration_minutes && (
+                      <p className="text-red text-sm mt-1">
+                        Veuillez saisir une durée valide supérieure à 0.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
 
-        {/* --- Bloc: Statuts auto (Durée & suppression) --- */}
+        {/* --- Bloc: Automatisations --- */}
         <div className={card}>
           <div className={cardInner}>
             <p className={sectionTitle}>
               <Settings2 className="size-4 shrink-0 opacity-60" />
               {t("reservations:titles.automation", "Automatisations")}
             </p>
-            <p className={hint}>
-              {t(
-                "reservations:messages.automationHelp",
-                "Automatise la fin et/ou la suppression des réservations.",
-              )}
-            </p>
 
             <div className={divider} />
 
             <div className="grid grid-cols-1 midTablet:grid-cols-2 gap-3">
-              {/* Reservation duration */}
+              {/* Auto finish (sans minutes) */}
               <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -1039,93 +1133,46 @@ export default function ParametersReservationComponent(props) {
                     </p>
                     <p className="text-xs text-darkBlue/50">
                       {t(
-                        "reservations:labels.reservationDuration",
-                        "Au bout de (minutes)",
+                        "reservations:messages.autoFinishUsesOccupancy",
+                        "Utilise la durée d’occupation (midi/soir) pour libérer la table.",
                       )}
                     </p>
                   </div>
 
-                  {/* ✅ click on disabled toggle => show tooltip */}
-                  <span
-                    className="relative inline-flex"
-                    onClick={(e) => {
-                      if (!manage_disponibilities) return;
-                      e.stopPropagation();
-                      openHint("reservationDuration");
-                    }}
-                  >
-                    <label className={toggleWrap}>
+                  <label className={toggleWrap}>
+                    <span
+                      className={[
+                        toggleBase,
+                        auto_finish_reservations ? toggleOn : toggleOff,
+                      ].join(" ")}
+                    >
+                      <input
+                        type="checkbox"
+                        className="sr-only"
+                        id="auto_finish_reservations"
+                        {...register("auto_finish_reservations")}
+                      />
                       <span
                         className={[
-                          toggleBase,
-                          reservation_duration ? toggleOn : toggleOff,
-                          manage_disponibilities
-                            ? "opacity-50 cursor-pointer"
-                            : "",
+                          toggleDot,
+                          auto_finish_reservations ? toggleDotOn : toggleDotOff,
                         ].join(" ")}
-                        title={
-                          manage_disponibilities
-                            ? "Activé automatiquement (gestion intelligente)"
-                            : undefined
-                        }
-                      >
-                        <input
-                          type="checkbox"
-                          className="sr-only"
-                          id="reservation_duration"
-                          {...register("reservation_duration")}
-                          disabled={manage_disponibilities}
-                        />
-                        <span
-                          className={[
-                            toggleDot,
-                            reservation_duration ? toggleDotOn : toggleDotOff,
-                          ].join(" ")}
-                        />
-                      </span>
-                    </label>
-
-                    <DisabledToggleTooltip
-                      open={disabledHint.reservationDuration}
-                      text="Activé automatiquement (gestion intelligente)"
-                    />
-                  </span>
+                      />
+                    </span>
+                  </label>
                 </div>
 
-                <div className="mt-3 flex items-center gap-2">
-                  <input
-                    type="number"
-                    id="reservation_duration_minutes"
-                    inputMode="numeric"
-                    {...register("reservation_duration_minutes", { min: 1 })}
-                    disabled={!reservation_duration}
-                    placeholder="-"
-                    value={
-                      reservation_duration
-                        ? (watch("reservation_duration_minutes") ?? "")
-                        : ""
-                    }
-                    className={[
-                      inputBase,
-                      "text-center",
-                      durationError ? "border-red" : "",
-                      !reservation_duration ? "placeholder:opacity-100" : "",
-                    ].join(" ")}
-                  />
-
-                  <span className="text-sm text-darkBlue/60 whitespace-nowrap">
-                    {t("reservations:labels.minute(s)", "min")}
-                  </span>
+                <div className="mt-3 text-xs text-darkBlue/55">
+                  {auto_finish_reservations
+                    ? t(
+                        "reservations:messages.autoFinishEnabledHint",
+                        "Active : une réservation “En cours” passera en “Terminée” après la durée définie ci-dessous (midi/soir).",
+                      )
+                    : t(
+                        "reservations:messages.autoFinishDisabledHint",
+                        "Désactivé : vous devez terminer la réservation manuellement.",
+                      )}
                 </div>
-
-                {durationError && (
-                  <p className="mt-2 text-xs text-red">
-                    {t(
-                      "reservations:errors.durationRequired",
-                      "La durée est obligatoire en mode gestion intelligente.",
-                    )}
-                  </p>
-                )}
               </div>
 
               {/* Deletion duration */}
@@ -1224,6 +1271,82 @@ export default function ParametersReservationComponent(props) {
                 </div>
               </div>
             </div>
+
+            {/* ✅ Durées d'occupation : visibles même si manage OFF (utile pour auto-finish) */}
+            <div className={divider} />
+
+            <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3">
+              <p className="font-semibold text-darkBlue">
+                {t(
+                  "reservations:labels.tableOccupancy",
+                  "Durée d’occupation d’une table",
+                )}
+              </p>
+              <p className="text-xs text-darkBlue/50">
+                Utilisée pour clôturer automatiquement une réservation et (si
+                activé) calculer les disponibilités. Ex : 90 min le midi, 120
+                min le soir.
+              </p>
+
+              <div className="mt-3 grid grid-cols-1 midTablet:grid-cols-2 gap-3">
+                <div className="rounded-2xl border border-darkBlue/10 bg-white/70 p-3">
+                  <p className="text-sm font-semibold text-darkBlue">
+                    {t("reservations:labels.lunch", "Midi")}
+                  </p>
+                  <div className="mt-2 flex items-center gap-2">
+                    <input
+                      type="number"
+                      id="table_occupancy_lunch_minutes"
+                      inputMode="numeric"
+                      {...register("table_occupancy_lunch_minutes", { min: 1 })}
+                      placeholder="-"
+                      className={[
+                        inputBase,
+                        "text-center",
+                        durationError?.lunch ? "border-red" : "",
+                      ].join(" ")}
+                    />
+                    <span className="text-sm text-darkBlue/60 whitespace-nowrap">
+                      {t("reservations:labels.minute(s)", "min")}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-darkBlue/10 bg-white/70 p-3">
+                  <p className="text-sm font-semibold text-darkBlue">
+                    {t("reservations:labels.dinner", "Soir")}
+                  </p>
+                  <div className="mt-2 flex items-center gap-2">
+                    <input
+                      type="number"
+                      id="table_occupancy_dinner_minutes"
+                      inputMode="numeric"
+                      {...register("table_occupancy_dinner_minutes", {
+                        min: 1,
+                      })}
+                      placeholder="-"
+                      className={[
+                        inputBase,
+                        "text-center",
+                        durationError?.dinner ? "border-red" : "",
+                      ].join(" ")}
+                    />
+                    <span className="text-sm text-darkBlue/60 whitespace-nowrap">
+                      {t("reservations:labels.minute(s)", "min")}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {(durationError?.lunch || durationError?.dinner) && (
+                <p className="mt-2 text-xs text-red">
+                  {t(
+                    "reservations:errors.durationRequired2",
+                    "Veuillez renseigner les deux durées (midi et soir).",
+                  )}
+                </p>
+              )}
+            </div>
           </div>
         </div>
 
@@ -1269,6 +1392,60 @@ export default function ParametersReservationComponent(props) {
                 </span>
               </label>
             </div>
+
+            {manualTablesNeedingAssignment > 0 && (
+              <div className="mt-4 rounded-2xl border border-orange/30 bg-orange/10 px-4 py-3 text-sm text-darkBlue/80">
+                <p className="font-semibold text-darkBlue">
+                  Attention : tables saisies manuellement
+                </p>
+                <p className="mt-1 whitespace-pre-line text-darkBlue/70">
+                  Des tables avaient été saisies manuellement quand la gestion
+                  intelligente n’était pas activée.
+                  {"\n"}Pour éviter les conflits, veuillez assigner une table
+                  dans les réservations concernées.
+                </p>
+                <p className="mt-2 text-xs text-darkBlue/60">
+                  {manualTablesNeedingAssignment} réservation(s) concernée(s).
+                </p>
+
+                <button
+                  type="button"
+                  onClick={fetchManualTablesToFix}
+                  className="mt-3 inline-flex items-center justify-center rounded-xl bg-darkBlue text-white px-4 h-10 text-sm font-semibold hover:opacity-90 transition"
+                >
+                  {manualToFixLoading
+                    ? "Chargement…"
+                    : "Voir les réservations à corriger"}
+                </button>
+
+                {manualToFixError && (
+                  <p className="mt-2 text-xs text-red">{manualToFixError}</p>
+                )}
+
+                {manualToFix.length > 0 && (
+                  <div className="mt-3 grid grid-cols-1 gap-2">
+                    {manualToFix.map((r) => (
+                      <div
+                        key={String(r._id)}
+                        className="rounded-xl border border-darkBlue/10 bg-white/70 px-3 py-2"
+                      >
+                        <p className="text-sm font-semibold text-darkBlue">
+                          {fmtShortFR(r.reservationDate)} •{" "}
+                          {String(r.reservationTime || "").slice(0, 5)}
+                          {" — "}
+                          {r.customerName || "Client"}
+                        </p>
+                        <p className="text-xs text-darkBlue/60">
+                          {r.numberOfGuests ? `${r.numberOfGuests} pers.` : ""}
+                          {r.tableName ? ` • Table: ${r.tableName}` : ""}
+                          {r.status ? ` • ${statusLabel(r.status)}` : ""}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {manage_disponibilities && (
               <>

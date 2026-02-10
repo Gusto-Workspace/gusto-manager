@@ -12,9 +12,6 @@ import { useTranslation } from "next-i18next";
 const Calendar = dynamic(() => import("react-calendar"), { ssr: false });
 import "react-calendar/dist/Calendar.css";
 
-// SVG
-import { ReservationSvg } from "../../_shared/_svgs/reservation.svg";
-
 // AXIOS
 import axios from "axios";
 
@@ -28,7 +25,8 @@ import {
   ClockSvg,
   CalendarSvg,
   TableSvg,
-} from "../../_shared/_svgs/_index";
+  ReservationSvg,
+} from "../../../_shared/_svgs/_index";
 
 // LUCIDE
 import { Loader2, Save, X, ChevronLeft } from "lucide-react";
@@ -106,7 +104,7 @@ function minutesFromHHmm(timeStr) {
   return (Number(h) || 0) * 60 + (Number(m) || 0);
 }
 
-export default function AddReservationComponent(props) {
+export default function AddReservationsWebapp(props) {
   const { t } = useTranslation("reservations");
   const router = useRouter();
 
@@ -895,14 +893,11 @@ export default function AddReservationComponent(props) {
         onClose={closeModal}
       />
 
-      <section className="flex flex-col gap-6">
-        {/* =========================
-            ✅ MOBILE HEADER (copie du style DayHeader)
-            ========================= */}
-        <div className="midTablet:hidden bg-lightGrey">
+      <section className="flex flex-col gap-4">
+        <div className="midTablet:hidden  bg-lightGrey">
           <div className="flex items-center justify-between gap-3 h-[50px]">
             <button
-              onClick={() => router.push("/dashboard/reservations")}
+              onClick={() => router.push("/dashboard/webapp/reservations")}
               className="shrink-0 inline-flex items-center justify-center rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition p-2"
               aria-label={t("calendar.back", "Retour au calendrier")}
               title={t("calendar.back", "Retour au calendrier")}
@@ -911,63 +906,21 @@ export default function AddReservationComponent(props) {
             </button>
 
             <div className="min-w-0 flex-1 flex items-center gap-2">
-              <ReservationSvg
-                width={26}
-                height={26}
-                className="min-h-[26px] min-w-[26px]"
-                fillColor="#131E3690"
-              />
               <div className="min-w-0">
                 <p className="text-xl font-semibold text-darkBlue truncate">
-                  {t("titles.main")}
+                  {subtitle}
                 </p>
                 <p className="text-sm text-darkBlue/50 truncate">
-                  {subtitle}
-                  {reservationDateLabel ? ` · ${reservationDateLabel}` : ""}
+                  {reservationDateLabel ? `${reservationDateLabel}` : ""}
                 </p>
               </div>
             </div>
-
-            <div className="shrink-0 w-[40px]" />
           </div>
-        </div>
-
-        <hr className="opacity-20 hidden midTablet:block" />
-
-        <div className="hidden midTablet:flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex gap-2 items-center min-h-[40px]">
-            <ReservationSvg
-              width={30}
-              height={30}
-              className="min-h-[30px] min-w-[30px]"
-              fillColor="#131E3690"
-            />
-
-            <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2 flex-wrap">
-              <span
-                className="cursor-pointer hover:underline"
-                onClick={() => router.push("/dashboard/reservations")}
-              >
-                {t("titles.main")}
-              </span>
-              <span className="text-darkBlue/30 select-none">/</span>
-              <span className="font-semibold">{subtitle}</span>
-            </h1>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => router.push("/dashboard/reservations")}
-            className="inline-flex items-center gap-2 rounded-lg border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition px-4 py-2 text-sm font-semibold text-darkBlue"
-          >
-            <ChevronLeft className="size-4 text-darkBlue/60" />
-            {t("buttons.cancel")}
-          </button>
         </div>
 
         <form onSubmit={handleFormSubmit} className="flex flex-col gap-4">
           {/* 1) Nombre de personnes */}
-          <div className="w-full midTablet:max-w-[550px] rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm p-4 midTablet:p-6">
+          <div className="w-full rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm p-4">
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div className="inline-flex items-center gap-2 text-base font-semibold text-darkBlue">
                 <CommunitySvg width={20} height={20} className="opacity-50" />
@@ -994,7 +947,7 @@ export default function AddReservationComponent(props) {
           </div>
 
           {/* 2) Date */}
-          <div className="rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm p-4 midTablet:p-6">
+          <div className="rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm p-4">
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div className="inline-flex items-center gap-2 text-base font-semibold text-darkBlue">
                 <CalendarSvg width={20} height={20} className="opacity-50" />
@@ -1018,7 +971,7 @@ export default function AddReservationComponent(props) {
           </div>
 
           {/* 3) Créneau */}
-          <div className="rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm p-4 midTablet:p-6">
+          <div className="rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm p-4">
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div className="inline-flex items-center gap-2 text-base font-semibold text-darkBlue">
                 <ClockSvg width={20} height={20} className="opacity-50" />
@@ -1071,7 +1024,7 @@ export default function AddReservationComponent(props) {
           </div>
 
           {/* Informations Client et Table */}
-          <div className="rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm p-4 midTablet:p-6">
+          <div className="rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm p-4">
             <div className="grid grid-cols-1 midTablet:grid-cols-2 gap-6 midTablet:gap-8">
               <div className="flex flex-col gap-3">
                 <label
@@ -1179,7 +1132,7 @@ export default function AddReservationComponent(props) {
           </div>
 
           {/* Commentaire */}
-          <div className="rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm p-4 midTablet:p-6">
+          <div className="rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm p-4">
             <div className="flex flex-col gap-3">
               <label
                 htmlFor="commentary"
@@ -1200,6 +1153,7 @@ export default function AddReservationComponent(props) {
             </div>
           </div>
 
+          {/* Actions */}
           {error && (
             <div className="rounded-2xl border border-red/20 bg-red/5 px-4 py-3 text-sm text-red">
               {error}

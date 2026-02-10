@@ -409,7 +409,7 @@ export default function NotificationsDrawerComponent({
         </div>
 
         {/* Footer mobile */}
-        <div className="tablet:hidden border-t border-darkBlue/10 bg-white/70 px-4 pt-3 pb-8">
+        <div className="tablet:hidden border-t border-darkBlue/10 bg-white/70 px-4 py-4">
           <button
             onClick={closeWithAnimation}
             className="w-full inline-flex items-center justify-center rounded-xl bg-blue px-4 py-3 text-white text-sm font-semibold shadow-sm hover:bg-blue/90 active:scale-[0.98] transition"

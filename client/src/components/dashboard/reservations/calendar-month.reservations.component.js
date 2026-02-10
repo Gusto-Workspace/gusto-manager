@@ -1,4 +1,4 @@
-export default function CalendarMonthComponent(props) {
+export default function CalendarMonthReservationsComponent(props) {
   const weekDays = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
   return (
     <div className="flex flex-col gap-3 midTablet:mt-6">
@@ -77,7 +77,9 @@ export default function CalendarMonthComponent(props) {
                                   ? "#3b82f6"
                                   : s === "Pending"
                                     ? "#93c5fd"
-                                    : "#cbd5e1",
+                                    : s === "Canceled"
+                                      ? "#ff7664"
+                                      : "#cbd5e1",
                         }}
                       />
                     </div>

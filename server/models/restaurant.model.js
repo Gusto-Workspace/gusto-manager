@@ -36,19 +36,29 @@ const blockedRangeSchema = new mongoose.Schema(
 // Sous-schéma pour les paramètres de réservation
 const reservationParametersSchema = new mongoose.Schema({
   same_hours_as_restaurant: { type: Boolean, default: true },
-  reservation_duration: { type: Boolean, default: false },
+
+  // Automatisations
+  auto_finish_reservations: { type: Boolean, default: false },
   deletion_duration: { type: Boolean, default: false },
+  deletion_duration_minutes: { type: Number, min: 1, default: 1440 },
+
+  // Créneaux
   auto_accept: { type: Boolean, default: true },
   interval: { type: Number, default: 30 },
+  pending_duration_minutes: { type: Number, min: 1, default: 120 },
+
+  // Gestion intelligente
   manage_disponibilities: { type: Boolean, default: false },
   tables: [
     {
-      name: { type: String, required: true },
-      seats: { type: Number, min: 1 },
+      name: { type: String, required: true, trim: true },
+      seats: { type: Number, min: 1, required: true },
     },
   ],
-  reservation_duration_minutes: { type: Number, min: 1 },
-  deletion_duration_minutes: { type: Number, min: 1, default: 1440 },
+  table_occupancy_lunch_minutes: { type: Number, min: 1 },
+  table_occupancy_dinner_minutes: { type: Number, min: 1 },
+
+  // Horaires & pauses
   reservation_hours: { type: [openingHoursSchema], default: [] },
   blocked_ranges: { type: [blockedRangeSchema], default: [] },
 });

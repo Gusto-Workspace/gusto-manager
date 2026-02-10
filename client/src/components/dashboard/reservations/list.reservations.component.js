@@ -9,10 +9,10 @@ import axios from "axios";
 
 // COMPONENTS
 import ConfirmationModalReservationComponent from "./confirm-modal.reservations.component";
-import CalendarToolbarComponent from "./calendar-toolbar.component";
-import CalendarMonthComponent from "./calendar-month.component";
-import DayHeaderComponent from "./day-header.component";
-import DayListComponent from "./day-list.component";
+import CalendarToolbarReservationsComponent from "./calendar-toolbar.reservations.component";
+import CalendarMonthReservationsComponent from "./calendar-month.reservations.component";
+import DayHeaderReservationsComponent from "./day-header.reservations.component";
+import DayListReservationsComponent from "./day-list.reservations.component";
 
 export default function ListReservationsComponent(props) {
   const { t } = useTranslation("reservations");
@@ -35,7 +35,15 @@ export default function ListReservationsComponent(props) {
   const calendarSearchRef = useRef(null);
   const daySearchRef = useRef(null);
 
-  const statusList = ["Pending", "Confirmed", "Active", "Late", "Finished"];
+  const statusList = [
+    "Pending",
+    "Confirmed",
+    "Active",
+    "Late",
+    "Finished",
+    "Canceled",
+    "Rejected",
+  ];
   const dayStatusTabs = ["All", ...statusList];
 
   const statusTranslations = {
@@ -45,6 +53,8 @@ export default function ListReservationsComponent(props) {
     Active: t("list.status.active"),
     Late: t("list.status.late"),
     Finished: t("list.status.finished"),
+    Canceled: t("list.status.canceled", "Annulée"),
+    Rejected: t("list.status.rejected", "Refusée"),
   };
 
   /* =========================================================
@@ -101,13 +111,17 @@ export default function ListReservationsComponent(props) {
             Active: 0,
             Late: 0,
             Finished: 0,
+            Canceled: 0,
+            Rejected: 0,
           },
           matchCount: 0,
         };
       }
+
       dayAgg[key].total += 1;
-      if (dayAgg[key].byStatus[r.status] != null) {
-        dayAgg[key].byStatus[r.status] += 1;
+      const s = r.status === "Rejected" ? "Canceled" : r.status; // regroupe Rejected dans Canceled
+      if (dayAgg[key].byStatus[s] != null) {
+        dayAgg[key].byStatus[s] += 1;
       }
 
       if (term) {
@@ -151,6 +165,8 @@ export default function ListReservationsComponent(props) {
           Active: 0,
           Late: 0,
           Finished: 0,
+          Canceled: 0,
+          Rejected: 0,
         },
         matchCount: agg?.matchCount || 0,
       });
@@ -172,6 +188,8 @@ export default function ListReservationsComponent(props) {
           Active: [],
           Late: [],
           Finished: [],
+          Canceled: [],
+          Rejected: [],
         },
         counts: {
           All: 0,
@@ -180,9 +198,12 @@ export default function ListReservationsComponent(props) {
           Active: 0,
           Late: 0,
           Finished: 0,
+          Canceled: 0,
+          Rejected: 0,
         },
       };
     }
+
     const key = toDateKey(selectedDay);
     const term = searchTerm.trim().toLowerCase();
 
@@ -213,14 +234,18 @@ export default function ListReservationsComponent(props) {
       Active: [],
       Late: [],
       Finished: [],
+      Canceled: [],
+      Rejected: [],
     };
+
     filteredSorted.forEach((r) => {
       if (by[r.status]) by[r.status].push(r);
     });
 
     const counts = Object.fromEntries(
-      dayStatusTabs.map((s) => [s, by[s].length]),
+      dayStatusTabs.map((s) => [s, (by[s] || []).length]),
     );
+
     return { byStatus: by, counts };
   }, [props.reservations, selectedDay, searchTerm]);
 
@@ -268,38 +293,46 @@ export default function ListReservationsComponent(props) {
         .then((response) => {
           props.setRestaurantData(response.data.restaurant);
 
-          // Email auto si Pending -> Confirmed
-          if (
-            newStatus === "Confirmed" &&
-            selectedReservation.status === "Pending"
-          ) {
-            axios
-              .post("/api/confirm-reservation-email", {
-                customerName: selectedReservation.customerName,
-                customerEmail: selectedReservation.customerEmail,
-                reservationDate: new Date(
-                  selectedReservation.reservationDate,
-                ).toLocaleDateString("fr-FR"),
-                reservationTime: selectedReservation.reservationTime,
-                numberOfGuests: selectedReservation.numberOfGuests,
-                restaurantName: props.restaurantData?.name,
-              })
-              .catch((err) => {
-                console.error(
-                  "Erreur lors de l'envoi de l'email de confirmation :",
-                  err,
-                );
-              });
-          }
-
           closeModal();
         })
         .catch((error) => {
           console.error(`Error updating status to ${newStatus}:`, error);
+
+          const status = error?.response?.status;
+          const apiCode = error?.response?.data?.code;
+          const apiMsg = error?.response?.data?.message;
+
+          // ✅ Conflit de créneau / table (cas typique quand 2 résas sur le même slot)
+          if (status === 409) {
+            // si ton backend renvoie un code explicite
+            if (apiCode === "NO_TABLE_AVAILABLE") {
+              setError(
+                "Ce créneau n’est plus disponible (aucune table libre).",
+              );
+              return;
+            }
+
+            // sinon on fallback sur un message clair
+            setError(
+              apiMsg ||
+                "Ce créneau n’est plus disponible (table déjà occupée).",
+            );
+            return;
+          }
+
+          // ✅ Session / token
+          if (status === 401 || status === 403) {
+            setError("Session expirée. Reconnecte-toi.");
+            return;
+          }
+
+          // ✅ fallback générique
           setError(
-            "Une erreur est survenue lors de la mise à jour du statut de la réservation.",
+            apiMsg ||
+              "Une erreur est survenue lors de la mise à jour du statut de la réservation.",
           );
         })
+
         .finally(() => {
           setIsProcessing(false);
         });
@@ -339,15 +372,38 @@ export default function ListReservationsComponent(props) {
 
   function handleConfirmAction() {
     if (!selectedReservation) return;
+
     if (actionType === "delete") {
       deleteReservation();
-    } else if (actionType === "finish") {
-      updateReservationStatus("Finished");
-    } else if (actionType === "active") {
-      updateReservationStatus("Active");
-    } else if (actionType === "confirm") {
-      updateReservationStatus("Confirmed");
+      return;
     }
+
+    if (actionType === "finish" || actionType === "finished") {
+      updateReservationStatus("Finished");
+      return;
+    }
+
+    if (actionType === "active") {
+      updateReservationStatus("Active");
+      return;
+    }
+
+    if (actionType === "confirm") {
+      updateReservationStatus("Confirmed");
+      return;
+    }
+
+    if (actionType === "cancel" || actionType === "canceled") {
+      updateReservationStatus("Canceled");
+      return;
+    }
+
+    if (actionType === "reject" || actionType === "rejected") {
+      updateReservationStatus("Rejected");
+      return;
+    }
+
+    console.warn("Unknown actionType in handleConfirmAction:", actionType);
   }
 
   // Assure le focus persistant sur l'input (corrige la perte de focus après 1 caractère)
@@ -373,6 +429,15 @@ export default function ListReservationsComponent(props) {
     setSearchTerm(event.target.value);
   }
 
+  const calendarStatusList = [
+    "Pending",
+    "Confirmed",
+    "Active",
+    "Late",
+    "Finished",
+    "Canceled",
+  ];
+
   return (
     <section className="flex flex-col gap-6">
       <hr className="hidden midTablet:block opacity-20" />
@@ -380,7 +445,7 @@ export default function ListReservationsComponent(props) {
       {!selectedDay ? (
         <>
           {/* Header calendrier */}
-          <CalendarToolbarComponent
+          <CalendarToolbarReservationsComponent
             capitalizeFirst={capitalizeFirst}
             currentMonth={currentMonth}
             handleParametersClick={handleParametersClick}
@@ -394,20 +459,20 @@ export default function ListReservationsComponent(props) {
             setSearchTerm={setSearchTerm}
           />
           {/* Calendrier mois (pack) */}
-          <CalendarMonthComponent
+          <CalendarMonthReservationsComponent
             monthGridDays={monthGridDays}
             toDateKey={toDateKey}
             searchTerm={searchTerm}
             setSelectedDay={setSelectedDay}
             selectedDay={selectedDay}
             setActiveDayTab={setActiveDayTab}
-            statusList={statusList}
+            statusList={calendarStatusList}
           />
         </>
       ) : (
         <>
           {/* Header jour (SVG + titre cliquable -> calendrier + / date ; dropdown statuts + retour + recherche) */}
-          <DayHeaderComponent
+          <DayHeaderReservationsComponent
             selectedDay={selectedDay}
             setSelectedDay={setSelectedDay}
             handleParametersClick={handleParametersClick}
@@ -425,7 +490,7 @@ export default function ListReservationsComponent(props) {
             handleSearchChangeDay={handleSearchChangeDay}
           />
           {/* Liste du statut actif */}
-          <DayListComponent
+          <DayListReservationsComponent
             selectedDay={selectedDay}
             dayData={dayData}
             activeDayTab={activeDayTab}

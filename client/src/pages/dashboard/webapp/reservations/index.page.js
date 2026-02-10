@@ -11,7 +11,7 @@ import { GlobalContext } from "@/contexts/global.context";
 
 // COMPONENTS
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
-import ListReservationsComponent from "@/components/dashboard/webapp/reservations/list.reservations.component";
+import ListReservationsWebapp from "@/components/dashboard/webapp/reservations/list.reservations.webapp";
 import SplashScreenWebAppComponent from "@/components/dashboard/webapp/_shared/splashscreen.webapp.component";
 import NotGoodDeviceWebAppComponent from "@/components/dashboard/webapp/_shared/not-good-device.webapp.component";
 
@@ -134,7 +134,7 @@ export default function WepAppReservationsPage(props) {
               emptyText="Vous n'avez pas accès à cette section"
             />
           ) : (
-            <ListReservationsComponent
+            <ListReservationsWebapp
               restaurantData={restaurantContext.restaurantData}
               setRestaurantData={restaurantContext.setRestaurantData}
               reservations={

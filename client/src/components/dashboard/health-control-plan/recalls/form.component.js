@@ -447,14 +447,14 @@ export default function RecallForm({
     const curLotId = getValues("inventoryLotId");
     if (!restaurantId || !token || !curLotId) return;
 
-    let cancelled = false;
+    let canceled = false;
     (async () => {
       try {
         const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/inventory-lots/${curLotId}`;
         const { data: lot } = await axios.get(url, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (cancelled || !lot) return;
+        if (canceled || !lot) return;
 
         const myQty = Number(initial?.item?.quantity);
         const myUnit = initial?.item?.unit || lot.unit;
@@ -488,7 +488,7 @@ export default function RecallForm({
     })();
 
     return () => {
-      cancelled = true;
+      canceled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId, token, watch("inventoryLotId")]);

@@ -155,7 +155,7 @@ export default function SignDocumentAdminComponent({ documentId }) {
   useEffect(() => {
     if (!documentId) return;
 
-    let cancelled = false;
+    let canceled = false;
 
     async function load() {
       setLoading(true);
@@ -175,7 +175,7 @@ export default function SignDocumentAdminComponent({ documentId }) {
           cfg,
         );
 
-        if (cancelled) return;
+        if (canceled) return;
 
         const d = data?.document;
         setDoc(d);
@@ -188,13 +188,13 @@ export default function SignDocumentAdminComponent({ documentId }) {
         console.error(e);
         setErrorMsg("Impossible de charger le document.");
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!canceled) setLoading(false);
       }
     }
 
     load();
     return () => {
-      cancelled = true;
+      canceled = true;
     };
   }, [documentId]);
 

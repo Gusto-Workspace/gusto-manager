@@ -29,6 +29,8 @@ export default function CardReservationComponent(props) {
     Active: "bg-green/10 text-green border-green/30",
     Late: "bg-[#FF914D22] text-[#B95E1C] border-[#FF914D66]",
     Finished: "bg-darkBlue/5 text-darkBlue/70 border-darkBlue/20",
+    Canceled: "bg-red/10 text-red border-red/30",
+    Rejected: "bg-red/10 text-red border-red/30",
   };
 
   const statusTranslations = {
@@ -37,6 +39,8 @@ export default function CardReservationComponent(props) {
     Active: "En cours",
     Late: "En retard",
     Finished: "Terminée",
+    Canceled: "Annulée",
+    Rejected: "Refusée",
   };
 
   const badgeClass =
