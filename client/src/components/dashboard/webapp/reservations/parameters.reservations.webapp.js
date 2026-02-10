@@ -144,50 +144,12 @@ export default function ParametersReservationWebApp(props) {
 
   // UX errors (pas RHF)
   const [submitted, setSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [tableErrors, setTableErrors] = useState({});
   const [durationError, setDurationError] = useState({
     lunch: false,
     dinner: false,
   });
-
-  // ✅ tooltips on disabled toggles (click)
-  const [disabledHint, setDisabledHint] = useState({
-    autoAccept: false,
-    reservationDuration: false,
-  });
-
-  const hintTimerRef = useRef(null);
-
-  const closeHints = () => {
-    setDisabledHint({ autoAccept: false, reservationDuration: false });
-  };
-
-  const openHint = (key) => {
-    setDisabledHint(() => ({
-      autoAccept: false,
-      reservationDuration: false,
-      [key]: true,
-    }));
-
-    if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
-    hintTimerRef.current = setTimeout(() => {
-      closeHints();
-    }, 2200);
-  };
-
-  useEffect(() => {
-    const onDocClick = () => {
-      if (disabledHint.autoAccept || disabledHint.reservationDuration) {
-        closeHints();
-      }
-    };
-    document.addEventListener("click", onDocClick);
-    return () => {
-      document.removeEventListener("click", onDocClick);
-      if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [disabledHint.autoAccept, disabledHint.reservationDuration]);
 
   // -----------------------------
   // ✅ BLOCKED RANGES (pause)
@@ -496,6 +458,7 @@ export default function ParametersReservationWebApp(props) {
 
   async function onSubmit(data) {
     setSubmitted(true);
+    setIsSubmitting(true);
 
     // --------------------
     // ✅ Tables validation (seulement si gestion intelligente)
@@ -534,6 +497,7 @@ export default function ParametersReservationWebApp(props) {
 
       if (Object.keys(partialErrors).length > 0) {
         setTableErrors(partialErrors);
+        setIsSubmitting(false);
         return;
       }
     }
@@ -564,6 +528,7 @@ export default function ParametersReservationWebApp(props) {
             ? "table_occupancy_lunch_minutes"
             : "table_occupancy_dinner_minutes",
         );
+        setIsSubmitting(false);
         return;
       }
 
@@ -579,6 +544,7 @@ export default function ParametersReservationWebApp(props) {
             ? "table_occupancy_lunch_minutes"
             : "table_occupancy_dinner_minutes",
         );
+        setIsSubmitting(false);
         return;
       }
 
@@ -652,6 +618,8 @@ export default function ParametersReservationWebApp(props) {
       router.push("/dashboard/webapp/reservations");
     } catch (error) {
       console.error("Erreur mise à jour paramètres réservation :", error);
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
@@ -1043,19 +1011,12 @@ export default function ParametersReservationWebApp(props) {
                     </p>
                   </div>
 
-                  <span
-                    className="relative inline-flex"
-                    onClick={(e) => {
-                      if (!manage_disponibilities) return;
-                      e.stopPropagation();
-                      openHint("autoAccept");
-                    }}
-                  >
+                  <span className="relative inline-flex">
                     <label className={toggleWrap}>
                       <span
                         className={[
                           toggleBase,
-                          watch("auto_accept") ? toggleOn : toggleOff,
+                          auto_accept ? toggleOn : toggleOff,
                         ].join(" ")}
                       >
                         <input
@@ -1067,7 +1028,7 @@ export default function ParametersReservationWebApp(props) {
                         <span
                           className={[
                             toggleDot,
-                            watch("auto_accept") ? toggleDotOn : toggleDotOff,
+                            auto_accept ? toggleDotOn : toggleDotOff,
                           ].join(" ")}
                         />
                       </span>
@@ -1562,15 +1523,15 @@ export default function ParametersReservationWebApp(props) {
 
           <button
             type="submit"
-            disabled={isLoading}
+            disabled={isLoading || isSubmitting}
             className={[
               "inline-flex items-center justify-center gap-2 rounded-2xl px-5 h-11",
               "text-sm font-semibold text-white",
               "bg-blue hover:bg-blue/90 active:scale-[0.98] transition",
-              isLoading ? "opacity-50 cursor-not-allowed" : "",
+              isLoading || isSubmitting ? "opacity-50 cursor-not-allowed" : "",
             ].join(" ")}
           >
-            {isLoading ? (
+            {isSubmitting ? (
               <>
                 <Loader2 className="size-4 shrink-0 animate-spin" />
                 {t("reservations:buttons.loading", "En cours…")}
