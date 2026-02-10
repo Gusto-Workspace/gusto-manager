@@ -145,7 +145,7 @@ export default function AddReservationsWebapp(props) {
     setModalOpen(false);
     if (postModalRedirect) {
       setPostModalRedirect(false);
-      router.push("/dashboard/reservations");
+      router.push("/dashboard/webapp/reservations");
     }
   };
 
@@ -789,7 +789,7 @@ export default function AddReservationsWebapp(props) {
         return; // on attend la fermeture de la modale pour redirect
       }
 
-      router.push("/dashboard/reservations");
+      router.push("/dashboard/webapp/reservations");
     } catch (err) {
       // ✅ Cas “aucune table dispo” => backend 409 avec code
       const code = err?.response?.data?.code;
@@ -1163,7 +1163,7 @@ export default function AddReservationsWebapp(props) {
           <div className="flex flex-col midTablet:flex-row items-stretch midTablet:items-center justify-end gap-3">
             <button
               type="button"
-              onClick={() => router.push("/dashboard/reservations")}
+              onClick={() => router.push("/dashboard/webapp/reservations")}
               className="inline-flex items-center justify-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition px-5 h-11 text-sm font-semibold text-darkBlue"
             >
               <X className="size-4 text-darkBlue/60" />
