@@ -32,7 +32,7 @@ app.use(
       "https://www.embrunslorient.fr", // Client Embruns
       "https://www.bourrasquekerroch.fr", // Client Bourrasque
       "https://gusto-manager.onrender.com", // Server
-      "https://reservations-module.vercel.app/", // module reservations test
+      "https://reservations-module.vercel.app", // module reservations test
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     credentials: true,
