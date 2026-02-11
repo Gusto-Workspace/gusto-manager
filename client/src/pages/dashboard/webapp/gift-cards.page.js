@@ -18,13 +18,15 @@ import NotGoodDeviceWebAppComponent from "@/components/dashboard/webapp/_shared/
 // HOOK REFRESH
 import useRefetchOnReturn from "@/_assets/utils/useRefetchOnReturn";
 
+// WEB PUSB
+import { setupPushForModule } from "@/_assets/utils/webpush";
+
 export default function GiftsPage(props) {
   const router = useRouter();
   const { restaurantContext } = useContext(GlobalContext);
 
   const [showRefetchSplash, setShowRefetchSplash] = useState(false);
 
-  // ✅ Redirect vers login si pas de token (1ère ouverture via raccourci)
   useEffect(() => {
     if (!router.isReady) return;
 
@@ -61,7 +63,28 @@ export default function GiftsPage(props) {
   }, [restaurantContext?.dataLoading, showRefetchSplash]);
 
   if (!router.isReady) return null;
-  if (!restaurantContext?.isAuth) return null;
+
+  useEffect(() => {
+    if (!restaurantContext?.isAuth) return;
+    if (!restaurantContext?.restaurantData?._id) return;
+
+    // évite de relancer à chaque re-render / refetch
+    const key = `gm:push:subscribed:gift_cards:${restaurantContext.restaurantData._id}`;
+    if (localStorage.getItem(key) === "1") return;
+
+    const token = localStorage.getItem("token");
+
+    setupPushForModule({
+      module: "gift_cards",
+      restaurantId: restaurantContext.restaurantData._id,
+      token,
+      apiUrl: process.env.NEXT_PUBLIC_API_URL,
+    })
+      .then(() => localStorage.setItem(key, "1"))
+      .catch(() => {
+        // ne pas set le flag si ça échoue
+      });
+  }, [restaurantContext?.isAuth, restaurantContext?.restaurantData?._id]);
 
   let title;
   let description;
