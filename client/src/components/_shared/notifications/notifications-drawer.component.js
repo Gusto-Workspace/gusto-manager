@@ -62,7 +62,7 @@ function titleForNotification(n) {
     return "Nouvelle réservation";
   }
 
-  if (n?.module === "gift_cards") return "Carte cadeau";
+  if (n?.module === "gift_cards") return "Carte cadeau vendue";
   if (n?.module === "employees") return "Demande de congés";
   if (n?.module === "messages") return "Message";
 

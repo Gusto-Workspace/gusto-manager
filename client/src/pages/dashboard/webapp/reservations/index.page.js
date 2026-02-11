@@ -18,6 +18,9 @@ import NotGoodDeviceWebAppComponent from "@/components/dashboard/webapp/_shared/
 // HOOK REFRESH
 import useRefetchOnReturn from "@/_assets/utils/useRefetchOnReturn";
 
+// WEB PUSB
+import { setupPushForModule } from "@/_assets/utils/webpush";
+
 export default function WepAppReservationsPage(props) {
   let title;
   let description;
@@ -73,7 +76,27 @@ export default function WepAppReservationsPage(props) {
     }
   }, [restaurantContext?.dataLoading, showRefetchSplash]);
 
-  if (!restaurantContext?.isAuth) return null;
+  useEffect(() => {
+    if (!restaurantContext?.isAuth) return;
+    if (!restaurantContext?.restaurantData?._id) return;
+
+    // évite de relancer à chaque re-render / refetch
+    const key = `gm:push:subscribed:reservations:${restaurantContext.restaurantData._id}`;
+    if (localStorage.getItem(key) === "1") return;
+
+    const token = localStorage.getItem("token");
+
+    setupPushForModule({
+      module: "reservations",
+      restaurantId: restaurantContext.restaurantData._id,
+      token,
+      apiUrl: process.env.NEXT_PUBLIC_API_URL,
+    })
+      .then(() => localStorage.setItem(key, "1"))
+      .catch(() => {
+        // ne pas set le flag si ça échoue
+      });
+  }, [restaurantContext?.isAuth, restaurantContext?.restaurantData?._id]);
 
   const restaurant = restaurantContext.restaurantData;
   const restaurantOptions = restaurant?.options || {};
