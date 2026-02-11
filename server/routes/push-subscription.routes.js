@@ -4,7 +4,7 @@ const router = express.Router();
 const PushSubscriptionModel = require("../models/push-subscription.model");
 const authenticateToken = require("../middleware/authentificate-token");
 
-router.post("/subscribe", authenticateToken, async (req, res) => {
+router.post("/push/subscribe", authenticateToken, async (req, res) => {
   const { restaurantId, module, subscription } = req.body;
 
   if (
@@ -35,7 +35,7 @@ router.post("/subscribe", authenticateToken, async (req, res) => {
   res.json({ ok: true });
 });
 
-router.post("/unsubscribe", authenticateToken, async (req, res) => {
+router.post("/push/unsubscribe", authenticateToken, async (req, res) => {
   const { endpoint } = req.body;
   if (!endpoint) return res.status(400).json({ message: "Missing endpoint" });
 
