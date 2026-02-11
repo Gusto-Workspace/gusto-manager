@@ -31,6 +31,7 @@ export default function BottomSheetReservationsWebapp({
   errorMessage,
 }) {
   const [isVisible, setIsVisible] = useState(false);
+  const [mounted, setMounted] = useState(open);
 
   // ✅ iOS-safe scroll lock (position:fixed)
   const scrollYRef = useRef(0);
@@ -112,6 +113,7 @@ export default function BottomSheetReservationsWebapp({
     setDragY(0);
     setTimeout(() => {
       restoreScroll();
+      setMounted(false);
       onClose?.();
     }, CLOSE_MS);
   }
@@ -125,31 +127,35 @@ export default function BottomSheetReservationsWebapp({
   };
 
   useEffect(() => {
-    if (!open) return;
+    if (open) {
+      setMounted(true);
+      lockScroll();
+      const raf = requestAnimationFrame(() => {
+        setIsVisible(true);
+        requestAnimationFrame(measurePanel);
+      });
 
-    lockScroll();
-    const raf = requestAnimationFrame(() => {
-      setIsVisible(true);
-      requestAnimationFrame(measurePanel);
-    });
+      const onResize = () => requestAnimationFrame(measurePanel);
+      window.addEventListener("resize", onResize);
 
-    const onResize = () => requestAnimationFrame(measurePanel);
-    window.addEventListener("resize", onResize);
+      return () => {
+        cancelAnimationFrame(raf);
+        window.removeEventListener("resize", onResize);
+        restoreScroll();
+      };
+    }
 
-    return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener("resize", onResize);
-      restoreScroll();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) {
+    if (mounted) {
       setIsVisible(false);
       setDragY(0);
+      const tm = setTimeout(() => {
+        restoreScroll();
+        setMounted(false);
+      }, CLOSE_MS);
+
+      return () => clearTimeout(tm);
     }
-  }, [open]);
+  }, [open, mounted]);
 
   const status = reservation?.status || null;
 
@@ -255,8 +261,7 @@ export default function BottomSheetReservationsWebapp({
     ? 0
     : 0.55 + 0.45 * (1 - dragY / DRAG_MAX_PX);
 
-  // ✅ only now we can early-return safely (after hooks)
-  if (!open) return null;
+  if (!mounted) return null;
 
   return (
     <div

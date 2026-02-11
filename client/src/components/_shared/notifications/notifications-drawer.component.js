@@ -63,7 +63,7 @@ function titleForNotification(n) {
   }
 
   if (n?.module === "gift_cards") return "Carte cadeau";
-  if (n?.module === "employees") return "Employé";
+  if (n?.module === "employees") return "Demande de congés";
   if (n?.module === "messages") return "Message";
 
   return n?.title || "Notification";
@@ -88,23 +88,19 @@ function IconForNotification({ n }) {
 export default function NotificationsDrawerComponent({
   open,
   onClose,
-
   notifications = [],
   nextCursor = null,
   loading = false,
-
   fetchNotifications,
   markNotificationRead,
   markAllRead,
-
   role,
+  lastNotificationsSyncRef,
 }) {
   const [isVisible, setIsVisible] = useState(false);
   const [unreadOnly, setUnreadOnly] = useState(false);
 
-  // anti-flash "Aucune..."
   const [hasFetchedOnce, setHasFetchedOnce] = useState(false);
-  const sawLoadingRef = useRef(false);
 
   const list = Array.isArray(notifications) ? notifications : [];
 
@@ -138,7 +134,6 @@ export default function NotificationsDrawerComponent({
 
     setIsVisible(false);
     setHasFetchedOnce(false);
-    sawLoadingRef.current = false;
 
     lockScroll();
 
@@ -169,46 +164,47 @@ export default function NotificationsDrawerComponent({
     }, CLOSE_MS);
   }
 
-  // Fetch quand ouvert / unreadOnly change
   useEffect(() => {
     if (!open) return;
-
-    fetchRef.current?.({
-      module: null, // ✅ plus de filtre module
-      unreadOnly,
-      limit: PAGE_SIZE,
-      cursor: null,
-      reset: true,
-    });
-  }, [open, unreadOnly]);
-
-  // anti-flash "Aucune..."
-  useEffect(() => {
-    if (!open) return;
-
-    if (loading) sawLoadingRef.current = true;
-
-    if (!loading && sawLoadingRef.current && !hasFetchedOnce) {
+    if (!loading && !hasFetchedOnce) {
       setHasFetchedOnce(true);
     }
   }, [open, loading, hasFetchedOnce]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const isStale =
+      Date.now() - (lastNotificationsSyncRef?.current || 0) > 120000;
+
+    if (!notifications.length || isStale) {
+      fetchRef.current?.({
+        unreadOnly: false, // on charge tout, filtre local ensuite
+        reset: true,
+      });
+    }
+  }, [open, notifications.length]);
 
   function loadMore() {
     if (!nextCursor || loading) return;
 
     fetchRef.current?.({
       module: null,
-      unreadOnly,
+      unreadOnly: false,
       limit: PAGE_SIZE,
       cursor: nextCursor,
       reset: false,
     });
   }
 
+  const displayedList = unreadOnly ? list.filter((n) => !n.read) : list;
+
   if (!open) return null;
 
-  const shouldShowLoading = !hasFetchedOnce || (loading && !list.length);
-  const shouldShowEmpty = hasFetchedOnce && !loading && !list.length;
+  const baseList = unreadOnly ? displayedList : list;
+
+  const shouldShowLoading = !hasFetchedOnce || (loading && !baseList.length);
+  const shouldShowEmpty = hasFetchedOnce && !loading && !baseList.length;
 
   // ✅ plus de useMemo -> plus de hook mismatch
   const markAllLabel = unreadOnly ? "Tout lire (non lues)" : "Tout lire";
@@ -310,18 +306,15 @@ export default function NotificationsDrawerComponent({
             <p className="text-sm text-darkBlue/60">Chargement...</p>
           ) : shouldShowEmpty ? (
             <div className="rounded-2xl border border-darkBlue/10 bg-darkBlue/5 p-4">
-              <p className="text-sm font-semibold text-darkBlue">
-                Rien à afficher
-              </p>
               <p className="text-xs text-darkBlue/60 mt-1">
                 {unreadOnly
-                  ? "Aucune notification non lue pour le moment."
+                  ? "Vous êtes à jour !"
                   : "Aucune notification pour le moment."}
               </p>
             </div>
           ) : (
             <div className="flex flex-col gap-2">
-              {list.map((n) => {
+              {baseList.map((n) => {
                 const title = titleForNotification(n);
                 const when = fmtRelativeFR(n.createdAt);
 
@@ -395,7 +388,7 @@ export default function NotificationsDrawerComponent({
             </div>
           )}
 
-          {nextCursor && hasFetchedOnce && (
+          {!unreadOnly && nextCursor && hasFetchedOnce && (
             <div className="pt-4">
               <button
                 onClick={loadMore}

@@ -174,9 +174,7 @@ export default function SettingsComponent() {
           </div>
 
           {/* ✅ NOTIFS : owner only  --> pour employee aussi, ["owner", "employee"] */}
-          {["owner"].includes(
-            restaurantContext?.userConnected?.role,
-          ) && (
+          {["owner"].includes(restaurantContext?.userConnected?.role) && (
             <div className="relative pl-3">
               <div className="relative">
                 <button
@@ -206,6 +204,9 @@ export default function SettingsComponent() {
                 markNotificationRead={restaurantContext?.markNotificationRead}
                 markAllRead={restaurantContext?.markAllRead}
                 role={restaurantContext?.userConnected?.role}
+                lastNotificationsSyncRef={
+                  restaurantContext?.lastNotificationsSyncRef
+                }
               />
             </div>
           )}
@@ -228,6 +229,7 @@ export default function SettingsComponent() {
                   src={profilePictureUrl}
                   alt={`Avatar ${restaurantContext?.userConnected?.firstname || ""}`}
                   className="w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
                 />
               ) : (
                 restaurantContext?.userConnected?.firstname?.charAt(0)

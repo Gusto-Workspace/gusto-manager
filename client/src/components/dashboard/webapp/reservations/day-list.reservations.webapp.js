@@ -2,6 +2,9 @@
 import { useTranslation } from "next-i18next";
 import { useMemo, useState } from "react";
 
+// AXIOS
+import axios from "axios";
+
 // COMPONENTS
 import CardReservationWebapp from "./card.reservations.webapp";
 import BottomSheetReservationsWebapp from "./bottom-sheet-details.reservations.webapp";

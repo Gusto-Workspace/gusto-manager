@@ -17,18 +17,19 @@ export default function CalendarMonthReservationsComponent(props) {
           const isSelected =
             props.selectedDay &&
             props.toDateKey(d.date) === props.toDateKey(props.selectedDay);
-          const hasMatch = !!props.searchTerm.trim() && d.matchCount > 0;
 
           const baseInMonth = d.inMonth
             ? "bg-white/80 border border-[#131E3615]"
             : "bg-white/60 border-transparent opacity-60";
 
-          const matchOutline = hasMatch
-            ? " outline outline-1 outline-[#131E36]/20"
-            : "";
           const selectedOutline = isSelected
             ? " outline outline-2 outline-[#131E36]"
             : "";
+
+          const isSearching = !!props.searchTerm.trim();
+
+          const displayTotal = isSearching ? d.matchTotal : d.total;
+          const displayByStatus = isSearching ? d.matchByStatus : d.byStatus;
 
           return (
             <button
@@ -37,7 +38,7 @@ export default function CalendarMonthReservationsComponent(props) {
                 props.setSelectedDay(new Date(d.date));
                 props.setActiveDayTab("All");
               }}
-              className={`relative p-1 midTablet:p-2 rounded-md midTablet:rounded-xl text-left transition ${baseInMonth}${matchOutline}${selectedOutline}`}
+              className={`relative p-1 midTablet:p-2 rounded-md midTablet:rounded-xl text-left transition ${baseInMonth}${selectedOutline}`}
               aria-label={`Ouvrir le ${d.date.toLocaleDateString("fr-FR")}`}
             >
               <div className="flex items-start justify-between">
@@ -47,18 +48,19 @@ export default function CalendarMonthReservationsComponent(props) {
                   {d.date.getDate()}
                 </div>
 
-                {d.total > 0 && (
+                {displayTotal > 0 && (
                   <span className="text-xs px-1 py-0 midTablet:px-2 midTablet:py-0.5 rounded-full bg-[#131E3612] absolute -top-1 -right-1 midTablet:flex midTablet:top-auto midTablet:right-2">
-                    {d.total}
+                    {displayTotal}
                   </span>
                 )}
               </div>
 
               <div className="mt-2 space-y-1">
                 {props.statusList.map((s) => {
-                  const pct = d.total
-                    ? Math.round((d.byStatus[s] / d.total) * 100)
+                  const pct = displayTotal
+                    ? Math.round((displayByStatus[s] / displayTotal) * 100)
                     : 0;
+
                   return (
                     <div
                       key={s}
@@ -86,12 +88,6 @@ export default function CalendarMonthReservationsComponent(props) {
                   );
                 })}
               </div>
-
-              {!!props.searchTerm.trim() && d.matchCount > 0 && (
-                <div className="absolute bottom-2 right-2 text-[10px] px-1.5 py-0.5 rounded bg-[#131E36] text-white">
-                  {d.matchCount}
-                </div>
-              )}
             </button>
           );
         })}

@@ -29,6 +29,7 @@ export default function RestaurantContext() {
   const [notifications, setNotifications] = useState([]);
   const [notificationsNextCursor, setNotificationsNextCursor] = useState(null);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const lastNotificationsSyncRef = useRef(0);
 
   // ✅ si tu veux garder tes variables existantes (compat UI)
   const newReservationsCount = unreadCounts.byModule.reservations || 0;
@@ -96,6 +97,8 @@ export default function RestaurantContext() {
             (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
           );
         });
+
+        lastNotificationsSyncRef.current = Date.now();
       } catch (e) {
         console.warn("Failed to fetch notifications list", e);
       } finally {
@@ -172,8 +175,6 @@ export default function RestaurantContext() {
               : n,
           ),
         );
-
-        await fetchUnreadCounts(token, rid);
       } catch (e) {
         console.warn("Failed to mark notification read", e);
       }
@@ -205,8 +206,6 @@ export default function RestaurantContext() {
             return { ...n, read: true, readAt: n.readAt || new Date() };
           }),
         );
-
-        await fetchUnreadCounts(token, rid);
       } catch (e) {
         console.warn("Failed to mark all notifications read", e);
       }
@@ -329,7 +328,7 @@ export default function RestaurantContext() {
           });
         }
 
-        // ——— CARTES CADEAUX (temps réel, inchangé) ———
+        // ——— CARTES CADEAUX ———
         if (payload.type === "giftcard_purchased" && payload.purchase) {
           setRestaurantData((prev) => {
             if (!prev) return prev;
@@ -338,6 +337,55 @@ export default function RestaurantContext() {
             const exists = list.some((x) => String(x._id) === id);
             if (exists) return prev;
             return { ...prev, purchasesGiftCards: [...list, payload.purchase] };
+          });
+        }
+
+        // ——— NOTIFICATION LUE ———
+        if (payload.type === "notification_read") {
+          const id = String(payload.notificationId);
+          const module = payload.module;
+
+          setNotifications((prev) =>
+            prev.map((n) =>
+              String(n._id) === id
+                ? { ...n, read: true, readAt: new Date() }
+                : n,
+            ),
+          );
+
+          setUnreadCounts((prev) => {
+            const nextBy = { ...prev.byModule };
+            if (module && nextBy[module] > 0) nextBy[module] -= 1;
+
+            const total =
+              nextBy.reservations + nextBy.gift_cards + nextBy.employees;
+            return { total, byModule: nextBy };
+          });
+        }
+
+        // ——— NOTIFICATIONS TOUTES LUES ———
+        if (payload.type === "notifications_read_all") {
+          const mod = payload.module;
+
+          setNotifications((prev) =>
+            prev.map((n) =>
+              !n.read && (!mod || n.module === mod)
+                ? { ...n, read: true, readAt: new Date() }
+                : n,
+            ),
+          );
+
+          setUnreadCounts((prev) => {
+            if (!mod) {
+              return {
+                total: 0,
+                byModule: { reservations: 0, gift_cards: 0, employees: 0 },
+              };
+            }
+            const nextBy = { ...prev.byModule, [mod]: 0 };
+            const total =
+              nextBy.reservations + nextBy.gift_cards + nextBy.employees;
+            return { total, byModule: nextBy };
           });
         }
       } catch (e) {
@@ -1091,7 +1139,7 @@ export default function RestaurantContext() {
     notificationsNextCursor,
     notificationsLoading,
     fetchNotifications,
-
+    lastNotificationsSyncRef,
     markNotificationRead,
     markAllRead,
 
