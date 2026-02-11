@@ -24,7 +24,7 @@ const PushSubscriptionSchema = new mongoose.Schema(
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "Owner" }, // optionnel
     lastSeenAt: { type: Date, default: Date.now },
   },
-  { timestamps: true },
+  { timestamps: true, collection: "push_subscription" },
 );
 
 module.exports = mongoose.model("PushSubscription", PushSubscriptionSchema);
