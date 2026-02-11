@@ -42,11 +42,14 @@ app.use(
       "Content-Type",
       "Accept",
       "Authorization",
+      "Cache-Control",
+      "Pragma",
       "x-gusto-timestamp",
       "x-gusto-signature",
     ],
   }),
 );
+app.options("*", cors());
 
 // SSE BUS
 mountSseRoute(app);
