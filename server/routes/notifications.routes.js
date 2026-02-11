@@ -4,6 +4,8 @@ const router = express.Router();
 const authenticateToken = require("../middleware/authentificate-token");
 const NotificationModel = require("../models/notification.model");
 
+const { broadcastToRestaurant } = require("../services/sse-bus.service");
+
 // LIST (avec pagination simple)
 router.get(
   "/restaurants/:restaurantId/notifications",
@@ -98,6 +100,12 @@ router.post(
       if (!updated)
         return res.status(404).json({ message: "Notification not found" });
 
+      broadcastToRestaurant(String(restaurantId), {
+        type: "notification_read",
+        notificationId: String(updated._id),
+        module: updated.module,
+      });
+
       return res.json({ notification: updated });
     } catch (e) {
       console.error("POST notif read error:", e);
@@ -122,6 +130,11 @@ router.post(
 
       const r = await NotificationModel.updateMany(q, {
         $set: { read: true, readAt: new Date() },
+      });
+
+      broadcastToRestaurant(String(restaurantId), {
+        type: "notifications_read_all",
+        module: module || null,
       });
 
       return res.json({ ok: true, modifiedCount: r.modifiedCount || 0 });

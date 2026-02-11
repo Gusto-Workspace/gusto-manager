@@ -9,6 +9,18 @@ function startOfDayTs(dt) {
   return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate()).getTime();
 }
 
+function sameDay(a, b) {
+  return startOfDayTs(new Date(a)) === startOfDayTs(new Date(b));
+}
+
+function formatDateFR(d) {
+  const date = new Date(d);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString("fr-FR");
+}
+
+/* ========================= RÉSERVATIONS ========================= */
+
 function buildLocalDateTime(reservationDate, reservationTime) {
   if (!reservationDate) return null;
 
@@ -37,10 +49,6 @@ function buildLocalDateTime(reservationDate, reservationTime) {
   );
 }
 
-/**
- * "aujourd’hui à 21:15" / "demain à 21:15" / "après-demain à 21:15"
- * sinon "03/02/2026 à 21:15"
- */
 function fmtReservationRelativeFR(reservationDate, reservationTime) {
   const dt = buildLocalDateTime(reservationDate, reservationTime);
   if (!dt) return "";
@@ -63,7 +71,7 @@ function fmtReservationRelativeFR(reservationDate, reservationTime) {
   return `${dd}/${mo}/${yyyy} à ${hh}:${mm}`;
 }
 
-/* ---------------------------------------------------------- */
+/* ========================= NOTIFICATIONS ========================= */
 
 function buildNotificationContent({ type, data }) {
   switch (type) {
@@ -73,7 +81,6 @@ function buildNotificationContent({ type, data }) {
         ? `• ${data.numberOfGuests} pers.`
         : "";
 
-      // ✅ relatif sur la date de réservation (avec l'heure)
       const when = fmtReservationRelativeFR(
         data?.reservationDate,
         data?.reservationTime,
@@ -81,7 +88,6 @@ function buildNotificationContent({ type, data }) {
 
       return {
         title: "Nouvelle réservation",
-        // ex: "John Doe • 4 pers. aujourd’hui à 21:15"
         message: `${name} ${guests} ${when}`.replace(/\s+/g, " ").trim(),
         link: "/dashboard/reservations",
       };
@@ -107,18 +113,29 @@ function buildNotificationContent({ type, data }) {
 
     case "leave_request_created": {
       const emp = data?.employeeName || "Un employé";
-      const start = data?.start
-        ? new Date(data.start).toLocaleDateString("fr-FR")
-        : "";
-      const end = data?.end
-        ? new Date(data.end).toLocaleDateString("fr-FR")
-        : "";
-      const range = start && end ? `du ${start} au ${end}` : "";
-      const leaveType = data?.type ? `(${data.type})` : "";
+      const startRaw = data?.start;
+      const endRaw = data?.end;
+      const typeRaw = (data?.type || "").toLowerCase();
+
+      const start = formatDateFR(startRaw);
+      const end = formatDateFR(endRaw);
+
+      let periodText = "";
+
+      if (startRaw && endRaw && !sameDay(startRaw, endRaw)) {
+        // 🔹 Plusieurs jours
+        periodText = `du ${start} au ${end}`;
+      } else if (startRaw) {
+        // 🔹 Un seul jour
+        if (typeRaw === "full") periodText = `${start} journée entière`;
+        else if (typeRaw === "morning") periodText = `${start} matin`;
+        else if (typeRaw === "afternoon") periodText = `${start} après-midi`;
+        else periodText = start;
+      }
 
       return {
         title: "Demande de congés",
-        message: `${emp} • ${range} ${leaveType}`.replace(/\s+/g, " ").trim(),
+        message: `${emp} • ${periodText}`.replace(/\s+/g, " ").trim(),
         link: "/dashboard/employees/planning/days-off",
       };
     }
@@ -184,7 +201,6 @@ async function createAndBroadcastNotification({
     readAt: null,
   });
 
-  // SSE event unifié pour le drawer / badges
   broadcastToRestaurant(String(restaurantId), {
     type: "notification_created",
     notification: {

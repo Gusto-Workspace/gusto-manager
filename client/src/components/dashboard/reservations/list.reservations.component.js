@@ -114,7 +114,16 @@ export default function ListReservationsComponent(props) {
             Canceled: 0,
             Rejected: 0,
           },
-          matchCount: 0,
+          matchTotal: 0,
+          matchByStatus: {
+            Pending: 0,
+            Confirmed: 0,
+            Active: 0,
+            Late: 0,
+            Finished: 0,
+            Canceled: 0,
+            Rejected: 0,
+          },
         };
       }
 
@@ -127,8 +136,14 @@ export default function ListReservationsComponent(props) {
       if (term) {
         const hay =
           `${r.customerName || ""} ${r.customerEmail || ""} ${r.customerPhone || ""} ${r.code || ""}`.toLowerCase();
+
         if (hay.includes(term)) {
-          dayAgg[key].matchCount += 1;
+          dayAgg[key].matchTotal += 1;
+
+          const ms = r.status === "Rejected" ? "Canceled" : r.status; // même logique que byStatus
+          if (dayAgg[key].matchByStatus[ms] != null) {
+            dayAgg[key].matchByStatus[ms] += 1;
+          }
         }
       }
     });
@@ -168,7 +183,16 @@ export default function ListReservationsComponent(props) {
           Canceled: 0,
           Rejected: 0,
         },
-        matchCount: agg?.matchCount || 0,
+        matchTotal: agg?.matchTotal || 0,
+        matchByStatus: agg?.matchByStatus || {
+          Pending: 0,
+          Confirmed: 0,
+          Active: 0,
+          Late: 0,
+          Finished: 0,
+          Canceled: 0,
+          Rejected: 0,
+        },
       });
     }
     return days;

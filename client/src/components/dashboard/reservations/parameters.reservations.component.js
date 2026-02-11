@@ -156,7 +156,8 @@ export default function ParametersReservationComponent(props) {
   const [blockedEnd, setBlockedEnd] = useState("");
   const [blockedNote, setBlockedNote] = useState("");
   const [blockedError, setBlockedError] = useState("");
-  const [blockedLoading, setBlockedLoading] = useState(false);
+  const [blockedAdding, setBlockedAdding] = useState(false);
+  const [blockedDeletingId, setBlockedDeletingId] = useState(null);
 
   const blockedRanges = useMemo(() => {
     const r =
@@ -222,7 +223,7 @@ export default function ParametersReservationComponent(props) {
     }
 
     try {
-      setBlockedLoading(true);
+      setBlockedAdding(true);
       setBlockedError("");
 
       const token = localStorage.getItem("token");
@@ -248,7 +249,7 @@ export default function ParametersReservationComponent(props) {
           "Erreur lors de l’ajout de la pause. Réessayez.",
       );
     } finally {
-      setBlockedLoading(false);
+      setBlockedAdding(false);
     }
   }
 
@@ -256,7 +257,7 @@ export default function ParametersReservationComponent(props) {
     if (!rangeId) return;
 
     try {
-      setBlockedLoading(true);
+      setBlockedDeletingId(rangeId);
       setBlockedError("");
 
       const token = localStorage.getItem("token");
@@ -276,7 +277,7 @@ export default function ParametersReservationComponent(props) {
           "Erreur lors de la suppression. Réessayez.",
       );
     } finally {
-      setBlockedLoading(false);
+      setBlockedDeletingId(null);
     }
   }
 
@@ -819,15 +820,15 @@ export default function ParametersReservationComponent(props) {
               <button
                 type="button"
                 onClick={addBlockedRange}
-                disabled={blockedLoading}
+                disabled={blockedAdding || !!blockedDeletingId}
                 className={[
                   "inline-flex items-center justify-center gap-2 rounded-2xl px-5 h-11",
                   "text-sm font-semibold text-white",
                   "bg-blue hover:bg-blue/90 active:scale-[0.98] transition",
-                  blockedLoading ? "opacity-50 cursor-not-allowed" : "",
+                  blockedAdding ? "opacity-50 cursor-not-allowed" : "",
                 ].join(" ")}
               >
-                {blockedLoading ? (
+                {blockedAdding ? (
                   <>
                     <Loader2 className="size-4 shrink-0 animate-spin" />
                     {t("reservations:buttons.loading", "En cours…")}
@@ -893,7 +894,7 @@ export default function ParametersReservationComponent(props) {
                         <button
                           type="button"
                           onClick={() => deleteBlockedRange(r._id)}
-                          disabled={blockedLoading}
+                          disabled={blockedAdding || !!blockedDeletingId}
                           className="min-w-[44px] flex items-center justify-center size-11 rounded-2xl bg-red text-white shadow-sm hover:opacity-75 active:scale-[0.98] transition disabled:opacity-50 disabled:cursor-not-allowed"
                           aria-label={t(
                             "reservations:buttons.delete",
@@ -901,7 +902,11 @@ export default function ParametersReservationComponent(props) {
                           )}
                           title={t("reservations:buttons.delete", "Supprimer")}
                         >
-                          <Trash2 className="size-4 shrink-0" />
+                          {blockedDeletingId === r._id ? (
+                            <Loader2 className="size-4 shrink-0 animate-spin" />
+                          ) : (
+                            <Trash2 className="size-4 shrink-0" />
+                          )}
                         </button>
                       </div>
                     );

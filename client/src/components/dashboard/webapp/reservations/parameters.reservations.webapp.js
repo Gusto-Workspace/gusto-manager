@@ -158,7 +158,8 @@ export default function ParametersReservationWebApp(props) {
   const [blockedEnd, setBlockedEnd] = useState("");
   const [blockedNote, setBlockedNote] = useState("");
   const [blockedError, setBlockedError] = useState("");
-  const [blockedLoading, setBlockedLoading] = useState(false);
+  const [blockedAdding, setBlockedAdding] = useState(false);
+  const [blockedDeletingId, setBlockedDeletingId] = useState(null);
 
   const blockedRanges = useMemo(() => {
     const r =
@@ -224,7 +225,7 @@ export default function ParametersReservationWebApp(props) {
     }
 
     try {
-      setBlockedLoading(true);
+      setBlockedAdding(true);
       setBlockedError("");
 
       const token = localStorage.getItem("token");
@@ -250,7 +251,7 @@ export default function ParametersReservationWebApp(props) {
           "Erreur lors de l’ajout de la pause. Réessayez.",
       );
     } finally {
-      setBlockedLoading(false);
+      setBlockedAdding(false);
     }
   }
 
@@ -258,7 +259,7 @@ export default function ParametersReservationWebApp(props) {
     if (!rangeId) return;
 
     try {
-      setBlockedLoading(true);
+      setBlockedDeletingId(rangeId);
       setBlockedError("");
 
       const token = localStorage.getItem("token");
@@ -278,7 +279,7 @@ export default function ParametersReservationWebApp(props) {
           "Erreur lors de la suppression. Réessayez.",
       );
     } finally {
-      setBlockedLoading(false);
+      setBlockedDeletingId(null);
     }
   }
 
@@ -668,7 +669,7 @@ export default function ParametersReservationWebApp(props) {
         <div className="flex items-center justify-between gap-3 h-[50px]">
           <button
             onClick={handleBack}
-            className="shrink-0 inline-flex items-center justify-center rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition p-2"
+            className="shrink-0 inline-flex items-center justify-center rounded-2xl border border-darkBlue/10 bg-white/70 transition p-2"
             aria-label={t("reservations:calendar.back", "Retour")}
             title={t("reservations:calendar.back", "Retour")}
           >
@@ -773,15 +774,15 @@ export default function ParametersReservationWebApp(props) {
               <button
                 type="button"
                 onClick={addBlockedRange}
-                disabled={blockedLoading}
+                disabled={blockedAdding || !!blockedDeletingId}
                 className={[
                   "inline-flex items-center justify-center gap-2 rounded-2xl px-5 h-11",
                   "text-sm font-semibold text-white",
-                  "bg-blue hover:bg-blue/90 active:scale-[0.98] transition",
-                  blockedLoading ? "opacity-50 cursor-not-allowed" : "",
+                  "bg-blue active:scale-[0.98] transition",
+                  blockedAdding ? "opacity-50 cursor-not-allowed" : "",
                 ].join(" ")}
               >
-                {blockedLoading ? (
+                {blockedAdding ? (
                   <>
                     <Loader2 className="size-4 shrink-0 animate-spin" />
                     {t("reservations:buttons.loading", "En cours…")}
@@ -799,7 +800,7 @@ export default function ParametersReservationWebApp(props) {
 
             <div className="flex flex-col gap-3">
               {blockedRanges.length === 0 ? (
-                <p className="text-sm text-darkBlue/55">
+                <p className="text-sm text-center text-darkBlue/55">
                   {t(
                     "reservations:messages.noPause",
                     "Aucune pause configurée.",
@@ -850,15 +851,19 @@ export default function ParametersReservationWebApp(props) {
                         <button
                           type="button"
                           onClick={() => deleteBlockedRange(r._id)}
-                          disabled={blockedLoading}
-                          className="min-w-[44px] flex items-center justify-center size-11 rounded-2xl bg-red text-white shadow-sm hover:opacity-75 active:scale-[0.98] transition disabled:opacity-50 disabled:cursor-not-allowed"
+                          disabled={blockedAdding || !!blockedDeletingId}
+                          className="min-w-[44px] flex items-center justify-center size-11 rounded-2xl bg-red text-white shadow-sm active:scale-[0.98] transition disabled:opacity-50 disabled:cursor-not-allowed"
                           aria-label={t(
                             "reservations:buttons.delete",
                             "Supprimer",
                           )}
                           title={t("reservations:buttons.delete", "Supprimer")}
                         >
-                          <Trash2 className="size-4 shrink-0" />
+                          {blockedDeletingId === r._id ? (
+                            <Loader2 className="size-4 shrink-0 animate-spin" />
+                          ) : (
+                            <Trash2 className="size-4 shrink-0" />
+                          )}
                         </button>
                       </div>
                     );
@@ -1376,7 +1381,7 @@ export default function ParametersReservationWebApp(props) {
                 <button
                   type="button"
                   onClick={fetchManualTablesToFix}
-                  className="mt-3 inline-flex items-center justify-center rounded-xl bg-darkBlue text-white px-4 h-10 text-sm font-semibold hover:opacity-90 transition"
+                  className="mt-3 inline-flex items-center justify-center rounded-xl bg-darkBlue text-white px-4 h-10 text-sm font-semibold transition"
                 >
                   {manualToFixLoading
                     ? "Chargement…"
@@ -1431,7 +1436,7 @@ export default function ParametersReservationWebApp(props) {
                   <button
                     type="button"
                     onClick={handleAddTable}
-                    className="inline-flex items-center justify-center size-11 rounded-2xl bg-blue text-white shadow-sm hover:bg-blue/90 active:scale-[0.98] transition"
+                    className="inline-flex items-center justify-center size-11 rounded-2xl bg-blue text-white shadow-sm active:scale-[0.98] transition"
                     aria-label={t(
                       "reservations:buttons.addTable",
                       "Ajouter une table",
@@ -1487,7 +1492,7 @@ export default function ParametersReservationWebApp(props) {
                           <button
                             type="button"
                             onClick={() => handleRemoveTable(index)}
-                            className="min-w-[44px] flex items-center justify-center size-11 rounded-2xl bg-red text-white shadow-sm hover:opacity-75 active:scale-[0.98] transition"
+                            className="min-w-[44px] flex items-center justify-center size-11 rounded-2xl bg-red text-white shadow-sm active:scale-[0.98] transition"
                             aria-label={t(
                               "reservations:buttons.delete",
                               "Supprimer",
@@ -1515,7 +1520,7 @@ export default function ParametersReservationWebApp(props) {
             type="button"
             onClick={handleBack}
             disabled={isLoading}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition px-5 h-11 text-sm font-semibold text-darkBlue"
+            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 transition px-5 h-11 text-sm font-semibold text-darkBlue"
           >
             <X className="size-4 shrink-0 text-darkBlue/60" />
             {t("reservations:buttons.back", "Retour")}
@@ -1527,7 +1532,7 @@ export default function ParametersReservationWebApp(props) {
             className={[
               "inline-flex items-center justify-center gap-2 rounded-2xl px-5 h-11",
               "text-sm font-semibold text-white",
-              "bg-blue hover:bg-blue/90 active:scale-[0.98] transition",
+              "bg-blue active:scale-[0.98] transition",
               isLoading || isSubmitting ? "opacity-50 cursor-not-allowed" : "",
             ].join(" ")}
           >
