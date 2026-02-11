@@ -1,5 +1,6 @@
 const NotificationModel = require("../models/notification.model");
 const { broadcastToRestaurant } = require("./sse-bus.service");
+const { sendPushToModule } = require("./webpush.service");
 
 function pad2(n) {
   return String(n).padStart(2, "0");
@@ -217,6 +218,26 @@ async function createAndBroadcastNotification({
       createdAt: notif.createdAt,
     },
   });
+
+  // 🔔 Envoi push OS (web push)
+  try {
+    await sendPushToModule({
+      restaurantId,
+      module,
+      title: content.title,
+      message: content.message,
+      link:
+        module === "reservations"
+          ? "/dashboard/webapp/reservations"
+          : module === "gift_cards"
+            ? "/dashboard/webapp/gift-cards"
+            : notif.link || "/dashboard",
+
+      data: meta,
+    });
+  } catch (err) {
+    console.error("WebPush error:", err?.message || err);
+  }
 
   return notif;
 }
