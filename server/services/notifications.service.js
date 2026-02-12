@@ -87,8 +87,15 @@ function buildNotificationContent({ type, data }) {
         data?.reservationTime,
       );
 
+      const status = String(data?.status || "").toLowerCase();
+      const isPending = status === "pending";
+
+      const title = isPending
+        ? "⏳ Nouvelle table en attente"
+        : "🍽️ Nouvelle table réservée";
+
       return {
-        title: "Nouvelle réservation",
+        title,
         message: `${name} ${guests} ${when}`.replace(/\s+/g, " ").trim(),
         link: "/dashboard/reservations",
       };
