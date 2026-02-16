@@ -15,6 +15,10 @@ import {
 const CLOSE_MS = 280;
 const PAGE_SIZE = 30;
 
+// Swipe config (mobile only)
+const SWIPE_VELOCITY = 0.6; // px/ms
+const CLOSE_RATIO = 0.25; // 25% panel height => close
+
 function pad2(n) {
   return String(n).padStart(2, "0");
 }
@@ -96,13 +100,31 @@ export default function NotificationsDrawerComponent({
   markAllRead,
   role,
   lastNotificationsSyncRef,
+  modulesFilter,
 }) {
   const [isVisible, setIsVisible] = useState(false);
   const [unreadOnly, setUnreadOnly] = useState(false);
-
   const [hasFetchedOnce, setHasFetchedOnce] = useState(false);
 
   const list = Array.isArray(notifications) ? notifications : [];
+
+  // ✅ resolve modulesFilter (scalable)
+  const resolvedModules = (() => {
+    if (Array.isArray(modulesFilter)) {
+      const clean = modulesFilter
+        .map((m) => String(m || "").trim())
+        .filter(Boolean);
+      return clean.length ? clean : null;
+    }
+    if (typeof modulesFilter === "string" && modulesFilter.trim()) {
+      return [modulesFilter.trim()];
+    }
+    return null;
+  })();
+
+  // ✅ if single module => we can pass it to backend for correct pagination
+  const forcedModule =
+    resolvedModules?.length === 1 ? resolvedModules[0] : null;
 
   // Scroll lock robuste
   const prevBodyOverflowRef = useRef("");
@@ -128,16 +150,61 @@ export default function NotificationsDrawerComponent({
     fetchRef.current = fetchNotifications;
   }, [fetchNotifications]);
 
+  // ✅ detect tablet+ (to avoid breaking slide-right)
+  const [isTabletUp, setIsTabletUp] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mq = window.matchMedia("(min-width: 768px)");
+    const update = () => setIsTabletUp(mq.matches);
+
+    update();
+    if (mq.addEventListener) mq.addEventListener("change", update);
+    else mq.addListener(update);
+
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", update);
+      else mq.removeListener(update);
+    };
+  }, []);
+
+  // ✅ Swipe state (mobile only)
+  const panelRef = useRef(null);
+  const [panelH, setPanelH] = useState(null);
+
+  const [dragY, setDragY] = useState(0);
+  const dragStateRef = useRef({
+    active: false,
+    startY: 0,
+    lastY: 0,
+    startT: 0,
+    lastT: 0,
+  });
+
+  const measurePanel = () => {
+    const el = panelRef.current;
+    if (!el) return;
+    const h = el.getBoundingClientRect().height || 0;
+    if (h > 0) setPanelH(h);
+  };
+
   // Open animation
   useEffect(() => {
     if (!open) return;
 
     setIsVisible(false);
     setHasFetchedOnce(false);
+    setDragY(0);
 
     lockScroll();
 
-    const raf = requestAnimationFrame(() => setIsVisible(true));
+    const raf = requestAnimationFrame(() => {
+      setIsVisible(true);
+      requestAnimationFrame(measurePanel);
+    });
+
+    const onResize = () => requestAnimationFrame(measurePanel);
+    window.addEventListener("resize", onResize);
 
     const onKeyDown = (e) => {
       if (e.key === "Escape") closeWithAnimation();
@@ -146,6 +213,7 @@ export default function NotificationsDrawerComponent({
 
     return () => {
       cancelAnimationFrame(raf);
+      window.removeEventListener("resize", onResize);
       document.removeEventListener("keydown", onKeyDown);
       restoreScroll();
     };
@@ -158,6 +226,7 @@ export default function NotificationsDrawerComponent({
 
   function closeWithAnimation() {
     setIsVisible(false);
+    setDragY(0);
     setTimeout(() => {
       restoreScroll();
       onClose?.();
@@ -171,25 +240,35 @@ export default function NotificationsDrawerComponent({
     }
   }, [open, loading, hasFetchedOnce]);
 
+  // ✅ UI filter (scalable)
+  const listForUi = resolvedModules
+    ? list.filter((n) => resolvedModules.includes(n?.module))
+    : list;
+
+  // ✅ fetch on open:
+  // - if single module => pass module to backend for correct pagination
+  // - if multi modules => fallback fetch global + filter UI
   useEffect(() => {
     if (!open) return;
 
     const isStale =
       Date.now() - (lastNotificationsSyncRef?.current || 0) > 120000;
 
-    if (!notifications.length || isStale) {
+    if (!listForUi.length || isStale) {
       fetchRef.current?.({
-        unreadOnly: false, // on charge tout, filtre local ensuite
+        module: forcedModule, // "reservations" when modulesFilter="reservations"
+        unreadOnly: false,
         reset: true,
       });
     }
-  }, [open, notifications.length]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, listForUi.length, forcedModule]);
 
   function loadMore() {
     if (!nextCursor || loading) return;
 
     fetchRef.current?.({
-      module: null,
+      module: forcedModule, // null => global
       unreadOnly: false,
       limit: PAGE_SIZE,
       cursor: nextCursor,
@@ -197,17 +276,80 @@ export default function NotificationsDrawerComponent({
     });
   }
 
-  const displayedList = unreadOnly ? list.filter((n) => !n.read) : list;
+  const displayedList = unreadOnly
+    ? listForUi.filter((n) => !n.read)
+    : listForUi;
 
   if (!open) return null;
 
-  const baseList = unreadOnly ? displayedList : list;
+  const baseList = displayedList;
 
   const shouldShowLoading = !hasFetchedOnce || (loading && !baseList.length);
   const shouldShowEmpty = hasFetchedOnce && !loading && !baseList.length;
 
-  // ✅ plus de useMemo -> plus de hook mismatch
   const markAllLabel = unreadOnly ? "Tout lire (non lues)" : "Tout lire";
+
+  // ✅ swipe thresholds (mobile)
+  const panelFallback = 720;
+  const DRAG_MAX_PX = Math.max(240, (panelH || panelFallback) - 12);
+  const SWIPE_CLOSE_PX = Math.max(
+    90,
+    Math.floor((panelH || panelFallback) * CLOSE_RATIO),
+  );
+
+  // ✅ swipe handlers (mobile drag zone only)
+  const onPointerDown = (e) => {
+    if (isTabletUp) return; // ✅ never swipe on tablet+
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+
+    dragStateRef.current.active = true;
+    dragStateRef.current.startY = e.clientY;
+    dragStateRef.current.lastY = e.clientY;
+    dragStateRef.current.startT = performance.now();
+    dragStateRef.current.lastT = dragStateRef.current.startT;
+
+    try {
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+    } catch {}
+  };
+
+  const onPointerMove = (e) => {
+    if (isTabletUp) return;
+    if (!dragStateRef.current.active) return;
+
+    const y = e.clientY;
+    const dy = y - dragStateRef.current.startY;
+
+    dragStateRef.current.lastY = y;
+    dragStateRef.current.lastT = performance.now();
+
+    const clamped = Math.max(0, Math.min(DRAG_MAX_PX, dy));
+    setDragY(clamped);
+  };
+
+  const onPointerUp = () => {
+    if (isTabletUp) return;
+    if (!dragStateRef.current.active) return;
+    dragStateRef.current.active = false;
+
+    const dt = Math.max(
+      1,
+      dragStateRef.current.lastT - dragStateRef.current.startT,
+    );
+    const v = (dragStateRef.current.lastY - dragStateRef.current.startY) / dt; // px/ms
+
+    if (dragY >= SWIPE_CLOSE_PX || v >= SWIPE_VELOCITY) {
+      closeWithAnimation();
+      return;
+    }
+
+    setDragY(0);
+  };
+
+  // overlay opacity while dragging (mobile)
+  const overlayOpacity = !isVisible
+    ? 0
+    : 1 * (1 - Math.min(1, dragY / DRAG_MAX_PX));
 
   return (
     <div className="fixed inset-0 z-[999]" role="dialog" aria-modal="true">
@@ -218,11 +360,13 @@ export default function NotificationsDrawerComponent({
           transition-opacity duration-200
           ${isVisible ? "opacity-100" : "opacity-0"}
         `}
+        style={{ opacity: overlayOpacity }}
         onClick={closeWithAnimation}
       />
 
       {/* Panel */}
       <div
+        ref={panelRef}
         className={`
           absolute z-[1]
           bg-white
@@ -240,14 +384,43 @@ export default function NotificationsDrawerComponent({
 
           ${
             isVisible
-              ? `translate-y-0 tablet:translate-y-0 tablet:translate-x-0`
-              : `translate-y-full tablet:translate-y-0 tablet:translate-x-full`
+              ? "translate-y-0 tablet:translate-y-0 tablet:translate-x-0"
+              : "translate-y-full tablet:translate-y-0 tablet:translate-x-full"
           }
         `}
+        style={
+          isTabletUp
+            ? undefined
+            : {
+                transform: isVisible
+                  ? `translateY(${dragY}px)`
+                  : "translateY(100%)",
+                transition: dragStateRef.current.active
+                  ? "none"
+                  : "transform 240ms ease-out",
+                willChange: "transform",
+              }
+        }
         onClick={(e) => e.stopPropagation()}
       >
+        {/* ✅ Mobile drag zone */}
+        <div
+          className="tablet:hidden cursor-grab active:cursor-grabbing touch-none"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+        >
+          {/* Handle */}
+          <div className="pt-3 flex justify-center">
+            <div className="h-1.5 w-12 rounded-full bg-darkBlue/20" />
+          </div>
+        </div>
+
         {/* Header */}
-        <div className="sticky top-0 z-10 px-4 py-3 border-b border-black/10 bg-white/70">
+        <div
+          className={`sticky top-0 z-10 px-4 ${resolvedModules?.length ? "pb-3" : "py-3"} border-b border-black/10 bg-white/70`}
+        >
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="font-bold text-darkBlue">Notifications</p>
@@ -290,7 +463,7 @@ export default function NotificationsDrawerComponent({
             </div>
 
             <button
-              onClick={() => markAllRead?.(null)}
+              onClick={() => markAllRead?.(forcedModule)}
               className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2"
               aria-label={markAllLabel}
               title={markAllLabel}
@@ -301,7 +474,7 @@ export default function NotificationsDrawerComponent({
         </div>
 
         {/* List */}
-        <div className="flex-1 overflow-y-auto p-4 hide-scrollbar">
+        <div className="flex-1 overflow-y-auto p-4 hide-scrollbar overscroll-contain">
           {shouldShowLoading ? (
             <p className="text-sm text-darkBlue/60">Chargement...</p>
           ) : shouldShowEmpty ? (
@@ -402,7 +575,7 @@ export default function NotificationsDrawerComponent({
         </div>
 
         {/* Footer mobile */}
-        <div className="tablet:hidden border-t border-darkBlue/10 bg-white/70 px-4 py-4">
+        <div className="tablet:hidden border-t border-darkBlue/10 bg-white/70 px-4 py-3 pb-[calc(env(safe-area-inset-bottom)+24px)]">
           <button
             onClick={closeWithAnimation}
             className="w-full inline-flex items-center justify-center rounded-xl bg-blue px-4 py-3 text-white text-sm font-semibold shadow-sm hover:bg-blue/90 active:scale-[0.98] transition"

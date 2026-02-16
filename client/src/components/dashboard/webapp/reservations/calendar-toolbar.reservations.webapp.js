@@ -2,8 +2,6 @@ import { useContext, useMemo, useState } from "react";
 import { useTranslation } from "next-i18next";
 import { GlobalContext } from "@/contexts/global.context";
 
-import { ReservationSvg } from "@/components/_shared/_svgs/reservation.svg";
-
 import {
   ChevronLeft,
   ChevronRight,
@@ -15,12 +13,17 @@ import {
 } from "lucide-react";
 
 import BottomSheetChangeRestaurantComponent from "../_shared/bottom-sheet-change-restaurant.webapp.component";
+import NotificationsDrawerComponent from "@/components/_shared/notifications/notifications-drawer.component";
+import { NotificationSvg } from "@/components/_shared/_svgs/notification.svg";
 
 export default function CalendarToolbarReservationsWebapp(props) {
   const { t } = useTranslation("reservations");
   const { restaurantContext } = useContext(GlobalContext);
 
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [openNotificationsDrawer, setOpenNotificationsDrawer] = useState(false);
+
+  const unreadCount = restaurantContext?.unreadCounts?.total || 0;
 
   const monthYearLabel = props.capitalizeFirst(
     new Intl.DateTimeFormat("fr-FR", {
@@ -49,7 +52,6 @@ export default function CalendarToolbarReservationsWebapp(props) {
     props.calendarSearchRef?.current?.focus?.();
   };
 
-  // ✅ Restos éligibles réservations (sert juste à savoir si on affiche le chevron / bottomsheet)
   const reservationsRestaurants = useMemo(() => {
     const list = restaurantContext?.restaurantsList || [];
     return list.filter((r) => r?.options?.reservations === true);
@@ -82,19 +84,10 @@ export default function CalendarToolbarReservationsWebapp(props) {
       {/* ================= Toolbar ================= */}
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1 flex items-center gap-2">
-          <div>
-            <ReservationSvg
-              width={30}
-              height={30}
-              className="min-h-[30px] min-w-[30px] shrink-0"
-              fillColor="#131E3690"
-            />
-          </div>
-
           <button
             type="button"
             onClick={openSheet}
-            className={`min-w-0 inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-3 py-2 transition ${
+            className={`min-w-0 flex-1 overflow-hidden inline-flex items-center gap-1 rounded-2xl border border-darkBlue/10 bg-white/70 px-3 py-2 transition ${
               canSwitchRestaurant
                 ? "cursor-pointer hover:bg-darkBlue/5"
                 : "cursor-default opacity-90"
@@ -103,18 +96,54 @@ export default function CalendarToolbarReservationsWebapp(props) {
             aria-label={
               canSwitchRestaurant ? "Changer de restaurant" : "Restaurant"
             }
-            title={canSwitchRestaurant ? "Changer de restaurant" : undefined}
+            title={currentName}
           >
-            <span className="truncate text-lg font-semibold text-darkBlue">
+            <span className="flex-1 text-left truncate whitespace-nowrap text-lg font-semibold text-darkBlue">
               {currentName}
             </span>
+
             {canSwitchRestaurant ? (
               <ChevronDown className="size-4 text-darkBlue/50 shrink-0" />
             ) : null}
           </button>
         </div>
 
-        <div className="shrink-0 flex items-center gap-2">
+        <div className="shrink-0 flex items-center gap-1">
+          <div className="relative pl-1">
+            <div className="relative">
+              <button
+                className="bg-blue p-3 rounded-full bg-opacity-40"
+                onClick={() => setOpenNotificationsDrawer(true)}
+                aria-label="Ouvrir les notifications"
+                title="Notifications"
+              >
+                <NotificationSvg width={25} height={25} fillColor="#4583FF" />
+              </button>
+
+              {unreadCount > 0 && (
+                <span className="absolute top-1 right-1 inline-flex items-center justify-center px-1 py-0.5 text-xs font-bold leading-none text-white transform translate-x-1/2 -translate-y-1/2 bg-red rounded-full">
+                  {unreadCount}
+                </span>
+              )}
+            </div>
+
+            <NotificationsDrawerComponent
+              open={openNotificationsDrawer}
+              onClose={() => setOpenNotificationsDrawer(false)}
+              notifications={restaurantContext?.notifications}
+              nextCursor={restaurantContext?.notificationsNextCursor}
+              loading={restaurantContext?.notificationsLoading}
+              fetchNotifications={restaurantContext?.fetchNotifications}
+              markNotificationRead={restaurantContext?.markNotificationRead}
+              markAllRead={restaurantContext?.markAllRead}
+              role={restaurantContext?.userConnected?.role}
+              lastNotificationsSyncRef={
+                restaurantContext?.lastNotificationsSyncRef
+              }
+              modulesFilter="reservations"
+            />
+          </div>
+
           <button
             onClick={props.handleParametersClick}
             className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition p-4"
@@ -163,7 +192,7 @@ export default function CalendarToolbarReservationsWebapp(props) {
         </button>
       </div>
 
-      {/* Search (calendar) */}
+      {/* Search */}
       <div className="mt-3 relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40" />
         <input
