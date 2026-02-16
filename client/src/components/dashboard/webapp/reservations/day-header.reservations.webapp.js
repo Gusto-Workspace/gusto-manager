@@ -57,14 +57,14 @@ export default function DayHeaderReservationsWebapp(props) {
                 <SlidersHorizontal className="size-4 text-darkBlue/70" />
               </button>
 
-              <button
+              {/* <button
                 onClick={props.handleAddClick}
                 className="inline-flex items-center justify-center rounded-full bg-blue text-white shadow-sm hover:bg-blue/90 active:scale-[0.98] transition p-4"
                 aria-label={t("buttons.add")}
                 title={t("buttons.add")}
               >
                 <Plus className="size-4" />
-              </button>
+              </button> */}
             </div>
           </div>
 
