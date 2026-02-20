@@ -34,7 +34,14 @@ export default function CalendarMonthReservationsComponent(props) {
           return (
             <button
               key={d.key}
-              onClick={() => {
+              disabled={props.disableDayClick || props.isKeyboardOpen}
+              onClick={(e) => {
+                if (props.disableDayClick || props.isKeyboardOpen) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  return;
+                }
+
                 props.setSelectedDay(new Date(d.date));
                 props.setActiveDayTab("All");
               }}

@@ -37,12 +37,20 @@ export default function ListReservationsWebapp(props) {
 
   const calendarSearchRef = useRef(null);
   const daySearchRef = useRef(null);
+
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+  const [disableDayClick, setDisableDayClick] = useState(false);
 
   const closeKeyboardOnly = useCallback(() => {
+    setDisableDayClick(true);
+
     calendarSearchRef.current?.blur?.();
     daySearchRef.current?.blur?.();
     setIsKeyboardOpen(false);
+
+    window.setTimeout(() => {
+      setDisableDayClick(false);
+    }, 400);
   }, []);
 
   const statusList = [
@@ -553,6 +561,8 @@ export default function ListReservationsWebapp(props) {
             selectedDay={selectedDay}
             setActiveDayTab={setActiveDayTab}
             statusList={calendarStatusList}
+            disableDayClick={disableDayClick}
+            isKeyboardOpen={isKeyboardOpen}
           />
         </>
       ) : (
