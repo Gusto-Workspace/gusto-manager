@@ -39,7 +39,14 @@ export default function CalendarMonthReservationsWebapp(props) {
           return (
             <button
               key={d.key}
-              onClick={() => {
+              disabled={props.disableDayClick || props.isKeyboardOpen}
+              onClick={(e) => {
+                if (props.disableDayClick || props.isKeyboardOpen) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  return;
+                }
+
                 const date = new Date(d.date);
                 const key = props.toDateKey(date);
 
