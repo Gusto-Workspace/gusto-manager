@@ -412,7 +412,7 @@ export default function NotificationsDrawerComponent({
           onPointerCancel={onPointerUp}
         >
           {/* Handle */}
-          <div className="pt-3 flex justify-center">
+          <div className="py-3 flex justify-center">
             <div className="h-1.5 w-12 rounded-full bg-darkBlue/20" />
           </div>
         </div>

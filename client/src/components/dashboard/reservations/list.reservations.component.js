@@ -35,6 +35,14 @@ export default function ListReservationsComponent(props) {
   const calendarSearchRef = useRef(null);
   const daySearchRef = useRef(null);
 
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+
+  const closeKeyboardOnly = useCallback(() => {
+    calendarSearchRef.current?.blur?.();
+    daySearchRef.current?.blur?.();
+    setIsKeyboardOpen(false);
+  }, []);
+
   const statusList = [
     "Pending",
     "Confirmed",
@@ -466,9 +474,23 @@ export default function ListReservationsComponent(props) {
     <section className="flex flex-col gap-6">
       <hr className="hidden midTablet:block opacity-20" />
 
+      {isKeyboardOpen && (
+        <div
+          className="fixed inset-0 z-[999] bg-transparent"
+          onPointerDownCapture={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            closeKeyboardOnly();
+          }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+        />
+      )}
+
       {!selectedDay ? (
         <>
-          {/* Header calendrier */}
           <CalendarToolbarReservationsComponent
             capitalizeFirst={capitalizeFirst}
             currentMonth={currentMonth}
@@ -481,8 +503,8 @@ export default function ListReservationsComponent(props) {
             searchTerm={searchTerm}
             handleSearchChangeCalendar={handleSearchChangeCalendar}
             setSearchTerm={setSearchTerm}
+            setIsKeyboardOpen={setIsKeyboardOpen}
           />
-          {/* Calendrier mois (pack) */}
           <CalendarMonthReservationsComponent
             monthGridDays={monthGridDays}
             toDateKey={toDateKey}
@@ -495,7 +517,6 @@ export default function ListReservationsComponent(props) {
         </>
       ) : (
         <>
-          {/* Header jour (SVG + titre cliquable -> calendrier + / date ; dropdown statuts + retour + recherche) */}
           <DayHeaderReservationsComponent
             selectedDay={selectedDay}
             setSelectedDay={setSelectedDay}
@@ -512,8 +533,8 @@ export default function ListReservationsComponent(props) {
             daySearchRef={daySearchRef}
             searchTerm={searchTerm}
             handleSearchChangeDay={handleSearchChangeDay}
+            setIsKeyboardOpen={setIsKeyboardOpen}
           />
-          {/* Liste du statut actif */}
           <DayListReservationsComponent
             selectedDay={selectedDay}
             dayData={dayData}

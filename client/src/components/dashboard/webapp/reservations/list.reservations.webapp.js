@@ -37,6 +37,13 @@ export default function ListReservationsWebapp(props) {
 
   const calendarSearchRef = useRef(null);
   const daySearchRef = useRef(null);
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+
+  const closeKeyboardOnly = useCallback(() => {
+    calendarSearchRef.current?.blur?.();
+    daySearchRef.current?.blur?.();
+    setIsKeyboardOpen(false);
+  }, []);
 
   const statusList = [
     "Pending",
@@ -481,9 +488,23 @@ export default function ListReservationsWebapp(props) {
 
   return (
     <section className="flex flex-col gap-6">
+      {isKeyboardOpen && (
+        <div
+          className="fixed inset-0 z-[999] bg-transparent"
+          onPointerDownCapture={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            closeKeyboardOnly();
+          }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+        />
+      )}
+
       {!selectedDay ? (
         <>
-          {/* Header calendrier */}
           <CalendarToolbarReservationsWebapp
             capitalizeFirst={capitalizeFirst}
             currentMonth={currentMonth}
@@ -497,8 +518,8 @@ export default function ListReservationsWebapp(props) {
             handleSearchChangeCalendar={handleSearchChangeCalendar}
             setSearchTerm={setSearchTerm}
             restaurantData={props.restaurantData}
+            setIsKeyboardOpen={setIsKeyboardOpen}
           />
-          {/* Calendrier mois (pack) */}
           <CalendarMonthReservationsWebapp
             monthGridDays={monthGridDays}
             toDateKey={toDateKey}
@@ -511,7 +532,6 @@ export default function ListReservationsWebapp(props) {
         </>
       ) : (
         <>
-          {/* Header jour (SVG + titre cliquable -> calendrier + / date ; dropdown statuts + retour + recherche) */}
           <DayHeaderReservationsWebapp
             selectedDay={selectedDay}
             setSelectedDay={setSelectedDay}
@@ -528,6 +548,7 @@ export default function ListReservationsWebapp(props) {
             daySearchRef={daySearchRef}
             searchTerm={searchTerm}
             handleSearchChangeDay={handleSearchChangeDay}
+            setIsKeyboardOpen={setIsKeyboardOpen}
           />
           {/* Liste du statut actif */}
           <DayListReservationsWebapp

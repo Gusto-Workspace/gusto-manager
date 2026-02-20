@@ -22,17 +22,17 @@ export default function CalendarToolbarReservationsComponent(props) {
     new Intl.DateTimeFormat("fr-FR", {
       month: "long",
       year: "numeric",
-    }).format(props.currentMonth)
+    }).format(props.currentMonth),
   );
 
   const goPrev = () =>
     props.setCurrentMonth(
-      (m) => new Date(m.getFullYear(), m.getMonth() - 1, 1)
+      (m) => new Date(m.getFullYear(), m.getMonth() - 1, 1),
     );
 
   const goNext = () =>
     props.setCurrentMonth(
-      (m) => new Date(m.getFullYear(), m.getMonth() + 1, 1)
+      (m) => new Date(m.getFullYear(), m.getMonth() + 1, 1),
     );
 
   const goToday = () => {
@@ -129,11 +129,13 @@ export default function CalendarToolbarReservationsComponent(props) {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40" />
           <input
             ref={props.calendarSearchRef}
+            onFocus={() => props.setIsKeyboardOpen(true)}
+            onBlur={() => props.setIsKeyboardOpen(false)}
             type="text"
             inputMode="search"
             placeholder={t(
               "filters.search.placeholder",
-              "Rechercher nom, email, tel, code…"
+              "Rechercher nom, email, tel, code…",
             )}
             value={props.searchTerm}
             onChange={props.handleSearchChangeCalendar}
@@ -195,7 +197,7 @@ export default function CalendarToolbarReservationsComponent(props) {
             <button
               onClick={() =>
                 props.setCurrentMonth(
-                  (m) => new Date(m.getFullYear(), m.getMonth() - 1, 1)
+                  (m) => new Date(m.getFullYear(), m.getMonth() - 1, 1),
                 )
               }
               className="px-3 py-2 rounded-lg border border-[#131E3690] bg-white flex items-center gap-2"
@@ -215,7 +217,7 @@ export default function CalendarToolbarReservationsComponent(props) {
             <button
               onClick={() =>
                 props.setCurrentMonth(
-                  (m) => new Date(m.getFullYear(), m.getMonth() + 1, 1)
+                  (m) => new Date(m.getFullYear(), m.getMonth() + 1, 1),
                 )
               }
               className="px-3 py-2 rounded-lg border border-[#131E3690] bg-white flex items-center gap-2"
@@ -245,10 +247,12 @@ export default function CalendarToolbarReservationsComponent(props) {
           <div className="relative w-full midTablet:w-[350px]">
             <input
               ref={props.calendarSearchRef}
+              onFocus={() => props.setIsKeyboardOpen(true)}
+              onBlur={() => props.setIsKeyboardOpen(false)}
               type="text"
               placeholder={t(
                 "filters.search.placeholder",
-                "Rechercher nom, email, tel, code…"
+                "Rechercher nom, email, tel, code…",
               )}
               value={props.searchTerm}
               onChange={props.handleSearchChangeCalendar}

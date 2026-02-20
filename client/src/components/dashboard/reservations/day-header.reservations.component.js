@@ -105,6 +105,8 @@ export default function DayHeaderReservationsComponent(props) {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40" />
               <input
                 ref={props.daySearchRef}
+                onFocus={() => props.setIsKeyboardOpen(true)}
+                onBlur={() => props.setIsKeyboardOpen(false)}
                 type="text"
                 placeholder={t(
                   "filters.search.placeholder",
@@ -211,6 +213,8 @@ export default function DayHeaderReservationsComponent(props) {
           <div className="relative w-full midTablet:w-[350px]">
             <input
               ref={props.daySearchRef}
+              onFocus={() => props.setIsKeyboardOpen(true)}
+              onBlur={() => props.setIsKeyboardOpen(false)}
               type="text"
               placeholder={t(
                 "filters.search.placeholder",
