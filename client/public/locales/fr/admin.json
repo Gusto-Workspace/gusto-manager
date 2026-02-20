@@ -33,9 +33,10 @@
       "options": {
         "title": "Options",
         "giftCard": "Cartes cadeaux",
-        "reservations": "Réservation en ligne",
+        "reservations": "Réservations",
         "takeAway": "Ventes à emporter",
-        "healthControlPlan": "HACCP"
+        "healthControlPlan": "HACCP",
+        "customers" : "Fichier clients"
       },
       "buttons": {
         "add": "Ajouter",

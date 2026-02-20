@@ -84,6 +84,7 @@ const optionsSchema = new mongoose.Schema(
     wines: { type: Boolean, default: true },
     news: { type: Boolean, default: true },
     employees: { type: Boolean, default: false },
+    customers: { type: Boolean, default: false },
     health_control_plan: { type: Boolean, default: false },
   },
   { _id: false },

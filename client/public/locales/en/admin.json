@@ -34,7 +34,9 @@
         "options": "Options",
         "giftCard": "Gift Cards",
         "reservations": "Online booking",
-        "takeAway": "Take Away"
+        "takeAway": "Take Away",
+        "customers": "Customers file",
+        "healthControlPlan": "Health control plan"
       },
       "buttons": {
         "add": "Add",

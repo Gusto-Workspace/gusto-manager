@@ -10,9 +10,10 @@
     "giftCards": "Cartes cadeaux",
     "reservations": "Réservations",
     "takeAway": "Ventes à emporter",
-    "employees" : "Gestion du personnel",
-    "mySpace" : "Mon espace",
-    "health" : "HACCP"
+    "employees": "Gestion du personnel",
+    "mySpace": "Mon espace",
+    "health": "HACCP",
+    "customers": "Fichier clients"
   },
   "settings": {
     "hello": "Bonjour",

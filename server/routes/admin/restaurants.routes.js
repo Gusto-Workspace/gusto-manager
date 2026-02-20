@@ -48,7 +48,7 @@ router.get("/admin/restaurants", authenticateToken, async (req, res) => {
   try {
     const restaurants = await RestaurantModel.find().populate(
       "owner_id",
-      "firstname lastname phoneNumber email"
+      "firstname lastname phoneNumber email",
     );
 
     res.status(200).json({ restaurants });
@@ -133,7 +133,9 @@ router.post("/admin/add-restaurant", async (req, res) => {
         reservations: restaurantData.options?.reservations ?? false,
         employees: restaurantData.options?.employees ?? false,
         take_away: restaurantData.options?.take_away ?? false,
-        health_control_plan: restaurantData.options?.health_control_plan ?? false
+        health_control_plan:
+          restaurantData.options?.health_control_plan ?? false,
+        customers: restaurantData.options?.customers ?? false,
       },
       menus: [],
       dishes: [],
@@ -147,7 +149,7 @@ router.post("/admin/add-restaurant", async (req, res) => {
     await owner.save();
 
     const populatedRestaurant = await RestaurantModel.findById(
-      newRestaurant._id
+      newRestaurant._id,
     ).populate("owner_id", "firstname lastname email");
 
     res.status(201).json({
@@ -190,7 +192,7 @@ router.put("/admin/restaurants/:id", async (req, res) => {
         if (previousOwner) {
           previousOwner.restaurants = previousOwner.restaurants.filter(
             (restaurantId) =>
-              restaurantId.toString() !== restaurant._id.toString()
+              restaurantId.toString() !== restaurant._id.toString(),
           );
           await previousOwner.save();
         }
@@ -228,7 +230,7 @@ router.put("/admin/restaurants/:id", async (req, res) => {
       if (previousOwner) {
         previousOwner.restaurants = previousOwner.restaurants.filter(
           (restaurantId) =>
-            restaurantId.toString() !== restaurant._id.toString()
+            restaurantId.toString() !== restaurant._id.toString(),
         );
         await previousOwner.save();
       }
@@ -259,7 +261,8 @@ router.put("/admin/restaurants/:id", async (req, res) => {
       reservations: restaurantData.options?.reservations ?? false,
       employees: restaurantData.options?.employees ?? false,
       take_away: restaurantData.options?.take_away ?? false,
-      health_control_plan : restaurantData.options?.health_control_plan ?? false
+      health_control_plan: restaurantData.options?.health_control_plan ?? false,
+      customers: restaurantData.options?.customers ?? false,
     };
 
     // Gestion de la clé Stripe
@@ -283,7 +286,7 @@ router.put("/admin/restaurants/:id", async (req, res) => {
     await restaurant.save();
 
     const updatedRestaurant = await RestaurantModel.findById(
-      restaurant._id
+      restaurant._id,
     ).populate("owner_id", "firstname lastname email");
 
     res.status(200).json({
@@ -310,7 +313,7 @@ router.delete("/admin/restaurants/:id", async (req, res) => {
     if (owner) {
       // Retirer le restaurant de la liste des restaurants du propriétaire
       owner.restaurants = owner.restaurants.filter(
-        (restaurantId) => restaurantId.toString() !== restaurant._id.toString()
+        (restaurantId) => restaurantId.toString() !== restaurant._id.toString(),
       );
       await owner.save();
     }

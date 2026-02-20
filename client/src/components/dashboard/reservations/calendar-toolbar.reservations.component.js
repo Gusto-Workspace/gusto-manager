@@ -47,11 +47,6 @@ export default function CalendarToolbarReservationsComponent(props) {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* =========================
-          ✅ MOBILE WEBAPP (uniquement < midTablet)
-          - SVG + titre inchangés
-          - boutons + search modernisés
-          ========================= */}
       <div className="midTablet:hidden">
         {/* Top bar */}
         <div className="flex items-center justify-between gap-3">
@@ -125,28 +120,24 @@ export default function CalendarToolbarReservationsComponent(props) {
         </div>
 
         {/* Search (webapp) */}
-        <div className="mt-3 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40" />
+        <div className="flex items-center relative mt-2 gap-2 bg-white border border-darkBlue/10 rounded-2xl px-3 py-2 w-full tablet:w-[340px] shadow-sm">
+          <Search className="size-4 text-darkBlue/40" />
           <input
             ref={props.calendarSearchRef}
             onFocus={() => props.setIsKeyboardOpen(true)}
             onBlur={() => props.setIsKeyboardOpen(false)}
             type="text"
             inputMode="search"
-            placeholder={t(
-              "filters.search.placeholder",
-              "Rechercher nom, email, tel, code…",
-            )}
+            placeholder="Rechercher (nom, email, téléphone)…"
             value={props.searchTerm}
             onChange={props.handleSearchChangeCalendar}
-            className={`h-12 w-full rounded-2xl border border-darkBlue/10 bg-white/70 ${
-              props.searchTerm ? "pr-12" : "pr-4"
-            } pl-9 text-base`}
+            className="w-full outline-none text-sm text-darkBlue placeholder:text-darkBlue/40"
           />
+
           {props.searchTerm && (
             <button
               onClick={clearSearch}
-              className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center size-9 rounded-2xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition"
+              className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center size-6 rounded-2xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition"
               aria-label={t("buttons.clear", "Effacer")}
               title={t("buttons.clear", "Effacer")}
             >
@@ -244,20 +235,21 @@ export default function CalendarToolbarReservationsComponent(props) {
           </div>
 
           {/* Recherche */}
-          <div className="relative w-full midTablet:w-[350px]">
-            <input
-              ref={props.calendarSearchRef}
-              onFocus={() => props.setIsKeyboardOpen(true)}
-              onBlur={() => props.setIsKeyboardOpen(false)}
-              type="text"
-              placeholder={t(
-                "filters.search.placeholder",
-                "Rechercher nom, email, tel, code…",
-              )}
-              value={props.searchTerm}
-              onChange={props.handleSearchChangeCalendar}
-              className="p-2 pr-10 border border-[#131E3690] rounded-lg w-full"
-            />
+          <div className="flex flex-wrap relative gap-2 w-full tablet:w-auto">
+            <div className="flex items-center gap-2 bg-white border border-darkBlue/10 rounded-2xl px-3 py-2 w-full tablet:w-[340px] shadow-sm">
+              <Search className="size-4 text-darkBlue/40" />
+
+              <input
+                ref={props.calendarSearchRef}
+                onFocus={() => props.setIsKeyboardOpen(true)}
+                onBlur={() => props.setIsKeyboardOpen(false)}
+                type="text"
+                value={props.searchTerm}
+                onChange={props.handleSearchChangeCalendar}
+                placeholder="Rechercher (nom, email, téléphone)…"
+                className="w-full outline-none text-sm text-darkBlue placeholder:text-darkBlue/40"
+              />
+            </div>
             {props.searchTerm && (
               <button
                 onClick={() => {

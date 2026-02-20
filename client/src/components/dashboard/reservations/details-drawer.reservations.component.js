@@ -242,16 +242,34 @@ export default function DetailsDrawerReservationsComponent({
             <div className="grid grid-cols-1 gap-2">
               <div className="flex items-start gap-2 text-sm text-darkBlue/80">
                 <Phone className="size-4 mt-0.5 text-darkBlue/40" />
-                <p className="min-w-0 truncate">
+
+                <button
+                  type="button"
+                  className="min-w-0 truncate hover:underline text-left"
+                  title="Clique pour appeler"
+                  onClick={() => {
+                    if (!reservation?.customerPhone) return;
+                    window.location.href = `tel:${String(reservation?.customerPhone).replace(/\s/g, "")}`;
+                  }}
+                >
                   {reservation?.customerPhone || "-"}
-                </p>
+                </button>
               </div>
 
               <div className="flex items-start gap-2 text-sm text-darkBlue/80">
                 <Mail className="size-4 mt-0.5 text-darkBlue/40" />
-                <p className="min-w-0 truncate">
+
+                <button
+                  type="button"
+                  className="min-w-0 truncate hover:underline text-left"
+                  title="Clique pour envoyer un email"
+                  onClick={() => {
+                    if (!reservation?.customerEmail) return;
+                    window.location.href = `mailto:${reservation?.customerEmail}`;
+                  }}
+                >
                   {reservation?.customerEmail || "-"}
-                </p>
+                </button>
               </div>
 
               <div className="flex items-start gap-2 text-sm text-darkBlue/80">

@@ -119,7 +119,7 @@ export default function DayListReservationsComponent(props) {
           reservation={selectedReservation}
           t={t}
           onAction={handleDrawerAction}
-          errorMessage={actionError} // ✅ maintenant dans le drawer
+          errorMessage={actionError} 
         />
       </>
     );

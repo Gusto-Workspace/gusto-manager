@@ -11,7 +11,8 @@
     "reservations": "Booking",
     "takeAway": "Take away",
     "employees": "Employees",
-    "mySpace": "My space"
+    "mySpace": "My space",
+    "customers": "Customers file"
   },
   "settings": {
     "hello": "Hello",
