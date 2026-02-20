@@ -493,8 +493,14 @@ export default function ListReservationsWebapp(props) {
       capture: true,
       passive: false,
     });
-    window.addEventListener("pointerdown", handler, { capture: true });
-    window.addEventListener("mousedown", handler, { capture: true });
+    window.addEventListener("pointerdown", handler, {
+      capture: true,
+      passive: false,
+    });
+    window.addEventListener("mousedown", handler, {
+      capture: true,
+      passive: false,
+    });
 
     return () => {
       window.removeEventListener("touchstart", handler, { capture: true });
