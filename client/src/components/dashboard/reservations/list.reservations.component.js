@@ -438,7 +438,6 @@ export default function ListReservationsComponent(props) {
     console.warn("Unknown actionType in handleConfirmAction:", actionType);
   }
 
-  // Assure le focus persistant sur l'input (corrige la perte de focus après 1 caractère)
   const keepFocus = (ref) => {
     if (!ref?.current) return;
     requestAnimationFrame(() => {
@@ -452,6 +451,47 @@ export default function ListReservationsComponent(props) {
       }
     });
   };
+
+  useEffect(() => {
+    if (!isKeyboardOpen) return;
+
+    const handler = (e) => {
+      const target = e.target;
+
+      const cal = calendarSearchRef.current;
+      const day = daySearchRef.current;
+
+      if (cal && (target === cal || cal.contains(target))) return;
+      if (day && (target === day || day.contains(target))) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof e.stopImmediatePropagation === "function") {
+        e.stopImmediatePropagation();
+      }
+
+      closeKeyboardOnly();
+    };
+
+    window.addEventListener("touchstart", handler, {
+      capture: true,
+      passive: false,
+    });
+    window.addEventListener("pointerdown", handler, {
+      capture: true,
+      passive: false,
+    });
+    window.addEventListener("mousedown", handler, {
+      capture: true,
+      passive: false,
+    });
+
+    return () => {
+      window.removeEventListener("touchstart", handler, { capture: true });
+      window.removeEventListener("pointerdown", handler, { capture: true });
+      window.removeEventListener("mousedown", handler, { capture: true });
+    };
+  }, [isKeyboardOpen, closeKeyboardOnly]);
 
   function handleSearchChangeCalendar(event) {
     setSearchTerm(event.target.value);
@@ -473,21 +513,6 @@ export default function ListReservationsComponent(props) {
   return (
     <section className="flex flex-col gap-6">
       <hr className="hidden midTablet:block opacity-20" />
-
-      {isKeyboardOpen && (
-        <div
-          className="fixed inset-0 z-[999] bg-transparent"
-          onPointerDownCapture={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            closeKeyboardOnly();
-          }}
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-          }}
-        />
-      )}
 
       {!selectedDay ? (
         <>
