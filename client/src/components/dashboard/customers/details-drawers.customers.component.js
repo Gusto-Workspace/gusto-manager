@@ -286,19 +286,14 @@ export default function DetailsDrawerCustomersComponent({
                   </h3>
 
                   <div className="mt-1 flex flex-wrap items-center gap-2">
-                    {(customer?.tags || []).length ? (
-                      customer.tags.map((tagKey) => (
-                        <TagPill
-                          key={`${customer?.id}-drawer-tag-${tagKey}`}
-                          tagKey={tagKey}
-                        />
-                      ))
-                    ) : (
-                      <span className="inline-flex items-center gap-2 rounded-full border border-darkBlue/10 bg-white/60 px-3 py-1 text-xs font-semibold text-darkBlue/70">
-                        <Tag className="size-3.5 text-darkBlue/40" />
-                        Aucun tag
-                      </span>
-                    )}
+                    {(customer?.tags || []).length
+                      ? customer.tags.map((tagKey) => (
+                          <TagPill
+                            key={`${customer?.id}-drawer-tag-${tagKey}`}
+                            tagKey={tagKey}
+                          />
+                        ))
+                      : null}
 
                     <span className="inline-flex items-center gap-2 rounded-full border border-darkBlue/10 bg-white/60 px-3 py-1 text-xs font-semibold text-darkBlue/70">
                       <ClipboardList className="size-3.5 text-darkBlue/40" />
