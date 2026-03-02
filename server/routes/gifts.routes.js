@@ -26,6 +26,12 @@ function generateGiftCode() {
   return code;
 }
 
+// SERVICE CUSTOMERS
+const {
+  upsertCustomer,
+  onGiftPurchased,
+} = require("../services/customers.service");
+
 // ADD RESTAURANT GIFT CARDS
 router.post("/restaurants/:id/gifts", async (req, res) => {
   const restaurantId = req.params.id;
@@ -130,6 +136,9 @@ router.post(
       beneficiaryLastName,
       sender,
       sendEmail,
+      buyerFirstName,
+      buyerLastName,
+      buyerPhone,
       validUntil: clientValidUntil,
       paymentIntentId,
       amount,
@@ -175,6 +184,14 @@ router.post(
         validUntil.setHours(23, 59, 59, 999);
       }
 
+      const customer = await upsertCustomer({
+        restaurantId,
+        firstName: buyerFirstName,
+        lastName: buyerLastName,
+        email: sendEmail,
+        phone: buyerPhone,
+      });
+
       const createdAt = new Date();
       const purchaseCode = generateGiftCode();
 
@@ -188,8 +205,12 @@ router.post(
         beneficiaryLastName,
         sender,
         sendEmail,
+        senderPhone: buyerPhone,
+        customer: customer?._id || null,
         paymentIntentId,
         amount: amt,
+        buyerFirstName: buyerFirstName || "",
+        buyerLastName: buyerLastName || "",
         created_at: createdAt,
       };
 
@@ -255,6 +276,8 @@ router.post(
             created_at: created?.created_at,
           },
         });
+
+        await onGiftPurchased(customer?._id, created);
       }
 
       // 7) Réponse idempotente : si retry, on renvoie quand même 200 avec la même purchase

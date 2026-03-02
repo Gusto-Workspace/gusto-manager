@@ -121,7 +121,8 @@ export default function AddReservationsWebapp(props) {
     reservationDate: new Date(),
     reservationTime: "",
     numberOfGuests: "",
-    customerName: "",
+    customerFirstName: "",
+    customerLastName: "",
     customerEmail: "",
     customerPhone: "",
     commentary: "",
@@ -185,7 +186,8 @@ export default function AddReservationsWebapp(props) {
         : new Date(),
       reservationTime: r.reservationTime || "",
       numberOfGuests: r.numberOfGuests || 1,
-      customerName: r.customerName || "",
+      customerFirstName: r.customerFirstName || "",
+      customerLastName: r.customerLastName || "",
       customerEmail: r.customerEmail || "",
       customerPhone: r.customerPhone || "",
       commentary: r.commentary || "",
@@ -724,7 +726,8 @@ export default function AddReservationsWebapp(props) {
 
     if (isEditing && !hasUserChangedSlot) {
       reservationPayload = {
-        customerName: updatedData.customerName,
+        customerFirstName: updatedData.customerFirstName,
+        customerLastName: updatedData.customerLastName,
         customerEmail: updatedData.customerEmail,
         customerPhone: updatedData.customerPhone,
         commentary: updatedData.commentary,
@@ -735,7 +738,8 @@ export default function AddReservationsWebapp(props) {
         reservationDate: formattedDate,
         reservationTime: formattedTime,
         numberOfGuests: updatedData.numberOfGuests,
-        customerName: updatedData.customerName,
+        customerFirstName: updatedData.customerFirstName,
+        customerLastName: updatedData.customerLastName,
         customerEmail: updatedData.customerEmail,
         customerPhone: updatedData.customerPhone,
         commentary: updatedData.commentary,
@@ -1032,17 +1036,28 @@ export default function AddReservationsWebapp(props) {
                   className="text-base font-semibold text-darkBlue inline-flex items-center gap-2"
                 >
                   <UserSvg width={20} height={20} className="opacity-50" />
-                  {t("labels.add.name")}
+                  Informations client
                 </label>
-                <input
-                  type="text"
-                  id="customerName"
-                  name="customerName"
-                  value={reservationData.customerName}
-                  onChange={handleInputChange}
-                  required
-                  className="h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 text-base outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-2 focus:ring-blue/20"
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    name="customerFirstName"
+                    placeholder="Prénom"
+                    value={reservationData.customerFirstName}
+                    onChange={handleInputChange}
+                    required
+                    className="h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 text-base outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-2 focus:ring-blue/20"
+                  />
+                  <input
+                    type="text"
+                    name="customerLastName"
+                    placeholder="Nom"
+                    value={reservationData.customerLastName}
+                    onChange={handleInputChange}
+                    required
+                    className="h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 text-base outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-2 focus:ring-blue/20"
+                  />
+                </div>
               </div>
 
               <div className="flex flex-col gap-3">

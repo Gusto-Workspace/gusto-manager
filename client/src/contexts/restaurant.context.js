@@ -40,6 +40,7 @@ export default function RestaurantContext() {
   const hasFetchedDashboardDataRef = useRef(false);
   const sseRef = useRef(null);
   const currentPathRef = useRef("");
+  const customersCacheRef = useRef(new Map());
 
   useEffect(() => {
     currentPathRef.current = router.pathname || "";
@@ -415,6 +416,135 @@ export default function RestaurantContext() {
     return null;
   }
 
+  function buildCustomersCacheKey({
+    rid,
+    page,
+    limit,
+    query,
+    tag,
+    source,
+    showSourceFilter,
+  }) {
+    return JSON.stringify({
+      rid: String(rid || ""),
+      page: Number(page || 1),
+      limit: Number(limit || 30),
+      query: String(query || ""),
+      tag: String(tag || "all"),
+      source: showSourceFilter ? String(source || "all") : "all",
+    });
+  }
+
+  function invalidateCustomersCache(rid) {
+    const id = String(rid || "");
+    if (!id) return;
+
+    for (const k of customersCacheRef.current.keys()) {
+      try {
+        const obj = JSON.parse(k);
+        if (String(obj.rid) === id) customersCacheRef.current.delete(k);
+      } catch {}
+    }
+  }
+
+  function pruneCustomersCache(max = 50) {
+    const map = customersCacheRef.current;
+    if (map.size <= max) return;
+
+    // supprime les plus vieux (ts le plus petit)
+    const entries = Array.from(map.entries()).sort(
+      (a, b) => (a[1]?.ts || 0) - (b[1]?.ts || 0),
+    );
+    const toRemove = entries.slice(0, Math.max(0, map.size - max));
+    for (const [k] of toRemove) map.delete(k);
+  }
+
+  const fetchCustomersCached = useCallback(
+    async ({
+      rid,
+      page = 1,
+      limit = 30,
+      query = "",
+      tag = "all",
+      source = "all",
+      showSourceFilter = false,
+      ttlMs = 60_000,
+      force = false,
+    } = {}) => {
+      const token =
+        typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      if (!token || !rid) return null;
+
+      const key = buildCustomersCacheKey({
+        rid,
+        page,
+        limit,
+        query,
+        tag,
+        source,
+        showSourceFilter,
+      });
+
+      const now = Date.now();
+      const cached = customersCacheRef.current.get(key);
+
+      if (!force && cached && now - cached.ts < ttlMs) {
+        return cached.data; // ✅ cache hit
+      }
+
+      const { data } = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${rid}/customers`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          params: {
+            page,
+            limit,
+            ...(query ? { query } : {}),
+            ...(tag && tag !== "all" ? { tag } : {}),
+            ...(showSourceFilter && source !== "all" ? { source } : {}),
+          },
+        },
+      );
+
+      customersCacheRef.current.set(key, { ts: now, data });
+      pruneCustomersCache(50);
+      return data;
+    },
+    [],
+  );
+
+  // ✅ peek synchro (évite skeleton si cache hit)
+  function peekCustomersCache({
+    rid,
+    page = 1,
+    limit = 30,
+    query = "",
+    tag = "all",
+    source = "all",
+    showSourceFilter = false,
+    ttlMs = 60_000,
+  } = {}) {
+    if (!rid) return null;
+
+    const key = buildCustomersCacheKey({
+      rid,
+      page,
+      limit,
+      query,
+      tag,
+      source,
+      showSourceFilter,
+    });
+
+    const cached = customersCacheRef.current.get(key);
+    if (!cached) return null;
+
+    const now = Date.now();
+    if (now - cached.ts >= ttlMs) return null;
+
+    return cached.data;
+  }
+
   function handleInvalidToken() {
     setRestaurantsList([]);
     setRestaurantData(null);
@@ -644,6 +774,7 @@ export default function RestaurantContext() {
 
     setDataLoading(true);
     setCloseEditing(true);
+    customersCacheRef.current.clear();
 
     // ----- OWNER -----
     if (role === "owner") {
@@ -1144,5 +1275,9 @@ export default function RestaurantContext() {
     markAllRead,
 
     refetchCurrentRestaurant,
+
+    fetchCustomersCached,
+    invalidateCustomersCache,
+    peekCustomersCache,
   };
 }

@@ -17,6 +17,12 @@ function formatTime(t) {
   return v.slice(0, 5).replace(":", "h");
 }
 
+function fullName(r) {
+  const fn = String(r?.customerFirstName || "").trim();
+  const ln = String(r?.customerLastName || "").trim();
+  return `${fn} ${ln}`.trim() || "-";
+}
+
 export default function CardReservationWebapp(props) {
   const { t } = useTranslation("reservations");
 
@@ -70,7 +76,7 @@ export default function CardReservationWebapp(props) {
                   className="opacity-50 shrink-0"
                 />
                 <p className="font-semibold text-darkBlue truncate">
-                  {r.customerName || "-"}
+                  {fullName(r) || "-"}
                 </p>
               </div>
 

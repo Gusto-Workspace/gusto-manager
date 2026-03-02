@@ -3,6 +3,9 @@ import { useMemo, useState, useEffect, useContext, useRef } from "react";
 // I18N
 import { useTranslation } from "next-i18next";
 
+// AXIOS
+import axios from "axios";
+
 // SVG
 import { CustomerSvg } from "@/components/_shared/_svgs/customer.svg";
 
@@ -94,6 +97,7 @@ function TagPill({ tagKey, tooltipKey, hoveredTooltip, setHoveredTooltip }) {
   const pillRef = useRef(null);
   const tipRef = useRef(null);
   const [tipStyle, setTipStyle] = useState(null);
+
   const ui = TAGS_UI[tagKey] || {
     label: tagKey,
     cls: "bg-darkBlue/5 text-darkBlue/70 border-darkBlue/15",
@@ -120,30 +124,23 @@ function TagPill({ tagKey, tooltipKey, hoveredTooltip, setHoveredTooltip }) {
       const maxW = Math.min(320, window.innerWidth - 16);
       tip.style.maxWidth = `${maxW}px`;
 
-      // re-mesure après maxWidth
+      // re-mesure
       const tipRect = tip.getBoundingClientRect();
       const tipW = tipRect.width;
       const tipH = tipRect.height;
 
-      // position souhaitée: centré au-dessus du tag
+      // centré au-dessus
       let left = r.left + r.width / 2 - tipW / 2;
-      // clamp horizontal (8px de marge)
       left = Math.max(8, Math.min(left, window.innerWidth - tipW - 8));
 
-      // au-dessus par défaut
       let top = r.top - tipH - 10;
-
-      // si ça sort en haut => on le met en dessous
       if (top < 8) top = r.bottom + 10;
 
       setTipStyle({ left, top });
     };
 
-    // compute initial + on resize/scroll
     compute();
     window.addEventListener("resize", compute);
-
-    // scroll: capture pour capter les scrolls dans containers
     window.addEventListener("scroll", compute, true);
 
     return () => {
@@ -175,12 +172,11 @@ function TagPill({ tagKey, tooltipKey, hoveredTooltip, setHoveredTooltip }) {
         <div
           ref={tipRef}
           className="
-      fixed z-[9999]
-      bg-darkBlue text-white text-xs px-3 py-2 rounded-xl
-      shadow-[0_12px_30px_rgba(19,30,54,0.25)]
-      whitespace-normal
-      pointer-events-none
-    "
+            fixed z-[9999]
+            bg-darkBlue text-white text-xs px-3 py-2 rounded-xl
+            shadow-[0_12px_30px_rgba(19,30,54,0.25)]
+            whitespace-normal pointer-events-none
+          "
           style={tipStyle || { left: -9999, top: -9999 }}
         >
           {tagHelp(tagKey)}
@@ -190,159 +186,17 @@ function TagPill({ tagKey, tooltipKey, hoveredTooltip, setHoveredTooltip }) {
   );
 }
 
-const MOCK_CUSTOMERS = [
-  {
-    id: "c1",
-    firstName: "François",
-    lastName: "?",
-    phone: "+33 5 55 95 14 33",
-    email: "f.camus@noos.fr",
-    tags: "",
-    stats: {
-      reservationsTotal: 2,
-      reservationsCanceled: 1,
-      giftCardsBought: 0,
-    },
-    history: {
-      reservations: [
-        {
-          id: "r1",
-          date: "2026-02-12",
-          time: "20:00",
-          guests: 2,
-          status: "Canceled",
-        },
-        {
-          id: "r2",
-          date: "2026-01-18",
-          time: "19:30",
-          guests: 2,
-          status: "Finished",
-        },
-      ],
-      giftCards: [],
-    },
-    notes: "",
-    createdAt: "2024-02-16",
-  },
-  {
-    id: "c2",
-    firstName: "Matthieu",
-    lastName: "Moschetta",
-    phone: "+33 6 85 46 23 70",
-    email: "moimathieu.m@gmail.com",
-    tags: ["very_regular"],
-    stats: {
-      reservationsTotal: 11,
-      reservationsCanceled: 0,
-      giftCardsBought: 2,
-    },
-    history: {
-      reservations: [
-        {
-          id: "r3",
-          date: "2026-02-14",
-          time: "21:00",
-          guests: 4,
-          status: "Finished",
-        },
-        {
-          id: "r4",
-          date: "2026-02-01",
-          time: "20:00",
-          guests: 2,
-          status: "Finished",
-        },
-        {
-          id: "r5",
-          date: "2026-01-10",
-          time: "19:45",
-          guests: 2,
-          status: "Finished",
-        },
-      ],
-      giftCards: [
-        {
-          id: "g1",
-          date: "2026-01-05",
-          amount: 80,
-          description: "Anniversaire — merci 🙌",
-        },
-        { id: "g2", date: "2025-12-20", amount: 50, description: "" },
-      ],
-    },
-    notes: "Aime une table au calme.",
-    createdAt: "2024-02-16",
-  },
-  {
-    id: "c3",
-    firstName: "Mathis",
-    lastName: "Achard",
-    phone: "+33 6 42 28 27 89",
-    email: "mathis.achard3@gmail.com",
-    tags: ["lost"],
-    stats: {
-      reservationsTotal: 1,
-      reservationsCanceled: 0,
-      giftCardsBought: 0,
-    },
-    history: {
-      reservations: [
-        {
-          id: "r6",
-          date: "2024-02-16",
-          time: "20:00",
-          guests: 2,
-          status: "Finished",
-        },
-      ],
-      giftCards: [],
-    },
-    notes: "",
-    createdAt: "2024-02-16",
-  },
-  {
-    id: "c4",
-    firstName: "Laura",
-    lastName: "Aguirre",
-    phone: "+33 6 29 51 67 82",
-    email: "aguirrelaura82@yahoo.fr",
-    tags: ["regular"],
-    stats: {
-      reservationsTotal: 4,
-      reservationsCanceled: 1,
-      giftCardsBought: 1,
-    },
-    history: {
-      reservations: [
-        {
-          id: "r7",
-          date: "2026-02-07",
-          time: "19:30",
-          guests: 2,
-          status: "Finished",
-        },
-        {
-          id: "r8",
-          date: "2026-01-21",
-          time: "20:00",
-          guests: 3,
-          status: "Canceled",
-        },
-      ],
-      giftCards: [
-        {
-          id: "g3",
-          date: "2026-02-10",
-          amount: 100,
-          description: "Pour un couple",
-        },
-      ],
-    },
-    notes: "",
-    createdAt: "2024-06-12",
-  },
-];
+// ✅ debounce hook (keeps input instant, fetches later)
+function useDebouncedValue(value, delay = 350) {
+  const [debounced, setDebounced] = useState(value);
+
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(id);
+  }, [value, delay]);
+
+  return debounced;
+}
 
 export default function ListCustomersComponent() {
   const { t } = useTranslation("customers");
@@ -350,16 +204,36 @@ export default function ListCustomersComponent() {
   // ✅ options restaurant (pour afficher/masquer le filtre source)
   const { restaurantContext } = useContext(GlobalContext);
   const restaurant = restaurantContext?.restaurantData;
+  const restaurantId = restaurant?._id;
+
   const restaurantOptions = restaurant?.options || {};
   const hasGiftCardModule = !!restaurantOptions.gift_card;
   const hasReservationsModule = !!restaurantOptions.reservations;
   const showSourceFilter = hasGiftCardModule && hasReservationsModule;
 
+  // ✅ cache helpers from context
+  const fetchCustomersCached = restaurantContext?.fetchCustomersCached;
+  const invalidateCustomersCache = restaurantContext?.invalidateCustomersCache;
+  const peekCustomersCache = restaurantContext?.peekCustomersCache;
+
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebouncedValue(query, 350);
+
   const [tagFilter, setTagFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all"); // all | reservations | gift_cards
 
-  const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [customers, setCustomers] = useState([]);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 30,
+    total: 0,
+    totalPages: 1,
+  });
+
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
+
+  const [selectedCustomer, setSelectedCustomer] = useState(null); // basic customer (list)
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -370,56 +244,112 @@ export default function ListCustomersComponent() {
   // ✅ tooltip key (au niveau du tag)
   const [hoveredTooltip, setHoveredTooltip] = useState(null);
 
-  // pagination mock
-  const pageSize = 12;
-  const [page, setPage] = useState(1);
+  const requestIdRef = useRef(0);
 
-  const filtered = useMemo(() => {
-    const q = normalize(query);
-
-    return MOCK_CUSTOMERS.filter((c) => {
-      const hay = normalize(
-        `${c.firstName} ${c.lastName} ${c.email} ${c.phone}`.trim(),
-      );
-      const passQuery = !q || hay.includes(q);
-
-      const passTag =
-        tagFilter === "all" ? true : (c.tags || []).includes(tagFilter);
-
-      // ✅ source filter (uniquement si showSourceFilter)
-      const hasResa = (c.history?.reservations?.length || 0) > 0;
-      const hasGift = (c.history?.giftCards?.length || 0) > 0;
-
-      const passSource =
-        !showSourceFilter || sourceFilter === "all"
-          ? true
-          : sourceFilter === "reservations"
-            ? hasResa
-            : hasGift;
-
-      return passQuery && passTag && passSource;
-    });
-  }, [query, tagFilter, sourceFilter, showSourceFilter]);
-
-  const totalPages = useMemo(
-    () => Math.max(1, Math.ceil(filtered.length / pageSize)),
-    [filtered.length],
-  );
-
-  const paged = useMemo(() => {
-    const safePage = Math.min(Math.max(1, page), totalPages);
-    const start = (safePage - 1) * pageSize;
-    return filtered.slice(start, start + pageSize);
-  }, [filtered, page, totalPages]);
-
-  useEffect(() => setPage(1), [query, tagFilter, sourceFilter]);
-
-  // ✅ si le resto n'a pas les 2 modules, on force "all" (et donc aucun filtre affiché)
+  // ✅ si le resto n'a pas les 2 modules, on force "all"
   useEffect(() => {
-    if (!showSourceFilter && sourceFilter !== "all") {
-      setSourceFilter("all");
-    }
+    if (!showSourceFilter && sourceFilter !== "all") setSourceFilter("all");
   }, [showSourceFilter, sourceFilter]);
+
+  // ✅ reset page quand filtres changent (on reset sur debouncedQuery pour éviter spam)
+  useEffect(() => {
+    setPagination((p) => ({ ...p, page: 1 }));
+  }, [debouncedQuery, tagFilter, sourceFilter]);
+
+  const fetchCustomers = async ({
+    page = pagination.page,
+    limit = pagination.limit,
+    silent = false,
+    force = false,
+  } = {}) => {
+    if (!restaurantId) return;
+    if (!fetchCustomersCached) return;
+
+    const rid = ++requestIdRef.current;
+
+    // ✅ 1) try cache sync (no skeleton)
+    if (!force && peekCustomersCache) {
+      const cached = peekCustomersCache({
+        rid: restaurantId,
+        page,
+        limit,
+        query: debouncedQuery,
+        tag: tagFilter,
+        source: sourceFilter,
+        showSourceFilter,
+        ttlMs: 60_000,
+      });
+
+      if (cached) {
+        if (rid !== requestIdRef.current) return;
+
+        setCustomers(Array.isArray(cached?.customers) ? cached.customers : []);
+        const pg = cached?.pagination || {};
+        setPagination({
+          page: pg.page ?? page,
+          limit: pg.limit ?? limit,
+          total: pg.total ?? 0,
+          totalPages: pg.totalPages ?? 1,
+        });
+        return;
+      }
+    }
+
+    if (!silent) {
+      setLoading(true);
+      setLoadError(null);
+    }
+
+    try {
+      const data = await fetchCustomersCached({
+        rid: restaurantId,
+        page,
+        limit,
+        query: debouncedQuery,
+        tag: tagFilter,
+        source: sourceFilter,
+        showSourceFilter,
+        ttlMs: 600_000, // 10mn (600s) avant qu'un fetch soit fait quand on revient sur la page
+        force,
+      });
+
+      // ignore stale responses
+      if (rid !== requestIdRef.current) return;
+
+      setCustomers(Array.isArray(data?.customers) ? data.customers : []);
+      const pg = data?.pagination || {};
+      setPagination({
+        page: pg.page ?? page,
+        limit: pg.limit ?? limit,
+        total: pg.total ?? 0,
+        totalPages: pg.totalPages ?? 1,
+      });
+    } catch (e) {
+      if (rid !== requestIdRef.current) return;
+      setLoadError(
+        e?.response?.data?.message ||
+          "Une erreur est survenue lors du chargement des clients.",
+      );
+      setCustomers([]);
+      setPagination((p) => ({ ...p, total: 0, totalPages: 1 }));
+    } finally {
+      if (rid === requestIdRef.current && !silent) setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    // fetch initial + filters/pagination (via cache)
+    fetchCustomers({ page: pagination.page, limit: pagination.limit });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    restaurantId,
+    pagination.page,
+    pagination.limit,
+    debouncedQuery,
+    tagFilter,
+    sourceFilter,
+    showSourceFilter,
+  ]);
 
   const openDrawer = (customer) => {
     setSelectedCustomer(customer);
@@ -433,27 +363,57 @@ export default function ListCustomersComponent() {
   };
 
   const confirmDelete = async () => {
+    if (!deleteTarget?._id || !restaurantId) return;
+
     setDeleteProcessing(true);
     setDeleteError(null);
 
-    try {
-      // ✅ MOCK (plus tard -> route backend)
-      await new Promise((r) => setTimeout(r, 450));
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    if (!token) {
+      setDeleteProcessing(false);
+      setDeleteError("Session expirée.");
+      return;
+    }
 
-      console.log("(mock) delete customer:", deleteTarget?.id);
+    try {
+      await axios.delete(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/customers/${deleteTarget._id}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
 
       setConfirmOpen(false);
 
-      // si tu veux aussi fermer le drawer si c'est le même client
-      if (drawerOpen && selectedCustomer?.id === deleteTarget?.id) {
+      // si on delete le client du drawer -> ferme
+      if (drawerOpen && selectedCustomer?._id === deleteTarget?._id) {
         setDrawerOpen(false);
+        setSelectedCustomer(null);
       }
+
+      // ✅ invalidate cache for this restaurant + refetch page 1 (force)
+      invalidateCustomersCache?.(restaurantId);
+      await fetchCustomers({
+        page: 1,
+        limit: pagination.limit,
+        silent: true,
+        force: true,
+      });
+      setPagination((p) => ({ ...p, page: 1 }));
     } catch (e) {
-      setDeleteError("Une erreur est survenue lors de la suppression.");
+      setDeleteError(
+        e?.response?.data?.message ||
+          "Une erreur est survenue lors de la suppression.",
+      );
     } finally {
       setDeleteProcessing(false);
     }
   };
+
+  const totalCountLabel = useMemo(() => {
+    const n = pagination?.total ?? 0;
+    return `${n} client${n > 1 ? "s" : ""}`;
+  }, [pagination?.total]);
+
   return (
     <div className="flex flex-col gap-6">
       <hr className="opacity-20" />
@@ -468,7 +428,7 @@ export default function ListCustomersComponent() {
           <div className="flex flex-col">
             <h1 className="pl-2 text-xl tablet:text-2xl">Fichier clients</h1>
             <span className="ml-2 text-xs font-semibold text-darkBlue/50">
-              {filtered.length} client{filtered.length > 1 ? "s" : ""}
+              {totalCountLabel}
             </span>
           </div>
         </div>
@@ -531,6 +491,13 @@ export default function ListCustomersComponent() {
         </div>
       </div>
 
+      {/* Error */}
+      {loadError ? (
+        <div className="rounded-2xl border border-red/20 bg-red/10 px-4 py-3 text-sm text-red">
+          {loadError}
+        </div>
+      ) : null}
+
       {/* Table */}
       <div className="rounded-3xl border border-darkBlue/10 bg-white/50 shadow-sm overflow-hidden">
         <div className="hidden tablet:grid grid-cols-[56px_1.1fr_1.1fr_1fr_1.6fr_1fr_48px] gap-3 px-4 py-3 border-b border-darkBlue/10 bg-white/50">
@@ -544,56 +511,82 @@ export default function ListCustomersComponent() {
         </div>
 
         <div className="divide-y divide-darkBlue/10">
-          {paged.map((c) => (
-            <div
-              key={c.id}
-              className="
-                grid grid-cols-1 tablet:grid-cols-[56px_1.1fr_1.1fr_1fr_1.6fr_1fr_48px]
-                gap-3 px-4 py-4 tablet:py-3
-                desktop:hover:bg-darkBlue/5 transition
-              "
-            >
-              {/* Mobile header line */}
-              {/* Mobile header line */}
-              <div className="tablet:hidden flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="size-11 rounded-full bg-darkBlue text-white flex items-center justify-center text-sm font-semibold shrink-0">
-                    {getInitials(c.firstName, c.lastName)}
-                  </div>
-
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-darkBlue truncate">
-                      {c.firstName} {c.lastName}
-                    </p>
-                  </div>
+          {(loading ? Array.from({ length: 6 }) : customers).map((c, idx) => {
+            if (loading) {
+              return (
+                <div
+                  key={`sk-${idx}`}
+                  className="px-4 py-4 tablet:py-3 bg-white/30"
+                >
+                  <div className="h-4 w-40 bg-darkBlue/10 rounded-xl mb-2" />
+                  <div className="h-3 w-64 bg-darkBlue/10 rounded-xl" />
                 </div>
+              );
+            }
 
-                {!(Array.isArray(c.tags) && c.tags.length) ? (
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2"
-                      onClick={() => {
-                        if (!c.phone) return;
-                        window.location.href = `tel:${String(c.phone).replace(/\s/g, "")}`;
-                      }}
-                      aria-label="Appeler"
-                      type="button"
-                    >
-                      <Phone className="size-5 text-darkBlue/60" />
-                    </button>
+            return (
+              <div
+                key={c._id}
+                className="
+                  grid grid-cols-1 tablet:grid-cols-[56px_1.1fr_1.1fr_1fr_1.6fr_1fr_48px]
+                  gap-3 px-4 py-4 tablet:py-3
+                  desktop:hover:bg-darkBlue/5 transition
+                "
+              >
+                {/* Mobile header line */}
+                <div className="tablet:hidden flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="size-11 rounded-full bg-darkBlue text-white flex items-center justify-center text-sm font-semibold shrink-0">
+                      {getInitials(c.firstName, c.lastName)}
+                    </div>
 
-                    <button
-                      className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2"
-                      onClick={() => {
-                        if (!c.email) return;
-                        window.location.href = `mailto:${c.email}`;
-                      }}
-                      aria-label="Envoyer un email"
-                      type="button"
-                    >
-                      <Mail className="size-5 text-darkBlue/60" />
-                    </button>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-darkBlue truncate">
+                        {c.firstName} {c.lastName}
+                      </p>
+                    </div>
+                  </div>
 
+                  {/* ✅ si pas de tag => tel/mail/arrow sur la même ligne */}
+                  {!(Array.isArray(c.tags) && c.tags.length) ? (
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2"
+                        onClick={() => {
+                          if (!c.phone) return;
+                          window.location.href = `tel:${String(c.phone).replace(
+                            /\s/g,
+                            "",
+                          )}`;
+                        }}
+                        aria-label="Appeler"
+                        type="button"
+                      >
+                        <Phone className="size-5 text-darkBlue/60" />
+                      </button>
+
+                      <button
+                        className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2"
+                        onClick={() => {
+                          if (!c.email) return;
+                          window.location.href = `mailto:${c.email}`;
+                        }}
+                        aria-label="Envoyer un email"
+                        type="button"
+                      >
+                        <Mail className="size-5 text-darkBlue/60" />
+                      </button>
+
+                      <button
+                        className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2"
+                        onClick={() => openDrawer(c)}
+                        aria-label="Voir la fiche"
+                        type="button"
+                      >
+                        <ChevronRight className="size-5 text-darkBlue/60" />
+                      </button>
+                    </div>
+                  ) : (
                     <button
                       className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2"
                       onClick={() => openDrawer(c)}
@@ -602,9 +595,80 @@ export default function ListCustomersComponent() {
                     >
                       <ChevronRight className="size-5 text-darkBlue/60" />
                     </button>
+                  )}
+                </div>
+
+                {/* Desktop avatar */}
+                <div className="hidden tablet:flex items-center">
+                  <div className="size-10 rounded-full bg-darkBlue text-white flex items-center justify-center text-sm font-semibold">
+                    {getInitials(c.firstName, c.lastName)}
                   </div>
-                ) : (
-                  // ✅ sinon on garde la flèche seule (comme avant)
+                </div>
+
+                <div className="hidden tablet:flex items-center text-sm font-semibold text-darkBlue truncate">
+                  {c.firstName || "-"}
+                </div>
+
+                <div className="hidden tablet:flex items-center text-sm font-semibold text-darkBlue truncate">
+                  {c.lastName || "-"}
+                </div>
+
+                {/* Tel clickable */}
+                <div className="hidden tablet:flex items-center gap-2 text-sm text-darkBlue/80 truncate">
+                  <Phone className="size-4 text-darkBlue/40" />
+                  <button
+                    type="button"
+                    className="truncate hover:underline"
+                    title="Clique pour appeler"
+                    onClick={() => {
+                      if (!c.phone) return;
+                      window.location.href = `tel:${String(c.phone).replace(
+                        /\s/g,
+                        "",
+                      )}`;
+                    }}
+                  >
+                    {fmtPhone(c.phone)}
+                  </button>
+                </div>
+
+                {/* Email clickable */}
+                <div className="hidden tablet:flex items-center gap-2 text-sm text-darkBlue/80 truncate">
+                  <Mail className="size-4 text-darkBlue/40" />
+                  <button
+                    type="button"
+                    className="truncate hover:underline"
+                    title="Clique pour envoyer un email"
+                    onClick={() => {
+                      if (!c.email) return;
+                      window.location.href = `mailto:${c.email}`;
+                    }}
+                  >
+                    {c.email || "-"}
+                  </button>
+                </div>
+
+                {/* Tags + tooltip */}
+                <div className="hidden tablet:flex items-center gap-2 flex-wrap">
+                  {(c.tags || []).length ? (
+                    c.tags
+                      .slice(0, 2)
+                      .map((tagKey) => (
+                        <TagPill
+                          key={`${c._id}-${tagKey}`}
+                          tagKey={tagKey}
+                          tooltipKey={`${c._id}-tag-${tagKey}`}
+                          hoveredTooltip={hoveredTooltip}
+                          setHoveredTooltip={setHoveredTooltip}
+                        />
+                      ))
+                  ) : (
+                    <span className="text-xs text-darkBlue/40">-</span>
+                  )}
+                </div>
+
+                {/* Arrow only */}
+                <div className="hidden tablet:flex items-center justify-end">
                   <button
                     className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2"
                     onClick={() => openDrawer(c)}
@@ -613,141 +677,64 @@ export default function ListCustomersComponent() {
                   >
                     <ChevronRight className="size-5 text-darkBlue/60" />
                   </button>
-                )}
-              </div>
-
-              {/* Desktop avatar */}
-              <div className="hidden tablet:flex items-center">
-                <div className="size-10 rounded-full bg-darkBlue text-white flex items-center justify-center text-sm font-semibold">
-                  {getInitials(c.firstName, c.lastName)}
                 </div>
-              </div>
 
-              <div className="hidden tablet:flex items-center text-sm font-semibold text-darkBlue truncate">
-                {c.firstName || "-"}
-              </div>
+                {/* Mobile tags line + tel/mail buttons */}
+                {Array.isArray(c.tags) && c.tags.length ? (
+                  <div className="tablet:hidden flex justify-between items-center gap-2">
+                    <div className="flex flex-wrap gap-2">
+                      {c.tags.slice(0, 2).map((tagKey) => (
+                        <TagPill
+                          key={`${c._id}-${tagKey}`}
+                          tagKey={tagKey}
+                          tooltipKey={`${c._id}-tag-${tagKey}`}
+                          hoveredTooltip={hoveredTooltip}
+                          setHoveredTooltip={setHoveredTooltip}
+                        />
+                      ))}
+                    </div>
 
-              <div className="hidden tablet:flex items-center text-sm font-semibold text-darkBlue truncate">
-                {c.lastName || "-"}
-              </div>
+                    <div className="flex gap-1">
+                      <button
+                        className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white desktop:hover:bg-darkBlue/5 transition p-2"
+                        onClick={() => {
+                          if (!c.phone) return;
+                          window.location.href = `tel:${String(c.phone).replace(
+                            /\s/g,
+                            "",
+                          )}`;
+                        }}
+                        aria-label="Appeler"
+                        type="button"
+                      >
+                        <Phone className="size-5 text-darkBlue/60" />
+                      </button>
 
-              {/* Tel clickable */}
-              <div className="hidden tablet:flex items-center gap-2 text-sm text-darkBlue/80 truncate">
-                <Phone className="size-4 text-darkBlue/40" />
-                <button
-                  type="button"
-                  className="truncate hover:underline"
-                  title="Clique pour appeler"
-                  onClick={() => {
-                    if (!c.phone) return;
-                    window.location.href = `tel:${String(c.phone).replace(/\s/g, "")}`;
-                  }}
-                >
-                  {fmtPhone(c.phone)}
-                </button>
-              </div>
-
-              {/* Email clickable */}
-              <div className="hidden tablet:flex items-center gap-2 text-sm text-darkBlue/80 truncate">
-                <Mail className="size-4 text-darkBlue/40" />
-                <button
-                  type="button"
-                  className="truncate hover:underline"
-                  title="Clique pour envoyer un email"
-                  onClick={() => {
-                    if (!c.email) return;
-                    window.location.href = `mailto:${c.email}`;
-                  }}
-                >
-                  {c.email || "-"}
-                </button>
-              </div>
-
-              {/* Tags + tooltip local */}
-              <div className="hidden tablet:flex items-center gap-2 flex-wrap">
-                {(c.tags || []).length ? (
-                  c.tags
-                    .slice(0, 2)
-                    .map((tagKey) => (
-                      <TagPill
-                        key={`${c.id}-${tagKey}`}
-                        tagKey={tagKey}
-                        tooltipKey={`${c.id}-tag-${tagKey}`}
-                        hoveredTooltip={hoveredTooltip}
-                        setHoveredTooltip={setHoveredTooltip}
-                      />
-                    ))
-                ) : (
-                  <span className="text-xs text-darkBlue/40">-</span>
-                )}
-              </div>
-
-              {/* ✅ Arrow only */}
-              <div className="hidden tablet:flex items-center justify-end">
-                <button
-                  className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2"
-                  onClick={() => openDrawer(c)}
-                  aria-label="Voir la fiche"
-                  type="button"
-                >
-                  <ChevronRight className="size-5 text-darkBlue/60" />
-                </button>
-              </div>
-
-              {/* Mobile quick actions */}
-
-              {Array.isArray(c.tags) && c.tags.length ? (
-                <div className="tablet:hidden flex justify-between items-center gap-2">
-                  {/* Mobile tags line */}
-                  <div className="flex flex-wrap gap-2">
-                    {c.tags.slice(0, 2).map((tagKey) => (
-                      <TagPill
-                        key={`${c.id}-${tagKey}`}
-                        tagKey={tagKey}
-                        tooltipKey={`${c.id}-tag-${tagKey}`}
-                        hoveredTooltip={hoveredTooltip}
-                        setHoveredTooltip={setHoveredTooltip}
-                      />
-                    ))}
+                      <button
+                        className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white desktop:hover:bg-darkBlue/5 transition p-2"
+                        onClick={() => {
+                          if (!c.email) return;
+                          window.location.href = `mailto:${c.email}`;
+                        }}
+                        aria-label="Envoyer un email"
+                        type="button"
+                      >
+                        <Mail className="size-5 text-darkBlue/60" />
+                      </button>
+                    </div>
                   </div>
+                ) : null}
+              </div>
+            );
+          })}
 
-                  <div className="flex gap-1">
-                    <button
-                      className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white desktop:hover:bg-darkBlue/5 transition p-2"
-                      onClick={() => {
-                        if (!c.phone) return;
-                        window.location.href = `tel:${String(c.phone).replace(/\s/g, "")}`;
-                      }}
-                      aria-label="Appeler"
-                      type="button"
-                    >
-                      <Phone className="size-5 text-darkBlue/60" />
-                    </button>
-
-                    <button
-                      className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white desktop:hover:bg-darkBlue/5 transition p-2"
-                      onClick={() => {
-                        if (!c.email) return;
-                        window.location.href = `mailto:${c.email}`;
-                      }}
-                      aria-label="Envoyer un email"
-                      type="button"
-                    >
-                      <Mail className="size-5 text-darkBlue/60" />
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          ))}
-
-          {!paged.length ? (
+          {!loading && !customers.length ? (
             <div className="px-4 py-10 text-center">
               <p className="text-sm font-semibold text-darkBlue/70">
                 Aucun client trouvé
               </p>
               <p className="text-xs text-darkBlue/50 mt-1">
-                Change le filtre ou la recherche.
+                Changer le filtre ou la recherche.
               </p>
             </div>
           ) : null}
@@ -758,8 +745,10 @@ export default function ListCustomersComponent() {
       <div className="flex items-center justify-center gap-2 px-4 py-4">
         <button
           className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2 disabled:opacity-50"
-          disabled={page <= 1}
-          onClick={() => setPage((p) => Math.max(1, p - 1))}
+          disabled={pagination.page <= 1 || loading}
+          onClick={() =>
+            setPagination((p) => ({ ...p, page: Math.max(1, p.page - 1) }))
+          }
           aria-label="Page précédente"
           type="button"
         >
@@ -767,13 +756,18 @@ export default function ListCustomersComponent() {
         </button>
 
         <div className="text-sm px-4 py-2 rounded-xl font-semibold text-darkBlue border border-darkBlue/10 bg-white">
-          {page} / {totalPages}
+          {pagination.page} / {pagination.totalPages}
         </div>
 
         <button
           className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2 disabled:opacity-50"
-          disabled={page >= totalPages}
-          onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          disabled={pagination.page >= pagination.totalPages || loading}
+          onClick={() =>
+            setPagination((p) => ({
+              ...p,
+              page: Math.min(p.totalPages, p.page + 1),
+            }))
+          }
           aria-label="Page suivante"
           type="button"
         >
@@ -787,26 +781,25 @@ export default function ListCustomersComponent() {
         onClose={() => setDrawerOpen(false)}
         customer={selectedCustomer}
         t={t}
-        onAction={(customer, actionType, payload) => {
+        restaurantId={restaurantId}
+        onUpdated={() => {
+          // ✅ edit: invalidate + refetch current page (force, silent)
+          invalidateCustomersCache?.(restaurantId);
+          fetchCustomers({
+            page: pagination.page,
+            limit: pagination.limit,
+            silent: true,
+            force: true,
+          });
+        }}
+        onAction={(customer, actionType) => {
           if (actionType === "delete") {
             requestDelete(customer);
-            return;
-          }
-
-          if (actionType === "save") {
-            // eslint-disable-next-line no-console
-            console.log("(mock) save:", customer?.id, payload);
-            return;
-          }
-
-          if (actionType === "note_save") {
-            // eslint-disable-next-line no-console
-            console.log("(mock) save note:", customer?.id, payload);
-            return;
           }
         }}
       />
 
+      {/* Confirm delete modal */}
       <ConfirmModalCustomersComponent
         isOpen={confirmOpen}
         onClose={() => setConfirmOpen(false)}

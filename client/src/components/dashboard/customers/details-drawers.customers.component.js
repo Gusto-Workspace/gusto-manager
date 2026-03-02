@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import axios from "axios";
 import {
   X,
   Phone,
@@ -16,7 +17,6 @@ import {
   Crown,
   RotateCcw,
   UserX,
-  Info,
 } from "lucide-react";
 
 const CLOSE_MS = 280;
@@ -52,21 +52,6 @@ function getInitials(firstName, lastName) {
   return out || "?";
 }
 
-function tagHelp(tagKey) {
-  switch (tagKey) {
-    case "very_regular":
-      return "Client VIP (réservations fréquentes / forte récurrence).";
-    case "regular":
-      return "Client fidèle (revient souvent).";
-    case "to_reconquer":
-      return "Client à relancer (ne vient plus comme avant).";
-    case "lost":
-      return "Client inactif depuis longtemps.";
-    default:
-      return "Tag personnalisé.";
-  }
-}
-
 const TAGS_UI = {
   regular: {
     label: "Régulier",
@@ -100,14 +85,11 @@ function TagPill({ tagKey }) {
   const Icon = ui.Icon || Tag;
 
   return (
-    <div className="relative">
-      <div
-        type="button"
-        className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${ui.cls}`}
-      >
-        <Icon className="size-3.5 opacity-80" />
-        {ui.label}
-      </div>
+    <div
+      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${ui.cls}`}
+    >
+      <Icon className="size-3.5 opacity-80" />
+      {ui.label}
     </div>
   );
 }
@@ -115,8 +97,10 @@ function TagPill({ tagKey }) {
 export default function DetailsDrawerCustomersComponent({
   open,
   onClose,
-  customer,
+  customer, // basic (list)
   t,
+  restaurantId,
+  onUpdated,
   onAction,
 }) {
   const [isVisible, setIsVisible] = useState(false);
@@ -126,7 +110,7 @@ export default function DetailsDrawerCustomersComponent({
   const [isEditing, setIsEditing] = useState(false);
   const [isEditingNote, setIsEditingNote] = useState(false);
 
-  // local fields
+  // local editable fields
   const [form, setForm] = useState({
     firstName: "",
     lastName: "",
@@ -134,6 +118,16 @@ export default function DetailsDrawerCustomersComponent({
     phone: "",
   });
   const [noteDraft, setNoteDraft] = useState("");
+
+  // fetched details
+  const [details, setDetails] = useState(null); // { customer, history }
+  const [loadingDetails, setLoadingDetails] = useState(false);
+  const [detailsError, setDetailsError] = useState(null);
+
+  // save states
+  const [saving, setSaving] = useState(false);
+  const [savingNote, setSavingNote] = useState(false);
+  const [saveError, setSaveError] = useState(null);
 
   // Scroll lock
   const prevBodyOverflowRef = useRef("");
@@ -153,6 +147,9 @@ export default function DetailsDrawerCustomersComponent({
     document.documentElement.style.overflow = "hidden";
   };
 
+  const customerId = customer?._id;
+
+  // open/close animation + default tab
   useEffect(() => {
     if (!open) return;
     setTab("reservations");
@@ -176,11 +173,27 @@ export default function DetailsDrawerCustomersComponent({
     if (!open) setIsVisible(false);
   }, [open]);
 
+  // ✅ reset edit states when closing drawer (even if reopening same customer)
+  useEffect(() => {
+    if (!open) {
+      setIsEditing(false);
+      setIsEditingNote(false);
+      setSaveError(null);
+      setDetailsError(null);
+    }
+  }, [open]);
+
+  // init form when customer changes
   useEffect(() => {
     if (!customer) return;
+
     setTab("reservations");
     setIsEditing(false);
     setIsEditingNote(false);
+    setSaveError(null);
+    setDetails(null);
+    setDetailsError(null);
+
     setForm({
       firstName: customer.firstName || "",
       lastName: customer.lastName || "",
@@ -189,9 +202,67 @@ export default function DetailsDrawerCustomersComponent({
     });
     setNoteDraft(customer.notes || "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [customer?.id]);
+  }, [customerId]);
+
+  // fetch details when open + customerId
+  useEffect(() => {
+    const run = async () => {
+      if (!open || !restaurantId || !customerId) return;
+
+      const token =
+        typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      if (!token) return;
+
+      setLoadingDetails(true);
+      setDetailsError(null);
+
+      try {
+        const { data } = await axios.get(
+          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/customers/${customerId}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+            params: {
+              resaPage: 1,
+              resaLimit: 40,
+              giftPage: 1,
+              giftLimit: 40,
+            },
+          },
+        );
+
+        setDetails(data || null);
+
+        // sync note (si backend a valeur plus à jour)
+        const backendCustomer = data?.customer;
+        if (backendCustomer) {
+          setNoteDraft(backendCustomer.notes || "");
+          setForm({
+            firstName: backendCustomer.firstName || "",
+            lastName: backendCustomer.lastName || "",
+            email: backendCustomer.email || "",
+            phone: backendCustomer.phone || "",
+          });
+        }
+      } catch (e) {
+        setDetailsError(
+          e?.response?.data?.message ||
+            "Impossible de charger la fiche client.",
+        );
+        setDetails(null);
+      } finally {
+        setLoadingDetails(false);
+      }
+    };
+
+    run();
+  }, [open, restaurantId, customerId]);
 
   function closeWithAnimation() {
+    setIsEditing(false);
+    setIsEditingNote(false);
+    setSaveError(null);
+    setDetailsError(null);
+
     setIsVisible(false);
     setTimeout(() => {
       restoreScroll();
@@ -199,36 +270,120 @@ export default function DetailsDrawerCustomersComponent({
     }, CLOSE_MS);
   }
 
+  const baseCustomer = details?.customer || customer;
+
   const fullName = useMemo(() => {
-    if (!customer) return "-";
+    if (!baseCustomer) return "-";
     return (
-      `${customer.firstName || ""} ${customer.lastName || ""}`.trim() || "-"
+      `${baseCustomer.firstName || ""} ${baseCustomer.lastName || ""}`.trim() ||
+      "-"
     );
-  }, [customer]);
+  }, [baseCustomer]);
 
-  const reservations = customer?.history?.reservations || [];
-  const giftCards = customer?.history?.giftCards || [];
+  const reservations = details?.history?.reservations?.items || [];
+  const giftCards = details?.history?.giftCards?.items || [];
 
-  const stats = customer?.stats || {};
-  const reservationsTotal = stats.reservationsTotal ?? reservations.length ?? 0;
+  const stats = baseCustomer?.stats || {};
+  const reservationsTotal = stats.reservationsTotal ?? 0;
   const reservationsCanceled = stats.reservationsCanceled ?? 0;
-  const giftCardsBought = stats.giftCardsBought ?? giftCards.length ?? 0;
+  const giftCardsBought = stats.giftCardsBought ?? 0;
 
   const sortedReservations = useMemo(() => {
     return [...reservations].sort((a, b) => {
-      const ad = new Date(a?.date || 0).getTime();
-      const bd = new Date(b?.date || 0).getTime();
+      const ad = new Date(a?.reservationDate || 0).getTime();
+      const bd = new Date(b?.reservationDate || 0).getTime();
       return bd - ad;
     });
   }, [reservations]);
 
   const sortedGiftCards = useMemo(() => {
     return [...giftCards].sort((a, b) => {
-      const ad = new Date(a?.date || 0).getTime();
-      const bd = new Date(b?.date || 0).getTime();
+      const ad = new Date(a?.created_at || a?.createdAt || 0).getTime();
+      const bd = new Date(b?.created_at || b?.createdAt || 0).getTime();
       return bd - ad;
     });
   }, [giftCards]);
+
+  const saveIdentity = async () => {
+    if (!restaurantId || !customerId) return;
+
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    if (!token) return;
+
+    setSaving(true);
+    setSaveError(null);
+
+    try {
+      const { data } = await axios.put(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/customers/${customerId}`,
+        {
+          firstName: form.firstName,
+          lastName: form.lastName,
+          email: form.email,
+          phone: form.phone,
+        },
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+
+      const updated = data?.customer;
+      if (updated) {
+        setDetails((prev) => ({
+          ...(prev || {}),
+          customer: updated,
+          history: prev?.history,
+        }));
+      }
+
+      setIsEditing(false);
+      onUpdated?.();
+    } catch (e) {
+      setSaveError(
+        e?.response?.data?.message ||
+          "Une erreur est survenue lors de l’enregistrement.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveNote = async () => {
+    if (!restaurantId || !customerId) return;
+
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    if (!token) return;
+
+    setSavingNote(true);
+    setSaveError(null);
+
+    try {
+      const { data } = await axios.put(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/customers/${customerId}`,
+        { notes: noteDraft },
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+
+      const updated = data?.customer;
+      if (updated) {
+        setDetails((prev) => ({
+          ...(prev || {}),
+          customer: updated,
+          history: prev?.history,
+        }));
+      }
+
+      setIsEditingNote(false);
+      onUpdated?.();
+    } catch (e) {
+      setSaveError(
+        e?.response?.data?.message ||
+          "Une erreur est survenue lors de l’enregistrement de la note.",
+      );
+    } finally {
+      setSavingNote(false);
+    }
+  };
 
   if (!open) return null;
 
@@ -260,7 +415,6 @@ export default function DetailsDrawerCustomersComponent({
           tablet:rounded-none
 
           transform transition-transform duration-300 ease-out
-
           ${
             isVisible
               ? "translate-y-0 tablet:translate-x-0"
@@ -277,7 +431,7 @@ export default function DetailsDrawerCustomersComponent({
 
               <div className="mt-2 flex items-center gap-3 min-w-0">
                 <div className="size-11 rounded-full bg-darkBlue text-white flex items-center justify-center text-sm font-semibold shrink-0">
-                  {getInitials(customer?.firstName, customer?.lastName)}
+                  {getInitials(baseCustomer?.firstName, baseCustomer?.lastName)}
                 </div>
 
                 <div className="min-w-0">
@@ -286,10 +440,10 @@ export default function DetailsDrawerCustomersComponent({
                   </h3>
 
                   <div className="mt-1 flex flex-wrap items-center gap-2">
-                    {(customer?.tags || []).length
-                      ? customer.tags.map((tagKey) => (
+                    {(baseCustomer?.tags || []).length
+                      ? baseCustomer.tags.map((tagKey) => (
                           <TagPill
-                            key={`${customer?.id}-drawer-tag-${tagKey}`}
+                            key={`${customerId}-drawer-tag-${tagKey}`}
                             tagKey={tagKey}
                           />
                         ))
@@ -297,7 +451,7 @@ export default function DetailsDrawerCustomersComponent({
 
                     <span className="inline-flex items-center gap-2 rounded-full border border-darkBlue/10 bg-white/60 px-3 py-1 text-xs font-semibold text-darkBlue/70">
                       <ClipboardList className="size-3.5 text-darkBlue/40" />
-                      Créé le {fmtDate(customer?.createdAt)}
+                      Créé le {fmtDate(baseCustomer?.createdAt)}
                     </span>
                   </div>
                 </div>
@@ -317,6 +471,13 @@ export default function DetailsDrawerCustomersComponent({
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-4 hide-scrollbar">
+          {/* Error details */}
+          {detailsError ? (
+            <div className="rounded-2xl border border-red/20 bg-red/10 px-4 py-3 text-sm text-red mb-4">
+              {detailsError}
+            </div>
+          ) : null}
+
           {/* Infos */}
           <div className="rounded-2xl bg-white/50 border border-darkBlue/10 shadow-sm p-4">
             <div className="flex items-center justify-between gap-2">
@@ -324,17 +485,34 @@ export default function DetailsDrawerCustomersComponent({
 
               <button
                 type="button"
-                onClick={() => setIsEditing((v) => !v)}
-                className="inline-flex items-center gap-2 rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition px-3 py-2 text-xs font-semibold text-darkBlue"
+                onClick={async () => {
+                  if (!isEditing) {
+                    setIsEditing(true);
+                    return;
+                  }
+                  await saveIdentity();
+                }}
+                disabled={saving}
+                className="inline-flex items-center gap-2 rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition px-3 py-2 text-xs font-semibold text-darkBlue disabled:opacity-60"
               >
                 {isEditing ? (
                   <Save className="size-4 text-darkBlue/60" />
                 ) : (
                   <Pencil className="size-4 text-darkBlue/60" />
                 )}
-                {isEditing ? "Terminer" : "Modifier"}
+                {isEditing
+                  ? saving
+                    ? "Enregistrement..."
+                    : "Enregistrer"
+                  : "Modifier"}
               </button>
             </div>
+
+            {saveError ? (
+              <div className="mt-3 rounded-2xl border border-red/20 bg-red/10 px-4 py-3 text-sm text-red">
+                {saveError}
+              </div>
+            ) : null}
 
             <div className="mt-3 grid grid-cols-1 gap-2">
               <div className="flex items-center gap-2 text-sm text-darkBlue/80">
@@ -366,18 +544,17 @@ export default function DetailsDrawerCustomersComponent({
               {/* Téléphone */}
               <div className="flex items-center gap-2 text-sm text-darkBlue/80">
                 <Phone className="size-4 mt-0.5 text-darkBlue/40" />
-
                 {!isEditing ? (
                   <button
                     type="button"
                     className="min-w-0 truncate hover:underline text-left"
                     title="Clique pour appeler"
                     onClick={() => {
-                      if (!customer?.phone) return;
-                      window.location.href = `tel:${String(customer.phone).replace(/\s/g, "")}`;
+                      if (!baseCustomer?.phone) return;
+                      window.location.href = `tel:${String(baseCustomer.phone).replace(/\s/g, "")}`;
                     }}
                   >
-                    {customer?.phone || "-"}
+                    {baseCustomer?.phone || "-"}
                   </button>
                 ) : (
                   <input
@@ -392,6 +569,7 @@ export default function DetailsDrawerCustomersComponent({
                 )}
               </div>
 
+              {/* Email */}
               <div className="flex items-center gap-2 text-sm text-darkBlue/80">
                 <Mail className="size-4 mt-0.5 text-darkBlue/40" />
                 {!isEditing ? (
@@ -400,15 +578,15 @@ export default function DetailsDrawerCustomersComponent({
                     className="min-w-0 truncate hover:underline text-left"
                     title="Clique pour envoyer un email"
                     onClick={() => {
-                      if (!customer?.email) return;
-                      window.location.href = `mailto:${customer.email}`;
+                      if (!baseCustomer?.email) return;
+                      window.location.href = `mailto:${baseCustomer.email}`;
                     }}
                   >
-                    {customer?.email || "-"}
+                    {baseCustomer?.email || "-"}
                   </button>
                 ) : (
                   <input
-                    value={form.email}
+                    value={form.email || ""}
                     onChange={(e) =>
                       setForm((p) => ({ ...p, email: e.target.value }))
                     }
@@ -422,8 +600,8 @@ export default function DetailsDrawerCustomersComponent({
             <div className="mt-4 flex flex-wrap gap-2">
               <button
                 onClick={() => {
-                  if (!customer?.phone) return;
-                  window.location.href = `tel:${String(customer.phone).replace(/\s/g, "")}`;
+                  if (!baseCustomer?.phone) return;
+                  window.location.href = `tel:${String(baseCustomer.phone).replace(/\s/g, "")}`;
                 }}
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue px-4 py-3 text-white text-sm font-semibold shadow-sm hover:bg-blue/90 active:scale-[0.98] transition"
                 type="button"
@@ -434,8 +612,8 @@ export default function DetailsDrawerCustomersComponent({
 
               <button
                 onClick={() => {
-                  if (!customer?.email) return;
-                  window.location.href = `mailto:${customer.email}`;
+                  if (!baseCustomer?.email) return;
+                  window.location.href = `mailto:${baseCustomer.email}`;
                 }}
                 className="inline-flex items-center justify-center gap-2 rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition px-4 py-3 text-sm font-semibold text-darkBlue"
                 type="button"
@@ -496,7 +674,7 @@ export default function DetailsDrawerCustomersComponent({
 
             {!isEditingNote ? (
               <div className="mt-2 rounded-2xl border border-darkBlue/10 bg-white/50 px-3 py-3 text-sm text-darkBlue/80 min-h-[44px]">
-                {customer?.notes?.trim?.() ? customer.notes : "—"}
+                {baseCustomer?.notes?.trim?.() ? baseCustomer.notes : "—"}
               </div>
             ) : (
               <>
@@ -509,14 +687,12 @@ export default function DetailsDrawerCustomersComponent({
                 <div className="mt-2 flex justify-end">
                   <button
                     type="button"
-                    onClick={() => {
-                      onAction?.(customer, "note_save", { notes: noteDraft });
-                      setIsEditingNote(false);
-                    }}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue px-4 py-3 text-white text-sm font-semibold shadow-sm hover:bg-blue/90 active:scale-[0.98] transition"
+                    disabled={savingNote}
+                    onClick={saveNote}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue px-4 py-3 text-white text-sm font-semibold shadow-sm hover:bg-blue/90 active:scale-[0.98] transition disabled:opacity-60"
                   >
                     <Save className="size-4" />
-                    Enregistrer la note
+                    {savingNote ? "Enregistrement..." : "Enregistrer la note"}
                   </button>
                 </div>
               </>
@@ -552,33 +728,40 @@ export default function DetailsDrawerCustomersComponent({
             </div>
 
             <div className="p-4">
-              {tab === "reservations" ? (
+              {loadingDetails ? (
+                <div className="text-sm text-darkBlue/60">Chargement...</div>
+              ) : tab === "reservations" ? (
                 <div className="flex flex-col gap-2">
                   {sortedReservations.length ? (
                     sortedReservations.map((r) => (
                       <div
-                        key={r.id}
+                        key={String(r._id)}
                         className="rounded-2xl border border-darkBlue/10 bg-white/50 px-4 py-3"
                       >
                         <div className="flex items-center justify-between gap-3">
                           <div className="min-w-0">
                             <p className="text-sm font-semibold text-darkBlue truncate">
-                              {fmtDate(r.date)} — {fmtTime(r.time)}
+                              {fmtDate(r.reservationDate)} —{" "}
+                              {fmtTime(r.reservationTime)}
                             </p>
                             <p className="text-xs text-darkBlue/50 mt-0.5">
-                              {r.guests || 0} personne
-                              {(r.guests || 0) > 1 ? "s" : ""}
+                              {r.numberOfGuests || 0} personne
+                              {(r.numberOfGuests || 0) > 1 ? "s" : ""}
                             </p>
                           </div>
 
                           <span
                             className={`shrink-0 inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${
-                              r.status === "Canceled"
+                              r.status === "Canceled" || r.status === "Rejected"
                                 ? "bg-red/10 text-red border-red/20"
                                 : "bg-green/10 text-green border-green/20"
                             }`}
                           >
-                            {r.status === "Canceled" ? "Annulée" : "OK"}
+                            {r.status === "Canceled"
+                              ? "Annulée"
+                              : r.status === "Rejected"
+                                ? "Refusée"
+                                : "OK"}
                           </span>
                         </div>
                       </div>
@@ -592,23 +775,35 @@ export default function DetailsDrawerCustomersComponent({
               ) : (
                 <div className="flex flex-col gap-2">
                   {sortedGiftCards.length ? (
-                    sortedGiftCards.map((g) => (
-                      <div
-                        key={g.id}
-                        className="rounded-2xl border border-darkBlue/10 bg-white/50 px-4 py-3"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-darkBlue truncate">
-                              {fmtMoney(g.amount)} — {fmtDate(g.date)}
-                            </p>
-                            <p className="text-xs text-darkBlue/50 mt-0.5">
-                              {g.description?.trim?.() ? g.description : "—"}
-                            </p>
+                    sortedGiftCards.map((g) => {
+                      const giftAmountEUR =
+                        Number.isFinite(Number(g.value)) && Number(g.value) > 0
+                          ? Number(g.value)
+                          : Number(g.amount || 0) / 100;
+
+                      return (
+                        <div
+                          key={String(g._id || g.id)}
+                          className="rounded-2xl border border-darkBlue/10 bg-white/50 px-4 py-3"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-darkBlue truncate">
+                                {fmtMoney(giftAmountEUR)} —{" "}
+                                {fmtDate(g.created_at || g.createdAt)}
+                              </p>
+
+                              <p className="text-xs text-darkBlue/60 mt-0.5">
+                                Code :{" "}
+                                <span className="font-semibold text-darkBlue">
+                                  {g.purchaseCode || "—"}
+                                </span>
+                              </p>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   ) : (
                     <p className="text-sm text-darkBlue/60">
                       Aucun achat de carte cadeau.
@@ -619,13 +814,13 @@ export default function DetailsDrawerCustomersComponent({
             </div>
           </div>
 
-          {/* ✅ ACTIONS (en bas) + bouton supprimer ici */}
+          {/* ACTIONS */}
           <div className="mt-4 rounded-2xl bg-white/50 border border-darkBlue/10 shadow-sm p-4">
             <p className="text-xs text-darkBlue/50 mb-3">Actions</p>
 
             <button
               type="button"
-              onClick={() => onAction?.(customer, "delete")}
+              onClick={() => onAction?.(baseCustomer, "delete")}
               className="ml-auto inline-flex items-center justify-center gap-2 rounded-xl border border-red/20 bg-red/10 text-red hover:bg-red/15 transition px-4 py-3 text-sm font-semibold"
             >
               <Trash2 className="size-4" />

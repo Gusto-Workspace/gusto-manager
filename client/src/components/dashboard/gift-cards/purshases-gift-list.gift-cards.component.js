@@ -8,7 +8,7 @@ import { useTranslation } from "next-i18next";
 // SVG
 import { GiftSvg } from "../../_shared/_svgs/gift.svg";
 import { TrashSvg } from "../../_shared/_svgs/trash.svg";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Mail, Phone, User } from "lucide-react";
 
 export default function PurchasesGiftListComponent(props) {
   const { t } = useTranslation("gifts");
@@ -178,7 +178,7 @@ export default function PurchasesGiftListComponent(props) {
             type="text"
             placeholder={t(
               "placeholders.search",
-              "Rechercher un code, un bénéficiaire, un email ..."
+              "Rechercher un code, un bénéficiaire, un email ...",
             )}
             value={searchTerm}
             onChange={handleSearchChange}
@@ -288,14 +288,38 @@ export default function PurchasesGiftListComponent(props) {
                             </span>
                           </p>
 
-                          <p>
+                          {/* <p>
                             {t("labels.sender")} : {purchase.sender}{" "}
+                          </p> */}
+
+                          {purchase.buyerFirstName &&
+                            purchase.buyerLastName && (
+                              <p className="flex gap-1 items-center">
+                                <User className="size-4" />
+                                <span className="font-medium">
+                                  {purchase.buyerFirstName}{" "}
+                                  {purchase.buyerLastName}
+                                </span>
+                              </p>
+                            )}
+
+                          <p className="flex gap-1 items-center">
+                            <Mail size={16} />
                             {purchase.sendEmail && (
-                              <span className="text-xs text-darkBlue/40 italic">
-                                ({purchase.sendEmail})
+                              <span className="font-medium">
+                                {purchase.sendEmail}
                               </span>
                             )}
                           </p>
+
+                          {purchase.senderPhone && (
+                            <p className="flex gap-1 items-center">
+                              <Phone size={16} />
+                              <span className="font-medium">
+                                {purchase.senderPhone}
+                              </span>
+                            </p>
+                          )}
 
                           {createdDate && (
                             <p className="text-xs text-darkBlue/70 mt-1">
@@ -308,7 +332,7 @@ export default function PurchasesGiftListComponent(props) {
                             <p className="text-xs text-darkBlue/70">
                               {t("labels.valididy")} :{" "}
                               {new Date(purchase.validUntil).toLocaleDateString(
-                                "fr-FR"
+                                "fr-FR",
                               )}
                             </p>
                           )}
@@ -317,7 +341,7 @@ export default function PurchasesGiftListComponent(props) {
                             <p className="text-xs text-darkBlue/70">
                               {t("labels.useDate")} :{" "}
                               {new Date(purchase.useDate).toLocaleDateString(
-                                "fr-FR"
+                                "fr-FR",
                               )}
                             </p>
                           )}
