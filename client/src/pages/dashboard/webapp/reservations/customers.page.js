@@ -8,15 +8,18 @@ import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 // CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
 
+// AXIOS
+import axios from "axios";
+
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
-import ParametersReservationWebApp from "@/components/dashboard/webapp/reservations/parameters.reservations.webapp";
 import NotGoodDeviceWebAppComponent from "@/components/dashboard/webapp/_shared/not-good-device.webapp";
+import ListCustomersReservationsWebapp from "@/components/dashboard/webapp/reservations/list-customers.reservations.webapp";
 import SplashScreenWebAppComponent from "@/components/dashboard/webapp/_shared/splashscreen.webapp";
 
-export default function ParametersReservationsPage(props) {
+export default function AddReservationsPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
 
   let title;
@@ -31,8 +34,6 @@ export default function ParametersReservationsPage(props) {
       title = "Gusto Manager";
       description = "";
   }
-
-  // ✅ Refetch quand on revient au 1er plan après > 5 min
 
   if (!restaurantContext.isAuth) return null;
 
@@ -51,9 +52,10 @@ export default function ParametersReservationsPage(props) {
       <div className="block mobile:hidden">
         <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 h-[100dvh] overflow-y-auto hide-scrollbar">
           {restaurantContext?.restaurantData?.options?.reservations ? (
-            <ParametersReservationWebApp
-              setRestaurantData={restaurantContext.setRestaurantData}
+            <ListCustomersReservationsWebapp
+              dataLoading={restaurantContext.dataLoading}
               restaurantData={restaurantContext.restaurantData}
+              setRestaurantData={restaurantContext.setRestaurantData}
             />
           ) : (
             <NoAvailableComponent dataLoading={restaurantContext.dataLoading} />
@@ -74,14 +76,32 @@ export default function ParametersReservationsPage(props) {
   );
 }
 
-export async function getStaticProps({ locale }) {
-  return {
-    props: {
-      ...(await serverSideTranslations(locale, [
-        "common",
-        "reservations",
-        "restaurant",
-      ])),
-    },
-  };
+export async function getServerSideProps({ query, locale }) {
+  const { reservationId } = query;
+
+  try {
+    let reservation = null;
+
+    if (reservationId) {
+      const response = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/reservations/${reservationId}`,
+      );
+      reservation = response.data.reservation;
+    }
+
+    return {
+      props: {
+        reservation,
+        ...(await serverSideTranslations(locale, ["common", "reservations"])),
+      },
+    };
+  } catch (error) {
+    console.error("Error fetching reservations data:", error);
+    return {
+      props: {
+        reservation: null,
+        ...(await serverSideTranslations(locale, ["common", "reservations"])),
+      },
+    };
+  }
 }

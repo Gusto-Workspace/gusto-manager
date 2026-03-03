@@ -16,10 +16,8 @@ import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import AddReservationsWebapp from "@/components/dashboard/webapp/reservations/add.reservations.webapp";
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
-import NotGoodDeviceWebAppComponent from "@/components/dashboard/webapp/_shared/not-good-device.webapp.component";
-
-// HOOK REFRESH
-import useRefetchOnReturn from "@/_assets/utils/useRefetchOnReturn";
+import NotGoodDeviceWebAppComponent from "@/components/dashboard/webapp/_shared/not-good-device.webapp";
+import SplashScreenWebAppComponent from "@/components/dashboard/webapp/_shared/splashscreen.webapp";
 
 export default function AddReservationsPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
@@ -36,17 +34,6 @@ export default function AddReservationsPage(props) {
       title = "Gusto Manager";
       description = "";
   }
-
-  // ✅ Refetch quand on revient au 1er plan après > 5 min
-  useRefetchOnReturn({
-    enabled: restaurantContext?.isAuth,
-    storageKey: "gm:lastActive:webapp:reservations",
-    thresholdMs: 5 * 60 * 1000,
-    onRefetch: () => {
-      setShowRefetchSplash(true);
-      restaurantContext.refetchCurrentRestaurant?.();
-    },
-  });
 
   if (!restaurantContext.isAuth) return null;
 
@@ -78,6 +65,14 @@ export default function AddReservationsPage(props) {
       </div>
 
       <NotGoodDeviceWebAppComponent />
+
+      <SplashScreenWebAppComponent
+        loading={restaurantContext.dataLoading}
+        storageKey="gm:splash:webapp:reservations"
+        enabled={restaurantContext?.isAuth}
+        lastActiveKey="gm:lastActive:webapp:reservations"
+        onRefetch={() => restaurantContext.refetchCurrentRestaurant?.()}
+      />
     </>
   );
 }

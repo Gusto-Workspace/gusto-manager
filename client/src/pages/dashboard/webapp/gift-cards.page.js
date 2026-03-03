@@ -12,8 +12,8 @@ import { GlobalContext } from "@/contexts/global.context";
 // COMPONENTS
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
 import WebAppListGiftCardsComponent from "@/components/dashboard/webapp/gift-cards/list.gift-cards.component";
-import SplashScreenWebAppComponent from "@/components/dashboard/webapp/_shared/splashscreen.webapp.component";
-import NotGoodDeviceWebAppComponent from "@/components/dashboard/webapp/_shared/not-good-device.webapp.component";
+import SplashScreenWebAppComponent from "@/components/dashboard/webapp/_shared/splashscreen.webapp";
+import NotGoodDeviceWebAppComponent from "@/components/dashboard/webapp/_shared/not-good-device.webapp";
 
 // HOOK REFRESH
 import useRefetchOnReturn from "@/_assets/utils/useRefetchOnReturn";

@@ -39,8 +39,7 @@ import WebAppPurchasesGiftListComponent from "./purshases-gift-list.gift-cards.c
 import CardGiftsComponent from "./card.gift-cards.component";
 import BottomSheetCreateGiftCardsComponent from "./bottom-sheet-create.gift-cards.component";
 
-// ✅ New: change restaurant bottom sheet (same behavior as reservations)
-import BottomSheetChangeRestaurantComponent from "../_shared/bottom-sheet-change-restaurant.webapp.component";
+import BottomSheetChangeRestaurantComponent from "../_shared/bottom-sheet-change-restaurant.webapp";
 
 export default function WebAppListGiftCardsComponent(props) {
   const { t } = useTranslation("gifts");

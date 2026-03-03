@@ -902,7 +902,7 @@ export default function AddReservationsWebapp(props) {
           <div className="flex items-center justify-between gap-3 h-[50px]">
             <button
               onClick={() => router.push("/dashboard/webapp/reservations")}
-              className="shrink-0 inline-flex items-center justify-center rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition p-2"
+              className="shrink-0 inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition p-3"
               aria-label={t("calendar.back", "Retour au calendrier")}
               title={t("calendar.back", "Retour au calendrier")}
             >

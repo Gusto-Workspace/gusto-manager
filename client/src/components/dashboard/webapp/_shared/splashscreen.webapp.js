@@ -1,8 +1,12 @@
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Image from "next/image";
+
+// HOOK
+import useRefetchOnReturn from "@/_assets/utils/useRefetchOnReturn";
 
 const FADE_MS = 550;
 const MIN_DURATION = 1250;
+const REFRESH_ANTI_FLICKER_MS = 350;
 
 // ✅ évite le warning "useLayoutEffect does nothing on the server"
 const useIsomorphicLayoutEffect =
@@ -10,9 +14,22 @@ const useIsomorphicLayoutEffect =
 
 export default function SplashScreenWebAppComponent({
   loading,
+
+  // ✅ splash "déjà vu" (ton système actuel)
   storageKey,
+
+  // ✅ force externe (si tu l’utilises déjà quelque part)
   forceShow = false,
+
+  // ✅ Option A : refetch au retour 1er plan après X minutes
+  enabled = false,
+  onRefetch,
+  thresholdMs = 5 * 60 * 1000,
+  lastActiveKey = "gm:lastActive:webapp",
 }) {
+  // ✅ Force show interne déclenché par le retour 1er plan après 5 min
+  const [internalForceShow, setInternalForceShow] = useState(false);
+
   // ✅ Par défaut on rend le splash (SSR inclus),
   // puis côté client on l'enlève AVANT paint si déjà vu.
   const [visible, setVisible] = useState(true);
@@ -20,10 +37,39 @@ export default function SplashScreenWebAppComponent({
   const [minTimeDone, setMinTimeDone] = useState(false);
   const [fadeOut, setFadeOut] = useState(false);
 
+  const effectiveForceShow = forceShow || internalForceShow;
+
+  // =========================
+  // ✅ Option A : refetch au retour
+  // =========================
+  useRefetchOnReturn({
+    enabled,
+    storageKey: lastActiveKey,
+    thresholdMs,
+    onRefetch: () => {
+      setInternalForceShow(true);
+      onRefetch?.();
+    },
+  });
+
+  // ✅ Quand le refetch est fini, on coupe le forceShow interne avec un petit délai
+  useEffect(() => {
+    if (!internalForceShow) return;
+    if (loading) return;
+
+    const t = setTimeout(() => {
+      setInternalForceShow(false);
+    }, REFRESH_ANTI_FLICKER_MS);
+
+    return () => clearTimeout(t);
+  }, [internalForceShow, loading]);
+
+  // =========================
   // ✅ Décision AVANT paint => plus de flash "Chargement ..."
+  // =========================
   useIsomorphicLayoutEffect(() => {
     // forceShow => on affiche
-    if (forceShow) {
+    if (effectiveForceShow) {
       setFadeOut(false);
       setMinTimeDone(false);
       setVisible(true);
@@ -43,7 +89,7 @@ export default function SplashScreenWebAppComponent({
     setFadeOut(false);
     setMinTimeDone(false);
     setVisible(true);
-  }, [storageKey, forceShow]);
+  }, [storageKey, effectiveForceShow]);
 
   // lock scroll quand visible
   useEffect(() => {
@@ -90,7 +136,9 @@ export default function SplashScreenWebAppComponent({
     setFadeOut(true);
 
     const t = setTimeout(() => {
-      if (!forceShow) {
+      // ✅ on marque "seen" uniquement quand c’est le splash “première fois”
+      // (pas quand c’est un splash forcé au retour)
+      if (!effectiveForceShow) {
         try {
           sessionStorage.setItem(storageKey, "1");
         } catch {}
@@ -99,7 +147,7 @@ export default function SplashScreenWebAppComponent({
     }, FADE_MS);
 
     return () => clearTimeout(t);
-  }, [visible, minTimeDone, loading, storageKey, forceShow]);
+  }, [visible, minTimeDone, loading, storageKey, effectiveForceShow]);
 
   if (!visible) return null;
 
