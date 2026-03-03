@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { X, Mail, User, Calendar, CreditCard, Hash, Trash2 } from "lucide-react";
+import {
+  X,
+  Mail,
+  User,
+  Calendar,
+  CreditCard,
+  Hash,
+  Trash2,
+} from "lucide-react";
 
 const CLOSE_MS = 160;
 
@@ -202,7 +210,7 @@ export default function BottomSheetPurchasesComponent({
   const DRAG_MAX_PX = Math.max(240, (panelH || panelFallback) - 12);
   const SWIPE_CLOSE_PX = Math.max(
     90,
-    Math.floor((panelH || panelFallback) * CLOSE_RATIO)
+    Math.floor((panelH || panelFallback) * CLOSE_RATIO),
   );
 
   const onPointerDown = (e) => {
@@ -238,7 +246,7 @@ export default function BottomSheetPurchasesComponent({
 
     const dt = Math.max(
       1,
-      dragStateRef.current.lastT - dragStateRef.current.startT
+      dragStateRef.current.lastT - dragStateRef.current.startT,
     );
     const v = (dragStateRef.current.lastY - dragStateRef.current.startY) / dt;
 
@@ -256,12 +264,16 @@ export default function BottomSheetPurchasesComponent({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[170] tablet:hidden" role="dialog" aria-modal="true">
+    <div
+      className="fixed inset-0 z-[170] tablet:hidden"
+      role="dialog"
+      aria-modal="true"
+    >
       {/* Overlay */}
       <div
         className={`
-          absolute inset-0 bg-black/35 backdrop-blur-[2px]
-          transition-opacity duration-150
+          absolute inset-0 bg-darkBlue/30
+          transition-opacity duration-200
           ${isVisible ? "opacity-100" : "opacity-0"}
         `}
         style={{ opacity: overlayOpacity }}
@@ -281,7 +293,9 @@ export default function BottomSheetPurchasesComponent({
         `}
         style={{
           transform: isVisible ? `translateY(${dragY}px)` : "translateY(100%)",
-          transition: dragStateRef.current.active ? "none" : "transform 200ms ease-out",
+          transition: dragStateRef.current.active
+            ? "none"
+            : "transform 200ms ease-out",
           willChange: "transform",
         }}
         onClick={(e) => e.stopPropagation()}
@@ -341,7 +355,9 @@ export default function BottomSheetPurchasesComponent({
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-4 hide-scrollbar overscroll-contain">
           <div className="rounded-2xl bg-white/60 border border-darkBlue/10 shadow-sm p-4 flex flex-col gap-3">
-            <p className="text-xs text-darkBlue/50">{t("labels.infos", "Infos")}</p>
+            <p className="text-xs text-darkBlue/50">
+              {t("labels.infos", "Infos")}
+            </p>
 
             <div className="flex items-start gap-2 text-sm text-darkBlue/80">
               <Hash className="size-4 mt-0.5 text-darkBlue/40" />
@@ -378,7 +394,9 @@ export default function BottomSheetPurchasesComponent({
                 <p className="text-xs text-darkBlue/50 mb-1">
                   {t("labels.description")}
                 </p>
-                <p className="text-sm text-darkBlue/80">{purchase.description}</p>
+                <p className="text-sm text-darkBlue/80">
+                  {purchase.description}
+                </p>
               </div>
             ) : null}
 

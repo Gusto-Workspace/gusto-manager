@@ -1,32 +1,53 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import Image from "next/image";
 
 const FADE_MS = 550;
 const MIN_DURATION = 1250;
+
+// ✅ évite le warning "useLayoutEffect does nothing on the server"
+const useIsomorphicLayoutEffect =
+  typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 export default function SplashScreenWebAppComponent({
   loading,
   storageKey,
   forceShow = false,
 }) {
-  const [visible, setVisible] = useState(() => {
-    if (typeof window === "undefined") return true;
-    return forceShow ? true : sessionStorage.getItem(storageKey) !== "1";
-  });
+  // ✅ Par défaut on rend le splash (SSR inclus),
+  // puis côté client on l'enlève AVANT paint si déjà vu.
+  const [visible, setVisible] = useState(true);
 
   const [minTimeDone, setMinTimeDone] = useState(false);
   const [fadeOut, setFadeOut] = useState(false);
 
-  useEffect(() => {
-    if (!forceShow) return;
+  // ✅ Décision AVANT paint => plus de flash "Chargement ..."
+  useIsomorphicLayoutEffect(() => {
+    // forceShow => on affiche
+    if (forceShow) {
+      setFadeOut(false);
+      setMinTimeDone(false);
+      setVisible(true);
+      return;
+    }
+
+    // sinon, si déjà vu => on cache (avant paint)
+    try {
+      const alreadySeen = sessionStorage.getItem(storageKey) === "1";
+      if (alreadySeen) {
+        setVisible(false);
+        return;
+      }
+    } catch {}
+
+    // pas vu => on affiche
     setFadeOut(false);
     setMinTimeDone(false);
     setVisible(true);
-  }, [forceShow]);
+  }, [storageKey, forceShow]);
 
+  // lock scroll quand visible
   useEffect(() => {
     if (!visible) return;
-    if (typeof document === "undefined") return;
 
     const html = document.documentElement;
     const body = document.body;
@@ -52,14 +73,15 @@ export default function SplashScreenWebAppComponent({
     };
   }, [visible]);
 
-  // ✅ durée minimum
+  // durée minimum
   useEffect(() => {
     if (!visible) return;
+    setMinTimeDone(false);
     const t = setTimeout(() => setMinTimeDone(true), MIN_DURATION);
     return () => clearTimeout(t);
   }, [visible]);
 
-  // ✅ fin: fade + unmount + (boot only) sessionStorage
+  // fin: fade + unmount + mark seen (si pas forceShow)
   useEffect(() => {
     if (!visible) return;
     if (!minTimeDone) return;
@@ -68,13 +90,11 @@ export default function SplashScreenWebAppComponent({
     setFadeOut(true);
 
     const t = setTimeout(() => {
-      // Boot: on persiste "déjà vu"
       if (!forceShow) {
         try {
           sessionStorage.setItem(storageKey, "1");
         } catch {}
       }
-
       setVisible(false);
     }, FADE_MS);
 

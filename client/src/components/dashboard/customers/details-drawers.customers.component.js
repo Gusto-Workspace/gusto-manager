@@ -21,6 +21,10 @@ import {
 
 const CLOSE_MS = 280;
 
+// Swipe config (mobile only)
+const SWIPE_VELOCITY = 0.6; // px/ms
+const CLOSE_RATIO = 0.25; // 25% panel height => close
+
 function fmtDate(d) {
   if (!d) return "-";
   const dt = new Date(d);
@@ -149,12 +153,63 @@ export default function DetailsDrawerCustomersComponent({
 
   const customerId = customer?._id;
 
+  /* =========================
+     ✅ Tablet+ detection
+  ========================= */
+  const [isTabletUp, setIsTabletUp] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mq = window.matchMedia("(min-width: 768px)");
+    const update = () => setIsTabletUp(mq.matches);
+
+    update();
+    if (mq.addEventListener) mq.addEventListener("change", update);
+    else mq.addListener(update);
+
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", update);
+      else mq.removeListener(update);
+    };
+  }, []);
+
+  /* =========================
+     ✅ Swipe state (mobile only)
+  ========================= */
+  const panelRef = useRef(null);
+  const [panelH, setPanelH] = useState(null);
+
+  const [dragY, setDragY] = useState(0);
+  const dragStateRef = useRef({
+    active: false,
+    startY: 0,
+    lastY: 0,
+    startT: 0,
+    lastT: 0,
+  });
+
+  const measurePanel = () => {
+    const el = panelRef.current;
+    if (!el) return;
+    const h = el.getBoundingClientRect().height || 0;
+    if (h > 0) setPanelH(h);
+  };
+
   // open/close animation + default tab
   useEffect(() => {
     if (!open) return;
+
     setTab("reservations");
+    setDragY(0);
     lockScroll();
-    const raf = requestAnimationFrame(() => setIsVisible(true));
+
+    const raf = requestAnimationFrame(() => {
+      setIsVisible(true);
+      requestAnimationFrame(measurePanel);
+    });
+
+    const onResize = () => requestAnimationFrame(measurePanel);
+    window.addEventListener("resize", onResize);
 
     const onKeyDown = (e) => {
       if (e.key === "Escape") closeWithAnimation();
@@ -163,6 +218,7 @@ export default function DetailsDrawerCustomersComponent({
 
     return () => {
       cancelAnimationFrame(raf);
+      window.removeEventListener("resize", onResize);
       document.removeEventListener("keydown", onKeyDown);
       restoreScroll();
     };
@@ -264,6 +320,8 @@ export default function DetailsDrawerCustomersComponent({
     setDetailsError(null);
 
     setIsVisible(false);
+    setDragY(0);
+
     setTimeout(() => {
       restoreScroll();
       onClose?.();
@@ -387,6 +445,68 @@ export default function DetailsDrawerCustomersComponent({
 
   if (!open) return null;
 
+  // ✅ swipe thresholds (mobile)
+  const panelFallback = 720;
+  const DRAG_MAX_PX = Math.max(240, (panelH || panelFallback) - 12);
+  const SWIPE_CLOSE_PX = Math.max(
+    90,
+    Math.floor((panelH || panelFallback) * CLOSE_RATIO),
+  );
+
+  // ✅ swipe handlers (mobile drag zone only)
+  const onPointerDown = (e) => {
+    if (isTabletUp) return; // ✅ never swipe on tablet+
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+
+    dragStateRef.current.active = true;
+    dragStateRef.current.startY = e.clientY;
+    dragStateRef.current.lastY = e.clientY;
+    dragStateRef.current.startT = performance.now();
+    dragStateRef.current.lastT = dragStateRef.current.startT;
+
+    try {
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+    } catch {}
+  };
+
+  const onPointerMove = (e) => {
+    if (isTabletUp) return;
+    if (!dragStateRef.current.active) return;
+
+    const y = e.clientY;
+    const dy = y - dragStateRef.current.startY;
+
+    dragStateRef.current.lastY = y;
+    dragStateRef.current.lastT = performance.now();
+
+    const clamped = Math.max(0, Math.min(DRAG_MAX_PX, dy));
+    setDragY(clamped);
+  };
+
+  const onPointerUp = () => {
+    if (isTabletUp) return;
+    if (!dragStateRef.current.active) return;
+    dragStateRef.current.active = false;
+
+    const dt = Math.max(
+      1,
+      dragStateRef.current.lastT - dragStateRef.current.startT,
+    );
+    const v = (dragStateRef.current.lastY - dragStateRef.current.startY) / dt; // px/ms
+
+    if (dragY >= SWIPE_CLOSE_PX || v >= SWIPE_VELOCITY) {
+      closeWithAnimation();
+      return;
+    }
+
+    setDragY(0);
+  };
+
+  // overlay opacity while dragging (mobile)
+  const overlayOpacity = !isVisible
+    ? 0
+    : 1 * (1 - Math.min(1, dragY / DRAG_MAX_PX));
+
   return (
     <div className="fixed inset-0 z-[120]" role="dialog" aria-modal="true">
       {/* Overlay */}
@@ -396,14 +516,16 @@ export default function DetailsDrawerCustomersComponent({
           transition-opacity duration-200
           ${isVisible ? "opacity-100" : "opacity-0"}
         `}
+        style={{ opacity: overlayOpacity }}
         onClick={closeWithAnimation}
       />
 
       {/* Panel */}
       <div
+        ref={panelRef}
         className={`
           absolute z-[1]
-          bg-lightGrey border border-darkBlue/10
+          bg-white border border-darkBlue/10
           shadow-[0_25px_80px_rgba(19,30,54,0.25)]
           flex flex-col overflow-hidden
 
@@ -414,17 +536,44 @@ export default function DetailsDrawerCustomersComponent({
           tablet:h-full tablet:w-[560px]
           tablet:rounded-none
 
-          transform transition-transform duration-300 ease-out
+          transform transition-transform duration-300 ease-out will-change-transform
           ${
             isVisible
               ? "translate-y-0 tablet:translate-x-0"
               : "translate-y-full tablet:translate-x-full tablet:translate-y-0"
           }
         `}
+        style={
+          isTabletUp
+            ? undefined
+            : {
+                transform: isVisible
+                  ? `translateY(${dragY}px)`
+                  : "translateY(100%)",
+                transition: dragStateRef.current.active
+                  ? "none"
+                  : "transform 240ms ease-out",
+                willChange: "transform",
+              }
+        }
         onClick={(e) => e.stopPropagation()}
       >
+        {/* ✅ Mobile drag zone */}
+        <div
+          className="tablet:hidden cursor-grab active:cursor-grabbing touch-none"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+        >
+          {/* Handle */}
+          <div className="py-3 flex justify-center">
+            <div className="h-1.5 w-12 rounded-full bg-darkBlue/20" />
+          </div>
+        </div>
+
         {/* Header */}
-        <div className="sticky top-0 z-10 px-4 py-3 border-b border-darkBlue/10 bg-white/50">
+        <div className="sticky top-0 z-10 px-4 pb-3 midTablet:py-3 border-b border-darkBlue/10 bg-white/50">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-xs text-darkBlue/50">Fiche client</p>
@@ -470,7 +619,7 @@ export default function DetailsDrawerCustomersComponent({
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-4 hide-scrollbar">
+        <div className="flex-1 bg-lightGrey overflow-y-auto p-4 hide-scrollbar overscroll-contain">
           {/* Error details */}
           {detailsError ? (
             <div className="rounded-2xl border border-red/20 bg-red/10 px-4 py-3 text-sm text-red mb-4">
@@ -551,7 +700,9 @@ export default function DetailsDrawerCustomersComponent({
                     title="Clique pour appeler"
                     onClick={() => {
                       if (!baseCustomer?.phone) return;
-                      window.location.href = `tel:${String(baseCustomer.phone).replace(/\s/g, "")}`;
+                      window.location.href = `tel:${String(
+                        baseCustomer.phone,
+                      ).replace(/\s/g, "")}`;
                     }}
                   >
                     {baseCustomer?.phone || "-"}
@@ -601,7 +752,9 @@ export default function DetailsDrawerCustomersComponent({
               <button
                 onClick={() => {
                   if (!baseCustomer?.phone) return;
-                  window.location.href = `tel:${String(baseCustomer.phone).replace(/\s/g, "")}`;
+                  window.location.href = `tel:${String(
+                    baseCustomer.phone,
+                  ).replace(/\s/g, "")}`;
                 }}
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue px-4 py-3 text-white text-sm font-semibold shadow-sm hover:bg-blue/90 active:scale-[0.98] transition"
                 type="button"

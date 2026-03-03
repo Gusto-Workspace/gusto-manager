@@ -223,10 +223,8 @@ export default function BottomSheeCreatetGiftCardsComponent({
       {/* Overlay */}
       <div
         className={`
-          absolute inset-0
-          bg-black/35
-          backdrop-blur-[2px]
-          transition-opacity duration-150
+          absolute inset-0 bg-darkBlue/30
+          transition-opacity duration-200
           ${isVisible ? "opacity-100" : "opacity-0"}
         `}
         style={{ opacity: overlayOpacity }}

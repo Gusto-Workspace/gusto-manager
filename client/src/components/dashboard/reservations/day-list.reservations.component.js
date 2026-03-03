@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 
 // COMPONENTS
 import CardReservationComponent from "./card.reservations.component";
-import DetailsDrawerReservationsComponent from "./details-drawer.reservations.component";
+import ReservationsDrawerComponent from "@/components/_shared/reservations/reservations-drawer.component";
 
 export default function DayListReservationsComponent(props) {
   const { t } = useTranslation("reservations");
@@ -162,7 +162,7 @@ export default function DayListReservationsComponent(props) {
         ))}
       </div>
 
-      <DetailsDrawerReservationsComponent
+      <ReservationsDrawerComponent
         open={detailsOpen}
         onClose={closeDetails}
         reservation={selectedReservation}

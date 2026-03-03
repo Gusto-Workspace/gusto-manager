@@ -419,7 +419,7 @@ export default function NotificationsDrawerComponent({
 
         {/* Header */}
         <div
-          className={`sticky top-0 z-10 px-4 ${resolvedModules?.length ? "pb-3" : "py-3"} border-b border-black/10 bg-white/70`}
+          className={`sticky top-0 z-10 px-4 ${resolvedModules?.length ? "pb-3" : "pb-3 midTablet:py-3"} border-b border-black/10 bg-white/70`}
         >
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">

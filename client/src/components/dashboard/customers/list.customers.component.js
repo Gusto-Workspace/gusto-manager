@@ -32,14 +32,6 @@ import {
 import DetailsDrawerCustomersComponent from "./details-drawers.customers.component";
 import ConfirmModalCustomersComponent from "./confirm-modal.customers.component";
 
-function normalize(str) {
-  return String(str || "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim();
-}
-
 function fmtPhone(p) {
   if (!p) return "-";
   return String(p);
@@ -215,6 +207,7 @@ export default function ListCustomersComponent() {
   const fetchCustomersCached = restaurantContext?.fetchCustomersCached;
   const invalidateCustomersCache = restaurantContext?.invalidateCustomersCache;
   const peekCustomersCache = restaurantContext?.peekCustomersCache;
+  const [bootstrapped, setBootstrapped] = useState(false);
 
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query, 350);
@@ -277,7 +270,7 @@ export default function ListCustomersComponent() {
         tag: tagFilter,
         source: sourceFilter,
         showSourceFilter,
-        ttlMs: 60_000,
+        ttlMs: 600_000,
       });
 
       if (cached) {
@@ -351,6 +344,40 @@ export default function ListCustomersComponent() {
     showSourceFilter,
   ]);
 
+  useEffect(() => {
+    if (!restaurantId) return;
+    setBootstrapped(false);
+
+    // 1) tente de seed depuis cache immédiatement
+    if (peekCustomersCache) {
+      const cached = peekCustomersCache({
+        rid: restaurantId,
+        page: pagination.page,
+        limit: pagination.limit,
+        query: debouncedQuery,
+        tag: tagFilter,
+        source: sourceFilter,
+        showSourceFilter,
+        ttlMs: 600_000,
+      });
+
+      if (cached) {
+        setCustomers(Array.isArray(cached?.customers) ? cached.customers : []);
+        const pg = cached?.pagination || {};
+        setPagination((p) => ({
+          ...p,
+          page: pg.page ?? p.page,
+          limit: pg.limit ?? p.limit,
+          total: pg.total ?? 0,
+          totalPages: pg.totalPages ?? 1,
+        }));
+      }
+    }
+
+    setBootstrapped(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restaurantId]);
+
   const openDrawer = (customer) => {
     setSelectedCustomer(customer);
     setDrawerOpen(true);
@@ -413,6 +440,9 @@ export default function ListCustomersComponent() {
     const n = pagination?.total ?? 0;
     return `${n} client${n > 1 ? "s" : ""}`;
   }, [pagination?.total]);
+
+  if (!restaurantId) return null;
+  if (!bootstrapped) return null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -728,7 +758,7 @@ export default function ListCustomersComponent() {
             );
           })}
 
-          {!loading && !customers.length ? (
+          {bootstrapped && !loading && !customers.length ? (
             <div className="px-4 py-10 text-center">
               <p className="text-sm font-semibold text-darkBlue/70">
                 Aucun client trouvé
