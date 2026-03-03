@@ -599,6 +599,11 @@ export default function ParametersReservationComponent(props) {
           handleRemoveTable={handleRemoveTable}
           fmtShortFR={fmtShortFR}
           statusLabel={statusLabel}
+          restaurantId={restaurantContext?.restaurantData?._id}
+          tablesCatalog={
+            restaurantContext?.restaurantData?.reservations?.parameters
+              ?.tables || []
+          }
         />
 
         {/* --- Actions --- */}

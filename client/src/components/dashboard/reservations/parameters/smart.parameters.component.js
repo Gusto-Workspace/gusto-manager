@@ -1,6 +1,9 @@
 import { useMemo } from "react";
 import { Wand2, CheckCircle2, Plus, Trash2 } from "lucide-react";
 
+// ✅ AJOUT
+import FloorPlanParametersComponent from "./floor-plan.parameters.component";
+
 export default function SmartParametersComponent({
   register,
   manage_disponibilities,
@@ -16,10 +19,18 @@ export default function SmartParametersComponent({
   handleRemoveTable,
   fmtShortFR,
   statusLabel,
+
+  // ✅ AJOUT
+  restaurantId,
+  tablesCatalog,
 }) {
   const safeManualToFix = useMemo(() => {
     return Array.isArray(manualToFix) ? manualToFix : [];
   }, [manualToFix]);
+
+  const safeCatalog = useMemo(() => {
+    return Array.isArray(tablesCatalog) ? tablesCatalog : [];
+  }, [tablesCatalog]);
 
   const card = "rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm";
   const cardInner = "px-2 py-4 mobile:p-4 midTablet:p-6";
@@ -40,8 +51,6 @@ export default function SmartParametersComponent({
 
   const inputBase =
     "h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 text-base outline-none transition placeholder:text-darkBlue/35 focus:border-blue/60 focus:ring-2 focus:ring-blue/20";
-  const selectBase =
-    "h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 text-base outline-none transition focus:border-blue/60 focus:ring-2 focus:ring-blue/20";
 
   const chip =
     "inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-3 py-2 text-xs text-darkBlue/60";
@@ -206,6 +215,14 @@ export default function SmartParametersComponent({
                 );
               })}
             </div>
+
+            {/* ✅ AJOUT : CONFIG PLAN DE SALLE */}
+            <div className={divider} />
+
+            <FloorPlanParametersComponent
+              restaurantId={restaurantId}
+              tablesCatalog={safeCatalog}
+            />
           </>
         )}
       </div>

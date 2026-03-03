@@ -17,12 +17,16 @@ router.post("/push/subscribe", authenticateToken, async (req, res) => {
     return res.status(400).json({ message: "Missing fields" });
   }
 
+  if (String(req.user.restaurantId) !== String(restaurantId)) {
+    return res.status(403).json({ message: "Restaurant mismatch" });
+  }
+
   const payload = {
     restaurantId,
     module,
     endpoint: subscription.endpoint,
     keys: subscription.keys,
-    userId: req.user?._id,
+    userId: req.user?.id,
     lastSeenAt: new Date(),
   };
 
