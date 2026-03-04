@@ -113,7 +113,7 @@ export default function DayListReservationsComponent(props) {
           <p className="italic">{t("list.card.empty")}</p>
         </div>
 
-        <DetailsDrawerReservationsComponent
+        <ReservationsDrawerComponent
           open={detailsOpen}
           onClose={closeDetails}
           reservation={selectedReservation}

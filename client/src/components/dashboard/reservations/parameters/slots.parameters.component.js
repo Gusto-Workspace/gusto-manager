@@ -72,7 +72,7 @@ export default function SlotsParametersComponent({
           </div>
 
           {/* Auto accept */}
-          <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3">
+          <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3 h-fit">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="font-semibold text-darkBlue">

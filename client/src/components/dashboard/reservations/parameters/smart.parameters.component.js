@@ -1,8 +1,5 @@
 import { useMemo } from "react";
-import { Wand2, CheckCircle2, Plus, Trash2 } from "lucide-react";
-
-// ✅ AJOUT
-import FloorPlanParametersComponent from "./floor-plan.parameters.component";
+import { Wand2 } from "lucide-react";
 
 export default function SmartParametersComponent({
   register,
@@ -12,32 +9,18 @@ export default function SmartParametersComponent({
   manualToFixError,
   manualToFix,
   fetchManualTablesToFix,
-  fields,
-  tablesCount,
-  tableErrors,
-  handleAddTable,
-  handleRemoveTable,
   fmtShortFR,
   statusLabel,
-
-  // ✅ AJOUT
-  restaurantId,
-  tablesCatalog,
 }) {
   const safeManualToFix = useMemo(() => {
     return Array.isArray(manualToFix) ? manualToFix : [];
   }, [manualToFix]);
-
-  const safeCatalog = useMemo(() => {
-    return Array.isArray(tablesCatalog) ? tablesCatalog : [];
-  }, [tablesCatalog]);
 
   const card = "rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm";
   const cardInner = "px-2 py-4 mobile:p-4 midTablet:p-6";
   const sectionTitle =
     "text-base font-semibold text-darkBlue flex items-center gap-2";
   const hint = "text-sm text-darkBlue/60";
-  const divider = "h-px bg-darkBlue/10 my-4";
 
   const toggleWrap = "inline-flex items-center gap-2 select-none";
   const toggleBase =
@@ -49,20 +32,14 @@ export default function SmartParametersComponent({
   const toggleDotOn = "translate-x-7";
   const toggleDotOff = "translate-x-1";
 
-  const inputBase =
-    "h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 text-base outline-none transition placeholder:text-darkBlue/35 focus:border-blue/60 focus:ring-2 focus:ring-blue/20";
-
-  const chip =
-    "inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-3 py-2 text-xs text-darkBlue/60";
-
   return (
     <div className={card}>
       <div className={cardInner}>
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex items-center justify-between gap-4">
           <div className="min-w-0">
             <p className={sectionTitle}>
               <Wand2 className="size-4 shrink-0 opacity-60" />
-              Gestion intelligente
+              Gestion intelligente des tables
             </p>
             <p className={hint}>
               Calcule les disponibilités selon les tables et le nombre de
@@ -145,85 +122,6 @@ export default function SmartParametersComponent({
               </div>
             )}
           </div>
-        )}
-
-        {manage_disponibilities && (
-          <>
-            <div className={divider} />
-
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div className={chip}>
-                <CheckCircle2 className="size-4 shrink-0 opacity-60" />
-                <span>{tablesCount} table(s) configurée(s)</span>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleAddTable}
-                className="inline-flex items-center justify-center size-11 rounded-2xl bg-blue text-white shadow-sm hover:bg-blue/90 active:scale-[0.98] transition"
-                aria-label="Ajouter une table"
-                title="Ajouter une table"
-              >
-                <Plus className="size-4 shrink-0" />
-              </button>
-            </div>
-
-            <div className="mt-3 grid grid-cols-1 midTablet:grid-cols-2 gap-3">
-              {fields.map((field, index) => {
-                const nameError = !!tableErrors?.[index]?.name;
-                const seatsError = !!tableErrors?.[index]?.seats;
-
-                return (
-                  <div
-                    key={field.id}
-                    className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3"
-                  >
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        placeholder="Nom / n° table"
-                        {...register(`tables.${index}.name`)}
-                        className={[
-                          inputBase,
-                          nameError ? "border-red" : "",
-                        ].join(" ")}
-                      />
-
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        placeholder="Places"
-                        {...register(`tables.${index}.seats`, { min: 1 })}
-                        className={[
-                          inputBase,
-                          "text-center",
-                          seatsError ? "border-red" : "",
-                        ].join(" ")}
-                      />
-
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveTable(index)}
-                        className="min-w-[44px] flex items-center justify-center size-11 rounded-2xl bg-red text-white shadow-sm hover:opacity-75 active:scale-[0.98] transition"
-                        aria-label="Supprimer"
-                        title="Supprimer"
-                      >
-                        <Trash2 className="size-4 shrink-0" />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* ✅ AJOUT : CONFIG PLAN DE SALLE */}
-            <div className={divider} />
-
-            <FloorPlanParametersComponent
-              restaurantId={restaurantId}
-              tablesCatalog={safeCatalog}
-            />
-          </>
         )}
       </div>
     </div>

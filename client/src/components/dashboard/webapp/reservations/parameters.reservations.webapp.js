@@ -1341,7 +1341,7 @@ export default function ParametersReservationWebApp(props) {
                   <Wand2 className="size-4 shrink-0 opacity-60" />
                   {t(
                     "reservations:labels.manageDisponibilities",
-                    "Gestion intelligente",
+                    "Gestion intelligente des tables",
                   )}
                 </p>
                 <p className={hint}>

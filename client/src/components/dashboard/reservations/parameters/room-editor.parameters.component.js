@@ -9,6 +9,8 @@ import {
   Line,
   Arc,
   Circle,
+  Image as KonvaImage,
+  Path,
 } from "react-konva";
 import { Plus, Trash2, RotateCcw, Save, X } from "lucide-react";
 
@@ -22,6 +24,11 @@ function safeArr(a) {
 
 function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
+}
+
+function normalizeDeg(deg) {
+  const n = Number(deg) || 0;
+  return ((n % 360) + 360) % 360;
 }
 
 function clipRoundedRect(ctx, x, y, w, h, r) {
@@ -52,17 +59,33 @@ function clipPolygon(ctx, pts) {
   ctx.closePath();
 }
 
+function svgToDataUri(svg) {
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
+function makeLucideSvg({ pathD, size = 24, stroke = "#fff", strokeWidth = 2 }) {
+  return `
+  <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}"
+       viewBox="0 0 24 24" fill="none" stroke="${stroke}"
+       stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round">
+    <path d="${pathD}" />
+  </svg>`;
+}
+
 export default function RoomEditorComponent({
   restaurantId,
   room,
   tablesCatalog,
+  onCatalogUpdated,
   onSaved,
+  onSaveRequest,
 }) {
   const token =
     typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
   const wrapRef = useRef(null);
   const stageRef = useRef(null);
+  const justDraggedRef = useRef(false);
 
   const canvasW = Number(room?.canvas?.width || 2000);
   const canvasH = Number(room?.canvas?.height || 2000);
@@ -81,12 +104,24 @@ export default function RoomEditorComponent({
   const [pos, setPos] = useState({ x: 0, y: 0 });
 
   // add table
-  const [selectedRefId, setSelectedRefId] = useState(
-    tablesCatalog?.[0]?._id ? String(tablesCatalog[0]._id) : "",
-  );
+  const [selectedRefId, setSelectedRefId] = useState("");
 
   // decor modal
   const [decorModalOpen, setDecorModalOpen] = useState(false);
+
+  // ✅ create table modal
+  const [createTableOpen, setCreateTableOpen] = useState(false);
+  const [newTableName, setNewTableName] = useState("");
+  const [newTableSeats, setNewTableSeats] = useState("2");
+  const [createTableError, setCreateTableError] = useState("");
+  const [createTableLoading, setCreateTableLoading] = useState(false);
+
+  // delete from catalog modal
+  const [deleteCatalogOpen, setDeleteCatalogOpen] = useState(false);
+  const [deleteCatalogLoading, setDeleteCatalogLoading] = useState(false);
+  const [deleteCatalogError, setDeleteCatalogError] = useState("");
+
+  const newTableNameRef = useRef(null);
 
   /* ===========================
    * COLLISION / SNAP HELPERS
@@ -243,16 +278,84 @@ export default function RoomEditorComponent({
 
   const catalog = useMemo(() => safeArr(tablesCatalog), [tablesCatalog]);
 
+  const placedTableRefIds = useMemo(() => {
+    return new Set(
+      objects
+        .filter((o) => o?.type === "table" && o?.tableRefId)
+        .map((o) => String(o.tableRefId)),
+    );
+  }, [objects]);
+
+  const availableTables = useMemo(() => {
+    return catalog
+      .filter((t) => !placedTableRefIds.has(String(t._id)))
+      .sort((a, b) =>
+        String(a.name).localeCompare(String(b.name), undefined, {
+          numeric: true,
+          sensitivity: "base",
+        }),
+      );
+  }, [catalog, placedTableRefIds]);
+
+  const remainingTablesCount = availableTables.length;
+
+  // ✅ Lucide SVG paths (simplifiés mais fidèles)
+  const LUCIDE_TRASH2_PATH =
+    "M3 6h18 M8 6V4h8v2 M6 6l1 14h10l1-14 M10 11v6 M14 11v6";
+  const LUCIDE_ROTATECCW_PATH =
+    "M3 2v6h6 M21 12a9 9 0 0 0-15.36-6.36L3 8 M3 12a9 9 0 0 0 15.36 6.36";
+
+  const [trashImg, setTrashImg] = useState(null);
+  const [rotateImg, setRotateImg] = useState(null);
+
+  useEffect(() => {
+    // Trash (blanc)
+    const trashSvg = makeLucideSvg({
+      pathD: LUCIDE_TRASH2_PATH,
+      size: 22,
+      stroke: "#ffffff",
+      strokeWidth: 2,
+    });
+
+    // Rotate (gris foncé)
+    const rotateSvg = makeLucideSvg({
+      pathD: LUCIDE_ROTATECCW_PATH,
+      size: 22,
+      stroke: "#1f2a44",
+      strokeWidth: 2,
+    });
+
+    const ti = new window.Image();
+    ti.src = svgToDataUri(trashSvg);
+    ti.onload = () => setTrashImg(ti);
+
+    const ri = new window.Image();
+    ri.src = svgToDataUri(rotateSvg);
+    ri.onload = () => setRotateImg(ri);
+  }, []);
+
   const selectedObj = useMemo(
     () => objects.find((o) => String(o.id) === String(selectedId)) || null,
     [objects, selectedId],
   );
 
+  const activeCatalogId =
+    selectedObj?.type === "table"
+      ? String(selectedObj.tableRefId || "")
+      : String(selectedRefId || "");
+
+  const activeCatalogTable = useMemo(() => {
+    if (!activeCatalogId) return null;
+    return (
+      catalog.find((t) => String(t._id) === String(activeCatalogId)) || null
+    );
+  }, [catalog, activeCatalogId]);
+
   useEffect(() => {
     if (!selectedObj) return;
     const r = Number(selectedObj.rotation || 0);
     setRotationInput(String(Math.round(r)));
-  }, [selectedObj?.id]);
+  }, [selectedObj?.id, selectedObj?.rotation]);
 
   function updateSelected(patch) {
     if (!selectedId) return;
@@ -263,13 +366,27 @@ export default function RoomEditorComponent({
     );
   }
 
+  function bringToFront(id) {
+    if (!id) return;
+    setObjects((prev) => {
+      const idx = prev.findIndex((o) => String(o.id) === String(id));
+      if (idx < 0) return prev;
+      const next = prev.slice();
+      const [picked] = next.splice(idx, 1);
+      next.push(picked);
+      return next;
+    });
+  }
+
   function applyRotation(value) {
     if (!selectedId) return;
     const n = Number(value);
     if (!Number.isFinite(n)) return;
 
     setObjects((prev) =>
-      prev.map((o) => (o.id === selectedId ? { ...o, rotation: n } : o)),
+      prev.map((o) =>
+        o.id === selectedId ? { ...o, rotation: normalizeDeg(n) } : o,
+      ),
     );
   }
 
@@ -287,14 +404,36 @@ export default function RoomEditorComponent({
     };
   }
 
+  useEffect(() => {
+    if (!createTableOpen) return;
+    setCreateTableError("");
+    setTimeout(() => {
+      if (newTableNameRef.current) {
+        newTableNameRef.current.focus();
+        newTableNameRef.current.setSelectionRange(
+          0,
+          newTableNameRef.current.value.length,
+        );
+      }
+    }, 0);
+  }, [createTableOpen]);
+
+  useEffect(() => {
+    if (!selectedRefId) return;
+
+    const stillExists = availableTables.some(
+      (t) => String(t._id) === String(selectedRefId),
+    );
+
+    if (!stillExists) setSelectedRefId("");
+  }, [availableTables, selectedRefId]);
+
   /* ===========================
    * ADD TABLE (✅ quantized)
    * =========================== */
 
-  function addTableInstance() {
-    if (!selectedRefId) return;
-    const ref = catalog.find((t) => String(t._id) === String(selectedRefId));
-    if (!ref) return;
+  function addTableInstanceFromRef(ref) {
+    if (!ref?._id) return;
 
     const c = worldCenter();
 
@@ -329,6 +468,116 @@ export default function RoomEditorComponent({
 
     setObjects((prev) => [...prev, next]);
     setSelectedId(next.id);
+  }
+
+  async function createConfiguredTableAndPlace() {
+    try {
+      setCreateTableLoading(true);
+      setCreateTableError("");
+
+      const name = String(newTableName || "").trim();
+      const seats = Number(newTableSeats);
+
+      if (!name) {
+        setCreateTableError("Nom / n° de table obligatoire.");
+        return;
+      }
+      if (!Number.isFinite(seats) || seats < 1) {
+        setCreateTableError("Nombre de places invalide.");
+        return;
+      }
+
+      // ✅ anti-doublon (case-insensitive)
+      const exists = catalog.some(
+        (t) =>
+          String(t?.name || "")
+            .trim()
+            .toLowerCase() === name.toLowerCase(),
+      );
+      if (exists) {
+        setCreateTableError("Une table avec ce nom existe déjà.");
+        return;
+      }
+
+      const res = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/floorplans/catalog/tables`,
+        { name, seats },
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+
+      const savedTables = Array.isArray(res.data?.tables)
+        ? res.data.tables
+        : [];
+      const created = res.data?.created || null;
+
+      // ✅ sync parent + select + place
+      if (typeof onCatalogUpdated === "function") {
+        onCatalogUpdated(savedTables);
+      }
+
+      if (created?._id) {
+        setSelectedRefId(String(created._id));
+        addTableInstanceFromRef(created);
+
+        setTimeout(() => setSelectedRefId(""), 0);
+      }
+
+      setCreateTableOpen(false);
+      setNewTableName("");
+      setNewTableSeats("2");
+    } catch (e) {
+      setCreateTableError(
+        e?.response?.data?.message || "Impossible de créer la table.",
+      );
+    } finally {
+      setCreateTableLoading(false);
+    }
+  }
+
+  async function deleteTableFromCatalog() {
+    try {
+      if (!activeCatalogId) return;
+
+      setDeleteCatalogLoading(true);
+      setDeleteCatalogError("");
+
+      const res = await axios.delete(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/floorplans/catalog/tables/${activeCatalogId}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+
+      const savedTables = Array.isArray(res.data?.tables)
+        ? res.data.tables
+        : [];
+
+      // ✅ sync le catalogue parent
+      if (typeof onCatalogUpdated === "function") {
+        onCatalogUpdated(savedTables);
+      }
+
+      // ✅ UX instant : retire aussi les instances dans la room courante
+      // (le backend les a déjà supprimées partout, mais ça évite d’attendre un refetch)
+      setObjects((prev) =>
+        prev.filter(
+          (o) =>
+            !(
+              o?.type === "table" &&
+              String(o.tableRefId) === String(activeCatalogId)
+            ),
+        ),
+      );
+
+      setSelectedId(null);
+      setSelectedRefId("");
+      setDeleteCatalogOpen(false);
+    } catch (e) {
+      setDeleteCatalogError(
+        e?.response?.data?.message ||
+          "Impossible de supprimer la table du catalogue.",
+      );
+    } finally {
+      setDeleteCatalogLoading(false);
+    }
   }
 
   /* ===========================
@@ -378,10 +627,6 @@ export default function RoomEditorComponent({
     if (kind === "wall") {
       next = makeLine(260, {
         style: { stroke: "rgba(19,30,54,0.80)", strokeWidth: 12 },
-      });
-    } else if (kind === "partition") {
-      next = makeLine(220, {
-        style: { stroke: "rgba(19,30,54,0.55)", strokeWidth: 6 },
       });
     } else if (kind === "door") {
       next = makeLine(120, {
@@ -529,6 +774,12 @@ export default function RoomEditorComponent({
     if (onSaved) onSaved(nextRoom || { ...room, ...payload }, nextRooms);
   }
 
+  useEffect(() => {
+    if (typeof onSaveRequest === "function") {
+      onSaveRequest(saveRoom);
+    }
+  }, [objects]);
+
   /* ===========================
    * GRID LINES
    * =========================== */
@@ -619,6 +870,96 @@ export default function RoomEditorComponent({
     }));
   }
 
+  function bumpRotate15ById(id, e) {
+    if (e) e.cancelBubble = true;
+
+    setObjects((prev) => {
+      const idx = prev.findIndex((o) => String(o.id) === String(id));
+      if (idx < 0) return prev;
+
+      const curr = Number(prev[idx].rotation || 0);
+      const nextRot = normalizeDeg(curr + 15);
+
+      const updated = { ...prev[idx], rotation: nextRot };
+
+      // conserve ton z-order : on pousse l’élément à la fin
+      const next = prev.slice();
+      next.splice(idx, 1);
+      next.push(updated);
+      return next;
+    });
+  }
+
+  function removeObjectById(id, e) {
+    if (e) e.cancelBubble = true;
+    setObjects((prev) => prev.filter((o) => String(o.id) !== String(id)));
+    if (String(selectedId) === String(id)) setSelectedId(null);
+  }
+
+  function ActionButtons({ xOff, startY, onRotate, onDelete }) {
+    const BTN_R = 16;
+    const GAP = 10;
+
+    return (
+      <Group x={xOff} y={0}>
+        {/* ROTATE */}
+        <Group
+          x={0}
+          y={startY}
+          onMouseDown={(e) => (e.cancelBubble = true)}
+          onClick={onRotate}
+          onTap={onRotate}
+        >
+          <Circle
+            x={0}
+            y={0}
+            radius={BTN_R}
+            fill="rgba(255,255,255,0.95)"
+            stroke="rgba(19,30,54,0.25)"
+            strokeWidth={1}
+          />
+          {rotateImg && (
+            <KonvaImage
+              image={rotateImg}
+              x={-11}
+              y={-11}
+              width={22}
+              height={22}
+              listening={false}
+            />
+          )}
+        </Group>
+
+        {/* TRASH */}
+        <Group
+          x={0}
+          y={startY + BTN_R * 2 + GAP}
+          onMouseDown={(e) => (e.cancelBubble = true)}
+          onClick={onDelete}
+          onTap={onDelete}
+        >
+          <Circle
+            x={0}
+            y={0}
+            radius={BTN_R}
+            fill="rgba(255,59,48,0.95)"
+            stroke="rgba(255,59,48,1)"
+            strokeWidth={1}
+          />
+          {trashImg && (
+            <KonvaImage
+              image={trashImg}
+              x={-11}
+              y={-11}
+              width={22}
+              height={22}
+              listening={false}
+            />
+          )}
+        </Group>
+      </Group>
+    );
+  }
   /* ===========================
    * SHAPES
    * =========================== */
@@ -648,8 +989,8 @@ export default function RoomEditorComponent({
         right = 0;
 
       if (n <= 2) {
-        top = 1;
-        bottom = 1;
+        left = 1;
+        right = 1;
       } else if (n <= 4) {
         top = 2;
         bottom = 2;
@@ -694,27 +1035,43 @@ export default function RoomEditorComponent({
         x={obj.x}
         y={obj.y}
         draggable
+        onDragStart={(e) => {
+          justDraggedRef.current = true;
+
+          e.target.moveToTop();
+          e.target.getLayer()?.batchDraw();
+        }}
         onDragEnd={(e) => {
           const nx = e.target.x();
           const ny = e.target.y();
 
-          // ✅ snap sur 1/2 case
           const snapped = snapCenterToUnit(nx, ny, w, h, SNAP_UNIT);
-
           const candidate = { ...obj, x: snapped.x, y: snapped.y };
           const others = objects.filter((o) => String(o.id) !== String(obj.id));
-
-          // ✅ recherche aussi en 1/2 case
           const best = findNearestFree(candidate, others, SNAP_UNIT, PAD);
 
-          setObjects((prev) =>
-            prev.map((o) =>
-              o.id === obj.id ? { ...o, x: best.x, y: best.y } : o,
-            ),
-          );
+          setObjects((prev) => {
+            const idx = prev.findIndex((o) => String(o.id) === String(obj.id));
+            if (idx < 0) return prev;
+
+            // 1) update position
+            const updated = { ...prev[idx], x: best.x, y: best.y };
+
+            // 2) rebuild array and push updated last (persist z-order)
+            const next = prev.slice();
+            next.splice(idx, 1);
+            next.push(updated);
+            return next;
+          });
         }}
-        onClick={() => setSelectedId(obj.id)}
-        onTap={() => setSelectedId(obj.id)}
+        onClick={() => {
+          setSelectedId(obj.id);
+          bringToFront(obj.id);
+        }}
+        onTap={() => {
+          setSelectedId(obj.id);
+          bringToFront(obj.id);
+        }}
       >
         <Group
           rotation={obj.rotation || 0}
@@ -798,6 +1155,79 @@ export default function RoomEditorComponent({
             listening={false}
           />
         ) : null}
+
+        {isSelected &&
+          (() => {
+            const BTN_R = 16; // rayon bouton
+            const GAP = 10; // gap entre les deux
+            const totalH = BTN_R * 2 * 2 + GAP; // 2 boutons
+            const startY = h / 2 - totalH / 2 + BTN_R; // centre vertical
+            const xOff = w + 26; // ✅ un peu plus à droite
+
+            return (
+              <Group x={xOff} y={0}>
+                {/* ROTATE */}
+                <Group
+                  x={0}
+                  y={startY}
+                  onMouseDown={(e) => (e.cancelBubble = true)}
+                  onClick={(e) => bumpRotate15ById(obj.id, e)}
+                  onTap={(e) => bumpRotate15ById(obj.id, e)}
+                >
+                  <Circle
+                    x={0}
+                    y={0}
+                    radius={BTN_R}
+                    fill="rgba(255,255,255,0.95)"
+                    stroke="rgba(19,30,54,0.25)"
+                    strokeWidth={1}
+                  />
+
+                  {/* ✅ icône centrée + plus grosse */}
+                  {rotateImg && (
+                    <KonvaImage
+                      image={rotateImg}
+                      x={-11}
+                      y={-11}
+                      width={22}
+                      height={22}
+                      listening={false}
+                    />
+                  )}
+                </Group>
+
+                {/* TRASH */}
+                <Group
+                  x={0}
+                  y={startY + BTN_R * 2 + GAP}
+                  onMouseDown={(e) => (e.cancelBubble = true)}
+                  onClick={(e) => removeObjectById(obj.id, e)}
+                  onTap={(e) => removeObjectById(obj.id, e)}
+                >
+                  <Circle
+                    x={0}
+                    y={0}
+                    radius={BTN_R}
+                    fill="rgba(255,59,48,0.95)" // ✅ rouge
+                    stroke="rgba(255,59,48,1)"
+                    strokeWidth={1}
+                  />
+
+                  {/* ✅ lucide trash centré */}
+                  {trashImg && (
+                    <KonvaImage
+                      image={trashImg}
+                      x={-11}
+                      y={-11}
+                      width={22}
+                      height={22}
+                      listening={false}
+                    />
+                  )}
+                </Group>
+              </Group>
+            );
+          })()}
       </Group>
     );
   }
@@ -824,17 +1254,26 @@ export default function RoomEditorComponent({
         <Group
           x={cx}
           y={cy}
-          rotation={Number(obj.rotation || 0)}
           draggable={!obj.locked}
-          onClick={onClick}
-          onTap={onClick}
+          onDragStart={(e) => {
+            justDraggedRef.current = true;
+            e.target.moveToTop();
+            e.target.getLayer()?.batchDraw();
+          }}
+          onClick={() => {
+            setSelectedId(obj.id);
+            bringToFront(obj.id);
+          }}
+          onTap={() => {
+            setSelectedId(obj.id);
+            bringToFront(obj.id);
+          }}
           onDragEnd={(e) => {
             const nx = e.target.x();
             const ny = e.target.y();
             const dx = nx - cx;
             const dy = ny - cy;
 
-            // ✅ snap en 1/2 case
             const baseDx = Math.round(dx / SNAP_UNIT) * SNAP_UNIT;
             const baseDy = Math.round(dy / SNAP_UNIT) * SNAP_UNIT;
 
@@ -842,29 +1281,36 @@ export default function RoomEditorComponent({
               (o) => String(o.id) !== String(obj.id),
             );
 
-            // candidate avec points déplacés
             const baseCandidate = {
               ...obj,
               points: shiftLinePoints(obj.points, baseDx, baseDy),
             };
 
-            // si libre, on applique direct
+            const applyShiftAndBringFront = (dx2, dy2) => {
+              setObjects((prev) => {
+                const idx = prev.findIndex(
+                  (o) => String(o.id) === String(obj.id),
+                );
+                if (idx < 0) return prev;
+
+                const updated = {
+                  ...prev[idx],
+                  points: shiftLinePoints(prev[idx].points, dx2, dy2),
+                };
+
+                const next = prev.slice();
+                next.splice(idx, 1);
+                next.push(updated);
+                return next;
+              });
+            };
+
             if (isFree(baseCandidate, others, PAD)) {
-              setObjects((prev) =>
-                prev.map((o) =>
-                  o.id === obj.id
-                    ? {
-                        ...o,
-                        points: shiftLinePoints(o.points, baseDx, baseDy),
-                      }
-                    : o,
-                ),
-              );
+              applyShiftAndBringFront(baseDx, baseDy);
               e.target.position({ x: cx, y: cy });
               return;
             }
 
-            // sinon: recherche par anneaux en 1/2 case (comme les tables)
             const maxRing = 40;
             for (let ring = 1; ring <= maxRing; ring++) {
               for (let ix = -ring; ix <= ring; ix++) {
@@ -880,16 +1326,7 @@ export default function RoomEditorComponent({
                     points: shiftLinePoints(obj.points, t.dx, t.dy),
                   };
                   if (isFree(test, others, PAD)) {
-                    setObjects((prev) =>
-                      prev.map((o) =>
-                        o.id === obj.id
-                          ? {
-                              ...o,
-                              points: shiftLinePoints(o.points, t.dx, t.dy),
-                            }
-                          : o,
-                      ),
-                    );
+                    applyShiftAndBringFront(t.dx, t.dy);
                     e.target.position({ x: cx, y: cy });
                     return;
                   }
@@ -897,59 +1334,82 @@ export default function RoomEditorComponent({
               }
             }
 
-            // fallback
             e.target.position({ x: cx, y: cy });
           }}
         >
-          {obj.decorKind === "window" && (
-            <>
-              {Array.from({ length: Number(obj?.meta?.ticks || 4) }).map(
-                (_, i) => {
-                  const t = (i + 1) / (Number(obj?.meta?.ticks || 4) + 1);
-                  const x = rel[0] + (rel[2] - rel[0]) * t;
-                  const y = rel[1] + (rel[3] - rel[1]) * t;
+          {/* ✅ ICI : on applique la rotation uniquement à la ligne et ses éléments */}
+          <Group rotation={Number(obj.rotation || 0)}>
+            {obj.decorKind === "window" && (
+              <>
+                {Array.from({ length: Number(obj?.meta?.ticks || 4) }).map(
+                  (_, i) => {
+                    const t = (i + 1) / (Number(obj?.meta?.ticks || 4) + 1);
+                    const x = rel[0] + (rel[2] - rel[0]) * t;
+                    const y = rel[1] + (rel[3] - rel[1]) * t;
 
-                  return (
-                    <Line
-                      key={`tick_${obj.id}_${i}`}
-                      points={[x, y - 10, x, y + 10]}
-                      stroke="rgba(255,255,255,0.65)"
-                      strokeWidth={2}
-                      lineCap="round"
-                      listening={false}
-                      perfectDrawEnabled={false}
-                    />
-                  );
-                },
-              )}
-            </>
-          )}
+                    return (
+                      <Line
+                        key={`tick_${obj.id}_${i}`}
+                        points={[x, y - 10, x, y + 10]}
+                        stroke="rgba(255,255,255,0.65)"
+                        strokeWidth={2}
+                        lineCap="round"
+                        listening={false}
+                        perfectDrawEnabled={false}
+                      />
+                    );
+                  },
+                )}
+              </>
+            )}
 
-          {obj.decorKind === "door" && (
-            <Arc
-              x={rel[0]}
-              y={rel[1]}
-              innerRadius={0}
-              outerRadius={Number(obj?.meta?.arcRadius || 34)}
-              angle={90}
-              rotation={0}
-              fill="rgba(255,255,255,0.10)"
-              stroke="rgba(255,255,255,0.45)"
-              strokeWidth={2}
-              listening={false}
+            {obj.decorKind === "door" && (
+              <Arc
+                x={rel[0]}
+                y={rel[1]}
+                innerRadius={0}
+                outerRadius={Number(obj?.meta?.arcRadius || 34)}
+                angle={90}
+                rotation={0}
+                fill="rgba(255,255,255,0.10)"
+                stroke="rgba(255,255,255,0.45)"
+                strokeWidth={2}
+                listening={false}
+                perfectDrawEnabled={false}
+              />
+            )}
+
+            <Line
+              points={rel}
+              stroke={stroke}
+              strokeWidth={strokeWidth}
+              lineCap="round"
+              lineJoin="round"
               perfectDrawEnabled={false}
+              strokeScaleEnabled={false}
             />
-          )}
+          </Group>
 
-          <Line
-            points={rel}
-            stroke={stroke}
-            strokeWidth={strokeWidth}
-            lineCap="round"
-            lineJoin="round"
-            perfectDrawEnabled={false}
-            strokeScaleEnabled={false}
-          />
+          {/* ✅ Boutons : hors du Group rotaté => ils ne tournent plus */}
+          {isSelected &&
+            (() => {
+              const BTN_R = 16;
+              const GAP = 10;
+              const totalH = BTN_R * 2 * 2 + GAP;
+              const startY = -totalH / 2 + BTN_R;
+
+              const halfW = Math.max(Math.abs(rel[0]), Math.abs(rel[2]));
+              const xOff = halfW + 26;
+
+              return (
+                <ActionButtons
+                  xOff={xOff}
+                  startY={startY}
+                  onRotate={(e) => bumpRotate15ById(obj.id, e)}
+                  onDelete={(e) => removeObjectById(obj.id, e)}
+                />
+              );
+            })()}
         </Group>
       );
     }
@@ -971,12 +1431,22 @@ export default function RoomEditorComponent({
           x={x}
           y={y}
           draggable
-          onClick={onClick}
-          onTap={onClick}
+          onDragStart={(e) => {
+            justDraggedRef.current = true;
+            e.target.moveToTop();
+            e.target.getLayer()?.batchDraw();
+          }}
+          onClick={() => {
+            setSelectedId(obj.id);
+            bringToFront(obj.id);
+          }}
+          onTap={() => {
+            setSelectedId(obj.id);
+            bringToFront(obj.id);
+          }}
           onDragEnd={(e) => {
             let { x, y } = e.target.position();
 
-            // ✅ snap centre sur 1/2 case (AVANT tu avais grid)
             x = Math.round(x / SNAP_UNIT) * SNAP_UNIT;
             y = Math.round(y / SNAP_UNIT) * SNAP_UNIT;
 
@@ -987,11 +1457,19 @@ export default function RoomEditorComponent({
 
             const best = findNearestFree(candidate, others, SNAP_UNIT, PAD);
 
-            setObjects((prev) =>
-              prev.map((o) =>
-                o.id === obj.id ? { ...o, x: best.x, y: best.y } : o,
-              ),
-            );
+            setObjects((prev) => {
+              const idx = prev.findIndex(
+                (o) => String(o.id) === String(obj.id),
+              );
+              if (idx < 0) return prev;
+
+              const updated = { ...prev[idx], x: best.x, y: best.y };
+
+              const next = prev.slice();
+              next.splice(idx, 1);
+              next.push(updated);
+              return next;
+            });
           }}
         >
           <Group rotation={Number(obj.rotation || 0)}>
@@ -1140,9 +1618,25 @@ export default function RoomEditorComponent({
                 </>
               );
             })()}
-
-            {/* ⚠️ label pour plant/parasol : si tu en veux aussi, dis-moi, là je l’ai laissé dans le default seulement */}
           </Group>
+          {isSelected &&
+            (() => {
+              const BTN_R = 16;
+              const GAP = 10;
+              const totalH = BTN_R * 2 * 2 + GAP;
+              const startY = -totalH / 2 + BTN_R;
+
+              const xOff = r + 26; // cercle centré
+
+              return (
+                <ActionButtons
+                  xOff={xOff}
+                  startY={startY}
+                  onRotate={(e) => bumpRotate15ById(obj.id, e)}
+                  onDelete={(e) => removeObjectById(obj.id, e)}
+                />
+              );
+            })()}
         </Group>
       );
     }
@@ -1166,8 +1660,19 @@ export default function RoomEditorComponent({
         x={x}
         y={y}
         draggable
-        onClick={onClick}
-        onTap={onClick}
+        onDragStart={(e) => {
+          justDraggedRef.current = true;
+          e.target.moveToTop();
+          e.target.getLayer()?.batchDraw();
+        }}
+        onClick={() => {
+          setSelectedId(obj.id);
+          bringToFront(obj.id);
+        }}
+        onTap={() => {
+          setSelectedId(obj.id);
+          bringToFront(obj.id);
+        }}
         onDragEnd={(e) => {
           const nx = e.target.x();
           const ny = e.target.y();
@@ -1179,11 +1684,17 @@ export default function RoomEditorComponent({
 
           const best = findNearestFree(candidate, others, SNAP_UNIT, PAD);
 
-          setObjects((prev) =>
-            prev.map((o) =>
-              o.id === obj.id ? { ...o, x: best.x, y: best.y } : o,
-            ),
-          );
+          setObjects((prev) => {
+            const idx = prev.findIndex((o) => String(o.id) === String(obj.id));
+            if (idx < 0) return prev;
+
+            const updated = { ...prev[idx], x: best.x, y: best.y };
+
+            const next = prev.slice();
+            next.splice(idx, 1);
+            next.push(updated);
+            return next;
+          });
         }}
       >
         <Group
@@ -1289,6 +1800,24 @@ export default function RoomEditorComponent({
             />
           ) : null}
         </Group>
+        {isSelected &&
+          (() => {
+            const BTN_R = 16;
+            const GAP = 10;
+            const totalH = BTN_R * 2 * 2 + GAP;
+            const startY = h / 2 - totalH / 2 + BTN_R;
+
+            const xOff = w + 26;
+
+            return (
+              <ActionButtons
+                xOff={xOff}
+                startY={startY}
+                onRotate={(e) => bumpRotate15ById(obj.id, e)}
+                onDelete={(e) => removeObjectById(obj.id, e)}
+              />
+            );
+          })()}
       </Group>
     );
   }
@@ -1310,43 +1839,73 @@ export default function RoomEditorComponent({
           {/* Tables */}
           <select
             value={selectedRefId}
-            onChange={(e) => setSelectedRefId(e.target.value)}
-            className="h-10 rounded-2xl border border-darkBlue/10 bg-white/80 px-3 text-sm outline-none"
+            disabled={availableTables.length === 0}
+            onChange={(e) => {
+              const id = e.target.value;
+              setSelectedRefId(id);
+
+              const ref = availableTables.find(
+                (t) => String(t._id) === String(id),
+              );
+              if (ref) addTableInstanceFromRef(ref);
+
+              // ✅ reset pour pouvoir en ajouter plusieurs rapidement
+              setTimeout(() => setSelectedRefId(""), 0);
+            }}
+            className="h-10 rounded-2xl border border-darkBlue/10 bg-white/80 px-3 text-sm outline-none disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {catalog.map((t) => (
-              <option key={String(t._id)} value={String(t._id)}>
-                {t.name} • {t.seats}p
-              </option>
-            ))}
+            {availableTables.length === 0 ? (
+              <option value="">Toutes les tables sont déjà placées</option>
+            ) : (
+              <>
+                <option value="" disabled>
+                  Sélectionnez une table
+                </option>
+
+                {availableTables.map((t) => (
+                  <option key={String(t._id)} value={String(t._id)}>
+                    {t.name} • {t.seats} pers.
+                  </option>
+                ))}
+              </>
+            )}
           </select>
 
           <button
             type="button"
-            onClick={addTableInstance}
-            disabled={!selectedRefId || catalog.length === 0}
-            className="inline-flex items-center gap-2 rounded-2xl bg-blue text-white px-4 h-10 text-sm font-semibold hover:bg-blue/90 active:scale-[0.98] transition disabled:opacity-40"
+            onClick={() => {
+              setNewTableName("");
+              setNewTableSeats("2");
+              setCreateTableOpen(true);
+            }}
+            className="inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/80 px-4 h-10 text-sm font-semibold text-darkBlue hover:bg-darkBlue/5 transition"
           >
-            <Plus className="size-4" />
-            Ajouter table
+            <Plus className="size-4 text-darkBlue/60" />
+            Nouvelle table
           </button>
+
+          {selectedObj?.type === "table" && (
+            <button
+              type="button"
+              onClick={() => {
+                setDeleteCatalogError("");
+                setDeleteCatalogOpen(true);
+              }}
+              className="inline-flex items-center gap-2 rounded-2xl border border-red/20 bg-white/80 px-4 h-10 text-sm font-semibold text-red hover:bg-red/5 transition"
+              title="Supprimer du catalogue"
+            >
+              <Trash2 className="size-4" />
+              Supprimer du catalogue
+            </button>
+          )}
 
           <button
             type="button"
             onClick={() => setDecorModalOpen(true)}
-            className="inline-flex items-center gap-2 rounded-2xl bg-darkBlue text-white px-4 h-10 text-sm font-semibold hover:opacity-90 active:scale-[0.98] transition"
+            className="inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/80 px-4 h-10 text-sm font-semibold text-darkBlue hover:bg-darkBlue/5 transition"
           >
             <Plus className="size-4" />
             Ajouter un élément
-          </button>
-
-          <button
-            type="button"
-            onClick={deleteSelected}
-            disabled={!selectedId}
-            className="inline-flex items-center gap-2 rounded-2xl bg-red text-white px-4 h-10 text-sm font-semibold hover:opacity-90 transition disabled:opacity-40"
-          >
-            <Trash2 className="size-4" />
-            Supprimer
           </button>
 
           <button
@@ -1358,61 +1917,6 @@ export default function RoomEditorComponent({
           >
             <RotateCcw className="size-4 text-darkBlue/70" />
           </button>
-
-          {canRotate && (
-            <div className="flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-3 h-10">
-              <span className="text-xs text-darkBlue/60">Rotation</span>
-
-              <button
-                type="button"
-                onClick={() => {
-                  const next = Number(selectedObj.rotation || 0) - 15;
-                  updateSelected({ rotation: next });
-                  setRotationInput(String(Math.round(next)));
-                }}
-                className="h-8 w-8 rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition"
-                title="-15°"
-              >
-                −
-              </button>
-
-              <input
-                type="number"
-                value={rotationInput}
-                onChange={(e) => {
-                  setRotationInput(e.target.value);
-                  applyRotation(e.target.value);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") e.currentTarget.blur();
-                }}
-                onBlur={() => {
-                  let n = Number(rotationInput);
-                  if (!Number.isFinite(n)) n = 0;
-                  n = ((n % 360) + 360) % 360;
-                  updateSelected({ rotation: n });
-                  setRotationInput(String(Math.round(n)));
-                }}
-                className="w-20 h-8 rounded-xl border border-darkBlue/10 bg-white px-2 text-sm outline-none text-center"
-                placeholder="0"
-              />
-
-              <button
-                type="button"
-                onClick={() => {
-                  const next = Number(selectedObj.rotation || 0) + 15;
-                  updateSelected({ rotation: next });
-                  setRotationInput(String(Math.round(next)));
-                }}
-                className="h-8 w-8 rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition"
-                title="+15°"
-              >
-                +
-              </button>
-
-              <span className="text-xs text-darkBlue/50">°</span>
-            </div>
-          )}
         </div>
       </div>
 
@@ -1451,6 +1955,158 @@ export default function RoomEditorComponent({
         </Stage>
       </div>
 
+      {createTableOpen && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-end mobile:items-center justify-center bg-black/40 p-3"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setCreateTableOpen(false);
+          }}
+        >
+          <div className="w-full max-w-[520px] rounded-3xl border border-darkBlue/10 bg-lightGrey shadow-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-darkBlue/10">
+              <div className="min-w-0">
+                <p className="text-base font-semibold text-darkBlue">
+                  Nouvelle table
+                </p>
+                <p className="text-xs text-darkBlue/60">
+                  Créez une table, elle sera placée automatiquement au centre du
+                  plan.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setCreateTableOpen(false)}
+                className="inline-flex items-center justify-center size-10 rounded-2xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition"
+                aria-label="Fermer"
+              >
+                <X className="size-4 text-darkBlue/70" />
+              </button>
+            </div>
+
+            <div className="p-4">
+              <div className="grid grid-cols-1 mobile:grid-cols-2 gap-3">
+                <input
+                  ref={newTableNameRef}
+                  type="text"
+                  value={newTableName}
+                  onChange={(e) => setNewTableName(e.target.value)}
+                  placeholder="Nom / n° table (ex: 10)"
+                  className="h-11 rounded-2xl border border-darkBlue/10 bg-white/80 px-4 text-base outline-none focus:border-blue/60 focus:ring-2 focus:ring-blue/20"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") createConfiguredTableAndPlace();
+                  }}
+                />
+
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  value={newTableSeats}
+                  onChange={(e) => setNewTableSeats(e.target.value)}
+                  placeholder="Places"
+                  className="h-11 rounded-2xl border border-darkBlue/10 bg-white/80 px-4 text-base outline-none focus:border-blue/60 focus:ring-2 focus:ring-blue/20 text-center"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") createConfiguredTableAndPlace();
+                  }}
+                />
+              </div>
+
+              {createTableError && (
+                <p className="mt-3 text-sm text-red">{createTableError}</p>
+              )}
+
+              <div className="mt-4 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCreateTableOpen(false)}
+                  className="inline-flex items-center justify-center rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition px-4 h-11 text-sm font-semibold text-darkBlue"
+                >
+                  Annuler
+                </button>
+
+                <button
+                  type="button"
+                  onClick={createConfiguredTableAndPlace}
+                  disabled={createTableLoading}
+                  className="inline-flex items-center justify-center rounded-2xl bg-blue text-white px-4 h-11 text-sm font-semibold hover:bg-blue/90 active:scale-[0.98] transition disabled:opacity-50"
+                >
+                  {createTableLoading ? "Création…" : "Créer & placer"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteCatalogOpen && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-end mobile:items-center justify-center bg-black/40 p-3"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setDeleteCatalogOpen(false);
+          }}
+        >
+          <div className="w-full max-w-[560px] rounded-3xl border border-darkBlue/10 bg-lightGrey shadow-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-darkBlue/10">
+              <div className="min-w-0">
+                <p className="text-base font-semibold text-darkBlue">
+                  Supprimer du catalogue
+                </p>
+                <p className="text-xs text-darkBlue/60">
+                  Cette action supprime définitivement la table{" "}
+                  <span className="font-semibold text-darkBlue">
+                    {activeCatalogTable?.name
+                      ? `"${activeCatalogTable.name}"`
+                      : ""}
+                  </span>{" "}
+                  du catalogue.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setDeleteCatalogOpen(false)}
+                className="inline-flex items-center justify-center size-10 rounded-2xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition"
+                aria-label="Fermer"
+              >
+                <X className="size-4 text-darkBlue/70" />
+              </button>
+            </div>
+
+            <div className="p-4">
+              <div className="rounded-2xl border border-orange/30 bg-orange/10 px-4 py-3 text-sm text-darkBlue/80">
+                Le table déjà placée sur le plan sera supprimée automatiquement.
+              </div>
+
+              {deleteCatalogError && (
+                <p className="mt-3 text-sm text-red">{deleteCatalogError}</p>
+              )}
+
+              <div className="mt-4 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDeleteCatalogOpen(false)}
+                  className="inline-flex items-center justify-center rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition px-4 h-11 text-sm font-semibold text-darkBlue"
+                >
+                  Annuler
+                </button>
+
+                <button
+                  type="button"
+                  onClick={deleteTableFromCatalog}
+                  disabled={deleteCatalogLoading || !activeCatalogId}
+                  className="inline-flex items-center justify-center rounded-2xl bg-red text-white px-4 h-11 text-sm font-semibold hover:opacity-90 active:scale-[0.98] transition disabled:opacity-50"
+                >
+                  {deleteCatalogLoading
+                    ? "Suppression…"
+                    : "Supprimer définitivement"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Decor Modal */}
       {decorModalOpen && (
         <div
@@ -1459,7 +2115,7 @@ export default function RoomEditorComponent({
             if (e.target === e.currentTarget) setDecorModalOpen(false);
           }}
         >
-          <div className="w-full max-w-[720px] rounded-3xl border border-darkBlue/10 bg-white/95 shadow-xl overflow-hidden">
+          <div className="w-full max-w-[720px] rounded-3xl border border-darkBlue/10 bg-lightGrey shadow-xl overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-darkBlue/10">
               <div className="min-w-0">
                 <p className="text-base font-semibold text-darkBlue">
@@ -1492,10 +2148,7 @@ export default function RoomEditorComponent({
                     label="Mur / cloison"
                     onClick={() => addDecor("wall")}
                   />
-                  <ItemBtn
-                    label="Cloison fine"
-                    onClick={() => addDecor("partition")}
-                  />
+
                   <ItemBtn
                     label="Porte / entrée"
                     onClick={() => addDecor("door")}
@@ -1509,6 +2162,7 @@ export default function RoomEditorComponent({
                     onClick={() => addDecor("kitchen")}
                   />
                   <ItemBtn label="Fenêtre" onClick={() => addDecor("window")} />
+                  <ItemBtn label="Toilettes" onClick={() => addDecor("wc")} />
                 </div>
               </div>
 
@@ -1558,7 +2212,6 @@ export default function RoomEditorComponent({
                     label="Décoration générique"
                     onClick={() => addDecor("decor")}
                   />
-                  <ItemBtn label="Toilettes" onClick={() => addDecor("wc")} />
                 </div>
               </div>
             </div>
@@ -1575,15 +2228,6 @@ export default function RoomEditorComponent({
           </div>
         </div>
       )}
-
-      <button
-        type="button"
-        onClick={saveRoom}
-        className="inline-flex items-center gap-2 rounded-2xl bg-darkBlue text-white px-4 h-10 text-sm font-semibold hover:opacity-90 transition mt-2"
-      >
-        <Save className="size-4" />
-        Enregistrer
-      </button>
     </div>
   );
 }

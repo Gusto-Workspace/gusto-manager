@@ -165,6 +165,9 @@ router.put(
 
       const room =
         restaurant.reservations.parameters.floorplan.rooms.id(roomId);
+      if (req.body?.name !== undefined) {
+        room.name = safeString(req.body.name, room.name);
+      }
       if (!room) return res.status(404).json({ message: "Salle introuvable." });
 
       // canvas
@@ -361,6 +364,169 @@ router.delete(
       });
     } catch (e) {
       return res.status(500).json({ message: "Erreur serveur (DELETE room)." });
+    }
+  },
+);
+
+/** ========================= DELETE TABLE FROM CATALOG (AND ROOMS) =========================
+ *  Supprime une table du catalogue + retire toutes ses instances des plans (toutes les rooms).
+ */
+router.delete(
+  "/restaurants/:restaurantId/floorplans/catalog/tables/:tableId",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { restaurantId, tableId } = req.params;
+      const ownerId = req.user?.id;
+
+      if (!ownerId) return res.status(403).json({ message: "Unauthorized." });
+      if (String(req.user?.restaurantId) !== String(restaurantId)) {
+        return res.status(403).json({ message: "Restaurant mismatch" });
+      }
+      if (!isObjectId(restaurantId) || !isObjectId(tableId)) {
+        return res
+          .status(400)
+          .json({ message: "restaurantId/tableId invalide." });
+      }
+
+      const restaurant = await findRestaurantForOwner({
+        restaurantId,
+        ownerId,
+      });
+      if (!restaurant)
+        return res.status(404).json({ message: "Restaurant introuvable." });
+
+      ensureFloorplan(restaurant);
+
+      const tables = restaurant?.reservations?.parameters?.tables || [];
+      const beforeLen = tables.length;
+
+      // 1) Supprimer du catalogue
+      restaurant.reservations.parameters.tables = tables.filter(
+        (t) => String(t._id) !== String(tableId),
+      );
+
+      if (restaurant.reservations.parameters.tables.length === beforeLen) {
+        return res
+          .status(404)
+          .json({ message: "Table introuvable dans le catalogue." });
+      }
+
+      // 2) Nettoyer toutes les rooms (retirer les instances)
+      const rooms = getRooms(restaurant);
+      let removedInstances = 0;
+
+      for (const room of rooms) {
+        const prev = Array.isArray(room.objects) ? room.objects : [];
+        const next = prev.filter(
+          (o) =>
+            !(
+              o?.type === "table" &&
+              String(o.tableRefId || "") === String(tableId)
+            ),
+        );
+        removedInstances += prev.length - next.length;
+        room.objects = next;
+      }
+
+      // bump version
+      restaurant.reservations.parameters.floorplan.version =
+        Number(restaurant.reservations.parameters.floorplan.version || 1) + 1;
+
+      // important: marquer modifs
+      restaurant.markModified("reservations.parameters.tables");
+      restaurant.markModified("reservations.parameters.floorplan.rooms");
+
+      await restaurant.save();
+
+      return res.json({
+        tables: restaurant.reservations.parameters.tables || [],
+        rooms: getRooms(restaurant),
+        removedInstances,
+        enabled: Boolean(restaurant.reservations.parameters.floorplan.enabled),
+        version: Number(
+          restaurant.reservations.parameters.floorplan.version || 1,
+        ),
+      });
+    } catch (e) {
+      return res.status(500).json({
+        message: "Erreur serveur (DELETE catalog table).",
+      });
+    }
+  },
+);
+
+// ✅ ADD TABLE TO CATALOG (safe: preserve existing _id)
+router.post(
+  "/restaurants/:restaurantId/floorplans/catalog/tables",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { restaurantId } = req.params;
+      const ownerId = req.user?.id;
+
+      if (!ownerId) return res.status(403).json({ message: "Unauthorized." });
+      if (String(req.user?.restaurantId) !== String(restaurantId)) {
+        return res.status(403).json({ message: "Restaurant mismatch" });
+      }
+
+      const restaurant = await findRestaurantForOwner({
+        restaurantId,
+        ownerId,
+      });
+      if (!restaurant) {
+        return res.status(404).json({ message: "Restaurant introuvable." });
+      }
+
+      ensureFloorplan(restaurant);
+
+      if (!restaurant.reservations) restaurant.reservations = {};
+      if (!restaurant.reservations.parameters)
+        restaurant.reservations.parameters = {};
+      if (!Array.isArray(restaurant.reservations.parameters.tables)) {
+        restaurant.reservations.parameters.tables = [];
+      }
+
+      const name = String(req.body?.name || "").trim();
+      const seats = Number(req.body?.seats);
+
+      if (!name) return res.status(400).json({ message: "Nom obligatoire." });
+      if (!Number.isFinite(seats) || seats < 1) {
+        return res.status(400).json({ message: "Places invalides." });
+      }
+
+      // anti-doublon case-insensitive
+      const exists = restaurant.reservations.parameters.tables.some(
+        (t) =>
+          String(t?.name || "")
+            .trim()
+            .toLowerCase() === name.toLowerCase(),
+      );
+      if (exists) {
+        return res
+          .status(409)
+          .json({ message: "Une table avec ce nom existe déjà." });
+      }
+
+      restaurant.reservations.parameters.tables.push({ name, seats });
+
+      restaurant.markModified("reservations.parameters.tables");
+      await restaurant.save();
+
+      const tables = restaurant.reservations.parameters.tables || [];
+      const created =
+        [...tables].reverse().find(
+          (t) =>
+            String(t?.name || "")
+              .trim()
+              .toLowerCase() === name.toLowerCase(),
+        ) || null;
+
+      return res.json({ tables, created });
+    } catch (e) {
+      return res
+        .status(500)
+        .json({ message: "Erreur serveur (POST catalog table)." });
     }
   },
 );

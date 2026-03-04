@@ -25,6 +25,7 @@ import HoursParametersComponent from "./parameters/hours.parameters.component";
 import SlotsParametersComponent from "./parameters/slots.parameters.component";
 import AutomationsParametersComponent from "./parameters/automations.parameters.component";
 import SmartParametersComponent from "./parameters/smart.parameters.component";
+import FloorPlanParametersComponent from "./parameters/floor-plan.parameters.component";
 
 // Helpers
 const statusLabel = (status) => {
@@ -92,17 +93,7 @@ export default function ParametersReservationComponent(props) {
       // ✅ Durée d’occupation (sert aussi à l’auto-finish)
       table_occupancy_lunch_minutes: "",
       table_occupancy_dinner_minutes: "",
-
-      tables: [
-        { name: "", seats: "" },
-        { name: "", seats: "" },
-      ],
     },
-  });
-
-  const { fields, append, remove } = useFieldArray({
-    control,
-    name: "tables",
   });
 
   const [reservationHours, setReservationHours] = useState([]);
@@ -113,9 +104,10 @@ export default function ParametersReservationComponent(props) {
   const [manualToFixLoading, setManualToFixLoading] = useState(false);
   const [manualToFixError, setManualToFixError] = useState("");
 
+  const [tablesCatalog, setTablesCatalog] = useState([]);
+
   // UX errors (pas RHF)
   const [submitted, setSubmitted] = useState(false);
-  const [tableErrors, setTableErrors] = useState({});
   const [durationError, setDurationError] = useState({
     lunch: false,
     dinner: false,
@@ -192,26 +184,13 @@ export default function ParametersReservationComponent(props) {
 
         table_occupancy_lunch_minutes: nextLunch,
         table_occupancy_dinner_minutes: nextDinner,
-
-        tables: parameters.tables?.length
-          ? parameters.tables.map((tt) => ({
-              name: tt?.name ?? "",
-              seats:
-                tt?.seats === 0 || tt?.seats === null || tt?.seats === undefined
-                  ? ""
-                  : String(tt.seats),
-            }))
-          : [
-              { name: "", seats: "" },
-              { name: "", seats: "" },
-            ],
       });
 
       setReservationHours(parameters.reservation_hours || []);
       setIsLoading(false);
       setSubmitted(false);
-      setTableErrors({});
       setDurationError({ lunch: false, dinner: false });
+      setTablesCatalog(parameters.tables || []);
     }
   }, [restaurantContext.restaurantData?._id, reset]);
 
@@ -219,20 +198,9 @@ export default function ParametersReservationComponent(props) {
   const manage_disponibilities = watch("manage_disponibilities");
   const deletion_duration = watch("deletion_duration");
   const auto_finish_reservations = watch("auto_finish_reservations");
-  const tablesWatch = watch("tables");
   const auto_accept = watch("auto_accept");
 
   const subtitle = t("reservations:buttons.parameters", "Paramètres");
-
-  const tablesCount = useMemo(() => {
-    const raw = Array.isArray(tablesWatch) ? tablesWatch : [];
-    return raw.filter((r) => {
-      const name = (r?.name || "").trim();
-      const seatsEmpty =
-        r?.seats === "" || r?.seats === null || r?.seats === undefined;
-      return !(name === "" && seatsEmpty);
-    }).length;
-  }, [tablesWatch]);
 
   // Pré-remplissage métier si vide (dès qu’on active soit auto-finish, soit gestion intelligente)
   useEffect(() => {
@@ -250,101 +218,12 @@ export default function ParametersReservationComponent(props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auto_finish_reservations, manage_disponibilities]);
 
-  // Quand on active la gestion intelligente: s'assurer d'avoir 2 lignes
-  useEffect(() => {
-    if (manage_disponibilities) {
-      const hasAnyRow = Array.isArray(tablesWatch) && tablesWatch.length > 0;
-      if (!hasAnyRow) {
-        append({ name: "", seats: "" });
-        append({ name: "", seats: "" });
-      }
-    } else {
-      setSubmitted(false);
-      setTableErrors({});
-      setDurationError({ lunch: false, dinner: false });
-      setManualTablesNeedingAssignment(0);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [manage_disponibilities]);
-
-  // Recalcule les erreurs visuelles des lignes si on a déjà tenté de soumettre
-  useEffect(() => {
-    if (!submitted) return;
-
-    const nextErrors = {};
-    (tablesWatch || []).forEach((row, i) => {
-      const name = (row?.name || "").trim();
-      const seatsRaw = row?.seats;
-      const seatsEmpty =
-        seatsRaw === "" || seatsRaw === null || seatsRaw === undefined;
-
-      const nameEmpty = name === "";
-      const bothEmpty = nameEmpty && seatsEmpty;
-      if (bothEmpty) return;
-
-      if (nameEmpty || seatsEmpty) {
-        nextErrors[i] = { name: nameEmpty, seats: seatsEmpty };
-      }
-    });
-
-    setTableErrors(nextErrors);
-  }, [tablesWatch, submitted]);
-
   function handleBack() {
     router.push("/dashboard/reservations");
   }
 
-  function handleAddTable() {
-    append({ name: "", seats: "" });
-  }
-
-  function handleRemoveTable(i) {
-    remove(i);
-  }
-
   async function onSubmit(data) {
     setSubmitted(true);
-
-    // --------------------
-    // ✅ Tables validation (seulement si gestion intelligente)
-    // --------------------
-    const rawTables = Array.isArray(data.tables) ? data.tables : [];
-
-    const sanitizedTables = rawTables
-      .map((row) => ({
-        name: (row?.name || "").trim(),
-        seatsRaw: row?.seats,
-      }))
-      .filter(
-        (r) => !(r.name === "" && (r.seatsRaw === "" || r.seatsRaw == null)),
-      )
-      .map((r) => ({
-        name: r.name,
-        seats:
-          r.seatsRaw === "" || r.seatsRaw == null
-            ? null
-            : Number.parseInt(r.seatsRaw, 10),
-      }));
-
-    if (manage_disponibilities) {
-      const partialErrors = {};
-      rawTables.forEach((row, i) => {
-        const name = (row?.name || "").trim();
-        const seatsEmpty =
-          row?.seats === "" || row?.seats === null || row?.seats === undefined;
-        const nameEmpty = name === "";
-        const bothEmpty = nameEmpty && seatsEmpty;
-
-        if (!bothEmpty && (nameEmpty || seatsEmpty)) {
-          partialErrors[i] = { name: nameEmpty, seats: seatsEmpty };
-        }
-      });
-
-      if (Object.keys(partialErrors).length > 0) {
-        setTableErrors(partialErrors);
-        return;
-      }
-    }
 
     // --------------------
     // ✅ Durées (midi/soir)
@@ -399,7 +278,9 @@ export default function ParametersReservationComponent(props) {
     const manageNext = Boolean(data.manage_disponibilities);
 
     const tablesToSave = manageNext
-      ? sanitizedTables.map((tt) => ({ name: tt.name, seats: tt.seats }))
+      ? Array.isArray(tablesCatalog)
+        ? tablesCatalog
+        : []
       : currentParams.tables || [];
 
     const formData = {
@@ -592,18 +473,17 @@ export default function ParametersReservationComponent(props) {
           manualToFixError={manualToFixError}
           manualToFix={manualToFix}
           fetchManualTablesToFix={fetchManualTablesToFix}
-          fields={fields}
-          tablesCount={tablesCount}
-          tableErrors={tableErrors}
-          handleAddTable={handleAddTable}
-          handleRemoveTable={handleRemoveTable}
           fmtShortFR={fmtShortFR}
           statusLabel={statusLabel}
-          restaurantId={restaurantContext?.restaurantData?._id}
-          tablesCatalog={
-            restaurantContext?.restaurantData?.reservations?.parameters
-              ?.tables || []
-          }
+          restaurantId={props.restaurantData?._id}
+        />
+
+        <FloorPlanParametersComponent
+          restaurantId={props.restaurantData?._id}
+          tablesCatalog={tablesCatalog}
+          onTablesCatalogUpdated={(nextTables) => {
+            setTablesCatalog(Array.isArray(nextTables) ? nextTables : []);
+          }}
         />
 
         {/* --- Actions --- */}
