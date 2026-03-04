@@ -1,4 +1,4 @@
-import { useContext, useState, useEffect, useMemo } from "react";
+import { useContext, useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/router";
 
 // CONTEXT
@@ -11,7 +11,7 @@ import { useTranslation } from "next-i18next";
 import { ReservationSvg } from "../../_shared/_svgs/reservation.svg";
 
 // REACT HOOK FORM
-import { useForm, useFieldArray } from "react-hook-form";
+import { useForm } from "react-hook-form";
 
 // ICONS
 import { Loader2, X, ChevronLeft } from "lucide-react";
@@ -57,6 +57,18 @@ function fmtShortFR(date) {
   });
 }
 
+function shallowEqual(a, b) {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const ak = Object.keys(a);
+  const bk = Object.keys(b);
+  if (ak.length !== bk.length) return false;
+  for (const k of ak) {
+    if (String(a[k]) !== String(b[k])) return false;
+  }
+  return true;
+}
+
 export default function ParametersReservationComponent(props) {
   const { t } = useTranslation(["reservations", "restaurant"]);
   const { restaurantContext } = useContext(GlobalContext);
@@ -64,7 +76,6 @@ export default function ParametersReservationComponent(props) {
 
   const {
     register,
-    handleSubmit,
     watch,
     setValue,
     setFocus,
@@ -90,7 +101,7 @@ export default function ParametersReservationComponent(props) {
       // Gestion intelligente
       manage_disponibilities: false,
 
-      // ✅ Durée d’occupation (sert aussi à l’auto-finish)
+      // Durée d’occupation
       table_occupancy_lunch_minutes: "",
       table_occupancy_dinner_minutes: "",
     },
@@ -104,10 +115,17 @@ export default function ParametersReservationComponent(props) {
   const [manualToFixLoading, setManualToFixLoading] = useState(false);
   const [manualToFixError, setManualToFixError] = useState("");
 
+  const [
+    unassignedReservationsNeedingAssignment,
+    setUnassignedReservationsNeedingAssignment,
+  ] = useState(0);
+  const [unassignedToFix, setUnassignedToFix] = useState([]);
+  const [unassignedToFixLoading, setUnassignedToFixLoading] = useState(false);
+  const [unassignedToFixError, setUnassignedToFixError] = useState("");
+
   const [tablesCatalog, setTablesCatalog] = useState([]);
 
   // UX errors (pas RHF)
-  const [submitted, setSubmitted] = useState(false);
   const [durationError, setDurationError] = useState({
     lunch: false,
     dinner: false,
@@ -146,6 +164,84 @@ export default function ParametersReservationComponent(props) {
       setManualToFixLoading(false);
     }
   }
+
+  async function fetchUnassignedTablesToFix() {
+    try {
+      setUnassignedToFixLoading(true);
+      setUnassignedToFixError("");
+
+      const token = localStorage.getItem("token");
+      const restaurantId = props.restaurantData?._id;
+      if (!restaurantId) return;
+
+      const res = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/reservations/unassigned-tables`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+
+      setUnassignedToFix(
+        Array.isArray(res.data?.reservations) ? res.data.reservations : [],
+      );
+    } catch (e) {
+      console.error("Error fetching unassigned tables to fix:", e);
+      setUnassignedToFixError(
+        e?.response?.data?.message ||
+          "Impossible de récupérer la liste des réservations sans table.",
+      );
+    } finally {
+      setUnassignedToFixLoading(false);
+    }
+  }
+
+  // -----------------------------
+  // ✅ “Save per section” state
+  // -----------------------------
+  const initialSnapRef = useRef({
+    hours: null,
+    slots: null,
+    automations: null,
+    smart: null,
+  });
+
+  const [sectionUI, setSectionUI] = useState({
+    hours: { dirty: false, saving: false, saved: false },
+    slots: { dirty: false, saving: false, saved: false },
+    automations: { dirty: false, saving: false, saved: false },
+    smart: { dirty: false, saving: false, saved: false },
+  });
+
+  const markSectionDirty = (key, nextDirty) => {
+    setSectionUI((prev) => {
+      const p = prev[key] || { dirty: false, saving: false, saved: false };
+      const dirty = Boolean(nextDirty);
+
+      // si ça redevient clean, on enlève saved aussi
+      if (!dirty) {
+        return { ...prev, [key]: { ...p, dirty: false, saved: false } };
+      }
+
+      // si on devient dirty, on enlève "saved"
+      return { ...prev, [key]: { ...p, dirty: true, saved: false } };
+    });
+  };
+
+  const setSaving = (key, saving) => {
+    setSectionUI((prev) => ({
+      ...prev,
+      [key]: { ...prev[key], saving: Boolean(saving) },
+    }));
+  };
+
+  const setSaved = (key, saved) => {
+    setSectionUI((prev) => ({
+      ...prev,
+      [key]: {
+        ...prev[key],
+        saved: Boolean(saved),
+        dirty: saved ? false : prev[key].dirty,
+      },
+    }));
+  };
 
   // Init depuis le contexte
   useEffect(() => {
@@ -188,21 +284,120 @@ export default function ParametersReservationComponent(props) {
 
       setReservationHours(parameters.reservation_hours || []);
       setIsLoading(false);
-      setSubmitted(false);
       setDurationError({ lunch: false, dinner: false });
       setTablesCatalog(parameters.tables || []);
+
+      // Snapshot initial par section (utilisé pour détecter dirty)
+      const snap = {
+        hours: {
+          same_hours_as_restaurant: parameters.same_hours_as_restaurant ?? true,
+        },
+        slots: {
+          auto_accept: parameters.auto_accept ?? true,
+          interval: String(parameters.interval ?? "30"),
+          pending_duration_minutes: parameters.pending_duration_minutes ?? 120,
+        },
+        automations: {
+          auto_finish_reservations: nextAutoFinishEnabled,
+          deletion_duration: parameters.deletion_duration ?? false,
+          deletion_duration_minutes:
+            parameters.deletion_duration_minutes ?? 1440,
+          table_occupancy_lunch_minutes: nextLunch,
+          table_occupancy_dinner_minutes: nextDinner,
+        },
+        smart: {
+          manage_disponibilities: parameters.manage_disponibilities ?? false,
+        },
+      };
+      initialSnapRef.current = snap;
+
+      // reset UI states
+      setSectionUI({
+        hours: { dirty: false, saving: false, saved: false },
+        slots: { dirty: false, saving: false, saved: false },
+        automations: { dirty: false, saving: false, saved: false },
+        smart: { dirty: false, saving: false, saved: false },
+      });
     }
   }, [restaurantContext.restaurantData?._id, reset]);
 
+  // Watch values (pour dirty detection)
   const same_hours_as_restaurant = watch("same_hours_as_restaurant");
   const manage_disponibilities = watch("manage_disponibilities");
   const deletion_duration = watch("deletion_duration");
   const auto_finish_reservations = watch("auto_finish_reservations");
   const auto_accept = watch("auto_accept");
 
+  const interval = watch("interval");
+  const pending_duration_minutes = watch("pending_duration_minutes");
+  const deletion_duration_minutes = watch("deletion_duration_minutes");
+  const table_occupancy_lunch_minutes = watch("table_occupancy_lunch_minutes");
+  const table_occupancy_dinner_minutes = watch(
+    "table_occupancy_dinner_minutes",
+  );
+
+  // Detect dirty per section
+  useEffect(() => {
+    const snap = initialSnapRef.current?.hours;
+    if (!snap) return;
+
+    const next = {
+      same_hours_as_restaurant: Boolean(same_hours_as_restaurant),
+    };
+    markSectionDirty("hours", !shallowEqual(snap, next));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [same_hours_as_restaurant]);
+
+  useEffect(() => {
+    const snap = initialSnapRef.current?.slots;
+    if (!snap) return;
+
+    const next = {
+      auto_accept: Boolean(auto_accept),
+      interval: String(interval ?? ""),
+      pending_duration_minutes: Number(pending_duration_minutes ?? 0),
+    };
+    markSectionDirty("slots", !shallowEqual(snap, next));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auto_accept, interval, pending_duration_minutes]);
+
+  useEffect(() => {
+    const snap = initialSnapRef.current?.automations;
+    if (!snap) return;
+
+    const next = {
+      auto_finish_reservations: Boolean(auto_finish_reservations),
+      deletion_duration: Boolean(deletion_duration),
+      deletion_duration_minutes: Number(deletion_duration_minutes ?? 0),
+      table_occupancy_lunch_minutes: String(
+        table_occupancy_lunch_minutes ?? "",
+      ),
+      table_occupancy_dinner_minutes: String(
+        table_occupancy_dinner_minutes ?? "",
+      ),
+    };
+    markSectionDirty("automations", !shallowEqual(snap, next));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    auto_finish_reservations,
+    deletion_duration,
+    deletion_duration_minutes,
+    table_occupancy_lunch_minutes,
+    table_occupancy_dinner_minutes,
+  ]);
+
+  useEffect(() => {
+    const snap = initialSnapRef.current?.smart;
+    if (!snap) return;
+
+    const next = { manage_disponibilities: Boolean(manage_disponibilities) };
+    markSectionDirty("smart", !shallowEqual(snap, next));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manage_disponibilities]);
+
   const subtitle = t("reservations:buttons.parameters", "Paramètres");
 
-  // Pré-remplissage métier si vide (dès qu’on active soit auto-finish, soit gestion intelligente)
+  // Pré-remplissage métier si vide
   useEffect(() => {
     const lunch = (watch("table_occupancy_lunch_minutes") ?? "").toString();
     const dinner = (watch("table_occupancy_dinner_minutes") ?? "").toString();
@@ -222,125 +417,177 @@ export default function ParametersReservationComponent(props) {
     router.push("/dashboard/reservations");
   }
 
-  async function onSubmit(data) {
-    setSubmitted(true);
-
-    // --------------------
-    // ✅ Durées (midi/soir)
-    // --------------------
-    let lunch = (data.table_occupancy_lunch_minutes ?? "").toString().trim();
-    let dinner = (data.table_occupancy_dinner_minutes ?? "").toString().trim();
-
-    const lunchHas = lunch !== "" && Number(lunch) >= 1;
-    const dinnerHas = dinner !== "" && Number(dinner) >= 1;
-
-    const mustHaveDurations = Boolean(
-      auto_finish_reservations || manage_disponibilities,
-    );
-
-    const shouldStoreDurations = mustHaveDurations || (lunchHas && dinnerHas);
-
-    if (mustHaveDurations) {
-      const lunchMissing = !lunchHas;
-      const dinnerMissing = !dinnerHas;
-
-      if (lunchMissing || dinnerMissing) {
-        setDurationError({ lunch: lunchMissing, dinner: dinnerMissing });
-        setFocus(
-          lunchMissing
-            ? "table_occupancy_lunch_minutes"
-            : "table_occupancy_dinner_minutes",
-        );
-        return;
-      }
-
-      setDurationError({ lunch: false, dinner: false });
-    } else {
-      const bothEmpty = lunch === "" && dinner === "";
-      const bothFilled = lunchHas && dinnerHas;
-
-      if (!bothEmpty && !bothFilled) {
-        setDurationError({ lunch: !lunchHas, dinner: !dinnerHas });
-        setFocus(
-          !lunchHas
-            ? "table_occupancy_lunch_minutes"
-            : "table_occupancy_dinner_minutes",
-        );
-        return;
-      }
-
-      setDurationError({ lunch: false, dinner: false });
-    }
-
-    const currentParams =
-      restaurantContext?.restaurantData?.reservations?.parameters || {};
-
-    const manageNext = Boolean(data.manage_disponibilities);
-
-    const tablesToSave = manageNext
-      ? Array.isArray(tablesCatalog)
-        ? tablesCatalog
-        : []
-      : currentParams.tables || [];
-
-    const formData = {
-      same_hours_as_restaurant: Boolean(data.same_hours_as_restaurant),
-
-      // Créneaux
-      auto_accept: Boolean(data.auto_accept),
-      interval: Number(data.interval),
-
-      pending_duration_minutes: data.auto_accept
-        ? currentParams.pending_duration_minutes || 120
-        : Number(data.pending_duration_minutes),
-
-      // Automatisations
-      auto_finish_reservations: Boolean(data.auto_finish_reservations),
-
-      deletion_duration: Boolean(data.deletion_duration),
-      deletion_duration_minutes: data.deletion_duration
-        ? Number(data.deletion_duration_minutes)
-        : 1440,
-
-      reservation_hours: data.same_hours_as_restaurant
-        ? restaurantContext.restaurantData?.opening_hours
-        : reservationHours,
-
-      manage_disponibilities: manageNext,
-      tables: tablesToSave,
-
-      // ✅ Durées (stockées dès qu'on en a besoin)
-      table_occupancy_lunch_minutes: shouldStoreDurations
-        ? Number(lunch)
-        : null,
-      table_occupancy_dinner_minutes: shouldStoreDurations
-        ? Number(dinner)
-        : null,
-    };
-
+  // -----------------------------
+  // ✅ Partial save (section only)
+  // -----------------------------
+  async function saveSection(sectionKey) {
     try {
+      const restaurantId = props.restaurantData?._id;
+      if (!restaurantId) return;
+
       const token = localStorage.getItem("token");
+      const currentParams =
+        restaurantContext?.restaurantData?.reservations?.parameters || {};
+
+      setSaving(sectionKey, true);
+
+      // Build partial + merge (safe)
+      let partial = {};
+
+      if (sectionKey === "hours") {
+        partial = {
+          same_hours_as_restaurant: Boolean(same_hours_as_restaurant),
+          reservation_hours: Boolean(same_hours_as_restaurant)
+            ? restaurantContext.restaurantData?.opening_hours
+            : reservationHours,
+        };
+      }
+
+      if (sectionKey === "slots") {
+        const aa = Boolean(auto_accept);
+        partial = {
+          auto_accept: aa,
+          interval: Number(interval),
+          pending_duration_minutes: aa
+            ? currentParams.pending_duration_minutes || 120
+            : Number(pending_duration_minutes),
+        };
+      }
+
+      if (sectionKey === "smart") {
+        const manageNext = Boolean(manage_disponibilities);
+        const tablesToSave = manageNext
+          ? Array.isArray(tablesCatalog)
+            ? tablesCatalog
+            : []
+          : currentParams.tables || [];
+
+        partial = {
+          manage_disponibilities: manageNext,
+          tables: tablesToSave,
+        };
+      }
+
+      if (sectionKey === "automations") {
+        // Durées (midi/soir) : mêmes règles que ton submit
+        const lunchRaw = (table_occupancy_lunch_minutes ?? "")
+          .toString()
+          .trim();
+        const dinnerRaw = (table_occupancy_dinner_minutes ?? "")
+          .toString()
+          .trim();
+
+        const lunchHas = lunchRaw !== "" && Number(lunchRaw) >= 1;
+        const dinnerHas = dinnerRaw !== "" && Number(dinnerRaw) >= 1;
+
+        const mustHaveDurations = Boolean(
+          auto_finish_reservations || manage_disponibilities,
+        );
+        const shouldStoreDurations =
+          mustHaveDurations || (lunchHas && dinnerHas);
+
+        if (mustHaveDurations) {
+          const lunchMissing = !lunchHas;
+          const dinnerMissing = !dinnerHas;
+
+          if (lunchMissing || dinnerMissing) {
+            setDurationError({ lunch: lunchMissing, dinner: dinnerMissing });
+            setFocus(
+              lunchMissing
+                ? "table_occupancy_lunch_minutes"
+                : "table_occupancy_dinner_minutes",
+            );
+            setSaving(sectionKey, false);
+            return;
+          }
+
+          setDurationError({ lunch: false, dinner: false });
+        } else {
+          const bothEmpty = lunchRaw === "" && dinnerRaw === "";
+          const bothFilled = lunchHas && dinnerHas;
+
+          if (!bothEmpty && !bothFilled) {
+            setDurationError({ lunch: !lunchHas, dinner: !dinnerHas });
+            setFocus(
+              !lunchHas
+                ? "table_occupancy_lunch_minutes"
+                : "table_occupancy_dinner_minutes",
+            );
+            setSaving(sectionKey, false);
+            return;
+          }
+
+          setDurationError({ lunch: false, dinner: false });
+        }
+
+        partial = {
+          auto_finish_reservations: Boolean(auto_finish_reservations),
+          deletion_duration: Boolean(deletion_duration),
+          deletion_duration_minutes: Boolean(deletion_duration)
+            ? Number(deletion_duration_minutes)
+            : 1440,
+          table_occupancy_lunch_minutes: shouldStoreDurations
+            ? Number(lunchRaw)
+            : null,
+          table_occupancy_dinner_minutes: shouldStoreDurations
+            ? Number(dinnerRaw)
+            : null,
+        };
+      }
 
       const response = await axios.put(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${props.restaurantData._id}/reservations/parameters`,
-        { parameters: formData },
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/reservations/parameters`,
+        { parameters: partial },
         { headers: { Authorization: `Bearer ${token}` } },
       );
 
       props.setRestaurantData(response.data.restaurant);
 
+      // manual tables warning (si backend renvoie)
       const count = Number(response?.data?.manualTablesNeedingAssignment || 0);
       setManualTablesNeedingAssignment(count);
 
-      if (count > 0) {
-        // ✅ on reste sur la page pour que le restaurateur voie le message
-        // (sinon il ne le verra jamais)
-        return;
+      const unassignedCount = Number(
+        response?.data?.unassignedReservationsNeedingAssignment || 0,
+      );
+      setUnassignedReservationsNeedingAssignment(unassignedCount);
+
+      if (sectionKey === "hours") {
+        initialSnapRef.current.hours = {
+          same_hours_as_restaurant: Boolean(same_hours_as_restaurant),
+        };
+      }
+      if (sectionKey === "slots") {
+        initialSnapRef.current.slots = {
+          auto_accept: Boolean(auto_accept),
+          interval: String(interval ?? ""),
+          pending_duration_minutes: Number(pending_duration_minutes ?? 0),
+        };
+      }
+      if (sectionKey === "smart") {
+        initialSnapRef.current.smart = {
+          manage_disponibilities: Boolean(manage_disponibilities),
+        };
+      }
+      if (sectionKey === "automations") {
+        initialSnapRef.current.automations = {
+          auto_finish_reservations: Boolean(auto_finish_reservations),
+          deletion_duration: Boolean(deletion_duration),
+          deletion_duration_minutes: Number(deletion_duration_minutes ?? 0),
+          table_occupancy_lunch_minutes: String(
+            table_occupancy_lunch_minutes ?? "",
+          ),
+          table_occupancy_dinner_minutes: String(
+            table_occupancy_dinner_minutes ?? "",
+          ),
+        };
       }
 
-      router.push("/dashboard/reservations");
+      setSaved(sectionKey, true);
     } catch (error) {
-      console.error("Erreur mise à jour paramètres réservation :", error);
+      console.error("Erreur sauvegarde paramètres réservation :", error);
+    } finally {
+      setSaving(sectionKey, false);
     }
   }
 
@@ -425,16 +672,15 @@ export default function ParametersReservationComponent(props) {
       </div>
 
       {/* =========================
-          ✅ FORM
+          ✅ FORM (on garde RHF pour les values)
           ========================= */}
-      <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+      <form className="flex flex-col gap-4">
         {/* --- Bloc: Ranges --- */}
         <RangesParametersComponent
           restaurantId={props.restaurantData?._id}
           blockedRanges={blockedRanges}
           setRestaurantData={props.setRestaurantData}
         />
-
         {/* --- Bloc: Heures --- */}
         <HoursParametersComponent
           register={register}
@@ -445,16 +691,20 @@ export default function ParametersReservationComponent(props) {
           setRestaurantData={props.setRestaurantData}
           dataLoading={restaurantContext.dataLoading}
           closeEditing={restaurantContext.closeEditing}
+          // ✅ save button props
+          saveUI={sectionUI.hours}
+          onSave={() => saveSection("hours")}
         />
-
         {/* --- Bloc: Créneaux --- */}
         <SlotsParametersComponent
           register={register}
           watch={watch}
           errors={errors}
           auto_accept={auto_accept}
+          // ✅ save button props
+          saveUI={sectionUI.slots}
+          onSave={() => saveSection("slots")}
         />
-
         {/* --- Bloc: Automatisations --- */}
         <AutomationsParametersComponent
           register={register}
@@ -462,8 +712,10 @@ export default function ParametersReservationComponent(props) {
           auto_finish_reservations={auto_finish_reservations}
           deletion_duration={deletion_duration}
           durationError={durationError}
+          // ✅ save button props
+          saveUI={sectionUI.automations}
+          onSave={() => saveSection("automations")}
         />
-
         {/* --- Bloc: Gestion intelligente + tables --- */}
         <SmartParametersComponent
           register={register}
@@ -473,9 +725,17 @@ export default function ParametersReservationComponent(props) {
           manualToFixError={manualToFixError}
           manualToFix={manualToFix}
           fetchManualTablesToFix={fetchManualTablesToFix}
+          unassignedReservationsNeedingAssignment={
+            unassignedReservationsNeedingAssignment
+          }
+          unassignedToFixLoading={unassignedToFixLoading}
+          unassignedToFixError={unassignedToFixError}
+          unassignedToFix={unassignedToFix}
+          fetchUnassignedTablesToFix={fetchUnassignedTablesToFix}
           fmtShortFR={fmtShortFR}
           statusLabel={statusLabel}
-          restaurantId={props.restaurantData?._id}
+          saveUI={sectionUI.smart}
+          onSave={() => saveSection("smart")}
         />
 
         <FloorPlanParametersComponent
@@ -485,39 +745,6 @@ export default function ParametersReservationComponent(props) {
             setTablesCatalog(Array.isArray(nextTables) ? nextTables : []);
           }}
         />
-
-        {/* --- Actions --- */}
-        <div className="flex flex-col midTablet:flex-row items-stretch midTablet:items-center justify-end gap-3 pt-2">
-          <button
-            type="button"
-            onClick={handleBack}
-            disabled={isLoading}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition px-5 h-11 text-sm font-semibold text-darkBlue"
-          >
-            <X className="size-4 shrink-0 text-darkBlue/60" />
-            {t("reservations:buttons.back", "Retour")}
-          </button>
-
-          <button
-            type="submit"
-            disabled={isLoading}
-            className={[
-              "inline-flex items-center justify-center gap-2 rounded-2xl px-5 h-11",
-              "text-sm font-semibold text-white",
-              "bg-blue hover:bg-blue/90 active:scale-[0.98] transition",
-              isLoading ? "opacity-50 cursor-not-allowed" : "",
-            ].join(" ")}
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="size-4 shrink-0 animate-spin" />
-                {t("reservations:buttons.loading", "En cours…")}
-              </>
-            ) : (
-              t("reservations:buttons.validate", "Valider")
-            )}
-          </button>
-        </div>
       </form>
     </section>
   );

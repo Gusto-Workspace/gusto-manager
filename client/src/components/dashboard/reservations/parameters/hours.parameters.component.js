@@ -1,6 +1,10 @@
-// components/dashboard/webapp/reservations/parameters/hours.parameters.component.jsx
+// AXIOS
 import axios from "axios";
-import { CalendarDays } from "lucide-react";
+
+// ICONS
+import { CalendarDays, Save, Check, Loader2 } from "lucide-react";
+
+// COMPONENTS
 import HoursRestaurantComponent from "../../restaurant/hours.restaurant.component";
 
 export default function HoursParametersComponent({
@@ -17,6 +21,10 @@ export default function HoursParametersComponent({
   // Context flags
   dataLoading,
   closeEditing,
+
+  // ✅ save button
+  saveUI,
+  onSave,
 }) {
   const card = "rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm";
   const cardInner = "px-2 py-4 mobile:p-4 midTablet:p-6";
@@ -35,26 +43,23 @@ export default function HoursParametersComponent({
   const toggleDotOn = "translate-x-7";
   const toggleDotOff = "translate-x-1";
 
-  const inputBase =
-    "h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 text-base outline-none transition placeholder:text-darkBlue/35 focus:border-blue/60 focus:ring-2 focus:ring-blue/20";
-  const selectBase =
-    "h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 text-base outline-none transition focus:border-blue/60 focus:ring-2 focus:ring-blue/20";
-
-  const chip =
-    "inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-3 py-2 text-xs text-darkBlue/60";
+  const saveBtnBase =
+    "inline-flex items-center gap-2 rounded-xl px-3 h-10 text-sm font-semibold transition";
+  const saveBtnPrimary =
+    "bg-darkBlue text-white hover:opacity-90 active:scale-[0.98]";
+  const saveBtnDone =
+    "bg-green-600/10 text-green-700 border border-green-600/20";
 
   function onReservationHoursChange(data) {
     setReservationHours?.(data.hours);
   }
 
-  // ✅ API call direct dans l’enfant
+  // (on garde ta save immédiate des horaires custom)
   async function saveReservationHoursImmediate(newHours) {
     try {
       const token = localStorage.getItem("token");
       if (!restaurantId) return;
 
-      // On ne veut pas écraser tout le parameters ici.
-      // On envoie uniquement ce qui est nécessaire.
       const response = await axios.put(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/reservations/parameters`,
         {
@@ -76,7 +81,7 @@ export default function HoursParametersComponent({
   return (
     <div className={card}>
       <div className={cardInner}>
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex items-center justify-between gap-4">
           <div className="min-w-0">
             <p className={sectionTitle}>
               <CalendarDays className="size-4 shrink-0 opacity-60" />
@@ -90,27 +95,59 @@ export default function HoursParametersComponent({
             </p>
           </div>
 
-          <label className={toggleWrap}>
-            <span
-              className={[
-                toggleBase,
-                same_hours_as_restaurant ? toggleOn : toggleOff,
-              ].join(" ")}
-            >
-              <input
-                type="checkbox"
-                className="sr-only"
-                id="same_hours_as_restaurant"
-                {...register("same_hours_as_restaurant")}
-              />
+          <div className="flex items-center gap-3">
+            {(saveUI?.dirty || saveUI?.saving || saveUI?.saved) && (
+              <button
+                type="button"
+                onClick={onSave}
+                disabled={saveUI?.saving || saveUI?.saved}
+                className={[
+                  saveBtnBase,
+                  saveUI?.saved ? saveBtnDone : saveBtnPrimary,
+                  saveUI?.saving ? "opacity-60 cursor-not-allowed" : "",
+                ].join(" ")}
+              >
+                {saveUI?.saving ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" />
+                    Enregistrement…
+                  </>
+                ) : saveUI?.saved ? (
+                  <>
+                    <Check className="size-4" />
+                    Enregistré
+                  </>
+                ) : (
+                  <>
+                    <Save className="size-4" />
+                    Enregistrer
+                  </>
+                )}
+              </button>
+            )}
+
+            <label className={toggleWrap}>
               <span
                 className={[
-                  toggleDot,
-                  same_hours_as_restaurant ? toggleDotOn : toggleDotOff,
+                  toggleBase,
+                  same_hours_as_restaurant ? toggleOn : toggleOff,
                 ].join(" ")}
-              />
-            </span>
-          </label>
+              >
+                <input
+                  type="checkbox"
+                  className="sr-only"
+                  id="same_hours_as_restaurant"
+                  {...register("same_hours_as_restaurant")}
+                />
+                <span
+                  className={[
+                    toggleDot,
+                    same_hours_as_restaurant ? toggleDotOn : toggleDotOff,
+                  ].join(" ")}
+                />
+              </span>
+            </label>
+          </div>
         </div>
 
         {!same_hours_as_restaurant && (

@@ -1,10 +1,12 @@
-import { Clock } from "lucide-react";
+import { Clock, Save, Check, Loader2 } from "lucide-react";
 
 export default function SlotsParametersComponent({
   register,
   watch,
   errors,
   auto_accept,
+  saveUI,
+  onSave,
 }) {
   const card = "rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm";
   const cardInner = "px-2 py-4 mobile:p-4 midTablet:p-6";
@@ -28,16 +30,55 @@ export default function SlotsParametersComponent({
   const selectBase =
     "h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 text-base outline-none transition focus:border-blue/60 focus:ring-2 focus:ring-blue/20";
 
-  const chip =
-    "inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-3 py-2 text-xs text-darkBlue/60";
+  const saveBtnBase =
+    "inline-flex items-center gap-2 rounded-xl px-3 h-10 text-sm font-semibold transition";
+  const saveBtnPrimary =
+    "bg-darkBlue text-white hover:opacity-90 active:scale-[0.98]";
+  const saveBtnDone =
+    "bg-green-600/10 text-green-700 border border-green-600/20";
 
   return (
     <div className={card}>
       <div className={cardInner}>
-        <p className={sectionTitle}>
-          <Clock className="size-4 shrink-0 opacity-60" />
-          Créneaux
-        </p>
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className={sectionTitle}>
+              <Clock className="size-4 shrink-0 opacity-60" />
+              Créneaux
+            </p>
+            <p className={hint}>Paramètres des créneaux et de la validation.</p>
+          </div>
+
+          {(saveUI?.dirty || saveUI?.saving || saveUI?.saved) && (
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={saveUI?.saving || saveUI?.saved}
+              className={[
+                saveBtnBase,
+                saveUI?.saved ? saveBtnDone : saveBtnPrimary,
+                saveUI?.saving ? "opacity-60 cursor-not-allowed" : "",
+              ].join(" ")}
+            >
+              {saveUI?.saving ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Enregistrement…
+                </>
+              ) : saveUI?.saved ? (
+                <>
+                  <Check className="size-4" />
+                  Enregistré
+                </>
+              ) : (
+                <>
+                  <Save className="size-4" />
+                  Enregistrer
+                </>
+              )}
+            </button>
+          )}
+        </div>
 
         <div className={divider} />
 

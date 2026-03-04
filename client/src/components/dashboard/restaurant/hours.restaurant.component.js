@@ -9,9 +9,11 @@ import { daysOfWeeksData } from "@/_assets/data/days-of-week.data";
 // AXIOS
 import axios from "axios";
 
+// ICONS
+import { Edit, Loader2, Save, X, Check } from "lucide-react";
+
 // COMPONENTS
 import DoubleSkeletonComponent from "../../_shared/skeleton/double-skeleton.component";
-import { Edit, Loader2, Save, XCircle } from "lucide-react";
 
 export default function HoursRestaurantComponent(props) {
   const { t } = useTranslation("restaurant");
@@ -173,6 +175,12 @@ export default function HoursRestaurantComponent(props) {
     "h-9 w-full rounded-lg border border-darkBlue/20 bg-white px-3 text-sm outline-none transition placeholder:text-darkBlue/40";
   const closedBadgeCls =
     "inline-flex items-center justify-center rounded-full bg-darkBlue/5 px-3 py-1 text-xs font-medium text-darkBlue/60";
+  const actionBtnBase =
+    "inline-flex items-center gap-2 rounded-xl px-3 h-10 text-sm font-semibold transition select-none";
+  const actionBtnPrimary =
+    "bg-darkBlue text-white hover:opacity-90 active:scale-[0.98]";
+  const actionBtnDanger =
+    "bg-red text-white hover:opacity-90 active:scale-[0.98]";
 
   return (
     <section className={sectionCls}>
@@ -195,21 +203,21 @@ export default function HoursRestaurantComponent(props) {
                 )}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           {editing && (
             <button
+              type="button"
               onClick={() => setEditing(false)}
               disabled={saving}
-              type="button"
+              className={[
+                actionBtnBase,
+                actionBtnDanger,
+                saving ? "opacity-60 cursor-not-allowed" : "",
+              ].join(" ")}
             >
-              {/* Texte sur mobile+ */}
-              <span className="hidden mobile:flex rounded-lg text-white disabled:cursor-none bg-red px-4 py-2 gap-2 items-center transition-opacity duration-150">
-                {t("cancel")}
-              </span>
-
-              {/* Icône seule sur très petit écran */}
-              <span className="mobile:hidden rounded-lg text-white disabled:cursor-none bg-red px-3 py-2 flex gap-2 items-center transition-opacity duration-150">
-                <XCircle className="size-5" />
+              <X className="size-4" />
+              <span className="hidden mobile:inline">
+                {t("cancel", "Annuler")}
               </span>
             </button>
           )}
@@ -218,32 +226,33 @@ export default function HoursRestaurantComponent(props) {
             type="button"
             onClick={editing ? handleSave : handleToggleEdit}
             disabled={saving}
+            className={[
+              actionBtnBase,
+              editing ? actionBtnPrimary : actionBtnPrimary,
+              saving ? "opacity-60 cursor-not-allowed" : "",
+            ].join(" ")}
           >
-            {editing ? (
-              <span className="rounded-lg text-white bg-blue px-4 py-2 flex gap-2 items-center transition-opacity duration-150">
-                {saving ? (
-                  <div className="flex items-center gap-2">
-                    <Loader2 className="size-5 mobile:size-4 animate-spin" />
-                    <span className="hidden mobile:flex">
-                      {t("saving", "En cours…")}
-                    </span>
-                  </div>
-                ) : (
-                  <>
-                    <span className="hidden mobile:flex">{t("save")}</span>
-                    <span className="mobile:hidden flex">
-                      <Save className="size-5" />
-                    </span>
-                  </>
-                )}
-              </span>
+            {saving ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                <span className="hidden mobile:inline">
+                  {t("saving", "En cours…")}
+                </span>
+              </>
+            ) : editing ? (
+              <>
+                <Save className="size-4" />
+                <span className="hidden mobile:inline">
+                  {t("save", "Enregistrer")}
+                </span>
+              </>
             ) : (
-              <div className="rounded-lg text-white bg-blue px-4 py-2 flex gap-2 items-center transition-opacity duration-150">
-                <Edit className="size-5" />
-                <span className="hidden mobile:flex">
+              <>
+                <Edit className="size-4" />
+                <span className="hidden mobile:inline">
                   {t("edit", "Éditer")}
                 </span>
-              </div>
+              </>
             )}
           </button>
         </div>

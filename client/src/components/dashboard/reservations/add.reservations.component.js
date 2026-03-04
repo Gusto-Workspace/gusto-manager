@@ -137,6 +137,7 @@ export default function AddReservationComponent(props) {
   const [error, setError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasUserChangedSlot, setHasUserChangedSlot] = useState(false);
+  const [hasUserChangedTable, setHasUserChangedTable] = useState(false);
 
   // ✅ Modal states
   const [modalOpen, setModalOpen] = useState(false);
@@ -196,6 +197,7 @@ export default function AddReservationComponent(props) {
       table: tableValue,
     });
     setHasUserChangedSlot(false);
+    setHasUserChangedTable(false);
   }, [
     props.reservation,
     manageDisponibilities,
@@ -603,9 +605,7 @@ export default function AddReservationComponent(props) {
       return;
     }
 
-    // ✅ EN ÉDITION : tant que l’utilisateur n’a rien modifié (date/heure/guests),
-    // on NE TOUCHE PAS à la table (on affiche juste celle de la résa)
-    if (isEditing && !hasUserChangedSlot) return;
+    if (isEditing && !hasUserChangedSlot && reservationData.table) return;
 
     // Si aucune table dispo
     if (!availableTables || availableTables.length === 0) {
@@ -691,7 +691,8 @@ export default function AddReservationComponent(props) {
     const { name, value } = e.target;
 
     if (name === "numberOfGuests") setHasUserChangedSlot(true);
-    if (name === "table") setHasUserChangedSlot(true);
+
+    if (name === "table") setHasUserChangedTable(true);
 
     setReservationData((prev) => ({
       ...prev,
@@ -726,7 +727,34 @@ export default function AddReservationComponent(props) {
     // ✅ EDIT: si slot NON modifié => on envoie seulement les champs "non-slot"
     let reservationPayload;
 
-    if (isEditing && !hasUserChangedSlot) {
+    let slotChanged = hasUserChangedSlot;
+    let tableChanged = hasUserChangedTable;
+
+    if (
+      isEditing &&
+      manageDisponibilities &&
+      hasPickedSlot &&
+      updatedData.table
+    ) {
+      tableChanged = true;
+    }
+
+    if (
+      manageDisponibilities &&
+      hasPickedSlot &&
+      !updatedData.table &&
+      Array.isArray(tablesForSelect) &&
+      tablesForSelect.length > 0
+    ) {
+      const forced = String(tablesForSelect[0]._id);
+      updatedData.table = forced;
+
+      setReservationData((prev) => ({ ...prev, table: forced }));
+
+      tableChanged = true;
+    }
+
+    if (isEditing && !slotChanged && !tableChanged) {
       reservationPayload = {
         customerFirstName: updatedData.customerFirstName,
         customerLastName: updatedData.customerLastName,
@@ -734,8 +762,17 @@ export default function AddReservationComponent(props) {
         customerPhone: updatedData.customerPhone,
         commentary: updatedData.commentary,
       };
+    } else if (isEditing && !slotChanged && tableChanged) {
+      reservationPayload = {
+        customerFirstName: updatedData.customerFirstName,
+        customerLastName: updatedData.customerLastName,
+        customerEmail: updatedData.customerEmail,
+        customerPhone: updatedData.customerPhone,
+        commentary: updatedData.commentary,
+        table: updatedData.table,
+      };
     } else {
-      // ✅ sinon (slot modifié) => payload complet + table
+      // slot modifié => payload complet
       reservationPayload = {
         reservationDate: formattedDate,
         reservationTime: formattedTime,
@@ -876,6 +913,24 @@ export default function AddReservationComponent(props) {
   const tablesForSelect = currentTableOption
     ? [currentTableOption, ...(availableTables || [])]
     : availableTables || [];
+
+  useEffect(() => {
+    if (!manageDisponibilities) return;
+    if (!hasPickedSlot) return;
+
+    const list = Array.isArray(tablesForSelect) ? tablesForSelect : [];
+    if (list.length !== 1) return;
+
+    const onlyId = list[0]?._id ? String(list[0]._id) : "";
+    if (!onlyId) return;
+
+    // si aucune table enregistrée dans le state => on force
+    if (!reservationData.table) {
+      setReservationData((prev) => ({ ...prev, table: onlyId }));
+      setHasUserChangedTable(true); // pour que l’edit envoie `table`
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manageDisponibilities, hasPickedSlot, tablesForSelect]);
 
   if (isLoading) {
     return (

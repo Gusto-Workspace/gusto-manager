@@ -379,9 +379,8 @@ router.put(
       );
 
       let manualTablesNeedingAssignment = 0;
+      let unassignedReservationsNeedingAssignment = 0;
 
-      // ✅ Si on vient d’activer la gestion intelligente,
-      // on compte les réservations encore "bloquantes" avec table saisie à la main (table.name mais pas table._id)
       if (!prevManage && nextManage) {
         const ids = restaurant.reservations?.list || [];
 
@@ -393,13 +392,17 @@ router.put(
             .lean();
 
           manualTablesNeedingAssignment = reservations.filter((r) => {
-            // réutilise tes helpers globaux du fichier
             if (!isBlockingReservation(r)) return false;
-
             return (
               r?.table?.source === "manual" &&
               Boolean((r?.table?.name || "").trim())
             );
+          }).length;
+
+          unassignedReservationsNeedingAssignment = reservations.filter((r) => {
+            if (!isBlockingReservation(r)) return false;
+            // ✅ table complètement absente
+            return !r?.table;
           }).length;
         }
       }
@@ -410,6 +413,7 @@ router.put(
         message: "Reservation parameters updated successfully",
         restaurant: updatedRestaurant,
         manualTablesNeedingAssignment,
+        unassignedReservationsNeedingAssignment,
       });
     } catch (error) {
       console.error("Error updating reservation parameters:", error);
@@ -1971,6 +1975,75 @@ router.get(
       });
     } catch (e) {
       console.error("Error getting manual tables to fix:", e);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  },
+);
+
+/* ---------------------------------------------------------
+   GET UNASSIGNED TABLES TO FIX (manage_disponibilities ON)
+--------------------------------------------------------- */
+router.get(
+  "/restaurants/:id/reservations/unassigned-tables",
+  authenticateToken,
+  async (req, res) => {
+    const restaurantId = req.params.id;
+
+    try {
+      const restaurant = await RestaurantModel.findById(restaurantId).lean();
+      if (!restaurant) {
+        return res.status(404).json({ message: "Restaurant not found" });
+      }
+
+      const manage = Boolean(
+        restaurant?.reservations?.parameters?.manage_disponibilities,
+      );
+      if (!manage) {
+        return res.status(200).json({ count: 0, reservations: [] });
+      }
+
+      const ids = restaurant?.reservations?.list || [];
+      if (!ids.length) {
+        return res.status(200).json({ count: 0, reservations: [] });
+      }
+
+      const reservations = await ReservationModel.find({ _id: { $in: ids } })
+        .select(
+          "customerFirstName customerLastName numberOfGuests reservationDate reservationTime status table source pendingExpiresAt",
+        )
+        .lean();
+
+      const toFix = reservations
+        .filter((r) => {
+          if (!isBlockingReservation(r)) return false;
+          return !r?.table; // ✅ pas de table du tout
+        })
+        .map((r) => ({
+          _id: r._id,
+          customerName:
+            `${String(r.customerFirstName || "").trim()} ${String(r.customerLastName || "").trim()}`.trim(),
+          numberOfGuests: r.numberOfGuests ?? null,
+          reservationDate: r.reservationDate,
+          reservationTime: String(r.reservationTime || "").slice(0, 5),
+          status: r.status,
+          tableName: null,
+          source: r.source || null,
+        }))
+        .sort((a, b) => {
+          const aDT = buildReservationDateTime(
+            normalizeReservationDayToUTC(a.reservationDate),
+            a.reservationTime,
+          );
+          const bDT = buildReservationDateTime(
+            normalizeReservationDayToUTC(b.reservationDate),
+            b.reservationTime,
+          );
+          return (aDT?.getTime() || 0) - (bDT?.getTime() || 0);
+        });
+
+      return res.status(200).json({ count: toFix.length, reservations: toFix });
+    } catch (e) {
+      console.error("Error getting unassigned tables to fix:", e);
       return res.status(500).json({ message: "Internal server error" });
     }
   },
