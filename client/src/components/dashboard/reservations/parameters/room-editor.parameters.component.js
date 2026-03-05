@@ -10,9 +10,8 @@ import {
   Arc,
   Circle,
   Image as KonvaImage,
-  Path,
 } from "react-konva";
-import { Plus, Trash2, RotateCcw, Save, X } from "lucide-react";
+import { Plus, Trash2, RotateCcw, X } from "lucide-react";
 
 function uid() {
   return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
@@ -87,7 +86,7 @@ export default function RoomEditorComponent({
 
   const wrapRef = useRef(null);
   const stageRef = useRef(null);
-  const justDraggedRef = useRef(false);
+  const panRef = useRef({ lastX: 0, lastY: 0 });
 
   const canvasW = Number(room?.canvas?.width || 2000);
   const canvasH = Number(room?.canvas?.height || 2000);
@@ -96,10 +95,17 @@ export default function RoomEditorComponent({
   const SNAP_UNIT = grid / 2;
   const PAD = 0;
 
+  const centerWorldRef = useRef({ x: canvasW / 2, y: canvasH / 2 });
+
+  const stageSizeRef = useRef({ w: 0, h: 0 });
+  const posRef = useRef({ x: 0, y: 0 });
+  const scaleRef = useRef(0.7);
+  const initialSnapRef = useRef("");
+  const didInitialFitRef = useRef(false);
+
   const [objects, setObjects] = useState(() => safeArr(room?.objects));
   const [selectedId, setSelectedId] = useState(null);
-  const [stageSize, setStageSize] = useState({ w: 800, h: 520 });
-  const [rotationInput, setRotationInput] = useState("0");
+  const [stageSize, setStageSize] = useState({ w: null, h: null });
 
   // view
   const [scale, setScale] = useState(0.7);
@@ -136,7 +142,7 @@ export default function RoomEditorComponent({
     return new Set();
   }, [placedTableRefIdsOtherRooms]);
 
-  const initialSnapRef = useRef("");
+  const isMobile = !!stageSize.w && stageSize.w < 768;
 
   function stableRoomSnap(objs, canvasW, canvasH, grid) {
     const normalized = safeArr(objs).map((o) => {
@@ -280,6 +286,133 @@ export default function RoomEditorComponent({
     return { x1: 0, y1: 0, x2: 0, y2: 0 };
   }
 
+  function unionBounds(a, b) {
+    if (!a) return b;
+    if (!b) return a;
+    return {
+      x1: Math.min(a.x1, b.x1),
+      y1: Math.min(a.y1, b.y1),
+      x2: Math.max(a.x2, b.x2),
+      y2: Math.max(a.y2, b.y2),
+    };
+  }
+
+  function boundsFromObjects(objs, canvasW, canvasH) {
+    const arr = safeArr(objs).filter(Boolean);
+    if (arr.length === 0) {
+      // fallback: tout le canvas
+      return { x1: 0, y1: 0, x2: canvasW, y2: canvasH };
+    }
+
+    let bb = null;
+
+    for (const o of arr) {
+      // on ignore les trucs invalides
+      if (!o.type) continue;
+
+      // ✅ utilise ton getAABB existant (tables + décor)
+      const b = getAABB(o);
+      if (!b) continue;
+
+      bb = unionBounds(bb, b);
+    }
+
+    // si pour une raison quelconque on a rien
+    if (!bb) return { x1: 0, y1: 0, x2: canvasW, y2: canvasH };
+
+    return bb;
+  }
+
+  function fitToBounds({
+    bounds,
+    stageW,
+    stageH,
+    paddingPx = 60,
+    minScale = 0.15,
+    maxScale = 2,
+  }) {
+    const bw = Math.max(1, bounds.x2 - bounds.x1);
+    const bh = Math.max(1, bounds.y2 - bounds.y1);
+
+    const availW = Math.max(1, stageW - paddingPx * 2);
+    const availH = Math.max(1, stageH - paddingPx * 2);
+
+    const s = clamp(Math.min(availW / bw, availH / bh), minScale, maxScale);
+
+    const cx = bounds.x1 + bw / 2;
+    const cy = bounds.y1 + bh / 2;
+
+    return {
+      scale: s,
+      pos: {
+        x: stageW / 2 - cx * s,
+        y: stageH / 2 - cy * s,
+      },
+      centerWorld: { x: cx, y: cy },
+    };
+  }
+
+  function applyInitialView(objsOverride) {
+    if (!stageSize.w || !stageSize.h) return;
+
+    const objs = objsOverride ?? objects;
+
+    // centre = centre des objets si possible, sinon centre du canvas
+    const hasObjects = safeArr(objs).length > 0;
+    const bounds = hasObjects
+      ? boundsFromObjects(objs, canvasW, canvasH)
+      : { x1: 0, y1: 0, x2: canvasW, y2: canvasH };
+
+    // ✅ MOBILE: scale fixe
+    if (isMobile) {
+      const {
+        scale: s,
+        pos: p,
+        centerWorld,
+      } = fitToBounds({
+        bounds,
+        stageW: stageSize.w,
+        stageH: stageSize.h,
+        paddingPx: 24, // ✅ mobile: padding plus faible
+        minScale: 0.25, // ✅ évite d’être trop reculé
+        maxScale: 1.2,
+      });
+
+      centerWorldRef.current = centerWorld;
+
+      // ✅ synchro refs immédiatement (important iOS resize)
+      scaleRef.current = s;
+      posRef.current = p;
+
+      setScale(s);
+      setPos(p);
+      return;
+    }
+
+    // ✅ DESKTOP/TABLET: auto-fit
+    const {
+      scale: s,
+      pos: p,
+      centerWorld,
+    } = fitToBounds({
+      bounds,
+      stageW: stageSize.w,
+      stageH: stageSize.h,
+      paddingPx: 80,
+      minScale: 0.15,
+      maxScale: 2,
+    });
+
+    centerWorldRef.current = centerWorld;
+
+    // ✅ synchro refs
+    scaleRef.current = s;
+    posRef.current = p;
+
+    setScale(s);
+    setPos(p);
+  }
+
   function snapCenterToUnit(x, y, w, h, unit) {
     const cx = x + w / 2;
     const cy = y + h / 2;
@@ -335,19 +468,34 @@ export default function RoomEditorComponent({
    * INIT / RESIZE
    * =========================== */
 
- useEffect(() => {
-  const initObjs = safeArr(room?.objects);
-  setObjects(initObjs);
-  setSelectedId(null);
-  setScale(0.7);
-  setPos({ x: 0, y: 0 });
+  useEffect(() => {
+    didInitialFitRef.current = false;
+  }, [room?._id]);
 
-  // ✅ reset snapshot (room chargée = clean)
-  const snap = stableRoomSnap(initObjs, canvasW, canvasH, grid);
-  initialSnapRef.current = snap;
-  if (typeof onDirtyChange === "function") onDirtyChange(false);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [room?._id]);
+  useEffect(() => {
+    const initObjs = safeArr(room?.objects);
+    setObjects(initObjs);
+    setSelectedId(null);
+
+    const snap = stableRoomSnap(initObjs, canvasW, canvasH, grid);
+    initialSnapRef.current = snap;
+    if (typeof onDirtyChange === "function") onDirtyChange(false);
+  }, [room?._id, canvasW, canvasH, grid]);
+
+  useEffect(() => {
+    if (!room?._id) return;
+    if (!stageSize.w || !stageSize.h) return;
+    if (didInitialFitRef.current) return;
+
+    didInitialFitRef.current = true;
+
+    const initObjs = safeArr(room?.objects);
+
+    // ✅ important: fait ça au prochain frame, après le render + Stage prêt
+    requestAnimationFrame(() => {
+      applyInitialView(initObjs);
+    });
+  }, [room?._id, stageSize.w, stageSize.h, isMobile]);
 
   useEffect(() => {
     const snap = stableRoomSnap(objects, canvasW, canvasH, grid);
@@ -357,23 +505,67 @@ export default function RoomEditorComponent({
   }, [objects, canvasW, canvasH, grid]);
 
   useEffect(() => {
+    if (!stageSize.w || !stageSize.h) return;
+
+    const sc = scaleRef.current || 1;
+    const cw = centerWorldRef.current?.x ?? canvasW / 2;
+    const ch = centerWorldRef.current?.y ?? canvasH / 2;
+
+    setPos({
+      x: stageSize.w / 2 - cw * sc,
+      y: stageSize.h / 2 - ch * sc,
+    });
+  }, [stageSize.w, stageSize.h, canvasW, canvasH]);
+
+  useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
 
-    const ro = new ResizeObserver((entries) => {
-      const r = entries[0]?.contentRect;
-      if (!r) return;
-      const w = Math.max(320, Math.round(r.width));
-      const h = Math.max(320, Math.round(r.height));
-      setStageSize((prev) => {
-        if (prev.w === w && prev.h === h) return prev;
-        return { w, h };
-      });
-    });
+    const measure = () => {
+      const r = el.getBoundingClientRect();
+      const w = Math.max(1, Math.round(r.width));
+      const h = Math.max(1, Math.round(r.height));
 
+      // ✅ capturer le "centre monde" AVANT de changer stageSize
+      const prev = stageSizeRef.current;
+      const sc = scaleRef.current || 1;
+      const p = posRef.current;
+
+      if (prev.w && prev.h) {
+        const cx = prev.w / 2;
+        const cy = prev.h / 2;
+
+        centerWorldRef.current = {
+          x: (cx - p.x) / sc,
+          y: (cy - p.y) / sc,
+        };
+      } else {
+        // 1er mount fallback
+        centerWorldRef.current = { x: canvasW / 2, y: canvasH / 2 };
+      }
+
+      setStageSize((s) => (s.w === w && s.h === h ? s : { w, h }));
+    };
+
+    measure();
+
+    const ro = new ResizeObserver(() => requestAnimationFrame(measure));
     ro.observe(el);
+
     return () => ro.disconnect();
-  }, []);
+  }, [canvasW, canvasH]);
+
+  useEffect(() => {
+    posRef.current = pos;
+  }, [pos]);
+
+  useEffect(() => {
+    scaleRef.current = scale;
+  }, [scale]);
+
+  useEffect(() => {
+    if (stageSize.w && stageSize.h) stageSizeRef.current = stageSize;
+  }, [stageSize.w, stageSize.h]);
 
   const catalog = useMemo(() => safeArr(tablesCatalog), [tablesCatalog]);
 
@@ -396,8 +588,6 @@ export default function RoomEditorComponent({
         }),
       );
   }, [catalog, placedTableRefIds, usedOtherRooms]);
-
-  const remainingTablesCount = availableTables.length;
 
   // ✅ Lucide SVG paths (simplifiés mais fidèles)
   const LUCIDE_TRASH2_PATH =
@@ -451,21 +641,6 @@ export default function RoomEditorComponent({
     );
   }, [catalog, activeCatalogId]);
 
-  useEffect(() => {
-    if (!selectedObj) return;
-    const r = Number(selectedObj.rotation || 0);
-    setRotationInput(String(Math.round(r)));
-  }, [selectedObj?.id, selectedObj?.rotation]);
-
-  function updateSelected(patch) {
-    if (!selectedId) return;
-    setObjects((prev) =>
-      prev.map((o) =>
-        String(o.id) === String(selectedId) ? { ...o, ...patch } : o,
-      ),
-    );
-  }
-
   function bringToFront(id) {
     if (!id) return;
     setObjects((prev) => {
@@ -476,18 +651,6 @@ export default function RoomEditorComponent({
       next.push(picked);
       return next;
     });
-  }
-
-  function applyRotation(value) {
-    if (!selectedId) return;
-    const n = Number(value);
-    if (!Number.isFinite(n)) return;
-
-    setObjects((prev) =>
-      prev.map((o) =>
-        o.id === selectedId ? { ...o, rotation: normalizeDeg(n) } : o,
-      ),
-    );
   }
 
   function worldCenter() {
@@ -844,17 +1007,8 @@ export default function RoomEditorComponent({
     setDecorModalOpen(false);
   }
 
-  function deleteSelected() {
-    if (!selectedId) return;
-    setObjects((prev) =>
-      prev.filter((o) => String(o.id) !== String(selectedId)),
-    );
-    setSelectedId(null);
-  }
-
   function resetView() {
-    setScale(0.7);
-    setPos({ x: 0, y: 0 });
+    applyInitialView();
   }
 
   async function saveRoom() {
@@ -963,25 +1117,72 @@ export default function RoomEditorComponent({
 
   const [isPanning, setIsPanning] = useState(false);
 
-  function handleStageMouseDown(e) {
+  function getClientXY(evt) {
+    // Touch
+    if (evt?.touches?.[0]) {
+      return { x: evt.touches[0].clientX, y: evt.touches[0].clientY };
+    }
+    if (evt?.changedTouches?.[0]) {
+      return {
+        x: evt.changedTouches[0].clientX,
+        y: evt.changedTouches[0].clientY,
+      };
+    }
+    // Mouse / Pointer
+    return { x: evt?.clientX ?? 0, y: evt?.clientY ?? 0 };
+  }
+
+  function startPan(e) {
+    // important: empêcher le scroll/drag natif du browser sur mobile
+    e?.evt?.preventDefault?.();
+
     if (e.target === e.target.getStage()) {
       setSelectedId(null);
       setIsPanning(true);
+
+      const { x, y } = getClientXY(e.evt);
+      panRef.current.lastX = x;
+      panRef.current.lastY = y;
     }
   }
-  function handleStageMouseUp() {
+
+  function stopPan(e) {
+    e?.evt?.preventDefault?.();
     setIsPanning(false);
   }
-  function handleStageMouseMove(e) {
+
+  function movePan(e) {
     if (!isPanning) return;
-    const p = e.target.getStage().getPointerPosition();
-    if (!p) return;
+
+    e?.evt?.preventDefault?.();
+
     const evt = e.evt;
+
+    // Mouse: movementX/Y ok
+    let dx = evt?.movementX;
+    let dy = evt?.movementY;
+
+    // Touch: calcule delta depuis le dernier point
+    if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
+      const { x, y } = getClientXY(evt);
+      dx = x - panRef.current.lastX;
+      dy = y - panRef.current.lastY;
+      panRef.current.lastX = x;
+      panRef.current.lastY = y;
+    }
+
     setPos((prev) => ({
-      x: prev.x + evt.movementX,
-      y: prev.y + evt.movementY,
+      x: prev.x + dx,
+      y: prev.y + dy,
     }));
   }
+
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const container = stage.container();
+    if (container) container.style.touchAction = "none";
+  }, []);
 
   function bumpRotate15ById(id, e) {
     if (e) e.cancelBubble = true;
@@ -1149,8 +1350,6 @@ export default function RoomEditorComponent({
         y={obj.y}
         draggable
         onDragStart={(e) => {
-          justDraggedRef.current = true;
-
           e.target.moveToTop();
           e.target.getLayer()?.batchDraw();
         }}
@@ -1177,8 +1376,8 @@ export default function RoomEditorComponent({
             return next;
           });
         }}
-       onClick={() => setSelectedId(obj.id)}
-       onTap={() => setSelectedId(obj.id)}
+        onClick={() => setSelectedId(obj.id)}
+        onTap={() => setSelectedId(obj.id)}
       >
         <Group
           rotation={obj.rotation || 0}
@@ -1363,7 +1562,6 @@ export default function RoomEditorComponent({
           y={cy}
           draggable={!obj.locked}
           onDragStart={(e) => {
-            justDraggedRef.current = true;
             e.target.moveToTop();
             e.target.getLayer()?.batchDraw();
           }}
@@ -1539,7 +1737,6 @@ export default function RoomEditorComponent({
           y={y}
           draggable
           onDragStart={(e) => {
-            justDraggedRef.current = true;
             e.target.moveToTop();
             e.target.getLayer()?.batchDraw();
           }}
@@ -1768,7 +1965,6 @@ export default function RoomEditorComponent({
         y={y}
         draggable
         onDragStart={(e) => {
-          justDraggedRef.current = true;
           e.target.moveToTop();
           e.target.getLayer()?.batchDraw();
         }}
@@ -1933,13 +2129,8 @@ export default function RoomEditorComponent({
    * UI
    * =========================== */
 
-  const canRotate =
-    selectedObj &&
-    (selectedObj.type === "table" ||
-      (selectedObj.type === "decor" && !!selectedObj.shape));
-
   return (
-    <div className="rounded-3xl border border-darkBlue/10 bg-white/60 p-3">
+    <div className="min-w-0 rounded-3xl border border-darkBlue/10 bg-white/60 p-3">
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
@@ -2036,8 +2227,11 @@ export default function RoomEditorComponent({
       {/* Stage */}
       <div
         ref={wrapRef}
-        className="mt-3 rounded-2xl overflow-hidden border border-darkBlue/10 bg-[#5d6675] w-full"
-        style={{ aspectRatio: "16/9" }}
+        className="
+    mt-3 rounded-2xl overflow-hidden border border-darkBlue/10 bg-[#5d6675] w-full
+    h-[clamp(320px,65vh,820px)]
+    midTablet:h-[clamp(320px,80vh,820px)]
+  "
       >
         <Stage
           ref={stageRef}
@@ -2048,12 +2242,13 @@ export default function RoomEditorComponent({
           x={pos.x}
           y={pos.y}
           onWheel={handleWheel}
-          onMouseDown={handleStageMouseDown}
-          onMouseMove={handleStageMouseMove}
-          onMouseUp={handleStageMouseUp}
-          onTouchStart={(e) => {
-            if (e.target === e.target.getStage()) setSelectedId(null);
-          }}
+          onMouseDown={startPan}
+          onMouseMove={movePan}
+          onMouseUp={stopPan}
+          onTouchStart={startPan}
+          onTouchMove={movePan}
+          onTouchEnd={stopPan}
+          onTouchCancel={stopPan}
         >
           <Layer>
             {gridLines}

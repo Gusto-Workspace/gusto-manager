@@ -263,6 +263,11 @@ export default function FloorPlanParametersComponent({
     }
   }
 
+  const resetFpUI = () => {
+    setFpUI({ dirty: false, saving: false, saved: false });
+    setSaveRoomFn(null);
+  };
+
   const card = "rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm";
   const cardInner = "px-2 py-4 mobile:p-4 midTablet:p-6";
   const title = "text-base font-semibold text-darkBlue";
@@ -291,7 +296,7 @@ export default function FloorPlanParametersComponent({
             if (fpUI.saving) return;
             setLeaveConfirmOpen(false);
             setMode("list");
-            setFpUI({ dirty: false, saving: false, saved: false });
+            resetFpUI();
           }}
           onConfirm={async () => {
             if (fpUI.saving) return;
@@ -300,6 +305,7 @@ export default function FloorPlanParametersComponent({
               await handleSaveFloorplan();
               setLeaveConfirmOpen(false);
               setMode("list");
+              resetFpUI();
             } catch (e) {}
           }}
         />
@@ -316,6 +322,7 @@ export default function FloorPlanParametersComponent({
                       return;
                     }
                     setMode("list");
+                    resetFpUI();
                   }}
                   className="inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition px-4 h-10 text-sm font-semibold text-darkBlue"
                 >
@@ -372,7 +379,7 @@ export default function FloorPlanParametersComponent({
 
             {error && <p className="mt-3 text-sm text-red">{error}</p>}
 
-            <div className="mt-4">
+            <div className="mt-4 min-w-0">
               <RoomEditorParametersComponent
                 restaurantId={restaurantId}
                 room={activeRoom}
@@ -483,6 +490,7 @@ export default function FloorPlanParametersComponent({
                         <button
                           type="button"
                           onClick={() => {
+                            resetFpUI();
                             setActiveRoomId(r._id);
                             setMode("edit");
                           }}
