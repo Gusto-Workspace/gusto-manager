@@ -1136,7 +1136,7 @@ export default function RoomEditorComponent({
     const factor = 1.08;
     const newScale = clamp(
       direction > 0 ? oldScale * factor : oldScale / factor,
-      0.4,
+      0.04,
       2,
     );
 
@@ -2154,88 +2154,92 @@ export default function RoomEditorComponent({
   return (
     <div className="min-w-0 rounded-3xl border border-darkBlue/10 bg-white/60 p-3">
       {/* Toolbar */}
-      <div className="grid grid-cols-1 midTablet:grid-cols-2 gap-2">
-        <div className="grid grid-cols-1 midTablet:grid-cols-2 gap-2 midTablet:col-span-2">
-          {/* Tables */}
-          <select
-            value={selectedRefId}
-            disabled={availableTables.length === 0}
-            onChange={(e) => {
-              const id = e.target.value;
-              setSelectedRefId(id);
 
-              const ref = availableTables.find(
-                (t) => String(t._id) === String(id),
-              );
-              if (ref) addTableInstanceFromRef(ref);
+      <div className="flex gap-2 flex-wrap">
+        {/* Tables */}
+        <select
+          value={selectedRefId}
+          disabled={availableTables.length === 0}
+          onChange={(e) => {
+            const id = e.target.value;
+            setSelectedRefId(id);
 
-              // ✅ reset pour pouvoir en ajouter plusieurs rapidement
-              setTimeout(() => setSelectedRefId(""), 0);
-            }}
-            className="h-10 rounded-2xl border border-darkBlue/10 bg-white/80 px-3 text-sm outline-none disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {availableTables.length === 0 ? (
-              <option value="">Toutes les tables sont déjà placées</option>
-            ) : (
-              <>
-                <option value="" disabled>
-                  Sélectionnez une table
+            const ref = availableTables.find(
+              (t) => String(t._id) === String(id),
+            );
+            if (ref) addTableInstanceFromRef(ref);
+
+            // ✅ reset pour pouvoir en ajouter plusieurs rapidement
+            setTimeout(() => setSelectedRefId(""), 0);
+          }}
+          className="h-10 rounded-2xl border border-darkBlue/10 bg-white/80 px-3 text-sm outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {availableTables.length === 0 ? (
+            <option value="">Toutes les tables sont déjà placées</option>
+          ) : (
+            <>
+              <option value="" disabled>
+                {isMobile ? "Sélectionnez" : "Sélectionnez une table"}
+              </option>
+
+              {availableTables.map((t) => (
+                <option key={String(t._id)} value={String(t._id)}>
+                  {t.name} • {t.seats} pers.
                 </option>
-
-                {availableTables.map((t) => (
-                  <option key={String(t._id)} value={String(t._id)}>
-                    {t.name} • {t.seats} pers.
-                  </option>
-                ))}
-              </>
-            )}
-          </select>
-          <button
-            type="button"
-            onClick={() => {
-              setNewTableName("");
-              setNewTableSeats("2");
-              setCreateTableOpen(true);
-            }}
-            className="inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/80 px-4 h-10 text-sm font-semibold text-darkBlue hover:bg-darkBlue/5 transition"
-          >
-            <Plus className="size-4 text-darkBlue/60" />
-            Nouvelle table
-          </button>
-
-          {selectedObj?.type === "table" && (
-            <button
-              type="button"
-              onClick={() => {
-                setDeleteCatalogError("");
-                setDeleteCatalogOpen(true);
-              }}
-              className="inline-flex items-center gap-2 rounded-2xl border border-red/20 bg-white/80 px-4 h-10 text-sm font-semibold text-red hover:bg-red/5 transition"
-              title="Supprimer du catalogue"
-            >
-              <Trash2 className="size-4" />
-              Supprimer du catalogue
-            </button>
+              ))}
+            </>
           )}
-          <button
-            type="button"
-            onClick={() => setDecorModalOpen(true)}
-            className="inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/80 px-4 h-10 text-sm font-semibold text-darkBlue hover:bg-darkBlue/5 transition"
-          >
-            <Plus className="size-4" />
-            Ajouter un élément
-          </button>
-          <button
-            type="button"
-            onClick={resetView}
-            className="inline-flex items-center justify-center size-10 rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition"
-            title="Réinitialiser la vue"
-            aria-label="Réinitialiser la vue"
-          >
-            <RotateCcw className="size-4 text-darkBlue/70" />
-          </button>
-        </div>
+        </select>
+
+        <button
+          type="button"
+          onClick={() => {
+            setNewTableName("");
+            setNewTableSeats("2");
+            setCreateTableOpen(true);
+          }}
+          className="inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/80 px-4 h-10 text-sm font-semibold text-darkBlue hover:bg-darkBlue/5 transition"
+        >
+          <Plus className="size-4 text-darkBlue/60" />
+          Nouvelle table
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setDecorModalOpen(true)}
+          className="inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/80 px-4 h-10 text-sm font-semibold text-darkBlue hover:bg-darkBlue/5 transition"
+        >
+          <Plus className="size-4" />
+          Ajouter un décor
+        </button>
+
+        <button
+          type="button"
+          onClick={resetView}
+          className="inline-flex items-center justify-center size-10 rounded-2xl border border-darkBlue/10 bg-white/70 desktop:hover:bg-darkBlue/5 transition"
+          title="Réinitialiser la vue"
+          aria-label="Réinitialiser la vue"
+        >
+          <RotateCcw className="size-4 text-darkBlue/70" />
+        </button>
       </div>
+
+      {selectedObj?.type === "table" ? (
+        <button
+          type="button"
+          onClick={() => {
+            setDeleteCatalogError("");
+            setDeleteCatalogOpen(true);
+          }}
+          className="inline-flex items-center gap-2 rounded-2xl border border-red/20 bg-white/80 px-4 h-10 mt-2 text-sm font-semibold text-red hover:bg-red/5 transition"
+          title="Supprimer du catalogue"
+        >
+          <Trash2 className="size-4" />
+          Supprimer du catalogue
+        </button>
+      ) : (
+        <hr className="desktop:hidden h-[2px] w-1/2 mx-auto my-[27px] text-darkBlue/20" />
+      )}
 
       {saveError ? (
         <div className="mt-3 rounded-2xl border border-red/20 bg-red/5 px-4 py-3 text-sm text-red">
@@ -2247,7 +2251,7 @@ export default function RoomEditorComponent({
       <div
         ref={wrapRef}
         className="
-    mt-3 rounded-2xl overflow-hidden border border-darkBlue/10 bg-[#5d6675] w-full
+    mt-2 rounded-2xl overflow-hidden border border-darkBlue/10 bg-[#5d6675] w-full
     h-[clamp(320px,85vh,820px)]
     midTablet:h-[clamp(320px,80vh,820px)]
   "
