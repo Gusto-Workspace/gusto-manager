@@ -76,9 +76,11 @@ export default function RoomEditorComponent({
   restaurantId,
   room,
   tablesCatalog,
+  placedTableRefIdsOtherRooms,
   onCatalogUpdated,
   onSaved,
   onSaveRequest,
+  onDirtyChange,
 }) {
   const token =
     typeof window !== "undefined" ? localStorage.getItem("token") : null;
@@ -122,6 +124,89 @@ export default function RoomEditorComponent({
   const [deleteCatalogError, setDeleteCatalogError] = useState("");
 
   const newTableNameRef = useRef(null);
+
+  const [saveError, setSaveError] = useState("");
+
+  const usedOtherRooms = useMemo(() => {
+    if (placedTableRefIdsOtherRooms instanceof Set)
+      return placedTableRefIdsOtherRooms;
+    if (Array.isArray(placedTableRefIdsOtherRooms)) {
+      return new Set(placedTableRefIdsOtherRooms.map((x) => String(x)));
+    }
+    return new Set();
+  }, [placedTableRefIdsOtherRooms]);
+
+  const initialSnapRef = useRef("");
+
+  function stableRoomSnap(objs, canvasW, canvasH, grid) {
+    const normalized = safeArr(objs).map((o) => {
+      const base = {
+        id: String(o.id || ""),
+        type: String(o.type || ""),
+        rotation: Number(o.rotation || 0),
+        shape: o.shape ? String(o.shape) : undefined,
+        decorKind: o.decorKind ? String(o.decorKind) : undefined,
+        locked: Boolean(o.locked),
+        tableRefId: o.tableRefId ? String(o.tableRefId) : undefined,
+      };
+
+      if (o.type === "table") {
+        return {
+          ...base,
+          x: Number(o.x || 0),
+          y: Number(o.y || 0),
+          w: Number(o.w || 0),
+          h: Number(o.h || 0),
+        };
+      }
+
+      if (o.type === "decor") {
+        if (o.shape === "line") {
+          return {
+            ...base,
+            points: safeArr(o.points).map((n) => Number(n || 0)),
+            meta: o.meta || {},
+            style: o.style || {},
+          };
+        }
+        if (o.shape === "circle") {
+          return {
+            ...base,
+            x: Number(o.x || 0),
+            y: Number(o.y || 0),
+            r: Number(o.r || 0),
+            meta: o.meta || {},
+            style: o.style || {},
+          };
+        }
+        if (o.shape === "rect") {
+          return {
+            ...base,
+            x: Number(o.x || 0),
+            y: Number(o.y || 0),
+            w: Number(o.w || 0),
+            h: Number(o.h || 0),
+            meta: o.meta || {},
+            style: o.style || {},
+          };
+        }
+      }
+
+      return base;
+    });
+
+    // ✅ important : tri par id => un changement d’ordre (z-index) ne rend PAS dirty
+    normalized.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+
+    return JSON.stringify({
+      canvas: {
+        w: Number(canvasW || 0),
+        h: Number(canvasH || 0),
+        grid: Number(grid || 0),
+      },
+      objects: normalized,
+    });
+  }
 
   /* ===========================
    * COLLISION / SNAP HELPERS
@@ -250,12 +335,26 @@ export default function RoomEditorComponent({
    * INIT / RESIZE
    * =========================== */
 
+ useEffect(() => {
+  const initObjs = safeArr(room?.objects);
+  setObjects(initObjs);
+  setSelectedId(null);
+  setScale(0.7);
+  setPos({ x: 0, y: 0 });
+
+  // ✅ reset snapshot (room chargée = clean)
+  const snap = stableRoomSnap(initObjs, canvasW, canvasH, grid);
+  initialSnapRef.current = snap;
+  if (typeof onDirtyChange === "function") onDirtyChange(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [room?._id]);
+
   useEffect(() => {
-    setObjects(safeArr(room?.objects));
-    setSelectedId(null);
-    setScale(0.7);
-    setPos({ x: 0, y: 0 });
-  }, [room?._id]);
+    const snap = stableRoomSnap(objects, canvasW, canvasH, grid);
+    const dirty = snap !== initialSnapRef.current;
+    if (typeof onDirtyChange === "function") onDirtyChange(dirty);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [objects, canvasW, canvasH, grid]);
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -289,13 +388,14 @@ export default function RoomEditorComponent({
   const availableTables = useMemo(() => {
     return catalog
       .filter((t) => !placedTableRefIds.has(String(t._id)))
+      .filter((t) => !usedOtherRooms.has(String(t._id)))
       .sort((a, b) =>
         String(a.name).localeCompare(String(b.name), undefined, {
           numeric: true,
           sensitivity: "base",
         }),
       );
-  }, [catalog, placedTableRefIds]);
+  }, [catalog, placedTableRefIds, usedOtherRooms]);
 
   const remainingTablesCount = availableTables.length;
 
@@ -758,20 +858,33 @@ export default function RoomEditorComponent({
   }
 
   async function saveRoom() {
-    const payload = {
-      canvas: { width: canvasW, height: canvasH, gridSize: grid },
-      objects,
-    };
+    try {
+      setSaveError("");
 
-    const res = await axios.put(
-      `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/floorplans/rooms/${room._id}`,
-      payload,
-      { headers: { Authorization: `Bearer ${token}` } },
-    );
+      const payload = {
+        canvas: { width: canvasW, height: canvasH, gridSize: grid },
+        objects,
+      };
 
-    const nextRoom = res.data?.room;
-    const nextRooms = res.data?.rooms;
-    if (onSaved) onSaved(nextRoom || { ...room, ...payload }, nextRooms);
+      const res = await axios.put(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/floorplans/rooms/${room._id}`,
+        payload,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+
+      const nextRoom = res.data?.room;
+      const nextRooms = res.data?.rooms;
+      if (onSaved) onSaved(nextRoom || { ...room, ...payload }, nextRooms);
+      initialSnapRef.current = stableRoomSnap(objects, canvasW, canvasH, grid);
+      if (typeof onDirtyChange === "function") onDirtyChange(false);
+    } catch (e) {
+      const msg =
+        e?.response?.data?.message ||
+        "Impossible d’enregistrer la salle. Vérifie que les tables ne sont pas déjà placées dans une autre salle.";
+      setSaveError(msg);
+      if (typeof window !== "undefined") window.alert(msg);
+      throw e;
+    }
   }
 
   useEffect(() => {
@@ -1064,14 +1177,8 @@ export default function RoomEditorComponent({
             return next;
           });
         }}
-        onClick={() => {
-          setSelectedId(obj.id);
-          bringToFront(obj.id);
-        }}
-        onTap={() => {
-          setSelectedId(obj.id);
-          bringToFront(obj.id);
-        }}
+       onClick={() => setSelectedId(obj.id)}
+       onTap={() => setSelectedId(obj.id)}
       >
         <Group
           rotation={obj.rotation || 0}
@@ -1919,6 +2026,12 @@ export default function RoomEditorComponent({
           </button>
         </div>
       </div>
+
+      {saveError ? (
+        <div className="mt-3 rounded-2xl border border-red/20 bg-red/5 px-4 py-3 text-sm text-red">
+          {saveError}
+        </div>
+      ) : null}
 
       {/* Stage */}
       <div

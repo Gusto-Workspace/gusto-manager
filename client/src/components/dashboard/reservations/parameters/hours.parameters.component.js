@@ -48,7 +48,7 @@ export default function HoursParametersComponent({
   const saveBtnPrimary =
     "bg-darkBlue text-white hover:opacity-90 active:scale-[0.98]";
   const saveBtnDone =
-    "bg-green-600/10 text-green-700 border border-green-600/20";
+    "bg-white text-darkBlue border border-darkBlue opacity-60";
 
   function onReservationHoursChange(data) {
     setReservationHours?.(data.hours);

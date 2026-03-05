@@ -165,10 +165,12 @@ router.put(
 
       const room =
         restaurant.reservations.parameters.floorplan.rooms.id(roomId);
+
+      if (!room) return res.status(404).json({ message: "Salle introuvable." });
+      
       if (req.body?.name !== undefined) {
         room.name = safeString(req.body.name, room.name);
       }
-      if (!room) return res.status(404).json({ message: "Salle introuvable." });
 
       // canvas
       const canvas = req.body?.canvas || {};
@@ -232,6 +234,51 @@ router.put(
         uniq.push(o);
       }
 
+      // ✅ Prevent the same catalog table from being placed in multiple rooms.
+      // We compare this room's tableRefIds against all other rooms' tableRefIds.
+      const otherUsed = new Set();
+      const roomsAll = getRooms(restaurant);
+      for (const r of roomsAll) {
+        if (!r?._id) continue;
+        if (String(r._id) === String(roomId)) continue;
+        const objs = Array.isArray(r.objects) ? r.objects : [];
+        for (const o of objs) {
+          if (o?.type === "table" && o?.tableRefId) {
+            otherUsed.add(String(o.tableRefId));
+          }
+        }
+      }
+
+      const conflicts = Array.from(
+        new Set(
+          uniq
+            .filter((o) => o.type === "table" && o.tableRefId)
+            .map((o) => String(o.tableRefId))
+            .filter((id) => otherUsed.has(id)),
+        ),
+      );
+
+      if (conflicts.length > 0) {
+        const catalog = restaurant?.reservations?.parameters?.tables || [];
+        const names = conflicts
+          .map((id) => {
+            const t = catalog.find((x) => String(x?._id) === String(id));
+            return t?.name ? String(t.name) : null;
+          })
+          .filter(Boolean);
+
+        return res.status(409).json({
+          code: "TABLE_ALREADY_PLACED",
+          message:
+            names.length > 0
+              ? `Certaines tables sont déjà placées dans une autre salle : ${names.join(
+                  ", ",
+                )}`
+              : "Certaines tables sont déjà placées dans une autre salle.",
+          conflicts,
+        });
+      }
+
       room.objects = uniq;
 
       restaurant.reservations.parameters.floorplan.version =
@@ -289,10 +336,12 @@ router.post(
       const clone = {
         name: `${room.name} (copie)`,
         canvas: { ...room.canvas },
-        objects: (room.objects || []).map((o) => ({
-          ...(o.toObject?.() ? o.toObject() : o),
-          id: `${o.id}_copy_${Date.now()}`,
-        })),
+        objects: (room.objects || [])
+          .filter((o) => o?.type !== "table")
+          .map((o) => ({
+            ...(o.toObject?.() ? o.toObject() : o),
+            id: `${o.id}_copy_${Date.now()}`,
+          })),
       };
 
       restaurant.reservations.parameters.floorplan.rooms.push(clone);
