@@ -52,6 +52,10 @@ export default function FloorPlanParametersComponent({
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
 
+  const initialRoomNameRef = useRef("");
+  const [editorDirty, setEditorDirty] = useState(false);
+  const [nameDirty, setNameDirty] = useState(false);
+
   const nameInputRef = useRef(null);
 
   const token =
@@ -113,10 +117,11 @@ export default function FloorPlanParametersComponent({
     if (!saveRoomFn || fpUI.saving) return;
     try {
       setFpSaving(true);
-      await saveRoomFn(); // ✅ child saveRoom()
-      setFpSaved(true); // ✅ show “Enregistré”
+      await saveRoomFn();
+      initialRoomNameRef.current = String(roomName || "");
+      setNameDirty(false);
+      setFpSaved(true);
     } catch (e) {
-      // child gère déjà saveError + alert
     } finally {
       setFpSaving(false);
     }
@@ -131,6 +136,11 @@ export default function FloorPlanParametersComponent({
     () => rooms.find((r) => String(r._id) === String(activeRoomId)) || null,
     [rooms, activeRoomId],
   );
+
+  useEffect(() => {
+    setFpDirty(editorDirty || nameDirty);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editorDirty, nameDirty]);
 
   // ✅ Tables already placed in OTHER rooms (so they can't be placed twice)
   const placedInOtherRooms = useMemo(() => {
@@ -245,24 +255,6 @@ export default function FloorPlanParametersComponent({
     }
   }
 
-  async function updateRoomName() {
-    try {
-      if (!activeRoomId) return;
-
-      const res = await axios.put(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/floorplans/rooms/${activeRoomId}`,
-        {
-          name: roomName,
-        },
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
-
-      setRooms(safeArr(res.data?.rooms));
-    } catch (e) {
-      setError("Impossible de modifier le nom de la salle.");
-    }
-  }
-
   const resetFpUI = () => {
     setFpUI({ dirty: false, saving: false, saved: false });
     setSaveRoomFn(null);
@@ -295,6 +287,10 @@ export default function FloorPlanParametersComponent({
           onCancel={() => {
             if (fpUI.saving) return;
             setLeaveConfirmOpen(false);
+            const original = String(initialRoomNameRef.current || "");
+            setRoomName(original);
+            setNameDirty(false);
+            setEditorDirty(false);
             setMode("list");
             resetFpUI();
           }}
@@ -330,13 +326,21 @@ export default function FloorPlanParametersComponent({
                 </button>
 
                 <div className="flex items-center gap-2">
-                  <span className="text-darkBlue/60">Plan de salle •</span>
+                  <span className="hidden midTablet:block text-darkBlue/60">
+                    Plan de salle •
+                  </span>
 
                   <input
                     ref={nameInputRef}
                     value={roomName}
-                    onChange={(e) => setRoomName(e.target.value)}
-                    onBlur={updateRoomName}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setRoomName(v);
+                      setNameDirty(
+                        String(v).trim() !==
+                          String(initialRoomNameRef.current).trim(),
+                      );
+                    }}
                     className="border-b border-darkBlue/20 focus:border-blue outline-none text-darkBlue font-semibold px-1"
                   />
                 </div>
@@ -348,7 +352,7 @@ export default function FloorPlanParametersComponent({
                   onClick={handleSaveFloorplan}
                   disabled={!fpUI.dirty || fpUI.saving}
                   className={[
-                    "inline-flex items-center gap-2 rounded-xl px-4 h-10 text-sm font-semibold transition",
+                    "inline-flex items-center gap-2 rounded-xl px-3 midTablet:px-4 h-10 text-sm font-semibold transition",
                     fpUI.saved
                       ? "bg-white text-darkBlue border border-darkBlue"
                       : "bg-darkBlue text-white hover:opacity-90",
@@ -360,17 +364,21 @@ export default function FloorPlanParametersComponent({
                   {fpUI.saving ? (
                     <>
                       <Loader2 className="size-4 animate-spin" />
-                      Enregistrement…
+                      <span className="hidden midTablet:block">
+                        Enregistrement…
+                      </span>
                     </>
                   ) : fpUI.saved ? (
                     <>
                       <Check className="size-4" />
-                      Enregistré
+                      <span className="hidden midTablet:block">Enregistré</span>
                     </>
                   ) : (
                     <>
                       <Save className="size-4" />
-                      Enregistrer
+                      <span className="hidden midTablet:block">
+                        Enregistrer
+                      </span>
                     </>
                   )}
                 </button>
@@ -383,8 +391,10 @@ export default function FloorPlanParametersComponent({
               <RoomEditorParametersComponent
                 restaurantId={restaurantId}
                 room={activeRoom}
+                roomName={roomName}
                 tablesCatalog={localCatalog}
                 placedTableRefIdsOtherRooms={placedInOtherRooms}
+                onDirtyChange={(dirty) => setEditorDirty(Boolean(dirty))}
                 onCatalogUpdated={(nextTables) => {
                   const next = safeArr(nextTables);
                   setLocalCatalog(next);
@@ -404,7 +414,6 @@ export default function FloorPlanParametersComponent({
                   }
                 }}
                 onSaveRequest={(fn) => setSaveRoomFn(() => fn)}
-                onDirtyChange={(dirty) => setFpDirty(dirty)}
               />
             </div>
           </div>
@@ -440,10 +449,10 @@ export default function FloorPlanParametersComponent({
             <button
               type="button"
               onClick={createRoom}
-              className="inline-flex items-center gap-2 rounded-2xl bg-blue text-white px-4 h-10 text-sm font-semibold hover:bg-blue/90 active:scale-[0.98] transition"
+              className="inline-flex items-center gap-2 rounded-2xl bg-blue text-white px-3 midTablet:px-4 h-10 text-sm font-semibold hover:bg-blue/90 active:scale-[0.98] transition"
             >
               <Plus className="size-4" />
-              Nouvelle salle
+              <span className="hidden midTablet:block">Nouvelle salle</span>
             </button>
           </div>
 

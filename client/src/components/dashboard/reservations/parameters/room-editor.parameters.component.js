@@ -12,6 +12,7 @@ import {
   Image as KonvaImage,
 } from "react-konva";
 import { Plus, Trash2, RotateCcw, X } from "lucide-react";
+import DecorModalParametersComponent from "./decor-modal.parameters.component";
 
 function uid() {
   return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
@@ -74,6 +75,7 @@ function makeLucideSvg({ pathD, size = 24, stroke = "#fff", strokeWidth = 2 }) {
 export default function RoomEditorComponent({
   restaurantId,
   room,
+  roomName,
   tablesCatalog,
   placedTableRefIdsOtherRooms,
   onCatalogUpdated,
@@ -102,6 +104,9 @@ export default function RoomEditorComponent({
   const scaleRef = useRef(0.7);
   const initialSnapRef = useRef("");
   const didInitialFitRef = useRef(false);
+  const hasUserMovedViewRef = useRef(false);
+  const prevObjectsLenRef = useRef(0);
+  const didFitAfterFirstObjectRef = useRef(false);
 
   const [objects, setObjects] = useState(() => safeArr(room?.objects));
   const [selectedId, setSelectedId] = useState(null);
@@ -373,8 +378,8 @@ export default function RoomEditorComponent({
         bounds,
         stageW: stageSize.w,
         stageH: stageSize.h,
-        paddingPx: 24, // ✅ mobile: padding plus faible
-        minScale: 0.25, // ✅ évite d’être trop reculé
+        paddingPx: 24,
+        minScale: 0.25,
         maxScale: 1.2,
       });
 
@@ -469,7 +474,9 @@ export default function RoomEditorComponent({
    * =========================== */
 
   useEffect(() => {
-    didInitialFitRef.current = false;
+    didFitAfterFirstObjectRef.current = false;
+    hasUserMovedViewRef.current = false;
+    prevObjectsLenRef.current = safeArr(room?.objects).length;
   }, [room?._id]);
 
   useEffect(() => {
@@ -503,6 +510,29 @@ export default function RoomEditorComponent({
     if (typeof onDirtyChange === "function") onDirtyChange(dirty);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [objects, canvasW, canvasH, grid]);
+
+  useEffect(() => {
+    const len = safeArr(objects).length;
+    const prevLen = prevObjectsLenRef.current;
+
+    // 0 -> >0 : on vient d’ajouter le 1er objet
+    if (
+      prevLen === 0 &&
+      len > 0 &&
+      stageSize.w &&
+      stageSize.h &&
+      !hasUserMovedViewRef.current &&
+      !didFitAfterFirstObjectRef.current
+    ) {
+      didFitAfterFirstObjectRef.current = true;
+
+      requestAnimationFrame(() => {
+        applyInitialView(objects); // ✅ fit sur les objets, plus sur le canvas vide
+      });
+    }
+
+    prevObjectsLenRef.current = len;
+  }, [objects, stageSize.w, stageSize.h]);
 
   useEffect(() => {
     if (!stageSize.w || !stageSize.h) return;
@@ -651,6 +681,12 @@ export default function RoomEditorComponent({
       next.push(picked);
       return next;
     });
+  }
+
+  function selectObject(id) {
+    if (!id) return;
+    setSelectedId(id);
+    bringToFront(id);
   }
 
   function worldCenter() {
@@ -1016,6 +1052,7 @@ export default function RoomEditorComponent({
       setSaveError("");
 
       const payload = {
+        name: String(roomName || "").trim(),
         canvas: { width: canvasW, height: canvasH, gridSize: grid },
         objects,
       };
@@ -1043,9 +1080,10 @@ export default function RoomEditorComponent({
 
   useEffect(() => {
     if (typeof onSaveRequest === "function") {
-      onSaveRequest(saveRoom);
+      onSaveRequest(() => saveRoom());
     }
-  }, [objects]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room?._id, restaurantId, roomName, canvasW, canvasH, grid, objects]);
 
   /* ===========================
    * GRID LINES
@@ -1086,6 +1124,7 @@ export default function RoomEditorComponent({
 
   function handleWheel(e) {
     e.evt.preventDefault();
+    hasUserMovedViewRef.current = true;
     const stage = stageRef.current;
     if (!stage) return;
 
@@ -1137,6 +1176,7 @@ export default function RoomEditorComponent({
     e?.evt?.preventDefault?.();
 
     if (e.target === e.target.getStage()) {
+      hasUserMovedViewRef.current = true;
       setSelectedId(null);
       setIsPanning(true);
 
@@ -1376,8 +1416,8 @@ export default function RoomEditorComponent({
             return next;
           });
         }}
-        onClick={() => setSelectedId(obj.id)}
-        onTap={() => setSelectedId(obj.id)}
+        onClick={() => selectObject(obj.id)}
+        onTap={() => selectObject(obj.id)}
       >
         <Group
           rotation={obj.rotation || 0}
@@ -1543,7 +1583,7 @@ export default function RoomEditorComponent({
     const shape = obj.shape;
 
     const strokeSelected = "rgba(0,122,255,0.9)";
-    const onClick = () => setSelectedId(obj.id);
+    const onClick = () => selectObject(obj.id);
 
     if (shape === "line") {
       const pts = safeArr(obj.points);
@@ -1565,14 +1605,8 @@ export default function RoomEditorComponent({
             e.target.moveToTop();
             e.target.getLayer()?.batchDraw();
           }}
-          onClick={() => {
-            setSelectedId(obj.id);
-            bringToFront(obj.id);
-          }}
-          onTap={() => {
-            setSelectedId(obj.id);
-            bringToFront(obj.id);
-          }}
+          onClick={() => selectObject(obj.id)}
+          onTap={() => selectObject(obj.id)}
           onDragEnd={(e) => {
             const nx = e.target.x();
             const ny = e.target.y();
@@ -1740,14 +1774,8 @@ export default function RoomEditorComponent({
             e.target.moveToTop();
             e.target.getLayer()?.batchDraw();
           }}
-          onClick={() => {
-            setSelectedId(obj.id);
-            bringToFront(obj.id);
-          }}
-          onTap={() => {
-            setSelectedId(obj.id);
-            bringToFront(obj.id);
-          }}
+          onClick={() => selectObject(obj.id)}
+          onTap={() => selectObject(obj.id)}
           onDragEnd={(e) => {
             let { x, y } = e.target.position();
 
@@ -1968,14 +1996,8 @@ export default function RoomEditorComponent({
           e.target.moveToTop();
           e.target.getLayer()?.batchDraw();
         }}
-        onClick={() => {
-          setSelectedId(obj.id);
-          bringToFront(obj.id);
-        }}
-        onTap={() => {
-          setSelectedId(obj.id);
-          bringToFront(obj.id);
-        }}
+        onClick={() => selectObject(obj.id)}
+        onTap={() => selectObject(obj.id)}
         onDragEnd={(e) => {
           const nx = e.target.x();
           const ny = e.target.y();
@@ -2132,8 +2154,8 @@ export default function RoomEditorComponent({
   return (
     <div className="min-w-0 rounded-3xl border border-darkBlue/10 bg-white/60 p-3">
       {/* Toolbar */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-2 flex-wrap">
+      <div className="grid grid-cols-1 midTablet:grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 midTablet:grid-cols-2 gap-2 midTablet:col-span-2">
           {/* Tables */}
           <select
             value={selectedRefId}
@@ -2168,7 +2190,6 @@ export default function RoomEditorComponent({
               </>
             )}
           </select>
-
           <button
             type="button"
             onClick={() => {
@@ -2196,7 +2217,6 @@ export default function RoomEditorComponent({
               Supprimer du catalogue
             </button>
           )}
-
           <button
             type="button"
             onClick={() => setDecorModalOpen(true)}
@@ -2205,7 +2225,6 @@ export default function RoomEditorComponent({
             <Plus className="size-4" />
             Ajouter un élément
           </button>
-
           <button
             type="button"
             onClick={resetView}
@@ -2229,7 +2248,7 @@ export default function RoomEditorComponent({
         ref={wrapRef}
         className="
     mt-3 rounded-2xl overflow-hidden border border-darkBlue/10 bg-[#5d6675] w-full
-    h-[clamp(320px,65vh,820px)]
+    h-[clamp(320px,85vh,820px)]
     midTablet:h-[clamp(320px,80vh,820px)]
   "
       >
@@ -2265,7 +2284,7 @@ export default function RoomEditorComponent({
 
       {createTableOpen && (
         <div
-          className="fixed inset-0 z-[9999] flex items-end mobile:items-center justify-center bg-black/40 p-3"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 p-3"
           onMouseDown={(e) => {
             if (e.target === e.currentTarget) setCreateTableOpen(false);
           }}
@@ -2293,7 +2312,7 @@ export default function RoomEditorComponent({
             </div>
 
             <div className="p-4">
-              <div className="grid grid-cols-1 mobile:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 midTablet:grid-cols-2 gap-3">
                 <input
                   ref={newTableNameRef}
                   type="text"
@@ -2349,7 +2368,7 @@ export default function RoomEditorComponent({
 
       {deleteCatalogOpen && (
         <div
-          className="fixed inset-0 z-[9999] flex items-end mobile:items-center justify-center bg-black/40 p-3"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 p-3"
           onMouseDown={(e) => {
             if (e.target === e.currentTarget) setDeleteCatalogOpen(false);
           }}
@@ -2417,137 +2436,11 @@ export default function RoomEditorComponent({
 
       {/* Decor Modal */}
       {decorModalOpen && (
-        <div
-          className="fixed inset-0 z-[9999] flex items-end mobile:items-center justify-center bg-black/40 p-3"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setDecorModalOpen(false);
-          }}
-        >
-          <div className="w-full max-w-[720px] rounded-3xl border border-darkBlue/10 bg-lightGrey shadow-xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-darkBlue/10">
-              <div className="min-w-0">
-                <p className="text-base font-semibold text-darkBlue">
-                  Ajouter un élément
-                </p>
-                <p className="text-xs text-darkBlue/60">
-                  Clique sur un élément pour l’ajouter au centre du plan.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setDecorModalOpen(false)}
-                className="inline-flex items-center justify-center size-10 rounded-2xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition"
-                aria-label="Fermer"
-              >
-                <X className="size-4 text-darkBlue/70" />
-              </button>
-            </div>
-
-            <div className="p-4 grid grid-cols-1 mobile:grid-cols-2 gap-4">
-              {/* 1) STRUCTURE */}
-              <div className="rounded-3xl border border-darkBlue/10 bg-white/70 p-3">
-                <p className="text-sm font-semibold text-darkBlue">
-                  1) Structure
-                </p>
-
-                <div className="mt-3 grid grid-cols-1 gap-2">
-                  <ItemBtn
-                    label="Mur / cloison"
-                    onClick={() => addDecor("wall")}
-                  />
-
-                  <ItemBtn
-                    label="Porte / entrée"
-                    onClick={() => addDecor("door")}
-                  />
-                  <ItemBtn
-                    label="Bar / comptoir"
-                    onClick={() => addDecor("bar")}
-                  />
-                  <ItemBtn
-                    label="Cuisine / passe"
-                    onClick={() => addDecor("kitchen")}
-                  />
-                  <ItemBtn label="Fenêtre" onClick={() => addDecor("window")} />
-                  <ItemBtn label="Toilettes" onClick={() => addDecor("wc")} />
-                </div>
-              </div>
-
-              {/* 2) OBSTACLES */}
-              <div className="rounded-3xl border border-darkBlue/10 bg-white/70 p-3">
-                <p className="text-sm font-semibold text-darkBlue">
-                  2) Obstacles
-                </p>
-
-                <div className="mt-3 grid grid-cols-1 gap-2">
-                  <ItemBtn
-                    label="Pilier (rond)"
-                    onClick={() => addDecor("pillar_round")}
-                  />
-                  <ItemBtn
-                    label="Pilier (carré)"
-                    onClick={() => addDecor("pillar_square")}
-                  />
-                  <ItemBtn
-                    label="Escalier"
-                    onClick={() => addDecor("stairs")}
-                  />
-                  <ItemBtn
-                    label="Zone interdite"
-                    onClick={() => addDecor("no_zone")}
-                  />
-                </div>
-              </div>
-
-              {/* 3) AMBIANCE */}
-              <div className="rounded-3xl border border-darkBlue/10 bg-white/70 p-3 mobile:col-span-2">
-                <p className="text-sm font-semibold text-darkBlue">
-                  3) Ambiance / déco
-                </p>
-
-                <div className="mt-3 grid grid-cols-1 mobile:grid-cols-2 gap-2">
-                  <ItemBtn label="Plante" onClick={() => addDecor("plant")} />
-                  <ItemBtn
-                    label="Parasol"
-                    onClick={() => addDecor("parasol")}
-                  />
-                  <ItemBtn
-                    label="Banquette"
-                    onClick={() => addDecor("bench")}
-                  />
-                  <ItemBtn
-                    label="Décoration générique"
-                    onClick={() => addDecor("decor")}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="px-4 py-3 border-t border-darkBlue/10 flex items-center justify-end">
-              <button
-                type="button"
-                onClick={() => setDecorModalOpen(false)}
-                className="inline-flex items-center justify-center rounded-2xl border border-darkBlue/10 bg-white px-4 h-10 text-sm font-semibold text-darkBlue hover:bg-darkBlue/5 transition"
-              >
-                Fermer
-              </button>
-            </div>
-          </div>
-        </div>
+        <DecorModalParametersComponent
+          setDecorModalOpen={setDecorModalOpen}
+          addDecor={addDecor}
+        />
       )}
     </div>
-  );
-}
-
-function ItemBtn({ label, onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="w-full text-left rounded-2xl border border-darkBlue/10 bg-white/80 px-3 py-2 hover:bg-darkBlue/5 transition"
-    >
-      <p className="text-sm font-semibold text-darkBlue">{label}</p>
-    </button>
   );
 }
