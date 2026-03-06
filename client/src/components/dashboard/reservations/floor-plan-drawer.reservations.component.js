@@ -3,8 +3,12 @@ import axios from "axios";
 import dynamic from "next/dynamic";
 import { X, Map, Clock3, Loader2 } from "lucide-react";
 
-const CLOSE_MS = 220;
+const CLOSE_MS = 280;
 const CANVAS_MOUNT_DELAY_MS = 90;
+
+// Swipe config (mobile only)
+const SWIPE_VELOCITY = 0.6; // px/ms
+const CLOSE_RATIO = 0.25; // 25% panel height => close
 
 const FloorPlanCanvasReservationsComponent = dynamic(
   () => import("./floor-plan-canvas.reservations.component"),
@@ -73,12 +77,27 @@ export default function FloorPlanDrawerReservationsComponent({
   const [selectedTableState, setSelectedTableState] = useState(null);
 
   const tablesCatalog = restaurantData?.reservations?.parameters?.tables || [];
-
   const reservationParameters = restaurantData?.reservations?.parameters || {};
 
   const contextDate = selectedDay || new Date();
   const contextDateKey = dateKeyOf(contextDate);
   const isDayContext = Boolean(selectedDay);
+
+  // ✅ detect tablet+ like reservation drawer
+  const [isTabletUp, setIsTabletUp] = useState(false);
+
+  // ✅ swipe state (mobile only)
+  const panelRef = useRef(null);
+  const [panelH, setPanelH] = useState(null);
+  const [dragY, setDragY] = useState(0);
+
+  const dragStateRef = useRef({
+    active: false,
+    startY: 0,
+    lastY: 0,
+    startT: 0,
+    lastT: 0,
+  });
 
   const restoreScroll = () => {
     if (typeof document === "undefined") return;
@@ -94,9 +113,17 @@ export default function FloorPlanDrawerReservationsComponent({
     document.documentElement.style.overflow = "hidden";
   };
 
+  const measurePanel = () => {
+    const el = panelRef.current;
+    if (!el) return;
+    const h = el.getBoundingClientRect().height || 0;
+    if (h > 0) setPanelH(h);
+  };
+
   const closeWithAnimation = () => {
     setShouldRenderCanvas(false);
     setIsVisible(false);
+    setDragY(0);
 
     window.setTimeout(() => {
       restoreScroll();
@@ -130,19 +157,40 @@ export default function FloorPlanDrawerReservationsComponent({
   }, [rooms, activeRoomId]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mq = window.matchMedia("(min-width: 768px)");
+    const update = () => setIsTabletUp(mq.matches);
+
+    update();
+    if (mq.addEventListener) mq.addEventListener("change", update);
+    else mq.addListener(update);
+
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", update);
+      else mq.removeListener(update);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!open) return;
 
     lockScroll();
     setIsVisible(false);
     setShouldRenderCanvas(false);
+    setDragY(0);
 
     const raf = requestAnimationFrame(() => {
       setIsVisible(true);
+      requestAnimationFrame(measurePanel);
     });
 
     const mountTimer = window.setTimeout(() => {
       setShouldRenderCanvas(true);
     }, CANVAS_MOUNT_DELAY_MS);
+
+    const onResize = () => requestAnimationFrame(measurePanel);
+    window.addEventListener("resize", onResize);
 
     const onKeyDown = (e) => {
       if (e.key === "Escape") closeWithAnimation();
@@ -153,9 +201,11 @@ export default function FloorPlanDrawerReservationsComponent({
     return () => {
       cancelAnimationFrame(raf);
       window.clearTimeout(mountTimer);
+      window.removeEventListener("resize", onResize);
       document.removeEventListener("keydown", onKeyDown);
       restoreScroll();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   useEffect(() => {
@@ -222,29 +272,133 @@ export default function FloorPlanDrawerReservationsComponent({
 
   if (!open) return null;
 
+  const panelFallback = 720;
+  const DRAG_MAX_PX = Math.max(240, (panelH || panelFallback) - 12);
+  const SWIPE_CLOSE_PX = Math.max(
+    90,
+    Math.floor((panelH || panelFallback) * CLOSE_RATIO),
+  );
+
+  const onPointerDown = (e) => {
+    if (isTabletUp) return;
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+
+    dragStateRef.current.active = true;
+    dragStateRef.current.startY = e.clientY;
+    dragStateRef.current.lastY = e.clientY;
+    dragStateRef.current.startT = performance.now();
+    dragStateRef.current.lastT = dragStateRef.current.startT;
+
+    try {
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+    } catch {}
+  };
+
+  const onPointerMove = (e) => {
+    if (isTabletUp) return;
+    if (!dragStateRef.current.active) return;
+
+    const y = e.clientY;
+    const dy = y - dragStateRef.current.startY;
+
+    dragStateRef.current.lastY = y;
+    dragStateRef.current.lastT = performance.now();
+
+    const clamped = Math.max(0, Math.min(DRAG_MAX_PX, dy));
+    setDragY(clamped);
+  };
+
+  const onPointerUp = () => {
+    if (isTabletUp) return;
+    if (!dragStateRef.current.active) return;
+    dragStateRef.current.active = false;
+
+    const dt = Math.max(
+      1,
+      dragStateRef.current.lastT - dragStateRef.current.startT,
+    );
+    const v = (dragStateRef.current.lastY - dragStateRef.current.startY) / dt;
+
+    if (dragY >= SWIPE_CLOSE_PX || v >= SWIPE_VELOCITY) {
+      closeWithAnimation();
+      return;
+    }
+
+    setDragY(0);
+  };
+
+  const overlayOpacity = !isVisible
+    ? 0
+    : 1 * (1 - Math.min(1, dragY / DRAG_MAX_PX));
+
   return (
-    <>
-      <button
-        type="button"
+    <div className="fixed inset-0 z-[120]" role="dialog" aria-modal="true">
+      {/* Overlay */}
+      <div
+        className={`
+          absolute inset-0 bg-darkBlue/30
+          transition-opacity duration-200
+          ${isVisible ? "opacity-100" : "opacity-0"}
+        `}
+        style={{ opacity: overlayOpacity }}
         onClick={closeWithAnimation}
-        className={[
-          "fixed inset-0 z-[120] bg-darkBlue/20 transition-opacity duration-150",
-          isVisible ? "opacity-100" : "opacity-0",
-        ].join(" ")}
         aria-label="Fermer le plan de salle"
       />
 
+      {/* Panel */}
       <aside
-        className={[
-          "fixed right-0 top-0 z-[130] h-dvh w-1/2 max-w-[1180px]",
-          "border-l border-darkBlue/10 bg-lightGrey shadow-2xl",
-          "transform-gpu will-change-transform transition-transform",
-          "duration-[220ms] ease-out flex flex-col",
-          isVisible ? "translate-x-0" : "translate-x-full",
-        ].join(" ")}
+        ref={panelRef}
+        className={`
+          absolute z-[1]
+          border border-darkBlue/10 bg-lightGrey
+          shadow-[0_25px_80px_rgba(19,30,54,0.25)]
+          flex flex-col overflow-hidden
+
+          left-0 right-0 bottom-0 w-full min-h-[50vh] max-h-[90vh]
+          rounded-t-3xl
+
+          tablet:top-0 tablet:bottom-0 tablet:left-auto tablet:right-0
+          tablet:h-full tablet:max-h-none tablet:w-1/2 tablet:max-w-[1180px]
+          tablet:rounded-none tablet:border-l tablet:border-t-0 tablet:border-r-0 tablet:border-b-0
+
+          transform transition-transform duration-300 ease-out will-change-transform
+          ${
+            isVisible
+              ? "translate-y-0 tablet:translate-y-0 tablet:translate-x-0"
+              : "translate-y-full tablet:translate-y-0 tablet:translate-x-full"
+          }
+        `}
+        style={
+          isTabletUp
+            ? undefined
+            : {
+                transform: isVisible
+                  ? `translateY(${dragY}px)`
+                  : "translateY(100%)",
+                transition: dragStateRef.current.active
+                  ? "none"
+                  : "transform 240ms ease-out",
+                willChange: "transform",
+              }
+        }
+        onClick={(e) => e.stopPropagation()}
       >
+        {/* Mobile drag zone */}
+        <div
+          className="tablet:hidden cursor-grab active:cursor-grabbing touch-none"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+        >
+          <div className="py-3 flex justify-center bg-white">
+            <div className="h-1.5 w-12 rounded-full bg-darkBlue/20" />
+          </div>
+        </div>
+
+        {/* Header */}
         <div className="shrink-0 border-b border-darkBlue/10 bg-white/90">
-          <div className="px-4 tablet:px-6 py-4 flex items-start justify-between gap-4">
+          <div className="px-4 pb-3 midTablet:py-3 flex items-start justify-between gap-4">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <Map className="size-5 text-darkBlue/70" />
@@ -277,11 +431,12 @@ export default function FloorPlanDrawerReservationsComponent({
           </div>
 
           <div className="px-4 tablet:px-6 pb-4 flex flex-col gap-3">
-            <div className="grid grid-cols-1 tablet:grid-cols-[1.1fr_1fr] gap-3 h-[66px]">
-              <div className="flex items-center gap-3 rounded-[22px] border border-darkBlue/10 bg-white/70 px-4">
-                <label className="text-xs font-medium uppercase tracking-wide text-darkBlue/45">
+            <div className="grid grid-cols-1 tablet:grid-cols-[1.1fr_1fr] gap-3">
+              <div className="flex items-center gap-3 rounded-[22px] border border-darkBlue/10 bg-white/70 px-4 py-3 tablet:h-[66px]">
+                <label className="shrink-0 text-xs font-medium uppercase tracking-wide text-darkBlue/45">
                   Salle
                 </label>
+
                 <select
                   value={activeRoomId}
                   onChange={(e) => setActiveRoomId(e.target.value)}
@@ -295,13 +450,12 @@ export default function FloorPlanDrawerReservationsComponent({
                 </select>
               </div>
 
-              <div className="rounded-[22px] h-fit border border-darkBlue/10 bg-white/70 px-4 py-3">
-                <div className="flex items-center justify-between gap-3">
+              <div className="rounded-[22px] border border-darkBlue/10 bg-white/70 px-4 py-3 tablet:h-[66px]">
+                <div className="flex items-center justify-between gap-3 h-full">
                   <div>
                     <p className="text-xs font-medium uppercase tracking-wide text-darkBlue/45">
                       Affichage en temps réel
                     </p>
-                    
                   </div>
 
                   <button
@@ -323,6 +477,7 @@ export default function FloorPlanDrawerReservationsComponent({
                 </div>
               </div>
             </div>
+
             {isDayContext && !liveMode ? (
               <div className="rounded-[22px] border border-darkBlue/10 bg-white/70 px-4 py-3">
                 <div className="flex items-center gap-2">
@@ -357,49 +512,59 @@ export default function FloorPlanDrawerReservationsComponent({
                 </div>
               </div>
             ) : null}
-            <StatusLegend isDayContext={isDayContext} liveMode={liveMode} />{" "}
+
+            <StatusLegend />
           </div>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto">
-          <div className="p-4 tablet:p-6">
-            {loading ? (
-              <div className="min-h-[520px] rounded-[28px] border border-darkBlue/10 bg-white/60 flex items-center justify-center">
-                <div className="inline-flex items-center gap-3 text-darkBlue/60">
-                  <Loader2 className="size-5 animate-spin" />
-                  Chargement du plan…
-                </div>
+        {/* Body */}
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 tablet:p-6 hide-scrollbar overscroll-contain">
+          {loading ? (
+            <div className="min-h-[420px] tablet:min-h-[520px] rounded-[28px] border border-darkBlue/10 bg-white/60 flex items-center justify-center">
+              <div className="inline-flex items-center gap-3 text-darkBlue/60">
+                <Loader2 className="size-5 animate-spin" />
+                Chargement du plan…
               </div>
-            ) : error ? (
-              <div className="min-h-[520px] rounded-[28px] border border-red/20 bg-white/60 flex items-center justify-center px-6 text-center text-red">
-                {error}
-              </div>
-            ) : !floorPlanEnabled || !rooms.length ? (
-              <div className="min-h-[520px] rounded-[28px] border border-darkBlue/10 bg-white/60 flex items-center justify-center px-6 text-center text-darkBlue/55">
-                Aucun plan de salle disponible pour le moment.
-              </div>
-            ) : !activeRoom ? (
-              <div className="min-h-[520px] rounded-[28px] border border-darkBlue/10 bg-white/60 flex items-center justify-center px-6 text-center text-darkBlue/55">
-                Salle introuvable.
-              </div>
-            ) : !shouldRenderCanvas ? (
-              <div className="min-h-[520px] rounded-[28px] border border-darkBlue/10 bg-[#667085]" />
-            ) : (
-              <FloorPlanCanvasReservationsComponent
-                room={activeRoom}
-                reservations={dayReservations}
-                tablesCatalog={tablesCatalog}
-                reservationParameters={reservationParameters}
-                selectedDate={contextDate}
-                selectedTime={selectedTime}
-                liveMode={liveMode}
-                selectedTableState={selectedTableState}
-                onSelectTable={setSelectedTableState}
-              />
-            )}
-          </div>
+            </div>
+          ) : error ? (
+            <div className="min-h-[420px] tablet:min-h-[520px] rounded-[28px] border border-red/20 bg-white/60 flex items-center justify-center px-6 text-center text-red">
+              {error}
+            </div>
+          ) : !floorPlanEnabled || !rooms.length ? (
+            <div className="min-h-[420px] tablet:min-h-[520px] rounded-[28px] border border-darkBlue/10 bg-white/60 flex items-center justify-center px-6 text-center text-darkBlue/55">
+              Aucun plan de salle disponible pour le moment.
+            </div>
+          ) : !activeRoom ? (
+            <div className="min-h-[420px] tablet:min-h-[520px] rounded-[28px] border border-darkBlue/10 bg-white/60 flex items-center justify-center px-6 text-center text-darkBlue/55">
+              Salle introuvable.
+            </div>
+          ) : !shouldRenderCanvas ? (
+            <div className="min-h-[420px] tablet:min-h-[520px] rounded-[28px] border border-darkBlue/10 bg-[#667085]" />
+          ) : (
+            <FloorPlanCanvasReservationsComponent
+              room={activeRoom}
+              reservations={dayReservations}
+              tablesCatalog={tablesCatalog}
+              reservationParameters={reservationParameters}
+              selectedDate={contextDate}
+              selectedTime={selectedTime}
+              liveMode={liveMode}
+              selectedTableState={selectedTableState}
+              onSelectTable={setSelectedTableState}
+            />
+          )}
+        </div>
+
+        {/* Footer mobile */}
+        <div className="tablet:hidden border-t border-darkBlue/10 bg-white/70 px-4 py-3 pb-[calc(env(safe-area-inset-bottom)+24px)]">
+          <button
+            onClick={closeWithAnimation}
+            className="w-full inline-flex items-center justify-center rounded-xl bg-blue px-4 py-3 text-white text-sm font-semibold shadow-sm hover:bg-blue/90 active:scale-[0.98] transition"
+          >
+            Retour
+          </button>
         </div>
       </aside>
-    </>
+    </div>
   );
 }
