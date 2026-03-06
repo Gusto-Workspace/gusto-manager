@@ -80,7 +80,8 @@ function isPendingStillBlocking(reservation) {
 function isBlockingReservation(reservation) {
   if (!reservation) return false;
   if (["Confirmed", "Active", "Late"].includes(reservation.status)) return true;
-  if (reservation.status === "Pending") return isPendingStillBlocking(reservation);
+  if (reservation.status === "Pending")
+    return isPendingStillBlocking(reservation);
   return false;
 }
 
@@ -94,7 +95,10 @@ function getDisplayName(reservation) {
 
 function getReservationWindow(reservation, parameters) {
   const start = minutesFromHHmm(reservation?.reservationTime);
-  const occupancy = getOccupancyMinutes(parameters, reservation?.reservationTime);
+  const occupancy = getOccupancyMinutes(
+    parameters,
+    reservation?.reservationTime,
+  );
   const end = start + occupancy;
   return { start, end, occupancy };
 }
@@ -107,11 +111,23 @@ function getReferenceMinute({ liveMode, selectedTime }) {
   return minutesFromHHmm(selectedTime || "00:00");
 }
 
-function getReservationsForTable({
-  reservations,
-  tableRefId,
-  targetDateKey,
-}) {
+function getReferenceTimeString({ liveMode, selectedTime }) {
+  if (!liveMode) {
+    return String(selectedTime || "00:00").slice(0, 5);
+  }
+
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, "0");
+  const mm = String(now.getMinutes()).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
+function getReferenceOccupancyMinutes({ parameters, liveMode, selectedTime }) {
+  const referenceTime = getReferenceTimeString({ liveMode, selectedTime });
+  return getOccupancyMinutes(parameters, referenceTime);
+}
+
+function getReservationsForTable({ reservations, tableRefId, targetDateKey }) {
   return safeArr(reservations).filter((r) => {
     const resTableId = r?.table?.tableId ? String(r.table.tableId) : null;
     if (!resTableId) return false;
@@ -159,8 +175,10 @@ function getMainReservationForTable({
       const pa = priority[a.reservation?.status] || 0;
       const pb = priority[b.reservation?.status] || 0;
       if (pa !== pb) return pb - pa;
-      return minutesFromHHmm(a.reservation?.reservationTime) -
-        minutesFromHHmm(b.reservation?.reservationTime);
+      return (
+        minutesFromHHmm(a.reservation?.reservationTime) -
+        minutesFromHHmm(b.reservation?.reservationTime)
+      );
     });
 
     return overlapping[0].reservation;
@@ -175,12 +193,7 @@ function getMainReservationForTable({
   return null;
 }
 
-function getTableStatus({
-  reservation,
-  parameters,
-  liveMode,
-  selectedTime,
-}) {
+function getTableStatus({ reservation, parameters, liveMode, selectedTime }) {
   if (!reservation) return "free";
 
   const refMinute = getReferenceMinute({ liveMode, selectedTime });
@@ -192,7 +205,16 @@ function getTableStatus({
     return "occupied";
   }
 
-  if (start > refMinute) return "assigned";
+  if (start > refMinute) {
+    const remainingMinutes = start - refMinute;
+    const neededMinutes = getReferenceOccupancyMinutes({
+      parameters,
+      liveMode,
+      selectedTime,
+    });
+
+    return remainingMinutes < neededMinutes ? "assigned" : "free";
+  }
 
   return "free";
 }
@@ -703,7 +725,9 @@ export default function FloorPlanCanvasReservationsComponent({
     if (obj.shape === "line") {
       const pts = safeArr(obj.points).map((n) => Number(n || 0));
       const rel =
-        pts.length >= 4 ? [0, 0, pts[2] - pts[0], pts[3] - pts[1]] : [0, 0, 0, 0];
+        pts.length >= 4
+          ? [0, 0, pts[2] - pts[0], pts[3] - pts[1]]
+          : [0, 0, 0, 0];
       const x = Number(pts[0] || 0);
       const y = Number(pts[1] || 0);
 
@@ -719,23 +743,25 @@ export default function FloorPlanCanvasReservationsComponent({
           listening={false}
         >
           {obj.decorKind === "window" &&
-            Array.from({ length: Number(obj?.meta?.ticks || 4) }).map((_, i) => {
-              const t = (i + 1) / (Number(obj?.meta?.ticks || 4) + 1);
-              const tx = rel[0] + (rel[2] - rel[0]) * t;
-              const ty = rel[1] + (rel[3] - rel[1]) * t;
+            Array.from({ length: Number(obj?.meta?.ticks || 4) }).map(
+              (_, i) => {
+                const t = (i + 1) / (Number(obj?.meta?.ticks || 4) + 1);
+                const tx = rel[0] + (rel[2] - rel[0]) * t;
+                const ty = rel[1] + (rel[3] - rel[1]) * t;
 
-              return (
-                <Line
-                  key={`tick_${obj.id}_${i}`}
-                  points={[tx, ty - 10, tx, ty + 10]}
-                  stroke="rgba(255,255,255,0.65)"
-                  strokeWidth={2}
-                  lineCap="round"
-                  listening={false}
-                  perfectDrawEnabled={false}
-                />
-              );
-            })}
+                return (
+                  <Line
+                    key={`tick_${obj.id}_${i}`}
+                    points={[tx, ty - 10, tx, ty + 10]}
+                    stroke="rgba(255,255,255,0.65)"
+                    strokeWidth={2}
+                    lineCap="round"
+                    listening={false}
+                    perfectDrawEnabled={false}
+                  />
+                );
+              },
+            )}
 
           {obj.decorKind === "door" && (
             <Arc
@@ -1084,8 +1110,12 @@ export default function FloorPlanCanvasReservationsComponent({
         key={obj.id}
         x={Number(obj.x || 0)}
         y={Number(obj.y || 0)}
-        onClick={() => onSelectTable?.({ object: obj, ref, reservation: mainReservation })}
-        onTap={() => onSelectTable?.({ object: obj, ref, reservation: mainReservation })}
+        onClick={() =>
+          onSelectTable?.({ object: obj, ref, reservation: mainReservation })
+        }
+        onTap={() =>
+          onSelectTable?.({ object: obj, ref, reservation: mainReservation })
+        }
       >
         <Group
           rotation={Number(obj.rotation || 0)}
@@ -1103,7 +1133,9 @@ export default function FloorPlanCanvasReservationsComponent({
               outerRadius={chairR}
               angle={180}
               rotation={c.rot}
-              fill={isSelected ? "rgba(37,99,235,0.65)" : "rgba(71,85,105,0.65)"}
+              fill={
+                isSelected ? "rgba(37,99,235,0.65)" : "rgba(71,85,105,0.65)"
+              }
               stroke="rgba(255,255,255,0.72)"
               strokeWidth={1}
               perfectDrawEnabled={false}
@@ -1174,7 +1206,8 @@ export default function FloorPlanCanvasReservationsComponent({
   }
 
   const tooltipData = useMemo(() => {
-    if (!selectedTableState?.object || !stageSize.w || !stageSize.h) return null;
+    if (!selectedTableState?.object || !stageSize.w || !stageSize.h)
+      return null;
 
     const ref = selectedTableState.ref || null;
     const reservation = selectedTableState.reservation || null;
@@ -1272,7 +1305,10 @@ export default function FloorPlanCanvasReservationsComponent({
               <div className="mt-2 flex flex-col gap-1.5 text-xs text-darkBlue/65">
                 <div>
                   <span className="font-medium text-darkBlue">Heure :</span>{" "}
-                  {String(tooltipData.reservation?.reservationTime || "").slice(0, 5)}
+                  {String(tooltipData.reservation?.reservationTime || "").slice(
+                    0,
+                    5,
+                  )}
                 </div>
                 <div>
                   <span className="font-medium text-darkBlue">Couverts :</span>{" "}
@@ -1284,7 +1320,9 @@ export default function FloorPlanCanvasReservationsComponent({
                 </div>
                 {tooltipData.reservation?.customerPhone ? (
                   <div>
-                    <span className="font-medium text-darkBlue">Téléphone :</span>{" "}
+                    <span className="font-medium text-darkBlue">
+                      Téléphone :
+                    </span>{" "}
                     {tooltipData.reservation.customerPhone}
                   </div>
                 ) : null}
