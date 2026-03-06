@@ -26,7 +26,10 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { arrayMove, SortableContext } from "@dnd-kit/sortable";
-import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
+import {
+  restrictToVerticalAxis,
+  restrictToParentElement,
+} from "@dnd-kit/modifiers";
 
 // COMPONENTS
 import DetailsDrinkComponent from "./details-drink.drinks.component";
@@ -49,22 +52,22 @@ export default function ListDrinksComponent(props) {
   const [hoveredTooltip, setHoveredTooltip] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [drinks, setDrinks] = useState(
-    props.subCategory ? props.subCategory?.drinks : props.category?.drinks
+    props.subCategory ? props.subCategory?.drinks : props.category?.drinks,
   );
 
   const [subCategories, setSubCategories] = useState(
     !props.subCategory &&
       restaurantContext?.restaurantData?.drink_categories?.find(
-        (category) => category._id === props.category._id
-      )?.subCategories
+        (category) => category._id === props.category._id,
+      )?.subCategories,
   );
 
   useEffect(() => {
     !props.subCategory &&
       setSubCategories(
         restaurantContext?.restaurantData?.drink_categories?.find(
-          (category) => category._id === props.category._id
-        )?.subCategories
+          (category) => category._id === props.category._id,
+        )?.subCategories,
       );
   }, [restaurantContext?.restaurantData, props.category_id]);
 
@@ -95,7 +98,7 @@ export default function ListDrinksComponent(props) {
         .toLowerCase();
 
       router.push(
-        `/dashboard/drinks/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${props.subCategory._id}/add`
+        `/dashboard/drinks/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${props.subCategory._id}/add`,
       );
     } else {
       const formattedName = props.category.name
@@ -103,7 +106,7 @@ export default function ListDrinksComponent(props) {
         .replace(/\s+/g, "&")
         .toLowerCase();
       router.push(
-        `/dashboard/drinks/${formattedName}-${props.category._id}/add`
+        `/dashboard/drinks/${formattedName}-${props.category._id}/add`,
       );
     }
   }
@@ -119,7 +122,7 @@ export default function ListDrinksComponent(props) {
         .replace(/\s+/g, "&")
         .toLowerCase();
       router.push(
-        `/dashboard/drinks/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${props.subCategory._id}/add?drinkId=${drink._id}`
+        `/dashboard/drinks/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${props.subCategory._id}/add?drinkId=${drink._id}`,
       );
     } else {
       const formattedCategoryName = props.category.name
@@ -127,7 +130,7 @@ export default function ListDrinksComponent(props) {
         .replace(/\s+/g, "&")
         .toLowerCase();
       router.push(
-        `/dashboard/drinks/${formattedCategoryName}-${props.category._id}/add?drinkId=${drink._id}`
+        `/dashboard/drinks/${formattedCategoryName}-${props.category._id}/add?drinkId=${drink._id}`,
       );
     }
   }
@@ -164,13 +167,13 @@ export default function ListDrinksComponent(props) {
       setIsLoading(true);
       axios
         .delete(
-          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/categories/${props.category._id}/subcategories/${editingCategory._id}`
+          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/categories/${props.category._id}/subcategories/${editingCategory._id}`,
         )
         .then((response) => {
           setSubCategories((prevSubCategories) =>
             prevSubCategories.filter(
-              (subCategory) => subCategory._id !== editingCategory._id
-            )
+              (subCategory) => subCategory._id !== editingCategory._id,
+            ),
           );
           restaurantContext.setRestaurantData(response.data.restaurant);
           setEditingCategory(null);
@@ -195,7 +198,7 @@ export default function ListDrinksComponent(props) {
         .delete(apiUrl, { params })
         .then((response) => {
           setDrinks((prevDrinks) =>
-            prevDrinks.filter((drink) => drink._id !== selectedDrink._id)
+            prevDrinks.filter((drink) => drink._id !== selectedDrink._id),
           );
           restaurantContext.setRestaurantData(response.data.restaurant);
           closeDeleteModal();
@@ -214,7 +217,7 @@ export default function ListDrinksComponent(props) {
     axios
       .put(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/categories/${props.category._id}/subcategories/${subCategory._id}`,
-        { visible: updatedVisibility }
+        { visible: updatedVisibility },
       )
       .then((response) => {
         restaurantContext.setRestaurantData(response.data.restaurant);
@@ -236,7 +239,7 @@ export default function ListDrinksComponent(props) {
     if (active.id !== over.id) {
       setDrinks((prevDrinks) => {
         const oldIndex = prevDrinks.findIndex(
-          (drink) => drink._id === active.id
+          (drink) => drink._id === active.id,
         );
         const newIndex = prevDrinks.findIndex((drink) => drink._id === over.id);
 
@@ -273,13 +276,13 @@ export default function ListDrinksComponent(props) {
 
   function saveNewSubCategoryOrder(updatedSubCategories) {
     const orderedSubCategoryIds = updatedSubCategories.map(
-      (subCategory) => subCategory._id
+      (subCategory) => subCategory._id,
     );
 
     axios
       .put(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/drinks/categories/${props.category._id}/list-subcategories/order`,
-        { orderedSubCategoryIds }
+        { orderedSubCategoryIds },
       )
       .then((response) => {
         restaurantContext.setRestaurantData(response.data.restaurant);
@@ -299,16 +302,16 @@ export default function ListDrinksComponent(props) {
     if (active.id !== over.id) {
       setSubCategories((prevSubCategories) => {
         const oldIndex = prevSubCategories.findIndex(
-          (subCategory) => subCategory._id === active.id
+          (subCategory) => subCategory._id === active.id,
         );
         const newIndex = prevSubCategories.findIndex(
-          (subCategory) => subCategory._id === over.id
+          (subCategory) => subCategory._id === over.id,
         );
 
         const newSubCategoriesOrder = arrayMove(
           prevSubCategories,
           oldIndex,
-          newIndex
+          newIndex,
         );
         saveNewSubCategoryOrder(newSubCategoriesOrder);
 
@@ -328,7 +331,7 @@ export default function ListDrinksComponent(props) {
       .toLowerCase();
 
     router.push(
-      `/dashboard/drinks/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${subCategory._id}`
+      `/dashboard/drinks/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${subCategory._id}`,
     );
   }
 
@@ -447,6 +450,7 @@ export default function ListDrinksComponent(props) {
             sensors={sensors}
             collisionDetection={closestCenter}
             onDragEnd={handleSubCategoryDragEnd}
+            modifiers={[restrictToParentElement]}
           >
             <SortableContext
               items={subCategories?.map((subCategory) => subCategory._id)}
@@ -474,7 +478,11 @@ export default function ListDrinksComponent(props) {
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}
           sensors={sensors}
-          modifiers={[restrictToVerticalAxis]}
+          modifiers={[
+            restrictToVerticalAxis,
+          
+            restrictToParentElement,
+          ]}
         >
           <SortableContext items={drinks.map((drink) => drink._id)}>
             {drinks.map((drink) => (

@@ -26,8 +26,124 @@ const RoomEditorParametersComponent = dynamic(
   { ssr: false },
 );
 
+// DND
+import { useId } from "react";
+import {
+  DndContext,
+  closestCenter,
+  MouseSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import { arrayMove, SortableContext, useSortable } from "@dnd-kit/sortable";
+import {
+  restrictToVerticalAxis,
+  restrictToParentElement,
+} from "@dnd-kit/modifiers";
+import { CSS } from "@dnd-kit/utilities";
+
 function safeArr(a) {
   return Array.isArray(a) ? a : [];
+}
+
+function RoomRowSortable({
+  room,
+  localCatalog,
+  onEdit,
+  onDuplicate,
+  onDelete,
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: String(room._id) });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  const tablesCount = safeArr(room.objects).filter(
+    (o) => o?.type === "table",
+  ).length;
+
+  const totalSeats = safeArr(room.objects)
+    .filter((o) => o?.type === "table")
+    .reduce((acc, o) => {
+      const ref = localCatalog.find(
+        (t) => String(t._id) === String(o.tableRefId),
+      );
+      return acc + Number(ref?.seats || 0);
+    }, 0);
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={[
+        "rounded-2xl border border-darkBlue/10 bg-white/60 p-3 px-2 mobile:p-4 flex items-center justify-between gap-3",
+        isDragging ? "opacity-70 shadow-lg scale-[1.01] z-50" : "",
+      ].join(" ")}
+    >
+      <div className="flex items-center gap-3 min-w-0">
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          className="inline-flex items-center justify-center h-8 w-6  rounded-lg  border border-darkBlue/10 bg-white/70 cursor-grab active:cursor-grabbing"
+          aria-label="Réordonner"
+          title="Réordonner"
+        >
+          ⋮⋮
+        </button>
+
+        <div className="min-w-0">
+          <p className="font-semibold text-darkBlue truncate">{room.name}</p>
+          <p className="text-sm text-darkBlue/50">
+            {tablesCount} table{tablesCount > 1 ? "s" : null} • {totalSeats}{" "}
+            couverts
+          </p>
+        </div>
+      </div>
+
+      <div className="shrink-0 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onEdit}
+          className="inline-flex items-center justify-center size-10 rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition"
+          title="Modifier"
+          aria-label="Modifier"
+        >
+          <Pencil className="size-4 text-darkBlue/70" />
+        </button>
+
+        <button
+          type="button"
+          onClick={onDuplicate}
+          className="inline-flex items-center justify-center size-10 rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition"
+          title="Dupliquer"
+          aria-label="Dupliquer"
+        >
+          <Copy className="size-4 text-darkBlue/70" />
+        </button>
+
+        <button
+          type="button"
+          onClick={onDelete}
+          className="inline-flex items-center justify-center size-10 rounded-2xl bg-red text-white hover:opacity-90 transition"
+          title="Supprimer"
+          aria-label="Supprimer"
+        >
+          <Trash2 className="size-4" />
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export default function FloorPlanParametersComponent({
@@ -57,6 +173,12 @@ export default function FloorPlanParametersComponent({
   const [nameDirty, setNameDirty] = useState(false);
 
   const nameInputRef = useRef(null);
+
+  const dndId = useId();
+
+  const mouseSensor = useSensor(MouseSensor);
+  const touchSensor = useSensor(TouchSensor);
+  const sensors = useSensors(mouseSensor, touchSensor);
 
   const token =
     typeof window !== "undefined" ? localStorage.getItem("token") : null;
@@ -253,6 +375,45 @@ export default function FloorPlanParametersComponent({
     } finally {
       setDeleteLoading(false);
     }
+  }
+
+  async function saveRoomsOrder(updatedRooms) {
+    try {
+      const orderedRoomIds = updatedRooms.map((r) => r._id);
+      const res = await axios.put(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/floorplans/rooms/order`,
+        { orderedRoomIds },
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+
+      setRooms(safeArr(res.data?.rooms));
+    } catch (e) {
+      setError(
+        e?.response?.data?.message ||
+          "Impossible d’enregistrer l’ordre des salles.",
+      );
+      fetchRooms();
+    }
+  }
+
+  function handleRoomsDragEnd(event) {
+    const { active, over } = event;
+
+    if (!active || !over) return;
+    if (active.id === over.id) return;
+
+    setRooms((prev) => {
+      const oldIndex = prev.findIndex(
+        (r) => String(r._id) === String(active.id),
+      );
+      const newIndex = prev.findIndex((r) => String(r._id) === String(over.id));
+
+      if (oldIndex < 0 || newIndex < 0) return prev;
+
+      const nextRooms = arrayMove(prev, oldIndex, newIndex);
+      saveRoomsOrder(nextRooms);
+      return nextRooms;
+    });
   }
 
   const resetFpUI = () => {
@@ -466,74 +627,32 @@ export default function FloorPlanParametersComponent({
                 Aucune salle pour le moment.
               </div>
             ) : (
-              <div className="flex flex-col gap-3">
-                {rooms.map((r) => {
-                  const tablesCount = safeArr(r.objects).filter(
-                    (o) => o?.type === "table",
-                  ).length;
-                  const totalSeats = safeArr(r.objects)
-                    .filter((o) => o?.type === "table")
-                    .reduce((acc, o) => {
-                      const ref = localCatalog.find(
-                        (t) => String(t._id) === String(o.tableRefId),
-                      );
-                      return acc + Number(ref?.seats || 0);
-                    }, 0);
-
-                  return (
-                    <div
-                      key={String(r._id)}
-                      className="rounded-2xl border border-darkBlue/10 bg-white/60 p-4 flex items-center justify-between gap-3"
-                    >
-                      <div className="min-w-0">
-                        <p className="font-semibold text-darkBlue truncate">
-                          {r.name}
-                        </p>
-                        <p className="text-sm text-darkBlue/50">
-                          {tablesCount} table{tablesCount > 1 ? "s" : null} •{" "}
-                          {totalSeats} couverts
-                        </p>
-                      </div>
-
-                      <div className="shrink-0 flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            resetFpUI();
-                            setActiveRoomId(r._id);
-                            setMode("edit");
-                          }}
-                          className="inline-flex items-center justify-center size-10 rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition"
-                          title="Modifier"
-                          aria-label="Modifier"
-                        >
-                          <Pencil className="size-4 text-darkBlue/70" />
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => duplicateRoom(r._id)}
-                          className="inline-flex items-center justify-center size-10 rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition"
-                          title="Dupliquer"
-                          aria-label="Dupliquer"
-                        >
-                          <Copy className="size-4 text-darkBlue/70" />
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => requestDeleteRoom(r._id)}
-                          className="inline-flex items-center justify-center size-10 rounded-2xl bg-red text-white hover:opacity-90 transition"
-                          title="Supprimer"
-                          aria-label="Supprimer"
-                        >
-                          <Trash2 className="size-4" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              <DndContext
+                id={dndId}
+                collisionDetection={closestCenter}
+                onDragEnd={handleRoomsDragEnd}
+                sensors={sensors}
+                modifiers={[restrictToVerticalAxis, restrictToParentElement]}
+              >
+                <SortableContext items={rooms.map((r) => String(r._id))}>
+                  <div className="flex flex-col gap-3">
+                    {rooms.map((r) => (
+                      <RoomRowSortable
+                        key={String(r._id)}
+                        room={r}
+                        localCatalog={localCatalog}
+                        onEdit={() => {
+                          resetFpUI();
+                          setActiveRoomId(r._id);
+                          setMode("edit");
+                        }}
+                        onDuplicate={() => duplicateRoom(r._id)}
+                        onDelete={() => requestDeleteRoom(r._id)}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
             )}
           </div>
 

@@ -136,184 +136,6 @@ router.post(
   },
 );
 
-/** ========================= UPDATE ROOM ========================= */
-router.put(
-  "/restaurants/:restaurantId/floorplans/rooms/:roomId",
-  authenticateToken,
-  async (req, res) => {
-    try {
-      const { restaurantId, roomId } = req.params;
-      const ownerId = req.user?.id;
-
-      if (!ownerId) return res.status(403).json({ message: "Unauthorized." });
-      if (String(req.user?.restaurantId) !== String(restaurantId)) {
-        return res.status(403).json({ message: "Restaurant mismatch" });
-      }
-      if (!isObjectId(restaurantId) || !isObjectId(roomId)) {
-        return res
-          .status(400)
-          .json({ message: "restaurantId/roomId invalide." });
-      }
-
-      const restaurant = await findRestaurantForOwner({
-        restaurantId,
-        ownerId,
-      });
-      if (!restaurant) {
-        return res.status(404).json({ message: "Restaurant introuvable." });
-      }
-
-      ensureFloorplan(restaurant);
-
-      const room =
-        restaurant.reservations.parameters.floorplan.rooms.id(roomId);
-
-      if (!room) return res.status(404).json({ message: "Salle introuvable." });
-
-      // ✅ name (uniquement si envoyé)
-      if (req.body?.name !== undefined) {
-        room.name = safeString(req.body.name, room.name);
-      }
-
-      // ✅ canvas (uniquement si envoyé)
-      if (req.body?.canvas !== undefined) {
-        const canvas = req.body?.canvas || {};
-        room.canvas.width = safeNumber(canvas.width, room.canvas.width);
-        room.canvas.height = safeNumber(canvas.height, room.canvas.height);
-        room.canvas.gridSize = safeNumber(
-          canvas.gridSize,
-          room.canvas.gridSize,
-        );
-      }
-
-      // ✅ objects (uniquement si envoyé) -> évite de vider la salle sur rename
-      if (req.body?.objects !== undefined) {
-        const incoming = Array.isArray(req.body?.objects)
-          ? req.body.objects
-          : [];
-
-        // catalogue tables existantes (subdocs)
-        const catalogIds = new Set(
-          (restaurant.reservations?.parameters?.tables || []).map((t) =>
-            String(t?._id),
-          ),
-        );
-
-        const cleaned = incoming
-          .filter((o) => o && typeof o === "object")
-          .map((o) => ({
-            id: safeString(o.id),
-
-            type: o.type === "decor" ? "decor" : "table",
-
-            tableRefId: o.tableRefId || null,
-
-            x: safeNumber(o.x, 0),
-            y: safeNumber(o.y, 0),
-            w: safeNumber(o.w, 80),
-            h: safeNumber(o.h, 50),
-            r: safeNumber(o.r, 16),
-            rotation: safeNumber(o.rotation, 0),
-
-            decorKind: safeString(o.decorKind),
-            shape: safeString(o.shape || "rect"),
-
-            points: Array.isArray(o.points) ? o.points : [],
-
-            style: typeof o.style === "object" ? o.style : {},
-            meta: typeof o.meta === "object" ? o.meta : {},
-
-            locked: Boolean(o.locked),
-          }))
-          .filter((o) => {
-            if (!o.id) return false;
-
-            if (o.type === "table") {
-              if (!o.tableRefId) return false;
-              return catalogIds.has(String(o.tableRefId));
-            }
-
-            return true;
-          });
-
-        // unique id
-        const seen = new Set();
-        const uniq = [];
-        for (const o of cleaned) {
-          if (seen.has(o.id)) continue;
-          seen.add(o.id);
-          uniq.push(o);
-        }
-
-        // ✅ Prevent the same catalog table from being placed in multiple rooms.
-        // We compare this room's tableRefIds against all other rooms' tableRefIds.
-        const otherUsed = new Set();
-        const roomsAll = getRooms(restaurant);
-        for (const r of roomsAll) {
-          if (!r?._id) continue;
-          if (String(r._id) === String(roomId)) continue;
-          const objs = Array.isArray(r.objects) ? r.objects : [];
-          for (const o of objs) {
-            if (o?.type === "table" && o?.tableRefId) {
-              otherUsed.add(String(o.tableRefId));
-            }
-          }
-        }
-
-        const conflicts = Array.from(
-          new Set(
-            uniq
-              .filter((o) => o.type === "table" && o.tableRefId)
-              .map((o) => String(o.tableRefId))
-              .filter((id) => otherUsed.has(id)),
-          ),
-        );
-
-        if (conflicts.length > 0) {
-          const catalog = restaurant?.reservations?.parameters?.tables || [];
-          const names = conflicts
-            .map((id) => {
-              const t = catalog.find((x) => String(x?._id) === String(id));
-              return t?.name ? String(t.name) : null;
-            })
-            .filter(Boolean);
-
-          return res.status(409).json({
-            code: "TABLE_ALREADY_PLACED",
-            message:
-              names.length > 0
-                ? `Certaines tables sont déjà placées dans une autre salle : ${names.join(
-                    ", ",
-                  )}`
-                : "Certaines tables sont déjà placées dans une autre salle.",
-            conflicts,
-          });
-        }
-
-        room.objects = uniq;
-      }
-
-      restaurant.reservations.parameters.floorplan.version =
-        Number(restaurant.reservations.parameters.floorplan.version || 1) + 1;
-
-      restaurant.markModified("reservations.parameters.floorplan.rooms");
-
-      await restaurant.save();
-
-      return res.json({
-        room,
-        rooms: getRooms(restaurant),
-        enabled: Boolean(restaurant.reservations.parameters.floorplan.enabled),
-        version: Number(
-          restaurant.reservations.parameters.floorplan.version || 1,
-        ),
-      });
-    } catch (e) {
-      return res.status(500).json({ message: "Erreur serveur (PUT room)." });
-    }
-  },
-);
-
 /** ========================= DUPLICATE ROOM ========================= */
 router.post(
   "/restaurants/:restaurantId/floorplans/rooms/:roomId/duplicate",
@@ -588,6 +410,252 @@ router.post(
       return res
         .status(500)
         .json({ message: "Erreur serveur (POST catalog table)." });
+    }
+  },
+);
+
+router.put(
+  "/restaurants/:restaurantId/floorplans/rooms/order",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { restaurantId } = req.params;
+      const ownerId = req.user?.id;
+      const { orderedRoomIds } = req.body;
+
+      if (!ownerId) return res.status(403).json({ message: "Unauthorized." });
+      if (String(req.user?.restaurantId) !== String(restaurantId)) {
+        return res.status(403).json({ message: "Restaurant mismatch" });
+      }
+      if (!isObjectId(restaurantId)) {
+        return res.status(400).json({ message: "restaurantId invalide." });
+      }
+      if (!Array.isArray(orderedRoomIds)) {
+        return res.status(400).json({ message: "orderedRoomIds invalide." });
+      }
+
+      const restaurant = await findRestaurantForOwner({
+        restaurantId,
+        ownerId,
+      });
+
+      if (!restaurant) {
+        return res.status(404).json({ message: "Restaurant introuvable." });
+      }
+
+      ensureFloorplan(restaurant);
+
+      const rooms = getRooms(restaurant);
+      const currentIds = rooms.map((r) => String(r._id));
+      const nextIds = orderedRoomIds.map((id) => String(id));
+
+      if (
+        currentIds.length !== nextIds.length ||
+        currentIds.some((id) => !nextIds.includes(id))
+      ) {
+        return res.status(400).json({ message: "Ordre des salles invalide." });
+      }
+
+      const byId = new Map(rooms.map((room) => [String(room._id), room]));
+      const reordered = nextIds.map((id) => byId.get(id)).filter(Boolean);
+
+      restaurant.reservations.parameters.floorplan.rooms = reordered;
+      restaurant.reservations.parameters.floorplan.version =
+        Number(restaurant.reservations.parameters.floorplan.version || 1) + 1;
+
+      restaurant.markModified("reservations.parameters.floorplan.rooms");
+
+      await restaurant.save();
+
+      return res.json({
+        rooms: getRooms(restaurant),
+        enabled: Boolean(restaurant.reservations.parameters.floorplan.enabled),
+        version: Number(
+          restaurant.reservations.parameters.floorplan.version || 1,
+        ),
+      });
+    } catch (e) {
+      return res
+        .status(500)
+        .json({ message: "Erreur serveur (PUT rooms order)." });
+    }
+  },
+);
+
+/** ========================= UPDATE ROOM ========================= */
+router.put(
+  "/restaurants/:restaurantId/floorplans/rooms/:roomId",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { restaurantId, roomId } = req.params;
+      const ownerId = req.user?.id;
+
+      if (!ownerId) return res.status(403).json({ message: "Unauthorized." });
+      if (String(req.user?.restaurantId) !== String(restaurantId)) {
+        return res.status(403).json({ message: "Restaurant mismatch" });
+      }
+      if (!isObjectId(restaurantId) || !isObjectId(roomId)) {
+        return res
+          .status(400)
+          .json({ message: "restaurantId/roomId invalide." });
+      }
+
+      const restaurant = await findRestaurantForOwner({
+        restaurantId,
+        ownerId,
+      });
+      if (!restaurant) {
+        return res.status(404).json({ message: "Restaurant introuvable." });
+      }
+
+      ensureFloorplan(restaurant);
+
+      const room =
+        restaurant.reservations.parameters.floorplan.rooms.id(roomId);
+
+      if (!room) return res.status(404).json({ message: "Salle introuvable." });
+
+      // ✅ name (uniquement si envoyé)
+      if (req.body?.name !== undefined) {
+        room.name = safeString(req.body.name, room.name);
+      }
+
+      // ✅ canvas (uniquement si envoyé)
+      if (req.body?.canvas !== undefined) {
+        const canvas = req.body?.canvas || {};
+        room.canvas.width = safeNumber(canvas.width, room.canvas.width);
+        room.canvas.height = safeNumber(canvas.height, room.canvas.height);
+        room.canvas.gridSize = safeNumber(
+          canvas.gridSize,
+          room.canvas.gridSize,
+        );
+      }
+
+      // ✅ objects (uniquement si envoyé) -> évite de vider la salle sur rename
+      if (req.body?.objects !== undefined) {
+        const incoming = Array.isArray(req.body?.objects)
+          ? req.body.objects
+          : [];
+
+        // catalogue tables existantes (subdocs)
+        const catalogIds = new Set(
+          (restaurant.reservations?.parameters?.tables || []).map((t) =>
+            String(t?._id),
+          ),
+        );
+
+        const cleaned = incoming
+          .filter((o) => o && typeof o === "object")
+          .map((o) => ({
+            id: safeString(o.id),
+
+            type: o.type === "decor" ? "decor" : "table",
+
+            tableRefId: o.tableRefId || null,
+
+            x: safeNumber(o.x, 0),
+            y: safeNumber(o.y, 0),
+            w: safeNumber(o.w, 80),
+            h: safeNumber(o.h, 50),
+            r: safeNumber(o.r, 16),
+            rotation: safeNumber(o.rotation, 0),
+
+            decorKind: safeString(o.decorKind),
+            shape: safeString(o.shape || "rect"),
+
+            points: Array.isArray(o.points) ? o.points : [],
+
+            style: typeof o.style === "object" ? o.style : {},
+            meta: typeof o.meta === "object" ? o.meta : {},
+
+            locked: Boolean(o.locked),
+          }))
+          .filter((o) => {
+            if (!o.id) return false;
+
+            if (o.type === "table") {
+              if (!o.tableRefId) return false;
+              return catalogIds.has(String(o.tableRefId));
+            }
+
+            return true;
+          });
+
+        // unique id
+        const seen = new Set();
+        const uniq = [];
+        for (const o of cleaned) {
+          if (seen.has(o.id)) continue;
+          seen.add(o.id);
+          uniq.push(o);
+        }
+
+        // ✅ Prevent the same catalog table from being placed in multiple rooms.
+        // We compare this room's tableRefIds against all other rooms' tableRefIds.
+        const otherUsed = new Set();
+        const roomsAll = getRooms(restaurant);
+        for (const r of roomsAll) {
+          if (!r?._id) continue;
+          if (String(r._id) === String(roomId)) continue;
+          const objs = Array.isArray(r.objects) ? r.objects : [];
+          for (const o of objs) {
+            if (o?.type === "table" && o?.tableRefId) {
+              otherUsed.add(String(o.tableRefId));
+            }
+          }
+        }
+
+        const conflicts = Array.from(
+          new Set(
+            uniq
+              .filter((o) => o.type === "table" && o.tableRefId)
+              .map((o) => String(o.tableRefId))
+              .filter((id) => otherUsed.has(id)),
+          ),
+        );
+
+        if (conflicts.length > 0) {
+          const catalog = restaurant?.reservations?.parameters?.tables || [];
+          const names = conflicts
+            .map((id) => {
+              const t = catalog.find((x) => String(x?._id) === String(id));
+              return t?.name ? String(t.name) : null;
+            })
+            .filter(Boolean);
+
+          return res.status(409).json({
+            code: "TABLE_ALREADY_PLACED",
+            message:
+              names.length > 0
+                ? `Certaines tables sont déjà placées dans une autre salle : ${names.join(
+                    ", ",
+                  )}`
+                : "Certaines tables sont déjà placées dans une autre salle.",
+            conflicts,
+          });
+        }
+
+        room.objects = uniq;
+      }
+
+      restaurant.reservations.parameters.floorplan.version =
+        Number(restaurant.reservations.parameters.floorplan.version || 1) + 1;
+
+      restaurant.markModified("reservations.parameters.floorplan.rooms");
+
+      await restaurant.save();
+
+      return res.json({
+        room,
+        rooms: getRooms(restaurant),
+        enabled: Boolean(restaurant.reservations.parameters.floorplan.enabled),
+        version: Number(
+          restaurant.reservations.parameters.floorplan.version || 1,
+        ),
+      });
+    } catch (e) {
+      return res.status(500).json({ message: "Erreur serveur (PUT room)." });
     }
   },
 );

@@ -848,27 +848,43 @@ export default function RoomEditorComponent({
       const savedTables = Array.isArray(res.data?.tables)
         ? res.data.tables
         : [];
+      const nextRooms = Array.isArray(res.data?.rooms) ? res.data.rooms : [];
 
-      // ✅ sync le catalogue parent
+      // ✅ sync catalogue parent
       if (typeof onCatalogUpdated === "function") {
         onCatalogUpdated(savedTables);
       }
 
-      // ✅ UX instant : retire aussi les instances dans la room courante
-      // (le backend les a déjà supprimées partout, mais ça évite d’attendre un refetch)
-      setObjects((prev) =>
-        prev.filter(
-          (o) =>
-            !(
-              o?.type === "table" &&
-              String(o.tableRefId) === String(activeCatalogId)
-            ),
-        ),
+      // ✅ récupère la salle courante déjà nettoyée par le backend
+      const nextRoom =
+        nextRooms.find((r) => String(r._id) === String(room?._id)) || null;
+
+      const nextObjects = safeArr(nextRoom?.objects);
+
+      // ✅ sync locale de l'éditeur avec l'état PERSISTÉ
+      setObjects(nextObjects);
+
+      // ✅ sync parent (rooms de floor-plan)
+      if (typeof onSaved === "function") {
+        onSaved(nextRoom || room, nextRooms);
+      }
+
+      // ✅ on repart d'un état propre, donc pas de bouton "Enregistrer"
+      initialSnapRef.current = stableRoomSnap(
+        nextObjects,
+        canvasW,
+        canvasH,
+        grid,
       );
+
+      if (typeof onDirtyChange === "function") {
+        onDirtyChange(false);
+      }
 
       setSelectedId(null);
       setSelectedRefId("");
       setDeleteCatalogOpen(false);
+      setSaveError("");
     } catch (e) {
       setDeleteCatalogError(
         e?.response?.data?.message ||

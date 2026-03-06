@@ -31,7 +31,8 @@ import { arrayMove, SortableContext } from "@dnd-kit/sortable";
 
 import {
   restrictToFirstScrollableAncestor,
-  restrictToWindowEdges,
+
+  restrictToParentElement,
 } from "@dnd-kit/modifiers";
 
 // COMPONENTS
@@ -272,7 +273,8 @@ export default function ListGiftsComponent(props) {
             onDragEnd={handleDragEnd}
             modifiers={[
               restrictToFirstScrollableAncestor,
-              restrictToWindowEdges,
+            
+              restrictToParentElement,
             ]}
           >
             <SortableContext
@@ -297,7 +299,7 @@ export default function ListGiftsComponent(props) {
 
       {/* Cartes type “menu / expérience” */}
       {giftCardsDescription?.length > 0 && (
-        <div className="mb-10">
+        <div>
           <div className={sectionChipWrap}>
             <div className={sectionChipLine} />
             <div className={sectionChipLabel}>{t("titles.menuCard")}</div>
@@ -311,7 +313,8 @@ export default function ListGiftsComponent(props) {
             onDragEnd={handleDragEnd}
             modifiers={[
               restrictToFirstScrollableAncestor,
-              restrictToWindowEdges,
+            
+              restrictToParentElement,
             ]}
           >
             <SortableContext

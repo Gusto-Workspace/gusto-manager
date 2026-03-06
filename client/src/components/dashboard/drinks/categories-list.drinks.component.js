@@ -30,7 +30,8 @@ import { arrayMove, SortableContext } from "@dnd-kit/sortable";
 
 import {
   restrictToFirstScrollableAncestor,
-  restrictToWindowEdges,
+
+  restrictToParentElement
 } from "@dnd-kit/modifiers";
 
 // COMPONENTS
@@ -232,8 +233,8 @@ export default function CategoriesListDrinksComponent() {
             collisionDetection={closestCenter}
             onDragEnd={handleDragEnd}
             modifiers={[
-              restrictToFirstScrollableAncestor,
-              restrictToWindowEdges,
+              restrictToFirstScrollableAncestor,      
+              restrictToParentElement
             ]}
           >
             <SortableContext

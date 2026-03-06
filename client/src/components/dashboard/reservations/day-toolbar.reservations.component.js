@@ -133,7 +133,7 @@ export default function DayHeaderReservationsComponent(props) {
       {/* =========================
           ✅ midTablet+ (TON HEADER INCHANGÉ)
           ========================= */}
-      <div className="hidden midTablet:flex flex-col gap-6">
+      <div className="hidden midTablet:flex flex-col gap-2">
         {/* Ligne 1 */}
         <div className="flex items-center flex-wrap justify-between gap-3">
           <div className="flex gap-2 items-center min-h-[40px]">
@@ -159,18 +159,23 @@ export default function DayHeaderReservationsComponent(props) {
           </div>
 
           <div className="flex gap-2">
-            <button
-              onClick={props.handleParametersClick}
-              className="bg-violet px-6 py-2 rounded-lg text-white cursor-pointer"
-            >
-              {t("buttons.parameters")}
-            </button>
-            <button
-              onClick={props.handleAddClick}
-              className="bg-blue px-6 py-2 rounded-lg text-white cursor-pointer"
-            >
-              {t("buttons.add")}
-            </button>
+           <button
+                onClick={props.handleParametersClick}
+                className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition h-[40px] w-[40px]"
+                aria-label={t("buttons.parameters")}
+                title={t("buttons.parameters")}
+              >
+                <SlidersHorizontal className="size-4 text-darkBlue/70" />
+              </button>
+
+              <button
+                onClick={props.handleAddClick}
+                className="inline-flex items-center justify-center rounded-full bg-blue text-white shadow-sm hover:bg-blue/90 active:scale-[0.98] transition h-[40px] w-[40px]"
+                aria-label={t("buttons.add")}
+                title={t("buttons.add")}
+              >
+                <Plus className="size-4" />
+              </button>
           </div>
         </div>
 
@@ -207,7 +212,7 @@ export default function DayHeaderReservationsComponent(props) {
             </select>
           </div>
 
-          <div className="flex items-center relative gap-2 bg-white border border-darkBlue/10 rounded-2xl px-3 py-2 w-full tablet:w-[340px] shadow-sm">
+          <div className="flex items-center relative gap-2 bg-white border border-darkBlue/10 rounded-2xl px-3 py-2 w-full tablet:w-[320px] shadow-sm">
             <Search className="size-4 text-darkBlue/40" />
 
             <input

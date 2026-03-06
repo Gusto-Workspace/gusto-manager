@@ -18,12 +18,12 @@ export default function DecorModalParametersComponent({
 
   return (
     <div
-      className="fixed inset-0 z-[9999] flex items-end mobile:items-center justify-center bg-black/40 p-3"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 p-3"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) setDecorModalOpen(false);
       }}
     >
-      <div className="w-full max-w-[720px] rounded-3xl border border-darkBlue/10 bg-lightGrey shadow-xl overflow-hidden">
+      <div className="w-full max-w-[720px] max-h-[80vh] rounded-3xl border border-darkBlue/10 bg-lightGrey shadow-xl overflow-auto">
         <div className="flex items-center justify-between px-4 py-3 border-b border-darkBlue/10">
           <div className="min-w-0">
             <p className="text-base font-semibold text-darkBlue">

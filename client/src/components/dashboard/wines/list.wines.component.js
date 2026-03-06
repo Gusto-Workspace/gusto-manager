@@ -26,7 +26,10 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { arrayMove, SortableContext } from "@dnd-kit/sortable";
-import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
+import {
+  restrictToVerticalAxis,
+  restrictToParentElement,
+} from "@dnd-kit/modifiers";
 
 // COMPONENTS
 import DetailsWineComponent from "./details-wine.wines.component";
@@ -48,14 +51,14 @@ export default function ListWinesComponent(props) {
   const [selectedWine, setSelectedWine] = useState(null);
   const [hoveredTooltip, setHoveredTooltip] = useState(null);
   const [wines, setWines] = useState(
-    props.subCategory ? props.subCategory.wines : props.category.wines
+    props.subCategory ? props.subCategory.wines : props.category.wines,
   );
 
   const [subCategories, setSubCategories] = useState(
     !props.subCategory &&
       restaurantContext?.restaurantData?.wine_categories?.find(
-        (category) => category._id === props.category._id
-      )?.subCategories
+        (category) => category._id === props.category._id,
+      )?.subCategories,
   );
 
   useEffect(() => {
@@ -63,8 +66,8 @@ export default function ListWinesComponent(props) {
       !props.subCategory &&
         setSubCategories(
           restaurantContext?.restaurantData?.wine_categories?.find(
-            (category) => category._id === props.category._id
-          )?.subCategories
+            (category) => category._id === props.category._id,
+          )?.subCategories,
         );
     }
   }, [restaurantContext?.restaurantData, props.category_id]);
@@ -96,14 +99,16 @@ export default function ListWinesComponent(props) {
         .toLowerCase();
 
       router.push(
-        `/dashboard/wines/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${props.subCategory._id}/add`
+        `/dashboard/wines/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${props.subCategory._id}/add`,
       );
     } else {
       const formattedName = props.category.name
         .replace(/\//g, "-")
         .replace(/\s+/g, "&")
         .toLowerCase();
-      router.push(`/dashboard/wines/${formattedName}-${props.category._id}/add`);
+      router.push(
+        `/dashboard/wines/${formattedName}-${props.category._id}/add`,
+      );
     }
   }
 
@@ -118,7 +123,7 @@ export default function ListWinesComponent(props) {
         .replace(/\s+/g, "&")
         .toLowerCase();
       router.push(
-        `/dashboard/wines/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${props.subCategory._id}/add?wineId=${wine._id}`
+        `/dashboard/wines/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${props.subCategory._id}/add?wineId=${wine._id}`,
       );
     } else {
       const formattedCategoryName = props.category.name
@@ -126,7 +131,7 @@ export default function ListWinesComponent(props) {
         .replace(/\s+/g, "&")
         .toLowerCase();
       router.push(
-        `/dashboard/wines/${formattedCategoryName}-${props.category._id}/add?wineId=${wine._id}`
+        `/dashboard/wines/${formattedCategoryName}-${props.category._id}/add?wineId=${wine._id}`,
       );
     }
   }
@@ -164,13 +169,13 @@ export default function ListWinesComponent(props) {
     if (editingCategory) {
       axios
         .delete(
-          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/wines/categories/${props.category._id}/subcategories/${editingCategory._id}`
+          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/wines/categories/${props.category._id}/subcategories/${editingCategory._id}`,
         )
         .then((response) => {
           setSubCategories((prevSubCategories) =>
             prevSubCategories.filter(
-              (subCategory) => subCategory._id !== editingCategory._id
-            )
+              (subCategory) => subCategory._id !== editingCategory._id,
+            ),
           );
           restaurantContext.setRestaurantData(response.data.restaurant);
           setEditingCategory(null);
@@ -192,7 +197,7 @@ export default function ListWinesComponent(props) {
         .delete(apiUrl, { params })
         .then((response) => {
           setWines((prevWines) =>
-            prevWines.filter((wine) => wine._id !== selectedWine._id)
+            prevWines.filter((wine) => wine._id !== selectedWine._id),
           );
           restaurantContext.setRestaurantData(response.data.restaurant);
           closeDeleteModal();
@@ -209,7 +214,7 @@ export default function ListWinesComponent(props) {
     axios
       .put(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/wines/categories/${props.category._id}/subcategories/${subCategory._id}`,
-        { visible: updatedVisibility }
+        { visible: updatedVisibility },
       )
       .then((response) => {
         restaurantContext.setRestaurantData(response.data.restaurant);
@@ -266,13 +271,13 @@ export default function ListWinesComponent(props) {
 
   function saveNewSubCategoryOrder(updatedSubCategories) {
     const orderedSubCategoryIds = updatedSubCategories.map(
-      (subCategory) => subCategory._id
+      (subCategory) => subCategory._id,
     );
 
     axios
       .put(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/wines/categories/${props.category._id}/list-subcategories/order`,
-        { orderedSubCategoryIds }
+        { orderedSubCategoryIds },
       )
       .then((response) => {
         restaurantContext.setRestaurantData(response.data.restaurant);
@@ -292,16 +297,16 @@ export default function ListWinesComponent(props) {
     if (active.id !== over.id) {
       setSubCategories((prevSubCategories) => {
         const oldIndex = prevSubCategories.findIndex(
-          (subCategory) => subCategory._id === active.id
+          (subCategory) => subCategory._id === active.id,
         );
         const newIndex = prevSubCategories.findIndex(
-          (subCategory) => subCategory._id === over.id
+          (subCategory) => subCategory._id === over.id,
         );
 
         const newSubCategoriesOrder = arrayMove(
           prevSubCategories,
           oldIndex,
-          newIndex
+          newIndex,
         );
         saveNewSubCategoryOrder(newSubCategoriesOrder);
 
@@ -321,7 +326,7 @@ export default function ListWinesComponent(props) {
       .toLowerCase();
 
     router.push(
-      `/dashboard/wines/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${subCategory._id}`
+      `/dashboard/wines/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${subCategory._id}`,
     );
   }
 
@@ -380,7 +385,7 @@ export default function ListWinesComponent(props) {
             className="min-h-[30px] min-w-[30px]"
             fillColor="#131E3690"
           />
-          
+
           <h1 className="pl-2 text-xl tablet:text-2xl flex flex-wrap items-center gap-2">
             <span
               className="cursor-pointer hover:underline"
@@ -440,6 +445,7 @@ export default function ListWinesComponent(props) {
             sensors={sensors}
             collisionDetection={closestCenter}
             onDragEnd={handleSubCategoryDragEnd}
+            modifiers={[restrictToParentElement]}
           >
             <SortableContext
               items={subCategories?.map((subCategory) => subCategory._id)}
@@ -467,7 +473,7 @@ export default function ListWinesComponent(props) {
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}
           sensors={sensors}
-          modifiers={[restrictToVerticalAxis]}
+          modifiers={[restrictToVerticalAxis, restrictToParentElement]}
         >
           <SortableContext items={wines.map((wine) => wine._id)}>
             {wines.map((wine) => (
