@@ -13,6 +13,7 @@ import {
   SlidersHorizontal,
   Plus,
   X,
+  LayoutGrid,
 } from "lucide-react";
 
 export default function CalendarToolbarReservationsComponent(props) {
@@ -71,6 +72,15 @@ export default function CalendarToolbarReservationsComponent(props) {
             title={t("buttons.parameters")}
           >
             <SlidersHorizontal className="size-4 text-darkBlue/70" />
+          </button>
+
+          <button
+            onClick={props.handleOpenFloorPlanDrawer}
+            className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition h-[40px] w-[40px]"
+            aria-label="Plan de salle"
+            title="Plan de salle"
+          >
+            <LayoutGrid className="size-4 text-darkBlue/70" />
           </button>
 
           <button

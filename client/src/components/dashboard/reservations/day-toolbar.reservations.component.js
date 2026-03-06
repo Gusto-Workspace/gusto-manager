@@ -1,6 +1,13 @@
 // SVG
 import { ReservationSvg } from "@/components/_shared/_svgs/reservation.svg";
-import { ChevronLeft, Plus, SlidersHorizontal, Search, X } from "lucide-react";
+import {
+  ChevronLeft,
+  Plus,
+  SlidersHorizontal,
+  Search,
+  LayoutGrid,
+  X,
+} from "lucide-react";
 
 // I18N
 import { useTranslation } from "next-i18next";
@@ -60,10 +67,10 @@ export default function DayHeaderReservationsComponent(props) {
             </div>
 
             {/* Right: actions (compact) */}
-            <div className="shrink-0 flex items-center gap-2">
+            <div className="shrink-0 flex items-center gap-1">
               <button
                 onClick={props.handleParametersClick}
-                className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition p-4"
+                className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition h-[40px] w-[40px]"
                 aria-label={t("buttons.parameters")}
                 title={t("buttons.parameters")}
               >
@@ -71,8 +78,17 @@ export default function DayHeaderReservationsComponent(props) {
               </button>
 
               <button
+                onClick={props.handleOpenFloorPlanDrawer}
+                className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition h-[40px] w-[40px]"
+                aria-label="Plan de salle"
+                title="Plan de salle"
+              >
+                <LayoutGrid className="size-4 text-darkBlue/70" />
+              </button>
+
+              <button
                 onClick={props.handleAddClick}
-                className="inline-flex items-center justify-center rounded-full bg-blue text-white shadow-sm hover:bg-blue/90 active:scale-[0.98] transition p-4"
+                className="inline-flex items-center justify-center rounded-full bg-blue text-white shadow-sm hover:bg-blue/90 active:scale-[0.98] transition h-[40px] w-[40px]"
                 aria-label={t("buttons.add")}
                 title={t("buttons.add")}
               >
@@ -159,23 +175,32 @@ export default function DayHeaderReservationsComponent(props) {
           </div>
 
           <div className="flex gap-2">
-           <button
-                onClick={props.handleParametersClick}
-                className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition h-[40px] w-[40px]"
-                aria-label={t("buttons.parameters")}
-                title={t("buttons.parameters")}
-              >
-                <SlidersHorizontal className="size-4 text-darkBlue/70" />
-              </button>
+            <button
+              onClick={props.handleParametersClick}
+              className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition h-[40px] w-[40px]"
+              aria-label={t("buttons.parameters")}
+              title={t("buttons.parameters")}
+            >
+              <SlidersHorizontal className="size-4 text-darkBlue/70" />
+            </button>
 
-              <button
-                onClick={props.handleAddClick}
-                className="inline-flex items-center justify-center rounded-full bg-blue text-white shadow-sm hover:bg-blue/90 active:scale-[0.98] transition h-[40px] w-[40px]"
-                aria-label={t("buttons.add")}
-                title={t("buttons.add")}
-              >
-                <Plus className="size-4" />
-              </button>
+            <button
+              onClick={props.handleOpenFloorPlanDrawer}
+              className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition h-[40px] w-[40px]"
+              aria-label="Plan de salle"
+              title="Plan de salle"
+            >
+              <LayoutGrid className="size-4 text-darkBlue/70" />
+            </button>
+
+            <button
+              onClick={props.handleAddClick}
+              className="inline-flex items-center justify-center rounded-full bg-blue text-white shadow-sm hover:bg-blue/90 active:scale-[0.98] transition h-[40px] w-[40px]"
+              aria-label={t("buttons.add")}
+              title={t("buttons.add")}
+            >
+              <Plus className="size-4" />
+            </button>
           </div>
         </div>
 
