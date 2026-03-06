@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Stage,
   Layer,
@@ -420,6 +420,10 @@ export default function FloorPlanCanvasReservationsComponent({
   const didInitialFitRef = useRef(false);
   const hasUserMovedViewRef = useRef(false);
 
+  const tooltipRef = useRef(null);
+  const [tooltipSize, setTooltipSize] = useState({ w: 220, h: 140 });
+  const [tooltipReady, setTooltipReady] = useState(false);
+
   const [stageSize, setStageSize] = useState({ w: null, h: null });
   const [scale, setScale] = useState(0.7);
   const [pos, setPos] = useState({ x: 0, y: 0 });
@@ -441,6 +445,10 @@ export default function FloorPlanCanvasReservationsComponent({
     didInitialFitRef.current = false;
     hasUserMovedViewRef.current = false;
   }, [room?._id]);
+
+  useEffect(() => {
+    setTooltipReady(false);
+  }, [selectedTableState]);
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -662,8 +670,14 @@ export default function FloorPlanCanvasReservationsComponent({
     return { x: evt?.clientX ?? 0, y: evt?.clientY ?? 0 };
   }
 
+  function preventIfCancelable(evt) {
+    if (evt?.cancelable) {
+      evt.preventDefault();
+    }
+  }
+
   function startPan(e) {
-    e?.evt?.preventDefault?.();
+    preventIfCancelable(e?.evt);
 
     if (e.target === e.target.getStage()) {
       hasUserMovedViewRef.current = true;
@@ -677,14 +691,14 @@ export default function FloorPlanCanvasReservationsComponent({
   }
 
   function endPan(e) {
-    e?.evt?.preventDefault?.();
+    preventIfCancelable(e?.evt);
     setIsPanning(false);
   }
 
   function movePan(e) {
     if (!isPanning) return;
 
-    e?.evt?.preventDefault?.();
+    preventIfCancelable(e?.evt);
 
     const evt = e.evt;
     let dx = evt?.movementX;
@@ -720,6 +734,32 @@ export default function FloorPlanCanvasReservationsComponent({
     const container = stage.container();
     if (container) container.style.touchAction = "none";
   }, []);
+
+  useLayoutEffect(() => {
+    if (!tooltipRef.current) return;
+
+    const measure = () => {
+      const rect = tooltipRef.current.getBoundingClientRect();
+      const w = Math.max(220, Math.ceil(rect.width || 220));
+      const h = Math.max(78, Math.ceil(rect.height || 78));
+
+      setTooltipSize((prev) => {
+        if (prev.w === w && prev.h === h) return prev;
+        return { w, h };
+      });
+
+      setTooltipReady(true);
+    };
+
+    measure();
+
+    const ro = new ResizeObserver(measure);
+    ro.observe(tooltipRef.current);
+
+    return () => {
+      ro.disconnect();
+    };
+  }, [selectedTableState]);
 
   function renderDecor(obj) {
     if (obj.shape === "line") {
@@ -1220,11 +1260,31 @@ export default function FloorPlanCanvasReservationsComponent({
     const screenX = pos.x + worldX * scale;
     const screenY = pos.y + worldY * scale;
 
-    const tooltipW = 270;
-    const tooltipH = reservation ? 176 : 92;
+    const tooltipW = tooltipSize.w || 220;
+    const tooltipH = tooltipSize.h || (reservation ? 140 : 78);
 
-    const left = clamp(screenX + 18, 12, stageSize.w - tooltipW - 12);
-    const top = clamp(screenY + 18, 12, stageSize.h - tooltipH - 12);
+    const margin = 16;
+    const gap = 18;
+
+    const candidates = [
+      { left: screenX + gap, top: screenY + gap }, // bas droite
+      { left: screenX - tooltipW - gap, top: screenY + gap }, // bas gauche
+      { left: screenX + gap, top: screenY - tooltipH - gap }, // haut droite
+      { left: screenX - tooltipW - gap, top: screenY - tooltipH - gap }, // haut gauche
+    ];
+
+    const fits = candidates.find(
+      (c) =>
+        c.left >= margin &&
+        c.top >= margin &&
+        c.left + tooltipW <= stageSize.w - margin &&
+        c.top + tooltipH <= stageSize.h - margin,
+    );
+
+    const chosen = fits || candidates[0];
+
+    const left = clamp(chosen.left, margin, stageSize.w - tooltipW - margin);
+    const top = clamp(chosen.top, margin, stageSize.h - tooltipH - margin);
 
     return {
       left,
@@ -1232,7 +1292,15 @@ export default function FloorPlanCanvasReservationsComponent({
       ref,
       reservation,
     };
-  }, [selectedTableState, pos, scale, stageSize.w, stageSize.h]);
+  }, [
+    selectedTableState,
+    pos,
+    scale,
+    stageSize.w,
+    stageSize.h,
+    tooltipSize.w,
+    tooltipSize.h,
+  ]);
 
   return (
     <div className="relative h-full min-h-[520px] rounded-[28px] border border-darkBlue/10 bg-[#667085] overflow-hidden flex flex-col shadow-inner">
@@ -1278,31 +1346,39 @@ export default function FloorPlanCanvasReservationsComponent({
 
       {tooltipData ? (
         <div
-          className="absolute z-[60] w-[270px] rounded-3xl border border-darkBlue/10 bg-white/95 shadow-xl p-4 pointer-events-none"
+          ref={tooltipRef}
+          className="absolute z-[60] w-[220px] rounded-3xl border border-darkBlue/10 bg-white/95 shadow-xl p-4 pointer-events-none"
           style={{
             left: `${tooltipData.left}px`,
             top: `${tooltipData.top}px`,
+            opacity: tooltipReady ? 1 : 0,
+            visibility: tooltipReady ? "visible" : "hidden",
           }}
         >
-          <p className="text-[11px] uppercase tracking-[0.14em] text-darkBlue/40">
-            Table
-          </p>
-          <p className="mt-1 text-lg font-semibold text-darkBlue">
-            {tooltipData.ref?.name || "Table"}
-          </p>
-          <p className="mt-1 text-sm text-darkBlue/55">
+          <div className="flex gap-1">
+            <p className="text-[12px] uppercase tracking-[0.14em] text-darkBlue/70">
+              Table
+            </p>
+            <p className="text-[12px] uppercase tracking-[0.14em] text-darkBlue/70">
+              {tooltipData.ref?.name || "Table"}
+            </p>
+          </div>
+
+          <p className="text-[10px] text-darkBlue/55 leading-none">
             {Number(tooltipData.ref?.seats || 0)} couverts
           </p>
 
           {tooltipData.reservation ? (
-            <div className="mt-4 border-t border-darkBlue/10 pt-4">
-              <p className="text-[11px] uppercase tracking-[0.14em] text-darkBlue/40">
+            <div className="mt-2 border-t border-darkBlue/10 pt-3">
+              <p className="text-[10px] uppercase tracking-[0.14em] text-darkBlue/40">
                 Réservation
               </p>
-              <p className="mt-1 text-sm font-semibold text-darkBlue">
+
+              <p className="mt-1 text-[13px] font-semibold text-darkBlue leading-snug line-clamp-2">
                 {getDisplayName(tooltipData.reservation)}
               </p>
-              <div className="mt-2 flex flex-col gap-1.5 text-xs text-darkBlue/65">
+
+              <div className="mt-1 space-y-1 text-[12px] text-darkBlue/65 leading-snug">
                 <div>
                   <span className="font-medium text-darkBlue">Heure :</span>{" "}
                   {String(tooltipData.reservation?.reservationTime || "").slice(
@@ -1319,18 +1395,16 @@ export default function FloorPlanCanvasReservationsComponent({
                   {reservationStatusLabel(tooltipData.reservation?.status)}
                 </div>
                 {tooltipData.reservation?.customerPhone ? (
-                  <div>
-                    <span className="font-medium text-darkBlue">
-                      Téléphone :
-                    </span>{" "}
+                  <div className="truncate">
+                    <span className="font-medium text-darkBlue">Tél :</span>{" "}
                     {tooltipData.reservation.customerPhone}
                   </div>
                 ) : null}
               </div>
             </div>
           ) : (
-            <div className="mt-4 border-t border-darkBlue/10 pt-4 text-sm text-darkBlue/55">
-              Aucune réservation pour ce contexte d’affichage.
+            <div className="mt-3 border-t border-darkBlue/10 pt-3 text-[12px] text-darkBlue/55 leading-snug">
+              Aucune réservation.
             </div>
           )}
         </div>

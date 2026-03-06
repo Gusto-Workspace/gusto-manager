@@ -299,21 +299,9 @@ export default function FloorPlanDrawerReservationsComponent({
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-xs font-medium uppercase tracking-wide text-darkBlue/45">
-                      Temps réel
+                      Affichage en temps réel
                     </p>
-                    {isDayContext ? (
-                      <p className="mt-1 text-sm text-darkBlue/55">
-                        {liveMode
-                          ? "Le plan suit l’état en cours."
-                          : "Le plan suit le créneau sélectionné."}
-                      </p>
-                    ) : liveMode ? (
-                      <p className="mt-1 text-sm text-darkBlue/55">
-                        Le plan suit l’état en cours.
-                      </p>
-                    ) : (
-                      <span className="mt-1 text-sm text-darkBlue/55">-</span>
-                    )}
+                    
                   </div>
 
                   <button

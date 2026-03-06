@@ -670,7 +670,7 @@ export default function AddReservationComponent(props) {
       ...prevData,
       reservationDate: selectedDate,
       reservationTime: "",
-      table: "",
+      table: isEditing ? prevData.table : "",
     }));
   }
 
@@ -865,7 +865,7 @@ export default function AddReservationComponent(props) {
     setReservationData((prevData) => ({
       ...prevData,
       reservationTime,
-      table: "",
+      table: isEditing ? prevData.table : "",
     }));
   }
 
