@@ -378,14 +378,11 @@ export default function FloorPlanDrawerReservationsComponent({
           shadow-[0_25px_80px_rgba(19,30,54,0.25)]
           flex flex-col overflow-hidden
           transform-gpu
-
           left-0 right-0 bottom-0 w-full min-h-[50vh] max-h-[90vh]
           rounded-t-3xl
-
           tablet:top-0 tablet:bottom-0 tablet:left-auto tablet:right-0
           tablet:h-full tablet:max-h-none tablet:w-1/2 tablet:max-w-[1180px]
           tablet:rounded-none tablet:border-l tablet:border-t-0 tablet:border-r-0 tablet:border-b-0
-
           transition-transform ease-out will-change-transform
           ${
             isVisible
