@@ -24,6 +24,13 @@ const {
   sendReservationEmail,
 } = require("../services/reservationsMailer.service");
 
+// SERVICE CUSTOMERS
+const {
+  upsertCustomer,
+  onReservationCreated,
+  onReservationStatusChanged,
+} = require("../services/customers.service");
+
 /* ---------------------------------------------------------
    Helpers
 --------------------------------------------------------- */
@@ -300,14 +307,24 @@ function applyRejectFields(reservation, nextStatus) {
   }
 }
 
-// ✅ refresh complet restaurant (ton front l’utilise partout)
-// (si un jour ça devient lourd => on fera une route plus légère + pagination)
 async function fetchRestaurantFull(restaurantId) {
   return RestaurantModel.findById(restaurantId)
     .populate("owner_id", "firstname")
     .populate("menus")
     .populate("employees")
     .populate({ path: "reservations.list" });
+}
+
+function getCustomerFullNameFromReservation(reservation) {
+  const fn = String(reservation?.customerFirstName || "").trim();
+  const ln = String(reservation?.customerLastName || "").trim();
+  return `${fn} ${ln}`.trim();
+}
+
+function cleanNamePart(v) {
+  return String(v || "")
+    .trim()
+    .replace(/\s+/g, " ");
 }
 
 /* ---------------------------------------------------------
@@ -362,9 +379,8 @@ router.put(
       );
 
       let manualTablesNeedingAssignment = 0;
+      let unassignedReservationsNeedingAssignment = 0;
 
-      // ✅ Si on vient d’activer la gestion intelligente,
-      // on compte les réservations encore "bloquantes" avec table saisie à la main (table.name mais pas table._id)
       if (!prevManage && nextManage) {
         const ids = restaurant.reservations?.list || [];
 
@@ -376,13 +392,17 @@ router.put(
             .lean();
 
           manualTablesNeedingAssignment = reservations.filter((r) => {
-            // réutilise tes helpers globaux du fichier
             if (!isBlockingReservation(r)) return false;
-
             return (
               r?.table?.source === "manual" &&
               Boolean((r?.table?.name || "").trim())
             );
+          }).length;
+
+          unassignedReservationsNeedingAssignment = reservations.filter((r) => {
+            if (!isBlockingReservation(r)) return false;
+            // ✅ table complètement absente
+            return !r?.table;
           }).length;
         }
       }
@@ -393,6 +413,7 @@ router.put(
         message: "Reservation parameters updated successfully",
         restaurant: updatedRestaurant,
         manualTablesNeedingAssignment,
+        unassignedReservationsNeedingAssignment,
       });
     } catch (error) {
       console.error("Error updating reservation parameters:", error);
@@ -694,11 +715,31 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
       }
     }
 
+    const customerFirstName = cleanNamePart(reservationData.customerFirstName);
+    const customerLastName = cleanNamePart(reservationData.customerLastName);
+
+    if (!customerFirstName || !customerLastName) {
+      return res.status(400).json({
+        message: "customerFirstName et customerLastName sont requis.",
+      });
+    }
+
+    const customerEmail = String(reservationData.customerEmail || "").trim();
+    const customerPhone = String(reservationData.customerPhone || "").trim();
+
+    const customer = await upsertCustomer({
+      restaurantId,
+      firstName: customerFirstName,
+      lastName: customerLastName,
+      email: customerEmail,
+      phone: customerPhone,
+    });
     const newReservation = await ReservationModel.create({
       restaurant_id: restaurantId,
-      customerName: reservationData.customerName,
-      customerEmail: reservationData.customerEmail,
-      customerPhone: reservationData.customerPhone,
+      customerFirstName,
+      customerLastName,
+      customerEmail,
+      customerPhone,
       numberOfGuests: reservationData.numberOfGuests,
       reservationDate: normalizedDay,
       reservationTime: reservationData.reservationTime,
@@ -711,7 +752,10 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
 
       activatedAt: null,
       finishedAt: null,
+      customer: customer?._id || null,
     });
+
+    await onReservationCreated(customer?._id, newReservation);
 
     restaurant.reservations.list.push(newReservation._id);
     await restaurant.save();
@@ -728,7 +772,7 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
       type: "reservation_created",
       data: {
         reservationId: String(newReservation?._id),
-        customerName: newReservation?.customerName,
+        customerName: getCustomerFullNameFromReservation(newReservation),
         numberOfGuests: newReservation?.numberOfGuests,
         reservationDate: newReservation?.reservationDate,
         reservationTime: newReservation?.reservationTime,
@@ -956,17 +1000,40 @@ router.post(
         }
       }
 
+      const customerFirstName = cleanNamePart(
+        reservationData.customerFirstName,
+      );
+      const customerLastName = cleanNamePart(reservationData.customerLastName);
+
+      if (!customerFirstName || !customerLastName) {
+        return res.status(400).json({
+          message: "customerFirstName et customerLastName sont requis.",
+        });
+      }
+
+      const customerEmail = String(reservationData.customerEmail || "").trim();
+      const customerPhone = String(reservationData.customerPhone || "").trim();
+
+      const customer = await upsertCustomer({
+        restaurantId,
+        firstName: customerFirstName,
+        lastName: customerLastName,
+        email: customerEmail,
+        phone: customerPhone,
+      });
+
       const newReservation = await ReservationModel.create({
         restaurant_id: restaurantId,
-        customerName: reservationData.customerName,
-        customerEmail: reservationData.customerEmail,
-        customerPhone: reservationData.customerPhone,
+        customerFirstName,
+        customerLastName,
+        customerEmail,
+        customerPhone,
         numberOfGuests: reservationData.numberOfGuests,
         reservationDate: normalizedDay,
         reservationTime: reservationData.reservationTime,
         commentary: reservationData.commentary,
         table: assignedTable,
-
+        customer: customer?._id || null,
         status: computedStatus,
         source: "dashboard",
         pendingExpiresAt,
@@ -974,6 +1041,8 @@ router.post(
         activatedAt: null,
         finishedAt: null,
       });
+
+      await onReservationCreated(customer?._id, newReservation);
 
       restaurant.reservations.list.push(newReservation._id);
       await restaurant.save();
@@ -1247,7 +1316,7 @@ router.put(
       applyCancelFields(reservation, nextStatus);
       applyRejectFields(reservation, nextStatus);
 
-      // ✅ (optionnel mais cohérent) pendingExpiresAt si on repasse en Pending
+      // ✅ pendingExpiresAt si on repasse en Pending
       if (nextStatus === "Pending") {
         if (!reservation.pendingExpiresAt) {
           reservation.pendingExpiresAt = computePendingExpiresAt(restaurant);
@@ -1264,13 +1333,12 @@ router.put(
         restaurantId,
         reservation: reservation.toObject
           ? reservation.toObject()
-          : reservation,
+          : reservation, // ✅ FIX
       });
 
       // ✅ EMAILS (SAFE) — ne doit jamais casser la route
       const restaurantName = restaurant?.name || "Restaurant";
       const logSkip = (type, info) => {
-        // log propre (utile en prod)
         console.log("[reservation-email-skip]", type, {
           reservationId: String(reservationId),
           prevStatus,
@@ -1315,8 +1383,38 @@ router.put(
           "Email status transition failed:",
           e?.response?.body || e,
         );
-        // on ignore pour ne jamais bloquer la route
       }
+
+      // ✅ 1) s'assurer qu'on a un customerId (upsert si besoin)
+      let customerId = reservation.customer;
+
+      if (!customerId) {
+        const customer = await upsertCustomer({
+          restaurantId,
+          firstName: reservation.customerFirstName,
+          lastName: reservation.customerLastName,
+          email: reservation.customerEmail,
+          phone: reservation.customerPhone,
+        });
+
+        if (customer) {
+          customerId = customer._id;
+
+          // on persiste le lien côté réservation
+          await ReservationModel.updateOne(
+            { _id: reservation._id },
+            { $set: { customer: customerId } },
+          );
+        }
+      }
+
+      // ✅ 2) update stats/historique customer (si on a un id)
+      await onReservationStatusChanged(
+        customerId,
+        reservation,
+        prevStatus,
+        nextStatus,
+      );
 
       const updatedRestaurant = await fetchRestaurantFull(restaurantId);
 
@@ -1834,7 +1932,7 @@ router.get(
       // On récupère les réservations avec table "manuelle"
       const reservations = await ReservationModel.find({ _id: { $in: ids } })
         .select(
-          "customerName numberOfGuests reservationDate reservationTime status table source pendingExpiresAt",
+          "customerFirstName customerLastName numberOfGuests reservationDate reservationTime status table source pendingExpiresAt",
         )
         .lean();
 
@@ -1850,7 +1948,8 @@ router.get(
         })
         .map((r) => ({
           _id: r._id,
-          customerName: r.customerName || "",
+          customerName:
+            `${String(r.customerFirstName || "").trim()} ${String(r.customerLastName || "").trim()}`.trim(),
           numberOfGuests: r.numberOfGuests ?? null,
           reservationDate: r.reservationDate,
           reservationTime: String(r.reservationTime || "").slice(0, 5),
@@ -1876,6 +1975,75 @@ router.get(
       });
     } catch (e) {
       console.error("Error getting manual tables to fix:", e);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  },
+);
+
+/* ---------------------------------------------------------
+   GET UNASSIGNED TABLES TO FIX (manage_disponibilities ON)
+--------------------------------------------------------- */
+router.get(
+  "/restaurants/:id/reservations/unassigned-tables",
+  authenticateToken,
+  async (req, res) => {
+    const restaurantId = req.params.id;
+
+    try {
+      const restaurant = await RestaurantModel.findById(restaurantId).lean();
+      if (!restaurant) {
+        return res.status(404).json({ message: "Restaurant not found" });
+      }
+
+      const manage = Boolean(
+        restaurant?.reservations?.parameters?.manage_disponibilities,
+      );
+      if (!manage) {
+        return res.status(200).json({ count: 0, reservations: [] });
+      }
+
+      const ids = restaurant?.reservations?.list || [];
+      if (!ids.length) {
+        return res.status(200).json({ count: 0, reservations: [] });
+      }
+
+      const reservations = await ReservationModel.find({ _id: { $in: ids } })
+        .select(
+          "customerFirstName customerLastName numberOfGuests reservationDate reservationTime status table source pendingExpiresAt",
+        )
+        .lean();
+
+      const toFix = reservations
+        .filter((r) => {
+          if (!isBlockingReservation(r)) return false;
+          return !r?.table; // ✅ pas de table du tout
+        })
+        .map((r) => ({
+          _id: r._id,
+          customerName:
+            `${String(r.customerFirstName || "").trim()} ${String(r.customerLastName || "").trim()}`.trim(),
+          numberOfGuests: r.numberOfGuests ?? null,
+          reservationDate: r.reservationDate,
+          reservationTime: String(r.reservationTime || "").slice(0, 5),
+          status: r.status,
+          tableName: null,
+          source: r.source || null,
+        }))
+        .sort((a, b) => {
+          const aDT = buildReservationDateTime(
+            normalizeReservationDayToUTC(a.reservationDate),
+            a.reservationTime,
+          );
+          const bDT = buildReservationDateTime(
+            normalizeReservationDayToUTC(b.reservationDate),
+            b.reservationTime,
+          );
+          return (aDT?.getTime() || 0) - (bDT?.getTime() || 0);
+        });
+
+      return res.status(200).json({ count: toFix.length, reservations: toFix });
+    } catch (e) {
+      console.error("Error getting unassigned tables to fix:", e);
       return res.status(500).json({ message: "Internal server error" });
     }
   },

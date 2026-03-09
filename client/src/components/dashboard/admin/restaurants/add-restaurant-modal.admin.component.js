@@ -117,6 +117,7 @@ export default function AddRestaurantModal(props) {
             news: props.restaurant.options?.news ?? true,
             gift_card: props.restaurant.options?.gift_card ?? false,
             reservations: props.restaurant.options?.reservations ?? false,
+            customers: props.restaurant.options?.customers ?? false,
             employees: props.restaurant.options?.employees ?? false,
             take_away: props.restaurant.options?.take_away ?? false,
             health_control_plan:
@@ -364,11 +365,27 @@ export default function AddRestaurantModal(props) {
                   { key: "drinks", label: "Les boissons" },
                   { key: "wines", label: "Les vins" },
                   { key: "news", label: "Les actualités" },
-                  { key: "gift_card", label: t("restaurants.form.options.giftCard") },
-                  { key: "reservations", label: t("restaurants.form.options.reservations") },
+                  {
+                    key: "gift_card",
+                    label: t("restaurants.form.options.giftCard"),
+                  },
+                  {
+                    key: "reservations",
+                    label: t("restaurants.form.options.reservations"),
+                  },
+                   {
+                    key: "customers",
+                    label: t("restaurants.form.options.customers"),
+                  },
                   { key: "employees", label: "Gestion du personnel" },
-                  { key: "take_away", label: t("restaurants.form.options.takeAway") },
-                  { key: "health_control_plan", label: t("restaurants.form.options.healthControlPlan") },
+                  {
+                    key: "take_away",
+                    label: t("restaurants.form.options.takeAway"),
+                  },
+                  {
+                    key: "health_control_plan",
+                    label: t("restaurants.form.options.healthControlPlan"),
+                  },
                 ].map((opt) => (
                   <label
                     key={opt.key}
@@ -379,7 +396,9 @@ export default function AddRestaurantModal(props) {
                       type="checkbox"
                       {...register(`restaurantData.options.${opt.key}`)}
                     />
-                    <span className="text-sm text-darkBlue/80">{opt.label}</span>
+                    <span className="text-sm text-darkBlue/80">
+                      {opt.label}
+                    </span>
                   </label>
                 ))}
               </div>

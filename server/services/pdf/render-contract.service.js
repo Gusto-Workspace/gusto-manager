@@ -372,15 +372,46 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
 
   // ✅ Lignes filtrées
   const allLines = Array.isArray(documentData?.lines) ? documentData.lines : [];
+
   const websiteLines = allLines.filter(
     (l) => isActiveLine(l) && l?.kind === "WEBSITE",
   );
-  const classicLines = allLines.filter(
-    (l) => isActiveLine(l) && (l?.kind === "NORMAL" || !l?.kind),
-  );
+
+  // ✅ IMPORTANT : on ignore les lignes "Autre" vides (label vide/espaces)
+  const classicLines = allLines.filter((l) => {
+    const isClassicKind = l?.kind === "NORMAL" || !l?.kind;
+    if (!isActiveLine(l) || !isClassicKind) return false;
+    return Boolean(safeText(l?.label));
+  });
 
   const hasWebsite = websiteLines.length > 0;
   const hasPrestations = classicLines.length > 0;
+
+  // ✅ Modules filtrés (ignore les lignes vides)
+  const rawModules = Array.isArray(documentData?.modules)
+    ? documentData.modules
+    : [];
+  const modules = rawModules.filter((m) => safeText(m?.name));
+  const hasModules = modules.length > 0;
+
+  // ✅ Numérotation dynamique selon sections présentes
+  const N_WEBSITE = hasWebsite ? 2 : null;
+  const N_PRESTATIONS = hasPrestations ? (hasWebsite ? "2.1" : "2") : null;
+
+  // Abonnement : si site OU prestations existent => reste en 3, sinon devient 2
+  const N_SUB = hasWebsite || hasPrestations ? 3 : 2;
+
+  // Sections suivantes (4/5/6/7) dépendent de N_SUB
+  const N_USE = N_SUB + 1;
+  const N_TERM = N_SUB + 2;
+  const N_LIAB = N_SUB + 3;
+  const N_PRIV = N_SUB + 4;
+
+  // ✅ Sous-numérotation Abonnement (3.x / 2.x) dynamique selon présence modules
+  let subIdx = 1;
+  const N_SUB_MODS = hasModules ? `${N_SUB}.${subIdx++}` : null;
+  const N_SUB_EVOL = `${N_SUB}.${subIdx++}`;
+  const N_SUB_FIN = `${N_SUB}.${subIdx++}`;
 
   /* ---------------- 1. Objet ---------------- */
   sectionTitle("1. Objet du Contrat");
@@ -403,13 +434,12 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
   bullet(
     "la fourniture d’un accès à un dashboard numérique de gestion de restaurant,",
   );
-  bullet("ainsi que l’accès aux modules sélectionnés par le Client.", {
-    after: 0.6,
-  });
+  bullet("ainsi que l’accès aux modules sélectionnés par le Client.");
+  doc.moveDown(0.2);
 
   /* ---------------- 2. Site vitrine (conditionnel) ---------------- */
   if (hasWebsite) {
-    sectionTitle("2. Création du Site Vitrine");
+    sectionTitle(`${N_WEBSITE}. Création du Site Vitrine`);
     paragraph(
       "Le Prestataire s’engage à réaliser et livrer un site vitrine pour le Client, conformément aux spécifications convenues.",
       { size: 10, after: 0.6 },
@@ -474,8 +504,8 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
   /* ---------------- 2 / 2.1 Prestations (selon site) ---------------- */
   if (hasPrestations) {
     const title = hasWebsite
-      ? "2.1 Prestations complémentaires"
-      : "2. Prestations";
+      ? `${N_PRESTATIONS} Prestations complémentaires`
+      : `${N_PRESTATIONS}. Prestations`;
     sectionTitle(title);
 
     paragraph(
@@ -493,7 +523,7 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
   ensureSpace(120);
   doc.moveDown(1.2);
 
-  sectionTitle("3. Abonnement au Dashboard et aux Modules");
+  sectionTitle(`${N_SUB}. Abonnement au Dashboard et aux Modules`);
 
   paragraph("Le Prestataire met en place un abonnement mensuel incluant :", {
     size: 10,
@@ -506,67 +536,65 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
   bullet("L’accès au dashboard de gestion");
   bullet("L’accès aux modules sélectionnés par le Client", { after: 0.6 });
 
-  /* ---------------- 3.1 Modules ---------------- */
-  sectionTitle("3.1 Modules sélectionnés");
-  paragraph("Les modules suivants ont été choisis par le Client :", {
-    size: 10,
-    after: 0.2,
-  });
+  /* ---------------- Modules sélectionnés (conditionnel) ---------------- */
+  if (hasModules) {
+    sectionTitle(`${N_SUB_MODS}. Modules sélectionnés`);
+    paragraph("Les modules suivants ont été choisis par le Client :", {
+      size: 10,
+      after: 0.2,
+    });
 
-  ensureSpace(140);
+    ensureSpace(140);
 
-  const modTop = doc.y;
-  const colM = MARGIN;
-  const colP = 420;
-
-  doc
-    .fillColor("#111")
-    .fontSize(10)
-    .text("Module", colM, modTop, { width: 340, align: "left" });
-  doc.text("Tarif mensuel", colP, modTop, { width: 120, align: "right" });
-
-  doc
-    .moveTo(MARGIN, modTop + 14)
-    .lineTo(PAGE_RIGHT, modTop + 14)
-    .strokeColor("#ddd")
-    .stroke();
-
-  let my = modTop + 22;
-
-  const modules = Array.isArray(documentData?.modules)
-    ? documentData.modules
-    : [];
-
-  for (const m of modules.filter((x) => safeText(x?.name))) {
-    ensureSpace(30);
-
-    const price = isOfferedModule(m)
-      ? "Offert"
-      : `${euro(toNumber(m.priceMonthly, 0))} / mois`;
+    const modTop = doc.y;
+    const colM = MARGIN;
+    const colP = 420;
 
     doc
       .fillColor("#111")
       .fontSize(10)
-      .text(m.name || "-", colM, my, { width: 340, align: "left" });
-    doc.text(price, colP, my, { width: 120, align: "right" });
+      .text("Module", colM, modTop, { width: 340, align: "left" });
+    doc.text("Tarif mensuel", colP, modTop, { width: 120, align: "right" });
 
-    my += 18;
-    doc.y = my;
+    doc
+      .moveTo(MARGIN, modTop + 14)
+      .lineTo(PAGE_RIGHT, modTop + 14)
+      .strokeColor("#ddd")
+      .stroke();
+
+    let my = modTop + 22;
+
+    for (const m of modules) {
+      ensureSpace(30);
+
+      const price = isOfferedModule(m)
+        ? "Offert"
+        : `${euro(toNumber(m.priceMonthly, 0))} / mois`;
+
+      doc
+        .fillColor("#111")
+        .fontSize(10)
+        .text(m.name || "-", colM, my, { width: 340, align: "left" });
+      doc.text(price, colP, my, { width: 120, align: "right" });
+
+      my += 18;
+      doc.y = my;
+    }
+
+    doc.moveDown(0.3);
+
+    doc.fontSize(9).fillColor("#444");
+    doc.text(
+      "(La liste est définie lors de la signature et peut être modifiée ultérieurement.)",
+      MARGIN,
+      doc.y,
+      { width: CONTENT_W, align: "left" },
+    );
+    doc.moveDown(1.8);
   }
 
-  doc.moveDown(0.3);
-
-  doc.fontSize(9).fillColor("#444");
-  doc.text(
-    "(La liste est définie lors de la signature et peut être modifiée ultérieurement.)",
-    MARGIN,
-    doc.y,
-    { width: CONTENT_W, align: "left" },
-  );
-  doc.moveDown(1.8);
-
-  /* ---------------- 3.2 Évolution ---------------- */
-  sectionTitle("3.2 Évolution des modules");
+  /* ---------------- Évolution ---------------- */
+  sectionTitle(`${N_SUB_EVOL}. Évolution des modules`);
   paragraph("Le Client peut demander à tout moment :", {
     size: 10,
     after: 0.2,
@@ -578,8 +606,8 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
   bullet("d’une mise à jour des conditions tarifaires,");
   bullet("d’une confirmation écrite (email ou document).", { after: 0.8 });
 
-  /* ---------------- 3.3 Conditions financières ---------------- */
-  sectionTitle("3.3 Conditions financières");
+  /* ---------------- Conditions financières ---------------- */
+  sectionTitle(`${N_SUB_FIN}. Conditions financières`);
 
   const subName = safeText(documentData?.subscription?.name) || "-";
   const subPrice = toNumber(documentData?.subscription?.priceMonthly, 0);
@@ -605,25 +633,25 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
   );
 
   /* ---------------- 4 / 5 / 6 / 7 ---------------- */
-  sectionTitle("4. Conditions d’Utilisation");
+  sectionTitle(`${N_USE}. Conditions d’Utilisation`);
   paragraph(
     "Le Client s’engage à utiliser le dashboard uniquement pour la gestion de son restaurant. Toute reproduction, modification ou diffusion non autorisée des outils du Prestataire est strictement interdite.",
     { size: 10, after: 0.8 },
   );
 
-  sectionTitle("5. Durée et Résiliation");
+  sectionTitle(`${N_TERM}. Durée et Résiliation`);
   paragraph(
     `Le présent contrat est conclu pour une durée ferme de ${engagementMonths} mois. Aucune résiliation anticipée n’est possible durant cette période. À l’issue de l’engagement, le Client peut résilier à tout moment par écrit. La résiliation prendra effet à la fin du mois en cours. En cas de résiliation anticipée non autorisée, le Prestataire se réserve le droit de facturer les mensualités restantes.`,
     { size: 10, after: 0.8 },
   );
 
-  sectionTitle("6. Responsabilités");
+  sectionTitle(`${N_LIAB}. Responsabilités`);
   paragraph(
     "Le Prestataire met en œuvre les moyens nécessaires au bon fonctionnement des services. Il ne peut être tenu responsable des défaillances techniques indépendantes de sa volonté ni des dommages indirects.",
     { size: 10, after: 0.8 },
   );
 
-  sectionTitle("7. Confidentialité et Protection des Données");
+  sectionTitle(`${N_PRIV}. Confidentialité et Protection des Données`);
   paragraph(
     "Les parties s’engagent à respecter la confidentialité des données échangées. Le Prestataire garantit la protection des données conformément au RGPD.",
     { size: 10, after: 1.0 },

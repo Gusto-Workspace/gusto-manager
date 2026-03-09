@@ -1,6 +1,13 @@
 // SVG
 import { ReservationSvg } from "@/components/_shared/_svgs/reservation.svg";
-import { ChevronLeft, Plus, SlidersHorizontal, Search, X } from "lucide-react";
+import {
+  ChevronLeft,
+  Plus,
+  SlidersHorizontal,
+  Search,
+  LayoutGrid,
+  X,
+} from "lucide-react";
 
 // I18N
 import { useTranslation } from "next-i18next";
@@ -60,10 +67,10 @@ export default function DayHeaderReservationsComponent(props) {
             </div>
 
             {/* Right: actions (compact) */}
-            <div className="shrink-0 flex items-center gap-2">
+            <div className="shrink-0 flex items-center gap-1">
               <button
                 onClick={props.handleParametersClick}
-                className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition p-4"
+                className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition h-[40px] w-[40px]"
                 aria-label={t("buttons.parameters")}
                 title={t("buttons.parameters")}
               >
@@ -71,8 +78,17 @@ export default function DayHeaderReservationsComponent(props) {
               </button>
 
               <button
+                onClick={props.handleOpenFloorPlanDrawer}
+                className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition h-[40px] w-[40px]"
+                aria-label="Plan de salle"
+                title="Plan de salle"
+              >
+                <LayoutGrid className="size-4 text-darkBlue/70" />
+              </button>
+
+              <button
                 onClick={props.handleAddClick}
-                className="inline-flex items-center justify-center rounded-full bg-blue text-white shadow-sm hover:bg-blue/90 active:scale-[0.98] transition p-4"
+                className="inline-flex items-center justify-center rounded-full bg-blue text-white shadow-sm hover:bg-blue/90 active:scale-[0.98] transition h-[40px] w-[40px]"
                 aria-label={t("buttons.add")}
                 title={t("buttons.add")}
               >
@@ -82,7 +98,34 @@ export default function DayHeaderReservationsComponent(props) {
           </div>
 
           {/* Filters row */}
-          <div className="mt-3 flex items-center gap-2">
+          <div className="mt-3 flex items-center gap-1">
+            {/* Search */}
+            <div className="flex items-center relative gap-2 bg-white border border-darkBlue/10 rounded-2xl px-3 py-2 w-full tablet:w-[340px] shadow-sm">
+              <Search className="size-4 text-darkBlue/40" />
+              <input
+                ref={props.daySearchRef}
+                onFocus={() => props.setIsKeyboardOpen(true)}
+                onBlur={() => props.setIsKeyboardOpen(false)}
+                type="text"
+                placeholder="Rechercher (nom, email, téléphone)…"
+                value={props.searchTerm}
+                onChange={props.handleSearchChangeDay}
+                className="w-full outline-none text-sm text-darkBlue placeholder:text-darkBlue/40"
+              />
+              {props.searchTerm && (
+                <button
+                  onClick={() => {
+                    props.setSearchTerm("");
+                    props.keepFocus(props.daySearchRef);
+                  }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center size-6 rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition"
+                  aria-label={t("buttons.clear", "Effacer")}
+                >
+                  <X className="size-4 text-darkBlue/60" />
+                </button>
+              )}
+            </div>
+
             {/* Select */}
             <label className="sr-only" htmlFor="day-status-select-mobile">
               {t("list.status.filter", "Filtrer par statut")}
@@ -91,7 +134,7 @@ export default function DayHeaderReservationsComponent(props) {
               id="day-status-select-mobile"
               value={props.activeDayTab}
               onChange={(e) => props.setActiveDayTab(e.target.value)}
-              className="h-11 rounded-2xl border border-darkBlue/10 bg-white/70 px-3 text-sm text-darkBlue "
+              className="h-10 rounded-2xl border border-darkBlue/10 bg-white/70 px-3 text-sm text-darkBlue "
             >
               {props.dayStatusTabs.map((s) => (
                 <option key={s} value={s}>
@@ -99,36 +142,6 @@ export default function DayHeaderReservationsComponent(props) {
                 </option>
               ))}
             </select>
-
-            {/* Search */}
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40" />
-              <input
-                ref={props.daySearchRef}
-                onFocus={() => props.setIsKeyboardOpen(true)}
-                onBlur={() => props.setIsKeyboardOpen(false)}
-                type="text"
-                placeholder={t(
-                  "filters.search.placeholder",
-                  "Rechercher nom, email, tel, code…",
-                )}
-                value={props.searchTerm}
-                onChange={props.handleSearchChangeDay}
-                className={`h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/70 ${props.searchTerm ? "pr-10" : "pr-4"} pl-8 text-base`}
-              />
-              {props.searchTerm && (
-                <button
-                  onClick={() => {
-                    props.setSearchTerm("");
-                    props.keepFocus(props.daySearchRef);
-                  }}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center size-8 rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition"
-                  aria-label={t("buttons.clear", "Effacer")}
-                >
-                  <X className="size-4 text-darkBlue/60" />
-                </button>
-              )}
-            </div>
           </div>
         </div>
       </div>
@@ -136,7 +149,7 @@ export default function DayHeaderReservationsComponent(props) {
       {/* =========================
           ✅ midTablet+ (TON HEADER INCHANGÉ)
           ========================= */}
-      <div className="hidden midTablet:flex flex-col gap-6">
+      <div className="hidden midTablet:flex flex-col gap-2">
         {/* Ligne 1 */}
         <div className="flex items-center flex-wrap justify-between gap-3">
           <div className="flex gap-2 items-center min-h-[40px]">
@@ -164,15 +177,29 @@ export default function DayHeaderReservationsComponent(props) {
           <div className="flex gap-2">
             <button
               onClick={props.handleParametersClick}
-              className="bg-violet px-6 py-2 rounded-lg text-white cursor-pointer"
+              className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition h-[40px] w-[40px]"
+              aria-label={t("buttons.parameters")}
+              title={t("buttons.parameters")}
             >
-              {t("buttons.parameters")}
+              <SlidersHorizontal className="size-4 text-darkBlue/70" />
             </button>
+
+            <button
+              onClick={props.handleOpenFloorPlanDrawer}
+              className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition h-[40px] w-[40px]"
+              aria-label="Plan de salle"
+              title="Plan de salle"
+            >
+              <LayoutGrid className="size-4 text-darkBlue/70" />
+            </button>
+
             <button
               onClick={props.handleAddClick}
-              className="bg-blue px-6 py-2 rounded-lg text-white cursor-pointer"
+              className="inline-flex items-center justify-center rounded-full bg-blue text-white shadow-sm hover:bg-blue/90 active:scale-[0.98] transition h-[40px] w-[40px]"
+              aria-label={t("buttons.add")}
+              title={t("buttons.add")}
             >
-              {t("buttons.add")}
+              <Plus className="size-4" />
             </button>
           </div>
         </div>
@@ -210,19 +237,18 @@ export default function DayHeaderReservationsComponent(props) {
             </select>
           </div>
 
-          <div className="relative w-full midTablet:w-[350px]">
+          <div className="flex items-center relative gap-2 bg-white border border-darkBlue/10 rounded-2xl px-3 py-2 w-full tablet:w-[320px] shadow-sm">
+            <Search className="size-4 text-darkBlue/40" />
+
             <input
               ref={props.daySearchRef}
               onFocus={() => props.setIsKeyboardOpen(true)}
               onBlur={() => props.setIsKeyboardOpen(false)}
               type="text"
-              placeholder={t(
-                "filters.search.placeholder",
-                "Rechercher nom, email, tel, code…",
-              )}
+              placeholder="Rechercher (nom, email, téléphone)…"
               value={props.searchTerm}
               onChange={props.handleSearchChangeDay}
-              className="p-2 pr-10 border border-[#131E3690] rounded-lg w-full"
+              className="w-full outline-none text-sm text-darkBlue placeholder:text-darkBlue/40"
             />
             {props.searchTerm && (
               <button

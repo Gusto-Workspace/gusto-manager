@@ -12,6 +12,7 @@ import { useForm, useFieldArray } from "react-hook-form";
 
 // SVG
 import { ReservationSvg } from "../../../_shared/_svgs/reservation.svg";
+import { Menu } from "lucide-react";
 
 // ICONS
 import {
@@ -30,6 +31,7 @@ import {
 
 // COMPONENTS
 import HoursRestaurantComponent from "../../restaurant/hours.restaurant.component";
+import SidebarReservationsWebapp from "../_shared/sidebar.webapp";
 
 // AXIOS
 import axios from "axios";
@@ -89,6 +91,10 @@ export default function ParametersReservationWebApp(props) {
   const { t } = useTranslation(["reservations", "restaurant"]);
   const { restaurantContext } = useContext(GlobalContext);
   const router = useRouter();
+
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const openSidebar = () => setSidebarOpen(true);
+  const closeSidebar = () => setSidebarOpen(false);
 
   const {
     register,
@@ -665,15 +671,21 @@ export default function ParametersReservationWebApp(props) {
 
   return (
     <section className="flex flex-col gap-4">
+      <SidebarReservationsWebapp
+        open={sidebarOpen}
+        onClose={closeSidebar}
+        title={t("reservations:buttons.parameters", "Paramètres")}
+      />
+
       <div className="midTablet:hidden bg-lightGrey">
-        <div className="flex items-center justify-between gap-3 h-[50px]">
+        <div className="flex items-center gap-3">
           <button
-            onClick={handleBack}
-            className="shrink-0 inline-flex items-center justify-center rounded-2xl border border-darkBlue/10 bg-white/70 transition p-2"
-            aria-label={t("reservations:calendar.back", "Retour")}
-            title={t("reservations:calendar.back", "Retour")}
+            onClick={openSidebar}
+            className="shrink-0 inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/50 hover:bg-darkBlue/5 transition p-3"
+            aria-label="Menu"
+            title="Menu"
           >
-            <ChevronLeft className="size-5 text-darkBlue/70" />
+            <Menu className="size-5 text-darkBlue/70" />
           </button>
 
           <div className="min-w-0 flex-1 flex items-center gap-2">
@@ -1329,7 +1341,7 @@ export default function ParametersReservationWebApp(props) {
                   <Wand2 className="size-4 shrink-0 opacity-60" />
                   {t(
                     "reservations:labels.manageDisponibilities",
-                    "Gestion intelligente",
+                    "Gestion intelligente des tables",
                   )}
                 </p>
                 <p className={hint}>

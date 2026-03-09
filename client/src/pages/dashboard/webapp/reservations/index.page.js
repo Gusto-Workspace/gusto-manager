@@ -12,11 +12,8 @@ import { GlobalContext } from "@/contexts/global.context";
 // COMPONENTS
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
 import ListReservationsWebapp from "@/components/dashboard/webapp/reservations/list.reservations.webapp";
-import SplashScreenWebAppComponent from "@/components/dashboard/webapp/_shared/splashscreen.webapp.component";
-import NotGoodDeviceWebAppComponent from "@/components/dashboard/webapp/_shared/not-good-device.webapp.component";
-
-// HOOK REFRESH
-import useRefetchOnReturn from "@/_assets/utils/useRefetchOnReturn";
+import SplashScreenWebAppComponent from "@/components/dashboard/webapp/_shared/splashscreen.webapp";
+import NotGoodDeviceWebAppComponent from "@/components/dashboard/webapp/_shared/not-good-device.webapp";
 
 // WEB PUSB
 import { setupPushForModule } from "@/_assets/utils/webpush";
@@ -38,8 +35,6 @@ export default function WepAppReservationsPage(props) {
   const router = useRouter();
   const { restaurantContext } = useContext(GlobalContext);
 
-  const [showRefetchSplash, setShowRefetchSplash] = useState(false);
-
   // ✅ Protection token (redirect login)
   useEffect(() => {
     if (!router.isReady) return;
@@ -54,27 +49,6 @@ export default function WepAppReservationsPage(props) {
       );
     }
   }, [router.isReady, router.asPath]);
-
-  // ✅ Refetch quand on revient au 1er plan après > 5 min
-  useRefetchOnReturn({
-    enabled: restaurantContext?.isAuth,
-    storageKey: "gm:lastActive:webapp:reservations",
-    thresholdMs: 5 * 60 * 1000,
-    onRefetch: () => {
-      setShowRefetchSplash(true);
-      restaurantContext.refetchCurrentRestaurant?.();
-    },
-  });
-
-  // ✅ Quand le loading finit, on coupe le forceShow (avec anti-clignotement)
-  useEffect(() => {
-    if (!showRefetchSplash) return;
-
-    if (!restaurantContext?.dataLoading) {
-      const t = setTimeout(() => setShowRefetchSplash(false), 350);
-      return () => clearTimeout(t);
-    }
-  }, [restaurantContext?.dataLoading, showRefetchSplash]);
 
   useEffect(() => {
     if (!restaurantContext?.isAuth) return;
@@ -173,7 +147,9 @@ export default function WepAppReservationsPage(props) {
       <SplashScreenWebAppComponent
         loading={restaurantContext.dataLoading}
         storageKey="gm:splash:webapp:reservations"
-        forceShow={showRefetchSplash}
+        enabled={restaurantContext?.isAuth}
+        lastActiveKey="gm:lastActive:webapp:reservations"
+        onRefetch={() => restaurantContext.refetchCurrentRestaurant?.()}
       />
     </>
   );

@@ -7,7 +7,7 @@ import axios from "axios";
 
 // COMPONENTS
 import CardReservationWebapp from "./card.reservations.webapp";
-import BottomSheetReservationsWebapp from "./bottom-sheet-details.reservations.webapp";
+import ReservationsDrawerComponent from "@/components/_shared/reservations/reservations-drawer.component";
 
 export default function DayListReservationsWebapp(props) {
   const { t } = useTranslation("reservations");
@@ -151,7 +151,7 @@ export default function DayListReservationsWebapp(props) {
         )}
       </div>
 
-      <BottomSheetReservationsWebapp
+      <ReservationsDrawerComponent
         open={detailsOpen}
         onClose={closeDetails}
         reservation={selectedReservation}

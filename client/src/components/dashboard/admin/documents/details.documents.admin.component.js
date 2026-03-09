@@ -99,7 +99,6 @@ function axiosCfg() {
   return { headers: authHeaders() };
 }
 
-// ✅ fallback parser (si anciennes données subsistent)
 function parseOldPriceLabelToNumber(priceLabel) {
   const s = (priceLabel || "").toString().replace(",", ".").toLowerCase();
   const m = s.match(/(\d+(\.\d+)?)/);
@@ -108,10 +107,7 @@ function parseOldPriceLabelToNumber(priceLabel) {
   return Number.isNaN(n) ? 0 : n;
 }
 
-// ✅ empêche le changement au scroll sur input number
 function preventWheelChange(e) {
-  // évite l'incrément/décrément via molette
-  e.preventDefault?.();
   e.currentTarget.blur();
 }
 
@@ -147,14 +143,7 @@ export default function DetailsDocumentAdminPage(props) {
   const [issueDate, setIssueDate] = useState("");
   const [dueDate, setDueDate] = useState("");
 
-  /**
-   * ✅ Lignes "classiques"
-   * - unitPrice par défaut = "" (affiche "-" via placeholder)
-   * - offered par défaut = false (jamais coché automatiquement)
-   */
-  const [lines, setLines] = useState([
-    { label: "", qty: 1, unitPrice: "", offered: false, _lastPaidUnitPrice: 0 },
-  ]);
+  const [lines, setLines] = useState([]);
 
   // ✅ Site internet (contrat uniquement)
   const [hasWebsite, setHasWebsite] = useState(false);
@@ -180,9 +169,7 @@ export default function DetailsDocumentAdminPage(props) {
   const [engagementMonths, setEngagementMonths] = useState(12);
 
   // ✅ modules numeric
-  const [modules, setModules] = useState([
-    { name: "", offered: false, priceMonthly: "", _lastPaidPriceMonthly: 0 },
-  ]);
+  const [modules, setModules] = useState([]);
 
   const totalsPreview = useMemo(() => {
     const { subtotal, total } = computeTotals(lines, discountAmount);
@@ -280,15 +267,7 @@ export default function DetailsDocumentAdminPage(props) {
         setLines(
           mappedClassicLines && mappedClassicLines.length > 0
             ? mappedClassicLines
-            : [
-                {
-                  label: "",
-                  qty: 1,
-                  unitPrice: "",
-                  offered: false,
-                  _lastPaidUnitPrice: 0,
-                },
-              ],
+            : [],
         );
 
         // ✅ website enabled (back-compat)
@@ -383,14 +362,7 @@ export default function DetailsDocumentAdminPage(props) {
                   _lastPaidPriceMonthly: pm > 0 ? pm : 0,
                 };
               })
-            : [
-                {
-                  name: "",
-                  offered: false,
-                  priceMonthly: "",
-                  _lastPaidPriceMonthly: 0,
-                },
-              ],
+            : [],
         );
 
         setComments(d?.comments || "");
@@ -803,7 +775,7 @@ export default function DetailsDocumentAdminPage(props) {
   return (
     <section className="flex flex-col gap-4">
       {/* Top bar */}
-      <div className="ml-16 mobile:ml-12 tablet:ml-0 px-4 pt-4 flex items-center justify-between gap-3">
+      <div className="ml-16 mobile:ml-12 tablet:ml-0 px-4 flex items-center justify-between gap-3">
         <button
           onClick={() => router.push("/dashboard/admin/documents")}
           className="inline-flex items-center gap-2 text-sm font-semibold text-darkBlue hover:underline"
@@ -812,7 +784,7 @@ export default function DetailsDocumentAdminPage(props) {
           Retour
         </button>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 mobile:gap-2">
           {!isLocked ? (
             <button
               onClick={handleSave}
@@ -826,11 +798,13 @@ export default function DetailsDocumentAdminPage(props) {
               ) : (
                 <Save className="size-4 text-darkBlue/60" />
               )}
-              {saving
-                ? "Enregistrement…"
-                : savedOk
-                  ? "Enregistré"
-                  : "Enregistrer"}
+              <span className="hidden mobile:block">
+                {saving
+                  ? "Enregistrement…"
+                  : savedOk
+                    ? "Enregistré"
+                    : "Enregistrer"}
+              </span>
             </button>
           ) : null}
 
@@ -844,7 +818,7 @@ export default function DetailsDocumentAdminPage(props) {
             ) : (
               <Eye className="size-4 text-darkBlue/60" />
             )}
-            PDF
+            <span className="hidden mobile:block">PDF</span>
           </button>
 
           {doc?.type !== "CONTRACT" ? (
@@ -878,7 +852,7 @@ export default function DetailsDocumentAdminPage(props) {
 
       {/* Body */}
       <div className="">
-        <div className="rounded-2xl bg-white/50 border border-darkBlue/10 shadow-sm p-5">
+        <div className="rounded-2xl bg-white/50 border border-darkBlue/10 shadow-sm p-3 mobile:p-5">
           {loading ? (
             <div className="flex flex-col gap-3">
               <div className="h-5 w-40 rounded bg-darkBlue/5" />
@@ -1079,7 +1053,7 @@ export default function DetailsDocumentAdminPage(props) {
 
                     {hasWebsite ? (
                       <>
-                        <div className="hidden midTablet:grid mt-3 grid-cols-[1fr_110px_140px] gap-2 px-1">
+                        <div className="hidden midTablet:grid mt-3 grid-cols-[1fr_110px_140px] gap-2">
                           <p className="text-xs text-darkBlue/60 font-semibold">
                             Description
                           </p>
@@ -1091,55 +1065,76 @@ export default function DetailsDocumentAdminPage(props) {
                           </p>
                         </div>
 
-                        <div className="mt-2 grid grid-cols-1 midTablet:grid-cols-[1fr_110px_140px] gap-2">
-                          <input
-                            value={websiteLine.label}
-                            disabled={isLocked}
-                            onChange={(e) =>
-                              updateWebsiteLine({ label: e.target.value })
-                            }
-                            onBlur={(e) =>
-                              updateWebsiteLine({
-                                label: trimText(e.target.value),
-                              })
-                            }
-                            className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
-                            placeholder="Description"
-                          />
+                        <div className="mt-2 grid grid-cols-1 midTablet:grid-cols-[1fr_110px_140px] gap-2 items-end">
+                          {/* DESCRIPTION */}
+                          <div className="flex flex-col gap-1">
+                            <label className="midTablet:hidden text-xs text-darkBlue/60">
+                              Description
+                            </label>
 
-                          <label className="inline-flex items-center justify-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm text-darkBlue/80">
                             <input
-                              type="checkbox"
+                              value={websiteLine.label}
                               disabled={isLocked}
-                              checked={websiteOfferedUi}
                               onChange={(e) =>
+                                updateWebsiteLine({ label: e.target.value })
+                              }
+                              onBlur={(e) =>
                                 updateWebsiteLine({
-                                  offered: e.target.checked,
+                                  label: trimText(e.target.value),
                                 })
                               }
+                              className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
+                              placeholder="-"
                             />
-                            Offert
-                          </label>
+                          </div>
 
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            onWheel={preventWheelChange}
-                            disabled={isLocked || websiteOfferedUi}
-                            value={
-                              websiteOfferedUi
-                                ? ""
-                                : (websiteLine.unitPrice ?? "")
-                            }
-                            onChange={(e) =>
-                              updateWebsiteLine({
-                                unitPrice: toNumberOrEmpty(e.target.value),
-                              })
-                            }
-                            className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
-                            placeholder="-"
-                          />
+                          {/* OFFERT */}
+                          <div className="flex flex-col gap-1">
+                            <label className="midTablet:hidden text-xs text-darkBlue/60">
+                              Offert
+                            </label>
+
+                            <label className="inline-flex items-center justify-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm text-darkBlue/80">
+                              <input
+                                type="checkbox"
+                                disabled={isLocked}
+                                checked={websiteOfferedUi}
+                                onChange={(e) =>
+                                  updateWebsiteLine({
+                                    offered: e.target.checked,
+                                  })
+                                }
+                              />
+                              Offert
+                            </label>
+                          </div>
+
+                          {/* PRIX */}
+                          <div className="flex flex-col gap-1">
+                            <label className="midTablet:hidden text-xs text-darkBlue/60">
+                              Prix (€)
+                            </label>
+
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              onWheel={preventWheelChange}
+                              disabled={isLocked || websiteOfferedUi}
+                              value={
+                                websiteOfferedUi
+                                  ? ""
+                                  : (websiteLine.unitPrice ?? "")
+                              }
+                              onChange={(e) =>
+                                updateWebsiteLine({
+                                  unitPrice: toNumberOrEmpty(e.target.value),
+                                })
+                              }
+                              className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
+                              placeholder="-"
+                            />
+                          </div>
                         </div>
 
                         {/* ✅ Options de paiement : seulement si pas offert (UI) */}
@@ -1149,9 +1144,6 @@ export default function DetailsDocumentAdminPage(props) {
                               Options de paiement (site internet)
                             </p>
                             <div className="mt-2 flex flex-col gap-1">
-                              <label className="text-xs text-darkBlue/60">
-                                Paiement
-                              </label>
                               <select
                                 disabled={isLocked}
                                 value={sitePaymentSplit}
@@ -1164,7 +1156,6 @@ export default function DetailsDocumentAdminPage(props) {
                                 <option value={2}>Paiement en 2 fois</option>
                                 <option value={3}>Paiement en 3 fois</option>
                               </select>
-                              
                             </div>
                           </div>
                         ) : null}
@@ -1176,9 +1167,7 @@ export default function DetailsDocumentAdminPage(props) {
                 {/* ✅ Lignes classiques */}
                 <div className="mt-6 rounded-xl border border-darkBlue/10 bg-white p-3">
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-semibold text-darkBlue">
-                      Autre
-                    </p>
+                    <p className="text-sm font-semibold text-darkBlue">{doc?.type === "CONTRACT" ? "Autre" : "Prestations"}</p>
 
                     <button
                       onClick={addLine}
@@ -1189,94 +1178,124 @@ export default function DetailsDocumentAdminPage(props) {
                       Ajouter
                     </button>
                   </div>
+                  {lines.length > 0 && (
+                    <div className="hidden midTablet:grid mt-3 grid-cols-[1fr_110px_110px_140px_44px] gap-2">
+                      <p className="text-xs text-darkBlue/60 font-semibold">
+                        Description
+                      </p>
+                      <p className="text-xs text-darkBlue/60 font-semibold">
+                        Quantité
+                      </p>
+                      <p className="text-xs text-darkBlue/60 font-semibold">
+                        Offert
+                      </p>
+                      <p className="text-xs text-darkBlue/60 font-semibold">
+                        Prix (€)
+                      </p>
+                      <span />
+                    </div>
+                  )}
 
-                  <div className="hidden midTablet:grid mt-3 grid-cols-[1fr_110px_110px_140px_44px] gap-2 px-1">
-                    <p className="text-xs text-darkBlue/60 font-semibold">
-                      Description
-                    </p>
-                    <p className="text-xs text-darkBlue/60 font-semibold">
-                      Quantité
-                    </p>
-                    <p className="text-xs text-darkBlue/60 font-semibold">
-                      Offert
-                    </p>
-                    <p className="text-xs text-darkBlue/60 font-semibold">
-                      Prix (€)
-                    </p>
-                    <span />
-                  </div>
-
-                  <div className="mt-2 flex flex-col gap-2">
+                  <div className=" flex flex-col gap-2">
                     {lines.map((l, i) => {
                       const offeredUi = Boolean(l.offered);
 
                       return (
                         <div
                           key={i}
-                          className="grid grid-cols-1 midTablet:grid-cols-[1fr_110px_110px_140px_44px] gap-2"
+                          className="grid grid-cols-1 midTablet:grid-cols-[1fr_110px_110px_140px_44px] gap-2 items-end"
                         >
-                          <input
-                            value={l.label}
-                            disabled={isLocked}
-                            onChange={(e) =>
-                              updateLine(i, { label: e.target.value })
-                            }
-                            onBlur={(e) =>
-                              updateLine(i, { label: trimText(e.target.value) })
-                            }
-                            className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
-                            placeholder="Description"
-                          />
+                          {/* DESCRIPTION */}
+                          <div className="flex flex-col gap-1">
+                            <label className="midTablet:hidden text-xs text-darkBlue/60">
+                              Description
+                            </label>
 
-                          <input
-                            type="number"
-                            min="1"
-                            onWheel={preventWheelChange}
-                            disabled={isLocked}
-                            value={l.qty ?? ""}
-                            onChange={(e) =>
-                              updateLine(i, {
-                                qty: toNumberOrEmpty(e.target.value),
-                              })
-                            }
-                            className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
-                            placeholder="Quantité"
-                          />
-
-                          <label className="inline-flex items-center justify-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm text-darkBlue/80">
                             <input
-                              type="checkbox"
+                              value={l.label}
                               disabled={isLocked}
-                              checked={offeredUi}
                               onChange={(e) =>
+                                updateLine(i, { label: e.target.value })
+                              }
+                              onBlur={(e) =>
                                 updateLine(i, {
-                                  offered: e.target.checked,
+                                  label: trimText(e.target.value),
                                 })
                               }
+                              className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
+                              placeholder="-"
                             />
-                            Offert
-                          </label>
+                          </div>
 
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            onWheel={preventWheelChange}
-                            disabled={isLocked || offeredUi}
-                            value={offeredUi ? "" : (l.unitPrice ?? "")}
-                            onChange={(e) =>
-                              updateLine(i, {
-                                unitPrice: toNumberOrEmpty(e.target.value),
-                              })
-                            }
-                            className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
-                            placeholder="-"
-                          />
+                          {/* QUANTITÉ */}
+                          <div className="flex flex-col gap-1">
+                            <label className="midTablet:hidden text-xs text-darkBlue/60">
+                              Quantité
+                            </label>
 
+                            <input
+                              type="number"
+                              min="1"
+                              onWheel={preventWheelChange}
+                              disabled={isLocked}
+                              value={l.qty ?? ""}
+                              onChange={(e) =>
+                                updateLine(i, {
+                                  qty: toNumberOrEmpty(e.target.value),
+                                })
+                              }
+                              className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
+                              placeholder="-"
+                            />
+                          </div>
+
+                          {/* OFFERT */}
+                          <div className="flex flex-col gap-1">
+                            <label className="midTablet:hidden text-xs text-darkBlue/60">
+                              Offert
+                            </label>
+
+                            <label className="inline-flex items-center justify-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm text-darkBlue/80">
+                              <input
+                                type="checkbox"
+                                disabled={isLocked}
+                                checked={offeredUi}
+                                onChange={(e) =>
+                                  updateLine(i, { offered: e.target.checked })
+                                }
+                              />
+                              Offert
+                            </label>
+                          </div>
+
+                          {/* PRIX */}
+                          <div className="flex flex-col gap-1">
+                            <label className="midTablet:hidden text-xs text-darkBlue/60">
+                              Prix (€)
+                            </label>
+
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              onWheel={preventWheelChange}
+                              disabled={isLocked || offeredUi}
+                              value={offeredUi ? "" : (l.unitPrice ?? "")}
+                              onChange={(e) =>
+                                updateLine(i, {
+                                  unitPrice: toNumberOrEmpty(e.target.value),
+                                })
+                              }
+                              className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
+                              placeholder="-"
+                            />
+                          </div>
+
+                          {/* DELETE */}
                           <button
                             onClick={() => removeLine(i)}
-                            disabled={lines.length === 1 || isLocked}
-                            className="inline-flex items-center justify-center rounded-xl border border-red/20 bg-red/10 hover:bg-red/15 transition disabled:opacity-60"
+                            disabled={isLocked}
+                            className="inline-flex items-center justify-center rounded-xl border border-red/20 bg-red/10 hover:bg-red/15 transition disabled:opacity-60 h-[38px]"
                             title="Supprimer"
                           >
                             <Trash2 className="size-4 text-red" />
@@ -1414,7 +1433,7 @@ export default function DetailsDocumentAdminPage(props) {
                       />
                     </div>
 
-                    <div className="rounded-xl w-full midTablet:w-2/3 border border-darkBlue/10 bg-white p-3">
+                    <div className="rounded-xl w-full midTablet:w-2/3 border border-darkBlue/10 bg-white p-3 h-fit">
                       <div className="flex items-center justify-between gap-3">
                         <p className="text-sm font-semibold text-darkBlue">
                           Modules
@@ -1429,77 +1448,107 @@ export default function DetailsDocumentAdminPage(props) {
                         </button>
                       </div>
 
-                      <div className="mt-3 flex flex-col gap-2">
+                      {modules.length > 0 && (
+                        <div className="hidden midTablet:grid mt-3 grid-cols-[1fr_110px_140px_44px] gap-2">
+                          <p className="text-xs text-darkBlue/60 font-semibold">
+                            Nom du module
+                          </p>
+                          <p className="text-xs text-darkBlue/60 font-semibold">
+                            Offert
+                          </p>
+                          <p className="text-xs text-darkBlue/60 font-semibold">
+                            Prix / mois (€)
+                          </p>
+                          <span />
+                        </div>
+                      )}
+
+                      <div className="flex flex-col gap-6 midTablet:gap-2">
                         {modules.map((m, i) => {
                           const offeredUi = Boolean(m.offered);
 
                           return (
-                            <div key={i} className="flex items-end gap-2">
-                              <input
-                                value={m.name}
-                                disabled={isLocked}
-                                onChange={(e) =>
-                                  updateModule(i, { name: e.target.value })
-                                }
-                                onBlur={(e) =>
-                                  updateModule(i, {
-                                    name: trimText(e.target.value),
-                                  })
-                                }
-                                className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm w-full"
-                                placeholder="Nom du module"
-                              />
+                            <div key={i}>
+                              <div className="grid grid-cols-1 midTablet:grid-cols-[1fr_110px_140px_44px] gap-2 items-end">
+                                {/* NOM */}
+                                <div className="flex flex-col gap-1">
+                                  <label className="midTablet:hidden text-xs text-darkBlue/60">
+                                    Nom du module
+                                  </label>
 
-                              <label className="inline-flex items-center justify-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm text-darkBlue/80">
-                                <input
-                                  type="checkbox"
-                                  disabled={isLocked}
-                                  checked={offeredUi}
-                                  onChange={(e) =>
-                                    updateModule(i, {
-                                      offered: e.target.checked,
-                                    })
-                                  }
-                                />
-                                Offert
-                              </label>
+                                  <input
+                                    value={m.name}
+                                    disabled={isLocked}
+                                    onChange={(e) =>
+                                      updateModule(i, { name: e.target.value })
+                                    }
+                                    onBlur={(e) =>
+                                      updateModule(i, {
+                                        name: trimText(e.target.value),
+                                      })
+                                    }
+                                    className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm w-full"
+                                    placeholder="-"
+                                  />
+                                </div>
 
-                              <div className="flex flex-col gap-1">
-                                {i === 0 && (
-                                  <label className="text-xs text-darkBlue/60">
+                                {/* OFFERT */}
+                                <div className="flex flex-col gap-1">
+                                  <label className="midTablet:hidden text-xs text-darkBlue/60">
+                                    Offert
+                                  </label>
+
+                                  <label className="inline-flex items-center justify-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm text-darkBlue/80">
+                                    <input
+                                      type="checkbox"
+                                      disabled={isLocked}
+                                      checked={offeredUi}
+                                      onChange={(e) =>
+                                        updateModule(i, {
+                                          offered: e.target.checked,
+                                        })
+                                      }
+                                    />
+                                    Offert
+                                  </label>
+                                </div>
+
+                                {/* PRIX */}
+                                <div className="flex flex-col gap-1">
+                                  <label className="midTablet:hidden text-xs text-darkBlue/60">
                                     Prix / mois (€)
                                   </label>
-                                )}
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    onWheel={preventWheelChange}
+                                    value={
+                                      offeredUi ? "" : (m.priceMonthly ?? "")
+                                    }
+                                    onChange={(e) =>
+                                      updateModule(i, {
+                                        priceMonthly: toNumberOrEmpty(
+                                          e.target.value,
+                                        ),
+                                      })
+                                    }
+                                    className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm w-full"
+                                    placeholder="-"
+                                    disabled={offeredUi || isLocked}
+                                  />
+                                </div>
 
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="0.01"
-                                  onWheel={preventWheelChange}
-                                  value={
-                                    offeredUi ? "" : (m.priceMonthly ?? "")
-                                  }
-                                  onChange={(e) =>
-                                    updateModule(i, {
-                                      priceMonthly: toNumberOrEmpty(
-                                        e.target.value,
-                                      ),
-                                    })
-                                  }
-                                  className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm w-[100px]"
-                                  placeholder="-"
-                                  disabled={offeredUi || isLocked}
-                                />
+                                {/* DELETE */}
+                                <button
+                                  onClick={() => removeModule(i)}
+                                  disabled={isLocked}
+                                  className="inline-flex items-center justify-center rounded-xl border border-red/20 bg-red/10 hover:bg-red/15 transition disabled:opacity-60 h-[38px]"
+                                  title="Supprimer"
+                                >
+                                  <Trash2 className="size-4 text-red" />
+                                </button>
                               </div>
-
-                              <button
-                                onClick={() => removeModule(i)}
-                                disabled={modules.length === 1 || isLocked}
-                                className="inline-flex items-center px-3 h-[38px] justify-center rounded-xl border border-red/20 bg-red/10 hover:bg-red/15 transition disabled:opacity-60"
-                                title="Supprimer"
-                              >
-                                <Trash2 className="size-4 text-red" />
-                              </button>
                             </div>
                           );
                         })}

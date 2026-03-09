@@ -33,6 +33,77 @@ const blockedRangeSchema = new mongoose.Schema(
   { _id: true },
 );
 
+const floorplanObjectSchema = new mongoose.Schema(
+  {
+    id: { type: String, required: true },
+
+    type: {
+      type: String,
+      enum: ["table", "decor"],
+      required: true,
+    },
+
+    // ===== TABLE =====
+    tableRefId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
+
+    // ===== POSITION / SIZE =====
+    x: { type: Number, default: 0 },
+    y: { type: Number, default: 0 },
+    w: { type: Number, default: 80 },
+    h: { type: Number, default: 50 },
+    r: { type: Number, default: 16 }, // pour circle
+    rotation: { type: Number, default: 0 },
+
+    // ===== DECOR =====
+    decorKind: { type: String, default: "" }, // wall, bar, plant etc
+    shape: {
+      type: String,
+      enum: ["rect", "circle", "line"],
+      default: "rect",
+    },
+
+    // pour lines
+    points: { type: [Number], default: [] },
+
+    // style custom (optionnel)
+    style: { type: mongoose.Schema.Types.Mixed, default: {} },
+
+    // meta libre (label, steps, arcRadius etc)
+    meta: { type: mongoose.Schema.Types.Mixed, default: {} },
+
+    locked: { type: Boolean, default: false }, // future UX
+  },
+  { _id: false },
+);
+
+// Plan de salle
+const floorplanRoomSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true, trim: true },
+
+    canvas: {
+      width: { type: Number, default: 2000 },
+      height: { type: Number, default: 2000 },
+      gridSize: { type: Number, default: 50 },
+    },
+    v: { type: Number, default: 1 },
+    objects: { type: [floorplanObjectSchema], default: [] },
+  },
+  { timestamps: true }, // ok si tu veux createdAt/updatedAt par salle
+);
+
+const floorplanSchema = new mongoose.Schema(
+  {
+    enabled: { type: Boolean, default: false }, // affichage / feature flag
+    rooms: { type: [floorplanRoomSchema], default: [] },
+    version: { type: Number, default: 1 },
+  },
+  { _id: false },
+);
+
 // Sous-schéma pour les paramètres de réservation
 const reservationParametersSchema = new mongoose.Schema({
   same_hours_as_restaurant: { type: Boolean, default: true },
@@ -50,13 +121,17 @@ const reservationParametersSchema = new mongoose.Schema({
   // Gestion intelligente
   manage_disponibilities: { type: Boolean, default: false },
   tables: [
-    {
-      name: { type: String, required: true, trim: true },
-      seats: { type: Number, min: 1, required: true },
-    },
+    new mongoose.Schema(
+      {
+        name: { type: String, required: true, trim: true },
+        seats: { type: Number, min: 1, required: true },
+      },
+      { _id: true },
+    ),
   ],
   table_occupancy_lunch_minutes: { type: Number, min: 1 },
   table_occupancy_dinner_minutes: { type: Number, min: 1 },
+  floorplan: { type: floorplanSchema, default: () => ({}) },
 
   // Horaires & pauses
   reservation_hours: { type: [openingHoursSchema], default: [] },
@@ -84,6 +159,7 @@ const optionsSchema = new mongoose.Schema(
     wines: { type: Boolean, default: true },
     news: { type: Boolean, default: true },
     employees: { type: Boolean, default: false },
+    customers: { type: Boolean, default: false },
     health_control_plan: { type: Boolean, default: false },
   },
   { _id: false },
@@ -186,7 +262,16 @@ const giftCardPurchaseSchema = new mongoose.Schema({
   beneficiaryFirstName: { type: String, required: true },
   beneficiaryLastName: { type: String, required: true },
   sender: { type: String },
+  buyerFirstName: { type: String, default: "" },
+  buyerLastName: { type: String, default: "" },
   sendEmail: { type: String },
+  senderPhone: { type: String, default: "", trim: true },
+  customer: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Customer",
+    default: null,
+    index: true,
+  },
   paymentIntentId: { type: String, index: true },
   amount: { type: Number },
   created_at: { type: Date, default: Date.now },

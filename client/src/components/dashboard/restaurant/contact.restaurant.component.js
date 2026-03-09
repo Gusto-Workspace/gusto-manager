@@ -15,9 +15,11 @@ import { contactData } from "@/_assets/data/contact.data";
 // AXIOS
 import axios from "axios";
 
+// ICONS
+import { Edit, Loader2, Save, X } from "lucide-react";
+
 // COMPONENTS
 import SimpleSkeletonComponent from "../../_shared/skeleton/simple-skeleton.component";
-import { Edit, Loader2, Save, XCircle } from "lucide-react";
 
 export default function ContactRestaurantComponent(props) {
   const { t } = useTranslation("restaurant");
@@ -94,7 +96,7 @@ export default function ContactRestaurantComponent(props) {
           headers: {
             Authorization: `Bearer ${token}`,
           },
-        }
+        },
       )
       .then((response) => {
         props.handleUpdateData(response.data.restaurant);
@@ -102,7 +104,7 @@ export default function ContactRestaurantComponent(props) {
       .catch((error) => {
         console.error(
           "Erreur lors de la mise à jour des informations de contact :",
-          error
+          error,
         );
       })
       .finally(() => {
@@ -123,6 +125,12 @@ export default function ContactRestaurantComponent(props) {
   const inputCls =
     "w-full midTablet:w-1/2 rounded-lg border bg-white px-3 py-2 text-[14px] text-right outline-none transition placeholder:text-darkBlue/40 border-darkBlue/20";
   const inputErrorCls = `${inputCls} border-red`;
+  const actionBtnBase =
+    "inline-flex items-center gap-2 rounded-xl px-3 h-10 text-sm font-semibold transition select-none";
+  const actionBtnPrimary =
+    "bg-darkBlue text-white hover:opacity-90 active:scale-[0.98]";
+  const actionBtnDanger =
+    "bg-red text-white hover:opacity-90 active:scale-[0.98]";
 
   return (
     <section className={sectionCls}>
@@ -136,25 +144,25 @@ export default function ContactRestaurantComponent(props) {
             <p className="text-xs text-darkBlue/60 max-w-md">
               {t(
                 "contact.subtitle",
-                "Gérez les informations de contact affichées sur votre site."
+                "Gérez les informations de contact affichées sur votre site.",
               )}
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
             {editing && (
               <button
                 type="button"
                 onClick={() => setEditing(false)}
                 disabled={saving}
+                className={[
+                  actionBtnBase,
+                  actionBtnDanger,
+                  saving ? "opacity-60 cursor-not-allowed" : "",
+                ].join(" ")}
               >
-                {/* Version texte (desktop / mobile large) */}
-                <span className="hidden mobile:flex rounded-lg text-white disabled:cursor-none bg-red px-4 py-2 gap-2 items-center transition-opacity duration-150">
-                  {t("cancel")}
-                </span>
-
-                {/* Version icône seule (mobile) */}
-                <span className="mobile:hidden rounded-lg text-white disabled:cursor-none bg-red px-4 py-2 flex gap-2 items-center transition-opacity duration-150">
-                  <XCircle className="size-5" />
+                <X className="size-4" />
+                <span className="hidden mobile:inline">
+                  {t("cancel", "Annuler")}
                 </span>
               </button>
             )}
@@ -163,32 +171,33 @@ export default function ContactRestaurantComponent(props) {
               type="button"
               onClick={editing ? handleSubmit(onSubmit) : handleToggleEdit}
               disabled={saving}
+              className={[
+                actionBtnBase,
+                actionBtnPrimary,
+                saving ? "opacity-60 cursor-not-allowed" : "",
+              ].join(" ")}
             >
-              {editing ? (
-                <span className="rounded-lg text-white bg-blue px-4 py-2 flex gap-2 items-center transition-opacity duration-150">
-                  {saving ? (
-                    <div className="flex items-center gap-2">
-                      <Loader2 className="size-5 mobile:size-4 animate-spin" />
-                      <span className="hidden mobile:flex">
-                        {t("saving", "En cours…")}
-                      </span>
-                    </div>
-                  ) : (
-                    <>
-                      <span className="hidden mobile:flex">{t("save")}</span>
-                      <span className="mobile:hidden flex">
-                        <Save className="size-5" />
-                      </span>
-                    </>
-                  )}
-                </span>
+              {saving ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  <span className="hidden mobile:inline">
+                    {t("saving", "En cours…")}
+                  </span>
+                </>
+              ) : editing ? (
+                <>
+                  <Save className="size-4" />
+                  <span className="hidden mobile:inline">
+                    {t("save", "Enregistrer")}
+                  </span>
+                </>
               ) : (
-                <div className="rounded-lg text-white bg-blue px-4 py-2 flex gap-2 items-center transition-opacity duration-150">
-                  <Edit className="size-5" />
-                  <span className="hidden mobile:flex">
+                <>
+                  <Edit className="size-4" />
+                  <span className="hidden mobile:inline">
                     {t("edit", "Éditer")}
                   </span>
-                </div>
+                </>
               )}
             </button>
           </div>

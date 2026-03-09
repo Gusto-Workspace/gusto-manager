@@ -299,8 +299,6 @@ export default function BottomSheetChangeRestaurantComponent(props) {
           <div className="px-4 pb-3">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-xs text-darkBlue/50">{moduleLabel}</p>
-
                 <h3 className="mt-1 text-lg font-semibold text-darkBlue leading-tight truncate">
                   Changer de restaurant
                 </h3>

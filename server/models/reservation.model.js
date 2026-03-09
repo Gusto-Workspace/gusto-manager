@@ -1,6 +1,17 @@
+// models/reservation.model.js
 const mongoose = require("mongoose");
 
-const reservationSchema = new mongoose.Schema(
+const TableSchema = new mongoose.Schema(
+  {
+    tableId: { type: mongoose.Schema.Types.ObjectId, default: null },
+    name: { type: String, default: "" },
+    seats: { type: Number, default: 0 },
+    source: { type: String, enum: ["configured", "manual"], default: "manual" },
+  },
+  { _id: false },
+);
+
+const ReservationSchema = new mongoose.Schema(
   {
     restaurant_id: {
       type: mongoose.Schema.Types.ObjectId,
@@ -9,28 +20,27 @@ const reservationSchema = new mongoose.Schema(
       index: true,
     },
 
-    customerName: { type: String, required: true, trim: true },
+    // ✅ NEW (split)
+    customerFirstName: { type: String, required: true, trim: true },
+    customerLastName: { type: String, required: true, trim: true },
+
     customerEmail: { type: String, default: "", trim: true },
     customerPhone: { type: String, default: "", trim: true },
 
-    numberOfGuests: { type: Number, required: true, min: 1 },
-    reservationDate: { type: Date, required: true, index: true },
-    reservationTime: { type: String, required: true }, // "HH:mm"
-
-    table: {
-      tableId: { type: mongoose.Schema.Types.ObjectId, default: null },
-      name: { type: String, default: "", trim: true },
-      seats: { type: Number, min: 1, default: null },
-
-      source: {
-        type: String,
-        enum: ["configured", "manual"],
-        default: "manual",
-        index: true,
-      },
+    // lien fiche client
+    customer: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Customer",
+      default: null,
+      index: true,
     },
 
+    numberOfGuests: { type: Number, required: true },
+    reservationDate: { type: Date, required: true, index: true },
+    reservationTime: { type: String, required: true },
     commentary: { type: String, default: "" },
+
+    table: { type: TableSchema, default: null },
 
     status: {
       type: String,
@@ -47,41 +57,25 @@ const reservationSchema = new mongoose.Schema(
       index: true,
     },
 
-    source: {
-      type: String,
-      enum: ["public", "dashboard"],
-      default: "public",
-    },
+    source: { type: String, default: "public" }, // public | dashboard
+    pendingExpiresAt: { type: Date, default: null },
 
-    pendingExpiresAt: { type: Date, default: null, index: true },
-    activatedAt: { type: Date, default: null, index: true },
-    finishedAt: { type: Date, default: null, index: true },
+    activatedAt: { type: Date, default: null },
+    finishedAt: { type: Date, default: null },
     canceledAt: { type: Date, default: null },
     rejectedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );
 
-// Index utiles
-reservationSchema.index({ restaurant_id: 1, reservationDate: 1, status: 1 });
-reservationSchema.index({
-  restaurant_id: 1,
-  reservationDate: 1,
-  status: 1,
-  pendingExpiresAt: 1,
-});
-reservationSchema.index({ restaurant_id: 1, status: 1, activatedAt: 1 });
-reservationSchema.index({
-  restaurant_id: 1,
-  reservationDate: 1,
-  reservationTime: 1,
+// ✅ Virtual compat (emails / notifs)
+ReservationSchema.virtual("customerName").get(function () {
+  const fn = String(this.customerFirstName || "").trim();
+  const ln = String(this.customerLastName || "").trim();
+  return `${fn} ${ln}`.trim();
 });
 
-// ✅ optionnel si tu fais beaucoup de checks de conflit
-reservationSchema.index({
-  restaurant_id: 1,
-  "table.tableId": 1,
-  reservationDate: 1,
-});
+ReservationSchema.set("toJSON", { virtuals: true });
+ReservationSchema.set("toObject", { virtuals: true });
 
-module.exports = mongoose.model("Reservation", reservationSchema);
+module.exports = mongoose.model("Reservation", ReservationSchema);

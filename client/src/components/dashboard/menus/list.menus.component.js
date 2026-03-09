@@ -27,6 +27,11 @@ import {
 } from "@dnd-kit/core";
 import { arrayMove, SortableContext } from "@dnd-kit/sortable";
 
+import {
+  restrictToFirstScrollableAncestor,
+  restrictToParentElement
+} from "@dnd-kit/modifiers";
+
 export default function ListMenusComponent(props) {
   const { t } = useTranslation("menus");
   const router = useRouter();
@@ -68,7 +73,7 @@ export default function ListMenusComponent(props) {
 
     axios
       .delete(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/menus/${selectedMenu._id}`
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/menus/${selectedMenu._id}`,
       )
       .then((response) => {
         restaurantContext.setRestaurantData((prev) => ({
@@ -91,7 +96,7 @@ export default function ListMenusComponent(props) {
     axios
       .put(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/menus/${menu._id}/update`,
-        { visible: updatedVisibility }
+        { visible: updatedVisibility },
       )
       .then((response) => {
         restaurantContext.setRestaurantData((prev) => ({
@@ -129,7 +134,7 @@ export default function ListMenusComponent(props) {
     axios
       .put(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/menus/order`,
-        { orderedMenuIds }
+        { orderedMenuIds },
       )
       .then((response) => {
         restaurantContext.setRestaurantData((prev) => ({
@@ -166,6 +171,11 @@ export default function ListMenusComponent(props) {
           sensors={sensors}
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}
+          modifiers={[
+            restrictToFirstScrollableAncestor,
+          
+            restrictToParentElement,
+          ]}
         >
           <SortableContext items={menus?.map((menu) => menu._id)}>
             <div className="grid grid-cols-1 midTablet:grid-cols-2 desktop:grid-cols-3 gap-4">

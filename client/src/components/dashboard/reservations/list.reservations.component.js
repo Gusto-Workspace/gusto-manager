@@ -11,8 +11,9 @@ import axios from "axios";
 import ConfirmationModalReservationComponent from "./confirm-modal.reservations.component";
 import CalendarToolbarReservationsComponent from "./calendar-toolbar.reservations.component";
 import CalendarMonthReservationsComponent from "./calendar-month.reservations.component";
-import DayHeaderReservationsComponent from "./day-header.reservations.component";
+import DayHeaderReservationsComponent from "./day-toolbar.reservations.component";
 import DayListReservationsComponent from "./day-list.reservations.component";
+import FloorPlanDrawerReservationsComponent from "./floor-plan-drawer.reservations.component";
 
 export default function ListReservationsComponent(props) {
   const { t } = useTranslation("reservations");
@@ -37,6 +38,7 @@ export default function ListReservationsComponent(props) {
 
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const [disableDayClick, setDisableDayClick] = useState(false);
+  const [isFloorPlanDrawerOpen, setIsFloorPlanDrawerOpen] = useState(false);
 
   const closeKeyboardOnly = useCallback(() => {
     setDisableDayClick(true);
@@ -98,6 +100,14 @@ export default function ListReservationsComponent(props) {
   function capitalizeFirst(s) {
     if (!s) return s;
     return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+
+  function handleOpenFloorPlanDrawer() {
+    setIsFloorPlanDrawerOpen(true);
+  }
+
+  function handleCloseFloorPlanDrawer() {
+    setIsFloorPlanDrawerOpen(false);
   }
 
   /* =========================================================
@@ -536,6 +546,7 @@ export default function ListReservationsComponent(props) {
             handleSearchChangeCalendar={handleSearchChangeCalendar}
             setSearchTerm={setSearchTerm}
             setIsKeyboardOpen={setIsKeyboardOpen}
+            handleOpenFloorPlanDrawer={handleOpenFloorPlanDrawer}
           />
           <CalendarMonthReservationsComponent
             monthGridDays={monthGridDays}
@@ -568,6 +579,7 @@ export default function ListReservationsComponent(props) {
             searchTerm={searchTerm}
             handleSearchChangeDay={handleSearchChangeDay}
             setIsKeyboardOpen={setIsKeyboardOpen}
+            handleOpenFloorPlanDrawer={handleOpenFloorPlanDrawer}
           />
           <DayListReservationsComponent
             selectedDay={selectedDay}
@@ -575,6 +587,7 @@ export default function ListReservationsComponent(props) {
             activeDayTab={activeDayTab}
             handleEditClick={handleEditClick}
             openModalForAction={openModalForAction}
+            restaurantId={props.restaurantData?._id}
           />
         </>
       )}
@@ -588,6 +601,15 @@ export default function ListReservationsComponent(props) {
         isProcessing={isProcessing}
         error={error}
         t={t}
+      />
+
+      <FloorPlanDrawerReservationsComponent
+        open={isFloorPlanDrawerOpen}
+        onClose={handleCloseFloorPlanDrawer}
+        restaurantId={props.restaurantData?._id}
+        restaurantData={props.restaurantData}
+        reservations={props.reservations || []}
+        selectedDay={selectedDay}
       />
     </section>
   );

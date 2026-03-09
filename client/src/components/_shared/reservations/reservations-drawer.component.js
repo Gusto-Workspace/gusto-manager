@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { X, Phone, Mail, Users, Clock, Calendar } from "lucide-react";
+import { X, Phone, Mail, Users, Clock, Calendar, User } from "lucide-react";
 import { TableSvg } from "@/components/_shared/_svgs/table.svg";
 import { CommentarySvg } from "@/components/_shared/_svgs/commentary.svg";
 
-const CLOSE_MS = 160;
+const CLOSE_MS = 280;
 
-// Swipe config
+// Swipe config (mobile only)
 const SWIPE_VELOCITY = 0.6; // px/ms
 const CLOSE_RATIO = 0.25; // 25% panel height => close
 
@@ -22,7 +22,7 @@ function fmtTime(t) {
   return v.slice(0, 5).replace(":", "h");
 }
 
-export default function BottomSheetReservationsWebapp({
+export default function ReservationsDrawerComponent({
   open,
   onClose,
   reservation,
@@ -31,24 +31,47 @@ export default function BottomSheetReservationsWebapp({
   errorMessage,
 }) {
   const [isVisible, setIsVisible] = useState(false);
-  const [mounted, setMounted] = useState(open);
 
-  // ✅ iOS-safe scroll lock (position:fixed)
-  const scrollYRef = useRef(0);
-  const prevStylesRef = useRef({
-    bodyPosition: "",
-    bodyTop: "",
-    bodyLeft: "",
-    bodyRight: "",
-    bodyWidth: "",
-    htmlOverflow: "",
-  });
+  // Scroll lock robuste
+  const prevBodyOverflowRef = useRef("");
+  const prevHtmlOverflowRef = useRef("");
 
-  // ✅ panel height (for clamp)
+  const restoreScroll = () => {
+    if (typeof document === "undefined") return;
+    document.body.style.overflow = prevBodyOverflowRef.current || "";
+    document.documentElement.style.overflow = prevHtmlOverflowRef.current || "";
+  };
+
+  const lockScroll = () => {
+    if (typeof document === "undefined") return;
+    prevBodyOverflowRef.current = document.body.style.overflow || "";
+    prevHtmlOverflowRef.current = document.documentElement.style.overflow || "";
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+  };
+
+  // ✅ detect tablet+ (to avoid breaking slide-right)
+  const [isTabletUp, setIsTabletUp] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mq = window.matchMedia("(min-width: 768px)");
+    const update = () => setIsTabletUp(mq.matches);
+
+    update();
+    if (mq.addEventListener) mq.addEventListener("change", update);
+    else mq.addListener(update);
+
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", update);
+      else mq.removeListener(update);
+    };
+  }, []);
+
+  // ✅ Swipe state (mobile only)
   const panelRef = useRef(null);
   const [panelH, setPanelH] = useState(null);
 
-  // ✅ swipe state
   const [dragY, setDragY] = useState(0);
   const dragStateRef = useRef({
     active: false,
@@ -58,67 +81,6 @@ export default function BottomSheetReservationsWebapp({
     lastT: 0,
   });
 
-  const lockScroll = () => {
-    if (typeof document === "undefined") return;
-
-    const body = document.body;
-    const html = document.documentElement;
-
-    scrollYRef.current = window.scrollY || 0;
-
-    prevStylesRef.current = {
-      bodyPosition: body.style.position || "",
-      bodyTop: body.style.top || "",
-      bodyLeft: body.style.left || "",
-      bodyRight: body.style.right || "",
-      bodyWidth: body.style.width || "",
-      htmlOverflow: html.style.overflow || "",
-    };
-
-    html.style.overflow = "hidden";
-    body.style.position = "fixed";
-    body.style.top = `-${scrollYRef.current}px`;
-    body.style.left = "0";
-    body.style.right = "0";
-    body.style.width = "100%";
-  };
-
-  const restoreScroll = () => {
-    if (typeof document === "undefined") return;
-
-    const body = document.body;
-    const html = document.documentElement;
-
-    const {
-      bodyPosition,
-      bodyTop,
-      bodyLeft,
-      bodyRight,
-      bodyWidth,
-      htmlOverflow,
-    } = prevStylesRef.current;
-
-    body.style.position = bodyPosition || "";
-    body.style.top = bodyTop || "";
-    body.style.left = bodyLeft || "";
-    body.style.right = bodyRight || "";
-    body.style.width = bodyWidth || "";
-    html.style.overflow = htmlOverflow || "";
-
-    window.scrollTo(0, scrollYRef.current || 0);
-  };
-
-  function closeWithAnimation() {
-    setIsVisible(false);
-    setDragY(0);
-    setTimeout(() => {
-      restoreScroll();
-      setMounted(false);
-      onClose?.();
-    }, CLOSE_MS);
-  }
-
-  // measure panel height (for clamp)
   const measurePanel = () => {
     const el = panelRef.current;
     if (!el) return;
@@ -126,36 +88,48 @@ export default function BottomSheetReservationsWebapp({
     if (h > 0) setPanelH(h);
   };
 
+  // Open animation (like notifications)
   useEffect(() => {
-    if (open) {
-      setMounted(true);
-      lockScroll();
-      const raf = requestAnimationFrame(() => {
-        setIsVisible(true);
-        requestAnimationFrame(measurePanel);
-      });
+    if (!open) return;
 
-      const onResize = () => requestAnimationFrame(measurePanel);
-      window.addEventListener("resize", onResize);
+    lockScroll();
+    setIsVisible(false);
+    setDragY(0);
 
-      return () => {
-        cancelAnimationFrame(raf);
-        window.removeEventListener("resize", onResize);
-        restoreScroll();
-      };
-    }
+    const raf = requestAnimationFrame(() => {
+      setIsVisible(true);
+      requestAnimationFrame(measurePanel);
+    });
 
-    if (mounted) {
-      setIsVisible(false);
-      setDragY(0);
-      const tm = setTimeout(() => {
-        restoreScroll();
-        setMounted(false);
-      }, CLOSE_MS);
+    const onResize = () => requestAnimationFrame(measurePanel);
+    window.addEventListener("resize", onResize);
 
-      return () => clearTimeout(tm);
-    }
-  }, [open, mounted]);
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") closeWithAnimation();
+    };
+    document.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", onResize);
+      document.removeEventListener("keydown", onKeyDown);
+      restoreScroll();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) setIsVisible(false);
+  }, [open]);
+
+  function closeWithAnimation() {
+    setIsVisible(false);
+    setDragY(0);
+    setTimeout(() => {
+      restoreScroll();
+      onClose?.();
+    }, CLOSE_MS);
+  }
 
   const status = reservation?.status || null;
 
@@ -202,7 +176,9 @@ export default function BottomSheetReservationsWebapp({
     return null;
   }, [status, t]);
 
-  // ✅ clamp equals panel height (minus tiny margin)
+  if (!open) return null;
+
+  // ✅ swipe thresholds (mobile)
   const panelFallback = 720;
   const DRAG_MAX_PX = Math.max(240, (panelH || panelFallback) - 12);
   const SWIPE_CLOSE_PX = Math.max(
@@ -210,8 +186,9 @@ export default function BottomSheetReservationsWebapp({
     Math.floor((panelH || panelFallback) * CLOSE_RATIO),
   );
 
-  // ✅ swipe handlers
+  // ✅ swipe handlers (mobile drag zone only)
   const onPointerDown = (e) => {
+    if (isTabletUp) return; // ✅ never swipe on tablet+
     if (e.pointerType === "mouse" && e.button !== 0) return;
 
     dragStateRef.current.active = true;
@@ -226,6 +203,7 @@ export default function BottomSheetReservationsWebapp({
   };
 
   const onPointerMove = (e) => {
+    if (isTabletUp) return;
     if (!dragStateRef.current.active) return;
 
     const y = e.clientY;
@@ -239,6 +217,7 @@ export default function BottomSheetReservationsWebapp({
   };
 
   const onPointerUp = () => {
+    if (isTabletUp) return;
     if (!dragStateRef.current.active) return;
     dragStateRef.current.active = false;
 
@@ -256,26 +235,18 @@ export default function BottomSheetReservationsWebapp({
     setDragY(0);
   };
 
-  // ✅ no hook needed here (fix hook-order bug)
+  // overlay opacity while dragging (mobile)
   const overlayOpacity = !isVisible
     ? 0
-    : 0.55 + 0.45 * (1 - dragY / DRAG_MAX_PX);
-
-  if (!mounted) return null;
+    : 1 * (1 - Math.min(1, dragY / DRAG_MAX_PX));
 
   return (
-    <div
-      className="fixed inset-0 z-[140] tablet:hidden"
-      role="dialog"
-      aria-modal="true"
-    >
+    <div className="fixed inset-0 z-[120]" role="dialog" aria-modal="true">
       {/* Overlay */}
       <div
         className={`
-          absolute inset-0
-          bg-black/35
-          backdrop-blur-[2px]
-          transition-opacity duration-150
+          absolute inset-0 bg-darkBlue/30
+          transition-opacity duration-200
           ${isVisible ? "opacity-100" : "opacity-0"}
         `}
         style={{ opacity: overlayOpacity }}
@@ -286,78 +257,92 @@ export default function BottomSheetReservationsWebapp({
       <div
         ref={panelRef}
         className={`
-          absolute left-0 right-0 bottom-0 z-[1]
-          w-full
-          rounded-t-[28px]
-          border border-white/30
-          bg-lightGrey
-          shadow-[0_-30px_90px_rgba(0,0,0,0.28)]
-          overflow-hidden
-          min-h-[40vh] max-h-[88vh]
-          flex flex-col
+          absolute z-[1]
+          bg-white border border-darkBlue/10
+          shadow-[0_25px_80px_rgba(19,30,54,0.25)]
+          flex flex-col overflow-hidden
+
+          left-0 right-0 bottom-0 w-full min-h-[40vh] max-h-[86vh] tablet:max-h-[100vh]
+          rounded-t-3xl
+
+          tablet:top-0 tablet:bottom-0 tablet:left-auto tablet:right-0
+          tablet:h-full tablet:w-[520px]
+          tablet:rounded-none
+
+          transform transition-transform duration-300 ease-out will-change-transform
+          ${
+            isVisible
+              ? "translate-y-0 tablet:translate-y-0 tablet:translate-x-0"
+              : "translate-y-full tablet:translate-y-0 tablet:translate-x-full"
+          }
         `}
-        style={{
-          transform: isVisible ? `translateY(${dragY}px)` : "translateY(100%)",
-          transition: dragStateRef.current.active
-            ? "none"
-            : "transform 200ms ease-out",
-          willChange: "transform",
-        }}
+        style={
+          isTabletUp
+            ? undefined
+            : {
+                transform: isVisible
+                  ? `translateY(${dragY}px)`
+                  : "translateY(100%)",
+                transition: dragStateRef.current.active
+                  ? "none"
+                  : "transform 240ms ease-out",
+                willChange: "transform",
+              }
+        }
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Drag zone */}
+        {/* ✅ Mobile drag zone */}
         <div
-          className="cursor-grab active:cursor-grabbing touch-none"
+          className="tablet:hidden cursor-grab active:cursor-grabbing touch-none"
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
         >
-          {/* Handle */}
-          <div className="pt-3 pb-2 flex justify-center">
+          <div className="py-3 flex justify-center">
             <div className="h-1.5 w-12 rounded-full bg-darkBlue/20" />
           </div>
+        </div>
 
-          {/* Header */}
-          <div className="px-4 pb-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-xs text-darkBlue/50">
-                  {t?.("buttons.details", "Détails")} —{" "}
-                  {t?.("titles.main", "Réservations")}
-                </p>
+        {/* Header */}
+        <div className="sticky top-0 z-10 px-4 pb-3 midTablet:py-3 border-b border-darkBlue/10 bg-white/70">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs text-darkBlue/50">
+                {t?.("buttons.details", "Détails")} —{" "}
+                {t?.("titles.main", "Réservations")}
+              </p>
 
-                <h3 className="mt-1 text-lg font-semibold text-darkBlue leading-tight truncate">
-                  {reservation?.customerName || "-"}
-                </h3>
+              <h3 className="text-base font-semibold text-darkBlue truncate">
+                {reservation?.customerName || "-"}
+              </h3>
 
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <span
-                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${statusUi.cls}`}
-                  >
-                    {statusUi.label}
-                  </span>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <span
+                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${statusUi.cls}`}
+                >
+                  {statusUi.label}
+                </span>
 
-                  <span className="inline-flex items-center gap-2 rounded-full border border-darkBlue/10 bg-white/80 px-3 py-1 text-xs font-semibold text-darkBlue">
-                    <Clock className="size-3.5 text-darkBlue/50" />
-                    {fmtTime(reservation?.reservationTime)}
-                  </span>
+                <span className="inline-flex items-center gap-2 rounded-full border border-darkBlue/10 bg-white/80 px-3 py-1 text-xs font-semibold text-darkBlue">
+                  <Clock className="size-3.5 text-darkBlue/50" />
+                  {fmtTime(reservation?.reservationTime)}
+                </span>
 
-                  <span className="inline-flex items-center gap-2 rounded-full border border-darkBlue/10 bg-white/80 px-3 py-1 text-xs font-semibold text-darkBlue">
-                    <Calendar className="size-3.5 text-darkBlue/50" />
-                    {fmtDate(reservation?.reservationDate)}
-                  </span>
-                </div>
+                <span className="inline-flex items-center gap-2 rounded-full border border-darkBlue/10 bg-white/80 px-3 py-1 text-xs font-semibold text-darkBlue">
+                  <Calendar className="size-3.5 text-darkBlue/50" />
+                  {fmtDate(reservation?.reservationDate)}
+                </span>
               </div>
-
-              <button
-                onClick={closeWithAnimation}
-                className="shrink-0 inline-flex items-center justify-center rounded-2xl border border-white/40 bg-white/70 hover:bg-white/85 active:scale-[0.98] transition p-2 shadow-sm"
-                aria-label={t?.("buttons.close", "Fermer")}
-              >
-                <X className="size-4 text-darkBlue/70" />
-              </button>
             </div>
+
+            <button
+              onClick={closeWithAnimation}
+              className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2"
+              aria-label={t?.("buttons.close", "Fermer")}
+            >
+              <X className="size-4 text-darkBlue/70" />
+            </button>
           </div>
         </div>
 
@@ -370,14 +355,12 @@ export default function BottomSheetReservationsWebapp({
         ) : null}
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-4 hide-scrollbar overscroll-contain">
+        <div className="flex-1 bg-lightGrey overflow-y-auto p-4 hide-scrollbar overscroll-contain">
           {/* Résumé */}
-          <div className="rounded-2xl bg-white/60 border border-darkBlue/10 shadow-sm p-4 flex flex-col gap-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-xs text-darkBlue/50">
-                  {t?.("labels.customer", "Client")}
-                </p>
+          <div className="rounded-2xl bg-white/60 border border-darkBlue/10 shadow-sm p-4 flex flex-col">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-start gap-2 text-sm text-darkBlue/80">
+                <User className="size-4 mt-0.5 text-darkBlue/40" />
                 <p className="text-sm font-semibold text-darkBlue truncate">
                   {reservation?.customerName || "-"}
                 </p>
@@ -393,16 +376,36 @@ export default function BottomSheetReservationsWebapp({
             <div className="grid grid-cols-1 gap-2">
               <div className="flex items-start gap-2 text-sm text-darkBlue/80">
                 <Phone className="size-4 mt-0.5 text-darkBlue/40" />
-                <p className="min-w-0 truncate">
+
+                <button
+                  type="button"
+                  className="min-w-0 truncate hover:underline text-left"
+                  title="Clique pour appeler"
+                  onClick={() => {
+                    if (!reservation?.customerPhone) return;
+                    window.location.href = `tel:${String(
+                      reservation?.customerPhone,
+                    ).replace(/\s/g, "")}`;
+                  }}
+                >
                   {reservation?.customerPhone || "-"}
-                </p>
+                </button>
               </div>
 
               <div className="flex items-start gap-2 text-sm text-darkBlue/80">
                 <Mail className="size-4 mt-0.5 text-darkBlue/40" />
-                <p className="min-w-0 truncate">
+
+                <button
+                  type="button"
+                  className="min-w-0 truncate hover:underline text-left"
+                  title="Clique pour envoyer un email"
+                  onClick={() => {
+                    if (!reservation?.customerEmail) return;
+                    window.location.href = `mailto:${reservation?.customerEmail}`;
+                  }}
+                >
                   {reservation?.customerEmail || "-"}
-                </p>
+                </button>
               </div>
 
               <div className="flex items-start gap-2 text-sm text-darkBlue/80">
@@ -425,7 +428,9 @@ export default function BottomSheetReservationsWebapp({
 
           {/* Actions */}
           <div className="mt-4 rounded-2xl bg-white/60 border border-darkBlue/10 shadow-sm p-4">
-            <p className="text-xs text-darkBlue/50 mb-3">Actions</p>
+            <p className="text-xs text-darkBlue/50 mb-3">
+              {t?.("labels.actions", "Actions")}
+            </p>
 
             <div className="flex gap-2">
               {primaryAction ? (
@@ -436,6 +441,7 @@ export default function BottomSheetReservationsWebapp({
                   {primaryAction.label}
                 </button>
               ) : null}
+
               {status !== "Canceled" &&
               status !== "Finished" &&
               status !== "Rejected" ? (
@@ -495,13 +501,13 @@ export default function BottomSheetReservationsWebapp({
           </div>
         </div>
 
-        {/* Footer (safe-area like GiftCards) */}
-        <div className="sticky bottom-0 border-t border-white/40 bg-white/70 backdrop-blur-xl px-4 py-3 pb-[calc(env(safe-area-inset-bottom)+24px)]">
+        {/* Footer mobile */}
+        <div className="tablet:hidden border-t border-darkBlue/10 bg-white/70 px-4 py-3 pb-[calc(env(safe-area-inset-bottom)+24px)]">
           <button
             onClick={closeWithAnimation}
             className="w-full inline-flex items-center justify-center rounded-xl bg-blue px-4 py-3 text-white text-sm font-semibold shadow-sm hover:bg-blue/90 active:scale-[0.98] transition"
           >
-            Retour
+            {t?.("buttons.back", "Retour")}
           </button>
         </div>
       </div>

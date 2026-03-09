@@ -112,9 +112,7 @@ function buildNotificationContent({ type, data }) {
 
       return {
         title: "Carte cadeau vendue",
-        message: `${euros ? `Montant ${euros}` : "Nouvel achat"}${
-          benef ? ` • Pour ${benef}` : ""
-        }`.trim(),
+        message: `${euros ? `Montant ${euros}` : "Nouvel achat"}`.trim(),
         link: "/dashboard/gift-cards",
       };
     }

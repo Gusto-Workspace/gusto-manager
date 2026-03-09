@@ -2,7 +2,7 @@ import { useRouter } from "next/router";
 
 // SVG
 import { ReservationSvg } from "@/components/_shared/_svgs/reservation.svg";
-import { ChevronLeft, Plus, SlidersHorizontal, Search, X } from "lucide-react";
+import { ChevronLeft, Plus, Search, X } from "lucide-react";
 
 // I18N
 import { useTranslation } from "next-i18next";
@@ -29,7 +29,7 @@ export default function DayHeaderReservationsWebapp(props) {
               onClick={() => {
                 router.back();
               }}
-              className="shrink-0 inline-flex items-center justify-center rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition p-2"
+              className="shrink-0 inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition p-3"
               aria-label={t("calendar.back", "Retour au calendrier")}
               title={t("calendar.back", "Retour au calendrier")}
             >
@@ -45,26 +45,6 @@ export default function DayHeaderReservationsWebapp(props) {
                   {dateStrLong}
                 </p>
               </div>
-            </div>
-
-            <div className="shrink-0 flex items-center gap-2">
-              <button
-                onClick={props.handleParametersClick}
-                className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition p-4"
-                aria-label={t("buttons.parameters")}
-                title={t("buttons.parameters")}
-              >
-                <SlidersHorizontal className="size-4 text-darkBlue/70" />
-              </button>
-
-              {/* <button
-                onClick={props.handleAddClick}
-                className="inline-flex items-center justify-center rounded-full bg-blue text-white shadow-sm hover:bg-blue/90 active:scale-[0.98] transition p-4"
-                aria-label={t("buttons.add")}
-                title={t("buttons.add")}
-              >
-                <Plus className="size-4" />
-              </button> */}
             </div>
           </div>
 

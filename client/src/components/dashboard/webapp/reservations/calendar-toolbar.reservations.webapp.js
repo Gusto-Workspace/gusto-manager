@@ -10,11 +10,14 @@ import {
   Plus,
   X,
   ChevronDown,
+  Menu,
 } from "lucide-react";
 
-import BottomSheetChangeRestaurantComponent from "../_shared/bottom-sheet-change-restaurant.webapp.component";
-import NotificationsDrawerComponent from "@/components/_shared/notifications/notifications-drawer.component";
 import { NotificationSvg } from "@/components/_shared/_svgs/notification.svg";
+
+import BottomSheetChangeRestaurantComponent from "../_shared/bottom-sheet-change-restaurant.webapp";
+import NotificationsDrawerComponent from "@/components/_shared/notifications/notifications-drawer.component";
+import SidebarReservationsWebapp from "../_shared/sidebar.webapp";
 
 export default function CalendarToolbarReservationsWebapp(props) {
   const { t } = useTranslation("reservations");
@@ -22,6 +25,10 @@ export default function CalendarToolbarReservationsWebapp(props) {
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [openNotificationsDrawer, setOpenNotificationsDrawer] = useState(false);
+
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const openSidebar = () => setSidebarOpen(true);
+  const closeSidebar = () => setSidebarOpen(false);
 
   const unreadCount = restaurantContext?.unreadCounts?.total || 0;
 
@@ -81,15 +88,31 @@ export default function CalendarToolbarReservationsWebapp(props) {
         moduleLabel={t("titles.main", "Réservations")}
       />
 
+      <SidebarReservationsWebapp
+        open={sidebarOpen}
+        onClose={closeSidebar}
+        title={t("titles.main", "Réservations")}
+      />
+
       {/* ================= Toolbar ================= */}
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1 flex items-center gap-2">
           <button
             type="button"
+            onClick={openSidebar}
+            className="shrink-0 inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/50 transition p-3"
+            aria-label="Ouvrir le menu"
+            title="Menu"
+          >
+            <Menu className="size-5 text-darkBlue/70" />
+          </button>
+
+          <button
+            type="button"
             onClick={openSheet}
             className={`min-w-0 flex-1 overflow-hidden inline-flex items-center gap-1 rounded-2xl border border-darkBlue/10 bg-white/70 px-3 py-2 transition ${
               canSwitchRestaurant
-                ? "cursor-pointer hover:bg-darkBlue/5"
+                ? "cursor-pointer"
                 : "cursor-default opacity-90"
             }`}
             disabled={!canSwitchRestaurant}
@@ -112,7 +135,7 @@ export default function CalendarToolbarReservationsWebapp(props) {
           <div className="relative pl-1">
             <div className="relative">
               <button
-                className="bg-blue p-3 rounded-full bg-opacity-40"
+                className="bg-blue p-2.5 rounded-full bg-opacity-40 active:scale-[0.98] transition"
                 onClick={() => setOpenNotificationsDrawer(true)}
                 aria-label="Ouvrir les notifications"
                 title="Notifications"
@@ -145,17 +168,8 @@ export default function CalendarToolbarReservationsWebapp(props) {
           </div>
 
           <button
-            onClick={props.handleParametersClick}
-            className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition p-4"
-            aria-label={t("buttons.parameters")}
-            title={t("buttons.parameters")}
-          >
-            <SlidersHorizontal className="size-4 text-darkBlue/70" />
-          </button>
-
-          <button
             onClick={props.handleAddClick}
-            className="inline-flex items-center justify-center rounded-full bg-blue text-white shadow-sm hover:bg-blue/90 active:scale-[0.98] transition p-4"
+            className="inline-flex items-center justify-center rounded-full bg-blue text-white shadow-sm active:scale-[0.98] transition p-3.5"
             aria-label={t("buttons.add")}
             title={t("buttons.add")}
           >
@@ -168,7 +182,7 @@ export default function CalendarToolbarReservationsWebapp(props) {
       <div className="mt-3 flex items-center gap-2">
         <button
           onClick={goPrev}
-          className="shrink-0 inline-flex items-center justify-center rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition p-3"
+          className="shrink-0 inline-flex items-center justify-center rounded-2xl border border-darkBlue/10 bg-white/70 transition p-3"
           aria-label={t("calendar.prev", "Mois précédent")}
           title={t("calendar.prev", "Mois précédent")}
         >
@@ -184,7 +198,7 @@ export default function CalendarToolbarReservationsWebapp(props) {
 
         <button
           onClick={goNext}
-          className="shrink-0 inline-flex items-center justify-center rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition p-3"
+          className="shrink-0 inline-flex items-center justify-center rounded-2xl border border-darkBlue/10 bg-white/70 transition p-3"
           aria-label={t("calendar.next", "Mois suivant")}
           title={t("calendar.next", "Mois suivant")}
         >
@@ -214,7 +228,7 @@ export default function CalendarToolbarReservationsWebapp(props) {
         {props.searchTerm && (
           <button
             onClick={clearSearch}
-            className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center size-9 rounded-2xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition"
+            className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center size-9 rounded-2xl border border-darkBlue/10 bg-white transition"
             aria-label={t("buttons.clear", "Effacer")}
             title={t("buttons.clear", "Effacer")}
           >

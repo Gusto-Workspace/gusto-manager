@@ -35,6 +35,7 @@ const HREF_TO_OPTION_KEY = {
   "/dashboard/reservations": "reservations",
   "/dashboard/take-away": "take_away",
   "/dashboard/health-control-plan": "health_control_plan",
+  "/dashboard/customers": "customers",
 };
 
 export default function NavComponent() {

@@ -12,8 +12,8 @@ import { GlobalContext } from "@/contexts/global.context";
 // COMPONENTS
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
 import WebAppListGiftCardsComponent from "@/components/dashboard/webapp/gift-cards/list.gift-cards.component";
-import SplashScreenWebAppComponent from "@/components/dashboard/webapp/_shared/splashscreen.webapp.component";
-import NotGoodDeviceWebAppComponent from "@/components/dashboard/webapp/_shared/not-good-device.webapp.component";
+import SplashScreenWebAppComponent from "@/components/dashboard/webapp/_shared/splashscreen.webapp";
+import NotGoodDeviceWebAppComponent from "@/components/dashboard/webapp/_shared/not-good-device.webapp";
 
 // HOOK REFRESH
 import useRefetchOnReturn from "@/_assets/utils/useRefetchOnReturn";
@@ -43,7 +43,7 @@ export default function GiftsPage(props) {
 
   // ✅ Refetch quand retour au 1er plan après > 5 min
   useRefetchOnReturn({
-    enabled: restaurantContext?.isAuth,
+    enabled: router.isReady && restaurantContext?.isAuth,
     storageKey: "gm:lastActive:webapp:giftcards",
     thresholdMs: 5 * 60 * 1000,
     onRefetch: () => {
@@ -62,28 +62,28 @@ export default function GiftsPage(props) {
     }
   }, [restaurantContext?.dataLoading, showRefetchSplash]);
 
-  if (!router.isReady) return null;
-
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
     if (!restaurantContext?.isAuth) return;
     if (!restaurantContext?.restaurantData?._id) return;
 
+    const restaurantId = restaurantContext.restaurantData._id;
+
     // évite de relancer à chaque re-render / refetch
-    const key = `gm:push:subscribed:gift_cards:${restaurantContext.restaurantData._id}`;
+    const key = `gm:push:subscribed:gift_cards:${restaurantId}`;
     if (localStorage.getItem(key) === "1") return;
 
     const token = localStorage.getItem("token");
 
     setupPushForModule({
       module: "gift_cards",
-      restaurantId: restaurantContext.restaurantData._id,
+      restaurantId,
       token,
       apiUrl: process.env.NEXT_PUBLIC_API_URL,
     })
       .then(() => localStorage.setItem(key, "1"))
-      .catch(() => {
-        // ne pas set le flag si ça échoue
-      });
+      .catch(() => {});
   }, [restaurantContext?.isAuth, restaurantContext?.restaurantData?._id]);
 
   let title;

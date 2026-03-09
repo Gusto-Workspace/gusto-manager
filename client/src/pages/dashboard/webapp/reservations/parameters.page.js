@@ -13,10 +13,8 @@ import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
 import ParametersReservationWebApp from "@/components/dashboard/webapp/reservations/parameters.reservations.webapp";
-import NotGoodDeviceWebAppComponent from "@/components/dashboard/webapp/_shared/not-good-device.webapp.component";
-
-// HOOK REFRESH
-import useRefetchOnReturn from "@/_assets/utils/useRefetchOnReturn";
+import NotGoodDeviceWebAppComponent from "@/components/dashboard/webapp/_shared/not-good-device.webapp";
+import SplashScreenWebAppComponent from "@/components/dashboard/webapp/_shared/splashscreen.webapp";
 
 export default function ParametersReservationsPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
@@ -34,16 +32,7 @@ export default function ParametersReservationsPage(props) {
       description = "";
   }
 
-    // ✅ Refetch quand on revient au 1er plan après > 5 min
-    useRefetchOnReturn({
-      enabled: restaurantContext?.isAuth,
-      storageKey: "gm:lastActive:webapp:reservations",
-      thresholdMs: 5 * 60 * 1000,
-      onRefetch: () => {
-        setShowRefetchSplash(true);
-        restaurantContext.refetchCurrentRestaurant?.();
-      },
-    });
+  // ✅ Refetch quand on revient au 1er plan après > 5 min
 
   if (!restaurantContext.isAuth) return null;
 
@@ -73,6 +62,14 @@ export default function ParametersReservationsPage(props) {
       </div>
 
       <NotGoodDeviceWebAppComponent />
+
+      <SplashScreenWebAppComponent
+        loading={restaurantContext.dataLoading}
+        storageKey="gm:splash:webapp:reservations"
+        enabled={restaurantContext?.isAuth}
+        lastActiveKey="gm:lastActive:webapp:reservations"
+        onRefetch={() => restaurantContext.refetchCurrentRestaurant?.()}
+      />
     </>
   );
 }

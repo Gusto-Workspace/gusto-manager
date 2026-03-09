@@ -23,7 +23,11 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { arrayMove, SortableContext } from "@dnd-kit/sortable";
-import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
+import {
+  restrictToVerticalAxis,
+
+  restrictToParentElement,
+} from "@dnd-kit/modifiers";
 
 // COMPONENTS
 import DetailsDishComponent from "./details-dish.dishes.component";
@@ -53,7 +57,9 @@ export default function ListDishesComponent(props) {
       .replace(/\//g, "-")
       .replace(/\s+/g, "&")
       .toLowerCase();
-    router.push(`/dashboard/dishes/${formattedCategoryName}-${props.category._id}/add`);
+    router.push(
+      `/dashboard/dishes/${formattedCategoryName}-${props.category._id}/add`,
+    );
   }
 
   function handleEditClick(dish) {
@@ -62,7 +68,7 @@ export default function ListDishesComponent(props) {
       .replace(/\s+/g, "&")
       .toLowerCase();
     router.push(
-      `/dashboard/dishes/${formattedCategoryName}-${props.category._id}/add?dishId=${dish._id}`
+      `/dashboard/dishes/${formattedCategoryName}-${props.category._id}/add?dishId=${dish._id}`,
     );
   }
 
@@ -81,11 +87,11 @@ export default function ListDishesComponent(props) {
 
     axios
       .delete(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes/${selectedDish._id}`
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes/${selectedDish._id}`,
       )
       .then((response) => {
         setDishes((prevDishes) =>
-          prevDishes.filter((dish) => dish._id !== selectedDish._id)
+          prevDishes.filter((dish) => dish._id !== selectedDish._id),
         );
         restaurantContext.setRestaurantData(response.data.restaurant);
         closeDeleteModal();
@@ -124,7 +130,7 @@ export default function ListDishesComponent(props) {
     axios
       .put(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes/categories/${props.category._id}/dishes/order`,
-        { orderedDishIds }
+        { orderedDishIds },
       )
       .then((response) => {
         restaurantContext.setRestaurantData(response.data.restaurant);
@@ -138,10 +144,9 @@ export default function ListDishesComponent(props) {
   const baseRoute = "/dashboard/dishes";
   const formattedCategoryRoute = props.category
     ? `/dashboard/dishes/${props.category.name
-      .replace(/\//g, "-")
-      .replace(/\s+/g, "&") 
-      .toLowerCase()
-    }-${props.category._id}`
+        .replace(/\//g, "-")
+        .replace(/\s+/g, "&")
+        .toLowerCase()}-${props.category._id}`
     : baseRoute;
 
   return (
@@ -188,7 +193,11 @@ export default function ListDishesComponent(props) {
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}
           sensors={sensors}
-          modifiers={[restrictToVerticalAxis]}
+          modifiers={[
+            restrictToVerticalAxis,
+          
+            restrictToParentElement,
+          ]}
         >
           <SortableContext items={dishes.map((dish) => dish._id)}>
             {dishes.map((dish) => (
