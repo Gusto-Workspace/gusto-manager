@@ -239,7 +239,22 @@ export default function AddReservationComponent(props) {
     const requiredTableSizeFromGuestsFront = (n) => {
       const g = Number(n || 0);
       if (g <= 0) return 0;
+      if (g === 1) return 1;
       return g % 2 === 0 ? g : g + 1;
+    };
+
+    const isEligibleTableForGuestsFront = (tableSeats, guests) => {
+      const seats = Number(tableSeats || 0);
+      const g = Number(guests || 0);
+
+      if (g <= 0 || seats <= 0) return false;
+
+      if (g === 1) {
+        return seats === 1 || seats === 2;
+      }
+
+      const required = requiredTableSizeFromGuestsFront(g);
+      return seats === required;
     };
 
     // -----------------------------
@@ -280,11 +295,9 @@ export default function AddReservationComponent(props) {
         const guests = Number(reservationData.numberOfGuests || 0);
 
         if (guests > 0) {
-          const requiredTableSize = requiredTableSizeFromGuestsFront(guests);
-
           // pool éligible (tables configurées de la bonne taille)
-          const eligibleTables = (parameters.tables || []).filter(
-            (t) => Number(t.seats) === requiredTableSize,
+          const eligibleTables = (parameters.tables || []).filter((t) =>
+            isEligibleTableForGuestsFront(t.seats, guests),
           );
           const capacity = eligibleTables.length;
 
@@ -372,8 +385,10 @@ export default function AddReservationComponent(props) {
                 }
 
                 // 3) dernier fallback: ça consomme quand même 1 slot si seats ok
-                const seatsOk =
-                  Number(r.table.seats) === Number(requiredTableSize);
+                const seatsOk = isEligibleTableForGuestsFront(
+                  r.table.seats,
+                  guests,
+                );
                 if (seatsOk) {
                   unassignedCount += 1;
                   return;
@@ -385,8 +400,10 @@ export default function AddReservationComponent(props) {
               // ✅ MANUAL
               if (r.table.source === "manual") {
                 const name = String(r.table.name || "").trim();
-                const seatsOk =
-                  Number(r.table.seats) === Number(requiredTableSize);
+                const seatsOk = isEligibleTableForGuestsFront(
+                  r.table.seats,
+                  guests,
+                );
                 if (name && seatsOk) unassignedCount += 1;
               }
             });
@@ -451,14 +468,28 @@ export default function AddReservationComponent(props) {
     const requiredTableSizeFromGuestsFront = (n) => {
       const g = Number(n || 0);
       if (g <= 0) return 0;
+      if (g === 1) return 1;
       return g % 2 === 0 ? g : g + 1;
     };
 
-    const guests = Number(reservationData.numberOfGuests || 0);
-    const requiredTableSize = requiredTableSizeFromGuestsFront(guests);
+    const isEligibleTableForGuestsFront = (tableSeats, guests) => {
+      const seats = Number(tableSeats || 0);
+      const g = Number(guests || 0);
 
-    const eligibleTables = (parameters.tables || []).filter(
-      (t) => Number(t.seats) === requiredTableSize,
+      if (g <= 0 || seats <= 0) return false;
+
+      if (g === 1) {
+        return seats === 1 || seats === 2;
+      }
+
+      const required = requiredTableSizeFromGuestsFront(g);
+      return seats === required;
+    };
+
+    const guests = Number(reservationData.numberOfGuests || 0);
+
+    const eligibleTables = (parameters.tables || []).filter((t) =>
+      isEligibleTableForGuestsFront(t.seats, guests),
     );
 
     // si aucune table configurée => aucune table dispo
@@ -550,7 +581,7 @@ export default function AddReservationComponent(props) {
         }
 
         // 3) dernier fallback: consomme 1 slot si seats ok
-        const seatsOk = Number(r.table.seats) === Number(requiredTableSize);
+        const seatsOk = isEligibleTableForGuestsFront(r.table.seats, guests);
         if (seatsOk) {
           unassignedCount += 1;
           return;
@@ -562,7 +593,7 @@ export default function AddReservationComponent(props) {
       // ✅ MANUAL
       if (r.table.source === "manual") {
         const name = String(r.table.name || "").trim();
-        const seatsOk = Number(r.table.seats) === Number(requiredTableSize);
+        const seatsOk = isEligibleTableForGuestsFront(r.table.seats, guests);
         if (name && seatsOk) unassignedCount += 1;
       }
     });
@@ -1296,25 +1327,27 @@ export default function AddReservationComponent(props) {
                     required={Boolean(hasPickedSlot && manageDisponibilities)}
                     className="h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 text-base outline-none transition focus:border-blue/60 focus:ring-2 focus:ring-blue/20"
                   >
-                   {!hasPickedSlot ? (
-  <option value="" disabled>
-    Choisissez d’abord un créneau
-  </option>
-) : tablesForSelect.length === 0 ? (
-  <option value="" disabled>
-    Aucune table disponible
-  </option>
-) : (
-  groupedTablesForSelect.map((group) => (
-    <optgroup key={group.label} label={group.label}>
-      {group.tables.map((table) => (
-        <option key={table._id} value={table._id}>
-          {table.name ? table.name : `Table de ${table.seats} places`}
-        </option>
-      ))}
-    </optgroup>
-  ))
-)}
+                    {!hasPickedSlot ? (
+                      <option value="" disabled>
+                        Choisissez d’abord un créneau
+                      </option>
+                    ) : tablesForSelect.length === 0 ? (
+                      <option value="" disabled>
+                        Aucune table disponible
+                      </option>
+                    ) : (
+                      groupedTablesForSelect.map((group) => (
+                        <optgroup key={group.label} label={group.label}>
+                          {group.tables.map((table) => (
+                            <option key={table._id} value={table._id}>
+                              {table.name
+                                ? table.name
+                                : `Table de ${table.seats} places`}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))
+                    )}
                   </select>
                 ) : (
                   <input

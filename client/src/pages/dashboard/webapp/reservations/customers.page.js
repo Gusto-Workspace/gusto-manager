@@ -19,7 +19,7 @@ import NotGoodDeviceWebAppComponent from "@/components/dashboard/webapp/_shared/
 import ListCustomersReservationsWebapp from "@/components/dashboard/webapp/reservations/list-customers.reservations.webapp";
 import SplashScreenWebAppComponent from "@/components/dashboard/webapp/_shared/splashscreen.webapp";
 
-export default function AddReservationsPage(props) {
+export default function WebappCustomersReservationsPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
 
   let title;

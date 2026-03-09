@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import dynamic from "next/dynamic";
-import { X, Map, Clock3, Loader2 } from "lucide-react";
+import { X, Clock3, Loader2, LayoutGrid } from "lucide-react";
 
 const CLOSE_MS = 240;
 const OPEN_MS = 240;
@@ -436,7 +436,7 @@ export default function FloorPlanDrawerReservationsComponent({
               <div className="px-4 pb-3 desktop:py-3 flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <Map className="size-5 text-darkBlue/70" />
+                    <LayoutGrid className="size-5 text-darkBlue/70" />
                     <h2 className="text-lg tablet:text-xl font-semibold text-darkBlue">
                       Plan de salle
                     </h2>
@@ -552,28 +552,28 @@ export default function FloorPlanDrawerReservationsComponent({
           </div>
 
           {/* Body */}
-          <div className="rounded-[28px] m-4 tablet:m-6 min-h-[420px] tablet:min-h-[520px] bg-[#667085]">
+          <div className="rounded-[28px] m-4 tablet:m-6 min-h-[520px] bg-[#667085]">
             {loading ? (
-              <div className="min-h-[420px] tablet:min-h-[520px] rounded-[28px] border border-darkBlue/10 bg-lightGrey flex items-center justify-center">
-                <div className="inline-flex items-center gap-3 text-darkBlue/60">
+              <div className="min-h-[520px] rounded-[28px] border border-darkBlue/10 bg-[#667085] flex items-center justify-center">
+                <div className="inline-flex items-center gap-3 text-lightGrey">
                   <Loader2 className="size-5 animate-spin" />
                   Chargement du plan…
                 </div>
               </div>
             ) : error ? (
-              <div className="min-h-[420px] tablet:min-h-[520px] rounded-[28px] border border-red/20 bg-lightGrey flex items-center justify-center px-6 text-center text-red">
+              <div className="min-h-[520px] rounded-[28px] border border-red/20 bg-lightGrey flex items-center justify-center px-6 text-center text-red">
                 {error}
               </div>
             ) : !floorPlanEnabled || !rooms.length ? (
-              <div className="min-h-[420px] tablet:min-h-[520px] rounded-[28px] border border-darkBlue/10 bg-lightGrey flex items-center justify-center px-6 text-center text-darkBlue/55">
+              <div className="min-h-[520px] rounded-[28px] border border-darkBlue/10 bg-lightGrey flex items-center justify-center px-6 text-center text-darkBlue/55">
                 Aucun plan de salle disponible pour le moment.
               </div>
             ) : !activeRoom ? (
-              <div className="min-h-[420px] tablet:min-h-[520px] rounded-[28px] border border-darkBlue/10 bg-lightGrey flex items-center justify-center px-6 text-center text-darkBlue/55">
+              <div className="min-h-[520px] rounded-[28px] border border-darkBlue/10 bg-lightGrey flex items-center justify-center px-6 text-center text-darkBlue/55">
                 Salle introuvable.
               </div>
             ) : !shouldRenderCanvas ? (
-              <div className="min-h-[420px] tablet:min-h-[520px] rounded-[28px] border border-darkBlue/10 bg-[#667085]" />
+              <div className="min-h-[520px] rounded-[28px] border border-darkBlue/10 bg-[#667085]" />
             ) : (
               <FloorPlanCanvasReservationsComponent
                 room={activeRoom}

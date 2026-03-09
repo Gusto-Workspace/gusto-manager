@@ -740,6 +740,7 @@ export default function ParametersReservationComponent(props) {
 
         <FloorPlanParametersComponent
           restaurantId={props.restaurantData?._id}
+          setRestaurantData={props.setRestaurantData}
           tablesCatalog={tablesCatalog}
           onTablesCatalogUpdated={(nextTables) => {
             setTablesCatalog(Array.isArray(nextTables) ? nextTables : []);

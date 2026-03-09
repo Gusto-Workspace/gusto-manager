@@ -75,6 +75,8 @@ router.get(
         version: Number(
           restaurant.reservations.parameters.floorplan.version || 1,
         ),
+        tables: restaurant?.reservations?.parameters?.tables || [],
+        reservationParameters: restaurant?.reservations?.parameters || {},
       });
     } catch (e) {
       return res.status(500).json({ message: "Erreur serveur (GET rooms)." });
@@ -244,6 +246,7 @@ router.delete(
         version: Number(
           restaurant.reservations.parameters.floorplan.version || 1,
         ),
+        reservationParameters: restaurant?.reservations?.parameters || {},
       });
     } catch (e) {
       return res.status(500).json({ message: "Erreur serveur (DELETE room)." });
@@ -330,6 +333,7 @@ router.delete(
         version: Number(
           restaurant.reservations.parameters.floorplan.version || 1,
         ),
+        reservationParameters: restaurant?.reservations?.parameters || {},
       });
     } catch (e) {
       return res.status(500).json({
@@ -653,6 +657,8 @@ router.put(
         version: Number(
           restaurant.reservations.parameters.floorplan.version || 1,
         ),
+        tables: restaurant?.reservations?.parameters?.tables || [],
+        reservationParameters: restaurant?.reservations?.parameters || {},
       });
     } catch (e) {
       return res.status(500).json({ message: "Erreur serveur (PUT room)." });

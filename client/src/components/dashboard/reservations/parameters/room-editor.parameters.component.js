@@ -31,6 +31,279 @@ function normalizeDeg(deg) {
   return ((n % 360) + 360) % 360;
 }
 
+function degToRad(deg) {
+  return (Number(deg || 0) * Math.PI) / 180;
+}
+
+function rotatePoint(px, py, cx, cy, rad) {
+  const dx = px - cx;
+  const dy = py - cy;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return {
+    x: cx + dx * cos - dy * sin,
+    y: cy + dx * sin + dy * cos,
+  };
+}
+
+function dist2(x1, y1, x2, y2) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  return dx * dx + dy * dy;
+}
+
+function dot(a, b) {
+  return a.x * b.x + a.y * b.y;
+}
+
+function sub(a, b) {
+  return { x: a.x - b.x, y: a.y - b.y };
+}
+
+function length(v) {
+  return Math.hypot(v.x, v.y);
+}
+
+function normalize(v) {
+  const len = length(v);
+  if (!len) return { x: 0, y: 0 };
+  return { x: v.x / len, y: v.y / len };
+}
+
+function getObjectShape(o, extraPad = 0) {
+  if (!o) return null;
+
+  if (o.type === "table") {
+    const x = Number(o.x || 0);
+    const y = Number(o.y || 0);
+    const w = Number(o.w || 0) + extraPad * 2;
+    const h = Number(o.h || 0) + extraPad * 2;
+    const cx = x + Number(o.w || 0) / 2;
+    const cy = y + Number(o.h || 0) / 2;
+    const rad = degToRad(o.rotation || 0);
+
+    const hw = w / 2;
+    const hh = h / 2;
+
+    const local = [
+      { x: cx - hw, y: cy - hh },
+      { x: cx + hw, y: cy - hh },
+      { x: cx + hw, y: cy + hh },
+      { x: cx - hw, y: cy + hh },
+    ];
+
+    return {
+      kind: "poly",
+      points: local.map((p) => rotatePoint(p.x, p.y, cx, cy, rad)),
+    };
+  }
+
+  if (o.type === "decor") {
+    if (o.shape === "rect") {
+      const x = Number(o.x || 0);
+      const y = Number(o.y || 0);
+      const rawW = Number(o.w || 0);
+      const rawH = Number(o.h || 0);
+      const w = rawW + extraPad * 2;
+      const h = rawH + extraPad * 2;
+      const cx = x + rawW / 2;
+      const cy = y + rawH / 2;
+      const rad = degToRad(o.rotation || 0);
+
+      const hw = w / 2;
+      const hh = h / 2;
+
+      const local = [
+        { x: cx - hw, y: cy - hh },
+        { x: cx + hw, y: cy - hh },
+        { x: cx + hw, y: cy + hh },
+        { x: cx - hw, y: cy + hh },
+      ];
+
+      return {
+        kind: "poly",
+        points: local.map((p) => rotatePoint(p.x, p.y, cx, cy, rad)),
+      };
+    }
+
+    if (o.shape === "circle") {
+      return {
+        kind: "circle",
+        x: Number(o.x || 0),
+        y: Number(o.y || 0),
+        r: Number(o.r || 0) + extraPad,
+      };
+    }
+
+    if (o.shape === "line") {
+      const pts = Array.isArray(o.points) ? o.points : [];
+      if (pts.length < 4) return null;
+
+      const x1 = Number(pts[0] || 0);
+      const y1 = Number(pts[1] || 0);
+      const x2 = Number(pts[2] || 0);
+      const y2 = Number(pts[3] || 0);
+
+      const cx = (x1 + x2) / 2;
+      const cy = (y1 + y2) / 2;
+      const rad = degToRad(o.rotation || 0);
+
+      const p1 = rotatePoint(x1, y1, cx, cy, rad);
+      const p2 = rotatePoint(x2, y2, cx, cy, rad);
+
+      return {
+        kind: "segment",
+        a: p1,
+        b: p2,
+        r: Number(o?.style?.strokeWidth || 8) / 2 + extraPad,
+      };
+    }
+  }
+
+  return null;
+}
+
+function getAxesFromPolygon(points) {
+  const axes = [];
+  for (let i = 0; i < points.length; i++) {
+    const p1 = points[i];
+    const p2 = points[(i + 1) % points.length];
+    const edge = sub(p2, p1);
+    const normal = normalize({ x: -edge.y, y: edge.x });
+    axes.push(normal);
+  }
+  return axes;
+}
+
+function projectPolygon(points, axis) {
+  let min = dot(points[0], axis);
+  let max = min;
+  for (let i = 1; i < points.length; i++) {
+    const p = dot(points[i], axis);
+    if (p < min) min = p;
+    if (p > max) max = p;
+  }
+  return { min, max };
+}
+
+function projectCircle(circle, axis) {
+  const c = circle.x * axis.x + circle.y * axis.y;
+  return { min: c - circle.r, max: c + circle.r };
+}
+
+function rangesOverlap(a, b) {
+  return a.max >= b.min && b.max >= a.min;
+}
+
+function polygonPolygonOverlap(polyA, polyB) {
+  const axes = [
+    ...getAxesFromPolygon(polyA.points),
+    ...getAxesFromPolygon(polyB.points),
+  ];
+
+  for (const axis of axes) {
+    const pa = projectPolygon(polyA.points, axis);
+    const pb = projectPolygon(polyB.points, axis);
+    if (!rangesOverlap(pa, pb)) return false;
+  }
+
+  return true;
+}
+
+function circleCircleOverlap(a, b) {
+  const rr = a.r + b.r;
+  return dist2(a.x, a.y, b.x, b.y) <= rr * rr;
+}
+
+function polygonCircleOverlap(poly, circle) {
+  const axes = getAxesFromPolygon(poly.points);
+
+  let closest = poly.points[0];
+  let bestD = dist2(circle.x, circle.y, closest.x, closest.y);
+
+  for (let i = 1; i < poly.points.length; i++) {
+    const p = poly.points[i];
+    const d = dist2(circle.x, circle.y, p.x, p.y);
+    if (d < bestD) {
+      bestD = d;
+      closest = p;
+    }
+  }
+
+  axes.push(normalize({ x: closest.x - circle.x, y: closest.y - circle.y }));
+
+  for (const axis of axes) {
+    if (!axis.x && !axis.y) continue;
+    const pp = projectPolygon(poly.points, axis);
+    const pc = projectCircle(circle, axis);
+    if (!rangesOverlap(pp, pc)) return false;
+  }
+
+  return true;
+}
+
+function segmentToPolygon(seg) {
+  const dir = sub(seg.b, seg.a);
+  const len = length(dir);
+  if (!len) {
+    return {
+      kind: "circle",
+      x: seg.a.x,
+      y: seg.a.y,
+      r: seg.r,
+    };
+  }
+
+  const u = { x: dir.x / len, y: dir.y / len };
+  const n = { x: -u.y, y: u.x };
+  const rr = seg.r;
+
+  return {
+    kind: "poly",
+    points: [
+      { x: seg.a.x + n.x * rr, y: seg.a.y + n.y * rr },
+      { x: seg.b.x + n.x * rr, y: seg.b.y + n.y * rr },
+      { x: seg.b.x - n.x * rr, y: seg.b.y - n.y * rr },
+      { x: seg.a.x - n.x * rr, y: seg.a.y - n.y * rr },
+    ],
+  };
+}
+
+function shapesOverlap(aObj, bObj, pad = 0) {
+  let a = getObjectShape(aObj, pad);
+  let b = getObjectShape(bObj, pad);
+
+  if (!a || !b) return false;
+
+  if (a.kind === "segment") a = segmentToPolygon(a);
+  if (b.kind === "segment") b = segmentToPolygon(b);
+
+  if (a.kind === "circle" && b.kind === "circle") {
+    return circleCircleOverlap(a, b);
+  }
+
+  if (a.kind === "poly" && b.kind === "poly") {
+    return polygonPolygonOverlap(a, b);
+  }
+
+  if (a.kind === "poly" && b.kind === "circle") {
+    return polygonCircleOverlap(a, b);
+  }
+
+  if (a.kind === "circle" && b.kind === "poly") {
+    return polygonCircleOverlap(b, a);
+  }
+
+  return false;
+}
+
+function isFree(candidate, others, pad) {
+  for (const o of others) {
+    if (shapesOverlap(candidate, o, pad)) return false;
+  }
+  return true;
+}
+
 function clipRoundedRect(ctx, x, y, w, h, r) {
   const rr = Math.max(0, Math.min(Number(r || 0), w / 2, h / 2));
   ctx.beginPath();
@@ -74,6 +347,7 @@ function makeLucideSvg({ pathD, size = 24, stroke = "#fff", strokeWidth = 2 }) {
 
 export default function RoomEditorComponent({
   restaurantId,
+  setRestaurantData,
   room,
   roomName,
   tablesCatalog,
@@ -222,20 +496,6 @@ export default function RoomEditorComponent({
   /* ===========================
    * COLLISION / SNAP HELPERS
    * =========================== */
-
-  function aabbIntersects(a, b) {
-    return !(a.x2 <= b.x1 || a.x1 >= b.x2 || a.y2 <= b.y1 || a.y1 >= b.y2);
-  }
-
-  function inflate(bb, pad) {
-    if (!pad) return bb; // ✅ PAD=0 => on ne gonfle rien
-    return {
-      x1: bb.x1 - pad,
-      y1: bb.y1 - pad,
-      x2: bb.x2 + pad,
-      y2: bb.y2 + pad,
-    };
-  }
 
   function getAABB(o) {
     if (!o) return { x1: 0, y1: 0, x2: 0, y2: 0 };
@@ -424,15 +684,6 @@ export default function RoomEditorComponent({
     const scx = Math.round(cx / unit) * unit;
     const scy = Math.round(cy / unit) * unit;
     return { x: scx - w / 2, y: scy - h / 2 };
-  }
-
-  function isFree(candidate, others, pad) {
-    const bb = inflate(getAABB(candidate), pad);
-    for (const o of others) {
-      const obb = inflate(getAABB(o), pad);
-      if (aabbIntersects(bb, obb)) return false;
-    }
-    return true;
   }
 
   // Recherche par anneaux (pas = SNAP_UNIT)
@@ -754,7 +1005,7 @@ export default function RoomEditorComponent({
       h = 60;
     }
 
-    const next = {
+    const candidate = {
       id: uid(),
       type: "table",
       tableRefId: String(ref._id),
@@ -765,8 +1016,11 @@ export default function RoomEditorComponent({
       rotation: 0,
     };
 
-    setObjects((prev) => [...prev, next]);
-    setSelectedId(next.id);
+    const best = findNearestFree(candidate, objects, SNAP_UNIT, PAD);
+    const nextPlaced = { ...candidate, x: best.x, y: best.y };
+
+    setObjects((prev) => [...prev, nextPlaced]);
+    setSelectedId(nextPlaced.id);
   }
 
   async function createConfiguredTableAndPlace() {
@@ -837,6 +1091,14 @@ export default function RoomEditorComponent({
     try {
       if (!activeCatalogId) return;
 
+      const isRoomDirty =
+        stableRoomSnap(objects, canvasW, canvasH, grid) !==
+        initialSnapRef.current;
+
+      if (isRoomDirty) {
+        await saveRoom();
+      }
+
       setDeleteCatalogLoading(true);
       setDeleteCatalogError("");
 
@@ -849,6 +1111,33 @@ export default function RoomEditorComponent({
         ? res.data.tables
         : [];
       const nextRooms = Array.isArray(res.data?.rooms) ? res.data.rooms : [];
+
+      const nextReservationParameters =
+        res.data?.reservationParameters &&
+        typeof res.data.reservationParameters === "object"
+          ? res.data.reservationParameters
+          : null;
+
+      setRestaurantData((prev) => {
+        if (!prev) return prev;
+
+        return {
+          ...prev,
+          reservations: {
+            ...prev.reservations,
+            parameters: nextReservationParameters
+              ? nextReservationParameters
+              : {
+                  ...prev.reservations?.parameters,
+                  tables: savedTables,
+                  floorplan: {
+                    ...prev.reservations?.parameters?.floorplan,
+                    rooms: nextRooms,
+                  },
+                },
+          },
+        };
+      });
 
       // ✅ sync catalogue parent
       if (typeof onCatalogUpdated === "function") {
@@ -1054,8 +1343,39 @@ export default function RoomEditorComponent({
 
     if (!next) return;
 
-    setObjects((prev) => [...prev, next]);
-    setSelectedId(next.id);
+    const placed = (() => {
+      if (next.shape === "line") {
+        if (isFree(next, objects, PAD)) return next;
+
+        const maxRing = 40;
+
+        for (let ring = 1; ring <= maxRing; ring++) {
+          for (let dx = -ring; dx <= ring; dx++) {
+            const dy = ring - Math.abs(dx);
+            const tries = [
+              { dx: dx * SNAP_UNIT, dy: dy * SNAP_UNIT },
+              { dx: dx * SNAP_UNIT, dy: -dy * SNAP_UNIT },
+            ];
+
+            for (const t of tries) {
+              const test = {
+                ...next,
+                points: shiftLinePoints(next.points, t.dx, t.dy),
+              };
+              if (isFree(test, objects, PAD)) return test;
+            }
+          }
+        }
+
+        return next;
+      }
+
+      const best = findNearestFree(next, objects, SNAP_UNIT, PAD);
+      return { ...next, x: best.x, y: best.y };
+    })();
+
+    setObjects((prev) => [...prev, placed]);
+    setSelectedId(placed.id);
     setDecorModalOpen(false);
   }
 
@@ -1080,14 +1400,55 @@ export default function RoomEditorComponent({
       );
 
       const nextRoom = res.data?.room;
-      const nextRooms = res.data?.rooms;
-      if (onSaved) onSaved(nextRoom || { ...room, ...payload }, nextRooms);
+      const nextRooms = Array.isArray(res.data?.rooms) ? res.data.rooms : null;
+      const nextTables = Array.isArray(res.data?.tables)
+        ? res.data.tables
+        : null;
+      const nextReservationParameters =
+        res.data?.reservationParameters &&
+        typeof res.data.reservationParameters === "object"
+          ? res.data.reservationParameters
+          : null;
+
+      setRestaurantData((prev) => {
+        if (!prev) return prev;
+
+        return {
+          ...prev,
+          reservations: {
+            ...prev.reservations,
+            parameters: nextReservationParameters
+              ? nextReservationParameters
+              : {
+                  ...prev.reservations?.parameters,
+                  ...(nextRooms
+                    ? {
+                        floorplan: {
+                          ...prev.reservations?.parameters?.floorplan,
+                          rooms: nextRooms,
+                        },
+                      }
+                    : {}),
+                  ...(nextTables ? { tables: nextTables } : {}),
+                },
+          },
+        };
+      });
+
+      if (onSaved) {
+        onSaved(nextRoom || { ...room, ...payload }, nextRooms);
+      }
+
       initialSnapRef.current = stableRoomSnap(objects, canvasW, canvasH, grid);
-      if (typeof onDirtyChange === "function") onDirtyChange(false);
+
+      if (typeof onDirtyChange === "function") {
+        onDirtyChange(false);
+      }
     } catch (e) {
       const msg =
         e?.response?.data?.message ||
         "Impossible d’enregistrer la salle. Vérifie que les tables ne sont pas déjà placées dans une autre salle.";
+
       setSaveError(msg);
       if (typeof window !== "undefined") window.alert(msg);
       throw e;
@@ -1251,8 +1612,13 @@ export default function RoomEditorComponent({
       const nextRot = normalizeDeg(curr + 15);
 
       const updated = { ...prev[idx], rotation: nextRot };
+      const others = prev.filter((o) => String(o.id) !== String(id));
 
-      // conserve ton z-order : on pousse l’élément à la fin
+      // bloque la rotation si elle crée une collision
+      if (!isFree(updated, others, PAD)) {
+        return prev;
+      }
+
       const next = prev.slice();
       next.splice(idx, 1);
       next.push(updated);
@@ -1358,7 +1724,9 @@ export default function RoomEditorComponent({
         left = 0,
         right = 0;
 
-      if (n <= 2) {
+      if (n <= 1) {
+        right = 1;
+      } else if (n <= 2) {
         left = 1;
         right = 1;
       } else if (n <= 4) {
@@ -2422,7 +2790,7 @@ export default function RoomEditorComponent({
 
             <div className="p-4">
               <div className="rounded-2xl border border-orange/30 bg-orange/10 px-4 py-3 text-sm text-darkBlue/80">
-                Le table déjà placée sur le plan sera supprimée automatiquement.
+                La table déjà placée sur le plan sera supprimée automatiquement.
               </div>
 
               {deleteCatalogError && (

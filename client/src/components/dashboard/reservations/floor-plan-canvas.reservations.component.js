@@ -1567,7 +1567,7 @@ export default function FloorPlanCanvasReservationsComponent({
               </div>
 
               <p className="text-[10px] text-darkBlue/55 leading-none">
-                {Number(tooltipData.ref?.seats || 0)} couverts
+                {Number(tooltipData.ref?.seats || 0)} couvert{tooltipData.ref?.seats > 1 ? "s" : ""}
               </p>
             </div>
 

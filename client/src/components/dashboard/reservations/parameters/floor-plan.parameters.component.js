@@ -148,6 +148,7 @@ function RoomRowSortable({
 
 export default function FloorPlanParametersComponent({
   restaurantId,
+  setRestaurantData,
   tablesCatalog,
   onTablesCatalogUpdated,
 }) {
@@ -198,7 +199,42 @@ export default function FloorPlanParametersComponent({
         { headers: { Authorization: `Bearer ${token}` } },
       );
 
-      setRooms(safeArr(res.data?.rooms));
+      const nextRooms = safeArr(res.data?.rooms);
+      const nextTables = safeArr(res.data?.tables);
+      const nextReservationParameters =
+        res.data?.reservationParameters &&
+        typeof res.data.reservationParameters === "object"
+          ? res.data.reservationParameters
+          : null;
+
+      setRooms(nextRooms);
+
+      if (typeof onTablesCatalogUpdated === "function") {
+        onTablesCatalogUpdated(nextTables);
+      }
+
+      if (typeof setRestaurantData === "function") {
+        setRestaurantData((prev) => {
+          if (!prev) return prev;
+
+          return {
+            ...prev,
+            reservations: {
+              ...prev.reservations,
+              parameters: nextReservationParameters
+                ? nextReservationParameters
+                : {
+                    ...prev.reservations?.parameters,
+                    tables: nextTables,
+                    floorplan: {
+                      ...prev.reservations?.parameters?.floorplan,
+                      rooms: nextRooms,
+                    },
+                  },
+            },
+          };
+        });
+      }
     } catch (e) {
       setError(
         e?.response?.data?.message || "Impossible de récupérer les salles.",
@@ -551,6 +587,7 @@ export default function FloorPlanParametersComponent({
             <div className="mt-4 min-w-0">
               <RoomEditorParametersComponent
                 restaurantId={restaurantId}
+                setRestaurantData={setRestaurantData}
                 room={activeRoom}
                 roomName={roomName}
                 tablesCatalog={localCatalog}

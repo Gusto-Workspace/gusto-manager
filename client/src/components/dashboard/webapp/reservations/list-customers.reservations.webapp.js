@@ -435,7 +435,7 @@ export default function ListCustomersReservationsWebapp() {
         title="Réservations"
       />
 
-      {/* ✅ Header mobile */}
+      {/* ✅ Header */}
       <div className="flex flex-col gap-3">
         <div className="flex items-start justify-between gap-3">
           <button
