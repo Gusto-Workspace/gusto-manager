@@ -38,12 +38,6 @@ export default function WebAppFloorPlanReservationsPage(props) {
 
   if (!restaurantContext.isAuth) return null;
 
-
-  console.log(
-  "PARENT WEBAPP restaurantData reservations",
-  restaurantContext?.restaurantData?.reservations?.data,
-);
-
   return (
     <>
       <Head>
@@ -65,7 +59,7 @@ export default function WebAppFloorPlanReservationsPage(props) {
               setRestaurantData={restaurantContext.setRestaurantData}
               restaurantId={restaurantContext?.restaurantData?._id}
               reservations={
-                  restaurantContext?.restaurantData?.reservations?.list
+                restaurantContext?.restaurantData?.reservations?.list
               }
             />
           ) : (

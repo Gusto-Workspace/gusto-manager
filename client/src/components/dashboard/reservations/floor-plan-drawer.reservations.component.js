@@ -561,15 +561,15 @@ export default function FloorPlanDrawerReservationsComponent({
                 </div>
               </div>
             ) : error ? (
-              <div className="min-h-[520px] rounded-[28px] border border-red/20 bg-lightGrey flex items-center justify-center px-6 text-center text-red">
+              <div className="min-h-[520px] rounded-[28px] border border-red/20 bg-[#667085] flex items-center justify-center px-6 text-center text-red">
                 {error}
               </div>
             ) : !floorPlanEnabled || !rooms.length ? (
-              <div className="min-h-[520px] rounded-[28px] border border-darkBlue/10 bg-lightGrey flex items-center justify-center px-6 text-center text-darkBlue/55">
+              <div className="min-h-[520px] rounded-[28px] border border-darkBlue/10 bg-[#667085] flex items-center justify-center px-6 text-center text-lightGrey">
                 Aucun plan de salle disponible pour le moment.
               </div>
             ) : !activeRoom ? (
-              <div className="min-h-[520px] rounded-[28px] border border-darkBlue/10 bg-lightGrey flex items-center justify-center px-6 text-center text-darkBlue/55">
+              <div className="min-h-[520px] rounded-[28px] border border-darkBlue/10 bg-[#667085] flex items-center justify-center px-6 text-center text-lightGrey">
                 Salle introuvable.
               </div>
             ) : !shouldRenderCanvas ? (
