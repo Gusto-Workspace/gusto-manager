@@ -914,6 +914,86 @@ export default function AddReservationComponent(props) {
     ? [currentTableOption, ...(availableTables || [])]
     : availableTables || [];
 
+  const tableRoomMap = useMemo(() => {
+    const map = new Map();
+
+    const rooms =
+      props.restaurantData?.reservations?.parameters?.floorplan?.rooms || [];
+
+    rooms.forEach((room) => {
+      const roomName = String(room?.name || "").trim();
+      const objects = Array.isArray(room?.objects) ? room.objects : [];
+
+      objects.forEach((obj) => {
+        if (obj?.type !== "table") return;
+        if (!obj?.tableRefId) return;
+
+        const key = String(obj.tableRefId);
+
+        // on garde la première salle trouvée pour cette table
+        if (!map.has(key)) {
+          map.set(key, roomName || "Salle sans nom");
+        }
+      });
+    });
+
+    return map;
+  }, [props.restaurantData?.reservations?.parameters?.floorplan?.rooms]);
+
+  const tablesForSelectWithRoom = useMemo(() => {
+    return (tablesForSelect || []).map((table) => ({
+      ...table,
+      roomName: tableRoomMap.get(String(table._id)) || "Autres tables",
+    }));
+  }, [tablesForSelect, tableRoomMap]);
+
+  const groupedTablesForSelect = useMemo(() => {
+    const groupsMap = new Map();
+
+    // ordre réel des salles dans le floorplan
+    const roomOrder =
+      props.restaurantData?.reservations?.parameters?.floorplan?.rooms?.map(
+        (room) => String(room?.name || "").trim() || "Salle sans nom",
+      ) || [];
+
+    tablesForSelectWithRoom.forEach((table) => {
+      const roomName = String(table?.roomName || "Autres tables");
+
+      if (!groupsMap.has(roomName)) {
+        groupsMap.set(roomName, []);
+      }
+
+      groupsMap.get(roomName).push(table);
+    });
+
+    const groups = Array.from(groupsMap.entries()).map(([label, tables]) => ({
+      label,
+      tables,
+    }));
+
+    groups.sort((a, b) => {
+      const ia = roomOrder.indexOf(a.label);
+      const ib = roomOrder.indexOf(b.label);
+
+      const aKnown = ia !== -1;
+      const bKnown = ib !== -1;
+
+      if (aKnown && bKnown) return ia - ib;
+      if (aKnown) return -1;
+      if (bKnown) return 1;
+
+      if (a.label === "Autres tables") return 1;
+      if (b.label === "Autres tables") return -1;
+
+      return a.label.localeCompare(b.label, "fr");
+    });
+
+    return groups;
+  }, [
+    tablesForSelectWithRoom,
+    props.restaurantData?.reservations?.parameters?.floorplan?.rooms,
+  ]);
+
   useEffect(() => {
     if (!manageDisponibilities) return;
     if (!hasPickedSlot) return;
@@ -1216,23 +1296,25 @@ export default function AddReservationComponent(props) {
                     required={Boolean(hasPickedSlot && manageDisponibilities)}
                     className="h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 text-base outline-none transition focus:border-blue/60 focus:ring-2 focus:ring-blue/20"
                   >
-                    {!hasPickedSlot ? (
-                      <option value="" disabled>
-                        Choisissez d’abord un créneau
-                      </option>
-                    ) : tablesForSelect.length === 0 ? (
-                      <option value="" disabled>
-                        Aucune table disponible
-                      </option>
-                    ) : (
-                      tablesForSelect.map((table) => (
-                        <option key={table._id} value={table._id}>
-                          {table.name
-                            ? table.name
-                            : `Table de ${table.seats} places`}
-                        </option>
-                      ))
-                    )}
+                   {!hasPickedSlot ? (
+  <option value="" disabled>
+    Choisissez d’abord un créneau
+  </option>
+) : tablesForSelect.length === 0 ? (
+  <option value="" disabled>
+    Aucune table disponible
+  </option>
+) : (
+  groupedTablesForSelect.map((group) => (
+    <optgroup key={group.label} label={group.label}>
+      {group.tables.map((table) => (
+        <option key={table._id} value={table._id}>
+          {table.name ? table.name : `Table de ${table.seats} places`}
+        </option>
+      ))}
+    </optgroup>
+  ))
+)}
                   </select>
                 ) : (
                   <input

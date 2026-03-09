@@ -85,6 +85,25 @@ function isBlockingReservation(reservation) {
   return false;
 }
 
+function areSameReservation(a, b) {
+  if (!a || !b) return false;
+
+  const aId = String(a?._id || a?.id || "");
+  const bId = String(b?._id || b?.id || "");
+
+  if (aId && bId) return aId === bId;
+
+  return (
+    String(a?.reservationDate || "") === String(b?.reservationDate || "") &&
+    String(a?.reservationTime || "") === String(b?.reservationTime || "") &&
+    String(a?.table?.toString?.() || a?.table || "") ===
+      String(b?.table?.toString?.() || b?.table || "") &&
+    String(a?.firstName || "") === String(b?.firstName || "") &&
+    String(a?.lastName || "") === String(b?.lastName || "") &&
+    Number(a?.numberOfGuests || 0) === Number(b?.numberOfGuests || 0)
+  );
+}
+
 function getDisplayName(reservation) {
   const first = String(reservation?.customerFirstName || "").trim();
   const last = String(reservation?.customerLastName || "").trim();
@@ -144,7 +163,7 @@ function getReservationsForTable({ reservations, tableRefId, targetDateKey }) {
   });
 }
 
-function getMainReservationForTable({
+function getTableReservationState({
   reservations,
   parameters,
   liveMode,
@@ -159,54 +178,178 @@ function getMainReservationForTable({
       return { reservation: r, ...window };
     });
 
+  const livePriority = {
+    Active: 5,
+    Late: 4,
+    Confirmed: 3,
+    Pending: 2,
+  };
+
+  // 1) Réservation réelle en cours côté métier
+  const realCurrent =
+    blocking
+      .filter((x) => ["Active", "Late"].includes(x.reservation?.status))
+      .sort((a, b) => {
+        const pa = livePriority[a.reservation?.status] || 0;
+        const pb = livePriority[b.reservation?.status] || 0;
+        if (pa !== pb) return pb - pa;
+
+        return (
+          minutesFromHHmm(b.reservation?.reservationTime) -
+          minutesFromHHmm(a.reservation?.reservationTime)
+        );
+      })[0]?.reservation || null;
+
+  // 2) Toutes les résas qui couvrent théoriquement le créneau affiché
   const overlapping = blocking.filter(
     (x) => refMinute >= x.start && refMinute < x.end,
   );
 
-  if (overlapping.length) {
-    const priority = {
-      Active: 4,
-      Late: 3,
-      Confirmed: 2,
-      Pending: 1,
-    };
+  let theoreticalCurrent = null;
 
-    overlapping.sort((a, b) => {
-      const pa = priority[a.reservation?.status] || 0;
-      const pb = priority[b.reservation?.status] || 0;
-      if (pa !== pb) return pb - pa;
-      return (
-        minutesFromHHmm(a.reservation?.reservationTime) -
-        minutesFromHHmm(b.reservation?.reservationTime)
-      );
-    });
+  if (liveMode) {
+    theoreticalCurrent =
+      overlapping.sort((a, b) => {
+        const pa = livePriority[a.reservation?.status] || 0;
+        const pb = livePriority[b.reservation?.status] || 0;
+        if (pa !== pb) return pb - pa;
 
-    return overlapping[0].reservation;
+        return (
+          minutesFromHHmm(a.reservation?.reservationTime) -
+          minutesFromHHmm(b.reservation?.reservationTime)
+        );
+      })[0]?.reservation || null;
+  } else {
+    theoreticalCurrent =
+      overlapping.sort((a, b) => {
+        const aExact = a.start === refMinute ? 1 : 0;
+        const bExact = b.start === refMinute ? 1 : 0;
+        if (aExact !== bExact) return bExact - aExact;
+
+        if (a.start !== b.start) return b.start - a.start;
+
+        return (
+          minutesFromHHmm(a.reservation?.reservationTime) -
+          minutesFromHHmm(b.reservation?.reservationTime)
+        );
+      })[0]?.reservation || null;
   }
 
-  const upcoming = blocking
-    .filter((x) => x.start >= refMinute)
-    .sort((a, b) => a.start - b.start);
+  // 3) Résa théorique en conflit avec la résa réelle en cours
+  // -> utile quand la prochaine résa a déjà atteint son heure
+  const conflictingReservation =
+    overlapping
+      .map((x) => x.reservation)
+      .filter((r) => !areSameReservation(r, realCurrent))
+      .sort(
+        (a, b) =>
+          minutesFromHHmm(a?.reservationTime) -
+          minutesFromHHmm(b?.reservationTime),
+      )[0] || null;
 
-  if (upcoming.length) return upcoming[0].reservation;
+  // 4) Prochaine résa théorique future
+  const nextReservation =
+    blocking
+      .filter((x) => x.start > refMinute)
+      .filter((x) => !areSameReservation(x.reservation, realCurrent))
+      .sort((a, b) => a.start - b.start)[0]?.reservation || null;
 
-  return null;
+  // 5) Réservation à afficher dans le tooltip / drawer
+  const displayReservation = liveMode
+    ? realCurrent || theoreticalCurrent || nextReservation || null
+    : theoreticalCurrent || nextReservation || null;
+
+  // 6) Réservation utilisée pour le statut visuel
+  const currentReservation = liveMode
+    ? realCurrent || theoreticalCurrent || null
+    : theoreticalCurrent || null;
+
+  return {
+    currentReservation,
+    nextReservation,
+    theoreticalCurrent,
+    realCurrent,
+    conflictingReservation,
+    displayReservation,
+  };
 }
 
-function getTableStatus({ reservation, parameters, liveMode, selectedTime }) {
-  if (!reservation) return "free";
-
+function getTableStatus({
+  currentReservation,
+  nextReservation,
+  theoreticalCurrent,
+  realCurrent,
+  conflictingReservation,
+  parameters,
+  liveMode,
+  selectedTime,
+}) {
   const refMinute = getReferenceMinute({ liveMode, selectedTime });
-  const { start, end } = getReservationWindow(reservation, parameters);
-  const isInsideWindow = refMinute >= start && refMinute < end;
 
-  if (isInsideWindow) {
-    if (reservation.status === "Late") return "late";
-    return "occupied";
+  if (currentReservation) {
+    const currentStatus = currentReservation?.status;
+
+    // 1) Seules les résas réellement passées en cours sont "occupées"
+    if (currentStatus === "Active") {
+      // une autre résa devrait déjà être sur cette table
+      if (
+        conflictingReservation &&
+        !areSameReservation(conflictingReservation, currentReservation)
+      ) {
+        return "to_release";
+      }
+
+      // une autre résa arrive bientôt
+      if (
+        nextReservation &&
+        !areSameReservation(nextReservation, currentReservation)
+      ) {
+        const nextStart = minutesFromHHmm(nextReservation?.reservationTime);
+        const minutesBeforeNext = nextStart - refMinute;
+
+        if (minutesBeforeNext <= 15) {
+          return "to_release";
+        }
+      }
+
+      return "occupied";
+    }
+
+    // 2) Un client en retard reste en retard
+    if (currentStatus === "Late") {
+      if (
+        conflictingReservation &&
+        !areSameReservation(conflictingReservation, currentReservation)
+      ) {
+        return "to_release";
+      }
+
+      if (
+        nextReservation &&
+        !areSameReservation(nextReservation, currentReservation)
+      ) {
+        const nextStart = minutesFromHHmm(nextReservation?.reservationTime);
+        const minutesBeforeNext = nextStart - refMinute;
+
+        if (minutesBeforeNext <= 15) {
+          return "to_release";
+        }
+      }
+
+      return "late";
+    }
+
+    // 3) Confirmed / Pending ne deviennent jamais occupées automatiquement
+    if (["Confirmed", "Pending"].includes(currentStatus)) {
+      return "assigned";
+    }
   }
 
-  if (start > refMinute) {
-    const remainingMinutes = start - refMinute;
+  // 4) Sinon, on regarde la prochaine résa future
+  if (nextReservation) {
+    const nextStart = minutesFromHHmm(nextReservation?.reservationTime);
+    const remainingMinutes = nextStart - refMinute;
+
     const neededMinutes = getReferenceOccupancyMinutes({
       parameters,
       liveMode,
@@ -235,6 +378,11 @@ function statusTheme(status) {
       return {
         fill: "rgba(36, 99, 235, 0.18)",
         stroke: "rgba(37, 99, 235, 0.96)",
+      };
+    case "to_release":
+      return {
+        fill: "rgba(239, 68, 68, 0.20)",
+        stroke: "rgba(220, 38, 38, 0.98)",
       };
     default:
       return {
@@ -433,6 +581,8 @@ export default function FloorPlanCanvasReservationsComponent({
   const objects = useMemo(() => safeArr(room?.objects), [room]);
   const isMobile = !!stageSize.w && stageSize.w < 768;
 
+  const [viewReady, setViewReady] = useState(false);
+
   const dateKey = useMemo(() => {
     const d = selectedDate instanceof Date ? selectedDate : new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
@@ -441,9 +591,10 @@ export default function FloorPlanCanvasReservationsComponent({
     )}-${String(d.getDate()).padStart(2, "0")}`;
   }, [selectedDate]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     didInitialFitRef.current = false;
     hasUserMovedViewRef.current = false;
+    setViewReady(false);
   }, [room?._id]);
 
   useEffect(() => {
@@ -531,6 +682,9 @@ export default function FloorPlanCanvasReservationsComponent({
 
       setScale(s);
       setPos(p);
+      requestAnimationFrame(() => {
+        setViewReady(true);
+      });
       return;
     }
 
@@ -553,22 +707,23 @@ export default function FloorPlanCanvasReservationsComponent({
 
     setScale(s);
     setPos(p);
+    requestAnimationFrame(() => {
+      setViewReady(true);
+    });
   }
 
   function resetView() {
     applyInitialView(objects);
   }
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!room?._id) return;
     if (!stageSize.w || !stageSize.h) return;
     if (didInitialFitRef.current) return;
 
     didInitialFitRef.current = true;
-
-    requestAnimationFrame(() => {
-      applyInitialView(objects);
-    });
+    setViewReady(false);
+    applyInitialView(objects);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room?._id, stageSize.w, stageSize.h, isMobile]);
 
@@ -1076,7 +1231,14 @@ export default function FloorPlanCanvasReservationsComponent({
       targetDateKey: dateKey,
     });
 
-    const mainReservation = getMainReservationForTable({
+    const {
+      currentReservation,
+      nextReservation,
+      theoreticalCurrent,
+      realCurrent,
+      conflictingReservation,
+      displayReservation,
+    } = getTableReservationState({
       reservations: tableReservations,
       parameters: reservationParameters,
       liveMode,
@@ -1084,7 +1246,11 @@ export default function FloorPlanCanvasReservationsComponent({
     });
 
     const tableStatus = getTableStatus({
-      reservation: mainReservation,
+      currentReservation,
+      nextReservation,
+      theoreticalCurrent,
+      realCurrent,
+      conflictingReservation,
       parameters: reservationParameters,
       liveMode,
       selectedTime,
@@ -1151,10 +1317,30 @@ export default function FloorPlanCanvasReservationsComponent({
         x={Number(obj.x || 0)}
         y={Number(obj.y || 0)}
         onClick={() =>
-          onSelectTable?.({ object: obj, ref, reservation: mainReservation })
+          onSelectTable?.({
+            object: obj,
+            ref,
+            reservation: displayReservation,
+            currentReservation,
+            nextReservation,
+            theoreticalReservation: theoreticalCurrent,
+            realReservation: realCurrent,
+            conflictingReservation,
+            tableStatus,
+          })
         }
         onTap={() =>
-          onSelectTable?.({ object: obj, ref, reservation: mainReservation })
+          onSelectTable?.({
+            object: obj,
+            ref,
+            reservation: displayReservation,
+            currentReservation,
+            nextReservation,
+            theoreticalReservation: theoreticalCurrent,
+            realReservation: realCurrent,
+            conflictingReservation,
+            tableStatus,
+          })
         }
       >
         <Group
@@ -1251,6 +1437,12 @@ export default function FloorPlanCanvasReservationsComponent({
 
     const ref = selectedTableState.ref || null;
     const reservation = selectedTableState.reservation || null;
+    const currentReservation = selectedTableState.currentReservation || null;
+    const nextReservation = selectedTableState.nextReservation || null;
+    const theoreticalReservation =
+      selectedTableState.theoreticalReservation || null;
+    const realReservation = selectedTableState.realReservation || null;
+    const tableStatus = selectedTableState.tableStatus || "free";
     const seatsCount = Number(ref?.seats || 0);
     const { w, h } = getTableDimensions(seatsCount);
 
@@ -1285,12 +1477,16 @@ export default function FloorPlanCanvasReservationsComponent({
 
     const left = clamp(chosen.left, margin, stageSize.w - tooltipW - margin);
     const top = clamp(chosen.top, margin, stageSize.h - tooltipH - margin);
-
     return {
       left,
       top,
       ref,
       reservation,
+      currentReservation,
+      nextReservation,
+      theoreticalReservation,
+      realReservation,
+      tableStatus,
     };
   }, [
     selectedTableState,
@@ -1329,13 +1525,17 @@ export default function FloorPlanCanvasReservationsComponent({
             onTouchMove={movePan}
             onTouchEnd={endPan}
           >
-            <Layer x={pos.x} y={pos.y} scaleX={scale} scaleY={scale}>
+            <Layer
+              x={pos.x}
+              y={pos.y}
+              scaleX={scale}
+              scaleY={scale}
+              opacity={viewReady ? 1 : 0}
+            >
               {gridLines}
-
               {objects
                 .filter((o) => o?.type === "decor")
                 .map((obj) => renderDecor(obj))}
-
               {objects
                 .filter((o) => o?.type === "table")
                 .map((obj) => renderTable(obj))}
@@ -1355,18 +1555,48 @@ export default function FloorPlanCanvasReservationsComponent({
             visibility: tooltipReady ? "visible" : "hidden",
           }}
         >
-          <div className="flex gap-1">
-            <p className="text-[12px] uppercase tracking-[0.14em] text-darkBlue/70">
-              Table
-            </p>
-            <p className="text-[12px] uppercase tracking-[0.14em] text-darkBlue/70">
-              {tooltipData.ref?.name || "Table"}
-            </p>
-          </div>
+          <div className="flex gap-1 justify-between items-start">
+            <div className="flex flex-col gap-1">
+              <div className="flex gap-1">
+                <p className="text-[12px] uppercase tracking-[0.14em] text-darkBlue/70">
+                  Table
+                </p>
+                <p className="text-[12px] uppercase tracking-[0.14em] text-darkBlue/70">
+                  {tooltipData.ref?.name || "Table"}
+                </p>
+              </div>
 
-          <p className="text-[10px] text-darkBlue/55 leading-none">
-            {Number(tooltipData.ref?.seats || 0)} couverts
-          </p>
+              <p className="text-[10px] text-darkBlue/55 leading-none">
+                {Number(tooltipData.ref?.seats || 0)} couverts
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {tooltipData.tableStatus === "occupied" ? (
+                <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium bg-green/15 text-green border border-green/20">
+                  Table occupée
+                </span>
+              ) : null}
+
+              {tooltipData.tableStatus === "late" ? (
+                <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium  text-[rgb(255,159,10)] border bg-[rgba(255,159,10,0.22)] border-[rgb(255,159,10)]">
+                  Client en retard
+                </span>
+              ) : null}
+
+              {tooltipData.tableStatus === "to_release" ? (
+                <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium bg-red/15 text-red border border-red/20">
+                  À libérer
+                </span>
+              ) : null}
+
+              {tooltipData.tableStatus === "assigned" ? (
+                <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium bg-blue/15 text-blue border border-blue/20">
+                  Assignée
+                </span>
+              ) : null}
+            </div>
+          </div>
 
           {tooltipData.reservation ? (
             <div className="mt-2 border-t border-darkBlue/10 pt-3">
@@ -1401,6 +1631,16 @@ export default function FloorPlanCanvasReservationsComponent({
                   </div>
                 ) : null}
               </div>
+
+              {tooltipData.tableStatus === "to_release" &&
+              tooltipData.nextReservation ? (
+                <div className="mt-3 rounded-2xl border border-red/15 bg-red/5 px-3 py-2 text-[12px] text-darkBlue/70">
+                  Prochaine arrivée à{" "}
+                  {String(
+                    tooltipData.nextReservation?.reservationTime || "",
+                  ).slice(0, 5)}
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="mt-3 border-t border-darkBlue/10 pt-3 text-[12px] text-darkBlue/55 leading-snug">
