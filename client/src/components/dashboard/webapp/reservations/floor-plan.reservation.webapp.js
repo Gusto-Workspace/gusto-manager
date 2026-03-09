@@ -209,7 +209,7 @@ export default function FloorPlanReservationsWebapp({
             <h1 className="text-xl font-semibold text-darkBlue truncate">
               Plan de salle
             </h1>
-            <p className="text-sm text-darkBlue/55">
+            <p className="text-[12px] text-darkBlue/55">
               {isDayContext
                 ? `Affichage du ${new Intl.DateTimeFormat("fr-FR", {
                     weekday: "long",
