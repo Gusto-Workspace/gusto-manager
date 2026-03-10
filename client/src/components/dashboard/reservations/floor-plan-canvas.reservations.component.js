@@ -671,6 +671,14 @@ export default function FloorPlanCanvasReservationsComponent({
 
   const catalog = useMemo(() => safeArr(tablesCatalog), [tablesCatalog]);
   const objects = useMemo(() => safeArr(room?.objects), [room?.objects]);
+  const roomLayoutSnap = useMemo(() => {
+    return JSON.stringify({
+      id: String(room?._id || ""),
+      canvas: room?.canvas || {},
+      objects: safeArr(room?.objects),
+    });
+  }, [room?._id, room?.canvas, room?.objects]);
+
   const isMobile = !!stageSize.w && stageSize.w < 768;
 
   const dateKey = useMemo(() => {
@@ -782,7 +790,7 @@ export default function FloorPlanCanvasReservationsComponent({
   useLayoutEffect(() => {
     didInitialFitRef.current = false;
     hasUserMovedViewRef.current = false;
-  }, [room?._id]);
+  }, [roomLayoutSnap]);
 
   useEffect(() => {
     setTooltipReady(false);
@@ -907,7 +915,7 @@ export default function FloorPlanCanvasReservationsComponent({
 
     applyInitialView(objects);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [room?._id, stageSize.w, stageSize.h, isMobile]);
+  }, [roomLayoutSnap, stageSize.w, stageSize.h, isMobile]);
 
   useEffect(() => {
     if (!stageSize.w || !stageSize.h) return;
