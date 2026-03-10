@@ -126,8 +126,10 @@ export default function FloorPlanDrawerReservationsComponent({
   const isTodayContext = isSameDay(contextDate, new Date());
   const showLiveToggle = !isDayContext || isTodayContext;
 
-  const [isTabletUp, setIsTabletUp] = useState(false);
-
+  const [isTabletUp, setIsTabletUp] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia("(min-width: 768px)").matches;
+  });
   const panelRef = useRef(null);
   const scrollRef = useRef(null);
   const [panelH, setPanelH] = useState(null);
@@ -253,38 +255,31 @@ export default function FloorPlanDrawerReservationsComponent({
     };
   }, []);
 
-  useEffect(() => {
-    if (!open) {
-      setIsVisible(false);
-      setDragY(0);
-      restoreScroll();
-      return;
-    }
-
-    lockScroll();
+useEffect(() => {
+  if (!open) {
+    setIsVisible(false);
     setDragY(0);
+    restoreScroll();
+    return;
+  }
 
-    let raf1 = 0;
-    let raf2 = 0;
+  lockScroll();
+  setDragY(0);
 
-    raf1 = requestAnimationFrame(() => {
-      raf2 = requestAnimationFrame(() => {
-        setIsVisible(true);
-        measurePanel();
-      });
-    });
+  const raf = requestAnimationFrame(() => {
+    measurePanel();
+    setIsVisible(true);
+  });
 
-    const onResize = () => requestAnimationFrame(measurePanel);
+  const onResize = () => requestAnimationFrame(measurePanel);
+  window.addEventListener("resize", onResize);
 
-    window.addEventListener("resize", onResize);
-
-    return () => {
-      cancelAnimationFrame(raf1);
-      cancelAnimationFrame(raf2);
-      window.removeEventListener("resize", onResize);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  return () => {
+    cancelAnimationFrame(raf);
+    window.removeEventListener("resize", onResize);
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [open]);
 
   useEffect(() => {
     return () => {
