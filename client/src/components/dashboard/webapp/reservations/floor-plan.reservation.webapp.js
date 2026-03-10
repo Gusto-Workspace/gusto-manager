@@ -396,6 +396,11 @@ export default function FloorPlanReservationsWebapp({
           </div>
         ) : (
           <FloorPlanCanvasReservationsComponent
+            key={`${activeRoom?._id || "room"}_${JSON.stringify(activeRoom?.canvas || {})}_${safeArr(activeRoom?.objects).length}_${safeArr(
+              activeRoom?.objects,
+            )
+              .map((o) => `${o.id}_${o.x}_${o.y}_${o.w}_${o.h}_${o.rotation}`)
+              .join("|")}`}
             room={activeRoom}
             reservations={dayReservations}
             tablesCatalog={tablesCatalog}
