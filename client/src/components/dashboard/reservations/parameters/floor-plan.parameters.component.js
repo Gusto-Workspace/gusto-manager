@@ -322,6 +322,8 @@ export default function FloorPlanParametersComponent({
   useEffect(() => {
     if (activeRoom?.name) {
       setRoomName(activeRoom.name);
+      initialRoomNameRef.current = String(activeRoom.name || "");
+      setNameDirty(false);
     }
   }, [activeRoom]);
 
@@ -488,6 +490,7 @@ export default function FloorPlanParametersComponent({
             setRoomName(original);
             setNameDirty(false);
             setEditorDirty(false);
+            setActiveRoomId(null);
             setMode("list");
             resetFpUI();
           }}
@@ -514,6 +517,7 @@ export default function FloorPlanParametersComponent({
                       setLeaveConfirmOpen(true);
                       return;
                     }
+                    setActiveRoomId(null);
                     setMode("list");
                     resetFpUI();
                   }}
@@ -586,6 +590,7 @@ export default function FloorPlanParametersComponent({
 
             <div className="mt-4 min-w-0">
               <RoomEditorParametersComponent
+                key={activeRoomId}
                 restaurantId={restaurantId}
                 setRestaurantData={setRestaurantData}
                 room={activeRoom}
