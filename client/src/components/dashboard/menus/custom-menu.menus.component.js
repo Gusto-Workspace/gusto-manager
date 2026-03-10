@@ -164,7 +164,7 @@ export default function CustomMenuComponent(props) {
                 type="text"
                 placeholder="-"
                 {...register("name", { required: true })}
-                className={`h-11 w-full rounded-xl border bg-white/80 px-3 text-sm outline-none transition ${
+                className={`h-11 w-full rounded-xl border bg-white/80 px-3 text-base outline-none transition ${
                   errors.name
                     ? "border-red/70"
                     : "border-darkBlue/10 focus:border-darkBlue/40"
@@ -188,7 +188,7 @@ export default function CustomMenuComponent(props) {
                 placeholder="-"
                 rows={4}
                 {...register("description")}
-                className="w-full rounded-xl border border-darkBlue/10 bg-white/80 px-3 py-2 text-sm resize-none outline-none transition"
+                className="w-full rounded-xl border border-darkBlue/10 bg-white/80 px-3 py-2 text-base resize-none outline-none transition"
                 disabled={!props.isEditing}
               />
             </div>
@@ -210,7 +210,7 @@ export default function CustomMenuComponent(props) {
                   step="0.01"
                   inputMode="decimal"
                   {...register("price")}
-                  className="h-11 w-full border-l border-darkBlue/10 px-3 text-sm outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  className="h-11 w-full border-l border-darkBlue/10 px-3 text-base outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   disabled={!props.isEditing}
                   onWheel={(e) => e.target.blur()}
                 />
@@ -225,7 +225,7 @@ export default function CustomMenuComponent(props) {
             </h2>
 
             {!hasSelectedDishes ? (
-              <p className="mt-4 text-xs tablet:text-sm text-darkBlue/40 italic text-center">
+              <p className="mt-4 text-xs tablet:text-sm text-darkBlue/40 italic text-center text-pretty">
                 {t("form.custom.labels.selectPlaceholder")}
               </p>
             ) : (

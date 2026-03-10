@@ -211,7 +211,7 @@ export default function AddDrinksComponent(props) {
                 }`}
               />
               {errors.name && (
-                <p className={errorTextCls}>{t("form.errors.required")}</p>
+                <p className={errorTextCls}>Requis</p>
               )}
             </div>
 
@@ -265,7 +265,7 @@ export default function AddDrinksComponent(props) {
               </div>
 
               {errors.price && (
-                <p className={errorTextCls}>{t("form.errors.required")}</p>
+                <p className={errorTextCls}>Requis</p>
               )}
             </div>
           </div>

@@ -195,7 +195,6 @@ export default function ListDishesComponent(props) {
           sensors={sensors}
           modifiers={[
             restrictToVerticalAxis,
-          
             restrictToParentElement,
           ]}
         >

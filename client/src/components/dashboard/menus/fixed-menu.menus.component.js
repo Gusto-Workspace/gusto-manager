@@ -157,6 +157,33 @@ export default function FixedMenuComponent(props) {
   const hasErrorsForCombo = (index) =>
     errorFields.some((error) => error.comboIndex === index);
 
+  function handleCancel() {
+    if (!props.isEditing) {
+      router.back();
+      return;
+    }
+
+    const formattedCombinations =
+      props.menu?.combinations?.map((combo) => ({
+        categories: combo.categories.map((category) => ({ value: category })),
+        price: combo.price?.toString() || "",
+        description: combo.description || "",
+      })) || [];
+
+    reset({
+      name: props.menu?.name || "",
+      description: props.menu?.description || "",
+      combinations:
+        formattedCombinations.length > 0
+          ? formattedCombinations
+          : [{ categories: [{ value: "" }], price: "", description: "" }],
+    });
+
+    setErrorFields([]);
+    setOpenIndex(0);
+    props.setIsEditing(false);
+  }
+
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
       {/* Carte infos générales */}
@@ -181,7 +208,7 @@ export default function FixedMenuComponent(props) {
             type="text"
             placeholder="-"
             {...register("name")}
-            className="h-11 w-full rounded-xl border border-darkBlue/10 bg-white/80 px-3 text-sm outline-none transition"
+            className="h-11 w-full rounded-xl border border-darkBlue/10 bg-white/80 px-3 text-base outline-none transition"
             disabled={!props.isEditing}
           />
         </div>
@@ -199,7 +226,7 @@ export default function FixedMenuComponent(props) {
             type="text"
             placeholder="-"
             {...register("description")}
-            className="h-11 w-full rounded-xl border border-darkBlue/10 bg-white/80 px-3 text-sm outline-none transition"
+            className="h-11 w-full rounded-xl border border-darkBlue/10 bg-white/80 px-3 text-base outline-none transition"
             disabled={!props.isEditing}
           />
         </div>
@@ -215,17 +242,6 @@ export default function FixedMenuComponent(props) {
               {t("Choix des options")}
             </span>
           </div>
-
-          {props.isEditing && (
-            <button
-              type="button"
-              onClick={handleAddCombination}
-              className="inline-flex items-center gap-2 rounded-xl border border-darkBlue/15 bg-darkBlue/5 px-3 py-1.5 text-xs font-medium text-darkBlue hover:bg-darkBlue/10 transition"
-            >
-              <PlusCircle className="h-4 w-4" />
-              <span>{t("buttons.addOption")}</span>
-            </button>
-          )}
         </div>
 
         {combinationFields.map((field, i) => {
@@ -239,18 +255,16 @@ export default function FixedMenuComponent(props) {
           const categoryLabels =
             combo?.categories?.map((c) => c?.value).filter(Boolean) || [];
           const categoriesSummary =
-            categoryLabels.length > 0
-              ? categoryLabels.join(" • ")
-              : "Aucune catégorie sélectionnée";
+            categoryLabels.length > 0 ? categoryLabels.join(" • ") : "";
 
           const priceSummary = combo?.price
             ? `${combo.price} ${currencySymbol}`
-            : "—";
+            : "";
 
           return (
             <div
               key={field.id}
-              className={`flex flex-col rounded-2xl border border-darkBlue/10 px-4 py-3 tablet:px-5 tablet:py-4 bg-white/80 transition-shadow ${
+              className={`flex flex-col rounded-2xl border border-darkBlue/10 px-2 py-3 tablet:px-5 tablet:py-4 bg-white/80 transition-shadow ${
                 hasError ? "border-red/50" : "border-darkBlue/8"
               }`}
             >
@@ -262,19 +276,12 @@ export default function FixedMenuComponent(props) {
               >
                 <div className="flex gap-4 items-center min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="inline-flex h-7 px-3 items-center justify-center rounded-full bg-darkBlue/5 text-[11px] font-semibold uppercase tracking-[0.12em] text-darkBlue">
-                      {t("form.fixed.labels.option")} {i + 1}
+                    <span className="text-nowrap inline-flex h-7 px-3 items-center justify-center rounded-full bg-darkBlue/5 text-[11px] font-semibold uppercase tracking-[0.12em] text-darkBlue">
+                      OPT. {i + 1}
                     </span>
-
-                    {hasError && (
-                      <div className="flex items-center gap-1 text-[11px] text-red">
-                        <AlertCircle className="h-3.5 w-3.5" />
-                        <span>Le prix est requis</span>
-                      </div>
-                    )}
                   </div>
 
-                  <p className="text-[11px] text-darkBlue/60 truncate max-w-[260px]">
+                  <p className="text-[11px] text-darkBlue/60 truncate max-w-[160px]">
                     {categoriesSummary}
                   </p>
                 </div>
@@ -301,7 +308,6 @@ export default function FixedMenuComponent(props) {
                       className="inline-flex items-center gap-1 rounded-full border border-red/20 bg-red/5 px-3 py-1 text-[11px] font-medium text-red hover:bg-red/10 transition"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
-                      <span>{t("buttons.deleteOption")}</span>
                     </div>
                   )}
 
@@ -348,14 +354,14 @@ export default function FixedMenuComponent(props) {
                       type="text"
                       placeholder="-"
                       {...register(`combinations.${i}.description`)}
-                      className="h-11 w-full rounded-xl border border-darkBlue/10 bg-white px-3 text-sm outline-none transition"
+                      className="h-11 w-full rounded-xl border border-darkBlue/10 bg-white px-3 outline-none transition"
                       disabled={!props.isEditing}
                     />
                   </div>
 
                   {/* Prix de l’option */}
                   <div className="flex flex-col gap-1 w-[200px]">
-                    <label className="text-xs font-semibold uppercase tracking-[0.08em] text-darkBlue/70">
+                    <label className="font-semibold uppercase tracking-[0.08em] text-darkBlue/70">
                       {t("form.fixed.labels.price")}
                     </label>
 
@@ -373,12 +379,8 @@ export default function FixedMenuComponent(props) {
                         placeholder="-"
                         step="0.01"
                         {...register(`combinations.${i}.price`, {})}
-                        className={`h-11 border-l px-3 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none
-                          ${
-                            priceHasError
-                              ? "border-red/60 text-red"
-                              : "border-darkBlue/10"
-                          }`}
+                        className={`h-11 w-full border-l px-3 text-base midTablet:text-sm outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none
+    ${priceHasError ? "border-red/60 text-red" : "border-darkBlue/10"}`}
                         disabled={!props.isEditing}
                         onWheel={(e) => e.target.blur()}
                       />
@@ -387,7 +389,7 @@ export default function FixedMenuComponent(props) {
                     {priceHasError && (
                       <p className="mt-1 flex items-center gap-1 text-[11px] text-red">
                         <AlertCircle className="h-3.5 w-3.5" />
-                        <span>{t("form.fixed.labels.priceRequired")}</span>
+                        <span>Requis</span>
                       </p>
                     )}
                   </div>
@@ -404,7 +406,7 @@ export default function FixedMenuComponent(props) {
             className="inline-flex items-center gap-2 rounded-xl border border-darkBlue/15 bg-darkBlue/5 px-3 py-2 text-xs font-medium text-darkBlue hover:bg-darkBlue/10 transition w-fit"
           >
             <PlusCircle className="h-4 w-4" />
-            <span>{t("buttons.addOption")}</span>
+            <span>Ajouter</span>
           </button>
         )}
       </div>
@@ -424,9 +426,7 @@ export default function FixedMenuComponent(props) {
         <button
           type="button"
           className="inline-flex min-w-[120px] items-center justify-center rounded-xl bg-red text-white text-sm font-medium px-4 py-2.5 shadow-sm hover:bg-red/90 transition"
-          onClick={() => {
-            props.isEditing ? props.setIsEditing(false) : router.back();
-          }}
+          onClick={handleCancel}
         >
           {props.isEditing ? t("buttons.cancel") : t("buttons.return")}
         </button>
