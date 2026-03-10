@@ -174,7 +174,7 @@ export default function DayHeaderReservationsComponent(props) {
             </h1>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-1">
             <button
               onClick={props.handleParametersClick}
               className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition h-[40px] w-[40px]"
@@ -205,7 +205,7 @@ export default function DayHeaderReservationsComponent(props) {
         </div>
 
         {/* Ligne 2 */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => {

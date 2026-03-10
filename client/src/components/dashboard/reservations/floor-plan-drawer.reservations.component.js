@@ -271,16 +271,27 @@ export default function FloorPlanDrawerReservationsComponent({
   useEffect(() => {
     if (!open) return;
 
-    if (isDayContext) {
-      if (!isTodayContext) {
-        setLiveMode(false);
-      }
-      setSelectedTime((prev) => prev || timeOptions[0] || "");
-    } else {
+    if (!isDayContext) {
+      // Vue month / calendar => temps réel par défaut
       setLiveMode(true);
       setSelectedTime("");
+      setSelectedTableState(null);
+      return;
     }
-  }, [open, isDayContext, isTodayContext, timeOptions]);
+
+    if (isTodayContext) {
+      // Vue day sur aujourd'hui => temps réel par défaut
+      setLiveMode(true);
+      setSelectedTime("");
+      setSelectedTableState(null);
+      return;
+    }
+
+    // Vue day sur une autre date => premier créneau par défaut
+    setLiveMode(false);
+    setSelectedTime(timeOptions[0] || "");
+    setSelectedTableState(null);
+  }, [open, contextDateKey, isDayContext, isTodayContext, timeOptions]);
 
   useEffect(() => {
     if (!open) return;

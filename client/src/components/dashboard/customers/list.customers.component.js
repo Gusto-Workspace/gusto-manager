@@ -471,7 +471,7 @@ export default function ListCustomersComponent() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Rechercher (nom, email, téléphone)…"
-              className="w-full outline-none text-sm text-darkBlue placeholder:text-darkBlue/40 bg-transparent pr-8"
+              className="w-full outline-none text-sm text-darkBlue placeholder:text-darkBlue/40 bg-white pr-8"
             />
 
             {query && (
@@ -494,7 +494,7 @@ export default function ListCustomersComponent() {
               <select
                 value={sourceFilter}
                 onChange={(e) => setSourceFilter(e.target.value)}
-                className="bg-transparent outline-none text-sm text-darkBlue"
+                className="bg-white outline-none text-sm text-darkBlue"
               >
                 <option value="all">Tous</option>
                 <option value="reservations">Réservations</option>
@@ -509,7 +509,7 @@ export default function ListCustomersComponent() {
             <select
               value={tagFilter}
               onChange={(e) => setTagFilter(e.target.value)}
-              className="bg-transparent outline-none text-sm text-darkBlue"
+              className="bg-white outline-none text-sm text-darkBlue"
             >
               <option value="all">Tous</option>
               <option value="very_regular">Très régulier</option>

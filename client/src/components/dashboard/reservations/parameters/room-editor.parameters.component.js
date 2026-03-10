@@ -2636,7 +2636,7 @@ export default function RoomEditorComponent({
         ref={wrapRef}
         className="
     mt-2 rounded-2xl overflow-hidden border border-darkBlue/10 bg-[#5d6675] w-full
-    h-[clamp(320px,85vh,820px)]
+    h-[520px]
     midTablet:h-[clamp(320px,80vh,820px)]
   "
       >

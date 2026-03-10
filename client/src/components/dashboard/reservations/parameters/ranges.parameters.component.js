@@ -167,7 +167,7 @@ export default function RangesParametersComponent({
           <div className="min-w-0">
             <p className={sectionTitle}>
               <Ban className="size-4 shrink-0 opacity-60" />
-              Mise en pause des réservations
+              Mise en pause
             </p>
             <p className={hint}>
               Ajoute des plages où le site ne peut plus prendre temporairement
@@ -241,7 +241,7 @@ export default function RangesParametersComponent({
             disabled={blockedAdding || !!blockedDeletingId}
             className={[
               "inline-flex items-center justify-center gap-2 rounded-2xl px-5 h-11",
-              "text-sm font-semibold text-white",
+              "text-sm font-semibold text-white w-full midTablet:w-fit",
               "bg-blue hover:bg-blue/90 active:scale-[0.98] transition",
               blockedAdding ? "opacity-50 cursor-not-allowed" : "",
             ].join(" ")}
@@ -264,8 +264,8 @@ export default function RangesParametersComponent({
 
         <div className="flex flex-col gap-3">
           {blockedRanges.length === 0 ? (
-            <p className="text-sm text-darkBlue/55">
-              Aucune plage de pause configurée.
+            <p className="text-sm text-darkBlue/55 mx-auto midTablet:mx-0">
+              Aucune pause configurée.
             </p>
           ) : (
             blockedRanges

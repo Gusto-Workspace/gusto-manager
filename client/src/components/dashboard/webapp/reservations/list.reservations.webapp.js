@@ -13,6 +13,7 @@ import CalendarToolbarReservationsWebapp from "./calendar-toolbar.reservations.w
 import CalendarMonthReservationsWebapp from "./calendar-month.reservations.webapp";
 import DayHeaderReservationsWebapp from "./day-header.reservations.webapp";
 import DayListReservationsWebapp from "./day-list.reservations.webapp";
+import FloorPlanDrawerReservationsComponent from "../../reservations/floor-plan-drawer.reservations.component";
 
 export default function ListReservationsWebapp(props) {
   const { t } = useTranslation("reservations");
@@ -40,6 +41,7 @@ export default function ListReservationsWebapp(props) {
 
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const [disableDayClick, setDisableDayClick] = useState(false);
+  const [isFloorPlanDrawerOpen, setIsFloorPlanDrawerOpen] = useState(false);
 
   const closeKeyboardOnly = useCallback(() => {
     setDisableDayClick(true);
@@ -330,6 +332,14 @@ export default function ListReservationsWebapp(props) {
     setError(null);
   }
 
+  function handleOpenFloorPlanDrawer() {
+    setIsFloorPlanDrawerOpen(true);
+  }
+
+  function handleCloseFloorPlanDrawer() {
+    setIsFloorPlanDrawerOpen(false);
+  }
+
   const updateReservationStatus = useCallback(
     (newStatus) => {
       if (!selectedReservation) return;
@@ -584,6 +594,7 @@ export default function ListReservationsWebapp(props) {
             searchTerm={searchTerm}
             handleSearchChangeDay={handleSearchChangeDay}
             setIsKeyboardOpen={setIsKeyboardOpen}
+            handleOpenFloorPlanDrawer={handleOpenFloorPlanDrawer}
           />
           {/* Liste du statut actif */}
           <DayListReservationsWebapp
@@ -605,6 +616,15 @@ export default function ListReservationsWebapp(props) {
         isProcessing={isProcessing}
         error={error}
         t={t}
+      />
+
+      <FloorPlanDrawerReservationsComponent
+        open={isFloorPlanDrawerOpen}
+        onClose={handleCloseFloorPlanDrawer}
+        restaurantId={props.restaurantData?._id}
+        restaurantData={props.restaurantData}
+        reservations={props.reservations || []}
+        selectedDay={selectedDay}
       />
     </section>
   );

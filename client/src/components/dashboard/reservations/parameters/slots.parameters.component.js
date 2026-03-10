@@ -117,7 +117,7 @@ export default function SlotsParametersComponent({
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="font-semibold text-darkBlue">
-                  Acceptation automatique
+                  Accepter automatiquement les demandes de réservations de votre site internet
                 </p>
                 <p className="text-xs text-darkBlue/50 mt-1">
                   Les réservations du site passent directement en “Confirmée”.
