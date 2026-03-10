@@ -397,6 +397,106 @@ function getTableDimensions(seatsCount) {
   return { w, h };
 }
 
+function degToRad(deg) {
+  return (Number(deg || 0) * Math.PI) / 180;
+}
+
+function rotatePoint(px, py, cx, cy, rad) {
+  const dx = px - cx;
+  const dy = py - cy;
+
+  return {
+    x: cx + dx * Math.cos(rad) - dy * Math.sin(rad),
+    y: cy + dx * Math.sin(rad) + dy * Math.cos(rad),
+  };
+}
+
+function aabbFromPoints(points) {
+  if (!Array.isArray(points) || points.length === 0) {
+    return { x1: 0, y1: 0, x2: 0, y2: 0 };
+  }
+
+  let minX = points[0].x;
+  let minY = points[0].y;
+  let maxX = points[0].x;
+  let maxY = points[0].y;
+
+  for (let i = 1; i < points.length; i++) {
+    const p = points[i];
+    if (p.x < minX) minX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y > maxY) maxY = p.y;
+  }
+
+  return { x1: minX, y1: minY, x2: maxX, y2: maxY };
+}
+
+function getRotatedRectAABB(x, y, w, h, rotationDeg = 0) {
+  const rad = degToRad(rotationDeg);
+
+  if (!rad) {
+    return { x1: x, y1: y, x2: x + w, y2: y + h };
+  }
+
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+
+  const corners = [
+    rotatePoint(x, y, cx, cy, rad),
+    rotatePoint(x + w, y, cx, cy, rad),
+    rotatePoint(x + w, y + h, cx, cy, rad),
+    rotatePoint(x, y + h, cx, cy, rad),
+  ];
+
+  return aabbFromPoints(corners);
+}
+
+function getRotatedLineAABB(x, y, relPoints, rotationDeg = 0, strokeWidth = 8) {
+  const p = Array.isArray(relPoints) ? relPoints : [];
+  if (p.length < 4) {
+    return { x1: x, y1: y, x2: x, y2: y };
+  }
+
+  const rad = degToRad(rotationDeg);
+
+  const p1 = { x: x + Number(p[0] || 0), y: y + Number(p[1] || 0) };
+  const p2 = { x: x + Number(p[2] || 0), y: y + Number(p[3] || 0) };
+
+  let pts = [p1, p2];
+
+  if (rad) {
+    const cx = x;
+    const cy = y;
+    pts = [
+      rotatePoint(p1.x, p1.y, cx, cy, rad),
+      rotatePoint(p2.x, p2.y, cx, cy, rad),
+    ];
+  }
+
+  const bb = aabbFromPoints(pts);
+  const pad = Number(strokeWidth || 8) / 2;
+
+  return {
+    x1: bb.x1 - pad,
+    y1: bb.y1 - pad,
+    x2: bb.x2 + pad,
+    y2: bb.y2 + pad,
+  };
+}
+
+function getObjectVisualBounds(o, tablesCatalog) {
+  return getAABB(o, tablesCatalog);
+}
+
+function getObjectVisualCenter(o, tablesCatalog) {
+  const bb = getObjectVisualBounds(o, tablesCatalog);
+  return {
+    x: (bb.x1 + bb.x2) / 2,
+    y: (bb.y1 + bb.y2) / 2,
+  };
+}
+
 function getAABB(o, tablesCatalog) {
   if (!o) return { x1: 0, y1: 0, x2: 0, y2: 0 };
 
@@ -408,7 +508,9 @@ function getAABB(o, tablesCatalog) {
     const { w, h } = getTableDimensions(seats);
     const x = Number(o.x || 0);
     const y = Number(o.y || 0);
-    return { x1: x, y1: y, x2: x + w, y2: y + h };
+    const rotation = Number(o.rotation || 0);
+
+    return getRotatedRectAABB(x, y, w, h, rotation);
   }
 
   if (o.type === "decor") {
@@ -417,36 +519,35 @@ function getAABB(o, tablesCatalog) {
       const y = Number(o.y || 0);
       const w = Number(o.w || 0);
       const h = Number(o.h || 0);
-      return { x1: x, y1: y, x2: x + w, y2: y + h };
+      const rotation = Number(o.rotation || 0);
+
+      return getRotatedRectAABB(x, y, w, h, rotation);
     }
 
     if (o.shape === "circle") {
       const x = Number(o.x || 0);
       const y = Number(o.y || 0);
       const r = Number(o.r || 0);
+
       return { x1: x - r, y1: y - r, x2: x + r, y2: y + r };
     }
 
     if (o.shape === "line") {
-      const p = Array.isArray(o.points) ? o.points : [];
-      if (p.length >= 4) {
-        const x1 = Number(p[0] || 0);
-        const y1 = Number(p[1] || 0);
-        const x2 = Number(p[2] || 0);
-        const y2 = Number(p[3] || 0);
-        const minX = Math.min(x1, x2);
-        const minY = Math.min(y1, y2);
-        const maxX = Math.max(x1, x2);
-        const maxY = Math.max(y1, y2);
-        const sw = Number(o?.style?.strokeWidth || 8);
-        const pad = sw / 2;
-        return {
-          x1: minX - pad,
-          y1: minY - pad,
-          x2: maxX + pad,
-          y2: maxY + pad,
-        };
-      }
+      const pts = Array.isArray(o.points) ? o.points : [];
+      const x = Number(pts[0] || 0);
+      const y = Number(pts[1] || 0);
+      const rel =
+        pts.length >= 4
+          ? [0, 0, Number(pts[2] || 0) - x, Number(pts[3] || 0) - y]
+          : [0, 0, 0, 0];
+
+      return getRotatedLineAABB(
+        x,
+        y,
+        rel,
+        Number(o.rotation || 0),
+        Number(o?.style?.strokeWidth || 8),
+      );
     }
   }
 
@@ -1609,11 +1710,10 @@ export default function FloorPlanCanvasReservationsComponent({
       selectedTableState.theoreticalReservation || null;
     const realReservation = selectedTableState.realReservation || null;
     const tableStatus = selectedTableState.tableStatus || "free";
-    const seatsCount = Number(ref?.seats || 0);
-    const { w, h } = getTableDimensions(seatsCount);
+    const center = getObjectVisualCenter(selectedTableState.object, catalog);
 
-    const worldX = Number(selectedTableState.object.x || 0) + w / 2;
-    const worldY = Number(selectedTableState.object.y || 0) + h / 2;
+    const worldX = center.x;
+    const worldY = center.y;
 
     const screenX = pos.x + worldX * scale;
     const screenY = pos.y + worldY * scale;

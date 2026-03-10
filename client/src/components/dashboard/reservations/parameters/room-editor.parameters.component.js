@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import {
   Stage,
@@ -420,6 +420,8 @@ export default function RoomEditorComponent({
 
   const [saveError, setSaveError] = useState("");
 
+  const [selectedAnchor, setSelectedAnchor] = useState(null);
+
   const usedOtherRooms = useMemo(() => {
     if (placedTableRefIdsOtherRooms instanceof Set)
       return placedTableRefIdsOtherRooms;
@@ -505,6 +507,219 @@ export default function RoomEditorComponent({
    * COLLISION / SNAP HELPERS
    * =========================== */
 
+  function aabbFromPoints(points) {
+    if (!Array.isArray(points) || points.length === 0) {
+      return { x1: 0, y1: 0, x2: 0, y2: 0 };
+    }
+
+    let minX = points[0].x;
+    let minY = points[0].y;
+    let maxX = points[0].x;
+    let maxY = points[0].y;
+
+    for (let i = 1; i < points.length; i++) {
+      const p = points[i];
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y > maxY) maxY = p.y;
+    }
+
+    return { x1: minX, y1: minY, x2: maxX, y2: maxY };
+  }
+
+  function getRotatedRectAABB(x, y, w, h, rotationDeg = 0) {
+    const rad = degToRad(rotationDeg);
+
+    if (!rad) {
+      return { x1: x, y1: y, x2: x + w, y2: y + h };
+    }
+
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+
+    const corners = [
+      rotatePoint(x, y, cx, cy, rad),
+      rotatePoint(x + w, y, cx, cy, rad),
+      rotatePoint(x + w, y + h, cx, cy, rad),
+      rotatePoint(x, y + h, cx, cy, rad),
+    ];
+
+    return aabbFromPoints(corners);
+  }
+
+  function getRotatedLineAABB(
+    x,
+    y,
+    relPoints,
+    rotationDeg = 0,
+    strokeWidth = 8,
+  ) {
+    const p = Array.isArray(relPoints) ? relPoints : [];
+    if (p.length < 4) {
+      return { x1: x, y1: y, x2: x, y2: y };
+    }
+
+    const rad = degToRad(rotationDeg);
+
+    const p1 = { x: x + Number(p[0] || 0), y: y + Number(p[1] || 0) };
+    const p2 = { x: x + Number(p[2] || 0), y: y + Number(p[3] || 0) };
+
+    let pts = [p1, p2];
+
+    if (rad) {
+      const cx = x;
+      const cy = y;
+      pts = [
+        rotatePoint(p1.x, p1.y, cx, cy, rad),
+        rotatePoint(p2.x, p2.y, cx, cy, rad),
+      ];
+    }
+
+    const bb = aabbFromPoints(pts);
+    const pad = Number(strokeWidth || 8) / 2;
+
+    return {
+      x1: bb.x1 - pad,
+      y1: bb.y1 - pad,
+      x2: bb.x2 + pad,
+      y2: bb.y2 + pad,
+    };
+  }
+
+  function getAnchorForObject(o) {
+    if (!o) return null;
+
+    if (o.type === "table") {
+      return getTooltipAnchorForRotatedRect(
+        Number(o.w || 0),
+        Number(o.h || 0),
+        Number(o.rotation || 0),
+        26,
+      );
+    }
+
+    if (o.type === "decor") {
+      if (o.shape === "rect") {
+        return getTooltipAnchorForRotatedRect(
+          Number(o.w || 0),
+          Number(o.h || 0),
+          Number(o.rotation || 0),
+          26,
+        );
+      }
+
+      if (o.shape === "circle") {
+        const r = Number(o.r || 16);
+        const BTN_R = 16;
+        const GAP = 10;
+        const totalH = BTN_R * 2 * 2 + GAP;
+
+        return {
+          xOff: r + 26,
+          startY: -totalH / 2 + BTN_R,
+        };
+      }
+
+      if (o.shape === "line") {
+        const pts = safeArr(o.points);
+        if (pts.length < 4) return null;
+
+        const cx = (Number(pts[0]) + Number(pts[2])) / 2;
+        const cy = (Number(pts[1]) + Number(pts[3])) / 2;
+        const rel = [pts[0] - cx, pts[1] - cy, pts[2] - cx, pts[3] - cy];
+
+        return getTooltipAnchorForRotatedLine(rel, Number(o.rotation || 0), {
+          strokeWidth: Number(o?.style?.strokeWidth || 8),
+          gap: 26,
+          tickSize: o.decorKind === "window" ? 10 : 0,
+          arcRadius:
+            o.decorKind === "door" ? Number(o?.meta?.arcRadius || 34) : 0,
+        });
+      }
+    }
+
+    return null;
+  }
+
+  function getTooltipAnchorForRotatedRect(w, h, rotationDeg = 0, gap = 26) {
+    const bb = getRotatedRectAABB(0, 0, w, h, rotationDeg);
+    const centerY = (bb.y1 + bb.y2) / 2;
+
+    const BTN_R = 16;
+    const GAP = 10;
+    const totalH = BTN_R * 2 * 2 + GAP;
+
+    return {
+      xOff: bb.x2 + gap,
+      startY: centerY - totalH / 2 + BTN_R,
+    };
+  }
+
+  function rotateLocalPoints(points, rotationDeg = 0, cx = 0, cy = 0) {
+    const rad = degToRad(rotationDeg);
+    if (!rad) return points;
+
+    return points.map((p) => rotatePoint(p.x, p.y, cx, cy, rad));
+  }
+
+  function getTooltipAnchorForRotatedLine(
+    relPoints,
+    rotationDeg = 0,
+    { strokeWidth = 8, gap = 26, tickSize = 0, arcRadius = 0 } = {},
+  ) {
+    const p = Array.isArray(relPoints) ? relPoints : [0, 0, 0, 0];
+    const x1 = Number(p[0] || 0);
+    const y1 = Number(p[1] || 0);
+    const x2 = Number(p[2] || 0);
+    const y2 = Number(p[3] || 0);
+
+    const pad = Number(strokeWidth || 8) / 2;
+
+    const samplePoints = [
+      { x: x1, y: y1 },
+      { x: x2, y: y2 },
+
+      // épaisseur de ligne
+      { x: x1 - pad, y: y1 - pad },
+      { x: x1 + pad, y: y1 + pad },
+      { x: x2 - pad, y: y2 - pad },
+      { x: x2 + pad, y: y2 + pad },
+    ];
+
+    // fenêtre : petits ticks perpendiculaires
+    if (tickSize > 0) {
+      samplePoints.push(
+        { x: x1, y: y1 - tickSize },
+        { x: x1, y: y1 + tickSize },
+        { x: x2, y: y2 - tickSize },
+        { x: x2, y: y2 + tickSize },
+      );
+    }
+
+    // porte : on approxime l’arc par un carré englobant autour du point de départ
+    if (arcRadius > 0) {
+      samplePoints.push(
+        { x: x1 - arcRadius, y: y1 - arcRadius },
+        { x: x1 + arcRadius, y: y1 - arcRadius },
+        { x: x1 + arcRadius, y: y1 + arcRadius },
+        { x: x1 - arcRadius, y: y1 + arcRadius },
+      );
+    }
+
+    const rotated = rotateLocalPoints(samplePoints, rotationDeg, 0, 0);
+    const bb = aabbFromPoints(rotated);
+
+    const BTN_R = 16;
+    const GAP = 10;
+    const totalH = BTN_R * 2 * 2 + GAP;
+
+    return {
+      xOff: bb.x2 + gap,
+      startY: (bb.y1 + bb.y2) / 2 - totalH / 2 + BTN_R,
+    };
+  }
+
   function getAABB(o) {
     if (!o) return { x1: 0, y1: 0, x2: 0, y2: 0 };
 
@@ -513,8 +728,9 @@ export default function RoomEditorComponent({
       const y = Number(o.y || 0);
       const w = Number(o.w || 0);
       const h = Number(o.h || 0);
-      // ✅ collision = rectangle réel uniquement (PAS les chaises)
-      return { x1: x, y1: y, x2: x + w, y2: y + h };
+      const rotation = Number(o.rotation || 0);
+
+      return getRotatedRectAABB(x, y, w, h, rotation);
     }
 
     if (o.type === "decor") {
@@ -523,7 +739,9 @@ export default function RoomEditorComponent({
         const y = Number(o.y || 0);
         const w = Number(o.w || 0);
         const h = Number(o.h || 0);
-        return { x1: x, y1: y, x2: x + w, y2: y + h };
+        const rotation = Number(o.rotation || 0);
+
+        return getRotatedRectAABB(x, y, w, h, rotation);
       }
 
       if (o.shape === "circle") {
@@ -534,25 +752,21 @@ export default function RoomEditorComponent({
       }
 
       if (o.shape === "line") {
-        const p = Array.isArray(o.points) ? o.points : [];
-        if (p.length >= 4) {
-          const x1 = Number(p[0] || 0);
-          const y1 = Number(p[1] || 0);
-          const x2 = Number(p[2] || 0);
-          const y2 = Number(p[3] || 0);
-          const minX = Math.min(x1, x2);
-          const minY = Math.min(y1, y2);
-          const maxX = Math.max(x1, x2);
-          const maxY = Math.max(y1, y2);
-          const sw = Number(o?.style?.strokeWidth || 8);
-          const pad = sw / 2; // épaisseur approx de la ligne
-          return {
-            x1: minX - pad,
-            y1: minY - pad,
-            x2: maxX + pad,
-            y2: maxY + pad,
-          };
-        }
+        const pts = Array.isArray(o.points) ? o.points : [];
+        const x = Number(pts[0] || 0);
+        const y = Number(pts[1] || 0);
+        const rel =
+          pts.length >= 4
+            ? [0, 0, Number(pts[2] || 0) - x, Number(pts[3] || 0) - y]
+            : [0, 0, 0, 0];
+
+        return getRotatedLineAABB(
+          x,
+          y,
+          rel,
+          Number(o.rotation || 0),
+          Number(o?.style?.strokeWidth || 8),
+        );
       }
     }
 
@@ -733,6 +947,7 @@ export default function RoomEditorComponent({
    * =========================== */
 
   useEffect(() => {
+    didInitialFitRef.current = false;
     didFitAfterFirstObjectRef.current = false;
     hasUserMovedViewRef.current = false;
     prevObjectsLenRef.current = safeArr(room?.objects).length;
@@ -742,13 +957,14 @@ export default function RoomEditorComponent({
     const initObjs = safeArr(room?.objects);
     setObjects(initObjs);
     setSelectedId(null);
+    setSelectedAnchor(null);
 
     const snap = stableRoomSnap(initObjs, canvasW, canvasH, grid);
     initialSnapRef.current = snap;
     if (typeof onDirtyChange === "function") onDirtyChange(false);
   }, [room?._id, canvasW, canvasH, grid]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!room?._id) return;
     if (!stageSize.w || !stageSize.h) return;
     if (didInitialFitRef.current) return;
@@ -756,11 +972,7 @@ export default function RoomEditorComponent({
     didInitialFitRef.current = true;
 
     const initObjs = safeArr(room?.objects);
-
-    // ✅ important: fait ça au prochain frame, après le render + Stage prêt
-    requestAnimationFrame(() => {
-      applyInitialView(initObjs);
-    });
+    applyInitialView(initObjs);
   }, [room?._id, stageSize.w, stageSize.h, isMobile]);
 
   useEffect(() => {
@@ -944,6 +1156,11 @@ export default function RoomEditorComponent({
 
   function selectObject(id) {
     if (!id) return;
+
+    const target = objects.find((o) => String(o.id) === String(id)) || null;
+    const anchor = getAnchorForObject(target);
+
+    setSelectedAnchor(anchor);
     setSelectedId(id);
     bringToFront(id);
   }
@@ -1028,6 +1245,7 @@ export default function RoomEditorComponent({
     const nextPlaced = { ...candidate, x: best.x, y: best.y };
 
     setObjects((prev) => [...prev, nextPlaced]);
+    setSelectedAnchor(getAnchorForObject(nextPlaced));
     setSelectedId(nextPlaced.id);
   }
 
@@ -1179,6 +1397,7 @@ export default function RoomEditorComponent({
       }
 
       setSelectedId(null);
+      setSelectedAnchor(null);
       setSelectedRefId("");
       setDeleteCatalogOpen(false);
       setSaveError("");
@@ -1383,6 +1602,7 @@ export default function RoomEditorComponent({
     })();
 
     setObjects((prev) => [...prev, placed]);
+    setSelectedAnchor(getAnchorForObject(placed));
     setSelectedId(placed.id);
     setDecorModalOpen(false);
   }
@@ -1623,6 +1843,7 @@ export default function RoomEditorComponent({
       pinchRef.current.active = false;
       hasUserMovedViewRef.current = true;
       setSelectedId(null);
+      setSelectedAnchor(null);
       setIsPanning(true);
 
       const { x, y } = getClientXY(evt);
@@ -1735,7 +1956,10 @@ export default function RoomEditorComponent({
   function removeObjectById(id, e) {
     if (e) e.cancelBubble = true;
     setObjects((prev) => prev.filter((o) => String(o.id) !== String(id)));
-    if (String(selectedId) === String(id)) setSelectedId(null);
+    if (String(selectedId) === String(id)) {
+      setSelectedId(null);
+      setSelectedAnchor(null);
+    }
   }
 
   function ActionButtons({ xOff, startY, onRotate, onDelete }) {
@@ -1994,11 +2218,9 @@ export default function RoomEditorComponent({
 
         {isSelected &&
           (() => {
-            const BTN_R = 16; // rayon bouton
-            const GAP = 10; // gap entre les deux
-            const totalH = BTN_R * 2 * 2 + GAP; // 2 boutons
-            const startY = h / 2 - totalH / 2 + BTN_R; // centre vertical
-            const xOff = w + 26; // ✅ un peu plus à droite
+            const xOff = selectedAnchor?.xOff ?? w + 26;
+            const startY =
+              selectedAnchor?.startY ?? h / 2 - (16 * 2 * 2 + 10) / 2 + 16;
 
             return (
               <Group x={xOff} y={0}>
@@ -2013,13 +2235,11 @@ export default function RoomEditorComponent({
                   <Circle
                     x={0}
                     y={0}
-                    radius={BTN_R}
+                    radius={16}
                     fill="rgba(255,255,255,0.95)"
                     stroke="rgba(19,30,54,0.25)"
                     strokeWidth={1}
                   />
-
-                  {/* ✅ icône centrée + plus grosse */}
                   {rotateImg && (
                     <KonvaImage
                       image={rotateImg}
@@ -2035,7 +2255,7 @@ export default function RoomEditorComponent({
                 {/* TRASH */}
                 <Group
                   x={0}
-                  y={startY + BTN_R * 2 + GAP}
+                  y={startY + 16 * 2 + 10}
                   onMouseDown={(e) => (e.cancelBubble = true)}
                   onClick={(e) => removeObjectById(obj.id, e)}
                   onTap={(e) => removeObjectById(obj.id, e)}
@@ -2043,13 +2263,11 @@ export default function RoomEditorComponent({
                   <Circle
                     x={0}
                     y={0}
-                    radius={BTN_R}
-                    fill="rgba(255,59,48,0.95)" // ✅ rouge
+                    radius={16}
+                    fill="rgba(255,59,48,0.95)"
                     stroke="rgba(255,59,48,1)"
                     strokeWidth={1}
                   />
-
-                  {/* ✅ lucide trash centré */}
                   {trashImg && (
                     <KonvaImage
                       image={trashImg}
@@ -2222,13 +2440,10 @@ export default function RoomEditorComponent({
           {/* ✅ Boutons : hors du Group rotaté => ils ne tournent plus */}
           {isSelected &&
             (() => {
-              const BTN_R = 16;
-              const GAP = 10;
-              const totalH = BTN_R * 2 * 2 + GAP;
-              const startY = -totalH / 2 + BTN_R;
-
-              const halfW = Math.max(Math.abs(rel[0]), Math.abs(rel[2]));
-              const xOff = halfW + 26;
+              const xOff =
+                selectedAnchor?.xOff ??
+                Math.max(Math.abs(rel[0]), Math.abs(rel[2])) + 26;
+              const startY = selectedAnchor?.startY ?? 0;
 
               return (
                 <ActionButtons
@@ -2617,13 +2832,9 @@ export default function RoomEditorComponent({
         </Group>
         {isSelected &&
           (() => {
-            const BTN_R = 16;
-            const GAP = 10;
-            const totalH = BTN_R * 2 * 2 + GAP;
-            const startY = h / 2 - totalH / 2 + BTN_R;
-
-            const xOff = w + 26;
-
+            const xOff = selectedAnchor?.xOff ?? w + 26;
+            const startY =
+              selectedAnchor?.startY ?? h / 2 - (16 * 2 * 2 + 10) / 2 + 16;
             return (
               <ActionButtons
                 xOff={xOff}
@@ -2746,35 +2957,39 @@ export default function RoomEditorComponent({
     midTablet:h-[clamp(320px,80vh,820px)]
   "
       >
-        <Stage
-          ref={stageRef}
-          width={stageSize.w}
-          height={stageSize.h}
-          scaleX={scale}
-          scaleY={scale}
-          x={pos.x}
-          y={pos.y}
-          onWheel={handleWheel}
-          onMouseDown={startPan}
-          onMouseMove={movePan}
-          onMouseUp={stopPan}
-          onMouseLeave={stopPan}
-          onTouchStart={startPan}
-          onTouchMove={movePan}
-          onTouchEnd={stopPan}
-          onTouchCancel={stopPan}
-        >
-          <Layer>
-            {gridLines}
+        {stageSize.w > 0 && stageSize.h > 0 && (
+          <Stage
+            ref={stageRef}
+            width={stageSize.w}
+            height={stageSize.h}
+            scaleX={scale}
+            scaleY={scale}
+            x={pos.x}
+            y={pos.y}
+            onWheel={handleWheel}
+            onMouseDown={startPan}
+            onMouseMove={movePan}
+            onMouseUp={stopPan}
+            onMouseLeave={stopPan}
+            onTouchStart={startPan}
+            onTouchMove={movePan}
+            onTouchEnd={stopPan}
+            onTouchCancel={stopPan}
+          >
+            <Layer>
+              {gridLines}
 
-            {objects.map((o) => {
-              if (!o?.type) return null;
-              if (o.type === "table") return <TableShape key={o.id} obj={o} />;
-              if (o.type === "decor") return <DecorShape key={o.id} obj={o} />;
-              return null;
-            })}
-          </Layer>
-        </Stage>
+              {objects.map((o) => {
+                if (!o?.type) return null;
+                if (o.type === "table")
+                  return <TableShape key={o.id} obj={o} />;
+                if (o.type === "decor")
+                  return <DecorShape key={o.id} obj={o} />;
+                return null;
+              })}
+            </Layer>
+          </Stage>
+        )}
       </div>
 
       {createTableOpen && (

@@ -126,8 +126,10 @@ export default function FloorPlanDrawerReservationsComponent({
   const isTodayContext = isSameDay(contextDate, new Date());
   const showLiveToggle = !isDayContext || isTodayContext;
 
-  const [isTabletUp, setIsTabletUp] = useState(false);
-
+  const [isTabletUp, setIsTabletUp] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia("(min-width: 768px)").matches;
+  });
   const panelRef = useRef(null);
   const scrollRef = useRef(null);
   const [panelH, setPanelH] = useState(null);
@@ -189,6 +191,10 @@ export default function FloorPlanDrawerReservationsComponent({
       } else {
         setLiveMode(true);
         setSelectedTime("");
+      }
+
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = 0;
       }
 
       restoreScroll();
@@ -264,23 +270,16 @@ export default function FloorPlanDrawerReservationsComponent({
     lockScroll();
     setDragY(0);
 
-    let raf1 = 0;
-    let raf2 = 0;
-
-    raf1 = requestAnimationFrame(() => {
-      raf2 = requestAnimationFrame(() => {
-        setIsVisible(true);
-        measurePanel();
-      });
+    const raf = requestAnimationFrame(() => {
+      measurePanel();
+      setIsVisible(true);
     });
 
     const onResize = () => requestAnimationFrame(measurePanel);
-
     window.addEventListener("resize", onResize);
 
     return () => {
-      cancelAnimationFrame(raf1);
-      cancelAnimationFrame(raf2);
+      cancelAnimationFrame(raf);
       window.removeEventListener("resize", onResize);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -427,9 +426,6 @@ export default function FloorPlanDrawerReservationsComponent({
     if (!open) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
 
-    const scrollTop = scrollRef.current?.scrollTop || 0;
-    if (scrollTop > 0) return;
-
     dragStateRef.current.active = true;
     dragStateRef.current.startY = e.clientY;
     dragStateRef.current.lastY = e.clientY;
@@ -556,7 +552,7 @@ export default function FloorPlanDrawerReservationsComponent({
         {/* Scrollable content: tout le drawer scroll */}
         <div
           ref={scrollRef}
-          className="flex-1 min-h-0 overflow-y-auto hide-scrollbar overscroll-contain"
+          className="flex-1 min-h-0 overflow-y-auto hide-scrollbar overscroll-none"
         >
           {/* Header */}
           <div className="border-b border-darkBlue/10">
