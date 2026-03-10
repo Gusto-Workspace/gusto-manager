@@ -9,6 +9,8 @@ const FloorPlanCanvasReservationsComponent = dynamic(
   { ssr: false },
 );
 
+const FLOOR_PLAN_ROOMS_CACHE = new Map();
+
 function safeArr(a) {
   return Array.isArray(a) ? a : [];
 }
@@ -30,6 +32,23 @@ function isSameDay(a, b) {
     da.getMonth() === db.getMonth() &&
     da.getDate() === db.getDate()
   );
+}
+
+function getInitialFloorPlanState(restaurantId) {
+  const cached = restaurantId
+    ? FLOOR_PLAN_ROOMS_CACHE.get(String(restaurantId))
+    : null;
+
+  const rooms = safeArr(cached?.rooms);
+  const floorPlanEnabled = Boolean(cached?.enabled);
+  const activeRoomId = rooms.length ? String(rooms[0]._id) : "";
+
+  return {
+    rooms,
+    floorPlanEnabled,
+    activeRoomId,
+    roomsResolved: Boolean(cached),
+  };
 }
 
 function StatusLegend() {
@@ -69,15 +88,26 @@ export default function FloorPlanReservationsWebapp({
   const openSidebar = () => setSidebarOpen(true);
   const closeSidebar = () => setSidebarOpen(false);
 
+  const initialFloorPlanState = useMemo(
+    () => getInitialFloorPlanState(restaurantId),
+    [restaurantId],
+  );
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [rooms, setRooms] = useState([]);
-  const [floorPlanEnabled, setFloorPlanEnabled] = useState(false);
-  const [activeRoomId, setActiveRoomId] = useState("");
+  const [rooms, setRooms] = useState(initialFloorPlanState.rooms);
+  const [floorPlanEnabled, setFloorPlanEnabled] = useState(
+    initialFloorPlanState.floorPlanEnabled,
+  );
+  const [activeRoomId, setActiveRoomId] = useState(
+    initialFloorPlanState.activeRoomId,
+  );
   const [liveMode, setLiveMode] = useState(true);
   const [selectedTime, setSelectedTime] = useState("");
   const [selectedTableState, setSelectedTableState] = useState(null);
-  const [shouldRenderCanvas, setShouldRenderCanvas] = useState(false);
+  const [roomsResolved, setRoomsResolved] = useState(
+    initialFloorPlanState.roomsResolved,
+  );
 
   const tablesCatalog = restaurantData?.reservations?.parameters?.tables || [];
   const reservationParameters = restaurantData?.reservations?.parameters || {};
@@ -114,22 +144,30 @@ export default function FloorPlanReservationsWebapp({
   }, [rooms, activeRoomId]);
 
   useEffect(() => {
-    setShouldRenderCanvas(false);
+    const initial = getInitialFloorPlanState(restaurantId);
 
-    const t = window.setTimeout(() => {
-      setShouldRenderCanvas(true);
-    }, 120);
-
-    return () => window.clearTimeout(t);
-  }, []);
+    setRooms(initial.rooms);
+    setFloorPlanEnabled(initial.floorPlanEnabled);
+    setActiveRoomId(initial.activeRoomId);
+    setRoomsResolved(initial.roomsResolved);
+    setError("");
+  }, [restaurantId]);
 
   useEffect(() => {
+    if (!restaurantId) return;
+
     const token =
       typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
-    async function fetchRooms() {
+    const cacheKey = String(restaurantId);
+    const cached = FLOOR_PLAN_ROOMS_CACHE.get(cacheKey);
+
+    async function fetchRooms({ silent = false } = {}) {
       try {
-        setLoading(true);
+        if (!silent) {
+          setLoading(true);
+        }
+
         setError("");
 
         const res = await axios.get(
@@ -140,32 +178,40 @@ export default function FloorPlanReservationsWebapp({
         );
 
         const nextRooms = safeArr(res.data?.rooms);
-        setRooms(nextRooms);
-        setFloorPlanEnabled(Boolean(res.data?.enabled));
+        const nextEnabled = Boolean(res.data?.enabled);
 
-        if (nextRooms.length) {
-          setActiveRoomId((prev) => {
-            const exists = nextRooms.some(
-              (r) => String(r._id) === String(prev),
-            );
-            return exists ? prev : String(nextRooms[0]._id);
-          });
-        } else {
-          setActiveRoomId("");
-        }
+        FLOOR_PLAN_ROOMS_CACHE.set(cacheKey, {
+          rooms: nextRooms,
+          enabled: nextEnabled,
+        });
+
+        setRooms(nextRooms);
+        setFloorPlanEnabled(nextEnabled);
+
+        setActiveRoomId((prev) => {
+          if (!nextRooms.length) return "";
+
+          const exists = nextRooms.some((r) => String(r._id) === String(prev));
+          return exists ? prev : String(nextRooms[0]._id);
+        });
+
+        setRoomsResolved(true);
       } catch (e) {
-        setError(
-          e?.response?.data?.message ||
-            "Impossible de charger le plan de salle.",
-        );
+        if (!cached) {
+          setError(
+            e?.response?.data?.message ||
+              "Impossible de charger le plan de salle.",
+          );
+        }
+        setRoomsResolved(true);
       } finally {
-        setLoading(false);
+        if (!silent) {
+          setLoading(false);
+        }
       }
     }
 
-    if (restaurantId) {
-      fetchRooms();
-    }
+    fetchRooms({ silent: Boolean(cached) });
   }, [restaurantId]);
 
   useEffect(() => {
@@ -173,7 +219,11 @@ export default function FloorPlanReservationsWebapp({
       if (!isTodayContext) {
         setLiveMode(false);
       }
-      setSelectedTime((prev) => prev || timeOptions[0] || "");
+
+      setSelectedTime((prev) => {
+        const hasPrev = timeOptions.includes(prev);
+        return hasPrev ? prev : timeOptions[0] || "";
+      });
     } else {
       setLiveMode(true);
       setSelectedTime("");
@@ -184,6 +234,24 @@ export default function FloorPlanReservationsWebapp({
     setSelectedTableState(null);
   }, [activeRoomId, selectedTime, liveMode, selectedDay, contextDateKey]);
 
+  useEffect(() => {
+    if (!isDayContext) return;
+
+    if (liveMode) {
+      if (selectedTime !== "") {
+        setSelectedTime("");
+      }
+      return;
+    }
+
+    const firstTime = timeOptions[0] || "";
+    const hasSelectedTime = timeOptions.includes(selectedTime);
+
+    if (!hasSelectedTime && firstTime) {
+      setSelectedTime(firstTime);
+    }
+  }, [isDayContext, liveMode, timeOptions, selectedTime]);
+
   return (
     <div className="flex flex-col gap-4">
       <SidebarReservationsWebapp
@@ -192,7 +260,6 @@ export default function FloorPlanReservationsWebapp({
         title="Réservations"
       />
 
-      {/* Header */}
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">
           <button
@@ -223,7 +290,6 @@ export default function FloorPlanReservationsWebapp({
         </div>
       </div>
 
-      {/* Controls */}
       <div className="flex flex-col gap-3 rounded-[28px] border border-darkBlue/10 bg-white/90 p-4 tablet:p-6">
         <div className="grid grid-cols-1 tablet:grid-cols-[1.1fr_1fr] gap-3">
           <div className="flex items-center gap-3 rounded-[22px] border border-darkBlue/10 bg-white/70 px-4 py-3 tablet:h-[66px]">
@@ -308,9 +374,8 @@ export default function FloorPlanReservationsWebapp({
         <StatusLegend />
       </div>
 
-      {/* Canvas */}
       <div className="rounded-[28px] min-h-[520px] bg-[#667085] overflow-hidden">
-        {loading ? (
+        {!roomsResolved || loading ? (
           <div className="min-h-[520px] rounded-[28px] border border-darkBlue/10 bg-[#667085] flex items-center justify-center">
             <div className="inline-flex items-center gap-3 text-lightGrey">
               <Loader2 className="size-5 animate-spin" />
@@ -329,8 +394,6 @@ export default function FloorPlanReservationsWebapp({
           <div className="min-h-[520px] rounded-[28px] border border-darkBlue/10 bg-[#667085] flex items-center justify-center px-6 text-center text-lightGrey">
             Salle introuvable.
           </div>
-        ) : !shouldRenderCanvas ? (
-          <div className="min-h-[520px] rounded-[28px] border border-darkBlue/10 bg-[#667085]" />
         ) : (
           <FloorPlanCanvasReservationsComponent
             room={activeRoom}

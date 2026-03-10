@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Wand2, Save, Check, Loader2 } from "lucide-react";
+import { Wand2 } from "lucide-react";
 
 export default function SmartParametersComponent({
   register,
@@ -12,7 +12,7 @@ export default function SmartParametersComponent({
   manualToFix,
   fetchManualTablesToFix,
 
-  // ✅ NEW: unassigned reservations warning
+  // unassigned reservations warning
   unassignedReservationsNeedingAssignment,
   unassignedToFixLoading,
   unassignedToFixError,
@@ -21,9 +21,6 @@ export default function SmartParametersComponent({
 
   fmtShortFR,
   statusLabel,
-
-  saveUI,
-  onSave,
 }) {
   const safeManualToFix = useMemo(() => {
     return Array.isArray(manualToFix) ? manualToFix : [];
@@ -48,13 +45,6 @@ export default function SmartParametersComponent({
     "absolute top-1/2 -translate-y-1/2 h-6 w-6 rounded-full bg-white shadow-sm transition";
   const toggleDotOn = "translate-x-7";
   const toggleDotOff = "translate-x-1";
-
-  const saveBtnBase =
-    "inline-flex items-center gap-2 rounded-xl px-3 h-10 text-sm font-semibold transition";
-  const saveBtnPrimary =
-    "bg-darkBlue text-white hover:opacity-90 active:scale-[0.98]";
-  const saveBtnDone =
-    "bg-white text-darkBlue border border-darkBlue opacity-60";
 
   function WarningCard({
     title,
@@ -134,36 +124,6 @@ export default function SmartParametersComponent({
           </div>
 
           <div className="flex items-center gap-3">
-            {(saveUI?.dirty || saveUI?.saving || saveUI?.saved) && (
-              <button
-                type="button"
-                onClick={onSave}
-                disabled={saveUI?.saving || saveUI?.saved}
-                className={[
-                  saveBtnBase,
-                  saveUI?.saved ? saveBtnDone : saveBtnPrimary,
-                  saveUI?.saving ? "opacity-60 cursor-not-allowed" : "",
-                ].join(" ")}
-              >
-                {saveUI?.saving ? (
-                  <>
-                    <Loader2 className="size-4 animate-spin" />
-                    Enregistrement…
-                  </>
-                ) : saveUI?.saved ? (
-                  <>
-                    <Check className="size-4" />
-                    Enregistré
-                  </>
-                ) : (
-                  <>
-                    <Save className="size-4" />
-                    Enregistrer
-                  </>
-                )}
-              </button>
-            )}
-
             <label className={toggleWrap}>
               <span
                 className={[
