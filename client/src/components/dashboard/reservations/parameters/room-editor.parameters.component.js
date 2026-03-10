@@ -382,6 +382,14 @@ export default function RoomEditorComponent({
   const prevObjectsLenRef = useRef(0);
   const didFitAfterFirstObjectRef = useRef(false);
 
+  const pinchRef = useRef({
+    active: false,
+    startDist: 0,
+    startScale: 1,
+    startPos: { x: 0, y: 0 },
+    worldPoint: { x: 0, y: 0 },
+  });
+
   const [objects, setObjects] = useState(() => safeArr(room?.objects));
   const [selectedId, setSelectedId] = useState(null);
   const [stageSize, setStageSize] = useState({ w: null, h: null });
@@ -1548,38 +1556,125 @@ export default function RoomEditorComponent({
     return { x: evt?.clientX ?? 0, y: evt?.clientY ?? 0 };
   }
 
-  function startPan(e) {
-    // important: empêcher le scroll/drag natif du browser sur mobile
-    e?.evt?.preventDefault?.();
+  function getTouchPoints(evt) {
+    const touches = evt?.touches;
+    if (!touches || touches.length < 2) return null;
 
+    return {
+      p1: {
+        x: touches[0].clientX,
+        y: touches[0].clientY,
+      },
+      p2: {
+        x: touches[1].clientX,
+        y: touches[1].clientY,
+      },
+    };
+  }
+
+  function getDistance(p1, p2) {
+    return Math.hypot(p2.x - p1.x, p2.y - p1.y);
+  }
+
+  function getMidpoint(p1, p2) {
+    return {
+      x: (p1.x + p2.x) / 2,
+      y: (p1.y + p2.y) / 2,
+    };
+  }
+
+  function startPan(e) {
+    const evt = e?.evt;
+    evt?.preventDefault?.();
+
+    const stage = stageRef.current;
+    if (!stage) return;
+
+    // ✅ PINCH START
+    if (evt?.touches?.length >= 2) {
+      hasUserMovedViewRef.current = true;
+      setIsPanning(false);
+
+      const pts = getTouchPoints(evt);
+      if (!pts) return;
+
+      const mid = getMidpoint(pts.p1, pts.p2);
+      const dist = getDistance(pts.p1, pts.p2);
+
+      const currentScale = scaleRef.current || scale || 1;
+      const currentPos = posRef.current || pos || { x: 0, y: 0 };
+
+      pinchRef.current = {
+        active: true,
+        startDist: dist,
+        startScale: currentScale,
+        startPos: currentPos,
+        worldPoint: {
+          x: (mid.x - currentPos.x) / currentScale,
+          y: (mid.y - currentPos.y) / currentScale,
+        },
+      };
+
+      return;
+    }
+
+    // ✅ PAN 1 doigt / souris uniquement si on part du fond
     if (e.target === e.target.getStage()) {
+      pinchRef.current.active = false;
       hasUserMovedViewRef.current = true;
       setSelectedId(null);
       setIsPanning(true);
 
-      const { x, y } = getClientXY(e.evt);
+      const { x, y } = getClientXY(evt);
       panRef.current.lastX = x;
       panRef.current.lastY = y;
     }
   }
 
-  function stopPan(e) {
-    e?.evt?.preventDefault?.();
-    setIsPanning(false);
-  }
-
   function movePan(e) {
+    const evt = e?.evt;
+    if (!evt) return;
+
+    // ✅ PINCH MOVE
+    if (evt?.touches?.length >= 2) {
+      evt.preventDefault?.();
+
+      const pts = getTouchPoints(evt);
+      if (!pts) return;
+
+      const mid = getMidpoint(pts.p1, pts.p2);
+      const dist = getDistance(pts.p1, pts.p2);
+
+      const pinch = pinchRef.current;
+      if (!pinch.active || !pinch.startDist) return;
+
+      const nextScale = clamp(
+        pinch.startScale * (dist / pinch.startDist),
+        0.04,
+        2,
+      );
+
+      const newPos = {
+        x: mid.x - pinch.worldPoint.x * nextScale,
+        y: mid.y - pinch.worldPoint.y * nextScale,
+      };
+
+      setScale(nextScale);
+      setPos(newPos);
+      return;
+    }
+
+    // ✅ si on sort d’un pinch, on coupe le pan
+    if (pinchRef.current.active) return;
+
+    // ✅ PAN CLASSIQUE
     if (!isPanning) return;
 
-    e?.evt?.preventDefault?.();
+    evt.preventDefault?.();
 
-    const evt = e.evt;
-
-    // Mouse: movementX/Y ok
     let dx = evt?.movementX;
     let dy = evt?.movementY;
 
-    // Touch: calcule delta depuis le dernier point
     if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
       const { x, y } = getClientXY(evt);
       dx = x - panRef.current.lastX;
@@ -1592,6 +1687,17 @@ export default function RoomEditorComponent({
       x: prev.x + dx,
       y: prev.y + dy,
     }));
+  }
+
+  function stopPan(e) {
+    e?.evt?.preventDefault?.();
+
+    // fin du pinch si < 2 doigts
+    if (pinchRef.current.active) {
+      pinchRef.current.active = false;
+    }
+
+    setIsPanning(false);
   }
 
   useEffect(() => {
@@ -2652,6 +2758,7 @@ export default function RoomEditorComponent({
           onMouseDown={startPan}
           onMouseMove={movePan}
           onMouseUp={stopPan}
+          onMouseLeave={stopPan}
           onTouchStart={startPan}
           onTouchMove={movePan}
           onTouchEnd={stopPan}
