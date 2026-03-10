@@ -12,6 +12,9 @@ import { useTranslation } from "next-i18next";
 const Calendar = dynamic(() => import("react-calendar"), { ssr: false });
 import "react-calendar/dist/Calendar.css";
 
+// SVG
+import { ReservationSvg } from "../../../_shared/_svgs/_index";
+
 // AXIOS
 import axios from "axios";
 
@@ -25,7 +28,6 @@ import {
   ClockSvg,
   CalendarSvg,
   TableSvg,
-  ReservationSvg,
 } from "../../../_shared/_svgs/_index";
 
 // LUCIDE
@@ -104,7 +106,7 @@ function minutesFromHHmm(timeStr) {
   return (Number(h) || 0) * 60 + (Number(m) || 0);
 }
 
-export default function AddReservationsWebapp(props) {
+export default function AddReservationComponent(props) {
   const { t } = useTranslation("reservations");
   const router = useRouter();
 
@@ -135,6 +137,7 @@ export default function AddReservationsWebapp(props) {
   const [error, setError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasUserChangedSlot, setHasUserChangedSlot] = useState(false);
+  const [hasUserChangedTable, setHasUserChangedTable] = useState(false);
 
   // ✅ Modal states
   const [modalOpen, setModalOpen] = useState(false);
@@ -194,6 +197,7 @@ export default function AddReservationsWebapp(props) {
       table: tableValue,
     });
     setHasUserChangedSlot(false);
+    setHasUserChangedTable(false);
   }, [
     props.reservation,
     manageDisponibilities,
@@ -235,7 +239,22 @@ export default function AddReservationsWebapp(props) {
     const requiredTableSizeFromGuestsFront = (n) => {
       const g = Number(n || 0);
       if (g <= 0) return 0;
+      if (g === 1) return 1;
       return g % 2 === 0 ? g : g + 1;
+    };
+
+    const isEligibleTableForGuestsFront = (tableSeats, guests) => {
+      const seats = Number(tableSeats || 0);
+      const g = Number(guests || 0);
+
+      if (g <= 0 || seats <= 0) return false;
+
+      if (g === 1) {
+        return seats === 1 || seats === 2;
+      }
+
+      const required = requiredTableSizeFromGuestsFront(g);
+      return seats === required;
     };
 
     // -----------------------------
@@ -276,11 +295,9 @@ export default function AddReservationsWebapp(props) {
         const guests = Number(reservationData.numberOfGuests || 0);
 
         if (guests > 0) {
-          const requiredTableSize = requiredTableSizeFromGuestsFront(guests);
-
           // pool éligible (tables configurées de la bonne taille)
-          const eligibleTables = (parameters.tables || []).filter(
-            (t) => Number(t.seats) === requiredTableSize,
+          const eligibleTables = (parameters.tables || []).filter((t) =>
+            isEligibleTableForGuestsFront(t.seats, guests),
           );
           const capacity = eligibleTables.length;
 
@@ -368,8 +385,10 @@ export default function AddReservationsWebapp(props) {
                 }
 
                 // 3) dernier fallback: ça consomme quand même 1 slot si seats ok
-                const seatsOk =
-                  Number(r.table.seats) === Number(requiredTableSize);
+                const seatsOk = isEligibleTableForGuestsFront(
+                  r.table.seats,
+                  guests,
+                );
                 if (seatsOk) {
                   unassignedCount += 1;
                   return;
@@ -381,8 +400,10 @@ export default function AddReservationsWebapp(props) {
               // ✅ MANUAL
               if (r.table.source === "manual") {
                 const name = String(r.table.name || "").trim();
-                const seatsOk =
-                  Number(r.table.seats) === Number(requiredTableSize);
+                const seatsOk = isEligibleTableForGuestsFront(
+                  r.table.seats,
+                  guests,
+                );
                 if (name && seatsOk) unassignedCount += 1;
               }
             });
@@ -447,14 +468,28 @@ export default function AddReservationsWebapp(props) {
     const requiredTableSizeFromGuestsFront = (n) => {
       const g = Number(n || 0);
       if (g <= 0) return 0;
+      if (g === 1) return 1;
       return g % 2 === 0 ? g : g + 1;
     };
 
-    const guests = Number(reservationData.numberOfGuests || 0);
-    const requiredTableSize = requiredTableSizeFromGuestsFront(guests);
+    const isEligibleTableForGuestsFront = (tableSeats, guests) => {
+      const seats = Number(tableSeats || 0);
+      const g = Number(guests || 0);
 
-    const eligibleTables = (parameters.tables || []).filter(
-      (t) => Number(t.seats) === requiredTableSize,
+      if (g <= 0 || seats <= 0) return false;
+
+      if (g === 1) {
+        return seats === 1 || seats === 2;
+      }
+
+      const required = requiredTableSizeFromGuestsFront(g);
+      return seats === required;
+    };
+
+    const guests = Number(reservationData.numberOfGuests || 0);
+
+    const eligibleTables = (parameters.tables || []).filter((t) =>
+      isEligibleTableForGuestsFront(t.seats, guests),
     );
 
     // si aucune table configurée => aucune table dispo
@@ -546,7 +581,7 @@ export default function AddReservationsWebapp(props) {
         }
 
         // 3) dernier fallback: consomme 1 slot si seats ok
-        const seatsOk = Number(r.table.seats) === Number(requiredTableSize);
+        const seatsOk = isEligibleTableForGuestsFront(r.table.seats, guests);
         if (seatsOk) {
           unassignedCount += 1;
           return;
@@ -558,7 +593,7 @@ export default function AddReservationsWebapp(props) {
       // ✅ MANUAL
       if (r.table.source === "manual") {
         const name = String(r.table.name || "").trim();
-        const seatsOk = Number(r.table.seats) === Number(requiredTableSize);
+        const seatsOk = isEligibleTableForGuestsFront(r.table.seats, guests);
         if (name && seatsOk) unassignedCount += 1;
       }
     });
@@ -601,9 +636,7 @@ export default function AddReservationsWebapp(props) {
       return;
     }
 
-    // ✅ EN ÉDITION : tant que l’utilisateur n’a rien modifié (date/heure/guests),
-    // on NE TOUCHE PAS à la table (on affiche juste celle de la résa)
-    if (isEditing && !hasUserChangedSlot) return;
+    if (isEditing && !hasUserChangedSlot && reservationData.table) return;
 
     // Si aucune table dispo
     if (!availableTables || availableTables.length === 0) {
@@ -668,7 +701,7 @@ export default function AddReservationsWebapp(props) {
       ...prevData,
       reservationDate: selectedDate,
       reservationTime: "",
-      table: "",
+      table: isEditing ? prevData.table : "",
     }));
   }
 
@@ -689,7 +722,8 @@ export default function AddReservationsWebapp(props) {
     const { name, value } = e.target;
 
     if (name === "numberOfGuests") setHasUserChangedSlot(true);
-    if (name === "table") setHasUserChangedSlot(true);
+
+    if (name === "table") setHasUserChangedTable(true);
 
     setReservationData((prev) => ({
       ...prev,
@@ -724,7 +758,34 @@ export default function AddReservationsWebapp(props) {
     // ✅ EDIT: si slot NON modifié => on envoie seulement les champs "non-slot"
     let reservationPayload;
 
-    if (isEditing && !hasUserChangedSlot) {
+    let slotChanged = hasUserChangedSlot;
+    let tableChanged = hasUserChangedTable;
+
+    if (
+      isEditing &&
+      manageDisponibilities &&
+      hasPickedSlot &&
+      updatedData.table
+    ) {
+      tableChanged = true;
+    }
+
+    if (
+      manageDisponibilities &&
+      hasPickedSlot &&
+      !updatedData.table &&
+      Array.isArray(tablesForSelect) &&
+      tablesForSelect.length > 0
+    ) {
+      const forced = String(tablesForSelect[0]._id);
+      updatedData.table = forced;
+
+      setReservationData((prev) => ({ ...prev, table: forced }));
+
+      tableChanged = true;
+    }
+
+    if (isEditing && !slotChanged && !tableChanged) {
       reservationPayload = {
         customerFirstName: updatedData.customerFirstName,
         customerLastName: updatedData.customerLastName,
@@ -732,8 +793,17 @@ export default function AddReservationsWebapp(props) {
         customerPhone: updatedData.customerPhone,
         commentary: updatedData.commentary,
       };
+    } else if (isEditing && !slotChanged && tableChanged) {
+      reservationPayload = {
+        customerFirstName: updatedData.customerFirstName,
+        customerLastName: updatedData.customerLastName,
+        customerEmail: updatedData.customerEmail,
+        customerPhone: updatedData.customerPhone,
+        commentary: updatedData.commentary,
+        table: updatedData.table,
+      };
     } else {
-      // ✅ sinon (slot modifié) => payload complet + table
+      // slot modifié => payload complet
       reservationPayload = {
         reservationDate: formattedDate,
         reservationTime: formattedTime,
@@ -826,7 +896,7 @@ export default function AddReservationsWebapp(props) {
     setReservationData((prevData) => ({
       ...prevData,
       reservationTime,
-      table: "",
+      table: isEditing ? prevData.table : "",
     }));
   }
 
@@ -874,6 +944,104 @@ export default function AddReservationsWebapp(props) {
   const tablesForSelect = currentTableOption
     ? [currentTableOption, ...(availableTables || [])]
     : availableTables || [];
+
+  const tableRoomMap = useMemo(() => {
+    const map = new Map();
+
+    const rooms =
+      props.restaurantData?.reservations?.parameters?.floorplan?.rooms || [];
+
+    rooms.forEach((room) => {
+      const roomName = String(room?.name || "").trim();
+      const objects = Array.isArray(room?.objects) ? room.objects : [];
+
+      objects.forEach((obj) => {
+        if (obj?.type !== "table") return;
+        if (!obj?.tableRefId) return;
+
+        const key = String(obj.tableRefId);
+
+        // on garde la première salle trouvée pour cette table
+        if (!map.has(key)) {
+          map.set(key, roomName || "Salle sans nom");
+        }
+      });
+    });
+
+    return map;
+  }, [props.restaurantData?.reservations?.parameters?.floorplan?.rooms]);
+
+  const tablesForSelectWithRoom = useMemo(() => {
+    return (tablesForSelect || []).map((table) => ({
+      ...table,
+      roomName: tableRoomMap.get(String(table._id)) || "Autres tables",
+    }));
+  }, [tablesForSelect, tableRoomMap]);
+
+  const groupedTablesForSelect = useMemo(() => {
+    const groupsMap = new Map();
+
+    // ordre réel des salles dans le floorplan
+    const roomOrder =
+      props.restaurantData?.reservations?.parameters?.floorplan?.rooms?.map(
+        (room) => String(room?.name || "").trim() || "Salle sans nom",
+      ) || [];
+
+    tablesForSelectWithRoom.forEach((table) => {
+      const roomName = String(table?.roomName || "Autres tables");
+
+      if (!groupsMap.has(roomName)) {
+        groupsMap.set(roomName, []);
+      }
+
+      groupsMap.get(roomName).push(table);
+    });
+
+    const groups = Array.from(groupsMap.entries()).map(([label, tables]) => ({
+      label,
+      tables,
+    }));
+
+    groups.sort((a, b) => {
+      const ia = roomOrder.indexOf(a.label);
+      const ib = roomOrder.indexOf(b.label);
+
+      const aKnown = ia !== -1;
+      const bKnown = ib !== -1;
+
+      if (aKnown && bKnown) return ia - ib;
+      if (aKnown) return -1;
+      if (bKnown) return 1;
+
+      if (a.label === "Autres tables") return 1;
+      if (b.label === "Autres tables") return -1;
+
+      return a.label.localeCompare(b.label, "fr");
+    });
+
+    return groups;
+  }, [
+    tablesForSelectWithRoom,
+    props.restaurantData?.reservations?.parameters?.floorplan?.rooms,
+  ]);
+
+  useEffect(() => {
+    if (!manageDisponibilities) return;
+    if (!hasPickedSlot) return;
+
+    const list = Array.isArray(tablesForSelect) ? tablesForSelect : [];
+    if (list.length !== 1) return;
+
+    const onlyId = list[0]?._id ? String(list[0]._id) : "";
+    if (!onlyId) return;
+
+    // si aucune table enregistrée dans le state => on force
+    if (!reservationData.table) {
+      setReservationData((prev) => ({ ...prev, table: onlyId }));
+      setHasUserChangedTable(true); // pour que l’edit envoie `table`
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manageDisponibilities, hasPickedSlot, tablesForSelect]);
 
   if (isLoading) {
     return (
@@ -924,7 +1092,7 @@ export default function AddReservationsWebapp(props) {
 
         <form onSubmit={handleFormSubmit} className="flex flex-col gap-4">
           {/* 1) Nombre de personnes */}
-          <div className="w-full rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm p-4">
+          <div className="w-full midTablet:max-w-[550px] rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm p-4 midTablet:p-6">
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div className="inline-flex items-center gap-2 text-base font-semibold text-darkBlue">
                 <CommunitySvg width={20} height={20} className="opacity-50" />
@@ -951,7 +1119,7 @@ export default function AddReservationsWebapp(props) {
           </div>
 
           {/* 2) Date */}
-          <div className="rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm p-4">
+          <div className="rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm p-4 midTablet:p-6">
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div className="inline-flex items-center gap-2 text-base font-semibold text-darkBlue">
                 <CalendarSvg width={20} height={20} className="opacity-50" />
@@ -975,7 +1143,7 @@ export default function AddReservationsWebapp(props) {
           </div>
 
           {/* 3) Créneau */}
-          <div className="rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm p-4">
+          <div className="rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm p-4 midTablet:p-6">
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div className="inline-flex items-center gap-2 text-base font-semibold text-darkBlue">
                 <ClockSvg width={20} height={20} className="opacity-50" />
@@ -1028,7 +1196,7 @@ export default function AddReservationsWebapp(props) {
           </div>
 
           {/* Informations Client et Table */}
-          <div className="rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm p-4">
+          <div className="rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm p-4 midTablet:p-6">
             <div className="grid grid-cols-1 midTablet:grid-cols-2 gap-6 midTablet:gap-8">
               <div className="flex flex-col gap-3">
                 <label
@@ -1123,12 +1291,16 @@ export default function AddReservationsWebapp(props) {
                         Aucune table disponible
                       </option>
                     ) : (
-                      tablesForSelect.map((table) => (
-                        <option key={table._id} value={table._id}>
-                          {table.name
-                            ? table.name
-                            : `Table de ${table.seats} places`}
-                        </option>
+                      groupedTablesForSelect.map((group) => (
+                        <optgroup key={group.label} label={group.label}>
+                          {group.tables.map((table) => (
+                            <option key={table._id} value={table._id}>
+                              {table.name
+                                ? table.name
+                                : `Table de ${table.seats} places`}
+                            </option>
+                          ))}
+                        </optgroup>
                       ))
                     )}
                   </select>
@@ -1147,7 +1319,7 @@ export default function AddReservationsWebapp(props) {
           </div>
 
           {/* Commentaire */}
-          <div className="rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm p-4">
+          <div className="rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm p-4 midTablet:p-6">
             <div className="flex flex-col gap-3">
               <label
                 htmlFor="commentary"
@@ -1168,7 +1340,6 @@ export default function AddReservationsWebapp(props) {
             </div>
           </div>
 
-          {/* Actions */}
           {error && (
             <div className="rounded-2xl border border-red/20 bg-red/5 px-4 py-3 text-sm text-red">
               {error}

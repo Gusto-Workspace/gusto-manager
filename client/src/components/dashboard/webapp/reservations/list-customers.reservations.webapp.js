@@ -466,7 +466,7 @@ export default function ListCustomersReservationsWebapp() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Rechercher (nom, email, téléphone)…"
-            className="w-full outline-none text-sm text-darkBlue placeholder:text-darkBlue/40 bg-transparent pr-8"
+            className="w-full outline-none text-sm text-darkBlue placeholder:text-darkBlue/40 bg-white pr-8"
           />
 
           {query ? (

@@ -701,7 +701,6 @@ export default function ParametersReservationComponent(props) {
           watch={watch}
           errors={errors}
           auto_accept={auto_accept}
-          // ✅ save button props
           saveUI={sectionUI.slots}
           onSave={() => saveSection("slots")}
         />

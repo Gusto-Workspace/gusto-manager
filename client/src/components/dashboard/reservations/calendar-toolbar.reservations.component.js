@@ -51,7 +51,7 @@ export default function CalendarToolbarReservationsComponent(props) {
       {/* Top bar */}
       <div className="flex items-center justify-between gap-3">
         {/* Left: icon + title (inchangé) */}
-        <div className="min-w-0 flex-1 flex items-center gap-2">
+        <div className="min-w-0 flex-1 flex items-center gap-2 h-[48px] midTablet:h-auto">
           <ReservationSvg
             width={30}
             height={30}
@@ -64,7 +64,7 @@ export default function CalendarToolbarReservationsComponent(props) {
         </div>
 
         {/* Right: actions (icônes) */}
-        <div className="shrink-0 flex items-center gap-2">
+        <div className="shrink-0 flex items-center gap-1">
           <button
             onClick={props.handleParametersClick}
             className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition h-[40px] w-[40px]"
