@@ -678,12 +678,9 @@ export default function FloorPlanCanvasReservationsComponent({
     selectedTime,
   ]);
 
-  const [viewReady, setViewReady] = useState(false);
-
   useLayoutEffect(() => {
     didInitialFitRef.current = false;
     hasUserMovedViewRef.current = false;
-    setViewReady(false);
   }, [room?._id]);
 
   useEffect(() => {
@@ -771,9 +768,7 @@ export default function FloorPlanCanvasReservationsComponent({
 
       setScale(s);
       setPos(p);
-      requestAnimationFrame(() => {
-        setViewReady(true);
-      });
+
       return;
     }
 
@@ -796,9 +791,6 @@ export default function FloorPlanCanvasReservationsComponent({
 
     setScale(s);
     setPos(p);
-    requestAnimationFrame(() => {
-      setViewReady(true);
-    });
   }
 
   function resetView() {
@@ -811,7 +803,7 @@ export default function FloorPlanCanvasReservationsComponent({
     if (didInitialFitRef.current) return;
 
     didInitialFitRef.current = true;
-    setViewReady(false);
+
     applyInitialView(objects);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room?._id, stageSize.w, stageSize.h, isMobile]);
@@ -1700,13 +1692,7 @@ export default function FloorPlanCanvasReservationsComponent({
             onTouchEnd={endPan}
             onTouchCancel={endPan}
           >
-            <Layer
-              x={pos.x}
-              y={pos.y}
-              scaleX={scale}
-              scaleY={scale}
-              opacity={viewReady ? 1 : 0}
-            >
+            <Layer x={pos.x} y={pos.y} scaleX={scale} scaleY={scale}>
               {gridLines}
               {decorObjects.map((obj) => renderDecor(obj))}
               {tableObjects.map((obj) => renderTable(obj))}
