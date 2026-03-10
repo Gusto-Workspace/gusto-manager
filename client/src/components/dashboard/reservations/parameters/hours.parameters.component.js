@@ -2,7 +2,7 @@
 import axios from "axios";
 
 // ICONS
-import { CalendarDays, Save, Check, Loader2 } from "lucide-react";
+import { CalendarDays } from "lucide-react";
 
 // COMPONENTS
 import HoursRestaurantComponent from "../../restaurant/hours.restaurant.component";
@@ -21,10 +21,6 @@ export default function HoursParametersComponent({
   // Context flags
   dataLoading,
   closeEditing,
-
-  // ✅ save button
-  saveUI,
-  onSave,
 }) {
   const card = "rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm";
   const cardInner = "px-2 py-4 mobile:p-4 midTablet:p-6";
@@ -43,18 +39,10 @@ export default function HoursParametersComponent({
   const toggleDotOn = "translate-x-7";
   const toggleDotOff = "translate-x-1";
 
-  const saveBtnBase =
-    "inline-flex items-center gap-2 rounded-xl px-3 h-10 text-sm font-semibold transition";
-  const saveBtnPrimary =
-    "bg-darkBlue text-white hover:opacity-90 active:scale-[0.98]";
-  const saveBtnDone =
-    "bg-white text-darkBlue border border-darkBlue opacity-60";
-
   function onReservationHoursChange(data) {
     setReservationHours?.(data.hours);
   }
 
-  // (on garde ta save immédiate des horaires custom)
   async function saveReservationHoursImmediate(newHours) {
     try {
       const token = localStorage.getItem("token");
@@ -96,36 +84,6 @@ export default function HoursParametersComponent({
           </div>
 
           <div className="flex items-center gap-3">
-            {(saveUI?.dirty || saveUI?.saving || saveUI?.saved) && (
-              <button
-                type="button"
-                onClick={onSave}
-                disabled={saveUI?.saving || saveUI?.saved}
-                className={[
-                  saveBtnBase,
-                  saveUI?.saved ? saveBtnDone : saveBtnPrimary,
-                  saveUI?.saving ? "opacity-60 cursor-not-allowed" : "",
-                ].join(" ")}
-              >
-                {saveUI?.saving ? (
-                  <>
-                    <Loader2 className="size-4 animate-spin" />
-                    Enregistrement…
-                  </>
-                ) : saveUI?.saved ? (
-                  <>
-                    <Check className="size-4" />
-                    Enregistré
-                  </>
-                ) : (
-                  <>
-                    <Save className="size-4" />
-                    Enregistrer
-                  </>
-                )}
-              </button>
-            )}
-
             <label className={toggleWrap}>
               <span
                 className={[

@@ -400,6 +400,42 @@ export default function ParametersReservationComponent(props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manage_disponibilities]);
 
+  useEffect(() => {
+    if (isLoading) return;
+    if (!initialSnapRef.current?.smart) return;
+    if (!sectionUI.smart?.dirty) return;
+    if (sectionUI.smart?.saving) return;
+
+    const timer = setTimeout(() => {
+      saveSection("smart");
+    }, 150);
+
+    return () => clearTimeout(timer);
+  }, [
+    isLoading,
+    manage_disponibilities,
+    sectionUI.smart?.dirty,
+    sectionUI.smart?.saving,
+  ]);
+
+  useEffect(() => {
+    if (isLoading) return;
+    if (!initialSnapRef.current?.hours) return;
+    if (!sectionUI.hours?.dirty) return;
+    if (sectionUI.hours?.saving) return;
+
+    const timer = setTimeout(() => {
+      saveSection("hours");
+    }, 150);
+
+    return () => clearTimeout(timer);
+  }, [
+    isLoading,
+    same_hours_as_restaurant,
+    sectionUI.hours?.dirty,
+    sectionUI.hours?.saving,
+  ]);
+
   const subtitle = t("reservations:buttons.parameters", "Paramètres");
 
   // Pré-remplissage métier si vide
@@ -650,9 +686,6 @@ export default function ParametersReservationComponent(props) {
           setRestaurantData={props.setRestaurantData}
           dataLoading={restaurantContext.dataLoading}
           closeEditing={restaurantContext.closeEditing}
-          // ✅ save button props
-          saveUI={sectionUI.hours}
-          onSave={() => saveSection("hours")}
         />
 
         {/* --- Bloc: Créneaux --- */}
@@ -694,8 +727,6 @@ export default function ParametersReservationComponent(props) {
           fetchUnassignedTablesToFix={fetchUnassignedTablesToFix}
           fmtShortFR={fmtShortFR}
           statusLabel={statusLabel}
-          saveUI={sectionUI.smart}
-          onSave={() => saveSection("smart")}
         />
 
         <FloorPlanParametersComponent

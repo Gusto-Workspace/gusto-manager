@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+
 import {
   Stage,
   Layer,
@@ -144,23 +145,6 @@ function getReferenceTimeString({ liveMode, selectedTime }) {
 function getReferenceOccupancyMinutes({ parameters, liveMode, selectedTime }) {
   const referenceTime = getReferenceTimeString({ liveMode, selectedTime });
   return getOccupancyMinutes(parameters, referenceTime);
-}
-
-function getReservationsForTable({ reservations, tableRefId, targetDateKey }) {
-  return safeArr(reservations).filter((r) => {
-    const resTableId = r?.table?.tableId ? String(r.table.tableId) : null;
-    if (!resTableId) return false;
-    if (String(resTableId) !== String(tableRefId)) return false;
-
-    const date = new Date(r?.reservationDate);
-    if (Number.isNaN(date.getTime())) return false;
-
-    const dateKey = `${date.getFullYear()}-${String(
-      date.getMonth() + 1,
-    ).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-
-    return dateKey === targetDateKey;
-  });
 }
 
 function getTableReservationState({
@@ -556,6 +540,13 @@ export default function FloorPlanCanvasReservationsComponent({
   const wrapRef = useRef(null);
   const stageRef = useRef(null);
   const panRef = useRef({ lastX: 0, lastY: 0 });
+  const pinchRef = useRef({
+    active: false,
+    startDist: 0,
+    startScale: 1,
+    startPos: { x: 0, y: 0 },
+    worldPoint: { x: 0, y: 0 },
+  });
 
   const canvasW = Number(room?.canvas?.width || 2000);
   const canvasH = Number(room?.canvas?.height || 2000);
@@ -578,10 +569,8 @@ export default function FloorPlanCanvasReservationsComponent({
   const [isPanning, setIsPanning] = useState(false);
 
   const catalog = useMemo(() => safeArr(tablesCatalog), [tablesCatalog]);
-  const objects = useMemo(() => safeArr(room?.objects), [room]);
+  const objects = useMemo(() => safeArr(room?.objects), [room?.objects]);
   const isMobile = !!stageSize.w && stageSize.w < 768;
-
-  const [viewReady, setViewReady] = useState(false);
 
   const dateKey = useMemo(() => {
     const d = selectedDate instanceof Date ? selectedDate : new Date();
@@ -590,6 +579,106 @@ export default function FloorPlanCanvasReservationsComponent({
       "0",
     )}-${String(d.getDate()).padStart(2, "0")}`;
   }, [selectedDate]);
+
+  const decorObjects = useMemo(
+    () => objects.filter((obj) => obj?.type && obj.type !== "table"),
+    [objects],
+  );
+
+  const tableObjects = useMemo(
+    () => objects.filter((obj) => obj?.type === "table"),
+    [objects],
+  );
+
+  const catalogById = useMemo(() => {
+    const map = new Map();
+    for (const item of catalog) {
+      map.set(String(item?._id || ""), item);
+    }
+    return map;
+  }, [catalog]);
+
+  const reservationsByTableId = useMemo(() => {
+    const map = new Map();
+
+    for (const r of safeArr(reservations)) {
+      const resTableId = r?.table?.tableId ? String(r.table.tableId) : null;
+      if (!resTableId) continue;
+
+      const date = new Date(r?.reservationDate);
+      if (Number.isNaN(date.getTime())) continue;
+
+      const rDateKey = `${date.getFullYear()}-${String(
+        date.getMonth() + 1,
+      ).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+
+      if (rDateKey !== dateKey) continue;
+
+      const arr = map.get(resTableId) || [];
+      arr.push(r);
+      map.set(resTableId, arr);
+    }
+
+    return map;
+  }, [reservations, dateKey]);
+
+  const tableUiByObjectId = useMemo(() => {
+    const map = new Map();
+
+    for (const obj of tableObjects) {
+      const ref = catalogById.get(String(obj?.tableRefId || "")) || null;
+      const tableReservations =
+        reservationsByTableId.get(String(obj?.tableRefId || "")) || [];
+
+      const {
+        currentReservation,
+        nextReservation,
+        theoreticalCurrent,
+        realCurrent,
+        conflictingReservation,
+        displayReservation,
+      } = getTableReservationState({
+        reservations: tableReservations,
+        parameters: reservationParameters,
+        liveMode,
+        selectedTime,
+      });
+
+      const tableStatus = getTableStatus({
+        currentReservation,
+        nextReservation,
+        theoreticalCurrent,
+        realCurrent,
+        conflictingReservation,
+        parameters: reservationParameters,
+        liveMode,
+        selectedTime,
+      });
+
+      map.set(String(obj.id), {
+        ref,
+        tableReservations,
+        currentReservation,
+        nextReservation,
+        theoreticalCurrent,
+        realCurrent,
+        conflictingReservation,
+        displayReservation,
+        tableStatus,
+      });
+    }
+
+    return map;
+  }, [
+    tableObjects,
+    catalogById,
+    reservationsByTableId,
+    reservationParameters,
+    liveMode,
+    selectedTime,
+  ]);
+
+  const [viewReady, setViewReady] = useState(false);
 
   useLayoutEffect(() => {
     didInitialFitRef.current = false;
@@ -825,6 +914,33 @@ export default function FloorPlanCanvasReservationsComponent({
     return { x: evt?.clientX ?? 0, y: evt?.clientY ?? 0 };
   }
 
+  function getTouchPoints(evt) {
+    const touches = evt?.touches;
+    if (!touches || touches.length < 2) return null;
+
+    return {
+      p1: {
+        x: touches[0].clientX,
+        y: touches[0].clientY,
+      },
+      p2: {
+        x: touches[1].clientX,
+        y: touches[1].clientY,
+      },
+    };
+  }
+
+  function getDistance(p1, p2) {
+    return Math.hypot(p2.x - p1.x, p2.y - p1.y);
+  }
+
+  function getMidpoint(p1, p2) {
+    return {
+      x: (p1.x + p2.x) / 2,
+      y: (p1.y + p2.y) / 2,
+    };
+  }
+
   function preventIfCancelable(evt) {
     if (evt?.cancelable) {
       evt.preventDefault();
@@ -832,30 +948,100 @@ export default function FloorPlanCanvasReservationsComponent({
   }
 
   function startPan(e) {
-    preventIfCancelable(e?.evt);
+    const evt = e?.evt;
+    preventIfCancelable(evt);
 
+    const stage = stageRef.current;
+    if (!stage) return;
+
+    // ✅ PINCH START
+    if (evt?.touches?.length >= 2) {
+      hasUserMovedViewRef.current = true;
+      setIsPanning(false);
+
+      const pts = getTouchPoints(evt);
+      if (!pts) return;
+
+      const mid = getMidpoint(pts.p1, pts.p2);
+      const dist = getDistance(pts.p1, pts.p2);
+
+      const currentScale = scaleRef.current || scale || 1;
+      const currentPos = posRef.current || pos || { x: 0, y: 0 };
+
+      pinchRef.current = {
+        active: true,
+        startDist: dist,
+        startScale: currentScale,
+        startPos: currentPos,
+        worldPoint: {
+          x: (mid.x - currentPos.x) / currentScale,
+          y: (mid.y - currentPos.y) / currentScale,
+        },
+      };
+
+      return;
+    }
+
+    // ✅ PAN 1 doigt / souris
     if (e.target === e.target.getStage()) {
+      pinchRef.current.active = false;
       hasUserMovedViewRef.current = true;
       onSelectTable?.(null);
       setIsPanning(true);
 
-      const { x, y } = getClientXY(e.evt);
+      const { x, y } = getClientXY(evt);
       panRef.current.lastX = x;
       panRef.current.lastY = y;
     }
   }
 
-  function endPan(e) {
-    preventIfCancelable(e?.evt);
-    setIsPanning(false);
-  }
-
   function movePan(e) {
+    const evt = e?.evt;
+    if (!evt) return;
+
+    // ✅ PINCH MOVE
+    if (evt?.touches?.length >= 2) {
+      preventIfCancelable(evt);
+
+      const pts = getTouchPoints(evt);
+      if (!pts) return;
+
+      const mid = getMidpoint(pts.p1, pts.p2);
+      const dist = getDistance(pts.p1, pts.p2);
+
+      const pinch = pinchRef.current;
+      if (!pinch.active || !pinch.startDist) return;
+
+      const nextScale = clamp(
+        pinch.startScale * (dist / pinch.startDist),
+        0.04,
+        2,
+      );
+
+      const nextPos = {
+        x: mid.x - pinch.worldPoint.x * nextScale,
+        y: mid.y - pinch.worldPoint.y * nextScale,
+      };
+
+      scaleRef.current = nextScale;
+      posRef.current = nextPos;
+      centerWorldRef.current = {
+        x: (stageSize.w / 2 - nextPos.x) / nextScale,
+        y: (stageSize.h / 2 - nextPos.y) / nextScale,
+      };
+
+      setScale(nextScale);
+      setPos(nextPos);
+      return;
+    }
+
+    // ✅ si on vient d’un pinch, on ne pan pas
+    if (pinchRef.current.active) return;
+
     if (!isPanning) return;
 
-    preventIfCancelable(e?.evt);
+    preventIfCancelable(evt);
 
-    const evt = e.evt;
     let dx = evt?.movementX;
     let dy = evt?.movementY;
 
@@ -881,6 +1067,16 @@ export default function FloorPlanCanvasReservationsComponent({
 
       return next;
     });
+  }
+
+  function endPan(e) {
+    preventIfCancelable(e?.evt);
+
+    if (pinchRef.current.active) {
+      pinchRef.current.active = false;
+    }
+
+    setIsPanning(false);
   }
 
   useEffect(() => {
@@ -1220,41 +1416,19 @@ export default function FloorPlanCanvasReservationsComponent({
   }
 
   function renderTable(obj) {
-    const ref = catalog.find((t) => String(t._id) === String(obj.tableRefId));
+    const ui = tableUiByObjectId.get(String(obj.id)) || {};
+    const ref = ui.ref || null;
     const label = ref?.name || "Table";
     const seatsCount = Number(ref?.seats || 0);
     const { w, h } = getTableDimensions(seatsCount);
 
-    const tableReservations = getReservationsForTable({
-      reservations,
-      tableRefId: obj.tableRefId,
-      targetDateKey: dateKey,
-    });
-
-    const {
-      currentReservation,
-      nextReservation,
-      theoreticalCurrent,
-      realCurrent,
-      conflictingReservation,
-      displayReservation,
-    } = getTableReservationState({
-      reservations: tableReservations,
-      parameters: reservationParameters,
-      liveMode,
-      selectedTime,
-    });
-
-    const tableStatus = getTableStatus({
-      currentReservation,
-      nextReservation,
-      theoreticalCurrent,
-      realCurrent,
-      conflictingReservation,
-      parameters: reservationParameters,
-      liveMode,
-      selectedTime,
-    });
+    const currentReservation = ui.currentReservation || null;
+    const nextReservation = ui.nextReservation || null;
+    const theoreticalCurrent = ui.theoreticalCurrent || null;
+    const realCurrent = ui.realCurrent || null;
+    const conflictingReservation = ui.conflictingReservation || null;
+    const displayReservation = ui.displayReservation || null;
+    const tableStatus = ui.tableStatus || "free";
 
     const theme = statusTheme(tableStatus);
     const isSelected =
@@ -1524,6 +1698,7 @@ export default function FloorPlanCanvasReservationsComponent({
             onTouchStart={startPan}
             onTouchMove={movePan}
             onTouchEnd={endPan}
+            onTouchCancel={endPan}
           >
             <Layer
               x={pos.x}
@@ -1533,12 +1708,8 @@ export default function FloorPlanCanvasReservationsComponent({
               opacity={viewReady ? 1 : 0}
             >
               {gridLines}
-              {objects
-                .filter((o) => o?.type === "decor")
-                .map((obj) => renderDecor(obj))}
-              {objects
-                .filter((o) => o?.type === "table")
-                .map((obj) => renderTable(obj))}
+              {decorObjects.map((obj) => renderDecor(obj))}
+              {tableObjects.map((obj) => renderTable(obj))}
             </Layer>
           </Stage>
         )}
@@ -1567,7 +1738,8 @@ export default function FloorPlanCanvasReservationsComponent({
               </div>
 
               <p className="text-[10px] text-darkBlue/55 leading-none">
-                {Number(tooltipData.ref?.seats || 0)} couvert{tooltipData.ref?.seats > 1 ? "s" : ""}
+                {Number(tooltipData.ref?.seats || 0)} couvert
+                {tooltipData.ref?.seats > 1 ? "s" : ""}
               </p>
             </div>
 

@@ -5,11 +5,12 @@ import { X, Clock3, Loader2, LayoutGrid } from "lucide-react";
 
 const CLOSE_MS = 240;
 const OPEN_MS = 240;
-const CANVAS_MOUNT_DELAY_MS = 180;
 
 // Swipe config (mobile only)
 const SWIPE_VELOCITY = 0.6; // px/ms
 const CLOSE_RATIO = 0.25; // 25% panel height => close
+
+const FLOOR_PLAN_ROOMS_CACHE = new Map();
 
 const FloorPlanCanvasReservationsComponent = dynamic(
   () => import("./floor-plan-canvas.reservations.component"),
@@ -37,6 +38,11 @@ function isSameDay(a, b) {
     da.getMonth() === db.getMonth() &&
     da.getDate() === db.getDate()
   );
+}
+
+function getDefaultRoomId(rooms) {
+  const arr = safeArr(rooms);
+  return arr.length ? String(arr[0]._id) : "";
 }
 
 function StatusLegend() {
@@ -75,7 +81,6 @@ export default function FloorPlanDrawerReservationsComponent({
   selectedDay,
 }) {
   const [isVisible, setIsVisible] = useState(false);
-  const [shouldRenderCanvas, setShouldRenderCanvas] = useState(false);
 
   const prevBodyOverflowRef = useRef("");
   const prevHtmlOverflowRef = useRef("");
@@ -136,7 +141,6 @@ export default function FloorPlanDrawerReservationsComponent({
   };
 
   const closeWithAnimation = () => {
-    setShouldRenderCanvas(false);
     setIsVisible(false);
     setDragY(0);
 
@@ -192,17 +196,12 @@ export default function FloorPlanDrawerReservationsComponent({
 
     lockScroll();
     setIsVisible(false);
-    setShouldRenderCanvas(false);
     setDragY(0);
 
     const showTimer = window.setTimeout(() => {
       setIsVisible(true);
       requestAnimationFrame(measurePanel);
     }, 10);
-
-    const mountTimer = window.setTimeout(() => {
-      setShouldRenderCanvas(true);
-    }, CANVAS_MOUNT_DELAY_MS);
 
     const onResize = () => requestAnimationFrame(measurePanel);
     window.addEventListener("resize", onResize);
@@ -215,7 +214,6 @@ export default function FloorPlanDrawerReservationsComponent({
 
     return () => {
       window.clearTimeout(showTimer);
-      window.clearTimeout(mountTimer);
       window.removeEventListener("resize", onResize);
       document.removeEventListener("keydown", onKeyDown);
       restoreScroll();
@@ -224,14 +222,38 @@ export default function FloorPlanDrawerReservationsComponent({
   }, [open]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !restaurantId) return;
 
     const token =
       typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
-    async function fetchRooms() {
+    const cacheKey = String(restaurantId);
+    const cached = FLOOR_PLAN_ROOMS_CACHE.get(cacheKey);
+
+    if (cached) {
+      setRooms(safeArr(cached.rooms));
+      setFloorPlanEnabled(Boolean(cached.enabled));
+      setError("");
+
+      const cachedRooms = safeArr(cached.rooms);
+      if (cachedRooms.length) {
+        setActiveRoomId((prev) => {
+          const exists = cachedRooms.some(
+            (r) => String(r._id) === String(prev),
+          );
+          return exists ? prev : String(cachedRooms[0]._id);
+        });
+      } else {
+        setActiveRoomId("");
+      }
+    }
+
+    async function fetchRooms({ silent = false } = {}) {
       try {
-        setLoading(true);
+        if (!silent && !cached) {
+          setLoading(true);
+        }
+
         setError("");
 
         const res = await axios.get(
@@ -242,8 +264,15 @@ export default function FloorPlanDrawerReservationsComponent({
         );
 
         const nextRooms = safeArr(res.data?.rooms);
+        const nextEnabled = Boolean(res.data?.enabled);
+
+        FLOOR_PLAN_ROOMS_CACHE.set(cacheKey, {
+          rooms: nextRooms,
+          enabled: nextEnabled,
+        });
+
         setRooms(nextRooms);
-        setFloorPlanEnabled(Boolean(res.data?.enabled));
+        setFloorPlanEnabled(nextEnabled);
 
         if (nextRooms.length) {
           setActiveRoomId((prev) => {
@@ -256,16 +285,20 @@ export default function FloorPlanDrawerReservationsComponent({
           setActiveRoomId("");
         }
       } catch (e) {
-        setError(
-          e?.response?.data?.message ||
-            "Impossible de charger le plan de salle.",
-        );
+        if (!cached) {
+          setError(
+            e?.response?.data?.message ||
+              "Impossible de charger le plan de salle.",
+          );
+        }
       } finally {
-        setLoading(false);
+        if (!silent && !cached) {
+          setLoading(false);
+        }
       }
     }
 
-    fetchRooms();
+    fetchRooms({ silent: Boolean(cached) });
   }, [open, restaurantId]);
 
   useEffect(() => {
@@ -289,7 +322,10 @@ export default function FloorPlanDrawerReservationsComponent({
 
     // Vue day sur une autre date => premier créneau par défaut
     setLiveMode(false);
-    setSelectedTime(timeOptions[0] || "");
+    setSelectedTime((prev) => {
+      const hasPrev = timeOptions.includes(prev);
+      return hasPrev ? prev : timeOptions[0] || "";
+    });
     setSelectedTableState(null);
   }, [open, contextDateKey, isDayContext, isTodayContext, timeOptions]);
 
@@ -297,6 +333,47 @@ export default function FloorPlanDrawerReservationsComponent({
     if (!open) return;
     setSelectedTableState(null);
   }, [open, activeRoomId, selectedTime, liveMode, selectedDay]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const defaultRoomId = getDefaultRoomId(rooms);
+
+    setActiveRoomId(defaultRoomId);
+    setSelectedTableState(null);
+
+    if (isDayContext) {
+      if (!isTodayContext) {
+        setLiveMode(false);
+        setSelectedTime(timeOptions[0] || "");
+      } else {
+        setLiveMode(true);
+        setSelectedTime("");
+      }
+    } else {
+      setLiveMode(true);
+      setSelectedTime("");
+    }
+  }, [open, contextDateKey, rooms, isDayContext, isTodayContext, timeOptions]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (!isDayContext) return;
+
+    if (liveMode) {
+      if (selectedTime !== "") {
+        setSelectedTime("");
+      }
+      return;
+    }
+
+    const firstTime = timeOptions[0] || "";
+    const hasSelectedTime = timeOptions.includes(selectedTime);
+
+    if (!hasSelectedTime && firstTime) {
+      setSelectedTime(firstTime);
+    }
+  }, [open, isDayContext, liveMode, timeOptions, selectedTime]);
 
   useEffect(() => {
     setSelectedTableState(null);
@@ -580,8 +657,6 @@ export default function FloorPlanDrawerReservationsComponent({
               <div className="min-h-[520px] rounded-[28px] border border-darkBlue/10 bg-[#667085] flex items-center justify-center px-6 text-center text-lightGrey">
                 Salle introuvable.
               </div>
-            ) : !shouldRenderCanvas ? (
-              <div className="min-h-[520px] rounded-[28px] border border-darkBlue/10 bg-[#667085]" />
             ) : (
               <FloorPlanCanvasReservationsComponent
                 room={activeRoom}
