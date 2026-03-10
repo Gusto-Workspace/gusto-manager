@@ -420,6 +420,8 @@ export default function RoomEditorComponent({
 
   const [saveError, setSaveError] = useState("");
 
+  const [selectedAnchor, setSelectedAnchor] = useState(null);
+
   const usedOtherRooms = useMemo(() => {
     if (placedTableRefIdsOtherRooms instanceof Set)
       return placedTableRefIdsOtherRooms;
@@ -583,6 +585,61 @@ export default function RoomEditorComponent({
       x2: bb.x2 + pad,
       y2: bb.y2 + pad,
     };
+  }
+
+  function getAnchorForObject(o) {
+    if (!o) return null;
+
+    if (o.type === "table") {
+      return getTooltipAnchorForRotatedRect(
+        Number(o.w || 0),
+        Number(o.h || 0),
+        Number(o.rotation || 0),
+        26,
+      );
+    }
+
+    if (o.type === "decor") {
+      if (o.shape === "rect") {
+        return getTooltipAnchorForRotatedRect(
+          Number(o.w || 0),
+          Number(o.h || 0),
+          Number(o.rotation || 0),
+          26,
+        );
+      }
+
+      if (o.shape === "circle") {
+        const r = Number(o.r || 16);
+        const BTN_R = 16;
+        const GAP = 10;
+        const totalH = BTN_R * 2 * 2 + GAP;
+
+        return {
+          xOff: r + 26,
+          startY: -totalH / 2 + BTN_R,
+        };
+      }
+
+      if (o.shape === "line") {
+        const pts = safeArr(o.points);
+        if (pts.length < 4) return null;
+
+        const cx = (Number(pts[0]) + Number(pts[2])) / 2;
+        const cy = (Number(pts[1]) + Number(pts[3])) / 2;
+        const rel = [pts[0] - cx, pts[1] - cy, pts[2] - cx, pts[3] - cy];
+
+        return getTooltipAnchorForRotatedLine(rel, Number(o.rotation || 0), {
+          strokeWidth: Number(o?.style?.strokeWidth || 8),
+          gap: 26,
+          tickSize: o.decorKind === "window" ? 10 : 0,
+          arcRadius:
+            o.decorKind === "door" ? Number(o?.meta?.arcRadius || 34) : 0,
+        });
+      }
+    }
+
+    return null;
   }
 
   function getTooltipAnchorForRotatedRect(w, h, rotationDeg = 0, gap = 26) {
@@ -900,6 +957,7 @@ export default function RoomEditorComponent({
     const initObjs = safeArr(room?.objects);
     setObjects(initObjs);
     setSelectedId(null);
+    setSelectedAnchor(null);
 
     const snap = stableRoomSnap(initObjs, canvasW, canvasH, grid);
     initialSnapRef.current = snap;
@@ -1098,6 +1156,11 @@ export default function RoomEditorComponent({
 
   function selectObject(id) {
     if (!id) return;
+
+    const target = objects.find((o) => String(o.id) === String(id)) || null;
+    const anchor = getAnchorForObject(target);
+
+    setSelectedAnchor(anchor);
     setSelectedId(id);
     bringToFront(id);
   }
@@ -1182,6 +1245,7 @@ export default function RoomEditorComponent({
     const nextPlaced = { ...candidate, x: best.x, y: best.y };
 
     setObjects((prev) => [...prev, nextPlaced]);
+    setSelectedAnchor(getAnchorForObject(nextPlaced));
     setSelectedId(nextPlaced.id);
   }
 
@@ -1333,6 +1397,7 @@ export default function RoomEditorComponent({
       }
 
       setSelectedId(null);
+      setSelectedAnchor(null);
       setSelectedRefId("");
       setDeleteCatalogOpen(false);
       setSaveError("");
@@ -1537,6 +1602,7 @@ export default function RoomEditorComponent({
     })();
 
     setObjects((prev) => [...prev, placed]);
+    setSelectedAnchor(getAnchorForObject(placed));
     setSelectedId(placed.id);
     setDecorModalOpen(false);
   }
@@ -1777,6 +1843,7 @@ export default function RoomEditorComponent({
       pinchRef.current.active = false;
       hasUserMovedViewRef.current = true;
       setSelectedId(null);
+      setSelectedAnchor(null);
       setIsPanning(true);
 
       const { x, y } = getClientXY(evt);
@@ -1889,7 +1956,10 @@ export default function RoomEditorComponent({
   function removeObjectById(id, e) {
     if (e) e.cancelBubble = true;
     setObjects((prev) => prev.filter((o) => String(o.id) !== String(id)));
-    if (String(selectedId) === String(id)) setSelectedId(null);
+    if (String(selectedId) === String(id)) {
+      setSelectedId(null);
+      setSelectedAnchor(null);
+    }
   }
 
   function ActionButtons({ xOff, startY, onRotate, onDelete }) {
@@ -2148,12 +2218,9 @@ export default function RoomEditorComponent({
 
         {isSelected &&
           (() => {
-            const { xOff, startY } = getTooltipAnchorForRotatedRect(
-              w,
-              h,
-              Number(obj.rotation || 0),
-              26,
-            );
+            const xOff = selectedAnchor?.xOff ?? w + 26;
+            const startY =
+              selectedAnchor?.startY ?? h / 2 - (16 * 2 * 2 + 10) / 2 + 16;
 
             return (
               <Group x={xOff} y={0}>
@@ -2373,19 +2440,10 @@ export default function RoomEditorComponent({
           {/* ✅ Boutons : hors du Group rotaté => ils ne tournent plus */}
           {isSelected &&
             (() => {
-              const { xOff, startY } = getTooltipAnchorForRotatedLine(
-                rel,
-                Number(obj.rotation || 0),
-                {
-                  strokeWidth,
-                  gap: 26,
-                  tickSize: obj.decorKind === "window" ? 10 : 0,
-                  arcRadius:
-                    obj.decorKind === "door"
-                      ? Number(obj?.meta?.arcRadius || 34)
-                      : 0,
-                },
-              );
+              const xOff =
+                selectedAnchor?.xOff ??
+                Math.max(Math.abs(rel[0]), Math.abs(rel[2])) + 26;
+              const startY = selectedAnchor?.startY ?? 0;
 
               return (
                 <ActionButtons
@@ -2774,12 +2832,9 @@ export default function RoomEditorComponent({
         </Group>
         {isSelected &&
           (() => {
-            const { xOff, startY } = getTooltipAnchorForRotatedRect(
-              w,
-              h,
-              Number(obj.rotation || 0),
-              26,
-            );
+            const xOff = selectedAnchor?.xOff ?? w + 26;
+            const startY =
+              selectedAnchor?.startY ?? h / 2 - (16 * 2 * 2 + 10) / 2 + 16;
             return (
               <ActionButtons
                 xOff={xOff}

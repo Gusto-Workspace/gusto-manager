@@ -193,6 +193,10 @@ export default function FloorPlanDrawerReservationsComponent({
         setSelectedTime("");
       }
 
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = 0;
+      }
+
       restoreScroll();
       onClose?.();
     }, CLOSE_MS);
@@ -255,31 +259,31 @@ export default function FloorPlanDrawerReservationsComponent({
     };
   }, []);
 
-useEffect(() => {
-  if (!open) {
-    setIsVisible(false);
+  useEffect(() => {
+    if (!open) {
+      setIsVisible(false);
+      setDragY(0);
+      restoreScroll();
+      return;
+    }
+
+    lockScroll();
     setDragY(0);
-    restoreScroll();
-    return;
-  }
 
-  lockScroll();
-  setDragY(0);
+    const raf = requestAnimationFrame(() => {
+      measurePanel();
+      setIsVisible(true);
+    });
 
-  const raf = requestAnimationFrame(() => {
-    measurePanel();
-    setIsVisible(true);
-  });
+    const onResize = () => requestAnimationFrame(measurePanel);
+    window.addEventListener("resize", onResize);
 
-  const onResize = () => requestAnimationFrame(measurePanel);
-  window.addEventListener("resize", onResize);
-
-  return () => {
-    cancelAnimationFrame(raf);
-    window.removeEventListener("resize", onResize);
-  };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [open]);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", onResize);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   useEffect(() => {
     return () => {
@@ -422,9 +426,6 @@ useEffect(() => {
     if (!open) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
 
-    const scrollTop = scrollRef.current?.scrollTop || 0;
-    if (scrollTop > 0) return;
-
     dragStateRef.current.active = true;
     dragStateRef.current.startY = e.clientY;
     dragStateRef.current.lastY = e.clientY;
@@ -551,7 +552,7 @@ useEffect(() => {
         {/* Scrollable content: tout le drawer scroll */}
         <div
           ref={scrollRef}
-          className="flex-1 min-h-0 overflow-y-auto hide-scrollbar overscroll-contain"
+          className="flex-1 min-h-0 overflow-y-auto hide-scrollbar overscroll-none"
         >
           {/* Header */}
           <div className="border-b border-darkBlue/10">
