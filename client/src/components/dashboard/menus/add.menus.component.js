@@ -55,7 +55,7 @@ export default function AddMenusComponent(props) {
         <select
           value={menuType}
           onChange={(e) => setMenuType(e.target.value)}
-          className="p-2 rounded-lg border"
+          className="p-2 rounded-lg border bg-white disabled:bg-white/30"
           disabled={props?.menu}
         >
           <option value="" disabled>
