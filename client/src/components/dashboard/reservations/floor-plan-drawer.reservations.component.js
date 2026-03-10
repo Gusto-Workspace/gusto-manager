@@ -45,6 +45,21 @@ function getDefaultRoomId(rooms) {
   return arr.length ? String(arr[0]._id) : "";
 }
 
+function getInitialDrawerState(restaurantId) {
+  const cacheKey = restaurantId ? String(restaurantId) : "";
+  const cached = cacheKey ? FLOOR_PLAN_ROOMS_CACHE.get(cacheKey) : null;
+
+  const rooms = safeArr(cached?.rooms);
+  const floorPlanEnabled = Boolean(cached?.enabled);
+  const activeRoomId = getDefaultRoomId(rooms);
+
+  return {
+    rooms,
+    floorPlanEnabled,
+    activeRoomId,
+  };
+}
+
 function StatusLegend() {
   const items = [
     { label: "Libre", dot: "bg-white border-darkBlue/40" },
@@ -80,6 +95,11 @@ export default function FloorPlanDrawerReservationsComponent({
   reservations,
   selectedDay,
 }) {
+  const initialState = useMemo(
+    () => getInitialDrawerState(restaurantId),
+    [restaurantId],
+  );
+
   const [isVisible, setIsVisible] = useState(false);
 
   const prevBodyOverflowRef = useRef("");
@@ -87,9 +107,11 @@ export default function FloorPlanDrawerReservationsComponent({
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [rooms, setRooms] = useState([]);
-  const [floorPlanEnabled, setFloorPlanEnabled] = useState(false);
-  const [activeRoomId, setActiveRoomId] = useState("");
+  const [rooms, setRooms] = useState(initialState.rooms);
+  const [floorPlanEnabled, setFloorPlanEnabled] = useState(
+    initialState.floorPlanEnabled,
+  );
+  const [activeRoomId, setActiveRoomId] = useState(initialState.activeRoomId);
   const [liveMode, setLiveMode] = useState(true);
   const [selectedTime, setSelectedTime] = useState("");
   const [selectedTableState, setSelectedTableState] = useState(null);
@@ -119,6 +141,8 @@ export default function FloorPlanDrawerReservationsComponent({
     lastT: 0,
   });
 
+  const closeTimerRef = useRef(null);
+
   const restoreScroll = () => {
     if (typeof document === "undefined") return;
     document.body.style.overflow = prevBodyOverflowRef.current || "";
@@ -141,10 +165,32 @@ export default function FloorPlanDrawerReservationsComponent({
   };
 
   const closeWithAnimation = () => {
+    if (closeTimerRef.current) {
+      window.clearTimeout(closeTimerRef.current);
+    }
+
     setIsVisible(false);
     setDragY(0);
 
-    window.setTimeout(() => {
+    closeTimerRef.current = window.setTimeout(() => {
+      const defaultRoomId = getDefaultRoomId(rooms);
+
+      setActiveRoomId(defaultRoomId);
+      setSelectedTableState(null);
+
+      if (isDayContext) {
+        if (!isTodayContext) {
+          setLiveMode(false);
+          setSelectedTime(timeOptions[0] || "");
+        } else {
+          setLiveMode(true);
+          setSelectedTime("");
+        }
+      } else {
+        setLiveMode(true);
+        setSelectedTime("");
+      }
+
       restoreScroll();
       onClose?.();
     }, CLOSE_MS);
@@ -176,6 +222,22 @@ export default function FloorPlanDrawerReservationsComponent({
   }, [rooms, activeRoomId]);
 
   useEffect(() => {
+    import("./floor-plan-canvas.reservations.component");
+  }, []);
+
+  useEffect(() => {
+    const nextState = getInitialDrawerState(restaurantId);
+    setRooms(nextState.rooms);
+    setFloorPlanEnabled(nextState.floorPlanEnabled);
+    setActiveRoomId((prev) => {
+      const hasPrev = safeArr(nextState.rooms).some(
+        (room) => String(room._id) === String(prev),
+      );
+      return hasPrev ? prev : nextState.activeRoomId;
+    });
+  }, [restaurantId]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
 
     const mq = window.matchMedia("(min-width: 768px)");
@@ -192,34 +254,46 @@ export default function FloorPlanDrawerReservationsComponent({
   }, []);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setIsVisible(false);
+      setDragY(0);
+      restoreScroll();
+      return;
+    }
 
     lockScroll();
-    setIsVisible(false);
     setDragY(0);
 
-    const showTimer = window.setTimeout(() => {
-      setIsVisible(true);
-      requestAnimationFrame(measurePanel);
-    }, 10);
+    let raf1 = 0;
+    let raf2 = 0;
+
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        setIsVisible(true);
+        measurePanel();
+      });
+    });
 
     const onResize = () => requestAnimationFrame(measurePanel);
+
     window.addEventListener("resize", onResize);
 
-    const onKeyDown = (e) => {
-      if (e.key === "Escape") closeWithAnimation();
-    };
-
-    document.addEventListener("keydown", onKeyDown);
-
     return () => {
-      window.clearTimeout(showTimer);
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
       window.removeEventListener("resize", onResize);
-      document.removeEventListener("keydown", onKeyDown);
-      restoreScroll();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  useEffect(() => {
+    return () => {
+      if (closeTimerRef.current) {
+        window.clearTimeout(closeTimerRef.current);
+      }
+      restoreScroll();
+    };
+  }, []);
 
   useEffect(() => {
     if (!open || !restaurantId) return;
@@ -231,21 +305,15 @@ export default function FloorPlanDrawerReservationsComponent({
     const cached = FLOOR_PLAN_ROOMS_CACHE.get(cacheKey);
 
     if (cached) {
-      setRooms(safeArr(cached.rooms));
+      const cachedRooms = safeArr(cached.rooms);
+
+      setRooms(cachedRooms);
       setFloorPlanEnabled(Boolean(cached.enabled));
       setError("");
-
-      const cachedRooms = safeArr(cached.rooms);
-      if (cachedRooms.length) {
-        setActiveRoomId((prev) => {
-          const exists = cachedRooms.some(
-            (r) => String(r._id) === String(prev),
-          );
-          return exists ? prev : String(cachedRooms[0]._id);
-        });
-      } else {
-        setActiveRoomId("");
-      }
+      setActiveRoomId((prev) => {
+        const exists = cachedRooms.some((r) => String(r._id) === String(prev));
+        return exists ? prev : getDefaultRoomId(cachedRooms);
+      });
     }
 
     async function fetchRooms({ silent = false } = {}) {
@@ -273,17 +341,10 @@ export default function FloorPlanDrawerReservationsComponent({
 
         setRooms(nextRooms);
         setFloorPlanEnabled(nextEnabled);
-
-        if (nextRooms.length) {
-          setActiveRoomId((prev) => {
-            const exists = nextRooms.some(
-              (r) => String(r._id) === String(prev),
-            );
-            return exists ? prev : String(nextRooms[0]._id);
-          });
-        } else {
-          setActiveRoomId("");
-        }
+        setActiveRoomId((prev) => {
+          const exists = nextRooms.some((r) => String(r._id) === String(prev));
+          return exists ? prev : getDefaultRoomId(nextRooms);
+        });
       } catch (e) {
         if (!cached) {
           setError(
@@ -305,7 +366,6 @@ export default function FloorPlanDrawerReservationsComponent({
     if (!open) return;
 
     if (!isDayContext) {
-      // Vue month / calendar => temps réel par défaut
       setLiveMode(true);
       setSelectedTime("");
       setSelectedTableState(null);
@@ -313,14 +373,12 @@ export default function FloorPlanDrawerReservationsComponent({
     }
 
     if (isTodayContext) {
-      // Vue day sur aujourd'hui => temps réel par défaut
       setLiveMode(true);
       setSelectedTime("");
       setSelectedTableState(null);
       return;
     }
 
-    // Vue day sur une autre date => premier créneau par défaut
     setLiveMode(false);
     setSelectedTime((prev) => {
       const hasPrev = timeOptions.includes(prev);
@@ -333,28 +391,6 @@ export default function FloorPlanDrawerReservationsComponent({
     if (!open) return;
     setSelectedTableState(null);
   }, [open, activeRoomId, selectedTime, liveMode, selectedDay]);
-
-  useEffect(() => {
-    if (!open) return;
-
-    const defaultRoomId = getDefaultRoomId(rooms);
-
-    setActiveRoomId(defaultRoomId);
-    setSelectedTableState(null);
-
-    if (isDayContext) {
-      if (!isTodayContext) {
-        setLiveMode(false);
-        setSelectedTime(timeOptions[0] || "");
-      } else {
-        setLiveMode(true);
-        setSelectedTime("");
-      }
-    } else {
-      setLiveMode(true);
-      setSelectedTime("");
-    }
-  }, [open, contextDateKey, rooms, isDayContext, isTodayContext, timeOptions]);
 
   useEffect(() => {
     if (!open) return;
@@ -379,8 +415,6 @@ export default function FloorPlanDrawerReservationsComponent({
     setSelectedTableState(null);
   }, [selectedTime, liveMode, activeRoomId, contextDateKey]);
 
-  if (!open) return null;
-
   const panelFallback = 720;
   const DRAG_MAX_PX = Math.max(240, (panelH || panelFallback) - 12);
   const SWIPE_CLOSE_PX = Math.max(
@@ -390,6 +424,7 @@ export default function FloorPlanDrawerReservationsComponent({
 
   const onPointerDown = (e) => {
     if (isTabletUp) return;
+    if (!open) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
 
     const scrollTop = scrollRef.current?.scrollTop || 0;
@@ -423,6 +458,7 @@ export default function FloorPlanDrawerReservationsComponent({
   const onPointerUp = () => {
     if (isTabletUp) return;
     if (!dragStateRef.current.active) return;
+
     dragStateRef.current.active = false;
 
     const dt = Math.max(
@@ -444,7 +480,14 @@ export default function FloorPlanDrawerReservationsComponent({
     : 1 * (1 - Math.min(1, dragY / DRAG_MAX_PX));
 
   return (
-    <div className="fixed inset-0 z-[120]" role="dialog" aria-modal="true">
+    <div
+      className={`fixed inset-0 z-[120] ${
+        open ? "pointer-events-auto" : "pointer-events-none"
+      }`}
+      role="dialog"
+      aria-modal="true"
+      aria-hidden={!open}
+    >
       {/* Overlay */}
       <div
         className={`
@@ -453,7 +496,7 @@ export default function FloorPlanDrawerReservationsComponent({
           ${isVisible ? "opacity-100" : "opacity-0"}
         `}
         style={{ opacity: overlayOpacity }}
-        onClick={closeWithAnimation}
+        onClick={open ? closeWithAnimation : undefined}
         aria-label="Fermer le plan de salle"
       />
 
