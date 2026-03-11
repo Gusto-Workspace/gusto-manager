@@ -135,9 +135,24 @@ function isBlockingStatus(status) {
 function isBlockingReservation(r) {
   if (!r) return false;
   if (!isBlockingStatus(r.status)) return false;
+
   if (r.status !== "Pending") return true;
-  // Pending => bloquant seulement si non expiré
-  if (r.pendingExpiresAt == null) return true; // safety
+
+  const bankHoldEnabled = Boolean(r?.bankHold?.enabled);
+  const bankHoldExpiresAt = r?.bankHold?.expiresAt
+    ? new Date(r.bankHold.expiresAt).getTime()
+    : null;
+
+  if (
+    bankHoldEnabled &&
+    Number.isFinite(bankHoldExpiresAt) &&
+    bankHoldExpiresAt <= Date.now()
+  ) {
+    return false;
+  }
+
+  // Pending classique
+  if (r.pendingExpiresAt == null) return true;
   return new Date(r.pendingExpiresAt).getTime() > Date.now();
 }
 
@@ -283,6 +298,22 @@ function computeReminder24hDueAt(reservationDateUTC, reservationTime) {
   );
   if (!reservationDT) return null;
   return new Date(reservationDT.getTime() - 24 * 60 * 60 * 1000);
+}
+
+function computeBankHoldActionExpiresAt(reservationDateUTC, reservationTime) {
+  const now = new Date();
+  const reservationDT = buildReservationDateTime(
+    reservationDateUTC,
+    reservationTime,
+  );
+
+  const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+  if (!reservationDT || Number.isNaN(reservationDT.getTime())) {
+    return in24h;
+  }
+
+  return in24h.getTime() <= reservationDT.getTime() ? in24h : reservationDT;
 }
 
 function buildReminder24hFields({ status, reservationDate, reservationTime }) {
@@ -840,7 +871,7 @@ router.put(
           const reservations = await ReservationModel.find({
             _id: { $in: ids },
           })
-            .select("status pendingExpiresAt table")
+            .select("status pendingExpiresAt table bankHold")
             .lean();
 
           manualTablesNeedingAssignment = reservations.filter((r) => {
@@ -1114,7 +1145,7 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
         reservationDate: { $gte: dayStart, $lte: dayEnd },
         status: { $in: ["Pending", "Confirmed", "Active", "Late"] },
       })
-        .select("status reservationTime pendingExpiresAt table")
+        .select("status reservationTime pendingExpiresAt table bankHold")
         .lean();
 
       const blockingReservations = dayReservations.filter(
@@ -1495,6 +1526,7 @@ router.post(
   async (req, res) => {
     const restaurantId = req.params.id;
     const reservationData = req.body;
+    const requestBankHold = Boolean(req.body?.requestBankHold);
 
     try {
       const restaurant = await RestaurantModel.findById(restaurantId);
@@ -1510,13 +1542,24 @@ router.post(
         return res.status(400).json({ message: "reservationDate invalide." });
       }
 
-      const bankHoldPlan = buildBankHoldPlan({
-        restaurant,
-        parameters,
-        reservationDateUTC: normalizedDay,
-        reservationTime: reservationData.reservationTime,
-        numberOfGuests: reservationData.numberOfGuests,
-      });
+      const bankHoldPlan = requestBankHold
+        ? buildBankHoldPlan({
+            restaurant,
+            parameters,
+            reservationDateUTC: normalizedDay,
+            reservationTime: reservationData.reservationTime,
+            numberOfGuests: reservationData.numberOfGuests,
+          })
+        : {
+            enabled: false,
+            reason: "unchecked_by_dashboard",
+            stripeReady: false,
+            flow: "none",
+            amountPerPerson: 0,
+            amountTotal: 0,
+            initialBankHoldStatus: "none",
+            authorizationScheduledFor: null,
+          };
 
       console.log("[bank-hold-plan][dashboard]", {
         restaurantId,
@@ -1576,7 +1619,7 @@ router.post(
           reservationDate: { $gte: dayStart, $lte: dayEnd },
           status: { $in: ["Pending", "Confirmed", "Active", "Late"] },
         })
-          .select("status reservationTime pendingExpiresAt table")
+          .select("status reservationTime pendingExpiresAt table bankHold")
           .lean();
 
         const blockingReservations = dayReservations.filter(
@@ -1693,6 +1736,13 @@ router.post(
       const customerEmail = String(reservationData.customerEmail || "").trim();
       const customerPhone = String(reservationData.customerPhone || "").trim();
 
+      if (requestBankHold && !customerEmail) {
+        return res.status(400).json({
+          message:
+            "L’adresse email du client est obligatoire pour envoyer le lien d’empreinte bancaire.",
+        });
+      }
+
       const customer = await upsertCustomer({
         restaurantId,
         firstName: customerFirstName,
@@ -1700,6 +1750,98 @@ router.post(
         email: customerEmail,
         phone: customerPhone,
       });
+
+      // -------------------------------------------------
+      // FLOW NORMAL (checkbox décochée ou feature inactive)
+      // -------------------------------------------------
+      if (!bankHoldPlan.enabled) {
+        const newReservation = await ReservationModel.create({
+          restaurant_id: restaurantId,
+          customerFirstName,
+          customerLastName,
+          customerEmail,
+          customerPhone,
+          numberOfGuests: reservationData.numberOfGuests,
+          reservationDate: normalizedDay,
+          reservationTime: reservationData.reservationTime,
+          commentary: reservationData.commentary,
+          table: assignedTable,
+          customer: customer?._id || null,
+          status: "Confirmed",
+          source: "dashboard",
+          pendingExpiresAt: null,
+
+          ...buildReminder24hFields({
+            status: "Confirmed",
+            reservationDate: normalizedDay,
+            reservationTime: reservationData.reservationTime,
+          }),
+
+          activatedAt: null,
+          finishedAt: null,
+        });
+
+        await onReservationCreated(customer?._id, newReservation);
+
+        restaurant.reservations.list.push(newReservation._id);
+        await restaurant.save();
+
+        broadcastToRestaurant(restaurantId, {
+          type: "reservation_created",
+          restaurantId,
+          reservation: newReservation,
+        });
+
+        try {
+          const restaurantName = restaurant?.name || "Restaurant";
+          sendReservationEmail("confirmed", {
+            reservation: newReservation,
+            restaurantName,
+          })
+            .then((r) => {
+              if (r?.skipped) {
+                console.log("[reservation-email-skip]", "confirmed", r.reason);
+              }
+            })
+            .catch((e) => {
+              console.error("Email create failed:", e?.response?.body || e);
+            });
+        } catch (e) {
+          console.error(
+            "Email create(dashboard/confirmed) failed:",
+            e?.response?.body || e,
+          );
+        }
+
+        const updatedRestaurant = await fetchRestaurantFull(restaurantId);
+        return res.status(201).json({
+          restaurant: updatedRestaurant,
+          bankHoldRequested: false,
+        });
+      }
+
+      // -------------------------------------------------
+      // FLOW DASHBOARD AVEC EMPREINTE BANCAIRE
+      // -------------------------------------------------
+      const returnUrl = String(reservationData.returnUrl || "").trim();
+      if (!returnUrl) {
+        return res.status(400).json({
+          message:
+            "returnUrl manquant pour finaliser la validation de l’empreinte bancaire.",
+        });
+      }
+
+      const stripe = getStripeClientForRestaurant(restaurant);
+      if (!stripe) {
+        return res.status(400).json({
+          message: "La clé Stripe du restaurant est introuvable.",
+        });
+      }
+
+      const bankHoldExpiresAt = computeBankHoldActionExpiresAt(
+        normalizedDay,
+        reservationData.reservationTime,
+      );
 
       const newReservation = await ReservationModel.create({
         restaurant_id: restaurantId,
@@ -1713,19 +1855,55 @@ router.post(
         commentary: reservationData.commentary,
         table: assignedTable,
         customer: customer?._id || null,
-        status: computedStatus,
-        source: "dashboard",
-        pendingExpiresAt,
 
-        ...buildReminder24hFields({
-          status: computedStatus,
-          reservationDate: normalizedDay,
-          reservationTime: reservationData.reservationTime,
-        }),
+        status: "Pending",
+        source: "dashboard",
+        pendingExpiresAt: null,
+
+        bankHold: {
+          enabled: true,
+          flow: bankHoldPlan.flow,
+          amountPerPerson: Number(bankHoldPlan.amountPerPerson || 0),
+          amountTotal: Number(bankHoldPlan.amountTotal || 0),
+          currency: "eur",
+          status: bankHoldPlan.initialBankHoldStatus,
+          authorizationScheduledFor: bankHoldPlan.authorizationScheduledFor,
+          expiresAt: bankHoldExpiresAt,
+        },
+
+        reminder24hDueAt: null,
+        reminder24hSentAt: null,
+        reminder24hLockedAt: null,
 
         activatedAt: null,
         finishedAt: null,
       });
+
+      let session;
+      try {
+        session = await createPublicBankHoldCheckoutSession({
+          stripe,
+          restaurant,
+          reservation: newReservation,
+          returnUrl,
+          flow: bankHoldPlan.flow,
+        });
+
+        newReservation.bankHold.checkoutSessionId = session.id;
+        await newReservation.save();
+      } catch (sessionError) {
+        console.error(
+          "Error creating Stripe checkout session (dashboard):",
+          sessionError,
+        );
+
+        await ReservationModel.findByIdAndDelete(newReservation._id);
+
+        return res.status(500).json({
+          message:
+            "Impossible de préparer la validation de l’empreinte bancaire.",
+        });
+      }
 
       await onReservationCreated(customer?._id, newReservation);
 
@@ -1738,29 +1916,39 @@ router.post(
         reservation: newReservation,
       });
 
-      // ✅ email client : création dashboard => Confirmed
+      let emailSent = false;
+
       try {
         const restaurantName = restaurant?.name || "Restaurant";
-        sendReservationEmail("confirmed", {
-          reservation: newReservation,
-          restaurantName,
-        })
-          .then((r) => {
-            if (r?.skipped)
-              console.log("[reservation-email-skip]", "confirmed", r.reason);
-          })
-          .catch((e) => {
-            console.error("Email create failed:", e?.response?.body || e);
-          });
+
+        const mailResult = await sendReservationEmail(
+          "bankHoldActionRequired",
+          {
+            reservation: newReservation,
+            restaurantName,
+            actionUrl: session.url,
+            expiresAt: bankHoldExpiresAt,
+            bankHoldAmountTotal: newReservation?.bankHold?.amountTotal,
+          },
+        );
+
+        emailSent = !mailResult?.skipped;
       } catch (e) {
         console.error(
-          "Email create(dashboard) failed:",
+          "Email create(dashboard/bankHoldActionRequired) failed:",
           e?.response?.body || e,
         );
       }
 
       const updatedRestaurant = await fetchRestaurantFull(restaurantId);
-      return res.status(201).json({ restaurant: updatedRestaurant });
+
+      return res.status(201).json({
+        restaurant: updatedRestaurant,
+        bankHoldRequested: true,
+        reservationId: newReservation._id,
+        emailSent,
+        checkoutUrl: session.url,
+      });
     } catch (error) {
       console.error("Error creating dashboard reservation:", error);
       return res.status(500).json({ message: "Internal server error" });
@@ -1903,7 +2091,7 @@ router.put(
           status: { $in: ["Pending", "Confirmed", "Active", "Late"] },
           _id: { $ne: reservationId },
         })
-          .select("status reservationTime pendingExpiresAt table")
+          .select("status reservationTime pendingExpiresAt table bankHold")
           .lean();
 
         const blockingReservations = dayReservations.filter(
@@ -2323,7 +2511,7 @@ router.put(
           status: { $in: ["Pending", "Confirmed", "Active", "Late"] },
           _id: { $ne: reservationId },
         })
-          .select("status reservationTime pendingExpiresAt table")
+          .select("status reservationTime pendingExpiresAt table bankHold")
           .lean();
 
         const blockingReservations = dayReservations.filter(

@@ -50,6 +50,7 @@ const BankHoldSchema = new mongoose.Schema(
     paymentIntentId: { type: String, default: "" },
 
     authorizationScheduledFor: { type: Date, default: null },
+    expiresAt: { type: Date, default: null, index: true },
     cardCollectedAt: { type: Date, default: null },
     authorizedAt: { type: Date, default: null },
     capturedAt: { type: Date, default: null },

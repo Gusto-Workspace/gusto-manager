@@ -166,7 +166,72 @@ function tplReminder24h({
   </html>`;
 }
 
-async function sendReservationEmail(type, { reservation, restaurantName }) {
+function fmtDateTimeFR(dateInput) {
+  const d = new Date(dateInput);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("fr-FR");
+}
+
+function tplBankHoldActionRequired({
+  customerName,
+  numberOfGuests,
+  reservationDate,
+  reservationTime,
+  restaurantName,
+  bankHoldAmountTotal,
+  actionUrl,
+  expiresAt,
+}) {
+  return `
+  <html>
+    <body style="font-family: Arial, sans-serif; color:#333; line-height:1.6;">
+      <p>Bonjour ${customerName},</p>
+
+      <p>
+        Une réservation a été enregistrée pour vous chez
+        <strong>${restaurantName}</strong> pour
+        <strong>${numberOfGuests} personne${numberOfGuests > 1 ? "s" : ""}</strong>,
+        le <strong>${fmtDateFR(reservationDate)}</strong> à
+        <strong>${reservationTime}</strong>.
+      </p>
+
+      <p>
+        Afin de confirmer définitivement cette réservation, nous vous invitons à
+        valider l’empreinte bancaire demandée.
+      </p>
+
+      <p>
+        <strong>Montant de l’empreinte bancaire :</strong>
+        ${Number(bankHoldAmountTotal || 0).toFixed(2)} €
+      </p>
+
+      <p>
+        Ce lien est valable jusqu’au <strong>${fmtDateTimeFR(expiresAt)}</strong>.
+      </p>
+
+      <p style="margin: 24px 0;">
+        <a
+          href="${actionUrl}"
+          style="display:inline-block;padding:12px 20px;background:#1d4ed8;color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;"
+        >
+          Valider mon empreinte bancaire
+        </a>
+      </p>
+
+      <p>
+        Sans validation dans le délai imparti, la réservation sera automatiquement annulée.
+      </p>
+
+      <p>Cordialement,</p>
+      <p>L’équipe de ${restaurantName}</p>
+    </body>
+  </html>`;
+}
+
+async function sendReservationEmail(
+  type,
+  { reservation, restaurantName, actionUrl, expiresAt, bankHoldAmountTotal },
+) {
   if (!reservation) return { skipped: true, reason: "no_reservation" };
   const email = reservation.customerEmail;
 
@@ -178,6 +243,9 @@ async function sendReservationEmail(type, { reservation, restaurantName }) {
     reservationDate: reservation.reservationDate,
     reservationTime: reservation.reservationTime,
     restaurantName,
+    actionUrl,
+    expiresAt,
+    bankHoldAmountTotal,
   };
 
   if (type === "confirmed") {
@@ -224,6 +292,16 @@ async function sendReservationEmail(type, { reservation, restaurantName }) {
     return sendEmail({
       subject: "Rappel de votre réservation demain",
       htmlContent: tplReminder24h(payload),
+      toEmail: payload.toEmail,
+      toName: payload.toName,
+      restaurantName,
+    });
+  }
+
+  if (type === "bankHoldActionRequired") {
+    return sendEmail({
+      subject: "Validation requise pour confirmer votre réservation",
+      htmlContent: tplBankHoldActionRequired(payload),
       toEmail: payload.toEmail,
       toName: payload.toName,
       restaurantName,
