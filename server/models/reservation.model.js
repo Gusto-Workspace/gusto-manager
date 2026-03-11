@@ -57,8 +57,12 @@ const ReservationSchema = new mongoose.Schema(
       index: true,
     },
 
-    source: { type: String, default: "public" }, // public | dashboard
+    source: { type: String, default: "public" },
     pendingExpiresAt: { type: Date, default: null },
+
+    reminder24hDueAt: { type: Date, default: null, index: true },
+    reminder24hSentAt: { type: Date, default: null, index: true },
+    reminder24hLockedAt: { type: Date, default: null, index: true },
 
     activatedAt: { type: Date, default: null },
     finishedAt: { type: Date, default: null },

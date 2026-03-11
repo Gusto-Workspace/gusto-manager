@@ -131,6 +131,41 @@ function tplRejected({
   </body></html>`;
 }
 
+function tplReminder24h({
+  customerName,
+  numberOfGuests,
+  reservationDate,
+  reservationTime,
+  restaurantName,
+}) {
+  return `
+  <html>
+    <body style="font-family: Arial, sans-serif; color:#333; line-height:1.6;">
+      <p>Bonjour ${customerName},</p>
+
+      <p>
+        Nous avons le plaisir de vous rappeler votre réservation chez
+        <strong>${restaurantName}</strong> pour
+        <strong>${numberOfGuests} personne${numberOfGuests > 1 ? "s" : ""}</strong>,
+        prévue le <strong>${fmtDateFR(reservationDate)}</strong> à
+        <strong>${reservationTime}</strong>.
+      </p>
+
+      <p>
+        Toute l’équipe se réjouit de vous accueillir.
+      </p>
+
+      <p>
+        En cas d’empêchement ou de modification, nous vous remercions de bien vouloir nous prévenir dès que possible.
+      </p>
+
+      <p>À très bientôt,</p>
+
+      <p>L’équipe de ${restaurantName}</p>
+    </body>
+  </html>`;
+}
+
 async function sendReservationEmail(type, { reservation, restaurantName }) {
   if (!reservation) return { skipped: true, reason: "no_reservation" };
   const email = reservation.customerEmail;
@@ -179,6 +214,16 @@ async function sendReservationEmail(type, { reservation, restaurantName }) {
     return sendEmail({
       subject: "Votre demande de réservation a été refusée",
       htmlContent: tplRejected(payload),
+      toEmail: payload.toEmail,
+      toName: payload.toName,
+      restaurantName,
+    });
+  }
+
+  if (type === "reminder24h") {
+    return sendEmail({
+      subject: "Rappel de votre réservation demain",
+      htmlContent: tplReminder24h(payload),
       toEmail: payload.toEmail,
       toName: payload.toName,
       restaurantName,

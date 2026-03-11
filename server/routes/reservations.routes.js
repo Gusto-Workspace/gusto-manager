@@ -22,7 +22,7 @@ const {
 // SERVICE MAILS RESERVATIONS
 const {
   sendReservationEmail,
-} = require("../services/reservationsMailer.service");
+} = require("../services/reservations-mailer.service");
 
 // SERVICE CUSTOMERS
 const {
@@ -263,6 +263,33 @@ function buildReservationDateTime(reservationDateUTC, reservationTime) {
   return new Date(
     Date.UTC(y, m, day, parseInt(hh, 10) || 0, parseInt(mm, 10) || 0, 0, 0),
   );
+}
+
+function computeReminder24hDueAt(reservationDateUTC, reservationTime) {
+  const reservationDT = buildReservationDateTime(
+    reservationDateUTC,
+    reservationTime,
+  );
+  if (!reservationDT) return null;
+  return new Date(reservationDT.getTime() - 24 * 60 * 60 * 1000);
+}
+
+function buildReminder24hFields({ status, reservationDate, reservationTime }) {
+  const nextStatus = String(status || "").trim();
+
+  if (nextStatus !== "Confirmed") {
+    return {
+      reminder24hDueAt: null,
+      reminder24hSentAt: null,
+      reminder24hLockedAt: null,
+    };
+  }
+
+  return {
+    reminder24hDueAt: computeReminder24hDueAt(reservationDate, reservationTime),
+    reminder24hSentAt: null,
+    reminder24hLockedAt: null,
+  };
 }
 
 function isDateTimeBlocked(parameters, candidateDT) {
@@ -750,6 +777,12 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
       source: "public",
       pendingExpiresAt,
 
+      ...buildReminder24hFields({
+        status: computedStatus,
+        reservationDate: normalizedDay,
+        reservationTime: reservationData.reservationTime,
+      }),
+
       activatedAt: null,
       finishedAt: null,
       customer: customer?._id || null,
@@ -1038,6 +1071,12 @@ router.post(
         source: "dashboard",
         pendingExpiresAt,
 
+        ...buildReminder24hFields({
+          status: computedStatus,
+          reservationDate: normalizedDay,
+          reservationTime: reservationData.reservationTime,
+        }),
+
         activatedAt: null,
         finishedAt: null,
       });
@@ -1324,6 +1363,16 @@ router.put(
       } else {
         reservation.pendingExpiresAt = null;
       }
+
+      const reminderFields = buildReminder24hFields({
+        status: nextStatus,
+        reservationDate: reservation.reservationDate,
+        reservationTime: reservation.reservationTime,
+      });
+
+      reservation.reminder24hDueAt = reminderFields.reminder24hDueAt;
+      reservation.reminder24hSentAt = reminderFields.reminder24hSentAt;
+      reservation.reminder24hLockedAt = reminderFields.reminder24hLockedAt;
 
       await reservation.save();
 
@@ -1792,6 +1841,23 @@ router.put(
         existing.status = tmp.status;
         existing.activatedAt = tmp.activatedAt;
         existing.finishedAt = tmp.finishedAt;
+      }
+
+      const shouldRefreshReminder24h = touchesDateTime || statusExplicit;
+
+      if (shouldRefreshReminder24h) {
+        const nextStatus = String(updateData.status ?? existing.status);
+        const nextDate = updateData.reservationDate ?? candidateDate;
+        const nextTime = updateData.reservationTime ?? candidateTime;
+
+        Object.assign(
+          updateData,
+          buildReminder24hFields({
+            status: nextStatus,
+            reservationDate: nextDate,
+            reservationTime: nextTime,
+          }),
+        );
       }
 
       // ✅ update réservation
