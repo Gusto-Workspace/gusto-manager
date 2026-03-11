@@ -1,6 +1,7 @@
 require("dotenv").config();
 require("./services/cron-job/backup.service");
 require("./services/cron-job/reservation-reminders.service");
+require('./services/cron-job/reservation-bank-hold-authorization.service')
 const express = require("express");
 const http = require("http");
 const cors = require("cors");
