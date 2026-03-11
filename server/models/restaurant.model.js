@@ -104,6 +104,14 @@ const floorplanSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const reservationBankHoldSchema = new mongoose.Schema(
+  {
+    enabled: { type: Boolean, default: false },
+    amount_per_person: { type: Number, min: 0, default: 0 },
+  },
+  { _id: false },
+);
+
 // Sous-schéma pour les paramètres de réservation
 const reservationParametersSchema = new mongoose.Schema({
   same_hours_as_restaurant: { type: Boolean, default: true },
@@ -117,6 +125,9 @@ const reservationParametersSchema = new mongoose.Schema({
   auto_accept: { type: Boolean, default: true },
   interval: { type: Number, default: 30 },
   pending_duration_minutes: { type: Number, min: 1, default: 120 },
+
+  // Emprunte bancaire
+  bank_hold: { type: reservationBankHoldSchema, default: () => ({}) },
 
   // Gestion intelligente
   manage_disponibilities: { type: Boolean, default: false },

@@ -106,6 +106,51 @@ function minutesFromHHmm(timeStr) {
   return (Number(h) || 0) * 60 + (Number(m) || 0);
 }
 
+function isBlockingReservationFront(r) {
+  if (!r) return false;
+  if (!["Pending", "Confirmed", "Active", "Late"].includes(r.status))
+    return false;
+
+  if (r.status !== "Pending") return true;
+
+  const bankHoldEnabled = Boolean(r?.bankHold?.enabled);
+  const bankHoldExpiresAt = r?.bankHold?.expiresAt
+    ? new Date(r.bankHold.expiresAt).getTime()
+    : null;
+
+  if (
+    bankHoldEnabled &&
+    Number.isFinite(bankHoldExpiresAt) &&
+    bankHoldExpiresAt <= Date.now()
+  ) {
+    return false;
+  }
+
+  if (!r.pendingExpiresAt) return true;
+  return new Date(r.pendingExpiresAt).getTime() > Date.now();
+}
+
+function requiredTableSizeFromGuestsFront(n) {
+  const g = Number(n || 0);
+  if (g <= 0) return 0;
+  if (g === 1) return 1;
+  return g % 2 === 0 ? g : g + 1;
+}
+
+function isEligibleTableForGuestsFront(tableSeats, guests) {
+  const seats = Number(tableSeats || 0);
+  const g = Number(guests || 0);
+
+  if (g <= 0 || seats <= 0) return false;
+
+  if (g === 1) {
+    return seats === 1 || seats === 2;
+  }
+
+  const required = requiredTableSizeFromGuestsFront(g);
+  return seats === required;
+}
+
 export default function AddReservationComponent(props) {
   const { t } = useTranslation("reservations");
   const router = useRouter();
@@ -129,6 +174,9 @@ export default function AddReservationComponent(props) {
     customerPhone: "",
     commentary: "",
     table: "",
+    requestBankHold: Boolean(
+      props.restaurantData?.reservations?.parameters?.bank_hold?.enabled,
+    ),
   });
 
   const [availableTimes, setAvailableTimes] = useState([]);
@@ -144,6 +192,15 @@ export default function AddReservationComponent(props) {
   const [modalTitle, setModalTitle] = useState("");
   const [modalMsg, setModalMsg] = useState("");
   const [postModalRedirect, setPostModalRedirect] = useState(false);
+
+  const bankHoldFeatureEnabled = Boolean(
+    props.restaurantData?.reservations?.parameters?.bank_hold?.enabled,
+  );
+
+  const shouldRequestBankHold =
+    !isEditing &&
+    bankHoldFeatureEnabled &&
+    Boolean(reservationData.requestBankHold);
 
   const closeModal = () => {
     setModalOpen(false);
@@ -195,6 +252,7 @@ export default function AddReservationComponent(props) {
       customerPhone: r.customerPhone || "",
       commentary: r.commentary || "",
       table: tableValue,
+      requestBankHold: false,
     });
     setHasUserChangedSlot(false);
     setHasUserChangedTable(false);
@@ -208,8 +266,10 @@ export default function AddReservationComponent(props) {
     if (
       !props?.restaurantData?.reservations ||
       !reservationData.reservationDate
-    )
+    ) {
+      setIsLoading(false);
       return;
+    }
 
     const selectedDay = reservationData.reservationDate.getDay();
     const dayIndex = selectedDay === 0 ? 6 : selectedDay - 1;
@@ -219,43 +279,6 @@ export default function AddReservationComponent(props) {
     const dayHours = parameters.same_hours_as_restaurant
       ? props.restaurantData.opening_hours[dayIndex]
       : parameters.reservation_hours[dayIndex];
-
-    // -----------------------------
-    // Helpers (front alignés backend)
-    // -----------------------------
-    const isBlockingReservationFront = (r) => {
-      if (!r) return false;
-      if (!["Pending", "Confirmed", "Active", "Late"].includes(r.status))
-        return false;
-
-      if (r.status !== "Pending") return true;
-
-      // Pending => bloquant seulement si non expirée
-      // (si pendingExpiresAt absent, on considère bloquant par safety)
-      if (!r.pendingExpiresAt) return true;
-      return new Date(r.pendingExpiresAt).getTime() > Date.now();
-    };
-
-    const requiredTableSizeFromGuestsFront = (n) => {
-      const g = Number(n || 0);
-      if (g <= 0) return 0;
-      if (g === 1) return 1;
-      return g % 2 === 0 ? g : g + 1;
-    };
-
-    const isEligibleTableForGuestsFront = (tableSeats, guests) => {
-      const seats = Number(tableSeats || 0);
-      const g = Number(guests || 0);
-
-      if (g <= 0 || seats <= 0) return false;
-
-      if (g === 1) {
-        return seats === 1 || seats === 2;
-      }
-
-      const required = requiredTableSizeFromGuestsFront(g);
-      return seats === required;
-    };
 
     // -----------------------------
     // Si fermé => aucun créneau
@@ -450,41 +473,6 @@ export default function AddReservationComponent(props) {
       setAvailableTables([]);
       return;
     }
-
-    // -----------------------------
-    // Helpers alignés backend
-    // -----------------------------
-    const isBlockingReservationFront = (r) => {
-      if (!r) return false;
-      if (!["Pending", "Confirmed", "Active", "Late"].includes(r.status))
-        return false;
-
-      if (r.status !== "Pending") return true;
-
-      if (!r.pendingExpiresAt) return true;
-      return new Date(r.pendingExpiresAt).getTime() > Date.now();
-    };
-
-    const requiredTableSizeFromGuestsFront = (n) => {
-      const g = Number(n || 0);
-      if (g <= 0) return 0;
-      if (g === 1) return 1;
-      return g % 2 === 0 ? g : g + 1;
-    };
-
-    const isEligibleTableForGuestsFront = (tableSeats, guests) => {
-      const seats = Number(tableSeats || 0);
-      const g = Number(guests || 0);
-
-      if (g <= 0 || seats <= 0) return false;
-
-      if (g === 1) {
-        return seats === 1 || seats === 2;
-      }
-
-      const required = requiredTableSizeFromGuestsFront(g);
-      return seats === required;
-    };
 
     const guests = Number(reservationData.numberOfGuests || 0);
 
@@ -719,15 +707,15 @@ export default function AddReservationComponent(props) {
   }
 
   function handleInputChange(e) {
-    const { name, value } = e.target;
+    const { name, value, type, checked } = e.target;
 
     if (name === "numberOfGuests") setHasUserChangedSlot(true);
 
     if (name === "table") setHasUserChangedTable(true);
 
-    setReservationData((prev) => ({
-      ...prev,
-      [name]: value,
+    setReservationData((prevData) => ({
+      ...prevData,
+      [name]: type === "checkbox" ? checked : value,
       ...(name === "numberOfGuests" ? { reservationTime: "", table: "" } : {}),
     }));
   }
@@ -738,6 +726,16 @@ export default function AddReservationComponent(props) {
 
     if (!reservationData.reservationTime) {
       setError(t("errors.selectTime"));
+      return;
+    }
+
+    if (
+      shouldRequestBankHold &&
+      !String(reservationData.customerEmail || "").trim()
+    ) {
+      setError(
+        "L’adresse email du client est obligatoire pour envoyer le lien d’empreinte bancaire.",
+      );
       return;
     }
 
@@ -815,6 +813,15 @@ export default function AddReservationComponent(props) {
         commentary: updatedData.commentary,
         table: updatedData.table,
       };
+
+      if (!isEditing) {
+        reservationPayload.requestBankHold = shouldRequestBankHold;
+        reservationPayload.returnUrl = `${String(
+          props.restaurantData?.website ||
+            process.env.NEXT_PUBLIC_SITE_URL ||
+            "",
+        ).replace(/\/+$/, "")}/reservations/bank-hold/finalize`;
+      }
     }
 
     try {
@@ -861,6 +868,22 @@ export default function AddReservationComponent(props) {
         setPostModalRedirect(true);
         setModalOpen(true);
         return; // on attend la fermeture de la modale pour redirect
+      }
+
+      const { bankHoldRequested, emailSent } = response.data || {};
+
+      if (bankHoldRequested) {
+        setModalTitle(
+          emailSent ? "Empreinte bancaire demandée" : "Réservation créée",
+        );
+        setModalMsg(
+          emailSent
+            ? "La réservation a bien été créée en attente d’empreinte bancaire. Un email a été envoyé au client pour valider sa carte."
+            : "La réservation a bien été créée en attente d’empreinte bancaire, mais l’email n’a pas pu être envoyé automatiquement. Vous pourrez prévoir un renvoi depuis le détail de la réservation.",
+        );
+        setPostModalRedirect(true);
+        setModalOpen(true);
+        return;
       }
 
       router.push("/dashboard/reservations");
@@ -1273,7 +1296,7 @@ export default function AddReservationComponent(props) {
                 </div>
               </div>
 
-              <div className="flex flex-col gap-3">
+              <div className="relative flex flex-col gap-3">
                 <label
                   htmlFor="customerEmail"
                   className="text-base font-semibold text-darkBlue inline-flex items-center gap-2"
@@ -1287,8 +1310,13 @@ export default function AddReservationComponent(props) {
                   name="customerEmail"
                   value={reservationData.customerEmail}
                   onChange={handleInputChange}
+                  required={shouldRequestBankHold}
                   className="h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 text-base outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-2 focus:ring-blue/20"
                 />
+                <p className="text-[11px] ml-2 pt-1 text-darkBlue/55 absolute bottom-0 translate-y-full">
+                  *Requis pour les rappels de réservation et les empreintes
+                  bancaire
+                </p>
               </div>
 
               <div className="flex flex-col gap-3">
@@ -1362,6 +1390,30 @@ export default function AddReservationComponent(props) {
               </div>
             </div>
           </div>
+
+          {!isEditing && bankHoldFeatureEnabled && (
+            <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-4">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="requestBankHold"
+                  checked={Boolean(reservationData.requestBankHold)}
+                  onChange={handleInputChange}
+                  className="mt-1 h-4 w-4 rounded border-darkBlue/20"
+                />
+                <div className="flex flex-col gap-1">
+                  <span className="text-base font-semibold text-darkBlue">
+                    Demander une empreinte bancaire
+                  </span>
+                  <span className="text-sm text-darkBlue/60">
+                    Si cette option reste cochée, le client recevra un email
+                    pour valider sa carte bancaire avant confirmation définitive
+                    de la réservation.
+                  </span>
+                </div>
+              </label>
+            </div>
+          )}
 
           {/* Commentaire */}
           <div className="rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm p-4 midTablet:p-6">
