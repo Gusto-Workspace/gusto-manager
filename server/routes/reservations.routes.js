@@ -750,25 +750,27 @@ async function finalizePublicBankHoldReservation({ reservationId, sessionId }) {
   await onReservationCreated(reservation.customer?._id, reservation);
 
   broadcastToRestaurant(String(reservation.restaurant_id), {
-    type: "reservation_created",
+    type: "reservation_updated",
     restaurantId: String(reservation.restaurant_id),
-    reservation,
+    reservation: reservation.toObject ? reservation.toObject() : reservation,
   });
 
-  await createAndBroadcastNotification({
-    restaurantId: String(reservation.restaurant_id),
-    module: "reservations",
-    type: "reservation_created",
-    data: {
-      reservationId: String(reservation?._id),
-      customerName: getCustomerFullNameFromReservation(reservation),
-      numberOfGuests: reservation?.numberOfGuests,
-      reservationDate: reservation?.reservationDate,
-      reservationTime: reservation?.reservationTime,
-      status: reservation?.status,
-      tableName: reservation?.table?.name || null,
-    },
-  });
+  if (reservation.status === "Confirmed") {
+    await createAndBroadcastNotification({
+      restaurantId: String(reservation.restaurant_id),
+      module: "reservations",
+      type: "reservation_created",
+      data: {
+        reservationId: String(reservation?._id),
+        customerName: getCustomerFullNameFromReservation(reservation),
+        numberOfGuests: reservation?.numberOfGuests,
+        reservationDate: reservation?.reservationDate,
+        reservationTime: reservation?.reservationTime,
+        status: reservation?.status,
+        tableName: reservation?.table?.name || null,
+      },
+    });
+  }
 
   try {
     const restaurantName = restaurant?.name || "Restaurant";
@@ -1442,21 +1444,6 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
         reservation: newReservation,
       });
 
-      await createAndBroadcastNotification({
-        restaurantId,
-        module: "reservations",
-        type: "reservation_created",
-        data: {
-          reservationId: String(newReservation?._id),
-          customerName: getCustomerFullNameFromReservation(newReservation),
-          numberOfGuests: newReservation?.numberOfGuests,
-          reservationDate: newReservation?.reservationDate,
-          reservationTime: newReservation?.reservationTime,
-          status: newReservation?.status,
-          tableName: newReservation?.table?.name || null,
-        },
-      });
-
       return res.status(200).json({
         requiresAction: true,
         checkoutUrl: session.url,
@@ -1542,9 +1529,6 @@ router.post(
             "Les réservations sont temporairement indisponibles sur ce créneau.",
         });
       }
-
-      const computedStatus = "Confirmed";
-      const pendingExpiresAt = null;
 
       let assignedTable = null;
 
