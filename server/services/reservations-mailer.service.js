@@ -166,12 +166,6 @@ function tplReminder24h({
   </html>`;
 }
 
-function fmtDateTimeFR(dateInput) {
-  const d = new Date(dateInput);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleString("fr-FR");
-}
-
 function tplBankHoldActionRequired({
   customerName,
   numberOfGuests,
@@ -180,7 +174,6 @@ function tplBankHoldActionRequired({
   restaurantName,
   bankHoldAmountTotal,
   actionUrl,
-  expiresAt,
 }) {
   return `
   <html>
@@ -188,7 +181,7 @@ function tplBankHoldActionRequired({
       <p>Bonjour ${customerName},</p>
 
       <p>
-        Une réservation a été enregistrée pour vous chez
+        Votre réservation a été enregistrée chez
         <strong>${restaurantName}</strong> pour
         <strong>${numberOfGuests} personne${numberOfGuests > 1 ? "s" : ""}</strong>,
         le <strong>${fmtDateFR(reservationDate)}</strong> à
@@ -206,7 +199,7 @@ function tplBankHoldActionRequired({
       </p>
 
       <p>
-        Ce lien est valable jusqu’au <strong>${fmtDateTimeFR(expiresAt)}</strong>.
+        Ce lien est valable <strong>1 heure</strong>.
       </p>
 
       <p style="margin: 24px 0;">
@@ -230,7 +223,7 @@ function tplBankHoldActionRequired({
 
 async function sendReservationEmail(
   type,
-  { reservation, restaurantName, actionUrl, expiresAt, bankHoldAmountTotal },
+  { reservation, restaurantName, actionUrl, bankHoldAmountTotal },
 ) {
   if (!reservation) return { skipped: true, reason: "no_reservation" };
   const email = reservation.customerEmail;
@@ -244,7 +237,6 @@ async function sendReservationEmail(
     reservationTime: reservation.reservationTime,
     restaurantName,
     actionUrl,
-    expiresAt,
     bankHoldAmountTotal,
   };
 
