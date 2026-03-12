@@ -30,6 +30,7 @@ export default function CardReservationComponent(props) {
   const status = r.status;
 
   const statusStyles = {
+    AwaitingBankHold: "bg-[#F59E0B1A] text-[#B45309] border-[#F59E0B66]",
     Pending: "bg-blue/10 text-blue border-blue/30",
     Confirmed: "bg-blue/15 text-blue border-blue/40",
     Active: "bg-green/10 text-green border-green/30",
@@ -40,6 +41,7 @@ export default function CardReservationComponent(props) {
   };
 
   const statusTranslations = {
+    AwaitingBankHold: "Empreinte en attente",
     Pending: "En attente",
     Confirmed: "Confirmée",
     Active: "En cours",

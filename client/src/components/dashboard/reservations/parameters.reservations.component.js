@@ -93,7 +93,7 @@ export default function ParametersReservationComponent(props) {
       interval: "30",
       pending_duration_minutes: 120,
 
-      // Emprunte bancaire
+      // Empreinte bancaire
       bank_hold_enabled: false,
       bank_hold_amount_per_person: 0,
 
@@ -786,7 +786,7 @@ export default function ParametersReservationComponent(props) {
           saveUI={sectionUI.slots}
           onSave={() => saveSection("slots")}
         />
-        {/* --- Bloc: Emprunte bancaire --- */}
+        {/* --- Bloc: Empreinte bancaire --- */}
         <BankHoldParametersComponent
           register={register}
           watch={watch}

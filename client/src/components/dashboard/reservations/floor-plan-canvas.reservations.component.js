@@ -80,9 +80,16 @@ function isPendingStillBlocking(reservation) {
 
 function isBlockingReservation(reservation) {
   if (!reservation) return false;
-  if (["Confirmed", "Active", "Late"].includes(reservation.status)) return true;
-  if (reservation.status === "Pending")
+  if (
+    ["AwaitingBankHold", "Confirmed", "Active", "Late"].includes(
+      reservation.status,
+    )
+  ) {
+    return true;
+  }
+  if (reservation.status === "Pending") {
     return isPendingStillBlocking(reservation);
+  }
   return false;
 }
 
@@ -323,8 +330,8 @@ function getTableStatus({
       return "late";
     }
 
-    // 3) Confirmed / Pending ne deviennent jamais occupées automatiquement
-    if (["Confirmed", "Pending"].includes(currentStatus)) {
+    // 3) AwaitingBankHold / Confirmed / Pending ne deviennent jamais occupées automatiquement
+    if (["AwaitingBankHold", "Confirmed", "Pending"].includes(currentStatus)) {
       return "assigned";
     }
   }
@@ -615,6 +622,7 @@ function fitToBounds({
 
 function reservationStatusLabel(status) {
   const map = {
+    AwaitingBankHold: "Empreinte en attente",
     Pending: "En attente",
     Confirmed: "Confirmée",
     Active: "Installée",

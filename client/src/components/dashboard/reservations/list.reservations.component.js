@@ -53,6 +53,7 @@ export default function ListReservationsComponent(props) {
   }, []);
 
   const statusList = [
+    "AwaitingBankHold",
     "Pending",
     "Confirmed",
     "Active",
@@ -65,6 +66,7 @@ export default function ListReservationsComponent(props) {
 
   const statusTranslations = {
     All: t("list.status.all", "Toutes"),
+    AwaitingBankHold: t("Empreinte en attente"),
     Pending: t("list.status.pending"),
     Confirmed: t("list.status.confirmed"),
     Active: t("list.status.active"),
@@ -131,6 +133,7 @@ export default function ListReservationsComponent(props) {
           date: new Date(dt),
           total: 0,
           byStatus: {
+            AwaitingBankHold: 0,
             Pending: 0,
             Confirmed: 0,
             Active: 0,
@@ -141,6 +144,7 @@ export default function ListReservationsComponent(props) {
           },
           matchTotal: 0,
           matchByStatus: {
+            AwaitingBankHold: 0,
             Pending: 0,
             Confirmed: 0,
             Active: 0,
@@ -200,6 +204,7 @@ export default function ListReservationsComponent(props) {
         inMonth,
         total: agg?.total || 0,
         byStatus: agg?.byStatus || {
+          AwaitingBankHold: 0,
           Pending: 0,
           Confirmed: 0,
           Active: 0,
@@ -210,6 +215,7 @@ export default function ListReservationsComponent(props) {
         },
         matchTotal: agg?.matchTotal || 0,
         matchByStatus: agg?.matchByStatus || {
+          AwaitingBankHold: 0,
           Pending: 0,
           Confirmed: 0,
           Active: 0,
@@ -232,6 +238,7 @@ export default function ListReservationsComponent(props) {
       return {
         byStatus: {
           All: [],
+          AwaitingBankHold: [],
           Pending: [],
           Confirmed: [],
           Active: [],
@@ -242,6 +249,7 @@ export default function ListReservationsComponent(props) {
         },
         counts: {
           All: 0,
+          AwaitingBankHold: 0,
           Pending: 0,
           Confirmed: 0,
           Active: 0,
@@ -278,6 +286,7 @@ export default function ListReservationsComponent(props) {
 
     const by = {
       All: filteredSorted.slice(),
+      AwaitingBankHold: [],
       Pending: [],
       Confirmed: [],
       Active: [],
@@ -519,6 +528,7 @@ export default function ListReservationsComponent(props) {
   }
 
   const calendarStatusList = [
+    "AwaitingBankHold",
     "Pending",
     "Confirmed",
     "Active",

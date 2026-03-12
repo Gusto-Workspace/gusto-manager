@@ -7,14 +7,11 @@ import { GlobalContext } from "@/contexts/global.context";
 // I18N
 import { useTranslation } from "next-i18next";
 
-// SVG
-import { ReservationSvg } from "@/components/_shared/_svgs/reservation.svg";
-
 // REACT HOOK FORM
 import { useForm } from "react-hook-form";
 
 // ICONS
-import { Loader2, X, ChevronLeft, Menu } from "lucide-react";
+import { Loader2, Menu } from "lucide-react";
 
 // AXIOS
 import axios from "axios";
@@ -27,6 +24,7 @@ import AutomationsParametersComponent from "../../reservations/parameters/automa
 import SmartParametersComponent from "../../reservations/parameters/smart.parameters.component";
 import FloorPlanParametersComponent from "../../reservations/parameters/floor-plan.parameters.component";
 import SidebarReservationsWebapp from "../_shared/sidebar.webapp";
+import BankHoldParametersComponent from "../../reservations/parameters/bank-hold.parameters.component";
 
 // Helpers
 const statusLabel = (status) => {
@@ -92,6 +90,10 @@ export default function ParametersReservationComponent(props) {
       auto_accept: true,
       interval: "30",
       pending_duration_minutes: 120,
+
+      // Empreinte bancaire
+      bank_hold_enabled: false,
+      bank_hold_amount_per_person: 0,
 
       // Automatisations
       auto_finish_reservations: false,
@@ -204,6 +206,7 @@ export default function ParametersReservationComponent(props) {
   const initialSnapRef = useRef({
     hours: null,
     slots: null,
+    bank_hold: null,
     automations: null,
     smart: null,
   });
@@ -211,6 +214,7 @@ export default function ParametersReservationComponent(props) {
   const [sectionUI, setSectionUI] = useState({
     hours: { dirty: false, saving: false, saved: false },
     slots: { dirty: false, saving: false, saved: false },
+    bank_hold: { dirty: false, saving: false, saved: false },
     automations: { dirty: false, saving: false, saved: false },
     smart: { dirty: false, saving: false, saved: false },
   });
@@ -276,6 +280,10 @@ export default function ParametersReservationComponent(props) {
         interval: String(parameters.interval ?? "30"),
         pending_duration_minutes: parameters.pending_duration_minutes ?? 120,
 
+        bank_hold_enabled: parameters?.bank_hold?.enabled ?? false,
+        bank_hold_amount_per_person:
+          parameters?.bank_hold?.amount_per_person ?? 0,
+
         auto_finish_reservations: nextAutoFinishEnabled,
 
         deletion_duration: parameters.deletion_duration ?? false,
@@ -302,6 +310,11 @@ export default function ParametersReservationComponent(props) {
           interval: String(parameters.interval ?? "30"),
           pending_duration_minutes: parameters.pending_duration_minutes ?? 120,
         },
+        bank_hold: {
+          bank_hold_enabled: parameters?.bank_hold?.enabled ?? false,
+          bank_hold_amount_per_person:
+            parameters?.bank_hold?.amount_per_person ?? 0,
+        },
         automations: {
           auto_finish_reservations: nextAutoFinishEnabled,
           deletion_duration: parameters.deletion_duration ?? false,
@@ -320,6 +333,7 @@ export default function ParametersReservationComponent(props) {
       setSectionUI({
         hours: { dirty: false, saving: false, saved: false },
         slots: { dirty: false, saving: false, saved: false },
+        bank_hold: { dirty: false, saving: false, saved: false },
         automations: { dirty: false, saving: false, saved: false },
         smart: { dirty: false, saving: false, saved: false },
       });
@@ -336,6 +350,8 @@ export default function ParametersReservationComponent(props) {
   const interval = watch("interval");
   const pending_duration_minutes = watch("pending_duration_minutes");
   const deletion_duration_minutes = watch("deletion_duration_minutes");
+  const bank_hold_enabled = watch("bank_hold_enabled");
+  const bank_hold_amount_per_person = watch("bank_hold_amount_per_person");
   const table_occupancy_lunch_minutes = watch("table_occupancy_lunch_minutes");
   const table_occupancy_dinner_minutes = watch(
     "table_occupancy_dinner_minutes",
@@ -365,6 +381,18 @@ export default function ParametersReservationComponent(props) {
     markSectionDirty("slots", !shallowEqual(snap, next));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auto_accept, interval, pending_duration_minutes]);
+
+  useEffect(() => {
+    const snap = initialSnapRef.current?.bank_hold;
+    if (!snap) return;
+
+    const next = {
+      bank_hold_enabled: Boolean(bank_hold_enabled),
+      bank_hold_amount_per_person: Number(bank_hold_amount_per_person ?? 0),
+    };
+    markSectionDirty("bank_hold", !shallowEqual(snap, next));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bank_hold_enabled, bank_hold_amount_per_person]);
 
   useEffect(() => {
     const snap = initialSnapRef.current?.automations;
@@ -491,6 +519,18 @@ export default function ParametersReservationComponent(props) {
         };
       }
 
+      if (sectionKey === "bank_hold") {
+        const bhe = Boolean(bank_hold_enabled);
+        const amount = Number(bank_hold_amount_per_person || 0);
+
+        partial = {
+          bank_hold: {
+            enabled: bhe,
+            amount_per_person: bhe ? amount : 0,
+          },
+        };
+      }
+
       if (sectionKey === "smart") {
         const manageNext = Boolean(manage_disponibilities);
         const tablesToSave = manageNext
@@ -601,6 +641,12 @@ export default function ParametersReservationComponent(props) {
           pending_duration_minutes: Number(pending_duration_minutes ?? 0),
         };
       }
+      if (sectionKey === "bank_hold") {
+        initialSnapRef.current.bank_hold = {
+          bank_hold_enabled: Boolean(bank_hold_enabled),
+          bank_hold_amount_per_person: Number(bank_hold_amount_per_person ?? 0),
+        };
+      }
       if (sectionKey === "smart") {
         initialSnapRef.current.smart = {
           manage_disponibilities: Boolean(manage_disponibilities),
@@ -696,6 +742,15 @@ export default function ParametersReservationComponent(props) {
           auto_accept={auto_accept}
           saveUI={sectionUI.slots}
           onSave={() => saveSection("slots")}
+        />
+
+        {/* --- Bloc: Empreinte bancaire --- */}
+        <BankHoldParametersComponent
+          register={register}
+          watch={watch}
+          errors={errors}
+          saveUI={sectionUI.bank_hold}
+          onSave={() => saveSection("bank_hold")}
         />
 
         {/* --- Bloc: Automatisations --- */}

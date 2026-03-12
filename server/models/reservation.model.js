@@ -96,6 +96,7 @@ const ReservationSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: [
+        "AwaitingBankHold",
         "Pending",
         "Confirmed",
         "Active",

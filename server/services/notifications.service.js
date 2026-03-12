@@ -89,10 +89,13 @@ function buildNotificationContent({ type, data }) {
 
       const status = String(data?.status || "").toLowerCase();
       const isPending = status === "pending";
+      const isConfirmed = status === "confirmed";
 
       const title = isPending
         ? "⏳ Nouvelle table en attente"
-        : "🍽️ Nouvelle table réservée";
+        : isConfirmed
+          ? "🍽️ Nouvelle table confirmée"
+          : "🍽️ Nouvelle table";
 
       return {
         title,

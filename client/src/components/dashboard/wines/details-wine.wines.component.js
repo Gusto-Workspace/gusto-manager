@@ -80,7 +80,7 @@ export default function DetailsWineComponent(props) {
         </button>
 
         <div className="min-w-0 flex-1">
-          <div className="flex justify-between min-w-0 items-center gap-2">
+          <div className="flex justify-between midTablet:justify-normal min-w-0 items-center gap-2">
             <h3 className="truncate text-[15px] font-medium text-darkBlue midTablet:text-[16px]">
               {name}
             </h3>

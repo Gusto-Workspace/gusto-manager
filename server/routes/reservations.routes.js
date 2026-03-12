@@ -127,33 +127,46 @@ function normalizeReservationDayToUTC(dateInput) {
   );
 }
 
+const BLOCKING_STATUSES = [
+  "AwaitingBankHold",
+  "Pending",
+  "Confirmed",
+  "Active",
+  "Late",
+];
+
 // Statuts qui “bloquent” une table/slot (Pending uniquement si non expirée)
 function isBlockingStatus(status) {
-  return ["Pending", "Confirmed", "Active", "Late"].includes(status);
+  return BLOCKING_STATUSES.includes(status);
 }
 
 function isBlockingReservation(r) {
   if (!r) return false;
   if (!isBlockingStatus(r.status)) return false;
 
-  if (r.status !== "Pending") return true;
+  if (r.status === "AwaitingBankHold") {
+    const bankHoldEnabled = Boolean(r?.bankHold?.enabled);
+    const bankHoldExpiresAt = r?.bankHold?.expiresAt
+      ? new Date(r.bankHold.expiresAt).getTime()
+      : null;
 
-  const bankHoldEnabled = Boolean(r?.bankHold?.enabled);
-  const bankHoldExpiresAt = r?.bankHold?.expiresAt
-    ? new Date(r.bankHold.expiresAt).getTime()
-    : null;
+    if (
+      bankHoldEnabled &&
+      Number.isFinite(bankHoldExpiresAt) &&
+      bankHoldExpiresAt <= Date.now()
+    ) {
+      return false;
+    }
 
-  if (
-    bankHoldEnabled &&
-    Number.isFinite(bankHoldExpiresAt) &&
-    bankHoldExpiresAt <= Date.now()
-  ) {
-    return false;
+    return true;
   }
 
-  // Pending classique
-  if (r.pendingExpiresAt == null) return true;
-  return new Date(r.pendingExpiresAt).getTime() > Date.now();
+  if (r.status === "Pending") {
+    if (r.pendingExpiresAt == null) return true;
+    return new Date(r.pendingExpiresAt).getTime() > Date.now();
+  }
+
+  return true;
 }
 
 function getServiceBucketFromTime(reservationTime) {
@@ -398,6 +411,27 @@ function getCustomerFullNameFromReservation(reservation) {
   const fn = String(reservation?.customerFirstName || "").trim();
   const ln = String(reservation?.customerLastName || "").trim();
   return `${fn} ${ln}`.trim();
+}
+
+async function notifyReservationAfterBankHoldFinalization(reservation) {
+  const finalStatus = String(reservation?.status || "");
+
+  if (!["Pending", "Confirmed"].includes(finalStatus)) return;
+
+  await createAndBroadcastNotification({
+    restaurantId: String(reservation.restaurant_id),
+    module: "reservations",
+    type: "reservation_created",
+    data: {
+      reservationId: String(reservation?._id),
+      customerName: getCustomerFullNameFromReservation(reservation),
+      numberOfGuests: reservation?.numberOfGuests,
+      reservationDate: reservation?.reservationDate,
+      reservationTime: reservation?.reservationTime,
+      status: reservation?.status,
+      tableName: reservation?.table?.name || null,
+    },
+  });
 }
 
 function cleanNamePart(v) {
@@ -755,22 +789,7 @@ async function finalizePublicBankHoldReservation({ reservationId, sessionId }) {
     reservation: reservation.toObject ? reservation.toObject() : reservation,
   });
 
-  if (reservation.status === "Confirmed") {
-    await createAndBroadcastNotification({
-      restaurantId: String(reservation.restaurant_id),
-      module: "reservations",
-      type: "reservation_created",
-      data: {
-        reservationId: String(reservation?._id),
-        customerName: getCustomerFullNameFromReservation(reservation),
-        numberOfGuests: reservation?.numberOfGuests,
-        reservationDate: reservation?.reservationDate,
-        reservationTime: reservation?.reservationTime,
-        status: reservation?.status,
-        tableName: reservation?.table?.name || null,
-      },
-    });
-  }
+  await notifyReservationAfterBankHoldFinalization(reservation);
 
   try {
     const restaurantName = restaurant?.name || "Restaurant";
@@ -1077,17 +1096,6 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
       numberOfGuests: reservationData.numberOfGuests,
     });
 
-    console.log("[bank-hold-plan][public]", {
-      restaurantId,
-      enabled: bankHoldPlan.enabled,
-      reason: bankHoldPlan.reason,
-      stripeReady: bankHoldPlan.stripeReady,
-      flow: bankHoldPlan.flow,
-      amountPerPerson: bankHoldPlan.amountPerPerson,
-      amountTotal: bankHoldPlan.amountTotal,
-      authorizationScheduledFor: bankHoldPlan.authorizationScheduledFor,
-    });
-
     const candidateDT = buildReservationDateTime(
       normalizedDay,
       reservationData.reservationTime,
@@ -1145,7 +1153,7 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
       const dayReservations = await ReservationModel.find({
         restaurant_id: restaurantId,
         reservationDate: { $gte: dayStart, $lte: dayEnd },
-        status: { $in: ["Pending", "Confirmed", "Active", "Late"] },
+        status: { $in: BLOCKING_STATUSES },
       })
         .select("status reservationTime pendingExpiresAt table bankHold")
         .lean();
@@ -1398,7 +1406,7 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
       table: assignedTable,
       customer: customer?._id || null,
 
-      status: "Pending",
+      status: "AwaitingBankHold",
       source: "public",
       pendingExpiresAt: null,
 
@@ -1508,17 +1516,6 @@ router.post(
             authorizationScheduledFor: null,
           };
 
-      console.log("[bank-hold-plan][dashboard]", {
-        restaurantId,
-        enabled: bankHoldPlan.enabled,
-        reason: bankHoldPlan.reason,
-        stripeReady: bankHoldPlan.stripeReady,
-        flow: bankHoldPlan.flow,
-        amountPerPerson: bankHoldPlan.amountPerPerson,
-        amountTotal: bankHoldPlan.amountTotal,
-        authorizationScheduledFor: bankHoldPlan.authorizationScheduledFor,
-      });
-
       const candidateDT = buildReservationDateTime(
         normalizedDay,
         reservationData.reservationTime,
@@ -1561,7 +1558,7 @@ router.post(
         const dayReservations = await ReservationModel.find({
           restaurant_id: restaurantId,
           reservationDate: { $gte: dayStart, $lte: dayEnd },
-          status: { $in: ["Pending", "Confirmed", "Active", "Late"] },
+          status: { $in: BLOCKING_STATUSES },
         })
           .select("status reservationTime pendingExpiresAt table bankHold")
           .lean();
@@ -1800,7 +1797,7 @@ router.post(
         table: assignedTable,
         customer: customer?._id || null,
 
-        status: "Pending",
+        status: "AwaitingBankHold",
         source: "dashboard",
         pendingExpiresAt: null,
 
@@ -1963,9 +1960,7 @@ router.put(
 
       // ✅ si on repasse en statut "bloquant" (Confirmed/Active/Late/Pending),
       // on vérifie que le créneau n'est pas dans un blocked_range
-      const willBlockSlot = ["Pending", "Confirmed", "Active", "Late"].includes(
-        nextStatus,
-      );
+      const willBlockSlot = BLOCKING_STATUSES.includes(nextStatus);
 
       if (willBlockSlot) {
         const normalizedDay = normalizeReservationDayToUTC(
@@ -2032,7 +2027,7 @@ router.put(
         const dayReservations = await ReservationModel.find({
           restaurant_id: restaurantId,
           reservationDate: { $gte: dayStart, $lte: dayEnd },
-          status: { $in: ["Pending", "Confirmed", "Active", "Late"] },
+          status: { $in: BLOCKING_STATUSES },
           _id: { $ne: reservationId },
         })
           .select("status reservationTime pendingExpiresAt table bankHold")
@@ -2419,9 +2414,7 @@ router.put(
       // le statut candidat (si on le change), sinon statut actuel
       const candidateStatus = String(updateData.status ?? existing.status);
 
-      const mustBlockSlot = ["Pending", "Confirmed", "Active", "Late"].includes(
-        candidateStatus,
-      );
+      const mustBlockSlot = BLOCKING_STATUSES.includes(candidateStatus);
 
       if (
         parameters.manage_disponibilities &&
@@ -2452,7 +2445,7 @@ router.put(
         const dayReservations = await ReservationModel.find({
           restaurant_id: restaurantId,
           reservationDate: { $gte: dayStart, $lte: dayEnd },
-          status: { $in: ["Pending", "Confirmed", "Active", "Late"] },
+          status: { $in: BLOCKING_STATUSES },
           _id: { $ne: reservationId },
         })
           .select("status reservationTime pendingExpiresAt table bankHold")

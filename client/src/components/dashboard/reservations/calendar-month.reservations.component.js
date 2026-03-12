@@ -61,11 +61,24 @@ export default function CalendarMonthReservationsComponent(props) {
                   </span>
                 )}
               </div>
-
               <div className="mt-2 space-y-1">
-                {props.statusList.map((s) => {
+                {[
+                  "Pending",
+                  "Confirmed",
+                  "Active",
+                  "Late",
+                  "Finished",
+                  "Canceled",
+                  "Rejected",
+                ].map((s) => {
+                  const value =
+                    s === "Pending"
+                      ? (displayByStatus.Pending || 0) +
+                        (displayByStatus.AwaitingBankHold || 0)
+                      : displayByStatus[s] || 0;
+
                   const pct = displayTotal
-                    ? Math.round((displayByStatus[s] / displayTotal) * 100)
+                    ? Math.round((value / displayTotal) * 100)
                     : 0;
 
                   return (
@@ -86,7 +99,7 @@ export default function CalendarMonthReservationsComponent(props) {
                                   ? "#3b82f6"
                                   : s === "Pending"
                                     ? "#93c5fd"
-                                    : s === "Canceled"
+                                    : s === "Canceled" || s === "Rejected"
                                       ? "#ff7664"
                                       : "#cbd5e1",
                         }}
