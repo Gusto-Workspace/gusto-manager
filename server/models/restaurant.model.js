@@ -126,7 +126,7 @@ const reservationParametersSchema = new mongoose.Schema({
   interval: { type: Number, default: 30 },
   pending_duration_minutes: { type: Number, min: 1, default: 120 },
 
-  // Emprunte bancaire
+  // Empreinte bancaire
   bank_hold: { type: reservationBankHoldSchema, default: () => ({}) },
 
   // Gestion intelligente

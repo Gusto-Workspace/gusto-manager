@@ -3,6 +3,7 @@ const cron = require("node-cron");
 const mongoose = require("mongoose");
 const ReservationModel = require("../../models/reservation.model");
 const RestaurantModel = require("../../models/restaurant.model");
+const { broadcastToRestaurant } = require("../sse-bus.service");
 const { sendReservationEmail } = require("../reservations-mailer.service");
 
 // toutes les 5 minutes
@@ -11,7 +12,7 @@ cron.schedule("*/5 * * * *", async () => {
     const now = new Date();
 
     const reservations = await ReservationModel.find({
-      status: "Pending",
+      status: "AwaitingBankHold",
       "bankHold.enabled": true,
       "bankHold.status": { $in: ["setup_pending", "authorization_pending"] },
       "bankHold.expiresAt": { $ne: null, $lte: now },
@@ -30,6 +31,14 @@ cron.schedule("*/5 * * * *", async () => {
 
       await reservation.save();
 
+      broadcastToRestaurant(String(reservation.restaurant_id), {
+        type: "reservation_updated",
+        restaurantId: String(reservation.restaurant_id),
+        reservation: reservation.toObject
+          ? reservation.toObject()
+          : reservation,
+      });
+
       try {
         const restaurant = await RestaurantModel.findById(
           reservation.restaurant_id,
@@ -46,10 +55,6 @@ cron.schedule("*/5 * * * *", async () => {
           mailErr?.response?.body || mailErr,
         );
       }
-
-      console.log("[bank-hold-expired-canceled]", {
-        reservationId: String(reservation._id),
-      });
     }
   } catch (error) {
     console.error("[bank-hold-expiration-cron-error]", error);

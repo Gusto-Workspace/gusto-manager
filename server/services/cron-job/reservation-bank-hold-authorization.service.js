@@ -163,11 +163,6 @@ async function runReservationBankHoldAuthorization() {
       });
 
       await markBankHoldAuthorized(locked._id, paymentIntent);
-
-      console.log("[bank-hold-authorized]", {
-        reservationId: String(locked._id),
-        paymentIntentId: paymentIntent?.id || null,
-      });
     } catch (e) {
       console.error(
         "[bank-hold-authorization-error]",

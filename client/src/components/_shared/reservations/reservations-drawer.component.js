@@ -134,6 +134,11 @@ export default function ReservationsDrawerComponent({
   const status = reservation?.status || null;
 
   const statusUi = useMemo(() => {
+      if (status === "AwaitingBankHold")
+    return {
+      cls: "bg-[#F59E0B1A] text-[#B45309] border-[#F59E0B66]",
+      label: "Empreinte en attente",
+    };
     if (status === "Pending")
       return {
         cls: "bg-blue/10 text-blue border-blue/30",

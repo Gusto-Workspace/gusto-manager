@@ -119,7 +119,7 @@ export default function WepAppReservationsPage(props) {
         <meta name="format-detection" content="telephone=no" />
       </Head>
 
-      <div className="block mobile:hidden">
+      <div className="block midTablet:hidden">
         <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 h-[100dvh] overflow-y-auto overscroll-none hide-scrollbar">
           {!hasReservationsModule ? (
             <NoAvailableComponent
