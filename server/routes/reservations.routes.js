@@ -628,10 +628,9 @@ async function createPublicBankHoldCheckoutSession({
     `&reservation_id=${encodeURIComponent(String(reservation._id))}` +
     `&session_id={CHECKOUT_SESSION_ID}`;
 
-  const cancelUrl = appendQueryToUrl(returnUrl, {
-    bank_hold_cancel: 1,
-    reservation_id: reservation._id,
-  });
+  const baseUrl = String(returnUrl).split("/reservations/bank-hold")[0];
+
+  const cancelUrl = `${baseUrl}/reservations/${reservation._id}`;
 
   if (flow === "scheduled") {
     return stripe.checkout.sessions.create({
@@ -1066,12 +1065,153 @@ router.post(
   },
 );
 
+/* ---------------------------------------------------------
+   RETRY PUBLIC BANK HOLD / CARD SETUP
+--------------------------------------------------------- */
+router.post(
+  "/reservations/:reservationId/bank-hold/retry",
+  async (req, res) => {
+    const { reservationId } = req.params;
+
+    try {
+      const reservation = await ReservationModel.findById(reservationId);
+
+      if (!reservation)
+        return res.status(404).json({ message: "Reservation not found" });
+
+      if (reservation.status !== "AwaitingBankHold") {
+        return res.status(400).json({
+          message: "Cette réservation ne nécessite plus d’empreinte bancaire",
+        });
+      }
+
+      if (
+        reservation.bankHold?.expiresAt &&
+        reservation.bankHold.expiresAt < new Date()
+      ) {
+        return res.status(400).json({
+          message: "Le délai de validation est expiré",
+        });
+      }
+
+      const restaurant = await RestaurantModel.findById(
+        reservation.restaurant_id,
+      );
+      const stripe = getStripeClientForRestaurant(restaurant);
+
+      const session = await createPublicBankHoldCheckoutSession({
+        stripe,
+        restaurant,
+        reservation,
+        returnUrl: req.body.returnUrl,
+        flow: reservation.bankHold.flow,
+      });
+
+      reservation.bankHold.checkoutSessionId = session.id;
+
+      await reservation.save();
+
+      res.json({
+        url: session.url,
+      });
+    } catch (err) {
+      console.error(err);
+
+      res.status(500).json({
+        message: "Impossible de relancer la validation",
+      });
+    }
+  },
+);
+
+/* ---------------------------------------------------------
+   RESUME PUBLIC BANK HOLD / CARD SETUP
+--------------------------------------------------------- */
+router.post(
+  "/reservations/:reservationId/cancel-pending-bank-hold",
+  async (req, res) => {
+    const { reservationId } = req.params;
+
+    try {
+      const reservation = await ReservationModel.findById(reservationId);
+
+      if (!reservation) {
+        return res.status(404).json({ message: "Reservation not found" });
+      }
+
+      if (reservation.status !== "AwaitingBankHold") {
+        return res.status(400).json({
+          message:
+            "Cette réservation n'est plus en attente d’empreinte bancaire.",
+        });
+      }
+
+      reservation.status = "Canceled";
+      reservation.canceledAt = new Date();
+
+      reservation.reminder24hDueAt = null;
+      reservation.reminder24hSentAt = null;
+      reservation.reminder24hLockedAt = null;
+
+      reservation.bankHold.lastError =
+        "Réservation annulée par le client avant validation de l’empreinte bancaire.";
+
+      await reservation.save();
+
+      broadcastToRestaurant(String(reservation.restaurant_id), {
+        type: "reservation_updated",
+        restaurantId: String(reservation.restaurant_id),
+        reservation: reservation.toObject
+          ? reservation.toObject()
+          : reservation,
+      });
+
+      return res.status(200).json({ success: true });
+    } catch (error) {
+      console.error("Error canceling pending bank hold reservation:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  },
+);
+
 /* --------------------------
    CREATE A NEW RESERVATION (public)
 ----------------------------- */
 router.post("/restaurants/:id/reservations", async (req, res) => {
   const restaurantId = req.params.id;
   const reservationData = req.body;
+
+  if (reservationData.idempotencyKey) {
+    const existing = await ReservationModel.findOne({
+      restaurant_id: restaurantId,
+      idempotencyKey: reservationData.idempotencyKey,
+    });
+
+    if (existing) {
+      if (existing.bankHold?.checkoutSessionId) {
+        const restaurant = await RestaurantModel.findById(restaurantId);
+        const stripe = getStripeClientForRestaurant(restaurant);
+
+        if (stripe) {
+          const session = await stripe.checkout.sessions.retrieve(
+            existing.bankHold.checkoutSessionId,
+          );
+
+          if (session?.url && session.status === "open") {
+            return res.status(200).json({
+              requiresAction: true,
+              checkoutUrl: session.url,
+              reservationId: existing._id,
+            });
+          }
+        }
+      }
+
+      return res.status(200).json({
+        reservation: existing,
+      });
+    }
+  }
 
   try {
     const restaurant = await RestaurantModel.findById(restaurantId);
@@ -1279,6 +1419,7 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
     if (!bankHoldPlan.enabled) {
       const newReservation = await ReservationModel.create({
         restaurant_id: restaurantId,
+        idempotencyKey: reservationData.idempotencyKey || null,
         customerFirstName,
         customerLastName,
         customerEmail,
@@ -1395,6 +1536,7 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
 
     const newReservation = await ReservationModel.create({
       restaurant_id: restaurantId,
+      idempotencyKey: reservationData.idempotencyKey || null,
       customerFirstName,
       customerLastName,
       customerEmail,

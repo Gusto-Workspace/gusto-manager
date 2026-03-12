@@ -123,6 +123,11 @@ const ReservationSchema = new mongoose.Schema(
     finishedAt: { type: Date, default: null },
     canceledAt: { type: Date, default: null },
     rejectedAt: { type: Date, default: null },
+
+    idempotencyKey: {
+      type: String,
+      index: true,
+    },
   },
   { timestamps: true },
 );
