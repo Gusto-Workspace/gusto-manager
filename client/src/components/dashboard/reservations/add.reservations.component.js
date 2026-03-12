@@ -1315,7 +1315,7 @@ export default function AddReservationComponent(props) {
                 />
                 <p className="text-[11px] ml-2 pt-1 text-darkBlue/55 absolute bottom-0 translate-y-full">
                   *Requis pour les rappels de réservation et les empreintes
-                  bancaire
+                  bancaires
                 </p>
               </div>
 
