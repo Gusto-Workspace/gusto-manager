@@ -307,13 +307,13 @@ function computeBankHoldActionExpiresAt(reservationDateUTC, reservationTime) {
     reservationTime,
   );
 
-  const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  const in1h = new Date(now.getTime() + 60 * 60 * 1000);
 
   if (!reservationDT || Number.isNaN(reservationDT.getTime())) {
-    return in24h;
+    return in1h;
   }
 
-  return in24h.getTime() <= reservationDT.getTime() ? in24h : reservationDT;
+  return in1h.getTime() <= reservationDT.getTime() ? in1h : reservationDT;
 }
 
 function buildReminder24hFields({ status, reservationDate, reservationTime }) {
@@ -1105,7 +1105,7 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
       const params = restaurant?.reservations?.parameters || {};
       const now = new Date();
 
-      // ✅ si now est dans un blocked range => anchor = fin du blocked range (max end si overlaps)
+      // ✅ si now est dans un blocked range => anchor = fin du blocked range
       const activeEnd = getActiveBlockedRangeEnd(params, now);
       const anchor = activeEnd || now;
 
@@ -1173,7 +1173,6 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
         eligibleTables,
       });
 
-      // ✅ si la capacité est déjà full à cause des manuelles
       if (reservedIds.size + unassignedCount >= capacity) {
         return res.status(409).json({
           code: "NO_TABLE_AVAILABLE",
@@ -1189,14 +1188,12 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
         if (!wanted)
           return res.status(400).json({ message: "Table invalide." });
 
-        // ✅ table déjà prise explicitement
         if (reservedIds.has(String(wanted._id))) {
           return res
             .status(409)
             .json({ message: "La table sélectionnée n'est plus disponible." });
         }
 
-        // ✅ capacité potentiellement full à cause des 'unassigned'
         if (reservedIds.size + unassignedCount >= capacity) {
           return res.status(409).json({
             code: "NO_TABLE_AVAILABLE",
@@ -1212,7 +1209,6 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
           source: "configured",
         };
       } else {
-        // auto assign
         const free = eligibleTables.find(
           (t) => !reservedIds.has(String(t._id)),
         );
@@ -1231,7 +1227,6 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
         };
       }
     } else {
-      // ✅ mode manuel : on accepte le nom de table saisi à la main
       const name = (reservationData.table || "").toString().trim();
       if (name) {
         const requiredSize = requiredTableSizeFromGuests(
@@ -1267,6 +1262,7 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
       email: customerEmail,
       phone: customerPhone,
     });
+
     // -------------------------------------------------
     // FLOW NORMAL (sans empreinte bancaire)
     // -------------------------------------------------
@@ -1381,6 +1377,12 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
       });
     }
 
+    // ✅ expiration du lien = min(now + 1h, heure de réservation)
+    const bankHoldExpiresAt = computeBankHoldActionExpiresAt(
+      normalizedDay,
+      reservationData.reservationTime,
+    );
+
     const newReservation = await ReservationModel.create({
       restaurant_id: restaurantId,
       customerFirstName,
@@ -1406,6 +1408,7 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
         currency: "eur",
         status: bankHoldPlan.initialBankHoldStatus,
         authorizationScheduledFor: bankHoldPlan.authorizationScheduledFor,
+        expiresAt: bankHoldExpiresAt,
       },
 
       reminder24hDueAt: null,
@@ -1428,8 +1431,31 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
       newReservation.bankHold.checkoutSessionId = session.id;
       await newReservation.save();
 
+      await onReservationCreated(customer?._id, newReservation);
+
       restaurant.reservations.list.push(newReservation._id);
       await restaurant.save();
+
+      broadcastToRestaurant(restaurantId, {
+        type: "reservation_created",
+        restaurantId,
+        reservation: newReservation,
+      });
+
+      await createAndBroadcastNotification({
+        restaurantId,
+        module: "reservations",
+        type: "reservation_created",
+        data: {
+          reservationId: String(newReservation?._id),
+          customerName: getCustomerFullNameFromReservation(newReservation),
+          numberOfGuests: newReservation?.numberOfGuests,
+          reservationDate: newReservation?.reservationDate,
+          reservationTime: newReservation?.reservationTime,
+          status: newReservation?.status,
+          tableName: newReservation?.table?.name || null,
+        },
+      });
 
       return res.status(200).json({
         requiresAction: true,
@@ -1445,72 +1471,6 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
         message: "Impossible de préparer la validation de la carte bancaire.",
       });
     }
-
-    await onReservationCreated(customer?._id, newReservation);
-
-    restaurant.reservations.list.push(newReservation._id);
-    await restaurant.save();
-
-    broadcastToRestaurant(restaurantId, {
-      type: "reservation_created",
-      restaurantId,
-      reservation: newReservation,
-    });
-
-    await createAndBroadcastNotification({
-      restaurantId,
-      module: "reservations",
-      type: "reservation_created",
-      data: {
-        reservationId: String(newReservation?._id),
-        customerName: getCustomerFullNameFromReservation(newReservation),
-        numberOfGuests: newReservation?.numberOfGuests,
-        reservationDate: newReservation?.reservationDate,
-        reservationTime: newReservation?.reservationTime,
-        status: newReservation?.status,
-        tableName: newReservation?.table?.name || null,
-      },
-    });
-
-    // ✅ email client selon statut final (Pending / Confirmed)
-    try {
-      const restaurantName = restaurant?.name || "Restaurant";
-      if (newReservation.status === "Pending") {
-        sendReservationEmail("pending", {
-          reservation: newReservation,
-          restaurantName,
-        })
-          .then((r) => {
-            if (r?.skipped)
-              console.log("[reservation-email-skip]", "pending", {
-                reason: r?.reason,
-              });
-          })
-          .catch((e) => {
-            console.error("Email create failed:", e?.response?.body || e);
-          });
-      }
-      if (newReservation.status === "Confirmed") {
-        sendReservationEmail("confirmed", {
-          reservation: newReservation,
-          restaurantName,
-        })
-          .then((r) => {
-            if (r?.skipped)
-              console.log("[reservation-email-skip]", "confirmed", {
-                reason: r?.reason,
-              });
-          })
-          .catch((e) => {
-            console.error("Email create failed:", e?.response?.body || e);
-          });
-      }
-    } catch (e) {
-      console.error("Email create(public) failed:", e?.response?.body || e);
-    }
-
-    const updatedRestaurant = await fetchRestaurantFull(restaurantId);
-    return res.status(201).json({ restaurant: updatedRestaurant });
   } catch (error) {
     console.error("Error creating reservation:", error);
     return res.status(500).json({ message: "Internal server error" });
