@@ -139,6 +139,11 @@ ReservationSchema.virtual("customerName").get(function () {
   return `${fn} ${ln}`.trim();
 });
 
+ReservationSchema.index({
+  "bankHold.status": 1,
+  "bankHold.authorizedAt": 1,
+});
+
 ReservationSchema.set("toJSON", { virtuals: true });
 ReservationSchema.set("toObject", { virtuals: true });
 

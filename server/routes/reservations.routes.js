@@ -782,6 +782,126 @@ async function finalizePublicBankHoldReservation({
   };
 }
 
+async function captureReservationBankHold({ restaurantId, reservationId }) {
+  const reservation = await ReservationModel.findById(reservationId);
+  if (!reservation) {
+    throw new Error("Réservation introuvable.");
+  }
+
+  if (String(reservation.restaurant_id) !== String(restaurantId)) {
+    throw new Error("Cette réservation n’appartient pas à ce restaurant.");
+  }
+
+  if (!reservation.bankHold?.enabled) {
+    throw new Error(
+      "Aucune empreinte bancaire n’est activée sur cette réservation.",
+    );
+  }
+
+  if (String(reservation.bankHold?.status || "") !== "authorized") {
+    throw new Error("Cette empreinte bancaire ne peut pas être capturée.");
+  }
+
+  const paymentIntentId = String(
+    reservation.bankHold?.paymentIntentId || "",
+  ).trim();
+  if (!paymentIntentId) {
+    throw new Error("PaymentIntent introuvable pour cette réservation.");
+  }
+
+  const restaurant = await RestaurantModel.findById(restaurantId);
+  if (!restaurant) {
+    throw new Error("Restaurant introuvable.");
+  }
+
+  const stripe = getStripeClientForRestaurant(restaurant);
+  if (!stripe) {
+    throw new Error("Clé Stripe restaurant introuvable.");
+  }
+
+  const paymentIntent = await stripe.paymentIntents.capture(paymentIntentId);
+
+  reservation.bankHold.status = "captured";
+  reservation.bankHold.capturedAt = new Date();
+  reservation.bankHold.lastError = "";
+
+  await reservation.save();
+
+  broadcastToRestaurant(String(reservation.restaurant_id), {
+    type: "reservation_updated",
+    restaurantId: String(reservation.restaurant_id),
+    reservation: reservation.toObject ? reservation.toObject() : reservation,
+  });
+
+  const updatedRestaurant = await fetchRestaurantFull(restaurantId);
+
+  return {
+    restaurant: updatedRestaurant,
+    reservation: reservation.toObject ? reservation.toObject() : reservation,
+    paymentIntentStatus: paymentIntent?.status || null,
+  };
+}
+
+async function releaseReservationBankHold({ restaurantId, reservationId }) {
+  const reservation = await ReservationModel.findById(reservationId);
+  if (!reservation) {
+    throw new Error("Réservation introuvable.");
+  }
+
+  if (String(reservation.restaurant_id) !== String(restaurantId)) {
+    throw new Error("Cette réservation n’appartient pas à ce restaurant.");
+  }
+
+  if (!reservation.bankHold?.enabled) {
+    throw new Error(
+      "Aucune empreinte bancaire n’est activée sur cette réservation.",
+    );
+  }
+
+  if (String(reservation.bankHold?.status || "") !== "authorized") {
+    throw new Error("Cette empreinte bancaire ne peut pas être libérée.");
+  }
+
+  const paymentIntentId = String(
+    reservation.bankHold?.paymentIntentId || "",
+  ).trim();
+  if (!paymentIntentId) {
+    throw new Error("PaymentIntent introuvable pour cette réservation.");
+  }
+
+  const restaurant = await RestaurantModel.findById(restaurantId);
+  if (!restaurant) {
+    throw new Error("Restaurant introuvable.");
+  }
+
+  const stripe = getStripeClientForRestaurant(restaurant);
+  if (!stripe) {
+    throw new Error("Clé Stripe restaurant introuvable.");
+  }
+
+  const paymentIntent = await stripe.paymentIntents.cancel(paymentIntentId);
+
+  reservation.bankHold.status = "released";
+  reservation.bankHold.releasedAt = new Date();
+  reservation.bankHold.lastError = "";
+
+  await reservation.save();
+
+  broadcastToRestaurant(String(reservation.restaurant_id), {
+    type: "reservation_updated",
+    restaurantId: String(reservation.restaurant_id),
+    reservation: reservation.toObject ? reservation.toObject() : reservation,
+  });
+
+  const updatedRestaurant = await fetchRestaurantFull(restaurantId);
+
+  return {
+    restaurant: updatedRestaurant,
+    reservation: reservation.toObject ? reservation.toObject() : reservation,
+    paymentIntentStatus: paymentIntent?.status || null,
+  };
+}
+
 /* ---------------------------------------------------------
    UPDATE RESTAURANT RESERVATIONS PARAMETERS
 --------------------------------------------------------- */
@@ -1652,6 +1772,10 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
 
       await ReservationModel.findByIdAndDelete(newReservation._id);
 
+      await RestaurantModel.findByIdAndUpdate(restaurantId, {
+        $pull: { "reservations.list": newReservation._id },
+      });
+
       return res.status(500).json({
         message: "Impossible de préparer la validation de la carte bancaire.",
       });
@@ -1962,8 +2086,6 @@ router.post(
         });
       }
 
-     
-
       const bankHoldExpiresAt = computeBankHoldActionExpiresAt(
         normalizedDay,
         reservationData.reservationTime,
@@ -2061,6 +2183,10 @@ router.post(
 
         await ReservationModel.findByIdAndDelete(newReservation._id);
 
+        await RestaurantModel.findByIdAndUpdate(restaurantId, {
+          $pull: { "reservations.list": newReservation._id },
+        });
+
         return res.status(500).json({
           message:
             "Impossible de préparer la validation de l’empreinte bancaire.",
@@ -2069,6 +2195,60 @@ router.post(
     } catch (error) {
       console.error("Error creating dashboard reservation:", error);
       return res.status(500).json({ message: "Internal server error" });
+    }
+  },
+);
+
+/* ---------------------------------------------------------
+   CAPTURE BANK HOLD
+--------------------------------------------------------- */
+router.post(
+  "/restaurants/:id/reservations/:reservationId/bank-hold/capture",
+  authenticateToken,
+  async (req, res) => {
+    const { id: restaurantId, reservationId } = req.params;
+
+    try {
+      const result = await captureReservationBankHold({
+        restaurantId,
+        reservationId,
+      });
+
+      return res.status(200).json(result);
+    } catch (error) {
+      console.error("Error capturing reservation bank hold:", error);
+
+      return res.status(400).json({
+        message:
+          error?.message || "Impossible de capturer l’empreinte bancaire.",
+      });
+    }
+  },
+);
+
+/* ---------------------------------------------------------
+   RELEASE BANK HOLD
+--------------------------------------------------------- */
+router.post(
+  "/restaurants/:id/reservations/:reservationId/bank-hold/release",
+  authenticateToken,
+  async (req, res) => {
+    const { id: restaurantId, reservationId } = req.params;
+
+    try {
+      const result = await releaseReservationBankHold({
+        restaurantId,
+        reservationId,
+      });
+
+      return res.status(200).json(result);
+    } catch (error) {
+      console.error("Error releasing reservation bank hold:", error);
+
+      return res.status(400).json({
+        message:
+          error?.message || "Impossible de libérer l’empreinte bancaire.",
+      });
     }
   },
 );

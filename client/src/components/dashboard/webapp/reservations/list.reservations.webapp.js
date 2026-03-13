@@ -11,7 +11,7 @@ import axios from "axios";
 import ConfirmModalReservationsWebapp from "./confirm-modal.reservations.webapp";
 import CalendarToolbarReservationsWebapp from "./calendar-toolbar.reservations.webapp";
 import CalendarMonthReservationsWebapp from "./calendar-month.reservations.webapp";
-import DayHeaderReservationsWebapp from "./day-header.reservations.webapp";
+import DayToolbarReservationsWebapp from "./day-toolbar.reservations.webapp";
 import DayListReservationsWebapp from "./day-list.reservations.webapp";
 import FloorPlanDrawerReservationsComponent from "../../reservations/floor-plan-drawer.reservations.component";
 
@@ -445,6 +445,76 @@ export default function ListReservationsWebapp(props) {
       });
   }
 
+  function captureBankHold() {
+    if (!selectedReservation) return;
+
+    setIsProcessing(true);
+    setError(null);
+
+    const token = localStorage.getItem("token");
+
+    axios
+      .post(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${props.restaurantData?._id}/reservations/${selectedReservation._id}/bank-hold/capture`,
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        },
+      )
+      .then((response) => {
+        props.setRestaurantData(response.data.restaurant);
+        closeModal();
+      })
+      .catch((error) => {
+        console.error("Error capturing bank hold:", error);
+        setError(
+          error?.response?.data?.message ||
+            "Une erreur est survenue lors de la capture de l’empreinte bancaire.",
+        );
+      })
+      .finally(() => {
+        setIsProcessing(false);
+      });
+  }
+
+  function releaseBankHold() {
+    if (!selectedReservation) return;
+
+    setIsProcessing(true);
+    setError(null);
+
+    const token = localStorage.getItem("token");
+
+    axios
+      .post(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${props.restaurantData?._id}/reservations/${selectedReservation._id}/bank-hold/release`,
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        },
+      )
+      .then((response) => {
+        props.setRestaurantData(response.data.restaurant);
+        closeModal();
+      })
+      .catch((error) => {
+        console.error("Error releasing bank hold:", error);
+        setError(
+          error?.response?.data?.message ||
+            "Une erreur est survenue lors de la libération de l’empreinte bancaire.",
+        );
+      })
+      .finally(() => {
+        setIsProcessing(false);
+      });
+  }
+
   function handleConfirmAction() {
     if (!selectedReservation) return;
 
@@ -475,6 +545,16 @@ export default function ListReservationsWebapp(props) {
 
     if (actionType === "reject" || actionType === "rejected") {
       updateReservationStatus("Rejected");
+      return;
+    }
+
+    if (actionType === "capture_bank_hold") {
+      captureBankHold();
+      return;
+    }
+
+    if (actionType === "release_bank_hold") {
+      releaseBankHold();
       return;
     }
 
@@ -587,7 +667,7 @@ export default function ListReservationsWebapp(props) {
         </>
       ) : (
         <>
-          <DayHeaderReservationsWebapp
+          <DayToolbarReservationsWebapp
             selectedDay={selectedDay}
             setSelectedDay={setSelectedDay}
             handleParametersClick={handleParametersClick}
