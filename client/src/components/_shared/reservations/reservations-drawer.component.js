@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { X, Phone, Mail, Users, Clock, Calendar, User } from "lucide-react";
-import { TableSvg } from "@/components/_shared/_svgs/table.svg";
-import { CommentarySvg } from "@/components/_shared/_svgs/commentary.svg";
+import {
+  X,
+  Phone,
+  Mail,
+  Users,
+  Clock,
+  Calendar,
+  User,
+  ChevronDown,
+} from "lucide-react";
+import { TableSvg, CommentarySvg } from "@/components/_shared/_svgs/_index";
 
 const CLOSE_MS = 280;
 
@@ -22,6 +30,24 @@ function fmtTime(t) {
   return v.slice(0, 5).replace(":", "h");
 }
 
+function fmtDateTime(d) {
+  if (!d) return "-";
+  const dt = new Date(d);
+  if (Number.isNaN(dt.getTime())) return "-";
+  return dt.toLocaleString("fr-FR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  });
+}
+
+function formatCurrency(amount, currency = "eur") {
+  const n = Number(amount || 0);
+  return new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency: String(currency || "eur").toUpperCase(),
+  }).format(n);
+}
+
 export default function ReservationsDrawerComponent({
   open,
   onClose,
@@ -31,6 +57,7 @@ export default function ReservationsDrawerComponent({
   errorMessage,
 }) {
   const [isVisible, setIsVisible] = useState(false);
+  const [bankHoldOpen, setBankHoldOpen] = useState(false);
 
   // Scroll lock robuste
   const prevBodyOverflowRef = useRef("");
@@ -95,6 +122,7 @@ export default function ReservationsDrawerComponent({
     lockScroll();
     setIsVisible(false);
     setDragY(0);
+    setBankHoldOpen(false);
 
     const raf = requestAnimationFrame(() => {
       setIsVisible(true);
@@ -133,12 +161,89 @@ export default function ReservationsDrawerComponent({
 
   const status = reservation?.status || null;
 
-  const statusUi = useMemo(() => {
-      if (status === "AwaitingBankHold")
+  const bankHold = reservation?.bankHold || {};
+  const bankHoldEnabled = Boolean(bankHold?.enabled);
+  const bankHoldStatus = String(bankHold?.status || "none");
+
+  const bankHoldStatusUi = useMemo(() => {
+    if (bankHoldStatus === "authorized") {
+      return {
+        cls: "bg-green/10 text-green border-green/30",
+        label: "Autorisée",
+      };
+    }
+
+    if (bankHoldStatus === "captured") {
+      return {
+        cls: "bg-blue/10 text-blue border-blue/30",
+        label: "Capturée",
+      };
+    }
+
+    if (bankHoldStatus === "released") {
+      return {
+        cls: "bg-darkBlue/5 text-darkBlue/70 border-darkBlue/20",
+        label: "Libérée",
+      };
+    }
+
+    if (bankHoldStatus === "authorization_scheduled") {
+      return {
+        cls: "bg-[#F59E0B1A] text-[#B45309] border-[#F59E0B66]",
+        label: "Autorisation planifiée",
+      };
+    }
+
+    if (bankHoldStatus === "card_saved") {
+      return {
+        cls: "bg-blue/10 text-blue border-blue/30",
+        label: "Carte enregistrée",
+      };
+    }
+
+    if (bankHoldStatus === "authorization_pending") {
+      return {
+        cls: "bg-[#F59E0B1A] text-[#B45309] border-[#F59E0B66]",
+        label: "Autorisation en attente",
+      };
+    }
+
+    if (bankHoldStatus === "setup_pending") {
+      return {
+        cls: "bg-[#F59E0B1A] text-[#B45309] border-[#F59E0B66]",
+        label: "Carte en attente",
+      };
+    }
+
+    if (bankHoldStatus === "failed") {
+      return {
+        cls: "bg-red/10 text-red border-red/20",
+        label: "Échec",
+      };
+    }
+
+    if (bankHoldStatus === "expired") {
+      return {
+        cls: "bg-red/10 text-red border-red/20",
+        label: "Expirée",
+      };
+    }
+
     return {
-      cls: "bg-[#F59E0B1A] text-[#B45309] border-[#F59E0B66]",
-      label: "Empreinte en attente",
+      cls: "bg-darkBlue/5 text-darkBlue/70 border-darkBlue/20",
+      label: "Aucune",
     };
+  }, [bankHoldStatus]);
+
+  const canCaptureBankHold = bankHoldEnabled && bankHoldStatus === "authorized";
+  const canReleaseBankHold = bankHoldEnabled && bankHoldStatus === "authorized";
+
+  const statusUi = useMemo(() => {
+    if (status === "AwaitingBankHold")
+      return {
+        cls: "bg-[#F59E0B1A] text-[#B45309] border-[#F59E0B66]",
+        label: "Empreinte en attente",
+      };
     if (status === "Pending")
       return {
         cls: "bg-blue/10 text-blue border-blue/30",
@@ -430,6 +535,102 @@ export default function ReservationsDrawerComponent({
               </div>
             </div>
           </div>
+
+          {/* Empreinte bancaire */}
+          {bankHoldEnabled ? (
+            <div className="mt-4 rounded-2xl bg-white/60 border border-darkBlue/10 shadow-sm overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setBankHoldOpen((prev) => !prev)}
+                className="w-full p-4 flex items-center justify-between gap-3 text-left"
+              >
+                <div className="min-w-0 flex items-center gap-3">
+                  <p className="text-xs text-darkBlue/50">Empreinte bancaire</p>
+
+                  <span
+                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${bankHoldStatusUi.cls}`}
+                  >
+                    {bankHoldStatusUi.label}
+                  </span>
+                </div>
+
+                <ChevronDown
+                  className={`size-4 text-darkBlue/50 transition-transform ${
+                    bankHoldOpen ? "rotate-180" : ""
+                  }`}
+                />
+              </button>
+
+              {bankHoldOpen ? (
+                <div className="px-4 pb-4">
+                  <div className="grid grid-cols-1 gap-2 text-sm text-darkBlue/80">
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-darkBlue/50">Montant</span>
+                      <span className="font-medium text-darkBlue">
+                        {formatCurrency(
+                          bankHold?.amountTotal || 0,
+                          bankHold?.currency || "eur",
+                        )}
+                      </span>
+                    </div>
+
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-darkBlue/50">Autorisée le</span>
+                      <span className="font-medium text-darkBlue text-right">
+                        {fmtDateTime(bankHold?.authorizedAt)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-darkBlue/50">Capturée le</span>
+                      <span className="font-medium text-darkBlue text-right">
+                        {fmtDateTime(bankHold?.capturedAt)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-darkBlue/50">Libérée le</span>
+                      <span className="font-medium text-darkBlue text-right">
+                        {fmtDateTime(bankHold?.releasedAt)}
+                      </span>
+                    </div>
+
+                    {bankHold?.lastError ? (
+                      <div className="mt-2 rounded-2xl border border-red/20 bg-red/10 px-4 py-3 text-xs text-red">
+                        {bankHold.lastError}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {canCaptureBankHold || canReleaseBankHold ? (
+                    <div className="mt-4 flex gap-2">
+                      {canCaptureBankHold ? (
+                        <button
+                          onClick={() =>
+                            onAction?.(reservation, "capture_bank_hold")
+                          }
+                          className="w-full inline-flex items-center justify-center rounded-xl bg-blue px-4 py-3 text-white text-sm font-semibold shadow-sm hover:bg-blue/90 active:scale-[0.98] transition"
+                        >
+                          Capturer
+                        </button>
+                      ) : null}
+
+                      {canReleaseBankHold ? (
+                        <button
+                          onClick={() =>
+                            onAction?.(reservation, "release_bank_hold")
+                          }
+                          className="w-full inline-flex items-center justify-center rounded-xl border border-red/20 bg-red/10 text-red hover:bg-red/15 transition px-4 py-3 text-sm font-semibold"
+                        >
+                          Libérer
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           {/* Actions */}
           <div className="mt-4 rounded-2xl bg-white/60 border border-darkBlue/10 shadow-sm p-4">

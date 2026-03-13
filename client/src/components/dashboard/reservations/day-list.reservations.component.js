@@ -86,6 +86,15 @@ export default function DayListReservationsComponent(props) {
       return;
     }
 
+    if (
+      actionType === "capture_bank_hold" ||
+      actionType === "release_bank_hold"
+    ) {
+      setDetailsOpen(false);
+      props.openModalForAction(reservation, actionType);
+      return;
+    }
+
     setDetailsOpen(false);
     props.openModalForAction(reservation, actionType);
   };
@@ -119,7 +128,7 @@ export default function DayListReservationsComponent(props) {
           reservation={selectedReservation}
           t={t}
           onAction={handleDrawerAction}
-          errorMessage={actionError} 
+          errorMessage={actionError}
         />
       </>
     );

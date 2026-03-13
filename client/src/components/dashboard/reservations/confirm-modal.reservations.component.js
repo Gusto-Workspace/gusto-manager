@@ -29,6 +29,8 @@ export default function ConfirmModalReservationsComponent(props) {
     props.actionType === "cancel" || props.actionType === "canceled";
   const isReject =
     props.actionType === "reject" || props.actionType === "rejected";
+  const isCaptureBankHold = props.actionType === "capture_bank_hold";
+  const isReleaseBankHold = props.actionType === "release_bank_hold";
 
   // --- UI texts (FR hardcodé) ---
   let title = "Action";
@@ -59,6 +61,14 @@ export default function ConfirmModalReservationsComponent(props) {
     title = "Refuser la réservation";
     content = `La réservation de ${name} sera marquée comme refusée. Elle sera supprimée automatiquement dans 10 minutes. Vous pouvez la repasser en confirmer entre temps si besoin.`;
     confirmLabel = props.isProcessing ? "Chargement..." : "Refuser";
+  } else if (isCaptureBankHold) {
+    title = "Capturer l’empreinte bancaire";
+    content = `Le montant de l’empreinte bancaire sera débité sur la carte de ${name}. Cette action est irréversible.`;
+    confirmLabel = props.isProcessing ? "Chargement..." : "Capturer";
+  } else if (isReleaseBankHold) {
+    title = "Libérer l’empreinte bancaire";
+    content = `L’autorisation bancaire de ${name} sera libérée sans débit. Cette action est irréversible.`;
+    confirmLabel = props.isProcessing ? "Chargement..." : "Libérer";
   } else {
     // fallback si actionType inconnu
     title = "Confirmer l’action";
@@ -68,7 +78,7 @@ export default function ConfirmModalReservationsComponent(props) {
 
   const Icon = isDelete
     ? Trash2
-    : isConfirm || isActive || isFinish
+    : isConfirm || isActive || isFinish || isCaptureBankHold
       ? CheckCircle2
       : AlertTriangle;
 
@@ -162,7 +172,11 @@ export default function ConfirmModalReservationsComponent(props) {
                 w-full inline-flex items-center justify-center rounded-2xl
                 px-4 py-3 text-sm font-semibold text-white shadow-sm
                 active:scale-[0.99] transition
-                ${isDelete ? "bg-red hover:bg-red/90" : "bg-blue hover:bg-blue/90"}
+                                ${
+                                  isDelete || isReleaseBankHold
+                                    ? "bg-red hover:bg-red/90"
+                                    : "bg-blue hover:bg-blue/90"
+                                }
                 ${props.isProcessing ? "opacity-70 cursor-not-allowed" : ""}
               `}
               onClick={props.onConfirm}

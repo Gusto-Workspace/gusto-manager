@@ -86,6 +86,15 @@ export default function DayListReservationsWebapp(props) {
       return;
     }
 
+    if (
+      actionType === "capture_bank_hold" ||
+      actionType === "release_bank_hold"
+    ) {
+      setDetailsOpen(false);
+      props.openModalForAction(reservation, actionType);
+      return;
+    }
+
     setDetailsOpen(false);
     props.openModalForAction(reservation, actionType);
   };
