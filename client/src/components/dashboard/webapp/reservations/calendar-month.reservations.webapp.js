@@ -85,14 +85,16 @@ export default function CalendarMonthReservationsWebapp(props) {
                   "Active",
                   "Late",
                   "Finished",
-                  "Canceled",
-                  "Rejected",
+                  "CanceledGroup",
                 ].map((s) => {
                   const value =
                     s === "Pending"
                       ? (displayByStatus.Pending || 0) +
                         (displayByStatus.AwaitingBankHold || 0)
-                      : displayByStatus[s] || 0;
+                      : s === "CanceledGroup"
+                        ? (displayByStatus.Canceled || 0) +
+                          (displayByStatus.Rejected || 0)
+                        : displayByStatus[s] || 0;
 
                   const pct = displayTotal
                     ? Math.round((value / displayTotal) * 100)
@@ -116,7 +118,7 @@ export default function CalendarMonthReservationsWebapp(props) {
                                   ? "#3b82f6"
                                   : s === "Pending"
                                     ? "#93c5fd"
-                                    : s === "Canceled" || s === "Rejected"
+                                    : s === "CanceledGroup"
                                       ? "#ff7664"
                                       : "#cbd5e1",
                         }}
