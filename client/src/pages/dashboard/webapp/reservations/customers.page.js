@@ -70,7 +70,13 @@ export default function WebappCustomersReservationsPage(props) {
         storageKey="gm:splash:webapp:reservations"
         enabled={restaurantContext?.isAuth}
         lastActiveKey="gm:lastActive:webapp:reservations"
-        onRefetch={() => restaurantContext.refetchCurrentRestaurant?.()}
+        thresholdMs={5 * 60 * 1000}
+        onSoftReturn={() =>
+          restaurantContext.resyncAfterForeground?.({ hard: false })
+        }
+        onHardReturn={() =>
+          restaurantContext.resyncAfterForeground?.({ hard: true })
+        }
       />
     </>
   );

@@ -52,6 +52,7 @@ export default function RestaurantContext() {
 
   const fetchNotifications = useCallback(
     async ({
+      restaurantId = null,
       module = null,
       unreadOnly = false,
       limit = 30,
@@ -60,7 +61,8 @@ export default function RestaurantContext() {
     } = {}) => {
       const token =
         typeof window !== "undefined" ? localStorage.getItem("token") : null;
-      const rid = restaurantData?._id;
+      const rid = restaurantId || restaurantData?._id;
+
       if (!token || !rid) return;
 
       if (reset) setNotificationsNextCursor(null);
@@ -214,20 +216,18 @@ export default function RestaurantContext() {
     [restaurantData?._id],
   );
 
-  // --------------------------------------------------------
-  // SSE: keep real-time injections + NEW notification events
-  // --------------------------------------------------------
-  useEffect(() => {
+  const reconnectRealtime = useCallback(() => {
+    if (sseRef.current) {
+      try {
+        sseRef.current.close();
+      } catch {}
+      sseRef.current = null;
+    }
+
     const restaurantId = restaurantData?._id;
     const role = userConnected?.role;
 
     if (!restaurantId || !role) return;
-
-    // Fermer ancienne connexion si existante
-    if (sseRef.current) {
-      sseRef.current.close();
-      sseRef.current = null;
-    }
 
     const url = `${process.env.NEXT_PUBLIC_API_URL}/events/${restaurantId}`;
     const es = new EventSource(url, { withCredentials: false });
@@ -249,7 +249,6 @@ export default function RestaurantContext() {
           });
         }
 
-        // ——— CONGÉS (création) ———
         if (payload.type === "leave_request_created") {
           setRestaurantData((prev) => {
             if (!prev) return prev;
@@ -270,7 +269,6 @@ export default function RestaurantContext() {
           });
         }
 
-        // ——— RÉSERVATIONS (création) ———
         if (payload.type === "reservation_created" && payload.reservation) {
           const r = payload.reservation;
 
@@ -288,8 +286,6 @@ export default function RestaurantContext() {
             };
           });
         }
-
-        // ——— RÉSERVATIONS (mise à jour statut) ———
 
         if (payload.type === "reservation_updated" && payload.reservation) {
           const r = payload.reservation;
@@ -312,7 +308,6 @@ export default function RestaurantContext() {
           });
         }
 
-        // ——— RÉSERVATIONS (suppression) ———
         if (payload.type === "reservation_deleted" && payload.reservationId) {
           const deletedId = String(payload.reservationId);
 
@@ -329,7 +324,6 @@ export default function RestaurantContext() {
           });
         }
 
-        // ——— CARTES CADEAUX ———
         if (payload.type === "giftcard_purchased" && payload.purchase) {
           setRestaurantData((prev) => {
             if (!prev) return prev;
@@ -341,7 +335,6 @@ export default function RestaurantContext() {
           });
         }
 
-        // ——— NOTIFICATION LUE ———
         if (payload.type === "notification_read") {
           const id = String(payload.notificationId);
           const module = payload.module;
@@ -364,7 +357,6 @@ export default function RestaurantContext() {
           });
         }
 
-        // ——— NOTIFICATIONS TOUTES LUES ———
         if (payload.type === "notifications_read_all") {
           const mod = payload.module;
 
@@ -397,12 +389,24 @@ export default function RestaurantContext() {
     es.onerror = () => {
       // le navigateur va réessayer automatiquement
     };
+  }, [restaurantData?._id, userConnected?.role]);
+
+  // --------------------------------------------------------
+  // SSE: keep real-time injections + NEW notification events
+  // --------------------------------------------------------
+
+  useEffect(() => {
+    reconnectRealtime();
 
     return () => {
-      es.close();
-      sseRef.current = null;
+      if (sseRef.current) {
+        try {
+          sseRef.current.close();
+        } catch {}
+        sseRef.current = null;
+      }
     };
-  }, [restaurantData?._id, userConnected?.role]); // ok
+  }, [reconnectRealtime]);
 
   // ---------------------------
   // Misc helpers
@@ -873,8 +877,12 @@ export default function RestaurantContext() {
     setCloseEditing(false);
   }
 
-  function refetchCurrentRestaurant() {
-    const token = localStorage.getItem("token");
+  async function refetchCurrentRestaurant({
+    reconnectSSE = false,
+    syncNotifications = true,
+  } = {}) {
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("token") : null;
     const rid = restaurantData?._id;
 
     if (!token || !rid) return;
@@ -883,7 +891,87 @@ export default function RestaurantContext() {
     if (!path.startsWith("/dashboard")) return;
     if (path.startsWith("/dashboard/login")) return;
 
-    fetchRestaurantData(token, rid);
+    let decoded = null;
+    try {
+      decoded = jwtDecode(token);
+    } catch (err) {
+      console.error("Invalid token during refetch:", err);
+      handleInvalidToken();
+      return;
+    }
+
+    const role = decoded?.role;
+
+    try {
+      setDataLoading(true);
+
+      if (role === "owner") {
+        const response = await axios.get(
+          `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${rid}`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+
+        const restaurant = response?.data?.restaurant || null;
+        setRestaurantData(restaurant);
+
+        if (restaurant?._id) {
+          await fetchUnreadCounts(token, String(restaurant._id));
+
+          if (syncNotifications) {
+            await fetchNotifications({
+              restaurantId: String(restaurant._id),
+              reset: true,
+            });
+          }
+        }
+      } else if (role === "employee") {
+        const res = await axios.get(
+          `${process.env.NEXT_PUBLIC_API_URL}/employees/me`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+
+        const { restaurant, restaurants } = res.data || {};
+        setRestaurantsList(restaurants || []);
+        setRestaurantData(restaurant || null);
+
+        if (restaurant?._id) {
+          await fetchUnreadCounts(token, String(restaurant._id));
+
+          if (syncNotifications) {
+            await fetchNotifications({
+              restaurantId: String(restaurant._id),
+              reset: true,
+            });
+          }
+        } else {
+          setUnreadCounts({
+            total: 0,
+            byModule: { reservations: 0, gift_cards: 0, employees: 0 },
+          });
+        }
+      }
+
+      if (reconnectSSE) {
+        reconnectRealtime();
+      }
+    } catch (error) {
+      if (error.response?.status === 403) {
+        handleInvalidToken();
+      } else {
+        console.error("Erreur lors du refetch du restaurant:", error);
+      }
+    } finally {
+      setDataLoading(false);
+    }
+  }
+
+  async function resyncAfterForeground({ hard = false } = {}) {
+    await refetchCurrentRestaurant({
+      reconnectSSE: true,
+      syncNotifications: true,
+    });
+
+    if (!hard) return;
   }
 
   function getDeletionMinutes(parameters) {
@@ -1259,13 +1347,10 @@ export default function RestaurantContext() {
     closeEditing,
     isAuth,
     setIsAuth,
-
     newReservationsCount,
     newLeaveRequestsCount,
     newGiftPurchasesCount,
-
     unreadCounts,
-
     notifications,
     notificationsNextCursor,
     notificationsLoading,
@@ -1273,9 +1358,9 @@ export default function RestaurantContext() {
     lastNotificationsSyncRef,
     markNotificationRead,
     markAllRead,
-
     refetchCurrentRestaurant,
-
+    reconnectRealtime,
+    resyncAfterForeground,
     fetchCustomersCached,
     invalidateCustomersCache,
     peekCustomersCache,

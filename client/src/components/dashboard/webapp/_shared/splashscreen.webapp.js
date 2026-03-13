@@ -14,16 +14,11 @@ const useIsomorphicLayoutEffect =
 
 export default function SplashScreenWebAppComponent({
   loading,
-
-  // ✅ splash "déjà vu" (ton système actuel)
   storageKey,
-
-  // ✅ force externe (si tu l’utilises déjà quelque part)
   forceShow = false,
-
-  // ✅ Option A : refetch au retour 1er plan après X minutes
   enabled = false,
-  onRefetch,
+  onSoftReturn,
+  onHardReturn,
   thresholdMs = 5 * 60 * 1000,
   lastActiveKey = "gm:lastActive:webapp",
 }) {
@@ -46,9 +41,12 @@ export default function SplashScreenWebAppComponent({
     enabled,
     storageKey: lastActiveKey,
     thresholdMs,
-    onRefetch: () => {
+    onSoftReturn: () => {
+      onSoftReturn?.();
+    },
+    onHardReturn: () => {
       setInternalForceShow(true);
-      onRefetch?.();
+      onHardReturn?.();
     },
   });
 
