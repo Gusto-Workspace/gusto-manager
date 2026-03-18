@@ -86,8 +86,10 @@ export default function FloorPlanReservationsWebapp({
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const openSidebar = () => setSidebarOpen(true);
-  const closeSidebar = () => setSidebarOpen(false);
-
+  const closeSidebar = () => {
+    setSidebarOpen(false);
+    setSelectedTableState(null);
+  };
   const initialFloorPlanState = useMemo(
     () => getInitialFloorPlanState(restaurantId),
     [restaurantId],
