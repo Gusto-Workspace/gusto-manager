@@ -645,6 +645,7 @@ export default function FloorPlanCanvasReservationsComponent({
   liveMode,
   selectedTableState,
   onSelectTable,
+  shouldResetView,
 }) {
   const wrapRef = useRef(null);
   const stageRef = useRef(null);
@@ -913,6 +914,12 @@ export default function FloorPlanCanvasReservationsComponent({
   function resetView() {
     applyInitialView(objects);
   }
+
+  useEffect(() => {
+    if (shouldResetView) {
+      resetView();
+    }
+  }, [shouldResetView]);
 
   useLayoutEffect(() => {
     if (!room?._id) return;

@@ -16,6 +16,17 @@ export default function SidebarReservationsWebapp({
 }) {
   const router = useRouter();
 
+  const handleClose = () => {
+    if (typeof document !== "undefined") {
+      const active = document.activeElement;
+      if (active && typeof active.blur === "function") {
+        active.blur();
+      }
+    }
+
+    onClose?.();
+  };
+
   // lock scroll
   useEffect(() => {
     if (!open) return;
@@ -25,16 +36,6 @@ export default function SidebarReservationsWebapp({
       document.body.style.overflow = prev || "";
     };
   }, [open]);
-
-  // ESC close
-  useEffect(() => {
-    if (!open) return;
-    const onKeyDown = (e) => {
-      if (e.key === "Escape") onClose?.();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, onClose]);
 
   const navItems = [
     {
@@ -71,7 +72,7 @@ export default function SidebarReservationsWebapp({
   };
 
   const go = (href) => {
-    onClose?.();
+    handleClose();
 
     setTimeout(() => {
       router.push(href);
@@ -85,11 +86,10 @@ export default function SidebarReservationsWebapp({
         className={`fixed inset-0 z-[60] transition-opacity duration-300 ${
           open ? "opacity-100" : "opacity-0 pointer-events-none"
         }`}
-        aria-hidden={!open}
       >
         <button
           type="button"
-          onClick={onClose}
+          onClick={handleClose}
           className="absolute inset-0 bg-black/30"
           aria-label="Fermer le menu"
         />
@@ -118,7 +118,7 @@ export default function SidebarReservationsWebapp({
 
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/50 hover:bg-darkBlue/5 active:scale-[0.98] transition p-2"
               aria-label="Fermer"
               title="Fermer"

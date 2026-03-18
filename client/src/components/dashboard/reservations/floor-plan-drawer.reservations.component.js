@@ -115,6 +115,7 @@ export default function FloorPlanDrawerReservationsComponent({
   const [liveMode, setLiveMode] = useState(true);
   const [selectedTime, setSelectedTime] = useState("");
   const [selectedTableState, setSelectedTableState] = useState(null);
+  const [shouldResetView, setShouldResetView] = useState(false);
 
   const tablesCatalog = restaurantData?.reservations?.parameters?.tables || [];
   const reservationParameters = restaurantData?.reservations?.parameters || {};
@@ -171,6 +172,13 @@ export default function FloorPlanDrawerReservationsComponent({
       window.clearTimeout(closeTimerRef.current);
     }
 
+    if (typeof document !== "undefined") {
+      const active = document.activeElement;
+      if (active && typeof active.blur === "function") {
+        active.blur();
+      }
+    }
+
     setIsVisible(false);
     setDragY(0);
 
@@ -179,6 +187,7 @@ export default function FloorPlanDrawerReservationsComponent({
 
       setActiveRoomId(defaultRoomId);
       setSelectedTableState(null);
+      setShouldResetView(true);
 
       if (isDayContext) {
         if (!isTodayContext) {
@@ -242,6 +251,12 @@ export default function FloorPlanDrawerReservationsComponent({
       return hasPrev ? prev : nextState.activeRoomId;
     });
   }, [restaurantId]);
+
+  useEffect(() => {
+    if (shouldResetView) {
+      setShouldResetView(false);
+    }
+  }, [shouldResetView]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -714,6 +729,7 @@ export default function FloorPlanDrawerReservationsComponent({
                 liveMode={liveMode}
                 selectedTableState={selectedTableState}
                 onSelectTable={setSelectedTableState}
+                shouldResetView={shouldResetView}
               />
             )}
           </div>
