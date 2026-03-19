@@ -19,6 +19,16 @@ function safeNumber(v, fallback) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function normalizeIdList(values = []) {
+  return Array.from(
+    new Set(
+      (Array.isArray(values) ? values : [])
+        .map((value) => String(value || "").trim())
+        .filter((value) => mongoose.Types.ObjectId.isValid(value)),
+    ),
+  );
+}
+
 function ensureFloorplan(restaurant) {
   if (!restaurant.reservations) restaurant.reservations = {};
   if (!restaurant.reservations.parameters)
@@ -57,6 +67,45 @@ function pruneExpiredTableBlockedRanges(restaurant, now = new Date()) {
   restaurant.markModified("reservations.parameters.table_blocked_ranges");
 
   return true;
+}
+
+function syncTableCombinations(tables, targetId, nextRelatedIds) {
+  const normalizedTargetId = String(targetId || "");
+  const relatedSet = new Set(normalizeIdList(nextRelatedIds));
+
+  for (const table of tables) {
+    if (!table?._id) continue;
+
+    const currentId = String(table._id);
+    const currentLinks = normalizeIdList(table.combinableWith);
+
+    if (currentId === normalizedTargetId) {
+      table.combinableWith = Array.from(relatedSet);
+      continue;
+    }
+
+    const linkSet = new Set(currentLinks);
+
+    if (relatedSet.has(currentId)) {
+      linkSet.add(normalizedTargetId);
+    } else {
+      linkSet.delete(normalizedTargetId);
+    }
+
+    table.combinableWith = Array.from(linkSet);
+  }
+}
+
+function removeTableFromCombinations(tables, tableId) {
+  const normalizedTargetId = String(tableId || "");
+
+  for (const table of tables) {
+    if (!table?._id) continue;
+
+    table.combinableWith = normalizeIdList(table.combinableWith).filter(
+      (value) => value !== normalizedTargetId,
+    );
+  }
 }
 
 async function findRestaurantForOwner({ restaurantId, ownerId }) {
@@ -317,6 +366,10 @@ router.delete(
       restaurant.reservations.parameters.tables = tables.filter(
         (t) => String(t._id) !== String(tableId),
       );
+      removeTableFromCombinations(
+        restaurant.reservations.parameters.tables,
+        tableId,
+      );
       restaurant.reservations.parameters.table_blocked_ranges = (
         restaurant?.reservations?.parameters?.table_blocked_ranges || []
       ).filter((range) => String(range?.tableId) !== String(tableId));
@@ -422,6 +475,11 @@ router.put(
       const bookingPriority = Number.isFinite(Number(req.body?.bookingPriority))
         ? Number(req.body.bookingPriority)
         : Number(table.bookingPriority || 0);
+      const requestedCombinableWith = normalizeIdList(req.body?.combinableWith)
+        .filter((value) => value !== String(tableId))
+        .filter((value) =>
+          tables.some((candidate) => String(candidate?._id) === value),
+        );
 
       if (!name) {
         return res.status(400).json({ message: "Nom obligatoire." });
@@ -444,6 +502,7 @@ router.put(
       table.name = name;
       table.onlineBookable = onlineBookable;
       table.bookingPriority = bookingPriority;
+      syncTableCombinations(tables, tableId, requestedCombinableWith);
 
       restaurant.markModified("reservations.parameters.tables");
       await restaurant.save();
@@ -524,6 +583,7 @@ router.post(
         seats,
         onlineBookable,
         bookingPriority,
+        combinableWith: [],
       });
 
       restaurant.markModified("reservations.parameters.tables");

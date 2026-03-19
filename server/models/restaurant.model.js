@@ -152,6 +152,10 @@ const reservationParametersSchema = new mongoose.Schema({
         seats: { type: Number, min: 1, required: true },
         onlineBookable: { type: Boolean, default: true },
         bookingPriority: { type: Number, default: 0 },
+        combinableWith: {
+          type: [mongoose.Schema.Types.ObjectId],
+          default: [],
+        },
       },
       { _id: true },
     ),
