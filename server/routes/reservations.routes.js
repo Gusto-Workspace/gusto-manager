@@ -109,8 +109,12 @@ function buildSingleTableOption(tableDef) {
   const id = String(tableDef?._id || "");
 
   return {
-    ...tableDef,
     _id: id,
+    name: String(tableDef?.name || "").trim(),
+    seats: Number(tableDef?.seats || 0),
+    bookingPriority: normalizeBookingPriority(tableDef?.bookingPriority),
+    onlineBookable: tableDef?.onlineBookable !== false,
+    combinableWith: normalizeTableIdList(tableDef?.combinableWith),
     tableIds: id ? [id] : [],
     selectionKey: id,
     kind: "single",
@@ -634,8 +638,8 @@ function buildAssignedTablePayload(tableDef) {
 
   return {
     tableIds,
-    name: tableDef.name,
-    seats: tableDef.seats,
+    name: String(tableDef?.name || "").trim(),
+    seats: Number(tableDef?.seats || 0),
     source: "configured",
   };
 }
