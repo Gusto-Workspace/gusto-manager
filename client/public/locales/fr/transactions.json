@@ -49,6 +49,7 @@
   "payments": {
     "date": "Date",
     "customer": "Client",
+    "giftCode": "Code cadeau",
     "grossAmount": "Montant payé",
     "fees": "Frais Stripe",
     "netAmount": "Montant net",

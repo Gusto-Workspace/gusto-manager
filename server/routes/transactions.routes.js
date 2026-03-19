@@ -10,13 +10,50 @@ const { decryptApiKey } = require("../services/encryption.service");
 // SSE
 const { broadcastToRestaurant } = require("../services/sse-bus.service");
 
+function buildGiftPurchaseCodeMap(purchases = []) {
+  const map = new Map();
+
+  for (const purchase of Array.isArray(purchases) ? purchases : []) {
+    const paymentIntentId = String(purchase?.paymentIntentId || "").trim();
+    const purchaseCode = String(purchase?.purchaseCode || "").trim();
+
+    if (!paymentIntentId || !purchaseCode) continue;
+    map.set(paymentIntentId, purchaseCode);
+  }
+
+  return map;
+}
+
+function formatChargeForDashboard(
+  charge,
+  purchaseCodeByPaymentIntent = new Map(),
+) {
+  const balanceTx = charge.balance_transaction;
+  const paymentIntentId = String(charge?.payment_intent || "").trim();
+
+  return {
+    id: charge.id,
+    date: charge.created,
+    customer:
+      charge.billing_details?.name || charge.customer || "Non renseigné",
+    grossAmount: (charge.amount / 100).toFixed(2),
+    feeAmount: (Number(balanceTx?.fee || 0) / 100).toFixed(2),
+    netAmount: (Number(balanceTx?.net || 0) / 100).toFixed(2),
+    status: charge.status,
+    refunded: charge.refunded,
+    purchaseCode: purchaseCodeByPaymentIntent.get(paymentIntentId) || "",
+  };
+}
+
 // RECUPERER TOUS LES PAIEMENTS STRIPE (10 par 10)
 router.get("/owner/restaurants/:id/payments", async (req, res) => {
   const { id } = req.params;
   const { limit = 10, starting_after } = req.query;
 
   try {
-    const restaurant = await RestaurantModel.findById(id);
+    const restaurant = await RestaurantModel.findById(id).select(
+      "stripeSecretKey purchasesGiftCards.paymentIntentId purchasesGiftCards.purchaseCode",
+    );
     if (!restaurant || !restaurant.stripeSecretKey) {
       return res
         .status(404)
@@ -24,7 +61,7 @@ router.get("/owner/restaurants/:id/payments", async (req, res) => {
     }
 
     const stripeInstance = require("stripe")(
-      decryptApiKey(restaurant.stripeSecretKey)
+      decryptApiKey(restaurant.stripeSecretKey),
     );
 
     const chargesList = await stripeInstance.charges.list({
@@ -33,22 +70,13 @@ router.get("/owner/restaurants/:id/payments", async (req, res) => {
       expand: ["data.balance_transaction"],
     });
 
-    // Formatage
-    const charges = chargesList.data.map((charge) => {
-      const balanceTx = charge.balance_transaction;
+    const purchaseCodeByPaymentIntent = buildGiftPurchaseCodeMap(
+      restaurant?.purchasesGiftCards,
+    );
 
-      return {
-        id: charge.id,
-        date: charge.created,
-        customer:
-          charge.billing_details?.name || charge.customer || "Non renseigné",
-        grossAmount: (charge.amount / 100).toFixed(2),
-        feeAmount: (balanceTx?.fee / 100).toFixed(2),
-        netAmount: (balanceTx?.net / 100).toFixed(2),
-        status: charge.status,
-        refunded: charge.refunded,
-      };
-    });
+    const charges = chargesList.data.map((charge) =>
+      formatChargeForDashboard(charge, purchaseCodeByPaymentIntent),
+    );
 
     return res.status(200).json({
       charges,
@@ -75,7 +103,9 @@ router.get("/owner/restaurants/:id/payments/search", async (req, res) => {
 
   try {
     // 1) Récupération du restaurant et de sa clé Stripe
-    const restaurant = await RestaurantModel.findById(id);
+    const restaurant = await RestaurantModel.findById(id).select(
+      "stripeSecretKey purchasesGiftCards.paymentIntentId purchasesGiftCards.purchaseCode",
+    );
     if (!restaurant || !restaurant.stripeSecretKey) {
       return res
         .status(404)
@@ -83,7 +113,7 @@ router.get("/owner/restaurants/:id/payments/search", async (req, res) => {
     }
 
     const stripeInstance = require("stripe")(
-      decryptApiKey(restaurant.stripeSecretKey)
+      decryptApiKey(restaurant.stripeSecretKey),
     );
 
     // 2) Récupération de toutes les charges
@@ -100,21 +130,13 @@ router.get("/owner/restaurants/:id/payments/search", async (req, res) => {
       return billingName.includes(lowerQuery);
     });
 
-    // 4) Formatage des résultats
-    const charges = filteredCharges.map((charge) => {
-      const balanceTx = charge.balance_transaction;
+    const purchaseCodeByPaymentIntent = buildGiftPurchaseCodeMap(
+      restaurant?.purchasesGiftCards,
+    );
 
-      return {
-        id: charge.id,
-        date: charge.created,
-        customer: charge.billing_details?.name || "Non renseigné",
-        grossAmount: (charge.amount / 100).toFixed(2),
-        feeAmount: balanceTx ? (balanceTx.fee / 100).toFixed(2) : "0.00",
-        netAmount: balanceTx ? (balanceTx.net / 100).toFixed(2) : "0.00",
-        status: charge.status,
-        refunded: charge.refunded,
-      };
-    });
+    const charges = filteredCharges.map((charge) =>
+      formatChargeForDashboard(charge, purchaseCodeByPaymentIntent),
+    );
 
     // 5) Retour au client
     return res.status(200).json({
@@ -142,7 +164,7 @@ router.get("/owner/restaurants/:id/payouts", async (req, res) => {
     }
 
     const stripeInstance = require("stripe")(
-      decryptApiKey(restaurant.stripeSecretKey)
+      decryptApiKey(restaurant.stripeSecretKey),
     );
 
     // Liste paginée des virements
@@ -190,7 +212,7 @@ router.get(
       }
 
       const stripeInstance = require("stripe")(
-        decryptApiKey(restaurant.stripeSecretKey)
+        decryptApiKey(restaurant.stripeSecretKey),
       );
 
       const balanceTxList = await stripeInstance.balanceTransactions.list({
@@ -202,7 +224,7 @@ router.get(
 
       // Filtrer pour retirer la transaction de type "payout" elle-même
       const filteredTx = balanceTxList.data.filter(
-        (tx) => tx.type !== "payout"
+        (tx) => tx.type !== "payout",
       );
 
       const payoutTransactions = filteredTx.map((tx) => {
@@ -240,11 +262,11 @@ router.get(
     } catch (error) {
       console.error(
         "Erreur lors de la récupération des transactions d'un payout :",
-        error
+        error,
       );
       return res.status(500).json({ message: "Erreur interne du serveur" });
     }
-  }
+  },
 );
 
 // Résumé rapide des ventes de cartes cadeaux (lecture DB uniquement)
@@ -288,7 +310,7 @@ router.get(
       }
 
       const stripe = require("stripe")(
-        decryptApiKey(restaurant.stripeSecretKey)
+        decryptApiKey(restaurant.stripeSecretKey),
       );
 
       const sixMonthsAgo =
@@ -306,7 +328,7 @@ router.get(
 
       while (hasMore) {
         const page = await stripe.balanceTransactions.list(
-          startingAfter ? { ...params, starting_after: startingAfter } : params
+          startingAfter ? { ...params, starting_after: startingAfter } : params,
         );
 
         for (const bt of page.data) {
@@ -352,11 +374,11 @@ router.get(
     } catch (error) {
       console.error(
         "Erreur lors de la récupération des ventes mensuelles :",
-        error
+        error,
       );
       return res.status(500).json({ message: "Erreur interne du serveur" });
     }
-  }
+  },
 );
 
 // Rembourser un paiement
@@ -373,7 +395,7 @@ router.post("/owner/restaurants/:id/payments/refund", async (req, res) => {
     }
 
     const stripeInstance = require("stripe")(
-      decryptApiKey(restaurant.stripeSecretKey)
+      decryptApiKey(restaurant.stripeSecretKey),
     );
 
     // On crée le remboursement via Stripe

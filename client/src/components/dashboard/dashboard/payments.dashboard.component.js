@@ -34,7 +34,7 @@ export default function PaymentsDashboardComponent(props) {
         `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${props.restaurantId}/payments/refund`,
         {
           paymentId: selectedPayment.id,
-        }
+        },
       );
 
       if (response.data.success) {
@@ -125,9 +125,7 @@ export default function PaymentsDashboardComponent(props) {
                   </div>
 
                   <p>
-                    <span className="font-medium">
-                      {t("payments.date")} :
-                    </span>{" "}
+                    <span className="font-medium">{t("payments.date")} :</span>{" "}
                     {new Date(payment.date * 1000).toLocaleDateString()}
                   </p>
 
@@ -138,6 +136,17 @@ export default function PaymentsDashboardComponent(props) {
                     {payment.customer || "Non renseigné"}
                   </p>
 
+                  {payment.purchaseCode && (
+                    <p>
+                      <span className="font-medium">
+                        {t("payments.giftCode", "Code cadeau")} :
+                      </span>{" "}
+                      <span className="font-mono text-[13px]">
+                        {payment.purchaseCode}
+                      </span>
+                    </p>
+                  )}
+
                   <p>
                     <span className="font-medium">
                       {t("payments.grossAmount")} :
@@ -146,9 +155,7 @@ export default function PaymentsDashboardComponent(props) {
                   </p>
 
                   <p>
-                    <span className="font-medium">
-                      {t("payments.fees")} :
-                    </span>{" "}
+                    <span className="font-medium">{t("payments.fees")} :</span>{" "}
                     {payment.status !== "succeeded"
                       ? "-"
                       : `${payment.feeAmount} €`}
@@ -190,9 +197,7 @@ export default function PaymentsDashboardComponent(props) {
                         }
                       `}
                       onClick={() => handleRefundClick(payment)}
-                      disabled={
-                        payment.status !== "succeeded" || refundLoading
-                      }
+                      disabled={payment.status !== "succeeded" || refundLoading}
                     >
                       {isThisRefundLoading ? (
                         <>

@@ -49,6 +49,7 @@
   "payments": {
     "date": "Date",
     "customer": "Customer",
+    "giftCode": "Gift code",
     "grossAmount": "Amount paid",
     "fees": "Stripe fees",
     "netAmount": "Net amount",
