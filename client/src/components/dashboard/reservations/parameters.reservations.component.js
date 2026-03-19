@@ -823,7 +823,6 @@ export default function ParametersReservationComponent(props) {
           fmtShortFR={fmtShortFR}
           statusLabel={statusLabel}
         />
-
         <FloorPlanParametersComponent
           restaurantId={props.restaurantData?._id}
           setRestaurantData={props.setRestaurantData}

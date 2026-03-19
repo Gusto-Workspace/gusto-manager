@@ -11,7 +11,7 @@ import {
   Circle,
   Image as KonvaImage,
 } from "react-konva";
-import { Plus, Trash2, RotateCcw, X } from "lucide-react";
+import { Plus, Trash2, RotateCcw, X, Loader2 } from "lucide-react";
 import DecorModalParametersComponent from "./decor-modal.parameters.component";
 
 function uid() {
@@ -20,6 +20,35 @@ function uid() {
 
 function safeArr(a) {
   return Array.isArray(a) ? a : [];
+}
+
+function normalizeTableName(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase();
+}
+
+function formatDateTimeLabel(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+
+  return date.toLocaleString("fr-FR", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function filterActiveOrUpcomingTableBlockedRanges(
+  ranges = [],
+  nowTs = Date.now(),
+) {
+  return safeArr(ranges).filter((range) => {
+    const endTs = new Date(range?.endAt).getTime();
+    return Number.isFinite(endTs) && endTs > nowTs;
+  });
 }
 
 function clamp(n, min, max) {
@@ -408,8 +437,26 @@ export default function RoomEditorComponent({
   const [createTableOpen, setCreateTableOpen] = useState(false);
   const [newTableName, setNewTableName] = useState("");
   const [newTableSeats, setNewTableSeats] = useState("2");
+  const [newTableOnlineBookable, setNewTableOnlineBookable] = useState(true);
+  const [newTableBookingPriority, setNewTableBookingPriority] = useState("0");
   const [createTableError, setCreateTableError] = useState("");
   const [createTableLoading, setCreateTableLoading] = useState(false);
+  const [editTableOpen, setEditTableOpen] = useState(false);
+  const [editTableName, setEditTableName] = useState("");
+  const [editTableOnlineBookable, setEditTableOnlineBookable] = useState(true);
+  const [editTableBookingPriority, setEditTableBookingPriority] = useState("0");
+  const [editTableError, setEditTableError] = useState("");
+  const [editTableLoading, setEditTableLoading] = useState(false);
+  const [editBlockLoading, setEditBlockLoading] = useState(false);
+  const [tableBlockedRanges, setTableBlockedRanges] = useState([]);
+  const [tableBlockedRangesNow, setTableBlockedRangesNow] = useState(() =>
+    Date.now(),
+  );
+  const [editBlockForm, setEditBlockForm] = useState({
+    startAt: "",
+    endAt: "",
+    note: "",
+  });
 
   // delete from catalog modal
   const [deleteCatalogOpen, setDeleteCatalogOpen] = useState(false);
@@ -417,6 +464,7 @@ export default function RoomEditorComponent({
   const [deleteCatalogError, setDeleteCatalogError] = useState("");
 
   const newTableNameRef = useRef(null);
+  const editTableNameRef = useRef(null);
 
   const [saveError, setSaveError] = useState("");
 
@@ -1095,9 +1143,12 @@ export default function RoomEditorComponent({
     "M3 6h18 M8 6V4h8v2 M6 6l1 14h10l1-14 M10 11v6 M14 11v6";
   const LUCIDE_ROTATECCW_PATH =
     "M3 2v6h6 M21 12a9 9 0 0 0-15.36-6.36L3 8 M3 12a9 9 0 0 0 15.36 6.36";
+  const LUCIDE_PENCIL_PATH =
+    "M12 20h9 M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4Z";
 
   const [trashImg, setTrashImg] = useState(null);
   const [rotateImg, setRotateImg] = useState(null);
+  const [editImg, setEditImg] = useState(null);
 
   useEffect(() => {
     // Trash (blanc)
@@ -1123,6 +1174,16 @@ export default function RoomEditorComponent({
     const ri = new window.Image();
     ri.src = svgToDataUri(rotateSvg);
     ri.onload = () => setRotateImg(ri);
+
+    const editSvg = makeLucideSvg({
+      pathD: LUCIDE_PENCIL_PATH,
+      size: 22,
+      stroke: "#1f2a44",
+      strokeWidth: 2,
+    });
+    const ei = new window.Image();
+    ei.src = svgToDataUri(editSvg);
+    ei.onload = () => setEditImg(ei);
   }, []);
 
   const selectedObj = useMemo(
@@ -1141,6 +1202,88 @@ export default function RoomEditorComponent({
       catalog.find((t) => String(t._id) === String(activeCatalogId)) || null
     );
   }, [catalog, activeCatalogId]);
+
+  const activeTableBlockedRanges = useMemo(() => {
+    return filterActiveOrUpcomingTableBlockedRanges(
+      tableBlockedRanges,
+      tableBlockedRangesNow,
+    )
+      .filter((range) => String(range?.tableId) === String(activeCatalogId))
+      .sort(
+        (a, b) =>
+          new Date(a?.startAt || 0).getTime() -
+          new Date(b?.startAt || 0).getTime(),
+      );
+  }, [tableBlockedRanges, tableBlockedRangesNow, activeCatalogId]);
+
+  function applyCatalogAndTableBlocks(nextTables, nextTableBlockedRanges) {
+    if (Array.isArray(nextTableBlockedRanges)) {
+      setTableBlockedRanges(
+        filterActiveOrUpcomingTableBlockedRanges(nextTableBlockedRanges),
+      );
+    }
+
+    if (Array.isArray(nextTables) && typeof onCatalogUpdated === "function") {
+      onCatalogUpdated(nextTables);
+    }
+
+    setRestaurantData((prev) => {
+      if (!prev) return prev;
+
+      return {
+        ...prev,
+        reservations: {
+          ...prev.reservations,
+          parameters: {
+            ...prev.reservations?.parameters,
+            ...(Array.isArray(nextTables) ? { tables: nextTables } : {}),
+            ...(Array.isArray(nextTableBlockedRanges)
+              ? {
+                  table_blocked_ranges:
+                    filterActiveOrUpcomingTableBlockedRanges(
+                      nextTableBlockedRanges,
+                    ),
+                }
+              : {}),
+          },
+        },
+      };
+    });
+  }
+
+  async function fetchTableBlockingState() {
+    try {
+      if (!restaurantId || !token) return;
+
+      const res = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/floorplans/rooms`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+
+      const nextReservationParameters =
+        res.data?.reservationParameters &&
+        typeof res.data.reservationParameters === "object"
+          ? res.data.reservationParameters
+          : null;
+
+      setTableBlockedRanges(
+        filterActiveOrUpcomingTableBlockedRanges(
+          nextReservationParameters?.table_blocked_ranges,
+        ),
+      );
+    } catch (e) {}
+  }
+
+  function hasDuplicateTableName(name, excludeId = null) {
+    const normalized = normalizeTableName(name);
+    if (!normalized) return false;
+
+    return catalog.some(
+      (table) =>
+        String(table?._id || "") !== String(excludeId || "") &&
+        normalizeTableName(table?.name) === normalized,
+    );
+  }
 
   function bringToFront(id) {
     if (!id) return;
@@ -1192,6 +1335,55 @@ export default function RoomEditorComponent({
       }
     }, 0);
   }, [createTableOpen]);
+
+  useEffect(() => {
+    fetchTableBlockingState();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restaurantId, token]);
+
+  useEffect(() => {
+    if (!editTableOpen) return undefined;
+
+    setTableBlockedRangesNow(Date.now());
+
+    const intervalId = window.setInterval(() => {
+      setTableBlockedRangesNow(Date.now());
+    }, 30000);
+
+    return () => window.clearInterval(intervalId);
+  }, [editTableOpen]);
+
+  useEffect(() => {
+    if (!editTableOpen || !activeCatalogTable) return;
+
+    setEditTableError("");
+    setEditTableName(String(activeCatalogTable.name || ""));
+    setEditTableOnlineBookable(activeCatalogTable.onlineBookable !== false);
+    setEditTableBookingPriority(
+      String(Number(activeCatalogTable.bookingPriority || 0)),
+    );
+    setEditBlockForm({
+      startAt: "",
+      endAt: "",
+      note: "",
+    });
+
+    setTimeout(() => {
+      if (editTableNameRef.current) {
+        editTableNameRef.current.focus();
+        editTableNameRef.current.setSelectionRange(
+          0,
+          editTableNameRef.current.value.length,
+        );
+      }
+    }, 0);
+  }, [editTableOpen, activeCatalogTable]);
+
+  useEffect(() => {
+    if (editTableOpen && !activeCatalogTable) {
+      setEditTableOpen(false);
+    }
+  }, [editTableOpen, activeCatalogTable]);
 
   useEffect(() => {
     if (!selectedRefId) return;
@@ -1267,12 +1459,7 @@ export default function RoomEditorComponent({
       }
 
       // ✅ anti-doublon (case-insensitive)
-      const exists = catalog.some(
-        (t) =>
-          String(t?.name || "")
-            .trim()
-            .toLowerCase() === name.toLowerCase(),
-      );
+      const exists = hasDuplicateTableName(name);
       if (exists) {
         setCreateTableError("Une table avec ce nom existe déjà.");
         return;
@@ -1280,7 +1467,12 @@ export default function RoomEditorComponent({
 
       const res = await axios.post(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/floorplans/catalog/tables`,
-        { name, seats },
+        {
+          name,
+          seats,
+          onlineBookable: newTableOnlineBookable,
+          bookingPriority: Number(newTableBookingPriority || 0),
+        },
         { headers: { Authorization: `Bearer ${token}` } },
       );
 
@@ -1304,12 +1496,173 @@ export default function RoomEditorComponent({
       setCreateTableOpen(false);
       setNewTableName("");
       setNewTableSeats("2");
+      setNewTableOnlineBookable(true);
+      setNewTableBookingPriority("0");
     } catch (e) {
       setCreateTableError(
         e?.response?.data?.message || "Impossible de créer la table.",
       );
     } finally {
       setCreateTableLoading(false);
+    }
+  }
+
+  function openEditTableModal(e) {
+    if (e) e.cancelBubble = true;
+    if (!activeCatalogTable?._id) return;
+
+    setEditTableError("");
+    setEditTableOpen(true);
+  }
+
+  async function saveCatalogTableEdits() {
+    try {
+      if (!activeCatalogTable?._id) return;
+
+      setEditTableLoading(true);
+      setEditTableError("");
+
+      const name = String(editTableName || "").trim();
+
+      if (!name) {
+        setEditTableError("Nom / n° de table obligatoire.");
+        return;
+      }
+
+      if (hasDuplicateTableName(name, activeCatalogTable._id)) {
+        setEditTableError("Une table avec ce nom existe déjà.");
+        return;
+      }
+
+      const res = await axios.put(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/floorplans/catalog/tables/${activeCatalogTable._id}`,
+        {
+          name,
+          onlineBookable: editTableOnlineBookable,
+          bookingPriority: Number(editTableBookingPriority || 0),
+        },
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+
+      applyCatalogAndTableBlocks(
+        Array.isArray(res.data?.tables) ? res.data.tables : undefined,
+      );
+
+      setEditTableOpen(false);
+    } catch (e) {
+      setEditTableError(
+        e?.response?.data?.message || "Impossible de mettre a jour la table.",
+      );
+    } finally {
+      setEditTableLoading(false);
+    }
+  }
+
+  async function addActiveTableBlock() {
+    try {
+      if (!activeCatalogTable?._id) return;
+
+      setEditBlockLoading(true);
+      setEditTableError("");
+
+      const startAt = String(editBlockForm.startAt || "").trim();
+      const endAt = String(editBlockForm.endAt || "").trim();
+      const note = String(editBlockForm.note || "").trim();
+
+      if (!startAt || !endAt) {
+        setEditTableError("Les dates de debut et de fin sont obligatoires.");
+        return;
+      }
+
+      const startDate = new Date(startAt);
+      const endDate = new Date(endAt);
+
+      if (
+        Number.isNaN(startDate.getTime()) ||
+        Number.isNaN(endDate.getTime())
+      ) {
+        setEditTableError("Les dates du blocage sont invalides.");
+        return;
+      }
+
+      if (endDate <= startDate) {
+        setEditTableError("La fin du blocage doit etre apres le debut.");
+        return;
+      }
+
+      const res = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/reservations/table-blocked-ranges`,
+        {
+          tableId: activeCatalogTable._id,
+          startAt: startDate.toISOString(),
+          endAt: endDate.toISOString(),
+          note,
+        },
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+
+      const nextParameters =
+        res.data?.restaurant?.reservations?.parameters &&
+        typeof res.data.restaurant.reservations.parameters === "object"
+          ? res.data.restaurant.reservations.parameters
+          : null;
+
+      applyCatalogAndTableBlocks(
+        Array.isArray(nextParameters?.tables)
+          ? nextParameters.tables
+          : undefined,
+        Array.isArray(nextParameters?.table_blocked_ranges)
+          ? nextParameters.table_blocked_ranges
+          : [],
+      );
+
+      setEditBlockForm({
+        startAt: "",
+        endAt: "",
+        note: "",
+      });
+    } catch (e) {
+      setEditTableError(
+        e?.response?.data?.message || "Impossible d'ajouter ce blocage manuel.",
+      );
+    } finally {
+      setEditBlockLoading(false);
+    }
+  }
+
+  async function deleteActiveTableBlock(rangeId) {
+    try {
+      if (!rangeId) return;
+
+      setEditBlockLoading(true);
+      setEditTableError("");
+
+      const res = await axios.delete(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/reservations/table-blocked-ranges/${rangeId}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+
+      const nextParameters =
+        res.data?.restaurant?.reservations?.parameters &&
+        typeof res.data.restaurant.reservations.parameters === "object"
+          ? res.data.restaurant.reservations.parameters
+          : null;
+
+      applyCatalogAndTableBlocks(
+        Array.isArray(nextParameters?.tables)
+          ? nextParameters.tables
+          : undefined,
+        Array.isArray(nextParameters?.table_blocked_ranges)
+          ? nextParameters.table_blocked_ranges
+          : [],
+      );
+    } catch (e) {
+      setEditTableError(
+        e?.response?.data?.message ||
+          "Impossible de supprimer ce blocage manuel.",
+      );
+    } finally {
+      setEditBlockLoading(false);
     }
   }
 
@@ -1962,68 +2315,108 @@ export default function RoomEditorComponent({
     }
   }
 
-  function ActionButtons({ xOff, startY, onRotate, onDelete }) {
+  function ActionButtons({
+    xOff,
+    leftXOff,
+    startY,
+    onEdit,
+    onRotate,
+    onDelete,
+  }) {
     const BTN_R = 16;
     const GAP = 10;
 
     return (
-      <Group x={xOff} y={0}>
-        {/* ROTATE */}
-        <Group
-          x={0}
-          y={startY}
-          onMouseDown={(e) => (e.cancelBubble = true)}
-          onClick={onRotate}
-          onTap={onRotate}
-        >
-          <Circle
-            x={0}
-            y={0}
-            radius={BTN_R}
-            fill="rgba(255,255,255,0.95)"
-            stroke="rgba(19,30,54,0.25)"
-            strokeWidth={1}
-          />
-          {rotateImg && (
-            <KonvaImage
-              image={rotateImg}
-              x={-11}
-              y={-11}
-              width={22}
-              height={22}
-              listening={false}
-            />
-          )}
-        </Group>
+      <>
+        {onEdit ? (
+          <Group x={leftXOff} y={0}>
+            <Group
+              x={0}
+              y={startY + BTN_R + GAP / 2}
+              onMouseDown={(e) => (e.cancelBubble = true)}
+              onClick={onEdit}
+              onTap={onEdit}
+            >
+              <Circle
+                x={0}
+                y={0}
+                radius={BTN_R}
+                fill="rgba(255,255,255,0.95)"
+                stroke="rgba(19,30,54,0.25)"
+                strokeWidth={1}
+              />
+              {editImg && (
+                <KonvaImage
+                  image={editImg}
+                  x={-11}
+                  y={-11}
+                  width={22}
+                  height={22}
+                  listening={false}
+                />
+              )}
+            </Group>
+          </Group>
+        ) : null}
 
-        {/* TRASH */}
-        <Group
-          x={0}
-          y={startY + BTN_R * 2 + GAP}
-          onMouseDown={(e) => (e.cancelBubble = true)}
-          onClick={onDelete}
-          onTap={onDelete}
-        >
-          <Circle
+        <Group x={xOff} y={0}>
+          {/* ROTATE */}
+          <Group
             x={0}
-            y={0}
-            radius={BTN_R}
-            fill="rgba(255,59,48,0.95)"
-            stroke="rgba(255,59,48,1)"
-            strokeWidth={1}
-          />
-          {trashImg && (
-            <KonvaImage
-              image={trashImg}
-              x={-11}
-              y={-11}
-              width={22}
-              height={22}
-              listening={false}
+            y={startY}
+            onMouseDown={(e) => (e.cancelBubble = true)}
+            onClick={onRotate}
+            onTap={onRotate}
+          >
+            <Circle
+              x={0}
+              y={0}
+              radius={BTN_R}
+              fill="rgba(255,255,255,0.95)"
+              stroke="rgba(19,30,54,0.25)"
+              strokeWidth={1}
             />
-          )}
+            {rotateImg && (
+              <KonvaImage
+                image={rotateImg}
+                x={-11}
+                y={-11}
+                width={22}
+                height={22}
+                listening={false}
+              />
+            )}
+          </Group>
+
+          {/* TRASH */}
+          <Group
+            x={0}
+            y={startY + BTN_R * 2 + GAP}
+            onMouseDown={(e) => (e.cancelBubble = true)}
+            onClick={onDelete}
+            onTap={onDelete}
+          >
+            <Circle
+              x={0}
+              y={0}
+              radius={BTN_R}
+              fill="rgba(255,59,48,0.95)"
+              stroke="rgba(255,59,48,1)"
+              strokeWidth={1}
+            />
+            {trashImg && (
+              <KonvaImage
+                image={trashImg}
+                x={-11}
+                y={-11}
+                width={22}
+                height={22}
+                listening={false}
+              />
+            )}
+          </Group>
         </Group>
-      </Group>
+      </>
     );
   }
   /* ===========================
@@ -2221,65 +2614,18 @@ export default function RoomEditorComponent({
             const xOff = selectedAnchor?.xOff ?? w + 26;
             const startY =
               selectedAnchor?.startY ?? h / 2 - (16 * 2 * 2 + 10) / 2 + 16;
+            const leftXOff =
+              getRotatedRectAABB(0, 0, w, h, Number(obj.rotation || 0)).x1 - 26;
 
             return (
-              <Group x={xOff} y={0}>
-                {/* ROTATE */}
-                <Group
-                  x={0}
-                  y={startY}
-                  onMouseDown={(e) => (e.cancelBubble = true)}
-                  onClick={(e) => bumpRotate15ById(obj.id, e)}
-                  onTap={(e) => bumpRotate15ById(obj.id, e)}
-                >
-                  <Circle
-                    x={0}
-                    y={0}
-                    radius={16}
-                    fill="rgba(255,255,255,0.95)"
-                    stroke="rgba(19,30,54,0.25)"
-                    strokeWidth={1}
-                  />
-                  {rotateImg && (
-                    <KonvaImage
-                      image={rotateImg}
-                      x={-11}
-                      y={-11}
-                      width={22}
-                      height={22}
-                      listening={false}
-                    />
-                  )}
-                </Group>
-
-                {/* TRASH */}
-                <Group
-                  x={0}
-                  y={startY + 16 * 2 + 10}
-                  onMouseDown={(e) => (e.cancelBubble = true)}
-                  onClick={(e) => removeObjectById(obj.id, e)}
-                  onTap={(e) => removeObjectById(obj.id, e)}
-                >
-                  <Circle
-                    x={0}
-                    y={0}
-                    radius={16}
-                    fill="rgba(255,59,48,0.95)"
-                    stroke="rgba(255,59,48,1)"
-                    strokeWidth={1}
-                  />
-                  {trashImg && (
-                    <KonvaImage
-                      image={trashImg}
-                      x={-11}
-                      y={-11}
-                      width={22}
-                      height={22}
-                      listening={false}
-                    />
-                  )}
-                </Group>
-              </Group>
+              <ActionButtons
+                xOff={xOff}
+                leftXOff={leftXOff}
+                startY={startY}
+                onEdit={openEditTableModal}
+                onRotate={(e) => bumpRotate15ById(obj.id, e)}
+                onDelete={(e) => removeObjectById(obj.id, e)}
+              />
             );
           })()}
       </Group>
@@ -2897,6 +3243,9 @@ export default function RoomEditorComponent({
           onClick={() => {
             setNewTableName("");
             setNewTableSeats("2");
+            setNewTableOnlineBookable(true);
+            setNewTableBookingPriority("0");
+            setCreateTableError("");
             setCreateTableOpen(true);
           }}
           className="inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/80 px-4 h-10 text-sm font-semibold text-darkBlue hover:bg-darkBlue/5 transition"
@@ -3047,6 +3396,28 @@ export default function RoomEditorComponent({
                     if (e.key === "Enter") createConfiguredTableAndPlace();
                   }}
                 />
+
+                <label className="flex flex-col gap-1">
+                  <span className="text-sm text-darkBlue/70">Priorité</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={newTableBookingPriority}
+                    onChange={(e) => setNewTableBookingPriority(e.target.value)}
+                    className="h-11 rounded-2xl border border-darkBlue/10 bg-white px-3 text-sm outline-none"
+                  />
+                </label>
+
+                <label className="inline-flex items-center gap-2 text-sm text-darkBlue">
+                  <input
+                    type="checkbox"
+                    checked={newTableOnlineBookable}
+                    onChange={(e) =>
+                      setNewTableOnlineBookable(e.target.checked)
+                    }
+                  />
+                  Réservable en ligne
+                </label>
               </div>
 
               {createTableError && (
@@ -3070,6 +3441,263 @@ export default function RoomEditorComponent({
                 >
                   {createTableLoading ? "Création…" : "Créer & placer"}
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editTableOpen && activeCatalogTable && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 p-3"
+          onMouseDown={(e) => {
+            if (
+              e.target === e.currentTarget &&
+              !editTableLoading &&
+              !editBlockLoading
+            ) {
+              setEditTableOpen(false);
+            }
+          }}
+        >
+          <div className="w-full max-w-[760px] max-h-[90vh] overflow-hidden rounded-3xl border border-darkBlue/10 bg-lightGrey shadow-xl">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-darkBlue/10">
+              <div className="min-w-0">
+                <p className="text-base font-semibold text-darkBlue">
+                  Modifier la table
+                </p>
+                <p className="text-xs text-darkBlue/60">
+                  Gérez le nom, la réservation en ligne, la priorité et les
+                  blocages manuels.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setEditTableOpen(false)}
+                disabled={editTableLoading || editBlockLoading}
+                className="inline-flex items-center justify-center size-10 rounded-2xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition disabled:opacity-50"
+                aria-label="Fermer"
+              >
+                <X className="size-4 text-darkBlue/70" />
+              </button>
+            </div>
+
+            <div className="max-h-[calc(90vh-72px)] overflow-y-auto p-4">
+              <div className="grid grid-cols-1 gap-4 midTablet:grid-cols-2">
+                <div className="rounded-3xl border border-darkBlue/10 bg-white/70 p-4">
+                  <p className="text-sm font-semibold text-darkBlue">
+                    Reglages de la table
+                  </p>
+                  <p className="mt-1 text-xs text-darkBlue/55">
+                    Le nom reste unique dans le catalogue. Les changements
+                    s'appliquent partout où cette table est utilisée.
+                  </p>
+
+                  <div className="mt-4 space-y-3">
+                    <label className="flex flex-col gap-1">
+                      <span className="text-sm text-darkBlue/70">
+                        Nom / n° de table
+                      </span>
+                      <input
+                        ref={editTableNameRef}
+                        type="text"
+                        value={editTableName}
+                        onChange={(e) => setEditTableName(e.target.value)}
+                        placeholder="Nom / n° table"
+                        className="h-11 rounded-2xl border border-darkBlue/10 bg-white px-4 text-base outline-none focus:border-blue/60 focus:ring-2 focus:ring-blue/20"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") saveCatalogTableEdits();
+                        }}
+                      />
+                    </label>
+
+                    <label className="flex items-center justify-between gap-3 rounded-2xl border border-darkBlue/10 bg-white px-4 py-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-darkBlue">
+                          Réservable en ligne
+                        </p>
+                        <p className="text-xs text-darkBlue/55">
+                          Si désactivé, cette table reste réservable à
+                          l'interne.
+                        </p>
+                      </div>
+
+                      <input
+                        type="checkbox"
+                        checked={editTableOnlineBookable}
+                        onChange={(e) =>
+                          setEditTableOnlineBookable(e.target.checked)
+                        }
+                        className="h-4 w-4 accent-darkBlue"
+                      />
+                    </label>
+
+                    <label className="flex flex-col gap-1">
+                      <span className="text-sm text-darkBlue/70">Priorité</span>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        value={editTableBookingPriority}
+                        onChange={(e) =>
+                          setEditTableBookingPriority(e.target.value)
+                        }
+                        className="h-11 rounded-2xl border border-darkBlue/10 bg-white px-4 text-base outline-none focus:border-blue/60 focus:ring-2 focus:ring-blue/20"
+                      />
+                      <span className="text-xs text-darkBlue/55">
+                        Plus la valeur est haute, plus la table est prioritaire
+                        dans l'assignation.
+                      </span>
+                    </label>
+
+                    {editTableError ? (
+                      <div className="rounded-2xl border border-red/20 bg-red/5 px-4 py-3 text-sm text-red">
+                        {editTableError}
+                      </div>
+                    ) : null}
+
+                    <button
+                      type="button"
+                      onClick={saveCatalogTableEdits}
+                      disabled={editTableLoading || editBlockLoading}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-darkBlue px-4 py-3 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {editTableLoading ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : null}
+                      Enregistrer la table
+                    </button>
+                  </div>
+                </div>
+
+                <div className="rounded-3xl border border-darkBlue/10 bg-white/70 p-4">
+                  <p className="text-sm font-semibold text-darkBlue">
+                    Blocage manuel
+                  </p>
+                  <p className="mt-1 text-xs text-darkBlue/55">
+                    Ajoutez une plage pour sortir temporairement cette table de
+                    l'assignation.
+                  </p>
+
+                  <div className="mt-4 grid grid-cols-1 gap-3">
+                    <label className="flex flex-col gap-1">
+                      <span className="text-sm text-darkBlue/70">Debut</span>
+                      <input
+                        type="datetime-local"
+                        value={editBlockForm.startAt}
+                        onChange={(e) =>
+                          setEditBlockForm((prev) => ({
+                            ...prev,
+                            startAt: e.target.value,
+                          }))
+                        }
+                        className="h-11 rounded-2xl border border-darkBlue/10 bg-white px-4 text-base outline-none focus:border-blue/60 focus:ring-2 focus:ring-blue/20"
+                      />
+                    </label>
+
+                    <label className="flex flex-col gap-1">
+                      <span className="text-sm text-darkBlue/70">Fin</span>
+                      <input
+                        type="datetime-local"
+                        value={editBlockForm.endAt}
+                        min={editBlockForm.startAt || undefined}
+                        onChange={(e) =>
+                          setEditBlockForm((prev) => ({
+                            ...prev,
+                            endAt: e.target.value,
+                          }))
+                        }
+                        className="h-11 rounded-2xl border border-darkBlue/10 bg-white px-4 text-base outline-none focus:border-blue/60 focus:ring-2 focus:ring-blue/20"
+                      />
+                    </label>
+
+                    <label className="flex flex-col gap-1">
+                      <span className="text-sm text-darkBlue/70">Note</span>
+                      <textarea
+                        rows={3}
+                        value={editBlockForm.note}
+                        onChange={(e) =>
+                          setEditBlockForm((prev) => ({
+                            ...prev,
+                            note: e.target.value,
+                          }))
+                        }
+                        placeholder="Maintenance, privatisation, travaux..."
+                        className="rounded-2xl resize-none border border-darkBlue/10 bg-white px-4 py-3 text-sm outline-none focus:border-blue/60 focus:ring-2 focus:ring-blue/20"
+                      />
+                    </label>
+
+                    <button
+                      type="button"
+                      onClick={addActiveTableBlock}
+                      disabled={editTableLoading || editBlockLoading}
+                      className="inline-flex items-center justify-center gap-2 rounded-2xl border border-darkBlue/10 bg-white px-4 py-3 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {editBlockLoading ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : null}
+                      Ajouter le blocage
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-3xl border border-darkBlue/10 bg-white/70 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-darkBlue">
+                      Plages bloquées pour cette table
+                    </p>
+                  </div>
+
+                  <span className="rounded-full bg-darkBlue/5 px-3 py-1 text-xs font-medium text-darkBlue/70">
+                    {activeTableBlockedRanges.length} plage
+                    {activeTableBlockedRanges.length > 1 ? "s" : ""}
+                  </span>
+                </div>
+
+                {activeTableBlockedRanges.length === 0 ? (
+                  <div className="mt-4 rounded-2xl border border-dashed border-darkBlue/15 bg-white/60 px-4 py-5 text-sm text-darkBlue/55">
+                    Aucun blocage manuel enregistré pour cette table.
+                  </div>
+                ) : (
+                  <div className="mt-4 space-y-3">
+                    {activeTableBlockedRanges.map((range) => (
+                      <div
+                        key={String(
+                          range?._id || `${range?.startAt}_${range?.endAt}`,
+                        )}
+                        className="flex flex-col gap-3 rounded-2xl border border-darkBlue/10 bg-white px-4 py-3 midTablet:flex-row midTablet:items-center midTablet:justify-between"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-darkBlue">
+                            {formatDateTimeLabel(range?.startAt)} -{" "}
+                            {formatDateTimeLabel(range?.endAt)}
+                          </p>
+                          <p className="mt-1 text-xs text-darkBlue/55">
+                            {range?.note
+                              ? range.note
+                              : "Aucune note renseignée pour ce blocage."}
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => deleteActiveTableBlock(range?._id)}
+                          disabled={editTableLoading || editBlockLoading}
+                          className="inline-flex items-center justify-center gap-2 rounded-2xl border border-red/20 bg-red/5 px-4 py-2 text-sm font-semibold text-red transition hover:bg-red/10 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {editBlockLoading ? (
+                            <Loader2 className="size-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="size-4" />
+                          )}
+                          Supprimer
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -71,6 +71,28 @@ function getOccupancyMinutes(parameters, reservationTime) {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
+function buildReservationDateTime(referenceDate, timeStr) {
+  const d =
+    referenceDate instanceof Date
+      ? new Date(referenceDate)
+      : new Date(referenceDate);
+  if (Number.isNaN(d.getTime())) return null;
+
+  const [hh = 0, mm = 0] = String(timeStr || "00:00")
+    .split(":")
+    .map(Number);
+
+  return new Date(
+    d.getUTCFullYear(),
+    d.getUTCMonth(),
+    d.getUTCDate(),
+    Number(hh) || 0,
+    Number(mm) || 0,
+    0,
+    0,
+  );
+}
+
 function isPendingStillBlocking(reservation) {
   if (!reservation) return false;
   if (reservation.status !== "Pending") return false;
@@ -375,12 +397,67 @@ function statusTheme(status) {
         fill: "rgba(239, 68, 68, 0.20)",
         stroke: "rgba(220, 38, 38, 0.98)",
       };
+    case "blocked":
+      return {
+        fill: "rgba(127, 29, 29, 0.18)",
+        stroke: "rgba(185, 28, 28, 0.95)",
+      };
+    case "internal_only":
+      return {
+        fill: "rgba(107, 114, 128, 0.16)",
+        stroke: "rgba(75, 85, 99, 0.92)",
+      };
     default:
       return {
         fill: "rgba(255,255,255,0.96)",
         stroke: "rgba(148, 163, 184, 0.55)",
       };
   }
+}
+
+function getBlockedTableIdsMap(parameters, referenceDate, selectedTime) {
+  const ranges = Array.isArray(parameters?.table_blocked_ranges)
+    ? parameters.table_blocked_ranges
+    : [];
+
+  const start = buildReservationDateTime(
+    referenceDate,
+    selectedTime || "00:00",
+  );
+
+  if (!start) return new Set();
+
+  const occupancyMinutes = getOccupancyMinutes(
+    parameters,
+    selectedTime || "00:00",
+  );
+  const end = new Date(
+    start.getTime() + Math.max(0, occupancyMinutes) * 60 * 1000,
+  );
+
+  const ids = new Set();
+
+  ranges.forEach((range) => {
+    const rStart = new Date(range.startAt).getTime();
+    const rEnd = new Date(range.endAt).getTime();
+
+    if (!Number.isFinite(rStart) || !Number.isFinite(rEnd)) return;
+
+    if (start.getTime() < rEnd && end.getTime() > rStart) {
+      ids.add(String(range.tableId));
+    }
+  });
+
+  return ids;
+}
+
+function getVisualTableState({ tableStatus, ref, blockedTableIds }) {
+  const refId = String(ref?._id || "");
+
+  if (blockedTableIds.has(refId)) return "blocked";
+  if (ref?.onlineBookable === false) return "internal_only";
+
+  return tableStatus;
 }
 
 function getTableDimensions(seatsCount) {
@@ -742,6 +819,13 @@ export default function FloorPlanCanvasReservationsComponent({
 
   const tableUiByObjectId = useMemo(() => {
     const map = new Map();
+    const blockedTableIds = getBlockedTableIdsMap(
+      reservationParameters,
+      selectedDate || new Date(),
+      liveMode
+        ? getReferenceTimeString({ liveMode, selectedTime })
+        : selectedTime,
+    );
 
     for (const obj of tableObjects) {
       const ref = catalogById.get(String(obj?.tableRefId || "")) || null;
@@ -762,7 +846,7 @@ export default function FloorPlanCanvasReservationsComponent({
         selectedTime,
       });
 
-      const tableStatus = getTableStatus({
+      const baseTableStatus = getTableStatus({
         currentReservation,
         nextReservation,
         theoreticalCurrent,
@@ -771,6 +855,12 @@ export default function FloorPlanCanvasReservationsComponent({
         parameters: reservationParameters,
         liveMode,
         selectedTime,
+      });
+
+      const tableStatus = getVisualTableState({
+        tableStatus: baseTableStatus,
+        ref,
+        blockedTableIds,
       });
 
       map.set(String(obj.id), {
@@ -792,6 +882,7 @@ export default function FloorPlanCanvasReservationsComponent({
     catalogById,
     reservationsByTableId,
     reservationParameters,
+    selectedDate,
     liveMode,
     selectedTime,
   ]);
@@ -1717,6 +1808,20 @@ export default function FloorPlanCanvasReservationsComponent({
             listening={false}
           />
         ) : null}
+
+        {Number(ref?.bookingPriority || 0) > 0 ? (
+          <Text
+            text={`P${Number(ref.bookingPriority)}`}
+            fontSize={10}
+            fill="rgba(19,30,54,0.48)"
+            width={w}
+            height={h}
+            align="center"
+            verticalAlign="middle"
+            offsetY={18}
+            listening={false}
+          />
+        ) : null}
       </Group>
     );
   }
@@ -1850,6 +1955,9 @@ export default function FloorPlanCanvasReservationsComponent({
                 {Number(tooltipData.ref?.seats || 0)} couvert
                 {tooltipData.ref?.seats > 1 ? "s" : ""}
               </p>
+              <p className="text-[10px] text-darkBlue/55 leading-none">
+                Priorité : {Number(tooltipData.ref?.bookingPriority || 0)}
+              </p>
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -1874,6 +1982,18 @@ export default function FloorPlanCanvasReservationsComponent({
               {tooltipData.tableStatus === "assigned" ? (
                 <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium bg-blue/15 text-blue border border-blue/20">
                   Assignée
+                </span>
+              ) : null}
+
+              {tooltipData.tableStatus === "blocked" ? (
+                <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium bg-red/15 text-red border border-red/20">
+                  Table bloquée
+                </span>
+              ) : null}
+
+              {tooltipData.ref?.onlineBookable === false ? (
+                <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium bg-darkBlue/10 text-darkBlue border border-darkBlue/10">
+                  Interne uniquement
                 </span>
               ) : null}
             </div>

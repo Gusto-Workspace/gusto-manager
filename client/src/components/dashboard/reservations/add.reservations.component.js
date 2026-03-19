@@ -151,6 +151,81 @@ function isEligibleTableForGuestsFront(tableSeats, guests) {
   return seats === required;
 }
 
+function normalizeBookingPriorityFront(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function sortTablesByPriorityFront(tables = []) {
+  return [...tables].sort((a, b) => {
+    const pa = normalizeBookingPriorityFront(a?.bookingPriority);
+    const pb = normalizeBookingPriorityFront(b?.bookingPriority);
+
+    if (pa !== pb) return pb - pa;
+
+    return String(a?.name || "").localeCompare(String(b?.name || ""), "fr", {
+      sensitivity: "base",
+      numeric: true,
+    });
+  });
+}
+
+function buildReservationDateTimeFront(dateInput, timeStr) {
+  const d =
+    dateInput instanceof Date ? new Date(dateInput) : new Date(dateInput);
+  if (Number.isNaN(d.getTime())) return null;
+
+  const [hh = 0, mm = 0] = String(timeStr || "00:00")
+    .split(":")
+    .map(Number);
+
+  return new Date(
+    d.getUTCFullYear(),
+    d.getUTCMonth(),
+    d.getUTCDate(),
+    Number(hh) || 0,
+    Number(mm) || 0,
+    0,
+    0,
+  );
+}
+
+function getBlockedTableIdsFront(parameters, reservationDate, reservationTime) {
+  const ranges = Array.isArray(parameters?.table_blocked_ranges)
+    ? parameters.table_blocked_ranges
+    : [];
+
+  const occupancyMinutes = getOccupancyMinutesFront(
+    parameters,
+    reservationTime,
+  );
+  const candidateStart = buildReservationDateTimeFront(
+    reservationDate,
+    reservationTime,
+  );
+
+  if (!candidateStart) return new Set();
+
+  const candidateEnd = new Date(
+    candidateStart.getTime() + Math.max(0, occupancyMinutes) * 60 * 1000,
+  );
+
+  const ids = new Set();
+
+  ranges.forEach((range) => {
+    const start = new Date(range.startAt).getTime();
+    const end = new Date(range.endAt).getTime();
+
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return;
+
+    if (candidateStart.getTime() < end && candidateEnd.getTime() > start) {
+      ids.add(String(range.tableId));
+    }
+  });
+
+  return ids;
+}
+
 export default function AddReservationComponent(props) {
   const { t } = useTranslation("reservations");
   const router = useRouter();
@@ -319,8 +394,12 @@ export default function AddReservationComponent(props) {
 
         if (guests > 0) {
           // pool éligible (tables configurées de la bonne taille)
-          const eligibleTables = (parameters.tables || []).filter((t) =>
-            isEligibleTableForGuestsFront(t.seats, guests),
+          const eligibleTables = sortTablesByPriorityFront(
+            (parameters.tables || []).filter(
+              (t) =>
+                isEligibleTableForGuestsFront(t.seats, guests) &&
+                t?.onlineBookable !== false,
+            ),
           );
           const capacity = eligibleTables.length;
 
@@ -355,6 +434,11 @@ export default function AddReservationComponent(props) {
             const candidateStart = minutesFromHHmm(time);
             const durCandidate = getOccupancyMinutesFront(parameters, time);
             const candidateEnd = candidateStart + durCandidate;
+            const blockedTableIds = getBlockedTableIdsFront(
+              parameters,
+              reservationData.reservationDate,
+              time,
+            );
 
             // helper overlap (comme backend)
             const overlaps = (r) => {
@@ -371,6 +455,7 @@ export default function AddReservationComponent(props) {
 
             // construit état capacité comme backend:
             const reservedIds = new Set();
+            blockedTableIds.forEach((id) => reservedIds.add(String(id)));
             let unassignedCount = 0;
 
             // ✅ NEW: fallback par nom (tables recréées)
@@ -476,8 +561,12 @@ export default function AddReservationComponent(props) {
 
     const guests = Number(reservationData.numberOfGuests || 0);
 
-    const eligibleTables = (parameters.tables || []).filter((t) =>
-      isEligibleTableForGuestsFront(t.seats, guests),
+    const eligibleTables = sortTablesByPriorityFront(
+      (parameters.tables || []).filter(
+        (t) =>
+          isEligibleTableForGuestsFront(t.seats, guests) &&
+          t?.onlineBookable !== false,
+      ),
     );
 
     // si aucune table configurée => aucune table dispo
@@ -501,6 +590,11 @@ export default function AddReservationComponent(props) {
     const candidateStart = minutesFromHHmm(candidateTime);
     const durCandidate = getOccupancyMinutesFront(parameters, candidateTime);
     const candidateEnd = candidateStart + durCandidate;
+    const blockedTableIds = getBlockedTableIdsFront(
+      parameters,
+      reservationData.reservationDate,
+      candidateTime,
+    );
 
     const overlaps = (r) => {
       const rTime = String(r.reservationTime || "").slice(0, 5);
@@ -532,6 +626,7 @@ export default function AddReservationComponent(props) {
 
     // ✅ tables configurées prises sur ce créneau (dans le pool éligible)
     const reservedIds = new Set();
+    blockedTableIds.forEach((id) => reservedIds.add(String(id)));
     let unassignedCount = 0;
 
     // ✅ NEW: fallback par nom (tables recréées)
