@@ -105,10 +105,6 @@ async function runReservationReminder24h() {
       }
 
       await markReminderSent(locked._id);
-
-      console.log("[reservation-reminder-sent]", {
-        reservationId: String(locked._id),
-      });
     } catch (e) {
       console.error(
         "[reservation-reminder-error]",

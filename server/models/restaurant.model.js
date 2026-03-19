@@ -33,6 +33,20 @@ const blockedRangeSchema = new mongoose.Schema(
   { _id: true },
 );
 
+const tableBlockedRangeSchema = new mongoose.Schema(
+  {
+    tableId: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: true,
+    },
+    startAt: { type: Date, required: true },
+    endAt: { type: Date, required: true },
+    note: { type: String, default: "" },
+    createdAt: { type: Date, default: Date.now },
+  },
+  { _id: true },
+);
+
 const floorplanObjectSchema = new mongoose.Schema(
   {
     id: { type: String, required: true },
@@ -136,6 +150,8 @@ const reservationParametersSchema = new mongoose.Schema({
       {
         name: { type: String, required: true, trim: true },
         seats: { type: Number, min: 1, required: true },
+        onlineBookable: { type: Boolean, default: true },
+        bookingPriority: { type: Number, default: 0 },
       },
       { _id: true },
     ),
@@ -147,6 +163,7 @@ const reservationParametersSchema = new mongoose.Schema({
   // Horaires & pauses
   reservation_hours: { type: [openingHoursSchema], default: [] },
   blocked_ranges: { type: [blockedRangeSchema], default: [] },
+  table_blocked_ranges: { type: [tableBlockedRangeSchema], default: [] },
 });
 
 // Sous-schéma pour les réservations

@@ -48,6 +48,7 @@ function computeCapacityState({
   overlaps,
   eligibleTables,
   requiredSize,
+  blockedTableIds = new Set(),
 }) {
   const capacity = eligibleTables.length;
 
@@ -62,6 +63,9 @@ function computeCapacityState({
   );
 
   const reservedIds = new Set();
+  blockedTableIds.forEach((id) => {
+    reservedIds.add(String(id));
+  });
   let unassignedCount = 0;
 
   blockingReservations.forEach((r) => {
@@ -108,6 +112,33 @@ function computeCapacityState({
   });
 
   return { capacity, reservedIds, unassignedCount };
+}
+
+function isConfiguredTableFree({
+  tableDef,
+  blockingReservations,
+  overlaps,
+  blockedTableIds = new Set(),
+}) {
+  if (!tableDef?._id) return false;
+
+  const targetId = String(tableDef._id);
+  const targetName = String(tableDef?.name || "");
+
+  if (blockedTableIds.has(targetId)) return false;
+
+  const conflict = blockingReservations.find((r) => {
+    if (!r?.table) return false;
+    if (!overlaps(r)) return false;
+
+    const same =
+      (r.table.tableId && String(r.table.tableId) === targetId) ||
+      String(r.table.name || "") === targetName;
+
+    return same;
+  });
+
+  return !conflict;
 }
 
 function normalizeReservationDayToUTC(dateInput) {
@@ -196,6 +227,110 @@ function requiredTableSizeFromGuests(n) {
   const g = Number(n || 0);
   if (g <= 0) return 0;
   return g % 2 === 0 ? g : g + 1;
+}
+
+function normalizeBookingPriority(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function sortTablesByPriority(tables = []) {
+  return [...tables].sort((a, b) => {
+    const pa = normalizeBookingPriority(a?.bookingPriority);
+    const pb = normalizeBookingPriority(b?.bookingPriority);
+
+    if (pa !== pb) return pb - pa;
+
+    return String(a?.name || "").localeCompare(String(b?.name || ""), "fr", {
+      sensitivity: "base",
+      numeric: true,
+    });
+  });
+}
+
+function filterActiveOrUpcomingTableBlockedRanges(
+  ranges = [],
+  now = new Date(),
+) {
+  const nowTs = now.getTime();
+
+  return (Array.isArray(ranges) ? ranges : []).filter((range) => {
+    const endTs = new Date(range?.endAt).getTime();
+    return Number.isFinite(endTs) && endTs > nowTs;
+  });
+}
+
+function isTableBlockOverlapping({ block, candidateStart, candidateEnd }) {
+  if (!block) return false;
+
+  const blockStart = new Date(block.startAt).getTime();
+  const blockEnd = new Date(block.endAt).getTime();
+
+  if (!Number.isFinite(blockStart) || !Number.isFinite(blockEnd)) return false;
+
+  const start = candidateStart.getTime();
+  const end = candidateEnd.getTime();
+
+  return start < blockEnd && end > blockStart;
+}
+
+function getBlockedTableIdsForDateTime(
+  parameters,
+  candidateDateTime,
+  occupancyMs,
+) {
+  const ranges = Array.isArray(parameters?.table_blocked_ranges)
+    ? parameters.table_blocked_ranges
+    : [];
+
+  if (!(candidateDateTime instanceof Date)) return new Set();
+  if (Number.isNaN(candidateDateTime.getTime())) return new Set();
+
+  const candidateStart = new Date(candidateDateTime);
+  const candidateEnd = new Date(
+    candidateDateTime.getTime() + Math.max(0, Number(occupancyMs) || 0),
+  );
+
+  const ids = new Set();
+
+  for (const range of ranges) {
+    if (
+      isTableBlockOverlapping({
+        block: range,
+        candidateStart,
+        candidateEnd,
+      })
+    ) {
+      ids.add(String(range.tableId));
+    }
+  }
+
+  return ids;
+}
+
+function getEligibleTables({
+  parameters,
+  requiredSize,
+  channel = "dashboard",
+}) {
+  let pool = Array.isArray(parameters?.tables) ? parameters.tables : [];
+
+  pool = pool.filter((table) => Number(table.seats) === Number(requiredSize));
+
+  if (channel === "public") {
+    pool = pool.filter((table) => table?.onlineBookable !== false);
+  }
+
+  return sortTablesByPriority(pool);
+}
+
+function buildAssignedTablePayload(tableDef) {
+  return {
+    tableId: tableDef._id,
+    name: tableDef.name,
+    seats: tableDef.seats,
+    source: "configured",
+  };
 }
 
 function getActiveBlockedRangeEnd(parameters, now = new Date()) {
@@ -941,10 +1076,23 @@ router.put(
           ? parameters.blocked_ranges
           : existing.blocked_ranges || [];
 
+      const nextTableBlocked =
+        Object.prototype.hasOwnProperty.call(
+          parameters,
+          "table_blocked_ranges",
+        ) && Array.isArray(parameters.table_blocked_ranges)
+          ? filterActiveOrUpcomingTableBlockedRanges(
+              parameters.table_blocked_ranges,
+            )
+          : filterActiveOrUpcomingTableBlockedRanges(
+              existing.table_blocked_ranges || [],
+            );
+
       restaurant.reservations.parameters = {
         ...existing,
         ...parameters,
         blocked_ranges: nextBlocked,
+        table_blocked_ranges: nextTableBlocked,
       };
 
       await restaurant.save();
@@ -1024,6 +1172,12 @@ router.post(
         return res.status(400).json({ message: "endAt must be after startAt" });
       }
 
+      if (end <= new Date()) {
+        return res.status(400).json({
+          message: "endAt must be in the future",
+        });
+      }
+
       const restaurant = await RestaurantModel.findById(restaurantId);
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found" });
@@ -1101,6 +1255,132 @@ router.delete(
       });
     } catch (e) {
       console.error("Error deleting blocked range:", e);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  },
+);
+
+/* ---------------------------------------------------------
+   TABLE BLOCKED RANGES: ADD
+--------------------------------------------------------- */
+router.post(
+  "/restaurants/:id/reservations/table-blocked-ranges",
+  authenticateToken,
+  async (req, res) => {
+    const restaurantId = req.params.id;
+    const { tableId, startAt, endAt, note } = req.body;
+
+    try {
+      if (!tableId || !startAt || !endAt) {
+        return res.status(400).json({
+          message: "tableId, startAt and endAt are required",
+        });
+      }
+
+      const start = new Date(startAt);
+      const end = new Date(endAt);
+
+      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+        return res.status(400).json({ message: "Invalid dates" });
+      }
+
+      if (end <= start) {
+        return res.status(400).json({ message: "endAt must be after startAt" });
+      }
+
+      if (end <= new Date()) {
+        return res.status(400).json({
+          message: "endAt must be in the future",
+        });
+      }
+
+      const restaurant = await RestaurantModel.findById(restaurantId);
+      if (!restaurant) {
+        return res.status(404).json({ message: "Restaurant not found" });
+      }
+
+      restaurant.reservations = restaurant.reservations || {};
+      restaurant.reservations.parameters =
+        restaurant.reservations.parameters || {};
+      restaurant.reservations.parameters.table_blocked_ranges =
+        restaurant.reservations.parameters.table_blocked_ranges || [];
+
+      const tableExists = (
+        restaurant.reservations.parameters.tables || []
+      ).some((t) => String(t._id) === String(tableId));
+
+      if (!tableExists) {
+        return res.status(400).json({ message: "Table invalide." });
+      }
+
+      restaurant.reservations.parameters.table_blocked_ranges =
+        filterActiveOrUpcomingTableBlockedRanges(
+          restaurant.reservations.parameters.table_blocked_ranges,
+        );
+
+      restaurant.reservations.parameters.table_blocked_ranges.push({
+        tableId,
+        startAt: start,
+        endAt: end,
+        note: (note || "").toString(),
+      });
+
+      await restaurant.save();
+
+      const updatedRestaurant = await fetchRestaurantFull(restaurantId);
+
+      return res.status(201).json({
+        message: "Table blocked range added",
+        restaurant: updatedRestaurant,
+      });
+    } catch (e) {
+      console.error("Error adding table blocked range:", e);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  },
+);
+
+/* ---------------------------------------------------------
+   TABLE BLOCKED RANGES: DELETE
+--------------------------------------------------------- */
+router.delete(
+  "/restaurants/:id/reservations/table-blocked-ranges/:rangeId",
+  authenticateToken,
+  async (req, res) => {
+    const { id: restaurantId, rangeId } = req.params;
+
+    try {
+      const restaurant = await RestaurantModel.findById(restaurantId);
+      if (!restaurant) {
+        return res.status(404).json({ message: "Restaurant not found" });
+      }
+
+      restaurant.reservations = restaurant.reservations || {};
+      restaurant.reservations.parameters =
+        restaurant.reservations.parameters || {};
+      restaurant.reservations.parameters.table_blocked_ranges =
+        restaurant.reservations.parameters.table_blocked_ranges || [];
+
+      const ranges = restaurant.reservations.parameters.table_blocked_ranges;
+
+      restaurant.reservations.parameters.table_blocked_ranges = ranges.filter(
+        (r) => String(r._id) !== String(rangeId),
+      );
+      restaurant.reservations.parameters.table_blocked_ranges =
+        filterActiveOrUpcomingTableBlockedRanges(
+          restaurant.reservations.parameters.table_blocked_ranges,
+        );
+
+      await restaurant.save();
+
+      const updatedRestaurant = await fetchRestaurantFull(restaurantId);
+
+      return res.status(200).json({
+        message: "Table blocked range removed",
+        restaurant: updatedRestaurant,
+      });
+    } catch (e) {
+      console.error("Error deleting table blocked range:", e);
       return res.status(500).json({ message: "Internal server error" });
     }
   },
@@ -1452,9 +1732,11 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
       const numGuests = Number(reservationData.numberOfGuests);
       const requiredSize = requiredTableSizeFromGuests(numGuests);
 
-      const eligibleTables = (parameters.tables || []).filter(
-        (table) => Number(table.seats) === requiredSize,
-      );
+      const eligibleTables = getEligibleTables({
+        parameters,
+        requiredSize,
+        channel: "public",
+      });
 
       if (!eligibleTables.length) {
         return res.status(409).json({
@@ -1470,6 +1752,12 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
         reservationData.reservationTime,
       );
       const candidateEnd = candidateStart + durCandidate;
+      const occupancyMs = Math.max(0, durCandidate) * 60 * 1000;
+      const blockedTableIds = getBlockedTableIdsForDateTime(
+        parameters,
+        candidateDT,
+        occupancyMs,
+      );
 
       const dayStart = new Date(`${formattedDate}T00:00:00.000Z`);
       const dayEnd = new Date(`${formattedDate}T23:59:59.999Z`);
@@ -1505,6 +1793,7 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
         overlaps,
         requiredSize,
         eligibleTables,
+        blockedTableIds,
       });
 
       if (reservedIds.size + unassignedCount >= capacity) {
@@ -1522,7 +1811,15 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
         if (!wanted)
           return res.status(400).json({ message: "Table invalide." });
 
-        if (reservedIds.has(String(wanted._id))) {
+        const isTableFree = (tableDef) =>
+          isConfiguredTableFree({
+            tableDef,
+            blockingReservations,
+            overlaps,
+            blockedTableIds,
+          });
+
+        if (!isTableFree(wanted)) {
           return res
             .status(409)
             .json({ message: "La table sélectionnée n'est plus disponible." });
@@ -1536,15 +1833,15 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
           });
         }
 
-        assignedTable = {
-          tableId: wanted._id,
-          name: wanted.name,
-          seats: wanted.seats,
-          source: "configured",
-        };
+        assignedTable = buildAssignedTablePayload(wanted);
       } else {
-        const free = eligibleTables.find(
-          (t) => !reservedIds.has(String(t._id)),
+        const free = eligibleTables.find((t) =>
+          isConfiguredTableFree({
+            tableDef: t,
+            blockingReservations,
+            overlaps,
+            blockedTableIds,
+          }),
         );
         if (!free) {
           return res.status(409).json({
@@ -1553,12 +1850,7 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
               "Aucune table n’est disponible pour ce créneau. Veuillez réessayer.",
           });
         }
-        assignedTable = {
-          tableId: free._id,
-          name: free.name,
-          seats: free.seats,
-          source: "configured",
-        };
+        assignedTable = buildAssignedTablePayload(free);
       }
     } else {
       const name = (reservationData.table || "").toString().trim();
@@ -1847,9 +2139,11 @@ router.post(
         const numGuests = Number(reservationData.numberOfGuests);
         const requiredSize = requiredTableSizeFromGuests(numGuests);
 
-        const eligibleTables = (parameters.tables || []).filter(
-          (table) => Number(table.seats) === requiredSize,
-        );
+        const eligibleTables = getEligibleTables({
+          parameters,
+          requiredSize,
+          channel: "dashboard",
+        });
 
         if (!eligibleTables.length) {
           return res.status(409).json({
@@ -1865,6 +2159,12 @@ router.post(
           reservationData.reservationTime,
         );
         const candidateEnd = candidateStart + durCandidate;
+        const occupancyMs = Math.max(0, durCandidate) * 60 * 1000;
+        const blockedTableIds = getBlockedTableIdsForDateTime(
+          parameters,
+          candidateDT,
+          occupancyMs,
+        );
 
         const dayStart = new Date(`${formattedDate}T00:00:00.000Z`);
         const dayEnd = new Date(`${formattedDate}T23:59:59.999Z`);
@@ -1901,6 +2201,7 @@ router.post(
             overlaps,
             requiredSize,
             eligibleTables,
+            blockedTableIds,
           },
         );
 
@@ -1921,7 +2222,15 @@ router.post(
           if (!wanted)
             return res.status(400).json({ message: "Table invalide." });
 
-          if (reservedIds.has(String(wanted._id))) {
+          const isTableFree = (tableDef) =>
+            isConfiguredTableFree({
+              tableDef,
+              blockingReservations,
+              overlaps,
+              blockedTableIds,
+            });
+
+          if (!isTableFree(wanted)) {
             return res.status(409).json({
               message: "La table sélectionnée n'est plus disponible.",
             });
@@ -1935,15 +2244,15 @@ router.post(
             });
           }
 
-          assignedTable = {
-            tableId: wanted._id,
-            name: wanted.name,
-            seats: wanted.seats,
-            source: "configured",
-          };
+          assignedTable = buildAssignedTablePayload(wanted);
         } else {
-          const free = eligibleTables.find(
-            (t) => !reservedIds.has(String(t._id)),
+          const free = eligibleTables.find((t) =>
+            isConfiguredTableFree({
+              tableDef: t,
+              blockingReservations,
+              overlaps,
+              blockedTableIds,
+            }),
           );
           if (!free) {
             return res.status(409).json({
@@ -1952,12 +2261,7 @@ router.post(
                 "Aucune table n’est disponible pour ce créneau. Contactez le client.",
             });
           }
-          assignedTable = {
-            tableId: free._id,
-            name: free.name,
-            seats: free.seats,
-            source: "configured",
-          };
+          assignedTable = buildAssignedTablePayload(free);
         }
       } else {
         // ✅ mode manuel : nom de table libre
@@ -2351,9 +2655,11 @@ router.put(
         const requiredSize = requiredTableSizeFromGuests(
           reservation.numberOfGuests,
         );
-        const eligibleTables = (parameters.tables || []).filter(
-          (t) => Number(t.seats) === requiredSize,
-        );
+        const eligibleTables = getEligibleTables({
+          parameters,
+          requiredSize,
+          channel: "dashboard",
+        });
 
         if (!eligibleTables.length) {
           return res.status(409).json({
@@ -2376,6 +2682,16 @@ router.put(
           reservation.reservationTime,
         );
         const candidateEnd = candidateStart + durCandidate;
+        const candidateDateTime = buildReservationDateTime(
+          normalizedDay,
+          reservation.reservationTime,
+        );
+        const occupancyMs = Math.max(0, durCandidate) * 60 * 1000;
+        const blockedTableIds = getBlockedTableIdsForDateTime(
+          parameters,
+          candidateDateTime,
+          occupancyMs,
+        );
 
         const dayStart = new Date(`${formattedDate}T00:00:00.000Z`);
         const dayEnd = new Date(`${formattedDate}T23:59:59.999Z`);
@@ -2417,6 +2733,9 @@ router.put(
 
         const isCurrentFree = () => {
           if (!currentTableId && !currentTableName) return false;
+          if (currentTableId && blockedTableIds.has(currentTableId)) {
+            return false;
+          }
 
           const conflict = blockingReservations.find((r) => {
             if (!r.table) return false;
@@ -2439,6 +2758,7 @@ router.put(
               overlaps,
               eligibleTables,
               requiredSize,
+              blockedTableIds,
             });
 
           if (reservedIds.size + unassignedCount >= capacity) {
@@ -2449,8 +2769,13 @@ router.put(
             });
           }
 
-          const newTable = eligibleTables.find(
-            (t) => !reservedIds.has(String(t._id)),
+          const newTable = eligibleTables.find((t) =>
+            isConfiguredTableFree({
+              tableDef: t,
+              blockingReservations,
+              overlaps,
+              blockedTableIds,
+            }),
           );
           if (!newTable) {
             return res.status(409).json({
@@ -2469,10 +2794,7 @@ router.put(
           };
 
           reservation.table = {
-            tableId: newTable._id,
-            name: newTable.name,
-            seats: newTable.seats,
-            source: "configured",
+            ...buildAssignedTablePayload(newTable),
           };
         }
       }
@@ -2779,9 +3101,11 @@ router.put(
       ) {
         const requiredSize = requiredTableSizeFromGuests(candidateGuests);
 
-        const eligibleTables = (parameters.tables || []).filter(
-          (t) => Number(t.seats) === requiredSize,
-        );
+        const eligibleTables = getEligibleTables({
+          parameters,
+          requiredSize,
+          channel: "dashboard",
+        });
 
         if (!eligibleTables.length) {
           return res.status(409).json({
@@ -2794,6 +3118,16 @@ router.put(
         const candidateStart = minutesFromHHmm(candidateTime);
         const durCandidate = getOccupancyMinutes(parameters, candidateTime);
         const candidateEnd = candidateStart + durCandidate;
+        const candidateDateTime = buildReservationDateTime(
+          candidateDate,
+          candidateTime,
+        );
+        const occupancyMs = Math.max(0, durCandidate) * 60 * 1000;
+        const blockedTableIds = getBlockedTableIdsForDateTime(
+          parameters,
+          candidateDateTime,
+          occupancyMs,
+        );
 
         const dayStart = new Date(`${formattedDate}T00:00:00.000Z`);
         const dayEnd = new Date(`${formattedDate}T23:59:59.999Z`);
@@ -2846,25 +3180,16 @@ router.put(
           : null;
 
         const assignWanted = (tableDef) => {
-          updateData.table = {
-            tableId: tableDef._id,
-            name: tableDef.name,
-            seats: tableDef.seats,
-            source: "configured",
-          };
+          updateData.table = buildAssignedTablePayload(tableDef);
         };
 
         const isTableFree = (tableDef) => {
-          const conflict = blockingReservations.find((r) => {
-            if (!r.table) return false;
-            const same =
-              (r.table.tableId &&
-                String(r.table.tableId) === String(tableDef._id)) ||
-              String(r.table.name || "") === String(tableDef.name || "");
-
-            return same && overlaps(r);
+          return isConfiguredTableFree({
+            tableDef,
+            blockingReservations,
+            overlaps,
+            blockedTableIds,
           });
-          return !conflict;
         };
 
         if (typeof requestedTableId === "string") {
@@ -2896,6 +3221,7 @@ router.put(
                 overlaps,
                 eligibleTables,
                 requiredSize,
+                blockedTableIds,
               });
 
             if (reservedIds.size + unassignedCount >= capacity) {
@@ -2906,9 +3232,7 @@ router.put(
               });
             }
 
-            const free = eligibleTables.find(
-              (t) => !reservedIds.has(String(t._id)),
-            );
+            const free = eligibleTables.find((t) => isTableFree(t));
 
             if (!free) {
               return res.status(409).json({
