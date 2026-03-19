@@ -413,8 +413,8 @@ function statusTheme(status) {
       };
     case "blocked":
       return {
-        fill: "rgba(127, 29, 29, 0.18)",
-        stroke: "rgba(185, 28, 28, 0.95)",
+        fill: "rgba(255, 244, 244, 0.98)",
+        stroke: "rgba(148, 163, 184, 0.55)",
       };
     case "internal_only":
       return {
@@ -1796,6 +1796,16 @@ export default function FloorPlanCanvasReservationsComponent({
             strokeWidth={1}
             listening={false}
           />
+
+          {tableStatus === "blocked" ? (
+            <Line
+              points={[12, h - 10, w - 12, 10]}
+              stroke="rgba(220, 38, 38, 0.38)"
+              strokeWidth={4}
+              lineCap="round"
+              listening={false}
+            />
+          ) : null}
         </Group>
 
         <Text
@@ -2002,7 +2012,7 @@ export default function FloorPlanCanvasReservationsComponent({
               ) : null}
 
               {tooltipData.tableStatus === "blocked" ? (
-                <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium bg-red/15 text-red border border-red/20">
+                <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium bg-[rgba(220,38,38,0.08)] text-[rgba(185,28,28,0.92)] border border-[rgba(220,38,38,0.14)]">
                   Table bloquée
                 </span>
               ) : null}

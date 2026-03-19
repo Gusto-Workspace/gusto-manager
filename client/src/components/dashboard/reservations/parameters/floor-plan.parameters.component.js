@@ -594,6 +594,7 @@ export default function FloorPlanParametersComponent({
                 restaurantId={restaurantId}
                 setRestaurantData={setRestaurantData}
                 room={activeRoom}
+                allRooms={rooms}
                 roomName={roomName}
                 tablesCatalog={localCatalog}
                 placedTableRefIdsOtherRooms={placedInOtherRooms}

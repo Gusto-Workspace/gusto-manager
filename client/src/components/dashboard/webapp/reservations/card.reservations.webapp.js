@@ -23,6 +23,36 @@ function fullName(r) {
   return `${fn} ${ln}`.trim() || "-";
 }
 
+function getReservationTableLabel(reservation, tablesCatalog = []) {
+  const explicitName = String(reservation?.table?.name || "").trim();
+  if (explicitName) return explicitName;
+
+  const tableIds = Array.isArray(reservation?.table?.tableIds)
+    ? reservation.table.tableIds
+    : reservation?.table?.tableId
+      ? [reservation.table.tableId]
+      : [];
+
+  if (!tableIds.length) return null;
+
+  const catalogById = new Map(
+    (Array.isArray(tablesCatalog) ? tablesCatalog : []).map((table) => [
+      String(table?._id || ""),
+      String(table?.name || "").trim(),
+    ]),
+  );
+
+  const names = Array.from(
+    new Set(
+      tableIds
+        .map((id) => catalogById.get(String(id || "").trim()))
+        .filter(Boolean),
+    ),
+  );
+
+  return names.length ? names.join(" + ") : null;
+}
+
 export default function CardReservationWebapp(props) {
   const { t } = useTranslation("reservations");
 
@@ -57,7 +87,7 @@ export default function CardReservationWebapp(props) {
 
   const timeLabel = formatTime(r.reservationTime);
   const hasCommentary = Boolean((r.commentary || "").trim());
-  const tableName = r.table?.name || null;
+  const tableName = getReservationTableLabel(r, props.tablesCatalog);
 
   const openDetails = () => props.onOpenDetails?.(r);
 

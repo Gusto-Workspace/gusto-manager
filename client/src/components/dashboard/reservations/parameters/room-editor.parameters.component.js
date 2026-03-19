@@ -388,6 +388,7 @@ export default function RoomEditorComponent({
   restaurantId,
   setRestaurantData,
   room,
+  allRooms,
   roomName,
   tablesCatalog,
   placedTableRefIdsOtherRooms,
@@ -1246,6 +1247,70 @@ export default function RoomEditorComponent({
         );
       });
   }, [catalog, activeCatalogId]);
+
+  const tableRoomMap = useMemo(() => {
+    const map = new Map();
+
+    safeArr(allRooms).forEach((candidateRoom) => {
+      const candidateRoomName =
+        String(candidateRoom?.name || "").trim() || "Salle sans nom";
+
+      safeArr(candidateRoom?.objects).forEach((obj) => {
+        if (obj?.type !== "table" || !obj?.tableRefId) return;
+
+        const refId = String(obj.tableRefId);
+        if (!map.has(refId)) {
+          map.set(refId, candidateRoomName);
+        }
+      });
+    });
+
+    return map;
+  }, [allRooms]);
+
+  const groupedCombinableTableCandidates = useMemo(() => {
+    const groupsMap = new Map();
+    const roomOrder = safeArr(allRooms).map(
+      (candidateRoom) =>
+        String(candidateRoom?.name || "").trim() || "Salle sans nom",
+    );
+
+    combinableTableCandidates.forEach((table) => {
+      const groupName =
+        tableRoomMap.get(String(table?._id || "")) || "Autres tables";
+
+      if (!groupsMap.has(groupName)) {
+        groupsMap.set(groupName, []);
+      }
+
+      groupsMap.get(groupName).push(table);
+    });
+
+    const groups = Array.from(groupsMap.entries()).map(([label, tables]) => ({
+      label,
+      tables,
+    }));
+
+    groups.sort((a, b) => {
+      const ia = roomOrder.indexOf(a.label);
+      const ib = roomOrder.indexOf(b.label);
+      const aKnown = ia !== -1;
+      const bKnown = ib !== -1;
+
+      if (aKnown && bKnown) return ia - ib;
+      if (aKnown) return -1;
+      if (bKnown) return 1;
+      if (a.label === "Autres tables") return 1;
+      if (b.label === "Autres tables") return -1;
+
+      return a.label.localeCompare(b.label, "fr", {
+        sensitivity: "base",
+        numeric: true,
+      });
+    });
+
+    return groups;
+  }, [allRooms, combinableTableCandidates, tableRoomMap]);
 
   function applyCatalogAndTableBlocks(nextTables, nextTableBlockedRanges) {
     if (Array.isArray(nextTableBlockedRanges)) {
@@ -3519,14 +3584,10 @@ export default function RoomEditorComponent({
             </div>
 
             <div className="max-h-[calc(90vh-72px)] overflow-y-auto p-4">
-              <div className="grid grid-cols-1 gap-4 midTablet:grid-cols-2">
+              <div className="grid grid-cols-1 gap-2 midTablet:grid-cols-2">
                 <div className="rounded-3xl border border-darkBlue/10 bg-white/70 p-4">
                   <p className="text-sm font-semibold text-darkBlue">
                     Reglages de la table
-                  </p>
-                  <p className="mt-1 text-xs text-darkBlue/55">
-                    Le nom reste unique dans le catalogue. Les changements
-                    s'appliquent partout où cette table est utilisée.
                   </p>
 
                   <div className="mt-4 space-y-3">
@@ -3551,10 +3612,6 @@ export default function RoomEditorComponent({
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-darkBlue">
                           Réservable en ligne
-                        </p>
-                        <p className="text-xs text-darkBlue/55">
-                          Si désactivé, cette table reste réservable à
-                          l'interne.
                         </p>
                       </div>
 
@@ -3598,51 +3655,70 @@ export default function RoomEditorComponent({
                           catalogue.
                         </div>
                       ) : (
-                        <div className="mt-3 max-h-[130px] space-y-2 overflow-y-auto pr-1">
-                          {combinableTableCandidates.map((table) => {
-                            const candidateId = String(table?._id || "");
-                            const checked =
-                              editTableCombinableWith.includes(candidateId);
+                        <div className="mt-2 max-h-[160px] space-y-4 overflow-y-auto pr-1">
+                          {groupedCombinableTableCandidates.map((group) => (
+                            <div key={group.label} className="space-y-2">
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-darkBlue/45">
+                                  {group.label}
+                                </p>
+                                <span className="text-[11px] text-darkBlue/40">
+                                  {group.tables.length} table
+                                  {group.tables.length > 1 ? "s" : ""}
+                                </span>
+                              </div>
 
-                            return (
-                              <label
-                                key={candidateId}
-                                className="flex items-start justify-between gap-3 rounded-2xl border border-darkBlue/10 bg-lightGrey/60 px-3 py-3"
-                              >
-                                <div className="min-w-0 flex items-center gap-1">
-                                  <p className="text-sm font-medium text-darkBlue">
-                                    {table?.name || "Table sans nom"}
-                                  </p>
-                                  
-                                  <p className="text-xs text-darkBlue/55">
-                                   - {Number(table?.seats || 0)} place
-                                    {Number(table?.seats || 0) > 1 ? "s" : ""}
-                                  </p>
-                                </div>
+                              <div className="space-y-2">
+                                {group.tables.map((table) => {
+                                  const candidateId = String(table?._id || "");
+                                  const checked =
+                                    editTableCombinableWith.includes(
+                                      candidateId,
+                                    );
 
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={(e) => {
-                                    setEditTableCombinableWith((prev) => {
-                                      const next = new Set(
-                                        normalizeIdList(prev),
-                                      );
+                                  return (
+                                    <label
+                                      key={candidateId}
+                                      className="flex items-start justify-between gap-3 rounded-2xl border border-darkBlue/10 bg-lightGrey/60 px-3 py-3"
+                                    >
+                                      <div className="min-w-0 flex gap-1 items-center">
+                                        <p className="text-sm font-medium text-darkBlue">
+                                          {table?.name || "Table sans nom"}
+                                        </p>
+                                        <p className="text-xs text-darkBlue/55">
+                                          - {Number(table?.seats || 0)} place
+                                          {Number(table?.seats || 0) > 1
+                                            ? "s"
+                                            : ""}
+                                        </p>
+                                      </div>
 
-                                      if (e.target.checked) {
-                                        next.add(candidateId);
-                                      } else {
-                                        next.delete(candidateId);
-                                      }
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={(e) => {
+                                          setEditTableCombinableWith((prev) => {
+                                            const next = new Set(
+                                              normalizeIdList(prev),
+                                            );
 
-                                      return Array.from(next);
-                                    });
-                                  }}
-                                  className="mt-1 h-4 w-4 accent-darkBlue"
-                                />
-                              </label>
-                            );
-                          })}
+                                            if (e.target.checked) {
+                                              next.add(candidateId);
+                                            } else {
+                                              next.delete(candidateId);
+                                            }
+
+                                            return Array.from(next);
+                                          });
+                                        }}
+                                        className="mt-1 h-4 w-4 shrink-0 accent-darkBlue"
+                                      />
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>
@@ -3736,11 +3812,11 @@ export default function RoomEditorComponent({
                       Ajouter le blocage
                     </button>
 
-                    <div className="mt-4 rounded-3xl border border-darkBlue/10 bg-white/70 p-4">
+                    <div className="rounded-2xl border border-darkBlue/10 bg-lightGrey/40 p-3">
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <p className="text-sm font-semibold text-darkBlue">
-                            Plages bloquées pour cette table
+                            Plages bloquées
                           </p>
                         </div>
 
@@ -3751,46 +3827,61 @@ export default function RoomEditorComponent({
                       </div>
 
                       {activeTableBlockedRanges.length === 0 ? (
-                        <div className="mt-4 rounded-2xl border border-dashed border-darkBlue/15 bg-white/60 px-4 py-5 text-sm text-darkBlue/55">
+                        <div className="mt-3 rounded-2xl border border-dashed border-darkBlue/15 bg-white/75 px-4 py-5 text-sm text-darkBlue/55">
                           Aucun blocage manuel enregistré pour cette table.
                         </div>
                       ) : (
-                        <div className="mt-4 space-y-3">
+                        <div className="mt-3 grid grid-cols-1 gap-1 max-h-[160px] overflow-y-auto pr-1">
                           {activeTableBlockedRanges.map((range) => (
                             <div
                               key={String(
                                 range?._id ||
                                   `${range?.startAt}_${range?.endAt}`,
                               )}
-                              className="flex flex-col gap-3 rounded-2xl border border-darkBlue/10 bg-white px-4 py-3 midTablet:flex-row midTablet:items-center midTablet:justify-between"
+                              className="rounded-2xl border border-darkBlue/10 bg-white px-2 py-3"
                             >
                               <div className="min-w-0">
-                                <p className="text-sm font-medium text-darkBlue">
-                                  {formatDateTimeLabel(range?.startAt)} -{" "}
-                                  {formatDateTimeLabel(range?.endAt)}
-                                </p>
-                                <p className="mt-1 text-xs text-darkBlue/55">
-                                  {range?.note
-                                    ? range.note
-                                    : "Aucune note renseignée pour ce blocage."}
-                                </p>
-                              </div>
+                                <div className="flex flex-col gap-2 tablet:gap-0 tablet:flex-row items-center justify-between">
+                                  <span className="inline-flex w-full justify-center tablet:w-fit items-center rounded-full border border-darkBlue/10 bg-lightGrey/70 px-3 py-1 text-[10px] font-medium text-darkBlue">
+                                    {formatDateTimeLabel(range?.startAt)}
+                                  </span>
+                                  <span className="hidden tablet:inline text-darkBlue/30">
+                                    →
+                                  </span>
+                                  <span className="inline-flex w-full justify-center tablet:w-fit items-center rounded-full border border-darkBlue/10 bg-lightGrey/70 px-3 py-1 text-[10px] font-medium text-darkBlue">
+                                    {formatDateTimeLabel(range?.endAt)}
+                                  </span>
 
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  deleteActiveTableBlock(range?._id)
-                                }
-                                disabled={editTableLoading || editBlockLoading}
-                                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-red/20 bg-red/5 px-4 py-2 text-sm font-semibold text-red transition hover:bg-red/10 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                {editBlockLoading ? (
-                                  <Loader2 className="size-4 animate-spin" />
-                                ) : (
-                                  <Trash2 className="size-4" />
+                                  {range?.note && (
+                                  <p className="tablet:hidden mt-1 pl-1 text-[10px] leading-relaxed text-darkBlue/55">
+                                    {range.note}
+                                  </p>
                                 )}
-                                Supprimer
-                              </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      deleteActiveTableBlock(range?._id)
+                                    }
+                                    disabled={
+                                      editTableLoading || editBlockLoading
+                                    }
+                                    className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-red/20 bg-red/5 p-[6px] text-sm font-semibold text-red transition hover:bg-red/10 disabled:cursor-not-allowed disabled:opacity-60 midTablet:w-auto"
+                                  >
+                                    {editBlockLoading ? (
+                                      <Loader2 className="size-3 animate-spin" />
+                                    ) : (
+                                      <Trash2 className="size-3" />
+                                    )}
+                                  </button>
+                                </div>
+
+                                {range?.note && (
+                                  <p className="hidden tablet:block mt-1 pl-1 text-[10px] leading-relaxed text-darkBlue/55">
+                                    {range.note}
+                                  </p>
+                                )}
+                              </div>
                             </div>
                           ))}
                         </div>

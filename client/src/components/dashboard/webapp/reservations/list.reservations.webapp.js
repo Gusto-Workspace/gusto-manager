@@ -693,6 +693,9 @@ export default function ListReservationsWebapp(props) {
             activeDayTab={activeDayTab}
             handleEditClick={handleEditClick}
             openModalForAction={openModalForAction}
+            tablesCatalog={
+              props.restaurantData?.reservations?.parameters?.tables
+            }
           />
         </>
       )}
