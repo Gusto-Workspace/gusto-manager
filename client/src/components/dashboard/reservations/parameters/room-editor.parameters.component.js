@@ -22,6 +22,16 @@ function safeArr(a) {
   return Array.isArray(a) ? a : [];
 }
 
+function normalizeIdList(values = []) {
+  return Array.from(
+    new Set(
+      safeArr(values)
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
 function normalizeTableName(value) {
   return String(value || "")
     .trim()
@@ -445,6 +455,7 @@ export default function RoomEditorComponent({
   const [editTableName, setEditTableName] = useState("");
   const [editTableOnlineBookable, setEditTableOnlineBookable] = useState(true);
   const [editTableBookingPriority, setEditTableBookingPriority] = useState("0");
+  const [editTableCombinableWith, setEditTableCombinableWith] = useState([]);
   const [editTableError, setEditTableError] = useState("");
   const [editTableLoading, setEditTableLoading] = useState(false);
   const [editBlockLoading, setEditBlockLoading] = useState(false);
@@ -1216,6 +1227,26 @@ export default function RoomEditorComponent({
       );
   }, [tableBlockedRanges, tableBlockedRangesNow, activeCatalogId]);
 
+  const combinableTableCandidates = useMemo(() => {
+    return [...catalog]
+      .filter(
+        (table) => String(table?._id || "") !== String(activeCatalogId || ""),
+      )
+      .sort((a, b) => {
+        const seatsDiff = Number(a?.seats || 0) - Number(b?.seats || 0);
+        if (seatsDiff !== 0) return seatsDiff;
+
+        return String(a?.name || "").localeCompare(
+          String(b?.name || ""),
+          "fr",
+          {
+            sensitivity: "base",
+            numeric: true,
+          },
+        );
+      });
+  }, [catalog, activeCatalogId]);
+
   function applyCatalogAndTableBlocks(nextTables, nextTableBlockedRanges) {
     if (Array.isArray(nextTableBlockedRanges)) {
       setTableBlockedRanges(
@@ -1361,6 +1392,9 @@ export default function RoomEditorComponent({
     setEditTableOnlineBookable(activeCatalogTable.onlineBookable !== false);
     setEditTableBookingPriority(
       String(Number(activeCatalogTable.bookingPriority || 0)),
+    );
+    setEditTableCombinableWith(
+      normalizeIdList(activeCatalogTable.combinableWith),
     );
     setEditBlockForm({
       startAt: "",
@@ -1540,6 +1574,7 @@ export default function RoomEditorComponent({
           name,
           onlineBookable: editTableOnlineBookable,
           bookingPriority: Number(editTableBookingPriority || 0),
+          combinableWith: normalizeIdList(editTableCombinableWith),
         },
         { headers: { Authorization: `Bearer ${token}` } },
       );
@@ -3467,8 +3502,8 @@ export default function RoomEditorComponent({
                   Modifier la table
                 </p>
                 <p className="text-xs text-darkBlue/60">
-                  Gérez le nom, la réservation en ligne, la priorité et les
-                  blocages manuels.
+                  Gérez le nom, la réservation en ligne, la priorité, les
+                  combinaisons et les blocages manuels.
                 </p>
               </div>
 
@@ -3549,6 +3584,68 @@ export default function RoomEditorComponent({
                         dans l'assignation.
                       </span>
                     </label>
+
+                    <div className="rounded-2xl border border-darkBlue/10 bg-white px-4 py-3">
+                      <div className="flex flex-col gap-1">
+                        <p className="text-sm font-medium text-darkBlue">
+                          Tables combinables
+                        </p>
+                      </div>
+
+                      {combinableTableCandidates.length === 0 ? (
+                        <div className="mt-3 rounded-2xl border border-dashed border-darkBlue/15 bg-lightGrey/70 px-3 py-4 text-sm text-darkBlue/55">
+                          Ajoutez d&apos;abord d&apos;autres tables au
+                          catalogue.
+                        </div>
+                      ) : (
+                        <div className="mt-3 max-h-[130px] space-y-2 overflow-y-auto pr-1">
+                          {combinableTableCandidates.map((table) => {
+                            const candidateId = String(table?._id || "");
+                            const checked =
+                              editTableCombinableWith.includes(candidateId);
+
+                            return (
+                              <label
+                                key={candidateId}
+                                className="flex items-start justify-between gap-3 rounded-2xl border border-darkBlue/10 bg-lightGrey/60 px-3 py-3"
+                              >
+                                <div className="min-w-0 flex items-center gap-1">
+                                  <p className="text-sm font-medium text-darkBlue">
+                                    {table?.name || "Table sans nom"}
+                                  </p>
+                                  
+                                  <p className="text-xs text-darkBlue/55">
+                                   - {Number(table?.seats || 0)} place
+                                    {Number(table?.seats || 0) > 1 ? "s" : ""}
+                                  </p>
+                                </div>
+
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(e) => {
+                                    setEditTableCombinableWith((prev) => {
+                                      const next = new Set(
+                                        normalizeIdList(prev),
+                                      );
+
+                                      if (e.target.checked) {
+                                        next.add(candidateId);
+                                      } else {
+                                        next.delete(candidateId);
+                                      }
+
+                                      return Array.from(next);
+                                    });
+                                  }}
+                                  className="mt-1 h-4 w-4 accent-darkBlue"
+                                />
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
 
                     {editTableError ? (
                       <div className="rounded-2xl border border-red/20 bg-red/5 px-4 py-3 text-sm text-red">
@@ -3631,73 +3728,76 @@ export default function RoomEditorComponent({
                       type="button"
                       onClick={addActiveTableBlock}
                       disabled={editTableLoading || editBlockLoading}
-                      className="inline-flex items-center justify-center gap-2 rounded-2xl border border-darkBlue/10 bg-white px-4 py-3 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex items-center justify-center gap-2 rounded-2xl border border-darkBlue/10 bg-darkBlue px-4 py-3 text-sm font-semibold text-white transition hover:bg-darkBlue/95 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {editBlockLoading ? (
                         <Loader2 className="size-4 animate-spin" />
                       ) : null}
                       Ajouter le blocage
                     </button>
-                  </div>
-                </div>
-              </div>
 
-              <div className="mt-4 rounded-3xl border border-darkBlue/10 bg-white/70 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-darkBlue">
-                      Plages bloquées pour cette table
-                    </p>
-                  </div>
-
-                  <span className="rounded-full bg-darkBlue/5 px-3 py-1 text-xs font-medium text-darkBlue/70">
-                    {activeTableBlockedRanges.length} plage
-                    {activeTableBlockedRanges.length > 1 ? "s" : ""}
-                  </span>
-                </div>
-
-                {activeTableBlockedRanges.length === 0 ? (
-                  <div className="mt-4 rounded-2xl border border-dashed border-darkBlue/15 bg-white/60 px-4 py-5 text-sm text-darkBlue/55">
-                    Aucun blocage manuel enregistré pour cette table.
-                  </div>
-                ) : (
-                  <div className="mt-4 space-y-3">
-                    {activeTableBlockedRanges.map((range) => (
-                      <div
-                        key={String(
-                          range?._id || `${range?.startAt}_${range?.endAt}`,
-                        )}
-                        className="flex flex-col gap-3 rounded-2xl border border-darkBlue/10 bg-white px-4 py-3 midTablet:flex-row midTablet:items-center midTablet:justify-between"
-                      >
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-darkBlue">
-                            {formatDateTimeLabel(range?.startAt)} -{" "}
-                            {formatDateTimeLabel(range?.endAt)}
-                          </p>
-                          <p className="mt-1 text-xs text-darkBlue/55">
-                            {range?.note
-                              ? range.note
-                              : "Aucune note renseignée pour ce blocage."}
+                    <div className="mt-4 rounded-3xl border border-darkBlue/10 bg-white/70 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-darkBlue">
+                            Plages bloquées pour cette table
                           </p>
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() => deleteActiveTableBlock(range?._id)}
-                          disabled={editTableLoading || editBlockLoading}
-                          className="inline-flex items-center justify-center gap-2 rounded-2xl border border-red/20 bg-red/5 px-4 py-2 text-sm font-semibold text-red transition hover:bg-red/10 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {editBlockLoading ? (
-                            <Loader2 className="size-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="size-4" />
-                          )}
-                          Supprimer
-                        </button>
+                        <span className="rounded-full bg-darkBlue/5 px-3 py-1 text-xs font-medium text-darkBlue/70">
+                          {activeTableBlockedRanges.length} plage
+                          {activeTableBlockedRanges.length > 1 ? "s" : ""}
+                        </span>
                       </div>
-                    ))}
+
+                      {activeTableBlockedRanges.length === 0 ? (
+                        <div className="mt-4 rounded-2xl border border-dashed border-darkBlue/15 bg-white/60 px-4 py-5 text-sm text-darkBlue/55">
+                          Aucun blocage manuel enregistré pour cette table.
+                        </div>
+                      ) : (
+                        <div className="mt-4 space-y-3">
+                          {activeTableBlockedRanges.map((range) => (
+                            <div
+                              key={String(
+                                range?._id ||
+                                  `${range?.startAt}_${range?.endAt}`,
+                              )}
+                              className="flex flex-col gap-3 rounded-2xl border border-darkBlue/10 bg-white px-4 py-3 midTablet:flex-row midTablet:items-center midTablet:justify-between"
+                            >
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-darkBlue">
+                                  {formatDateTimeLabel(range?.startAt)} -{" "}
+                                  {formatDateTimeLabel(range?.endAt)}
+                                </p>
+                                <p className="mt-1 text-xs text-darkBlue/55">
+                                  {range?.note
+                                    ? range.note
+                                    : "Aucune note renseignée pour ce blocage."}
+                                </p>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  deleteActiveTableBlock(range?._id)
+                                }
+                                disabled={editTableLoading || editBlockLoading}
+                                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-red/20 bg-red/5 px-4 py-2 text-sm font-semibold text-red transition hover:bg-red/10 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {editBlockLoading ? (
+                                  <Loader2 className="size-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="size-4" />
+                                )}
+                                Supprimer
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                )}
+                </div>
               </div>
             </div>
           </div>

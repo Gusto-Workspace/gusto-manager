@@ -134,20 +134,6 @@ function requiredTableSizeFromGuestsFront(n) {
   return g % 2 === 0 ? g : g + 1;
 }
 
-function isEligibleTableForGuestsFront(tableSeats, guests) {
-  const seats = Number(tableSeats || 0);
-  const g = Number(guests || 0);
-
-  if (g <= 0 || seats <= 0) return false;
-
-  if (g === 1) {
-    return seats === 1 || seats === 2;
-  }
-
-  const required = requiredTableSizeFromGuestsFront(g);
-  return seats === required;
-}
-
 function normalizeBookingPriorityFront(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
@@ -165,6 +151,309 @@ function sortTablesByPriorityFront(tables = []) {
       numeric: true,
     });
   });
+}
+
+function normalizeTableIdListFront(values = []) {
+  return Array.from(
+    new Set(
+      (Array.isArray(values) ? values : [])
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+function getConfiguredTableIdsFront(tableLike) {
+  if (!tableLike || typeof tableLike !== "object") return [];
+
+  const tableIds = normalizeTableIdListFront(tableLike.tableIds);
+  if (tableIds.length > 0) return tableIds;
+
+  if (tableLike.tableId) {
+    return [String(tableLike.tableId)];
+  }
+
+  if (tableLike._id) {
+    return [String(tableLike._id)];
+  }
+
+  return [];
+}
+
+function buildCombinedTableSelectionKeyFront(tableIds = []) {
+  const ids = normalizeTableIdListFront(tableIds).sort();
+  return ids.length > 1 ? `combo:${ids.join("+")}` : ids[0] || "";
+}
+
+function getConfiguredTableSelectionKeyFront(tableLike) {
+  return buildCombinedTableSelectionKeyFront(
+    getConfiguredTableIdsFront(tableLike),
+  );
+}
+
+function buildSingleTableOptionFront(tableDef) {
+  const id = String(tableDef?._id || "");
+
+  return {
+    ...tableDef,
+    _id: id,
+    tableId: id,
+    tableIds: id ? [id] : [],
+    selectionKey: id,
+    kind: "single",
+  };
+}
+
+function buildCombinedTableOptionFront(tableA, tableB) {
+  const pair = [tableA, tableB].filter(Boolean).sort((a, b) =>
+    String(a?.name || "").localeCompare(String(b?.name || ""), "fr", {
+      sensitivity: "base",
+      numeric: true,
+    }),
+  );
+
+  const tableIds = normalizeTableIdListFront(pair.map((table) => table?._id));
+  const selectionKey = buildCombinedTableSelectionKeyFront(tableIds);
+
+  return {
+    _id: selectionKey,
+    tableId: tableIds[0] || null,
+    tableIds,
+    name: pair.map((table) => String(table?.name || "")).join(" + "),
+    seats: pair.reduce((sum, table) => sum + Number(table?.seats || 0), 0),
+    bookingPriority: pair.reduce(
+      (sum, table) =>
+        sum + normalizeBookingPriorityFront(table?.bookingPriority),
+      0,
+    ),
+    kind: "combo",
+    componentTables: pair.map((table) => ({
+      _id: String(table?._id || ""),
+      name: String(table?.name || ""),
+      seats: Number(table?.seats || 0),
+    })),
+  };
+}
+
+function computeCapacityStateFront({
+  blockingReservations,
+  overlaps,
+  eligibleTables,
+  requiredSize,
+  blockedTableIds = new Set(),
+}) {
+  const capacity = eligibleTables.length;
+
+  const eligibleIds = new Set(
+    eligibleTables.map((table) => getConfiguredTableSelectionKeyFront(table)),
+  );
+  const eligibleByName = new Map(
+    eligibleTables.map((table) => [
+      String(table?.name || "")
+        .trim()
+        .toLowerCase(),
+      getConfiguredTableSelectionKeyFront(table),
+    ]),
+  );
+
+  const reservedIds = new Set();
+  blockedTableIds.forEach((id) => reservedIds.add(String(id)));
+  let unassignedCount = 0;
+
+  blockingReservations.forEach((reservation) => {
+    if (!reservation?.table) return;
+    if (!overlaps(reservation)) return;
+
+    if (reservation.table.source === "configured") {
+      const selectionKey = getConfiguredTableSelectionKeyFront(
+        reservation.table,
+      );
+      const reservationIds = getConfiguredTableIdsFront(reservation.table);
+
+      if (selectionKey && eligibleIds.has(selectionKey)) {
+        reservedIds.add(selectionKey);
+        return;
+      }
+
+      const normalizedName = String(reservation.table.name || "")
+        .trim()
+        .toLowerCase();
+      const mappedId = normalizedName
+        ? eligibleByName.get(normalizedName)
+        : null;
+      if (mappedId) {
+        reservedIds.add(mappedId);
+        return;
+      }
+
+      if (
+        Number(reservation.table.seats) === Number(requiredSize) &&
+        reservationIds.length <= 1
+      ) {
+        unassignedCount += 1;
+      }
+      return;
+    }
+
+    if (reservation.table.source === "manual") {
+      const name = String(reservation.table.name || "").trim();
+      if (name && Number(reservation.table.seats) === Number(requiredSize)) {
+        unassignedCount += 1;
+      }
+    }
+  });
+
+  return { capacity, reservedIds, unassignedCount };
+}
+
+function isConfiguredTableFreeFront({
+  tableDef,
+  blockingReservations,
+  overlaps,
+  blockedTableIds = new Set(),
+}) {
+  const targetIds = getConfiguredTableIdsFront(tableDef);
+  if (targetIds.length === 0) return false;
+
+  const targetIdSet = new Set(targetIds);
+  const targetName = String(tableDef?.name || "");
+
+  if (targetIds.some((targetId) => blockedTableIds.has(targetId))) {
+    return false;
+  }
+
+  return !blockingReservations.find((reservation) => {
+    if (!reservation?.table) return false;
+    if (!overlaps(reservation)) return false;
+
+    const reservationIds = getConfiguredTableIdsFront(reservation.table);
+    const sharesTable =
+      reservationIds.length > 0 &&
+      reservationIds.some((reservationId) => targetIdSet.has(reservationId));
+    const sameName =
+      reservationIds.length === 0 &&
+      String(reservation.table.name || "") === targetName;
+
+    return sharesTable || sameName;
+  });
+}
+
+function getEligibleSingleTablesFront({ parameters, requiredSize }) {
+  const pool = (
+    Array.isArray(parameters?.tables) ? parameters.tables : []
+  ).filter((table) => Number(table?.seats) === Number(requiredSize));
+
+  return sortTablesByPriorityFront(pool).map(buildSingleTableOptionFront);
+}
+
+function getEligibleCombinedTablesFront({ parameters, requiredSize }) {
+  const tables = Array.isArray(parameters?.tables) ? parameters.tables : [];
+  const catalogById = new Map(
+    tables.map((table) => [String(table?._id || ""), table]),
+  );
+  const seenPairs = new Set();
+  const combos = [];
+
+  for (const table of tables) {
+    const tableId = String(table?._id || "");
+    if (!tableId) continue;
+
+    const relatedIds = normalizeTableIdListFront(table?.combinableWith);
+
+    for (const relatedId of relatedIds) {
+      if (relatedId === tableId) continue;
+
+      const other = catalogById.get(relatedId);
+      if (!other?._id) continue;
+
+      const otherLinks = normalizeTableIdListFront(other?.combinableWith);
+      if (!otherLinks.includes(tableId)) continue;
+
+      const pairKey = [tableId, relatedId].sort().join("+");
+      if (seenPairs.has(pairKey)) continue;
+      seenPairs.add(pairKey);
+
+      const combinedSeats =
+        Number(table?.seats || 0) + Number(other?.seats || 0);
+
+      if (combinedSeats !== Number(requiredSize)) continue;
+
+      combos.push(buildCombinedTableOptionFront(table, other));
+    }
+  }
+
+  return sortTablesByPriorityFront(combos);
+}
+
+function getAvailableConfiguredTableOptionsFront({
+  parameters,
+  requiredSize,
+  blockingReservations,
+  overlaps,
+  blockedTableIds = new Set(),
+}) {
+  const singleOptions = getEligibleSingleTablesFront({
+    parameters,
+    requiredSize,
+  });
+
+  const singleState = computeCapacityStateFront({
+    blockingReservations,
+    overlaps,
+    eligibleTables: singleOptions,
+    requiredSize,
+    blockedTableIds,
+  });
+
+  const freeSingleOptions = singleOptions.filter((tableDef) =>
+    isConfiguredTableFreeFront({
+      tableDef,
+      blockingReservations,
+      overlaps,
+      blockedTableIds,
+    }),
+  );
+
+  if (
+    singleState.capacity > 0 &&
+    singleState.reservedIds.size + singleState.unassignedCount <
+      singleState.capacity &&
+    freeSingleOptions.length > 0
+  ) {
+    return {
+      mode: "single",
+      options: freeSingleOptions,
+      singleState,
+    };
+  }
+
+  if (singleState.unassignedCount > 0) {
+    return {
+      mode: "blocked_by_unassigned",
+      options: [],
+      singleState,
+    };
+  }
+
+  const comboOptions = getEligibleCombinedTablesFront({
+    parameters,
+    requiredSize,
+  });
+
+  const freeComboOptions = comboOptions.filter((tableDef) =>
+    isConfiguredTableFreeFront({
+      tableDef,
+      blockingReservations,
+      overlaps,
+      blockedTableIds,
+    }),
+  );
+
+  return {
+    mode: freeComboOptions.length > 0 ? "combo" : "none",
+    options: freeComboOptions,
+    singleState,
+  };
 }
 
 function buildReservationDateTimeFront(dateInput, timeStr) {
@@ -299,16 +588,12 @@ export default function AddReservationComponent(props) {
     let tableValue = "";
 
     if (manageDisponibilities) {
-      // ✅ Source of truth en "configured" => tableId
-      if (r?.table?.source === "configured" && r?.table?.tableId) {
-        tableValue = String(r.table.tableId);
-      }
-      // ✅ "manual" => on stocke le nom (input texte côté front)
-      else if (r?.table?.source === "manual") {
+      if (r?.table?.source === "configured") {
+        tableValue = getConfiguredTableSelectionKeyFront(r.table);
+      } else if (r?.table?.source === "manual") {
         tableValue = String(r?.table?.name || "").trim();
       }
     } else {
-      // ✅ mode sans gestion intelligente => table = texte libre
       tableValue = String(r?.table?.name || "").trim();
     }
 
@@ -386,33 +671,14 @@ export default function AddReservationComponent(props) {
       // -----------------------------
       if (parameters.manage_disponibilities) {
         const guests = Number(reservationData.numberOfGuests || 0);
+        const requiredSize = requiredTableSizeFromGuestsFront(guests);
 
-        if (guests > 0) {
-          // pool éligible (tables configurées de la bonne taille)
-          const eligibleTables = sortTablesByPriorityFront(
-            (parameters.tables || []).filter(
-              (t) =>
-                isEligibleTableForGuestsFront(t.seats, guests) &&
-                t?.onlineBookable !== false,
-            ),
-          );
-          const capacity = eligibleTables.length;
-
-          // si aucune table configurée => aucun créneau (comme backend)
-          if (!capacity) {
-            setAvailableTimes([]);
-            setIsLoading(false);
-            return;
-          }
-
-          const eligibleIds = new Set(eligibleTables.map((t) => String(t._id)));
-
+        if (requiredSize > 0) {
           const formattedSelectedDate = format(
             reservationData.reservationDate,
             "yyyy-MM-dd",
           );
 
-          // on ne garde que les réservations du jour + bloquantes
           const dayReservations = (
             props.restaurantData.reservations.list || []
           ).filter((r) => {
@@ -435,7 +701,6 @@ export default function AddReservationComponent(props) {
               time,
             );
 
-            // helper overlap (comme backend)
             const overlaps = (r) => {
               const rTime = String(r.reservationTime || "").slice(0, 5);
               const rStart = minutesFromHHmm(rTime);
@@ -448,71 +713,15 @@ export default function AddReservationComponent(props) {
               return rTime === String(time).slice(0, 5);
             };
 
-            // construit état capacité comme backend:
-            const reservedIds = new Set();
-            blockedTableIds.forEach((id) => reservedIds.add(String(id)));
-            let unassignedCount = 0;
-
-            // ✅ NEW: fallback par nom (tables recréées)
-            const eligibleByName = new Map(
-              eligibleTables.map((t) => [
-                String(t.name || "")
-                  .trim()
-                  .toLowerCase(),
-                String(t._id),
-              ]),
+            return (
+              getAvailableConfiguredTableOptionsFront({
+                parameters,
+                requiredSize,
+                blockingReservations: dayReservations,
+                overlaps,
+                blockedTableIds,
+              }).options.length > 0
             );
-
-            dayReservations.forEach((r) => {
-              if (!r?.table) return;
-              if (!overlaps(r)) return;
-
-              // ✅ CONFIGURED
-              if (r.table.source === "configured") {
-                const id = r.table.tableId ? String(r.table.tableId) : null;
-
-                // 1) cas normal: tableId encore dans le pool
-                if (id && eligibleIds.has(id)) {
-                  reservedIds.add(id);
-                  return;
-                }
-
-                // 2) fallback: match par nom (si la table a été supprimée/recréée)
-                const n = String(r.table.name || "")
-                  .trim()
-                  .toLowerCase();
-                const mappedId = n ? eligibleByName.get(n) : null;
-                if (mappedId) {
-                  reservedIds.add(mappedId);
-                  return;
-                }
-
-                // 3) dernier fallback: ça consomme quand même 1 slot si seats ok
-                const seatsOk = isEligibleTableForGuestsFront(
-                  r.table.seats,
-                  guests,
-                );
-                if (seatsOk) {
-                  unassignedCount += 1;
-                  return;
-                }
-
-                return;
-              }
-
-              // ✅ MANUAL
-              if (r.table.source === "manual") {
-                const name = String(r.table.name || "").trim();
-                const seatsOk = isEligibleTableForGuestsFront(
-                  r.table.seats,
-                  guests,
-                );
-                if (name && seatsOk) unassignedCount += 1;
-              }
-            });
-
-            // slot dispo si on n'a pas atteint capacity
-            return reservedIds.size + unassignedCount < capacity;
           });
         }
       }
@@ -555,22 +764,11 @@ export default function AddReservationComponent(props) {
     }
 
     const guests = Number(reservationData.numberOfGuests || 0);
-
-    const eligibleTables = sortTablesByPriorityFront(
-      (parameters.tables || []).filter(
-        (t) =>
-          isEligibleTableForGuestsFront(t.seats, guests) &&
-          t?.onlineBookable !== false,
-      ),
-    );
-
-    // si aucune table configurée => aucune table dispo
-    if (!eligibleTables.length) {
+    const requiredSize = requiredTableSizeFromGuestsFront(guests);
+    if (!requiredSize) {
       setAvailableTables([]);
       return;
     }
-
-    const eligibleIds = new Set(eligibleTables.map((t) => String(t._id)));
 
     const formattedSelectedDate = format(
       reservationData.reservationDate,
@@ -616,77 +814,15 @@ export default function AddReservationComponent(props) {
       },
     );
 
-    // ✅ capacité = nombre de tables éligibles (pool 2p, 4p, etc.)
-    const capacity = eligibleTables.length;
-
-    // ✅ tables configurées prises sur ce créneau (dans le pool éligible)
-    const reservedIds = new Set();
-    blockedTableIds.forEach((id) => reservedIds.add(String(id)));
-    let unassignedCount = 0;
-
-    // ✅ NEW: fallback par nom (tables recréées)
-    const eligibleByName = new Map(
-      eligibleTables.map((t) => [
-        String(t.name || "")
-          .trim()
-          .toLowerCase(),
-        String(t._id),
-      ]),
-    );
-
-    dayBlocking.forEach((r) => {
-      if (!r?.table) return;
-      if (!overlaps(r)) return;
-
-      // ✅ CONFIGURED
-      if (r.table.source === "configured") {
-        const id = r.table.tableId ? String(r.table.tableId) : null;
-
-        // 1) cas normal: tableId encore dans le pool
-        if (id && eligibleIds.has(id)) {
-          reservedIds.add(id);
-          return;
-        }
-
-        // 2) fallback: match par nom
-        const n = String(r.table.name || "")
-          .trim()
-          .toLowerCase();
-        const mappedId = n ? eligibleByName.get(n) : null;
-        if (mappedId) {
-          reservedIds.add(mappedId);
-          return;
-        }
-
-        // 3) dernier fallback: consomme 1 slot si seats ok
-        const seatsOk = isEligibleTableForGuestsFront(r.table.seats, guests);
-        if (seatsOk) {
-          unassignedCount += 1;
-          return;
-        }
-
-        return;
-      }
-
-      // ✅ MANUAL
-      if (r.table.source === "manual") {
-        const name = String(r.table.name || "").trim();
-        const seatsOk = isEligibleTableForGuestsFront(r.table.seats, guests);
-        if (name && seatsOk) unassignedCount += 1;
-      }
+    const availableConfig = getAvailableConfiguredTableOptionsFront({
+      parameters,
+      requiredSize,
+      blockingReservations: dayBlocking,
+      overlaps,
+      blockedTableIds,
     });
 
-    // ✅ si le créneau est “plein” à cause des manuelles, aucune table n'est sélectionnable
-    if (reservedIds.size + unassignedCount >= capacity) {
-      setAvailableTables([]);
-      return;
-    }
-
-    const available = eligibleTables.filter(
-      (t) => !reservedIds.has(String(t._id)),
-    );
-
-    setAvailableTables(available);
+    setAvailableTables(availableConfig.options);
   }, [
     reservationData.reservationDate,
     reservationData.reservationTime,
@@ -1033,17 +1169,23 @@ export default function AddReservationComponent(props) {
   const currentTableOption = useMemo(() => {
     if (!isEditing || !manageDisponibilities || hasUserChangedSlot) return null;
 
-    const id = String(reservationData.table || "");
-    if (!id) return null;
+    const selectionKey = String(reservationData.table || "");
+    if (!selectionKey) return null;
 
-    // si déjà présente, pas besoin
-    const exists = (availableTables || []).some((t) => String(t._id) === id);
+    const exists = (availableTables || []).some(
+      (table) => String(table._id) === selectionKey,
+    );
     if (exists) return null;
 
+    const tableIds = getConfiguredTableIdsFront(props.reservation?.table);
+
     return {
-      _id: id,
+      _id: selectionKey,
+      tableId: tableIds[0] || null,
+      tableIds,
       name: props.reservation?.table?.name || "Table actuelle",
       seats: props.reservation?.table?.seats || null,
+      kind: tableIds.length > 1 ? "combo" : "single",
     };
   }, [
     isEditing,
@@ -1085,10 +1227,27 @@ export default function AddReservationComponent(props) {
   }, [props.restaurantData?.reservations?.parameters?.floorplan?.rooms]);
 
   const tablesForSelectWithRoom = useMemo(() => {
-    return (tablesForSelect || []).map((table) => ({
-      ...table,
-      roomName: tableRoomMap.get(String(table._id)) || "Autres tables",
-    }));
+    return (tablesForSelect || []).map((table) => {
+      const roomNames = Array.from(
+        new Set(
+          getConfiguredTableIdsFront(table)
+            .map((id) => tableRoomMap.get(String(id)))
+            .filter(Boolean),
+        ),
+      );
+
+      let roomName = "Autres tables";
+      if (roomNames.length === 1) {
+        roomName = roomNames[0];
+      } else if (roomNames.length > 1) {
+        roomName = "Combinaisons";
+      }
+
+      return {
+        ...table,
+        roomName,
+      };
+    });
   }, [tablesForSelect, tableRoomMap]);
 
   const groupedTablesForSelect = useMemo(() => {
@@ -1414,7 +1573,11 @@ export default function AddReservationComponent(props) {
                           {group.tables.map((table) => (
                             <option key={table._id} value={table._id}>
                               {table.name
-                                ? table.name
+                                ? `${table.name} · ${table.seats} places${
+                                    table.kind === "combo"
+                                      ? " (combinaison)"
+                                      : ""
+                                  }`
                                 : `Table de ${table.seats} places`}
                             </option>
                           ))}

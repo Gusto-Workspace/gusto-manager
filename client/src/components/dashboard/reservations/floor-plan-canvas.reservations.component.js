@@ -16,6 +16,20 @@ function safeArr(a) {
   return Array.isArray(a) ? a : [];
 }
 
+function getReservationTableIds(reservation) {
+  if (Array.isArray(reservation?.table?.tableIds)) {
+    return reservation.table.tableIds
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+  }
+
+  if (reservation?.table?.tableId) {
+    return [String(reservation.table.tableId)];
+  }
+
+  return [];
+}
+
 function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
 }
@@ -797,8 +811,8 @@ export default function FloorPlanCanvasReservationsComponent({
     const map = new Map();
 
     for (const r of safeArr(reservations)) {
-      const resTableId = r?.table?.tableId ? String(r.table.tableId) : null;
-      if (!resTableId) continue;
+      const reservationTableIds = getReservationTableIds(r);
+      if (reservationTableIds.length === 0) continue;
 
       const date = new Date(r?.reservationDate);
       if (Number.isNaN(date.getTime())) continue;
@@ -809,9 +823,11 @@ export default function FloorPlanCanvasReservationsComponent({
 
       if (rDateKey !== dateKey) continue;
 
-      const arr = map.get(resTableId) || [];
-      arr.push(r);
-      map.set(resTableId, arr);
+      reservationTableIds.forEach((tableId) => {
+        const arr = map.get(tableId) || [];
+        arr.push(r);
+        map.set(tableId, arr);
+      });
     }
 
     return map;
@@ -1993,7 +2009,7 @@ export default function FloorPlanCanvasReservationsComponent({
 
               {tooltipData.ref?.onlineBookable === false ? (
                 <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium bg-darkBlue/10 text-darkBlue border border-darkBlue/10">
-                  Interne uniquement
+                  Non en ligne
                 </span>
               ) : null}
             </div>
