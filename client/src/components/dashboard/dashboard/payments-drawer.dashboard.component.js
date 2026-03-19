@@ -668,28 +668,13 @@ export default function PaymentsDrawerDashboardComponent({
                     transaction.bankHold.currency || transaction.currency,
                   )}
                 />
-                <DetailRow
-                  icon={Users}
-                  label={t?.("payments.bankHoldPerPerson", "Montant / pers.")}
-                  value={formatCurrency(
-                    transaction.bankHold.amountPerPerson,
-                    transaction.bankHold.currency || transaction.currency,
-                  )}
-                />
-                <DetailRow
-                  icon={Clock}
-                  label={t?.("payments.sourceStatus", "Statut source")}
-                  value={getBankHoldStatusLabel(transaction.bankHold.status, t)}
-                />
-                <DetailRow
-                  icon={Calendar}
-                  label={t?.("payments.authorizedAt", "Autorisée le")}
-                  value={formatDateTime(transaction.bankHold.authorizedAt)}
-                />
+               
+              
+               
                 <DetailRow
                   icon={Calendar}
                   label={t?.("payments.capturedAt", "Capturée le")}
-                  value={formatDateTime(transaction.bankHold.capturedAt)}
+                  value={formatDateTime(transaction.date)}
                 />
               </Section>
             ) : null}

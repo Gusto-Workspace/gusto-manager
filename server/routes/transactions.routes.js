@@ -22,6 +22,30 @@ function getStripePaymentIntentId(value) {
   return "";
 }
 
+function getStripePaymentIntentObject(value) {
+  return value && typeof value === "object" ? value : null;
+}
+
+function getStripeMetadataValue(charge, key) {
+  const chargeMetadataValue = String(charge?.metadata?.[key] || "").trim();
+  if (chargeMetadataValue) return chargeMetadataValue;
+
+  const paymentIntent = getStripePaymentIntentObject(charge?.payment_intent);
+  return String(paymentIntent?.metadata?.[key] || "").trim();
+}
+
+function getStripeTransactionType(charge) {
+  return getStripeMetadataValue(charge, "type");
+}
+
+function getStripeReservationId(charge) {
+  return getStripeMetadataValue(charge, "reservationId");
+}
+
+function isReservationBankHoldTransaction(charge) {
+  return getStripeTransactionType(charge).startsWith("reservation_bank_hold_");
+}
+
 function getStripeCustomerLabel(charge) {
   const billingName = String(charge?.billing_details?.name || "").trim();
   if (billingName) return billingName;
@@ -60,71 +84,287 @@ function buildGiftPurchaseMap(purchases = []) {
   return map;
 }
 
-async function buildCapturedReservationMap({
+function normalizeReservationForTransaction(reservation) {
+  return {
+    reservationId: String(reservation?._id || "").trim(),
+    customerFirstName: String(reservation?.customerFirstName || "").trim(),
+    customerLastName: String(reservation?.customerLastName || "").trim(),
+    customerEmail: String(reservation?.customerEmail || "").trim(),
+    customerPhone: String(reservation?.customerPhone || "").trim(),
+    numberOfGuests: Number(reservation?.numberOfGuests || 0),
+    reservationDate: reservation?.reservationDate || null,
+    reservationTime: String(reservation?.reservationTime || "").trim(),
+    commentary: String(reservation?.commentary || "").trim(),
+    reservationStatus: String(reservation?.status || "").trim(),
+    table: reservation?.table || null,
+    bankHold: reservation?.bankHold || {},
+  };
+}
+
+async function buildReservationPaymentMaps({
   restaurantId,
   paymentIntentIds = [],
+  reservationIds = [],
 }) {
-  const normalizedIds = Array.from(
+  const normalizedPaymentIntentIds = Array.from(
     new Set(
       (Array.isArray(paymentIntentIds) ? paymentIntentIds : [])
         .map((value) => String(value || "").trim())
         .filter(Boolean),
     ),
   );
+  const normalizedReservationIds = Array.from(
+    new Set(
+      (Array.isArray(reservationIds) ? reservationIds : [])
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
+    ),
+  );
 
-  if (!normalizedIds.length) {
-    return new Map();
+  if (!normalizedPaymentIntentIds.length && !normalizedReservationIds.length) {
+    return {
+      byPaymentIntent: new Map(),
+      byReservationId: new Map(),
+    };
+  }
+
+  const filters = [];
+  if (normalizedPaymentIntentIds.length) {
+    filters.push({
+      "bankHold.paymentIntentId": { $in: normalizedPaymentIntentIds },
+    });
+  }
+  if (normalizedReservationIds.length) {
+    filters.push({ _id: { $in: normalizedReservationIds } });
   }
 
   const reservations = await ReservationModel.find({
     restaurant_id: restaurantId,
-    "bankHold.status": "captured",
-    "bankHold.paymentIntentId": { $in: normalizedIds },
+    $or: filters,
   })
     .select(
       "customerFirstName customerLastName customerEmail customerPhone numberOfGuests reservationDate reservationTime commentary status table bankHold",
     )
     .lean();
 
-  const map = new Map();
+  const byPaymentIntent = new Map();
+  const byReservationId = new Map();
 
   for (const reservation of reservations) {
     const paymentIntentId = String(
       reservation?.bankHold?.paymentIntentId || "",
     ).trim();
-    if (!paymentIntentId) continue;
+    const reservationId = String(reservation?._id || "").trim();
+    const normalizedReservation =
+      normalizeReservationForTransaction(reservation);
 
-    map.set(paymentIntentId, {
-      reservationId: String(reservation?._id || "").trim(),
-      customerFirstName: String(reservation?.customerFirstName || "").trim(),
-      customerLastName: String(reservation?.customerLastName || "").trim(),
-      customerEmail: String(reservation?.customerEmail || "").trim(),
-      customerPhone: String(reservation?.customerPhone || "").trim(),
-      numberOfGuests: Number(reservation?.numberOfGuests || 0),
-      reservationDate: reservation?.reservationDate || null,
-      reservationTime: String(reservation?.reservationTime || "").trim(),
-      commentary: String(reservation?.commentary || "").trim(),
-      reservationStatus: String(reservation?.status || "").trim(),
-      table: reservation?.table || null,
-      bankHold: reservation?.bankHold || {},
-    });
+    if (paymentIntentId) {
+      byPaymentIntent.set(paymentIntentId, normalizedReservation);
+    }
+    if (reservationId) {
+      byReservationId.set(reservationId, normalizedReservation);
+    }
   }
 
-  return map;
+  return {
+    byPaymentIntent,
+    byReservationId,
+  };
+}
+
+async function retrieveChargeFromPaymentIntent({
+  stripeInstance,
+  paymentIntentId,
+}) {
+  if (!paymentIntentId) return null;
+
+  const paymentIntent = await stripeInstance.paymentIntents.retrieve(
+    paymentIntentId,
+    {
+      expand: ["latest_charge.balance_transaction"],
+    },
+  );
+
+  if (!paymentIntent) {
+    return null;
+  }
+
+  const latestCharge = paymentIntent?.latest_charge;
+  if (latestCharge && typeof latestCharge === "object") {
+    return {
+      paymentIntent,
+      charge: latestCharge,
+      balanceTransaction:
+        latestCharge?.balance_transaction &&
+        typeof latestCharge.balance_transaction === "object"
+          ? latestCharge.balance_transaction
+          : null,
+    };
+  }
+
+  const latestChargeId = String(latestCharge || "").trim();
+  if (!latestChargeId) {
+    return { paymentIntent, charge: null, balanceTransaction: null };
+  }
+
+  const charge = await stripeInstance.charges.retrieve(latestChargeId, {
+    expand: ["balance_transaction"],
+  });
+
+  return {
+    paymentIntent,
+    charge,
+    balanceTransaction:
+      charge?.balance_transaction &&
+      typeof charge.balance_transaction === "object"
+        ? charge.balance_transaction
+        : null,
+  };
+}
+
+async function fetchCapturedBankHoldFallbackTransactions({
+  stripeInstance,
+  restaurantId,
+  limit = 10,
+  existingChargeIds = new Set(),
+  existingPaymentIntentIds = new Set(),
+}) {
+  const fallbackLimit = Math.max(1, Number(limit) || 10);
+  const reservations = await ReservationModel.find({
+    restaurant_id: restaurantId,
+    "bankHold.enabled": true,
+    "bankHold.status": "captured",
+    "bankHold.paymentIntentId": { $exists: true, $ne: "" },
+  })
+    .select(
+      "customerFirstName customerLastName customerEmail customerPhone numberOfGuests reservationDate reservationTime commentary status table bankHold",
+    )
+    .sort({
+      "bankHold.capturedAt": -1,
+      _id: -1,
+    })
+    .limit(fallbackLimit * 3)
+    .lean();
+
+  const formattedTransactions = [];
+
+  for (const reservation of reservations) {
+    const paymentIntentId = String(
+      reservation?.bankHold?.paymentIntentId || "",
+    ).trim();
+    if (!paymentIntentId || existingPaymentIntentIds.has(paymentIntentId)) {
+      continue;
+    }
+
+    try {
+      const stripePaymentData = await retrieveChargeFromPaymentIntent({
+        stripeInstance,
+        paymentIntentId,
+      });
+      const paymentIntent = stripePaymentData?.paymentIntent || null;
+      const charge = stripePaymentData?.charge || null;
+      const balanceTransaction = stripePaymentData?.balanceTransaction || null;
+
+      if (
+        !paymentIntent ||
+        String(paymentIntent.status || "") !== "succeeded"
+      ) {
+        continue;
+      }
+
+      const chargeId = String(charge?.id || "").trim();
+      if (chargeId && existingChargeIds.has(chargeId)) {
+        continue;
+      }
+
+      const normalizedReservation =
+        normalizeReservationForTransaction(reservation);
+      const formatted = formatChargeForDashboard({
+        charge: {
+          ...(charge || {}),
+          id:
+            chargeId ||
+            `captured-bank-hold-${normalizedReservation.reservationId || paymentIntentId}`,
+          payment_intent:
+            charge?.payment_intent || paymentIntentId || charge?.payment_intent,
+          metadata: {
+            ...(charge?.metadata || {}),
+            reservationId:
+              String(charge?.metadata?.reservationId || "").trim() ||
+              normalizedReservation.reservationId,
+            type:
+              String(charge?.metadata?.type || "").trim() ||
+              "reservation_bank_hold_payment",
+          },
+          created:
+            charge?.created ||
+            Math.floor(
+              new Date(
+                reservation?.bankHold?.capturedAt || reservation?.updatedAt,
+              ).getTime() / 1000,
+            ) ||
+            0,
+          status: String(charge?.status || paymentIntent?.status || "").trim(),
+          refunded: Boolean(charge?.refunded),
+          receipt_url: String(charge?.receipt_url || "").trim(),
+          payment_method_details: charge?.payment_method_details || {},
+        },
+        balanceTransaction,
+        giftPurchaseByPaymentIntent: new Map(),
+        reservationByPaymentIntent: new Map([
+          [paymentIntentId, normalizedReservation],
+        ]),
+        reservationById: new Map([
+          [normalizedReservation.reservationId, normalizedReservation],
+        ]),
+      });
+
+      if (!formatted) {
+        continue;
+      }
+
+      formattedTransactions.push(formatted);
+      if (chargeId) {
+        existingChargeIds.add(chargeId);
+      }
+      existingPaymentIntentIds.add(paymentIntentId);
+
+      if (formattedTransactions.length >= fallbackLimit) {
+        break;
+      }
+    } catch (error) {
+      console.error(
+        "[payments-dashboard-bank-hold-fallback-error]",
+        paymentIntentId,
+        error?.raw?.message || error?.message || error,
+      );
+    }
+  }
+
+  return formattedTransactions.sort(
+    (left, right) => Number(right?.date || 0) - Number(left?.date || 0),
+  );
 }
 
 function formatChargeForDashboard({
   charge,
+  balanceTransaction = null,
   giftPurchaseByPaymentIntent = new Map(),
-  capturedReservationByPaymentIntent = new Map(),
+  reservationByPaymentIntent = new Map(),
+  reservationById = new Map(),
 }) {
-  const balanceTx = charge.balance_transaction;
+  const balanceTx = balanceTransaction || charge.balance_transaction;
   const paymentIntentId = getStripePaymentIntentId(charge?.payment_intent);
+  const reservationId = getStripeReservationId(charge);
+  const stripeTransactionType = getStripeTransactionType(charge);
+  const isBankHoldTransaction = isReservationBankHoldTransaction(charge);
   const giftPurchase = giftPurchaseByPaymentIntent.get(paymentIntentId) || null;
-  const capturedReservation =
-    capturedReservationByPaymentIntent.get(paymentIntentId) || null;
+  const matchedReservation =
+    reservationByPaymentIntent.get(paymentIntentId) ||
+    reservationById.get(reservationId) ||
+    null;
 
-  if (!giftPurchase && !capturedReservation) {
+  if (!giftPurchase && !isBankHoldTransaction && !matchedReservation) {
     return null;
   }
 
@@ -134,13 +374,18 @@ function formatChargeForDashboard({
   const commonPayload = {
     id: charge.id,
     paymentIntentId,
+    reservationId,
     chargeId: charge.id,
-    date: charge.created,
+    date: balanceTx?.created || charge.created,
     customer: fallbackCustomerLabel,
-    grossAmount: (Number(charge?.amount || 0) / 100).toFixed(2),
+    grossAmount: (
+      Number((balanceTx?.amount ?? charge?.amount) || 0) / 100
+    ).toFixed(2),
     feeAmount: (Number(balanceTx?.fee || 0) / 100).toFixed(2),
     netAmount: (Number(balanceTx?.net || 0) / 100).toFixed(2),
-    currency: String(charge?.currency || "eur").toLowerCase(),
+    currency: String(
+      balanceTx?.currency || charge?.currency || "eur",
+    ).toLowerCase(),
     status: String(charge?.status || ""),
     refunded: Boolean(charge?.refunded),
     receiptUrl: String(charge?.receipt_url || "").trim(),
@@ -150,6 +395,7 @@ function formatChargeForDashboard({
     paymentMethodLast4: String(
       charge?.payment_method_details?.card?.last4 || "",
     ).trim(),
+    stripeTransactionType,
   };
 
   if (giftPurchase) {
@@ -170,8 +416,8 @@ function formatChargeForDashboard({
   }
 
   const reservationCustomerName = buildFullName(
-    capturedReservation?.customerFirstName,
-    capturedReservation?.customerLastName,
+    matchedReservation?.customerFirstName,
+    matchedReservation?.customerLastName,
   );
 
   return {
@@ -180,21 +426,28 @@ function formatChargeForDashboard({
     customer: reservationCustomerName || fallbackCustomerLabel,
     purchaseCode: "",
     giftPurchase: null,
-    reservation: {
-      reservationId: capturedReservation?.reservationId || "",
-      customerFirstName: capturedReservation?.customerFirstName || "",
-      customerLastName: capturedReservation?.customerLastName || "",
-      customerEmail: capturedReservation?.customerEmail || "",
-      customerPhone: capturedReservation?.customerPhone || "",
-      numberOfGuests: capturedReservation?.numberOfGuests || 0,
-      reservationDate: capturedReservation?.reservationDate || null,
-      reservationTime: capturedReservation?.reservationTime || "",
-      reservationStatus: capturedReservation?.reservationStatus || "",
-      table: capturedReservation?.table || null,
-    },
+    reservation: matchedReservation
+      ? {
+          reservationId: matchedReservation?.reservationId || "",
+          customerFirstName: matchedReservation?.customerFirstName || "",
+          customerLastName: matchedReservation?.customerLastName || "",
+          customerEmail: matchedReservation?.customerEmail || "",
+          customerPhone: matchedReservation?.customerPhone || "",
+          numberOfGuests: matchedReservation?.numberOfGuests || 0,
+          reservationDate: matchedReservation?.reservationDate || null,
+          reservationTime: matchedReservation?.reservationTime || "",
+          reservationStatus: matchedReservation?.reservationStatus || "",
+          commentary: matchedReservation?.commentary || "",
+          table: matchedReservation?.table || null,
+        }
+      : null,
     bankHold: {
-      ...(capturedReservation?.bankHold || {}),
+      ...(matchedReservation?.bankHold || {}),
       paymentIntentId,
+      status: String(matchedReservation?.bankHold?.status || "captured"),
+      amountTotal:
+        matchedReservation?.bankHold?.amountTotal ??
+        Number((balanceTx?.amount ?? charge?.amount) || 0) / 100,
     },
   };
 }
@@ -207,13 +460,17 @@ async function buildChargeFormattingContext({
   const paymentIntentIds = charges
     .map((charge) => getStripePaymentIntentId(charge?.payment_intent))
     .filter(Boolean);
+  const reservationIds = charges
+    .map((charge) => getStripeReservationId(charge))
+    .filter(Boolean);
 
   return {
     giftPurchaseByPaymentIntent: buildGiftPurchaseMap(purchasesGiftCards),
-    capturedReservationByPaymentIntent: await buildCapturedReservationMap({
+    ...(await buildReservationPaymentMaps({
       restaurantId,
       paymentIntentIds,
-    }),
+      reservationIds,
+    })),
   };
 }
 
@@ -244,29 +501,45 @@ async function fetchVisibleDashboardCharges({
   let hasMore = false;
 
   while (charges.length < targetCount) {
-    const chargesList = await stripeInstance.charges.list({
-      limit: pageSize,
-      ...(cursor ? { starting_after: cursor } : {}),
-      expand: ["data.balance_transaction"],
-    });
+    const balanceTransactionsList =
+      await stripeInstance.balanceTransactions.list({
+        limit: pageSize,
+        ...(cursor ? { starting_after: cursor } : {}),
+        expand: ["data.source"],
+      });
 
-    if (!chargesList.data.length) {
+    if (!balanceTransactionsList.data.length) {
       hasMore = false;
       break;
     }
 
+    const chargeTransactions = balanceTransactionsList.data.filter(
+      (transaction) => transaction?.type === "charge",
+    );
+
+    const sourceCharges = chargeTransactions
+      .map((transaction) =>
+        transaction?.source?.object === "charge" ? transaction.source : null,
+      )
+      .filter(Boolean);
+
     const formattingContext = await buildChargeFormattingContext({
       restaurantId,
       purchasesGiftCards,
-      charges: chargesList.data,
+      charges: sourceCharges,
     });
 
-    for (let index = 0; index < chargesList.data.length; index += 1) {
-      const charge = chargesList.data[index];
-      lastChargeId = charge.id;
+    for (let index = 0; index < chargeTransactions.length; index += 1) {
+      const transaction = chargeTransactions[index];
+      lastChargeId = transaction.id;
+
+      const charge =
+        transaction?.source?.object === "charge" ? transaction.source : null;
+      if (!charge) continue;
 
       const formatted = formatChargeForDashboard({
         charge,
+        balanceTransaction: transaction,
         ...formattingContext,
       });
 
@@ -275,26 +548,54 @@ async function fetchVisibleDashboardCharges({
       }
 
       if (charges.length >= targetCount) {
-        hasMore = index < chargesList.data.length - 1 || chargesList.has_more;
+        hasMore =
+          index < chargeTransactions.length - 1 ||
+          balanceTransactionsList.has_more;
         break;
       }
     }
 
     if (charges.length >= targetCount) break;
-    if (!chargesList.has_more) {
+    if (!balanceTransactionsList.has_more) {
       hasMore = false;
       break;
     }
 
-    cursor = chargesList.data[chargesList.data.length - 1]?.id || null;
+    cursor =
+      balanceTransactionsList.data[balanceTransactionsList.data.length - 1]
+        ?.id || null;
     if (!cursor) {
       hasMore = false;
       break;
     }
   }
 
+  const existingChargeIds = new Set(
+    charges
+      .map((charge) => String(charge?.chargeId || charge?.id || "").trim())
+      .filter(Boolean),
+  );
+  const existingPaymentIntentIds = new Set(
+    charges
+      .map((charge) => String(charge?.paymentIntentId || "").trim())
+      .filter(Boolean),
+  );
+
+  const fallbackBankHoldCharges =
+    await fetchCapturedBankHoldFallbackTransactions({
+      stripeInstance,
+      restaurantId,
+      limit: targetCount,
+      existingChargeIds,
+      existingPaymentIntentIds,
+    });
+
+  const mergedCharges = [...charges, ...fallbackBankHoldCharges]
+    .sort((left, right) => Number(right?.date || 0) - Number(left?.date || 0))
+    .slice(0, targetCount);
+
   return {
-    charges,
+    charges: mergedCharges,
     hasMore,
     lastChargeId,
   };

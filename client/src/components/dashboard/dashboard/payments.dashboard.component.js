@@ -152,6 +152,7 @@ export default function PaymentsDashboardComponent(props) {
 
             return (
               <div
+                key={payment.id}
                 className="
                    flex w-full items-center justify-between gap-4 rounded-2xl border border-darkBlue/10
                   bg-white/50 px-4 py-4 text-left transition duration-150
@@ -188,7 +189,6 @@ export default function PaymentsDashboardComponent(props) {
                 </div>
 
                 <button
-                  key={payment.id}
                   type="button"
                   onClick={() => openPaymentDetails(payment)}
                   className="inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-darkBlue/10 bg-white text-darkBlue transition hover:bg-darkBlue/5"
