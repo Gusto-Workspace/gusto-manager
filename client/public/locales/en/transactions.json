@@ -59,6 +59,9 @@
     "grossAmount": "Amount paid",
     "fees": "Stripe fees",
     "netAmount": "Net amount",
+    "paymentDate": "Payment date",
+    "refundedAt": "Refunded on {{date}}",
+    "refundedAtLabel": "Refunded on",
     "types": {
       "giftCardPurchase": "Gift card purchase",
       "bankHoldCapture": "Captured bank hold",

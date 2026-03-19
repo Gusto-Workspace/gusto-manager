@@ -50,10 +50,74 @@ function getStripeCustomerLabel(charge) {
   const billingName = String(charge?.billing_details?.name || "").trim();
   if (billingName) return billingName;
 
+  const customerObject =
+    charge?.customer && typeof charge.customer === "object"
+      ? charge.customer
+      : null;
+  const customerName = String(customerObject?.name || "").trim();
+  if (customerName) return customerName;
+
+  const customerEmail = String(
+    customerObject?.email || charge?.billing_details?.email || "",
+  ).trim();
+  if (customerEmail) return customerEmail;
+
   const customerId = String(charge?.customer || "").trim();
   if (!customerId || customerId.startsWith("cus_")) return "";
 
   return customerId;
+}
+
+function getChargeRefundedAt(charge) {
+  const refunds =
+    charge?.refunds && Array.isArray(charge.refunds.data)
+      ? charge.refunds.data
+      : [];
+
+  const latestRefund = refunds.reduce((latest, refund) => {
+    const currentCreated = Number(refund?.created || 0);
+    const latestCreated = Number(latest?.created || 0);
+    return currentCreated > latestCreated ? refund : latest;
+  }, null);
+
+  return latestRefund?.created ? Number(latestRefund.created) : null;
+}
+
+function isUnknownCustomerLabel(value) {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
+  return (
+    !normalized ||
+    normalized === "non renseigné" ||
+    normalized === "not provided"
+  );
+}
+
+function choosePreferredTransaction(existingTransaction, incomingTransaction) {
+  if (!existingTransaction) return incomingTransaction;
+  if (!incomingTransaction) return existingTransaction;
+
+  if (
+    isUnknownCustomerLabel(existingTransaction?.customer) &&
+    !isUnknownCustomerLabel(incomingTransaction?.customer)
+  ) {
+    return incomingTransaction;
+  }
+
+  if (!existingTransaction?.reservation && incomingTransaction?.reservation) {
+    return incomingTransaction;
+  }
+
+  if (!existingTransaction?.bankHold && incomingTransaction?.bankHold) {
+    return incomingTransaction;
+  }
+
+  if (!existingTransaction?.refundedAt && incomingTransaction?.refundedAt) {
+    return incomingTransaction;
+  }
+
+  return existingTransaction;
 }
 
 function buildGiftPurchaseMap(purchases = []) {
@@ -181,7 +245,11 @@ async function retrieveChargeFromPaymentIntent({
   const paymentIntent = await stripeInstance.paymentIntents.retrieve(
     paymentIntentId,
     {
-      expand: ["latest_charge.balance_transaction"],
+      expand: [
+        "latest_charge.balance_transaction",
+        "latest_charge.customer",
+        "latest_charge.refunds",
+      ],
     },
   );
 
@@ -208,7 +276,7 @@ async function retrieveChargeFromPaymentIntent({
   }
 
   const charge = await stripeInstance.charges.retrieve(latestChargeId, {
-    expand: ["balance_transaction"],
+    expand: ["balance_transaction", "customer", "refunds"],
   });
 
   return {
@@ -226,8 +294,6 @@ async function fetchCapturedBankHoldFallbackTransactions({
   stripeInstance,
   restaurantId,
   limit = 10,
-  existingChargeIds = new Set(),
-  existingPaymentIntentIds = new Set(),
 }) {
   const fallbackLimit = Math.max(1, Number(limit) || 10);
   const reservations = await ReservationModel.find({
@@ -252,7 +318,7 @@ async function fetchCapturedBankHoldFallbackTransactions({
     const paymentIntentId = String(
       reservation?.bankHold?.paymentIntentId || "",
     ).trim();
-    if (!paymentIntentId || existingPaymentIntentIds.has(paymentIntentId)) {
+    if (!paymentIntentId) {
       continue;
     }
 
@@ -273,10 +339,6 @@ async function fetchCapturedBankHoldFallbackTransactions({
       }
 
       const chargeId = String(charge?.id || "").trim();
-      if (chargeId && existingChargeIds.has(chargeId)) {
-        continue;
-      }
-
       const normalizedReservation =
         normalizeReservationForTransaction(reservation);
       const formatted = formatChargeForDashboard({
@@ -324,10 +386,6 @@ async function fetchCapturedBankHoldFallbackTransactions({
       }
 
       formattedTransactions.push(formatted);
-      if (chargeId) {
-        existingChargeIds.add(chargeId);
-      }
-      existingPaymentIntentIds.add(paymentIntentId);
 
       if (formattedTransactions.length >= fallbackLimit) {
         break;
@@ -388,6 +446,7 @@ function formatChargeForDashboard({
     ).toLowerCase(),
     status: String(charge?.status || ""),
     refunded: Boolean(charge?.refunded),
+    refundedAt: getChargeRefundedAt(charge),
     receiptUrl: String(charge?.receipt_url || "").trim(),
     paymentMethodBrand: String(
       charge?.payment_method_details?.card?.brand || "",
@@ -505,7 +564,7 @@ async function fetchVisibleDashboardCharges({
       await stripeInstance.balanceTransactions.list({
         limit: pageSize,
         ...(cursor ? { starting_after: cursor } : {}),
-        expand: ["data.source"],
+        expand: ["data.source", "data.source.customer", "data.source.refunds"],
       });
 
     if (!balanceTransactionsList.data.length) {
@@ -570,27 +629,33 @@ async function fetchVisibleDashboardCharges({
     }
   }
 
-  const existingChargeIds = new Set(
-    charges
-      .map((charge) => String(charge?.chargeId || charge?.id || "").trim())
-      .filter(Boolean),
-  );
-  const existingPaymentIntentIds = new Set(
-    charges
-      .map((charge) => String(charge?.paymentIntentId || "").trim())
-      .filter(Boolean),
-  );
-
   const fallbackBankHoldCharges =
     await fetchCapturedBankHoldFallbackTransactions({
       stripeInstance,
       restaurantId,
       limit: targetCount,
-      existingChargeIds,
-      existingPaymentIntentIds,
     });
 
-  const mergedCharges = [...charges, ...fallbackBankHoldCharges]
+  const mergedChargeMap = new Map();
+
+  [...charges, ...fallbackBankHoldCharges]
+    .sort((left, right) => Number(right?.date || 0) - Number(left?.date || 0))
+    .forEach((transaction) => {
+      const transactionId = String(
+        transaction?.chargeId || transaction?.id || "",
+      ).trim();
+      if (!transactionId) return;
+
+      mergedChargeMap.set(
+        transactionId,
+        choosePreferredTransaction(
+          mergedChargeMap.get(transactionId),
+          transaction,
+        ),
+      );
+    });
+
+  const mergedCharges = Array.from(mergedChargeMap.values())
     .sort((left, right) => Number(right?.date || 0) - Number(left?.date || 0))
     .slice(0, targetCount);
 
@@ -984,6 +1049,7 @@ router.post("/owner/restaurants/:id/payments/refund", async (req, res) => {
       transactionType: refundedGiftPurchase
         ? "gift_card_purchase"
         : "bank_hold_capture",
+      refundedAt: refund?.created || null,
       refund,
     });
   } catch (error) {

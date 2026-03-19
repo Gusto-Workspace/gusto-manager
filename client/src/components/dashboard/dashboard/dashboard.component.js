@@ -220,11 +220,19 @@ export default function DashboardComponent(props) {
   }
 
   // ---- Fonction appelée quand un paiement est remboursé avec succès ----
-  function handleRefundSuccess(paymentId) {
-    // On met à jour l'état local "payments" pour définir refunded = true
+  function handleRefundSuccess(paymentId, refundData = {}) {
+    const refundedAt =
+      refundData?.refundedAt ?? refundData?.refund?.created ?? null;
+
     setPayments((prevPayments) =>
       prevPayments.map((p) =>
-        p.id === paymentId ? { ...p, refunded: true } : p,
+        p.id === paymentId
+          ? {
+              ...p,
+              refunded: true,
+              refundedAt,
+            }
+          : p,
       ),
     );
   }

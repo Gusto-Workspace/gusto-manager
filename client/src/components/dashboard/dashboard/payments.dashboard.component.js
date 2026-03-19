@@ -29,6 +29,22 @@ function formatDateFromUnix(timestamp) {
   return date.toLocaleDateString("fr-FR");
 }
 
+function formatDateTimeFromUnix(timestamp) {
+  const date = new Date(Number(timestamp || 0) * 1000);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString("fr-FR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  });
+}
+
+function formatCurrency(amount, currency = "eur") {
+  return new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency: String(currency || "eur").toUpperCase(),
+  }).format(Number(amount || 0));
+}
+
 function getStatus(payment, t) {
   if (payment?.refunded) {
     return {
@@ -128,7 +144,7 @@ export default function PaymentsDashboardComponent(props) {
       );
 
       if (response.data.success) {
-        props.handleRefundSuccess(refundTarget.id);
+        props.handleRefundSuccess(refundTarget.id, response.data);
         props.fetchMonthlySales();
       } else {
         console.error("Erreur de remboursement", response.data.message);
@@ -177,7 +193,14 @@ export default function PaymentsDashboardComponent(props) {
                   <div className="mt-1 flex flex-wrap items-center gap-2">
                     <span className="inline-flex items-center gap-2 rounded-full border border-darkBlue/10 bg-darkBlue/5 px-3 py-1.5 text-xs font-medium text-darkBlue">
                       <Calendar className="size-4" />
+
                       {formatDateFromUnix(payment.date)}
+                    </span>
+
+                    <span className="inline-flex items-center gap-2 rounded-full border border-darkBlue/10 bg-darkBlue/5 px-3 py-1.5 text-xs font-medium text-darkBlue">
+                      <CreditCard className="size-4" />
+
+                      {formatCurrency(payment.grossAmount, payment.currency)}
                     </span>
 
                     <span

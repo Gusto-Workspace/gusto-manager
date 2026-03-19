@@ -59,6 +59,9 @@
     "grossAmount": "Montant payé",
     "fees": "Frais Stripe",
     "netAmount": "Montant net",
+    "paymentDate": "Date du paiement",
+    "refundedAt": "Remboursé le {{date}}",
+    "refundedAtLabel": "Remboursé le",
     "types": {
       "giftCardPurchase": "Achat carte cadeau",
       "bankHoldCapture": "Empreinte bancaire capturée",

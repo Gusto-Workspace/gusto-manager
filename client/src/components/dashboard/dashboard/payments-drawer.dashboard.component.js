@@ -503,6 +503,11 @@ export default function PaymentsDrawerDashboardComponent({
               title={t?.("payments.drawer.sections.payment", "Paiement")}
             >
               <DetailRow
+                icon={Calendar}
+                label={t?.("payments.paymentDate", "Date du paiement")}
+                value={formatDateTime(transaction.date)}
+              />
+              <DetailRow
                 icon={ReceiptText}
                 label={t?.("payments.grossAmount", "Montant payé")}
                 value={formatCurrency(
@@ -526,6 +531,13 @@ export default function PaymentsDrawerDashboardComponent({
                   transaction.currency,
                 )}
               />
+              {transaction?.refunded && transaction?.refundedAt ? (
+                <DetailRow
+                  icon={RotateCcw}
+                  label={t?.("payments.refundedAtLabel", "Remboursé le")}
+                  value={formatDateTime(transaction.refundedAt)}
+                />
+              ) : null}
             </Section>
 
             {transaction?.giftPurchase ? (
@@ -668,9 +680,7 @@ export default function PaymentsDrawerDashboardComponent({
                     transaction.bankHold.currency || transaction.currency,
                   )}
                 />
-               
-              
-               
+
                 <DetailRow
                   icon={Calendar}
                   label={t?.("payments.capturedAt", "Capturée le")}

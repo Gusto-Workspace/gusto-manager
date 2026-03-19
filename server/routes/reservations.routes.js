@@ -1019,21 +1019,41 @@ function getStripeClientForRestaurant(restaurant) {
   return new Stripe(secretKey);
 }
 
+function buildStripeCustomerPayloadFromReservation(reservation) {
+  const fullName =
+    `${String(reservation?.customerFirstName || "").trim()} ${String(
+      reservation?.customerLastName || "",
+    ).trim()}`.trim();
+
+  return {
+    email: reservation?.customerEmail || undefined,
+    name: fullName || undefined,
+    phone: reservation?.customerPhone || undefined,
+    metadata: {
+      reservationId: String(reservation?._id || ""),
+      restaurantId: String(reservation?.restaurant_id || ""),
+    },
+  };
+}
+
 async function ensureStripeCustomerForReservation(stripe, reservation) {
   const existing = String(reservation?.bankHold?.stripeCustomerId || "").trim();
-  if (existing) return existing;
+  const customerPayload =
+    buildStripeCustomerPayloadFromReservation(reservation);
 
-  const customer = await stripe.customers.create({
-    email: reservation.customerEmail || undefined,
-    name: `${reservation.customerFirstName || ""} ${
-      reservation.customerLastName || ""
-    }`.trim(),
-    phone: reservation.customerPhone || undefined,
-    metadata: {
-      reservationId: String(reservation._id),
-      restaurantId: String(reservation.restaurant_id),
-    },
-  });
+  if (existing) {
+    try {
+      await stripe.customers.update(existing, customerPayload);
+      return existing;
+    } catch (error) {
+      const errorCode = String(error?.code || error?.raw?.code || "").trim();
+      if (errorCode !== "resource_missing") {
+        throw error;
+      }
+    }
+  }
+
+  const customer = await stripe.customers.create(customerPayload);
 
   reservation.bankHold.stripeCustomerId = customer.id;
   await reservation.save();
