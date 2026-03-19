@@ -105,8 +105,29 @@ function minutesFromHHmm(timeStr) {
 
 function isBlockingReservationFront(r) {
   if (!r) return false;
-  if (!["Pending", "Confirmed", "Active", "Late"].includes(r.status))
+  if (
+    !["AwaitingBankHold", "Pending", "Confirmed", "Active", "Late"].includes(
+      r.status,
+    )
+  )
     return false;
+
+  if (r.status === "AwaitingBankHold") {
+    const bankHoldEnabled = Boolean(r?.bankHold?.enabled);
+    const bankHoldExpiresAt = r?.bankHold?.expiresAt
+      ? new Date(r.bankHold.expiresAt).getTime()
+      : null;
+
+    if (
+      bankHoldEnabled &&
+      Number.isFinite(bankHoldExpiresAt) &&
+      bankHoldExpiresAt <= Date.now()
+    ) {
+      return false;
+    }
+
+    return true;
+  }
 
   if (r.status !== "Pending") return true;
 
@@ -169,10 +190,6 @@ function getConfiguredTableIdsFront(tableLike) {
   const tableIds = normalizeTableIdListFront(tableLike.tableIds);
   if (tableIds.length > 0) return tableIds;
 
-  if (tableLike.tableId) {
-    return [String(tableLike.tableId)];
-  }
-
   if (tableLike._id) {
     return [String(tableLike._id)];
   }
@@ -197,7 +214,6 @@ function buildSingleTableOptionFront(tableDef) {
   return {
     ...tableDef,
     _id: id,
-    tableId: id,
     tableIds: id ? [id] : [],
     selectionKey: id,
     kind: "single",
@@ -217,7 +233,6 @@ function buildCombinedTableOptionFront(tableA, tableB) {
 
   return {
     _id: selectionKey,
-    tableId: tableIds[0] || null,
     tableIds,
     name: pair.map((table) => String(table?.name || "")).join(" + "),
     seats: pair.reduce((sum, table) => sum + Number(table?.seats || 0), 0),
@@ -1181,7 +1196,6 @@ export default function AddReservationComponent(props) {
 
     return {
       _id: selectionKey,
-      tableId: tableIds[0] || null,
       tableIds,
       name: props.reservation?.table?.name || "Table actuelle",
       seats: props.reservation?.table?.seats || null,

@@ -54,9 +54,7 @@ function getReservationTableLabel(reservation, tablesCatalog = []) {
 
   const tableIds = Array.isArray(reservation?.table?.tableIds)
     ? reservation.table.tableIds
-    : reservation?.table?.tableId
-      ? [reservation.table.tableId]
-      : [];
+    : [];
 
   if (!tableIds.length) return null;
 

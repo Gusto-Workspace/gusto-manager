@@ -59,10 +59,6 @@ function getConfiguredTableIds(tableLike) {
   const tableIds = normalizeTableIdList(tableLike.tableIds);
   if (tableIds.length > 0) return tableIds;
 
-  if (tableLike.tableId) {
-    return [String(tableLike.tableId)];
-  }
-
   if (tableLike._id) {
     return [String(tableLike._id)];
   }
@@ -115,7 +111,6 @@ function buildSingleTableOption(tableDef) {
   return {
     ...tableDef,
     _id: id,
-    tableId: id,
     tableIds: id ? [id] : [],
     selectionKey: id,
     kind: "single",
@@ -135,7 +130,6 @@ function buildCombinedTableOption(tableA, tableB) {
 
   return {
     _id: selectionKey,
-    tableId: tableIds[0] || null,
     tableIds,
     name: pair.map((table) => String(table?.name || "")).join(" + "),
     seats: pair.reduce((sum, table) => sum + Number(table?.seats || 0), 0),
@@ -639,7 +633,6 @@ function buildAssignedTablePayload(tableDef) {
   const tableIds = getConfiguredTableIds(tableDef);
 
   return {
-    tableId: tableIds[0] || null,
     tableIds,
     name: tableDef.name,
     seats: tableDef.seats,
@@ -2141,7 +2134,6 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
           reservationData.numberOfGuests,
         );
         assignedTable = {
-          tableId: null,
           name,
           seats: requiredSize || 2,
           source: "manual",
@@ -2516,7 +2508,6 @@ router.post(
             reservationData.numberOfGuests,
           );
           assignedTable = {
-            tableId: null,
             name,
             seats: requiredSize || 2,
             source: "manual",
@@ -3458,7 +3449,6 @@ router.put(
           } else {
             const requiredSize = requiredTableSizeFromGuests(candidateGuests);
             updateData.table = {
-              tableId: null,
               name,
               seats: requiredSize || 2,
               source: "manual",

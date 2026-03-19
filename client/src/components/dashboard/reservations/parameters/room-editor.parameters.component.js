@@ -3853,10 +3853,10 @@ export default function RoomEditorComponent({
                                   </span>
 
                                   {range?.note && (
-                                  <p className="tablet:hidden mt-1 pl-1 text-[10px] leading-relaxed text-darkBlue/55">
-                                    {range.note}
-                                  </p>
-                                )}
+                                    <p className="tablet:hidden mt-1 pl-1 text-[10px] leading-relaxed text-darkBlue/55">
+                                      {range.note}
+                                    </p>
+                                  )}
 
                                   <button
                                     type="button"

@@ -23,10 +23,6 @@ function getReservationTableIds(reservation) {
       .filter(Boolean);
   }
 
-  if (reservation?.table?.tableId) {
-    return [String(reservation.table.tableId)];
-  }
-
   return [];
 }
 
