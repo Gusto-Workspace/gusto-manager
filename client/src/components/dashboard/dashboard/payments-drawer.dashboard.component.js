@@ -526,9 +526,6 @@ export default function PaymentsDrawerDashboardComponent({
                   transaction.currency,
                 )}
               />
-            
-            
-         
             </Section>
 
             {transaction?.giftPurchase ? (
@@ -551,15 +548,6 @@ export default function PaymentsDrawerDashboardComponent({
                 />
                 <DetailRow
                   icon={User}
-                  label={t?.("payments.beneficiary", "Bénéficiaire")}
-                  value={
-                    `${transaction.giftPurchase.beneficiaryFirstName || ""} ${
-                      transaction.giftPurchase.beneficiaryLastName || ""
-                    }`.trim() || "-"
-                  }
-                />
-                <DetailRow
-                  icon={User}
                   label={t?.("payments.buyer", "Acheteur")}
                   value={
                     `${transaction.giftPurchase.buyerFirstName || ""} ${
@@ -577,7 +565,6 @@ export default function PaymentsDrawerDashboardComponent({
                   label={t?.("payments.phone", "Téléphone")}
                   value={transaction.giftPurchase.senderPhone || "-"}
                 />
-              
               </Section>
             ) : null}
 
