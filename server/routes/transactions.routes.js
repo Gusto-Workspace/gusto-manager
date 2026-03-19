@@ -3,6 +3,7 @@ const router = express.Router();
 
 // MODELS
 const RestaurantModel = require("../models/restaurant.model");
+const ReservationModel = require("../models/reservation.model");
 
 // CRYPTO
 const { decryptApiKey } = require("../services/encryption.service");
@@ -10,38 +11,292 @@ const { decryptApiKey } = require("../services/encryption.service");
 // SSE
 const { broadcastToRestaurant } = require("../services/sse-bus.service");
 
-function buildGiftPurchaseCodeMap(purchases = []) {
+function buildFullName(firstName, lastName) {
+  return `${String(firstName || "").trim()} ${String(lastName || "").trim()}`.trim();
+}
+
+function getStripePaymentIntentId(value) {
+  if (!value) return "";
+  if (typeof value === "string") return String(value).trim();
+  if (typeof value === "object" && value.id) return String(value.id).trim();
+  return "";
+}
+
+function getStripeCustomerLabel(charge) {
+  const billingName = String(charge?.billing_details?.name || "").trim();
+  if (billingName) return billingName;
+
+  const customerId = String(charge?.customer || "").trim();
+  if (!customerId || customerId.startsWith("cus_")) return "";
+
+  return customerId;
+}
+
+function buildGiftPurchaseMap(purchases = []) {
   const map = new Map();
 
   for (const purchase of Array.isArray(purchases) ? purchases : []) {
     const paymentIntentId = String(purchase?.paymentIntentId || "").trim();
-    const purchaseCode = String(purchase?.purchaseCode || "").trim();
+    if (!paymentIntentId) continue;
 
-    if (!paymentIntentId || !purchaseCode) continue;
-    map.set(paymentIntentId, purchaseCode);
+    map.set(paymentIntentId, {
+      purchaseId: String(purchase?._id || "").trim(),
+      value: Number(purchase?.value || 0),
+      description: String(purchase?.description || "").trim(),
+      purchaseCode: String(purchase?.purchaseCode || "").trim(),
+      validUntil: purchase?.validUntil || null,
+      giftCardStatus: String(purchase?.status || "").trim(),
+      beneficiaryFirstName: String(purchase?.beneficiaryFirstName || "").trim(),
+      beneficiaryLastName: String(purchase?.beneficiaryLastName || "").trim(),
+      buyerFirstName: String(purchase?.buyerFirstName || "").trim(),
+      buyerLastName: String(purchase?.buyerLastName || "").trim(),
+      sender: String(purchase?.sender || "").trim(),
+      sendEmail: String(purchase?.sendEmail || "").trim(),
+      senderPhone: String(purchase?.senderPhone || "").trim(),
+      createdAt: purchase?.created_at || null,
+    });
   }
 
   return map;
 }
 
-function formatChargeForDashboard(
-  charge,
-  purchaseCodeByPaymentIntent = new Map(),
-) {
-  const balanceTx = charge.balance_transaction;
-  const paymentIntentId = String(charge?.payment_intent || "").trim();
+async function buildCapturedReservationMap({
+  restaurantId,
+  paymentIntentIds = [],
+}) {
+  const normalizedIds = Array.from(
+    new Set(
+      (Array.isArray(paymentIntentIds) ? paymentIntentIds : [])
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
+    ),
+  );
 
-  return {
+  if (!normalizedIds.length) {
+    return new Map();
+  }
+
+  const reservations = await ReservationModel.find({
+    restaurant_id: restaurantId,
+    "bankHold.status": "captured",
+    "bankHold.paymentIntentId": { $in: normalizedIds },
+  })
+    .select(
+      "customerFirstName customerLastName customerEmail customerPhone numberOfGuests reservationDate reservationTime commentary status table bankHold",
+    )
+    .lean();
+
+  const map = new Map();
+
+  for (const reservation of reservations) {
+    const paymentIntentId = String(
+      reservation?.bankHold?.paymentIntentId || "",
+    ).trim();
+    if (!paymentIntentId) continue;
+
+    map.set(paymentIntentId, {
+      reservationId: String(reservation?._id || "").trim(),
+      customerFirstName: String(reservation?.customerFirstName || "").trim(),
+      customerLastName: String(reservation?.customerLastName || "").trim(),
+      customerEmail: String(reservation?.customerEmail || "").trim(),
+      customerPhone: String(reservation?.customerPhone || "").trim(),
+      numberOfGuests: Number(reservation?.numberOfGuests || 0),
+      reservationDate: reservation?.reservationDate || null,
+      reservationTime: String(reservation?.reservationTime || "").trim(),
+      commentary: String(reservation?.commentary || "").trim(),
+      reservationStatus: String(reservation?.status || "").trim(),
+      table: reservation?.table || null,
+      bankHold: reservation?.bankHold || {},
+    });
+  }
+
+  return map;
+}
+
+function formatChargeForDashboard({
+  charge,
+  giftPurchaseByPaymentIntent = new Map(),
+  capturedReservationByPaymentIntent = new Map(),
+}) {
+  const balanceTx = charge.balance_transaction;
+  const paymentIntentId = getStripePaymentIntentId(charge?.payment_intent);
+  const giftPurchase = giftPurchaseByPaymentIntent.get(paymentIntentId) || null;
+  const capturedReservation =
+    capturedReservationByPaymentIntent.get(paymentIntentId) || null;
+
+  if (!giftPurchase && !capturedReservation) {
+    return null;
+  }
+
+  const fallbackCustomerLabel =
+    getStripeCustomerLabel(charge) || "Non renseigné";
+
+  const commonPayload = {
     id: charge.id,
+    paymentIntentId,
+    chargeId: charge.id,
     date: charge.created,
-    customer:
-      charge.billing_details?.name || charge.customer || "Non renseigné",
-    grossAmount: (charge.amount / 100).toFixed(2),
+    customer: fallbackCustomerLabel,
+    grossAmount: (Number(charge?.amount || 0) / 100).toFixed(2),
     feeAmount: (Number(balanceTx?.fee || 0) / 100).toFixed(2),
     netAmount: (Number(balanceTx?.net || 0) / 100).toFixed(2),
-    status: charge.status,
-    refunded: charge.refunded,
-    purchaseCode: purchaseCodeByPaymentIntent.get(paymentIntentId) || "",
+    currency: String(charge?.currency || "eur").toLowerCase(),
+    status: String(charge?.status || ""),
+    refunded: Boolean(charge?.refunded),
+    receiptUrl: String(charge?.receipt_url || "").trim(),
+    paymentMethodBrand: String(
+      charge?.payment_method_details?.card?.brand || "",
+    ).trim(),
+    paymentMethodLast4: String(
+      charge?.payment_method_details?.card?.last4 || "",
+    ).trim(),
+  };
+
+  if (giftPurchase) {
+    const buyerName = buildFullName(
+      giftPurchase.buyerFirstName,
+      giftPurchase.buyerLastName,
+    );
+
+    return {
+      ...commonPayload,
+      type: "gift_card_purchase",
+      customer: buyerName || fallbackCustomerLabel,
+      purchaseCode: giftPurchase.purchaseCode,
+      giftPurchase,
+      reservation: null,
+      bankHold: null,
+    };
+  }
+
+  const reservationCustomerName = buildFullName(
+    capturedReservation?.customerFirstName,
+    capturedReservation?.customerLastName,
+  );
+
+  return {
+    ...commonPayload,
+    type: "bank_hold_capture",
+    customer: reservationCustomerName || fallbackCustomerLabel,
+    purchaseCode: "",
+    giftPurchase: null,
+    reservation: {
+      reservationId: capturedReservation?.reservationId || "",
+      customerFirstName: capturedReservation?.customerFirstName || "",
+      customerLastName: capturedReservation?.customerLastName || "",
+      customerEmail: capturedReservation?.customerEmail || "",
+      customerPhone: capturedReservation?.customerPhone || "",
+      numberOfGuests: capturedReservation?.numberOfGuests || 0,
+      reservationDate: capturedReservation?.reservationDate || null,
+      reservationTime: capturedReservation?.reservationTime || "",
+      reservationStatus: capturedReservation?.reservationStatus || "",
+      table: capturedReservation?.table || null,
+    },
+    bankHold: {
+      ...(capturedReservation?.bankHold || {}),
+      paymentIntentId,
+    },
+  };
+}
+
+async function buildChargeFormattingContext({
+  restaurantId,
+  purchasesGiftCards = [],
+  charges = [],
+}) {
+  const paymentIntentIds = charges
+    .map((charge) => getStripePaymentIntentId(charge?.payment_intent))
+    .filter(Boolean);
+
+  return {
+    giftPurchaseByPaymentIntent: buildGiftPurchaseMap(purchasesGiftCards),
+    capturedReservationByPaymentIntent: await buildCapturedReservationMap({
+      restaurantId,
+      paymentIntentIds,
+    }),
+  };
+}
+
+function formatVisibleCharges(charges = [], formattingContext = {}) {
+  return (Array.isArray(charges) ? charges : [])
+    .map((charge) =>
+      formatChargeForDashboard({
+        charge,
+        ...formattingContext,
+      }),
+    )
+    .filter(Boolean);
+}
+
+async function fetchVisibleDashboardCharges({
+  stripeInstance,
+  restaurantId,
+  purchasesGiftCards = [],
+  limit = 10,
+  startingAfter,
+}) {
+  const targetCount = Math.max(1, Number(limit) || 10);
+  const pageSize = Math.min(100, Math.max(targetCount * 2, 20));
+
+  const charges = [];
+  let cursor = startingAfter;
+  let lastChargeId = null;
+  let hasMore = false;
+
+  while (charges.length < targetCount) {
+    const chargesList = await stripeInstance.charges.list({
+      limit: pageSize,
+      ...(cursor ? { starting_after: cursor } : {}),
+      expand: ["data.balance_transaction"],
+    });
+
+    if (!chargesList.data.length) {
+      hasMore = false;
+      break;
+    }
+
+    const formattingContext = await buildChargeFormattingContext({
+      restaurantId,
+      purchasesGiftCards,
+      charges: chargesList.data,
+    });
+
+    for (let index = 0; index < chargesList.data.length; index += 1) {
+      const charge = chargesList.data[index];
+      lastChargeId = charge.id;
+
+      const formatted = formatChargeForDashboard({
+        charge,
+        ...formattingContext,
+      });
+
+      if (formatted) {
+        charges.push(formatted);
+      }
+
+      if (charges.length >= targetCount) {
+        hasMore = index < chargesList.data.length - 1 || chargesList.has_more;
+        break;
+      }
+    }
+
+    if (charges.length >= targetCount) break;
+    if (!chargesList.has_more) {
+      hasMore = false;
+      break;
+    }
+
+    cursor = chargesList.data[chargesList.data.length - 1]?.id || null;
+    if (!cursor) {
+      hasMore = false;
+      break;
+    }
+  }
+
+  return {
+    charges,
+    hasMore,
+    lastChargeId,
   };
 }
 
@@ -52,7 +307,7 @@ router.get("/owner/restaurants/:id/payments", async (req, res) => {
 
   try {
     const restaurant = await RestaurantModel.findById(id).select(
-      "stripeSecretKey purchasesGiftCards.paymentIntentId purchasesGiftCards.purchaseCode",
+      "stripeSecretKey purchasesGiftCards",
     );
     if (!restaurant || !restaurant.stripeSecretKey) {
       return res
@@ -64,25 +319,19 @@ router.get("/owner/restaurants/:id/payments", async (req, res) => {
       decryptApiKey(restaurant.stripeSecretKey),
     );
 
-    const chargesList = await stripeInstance.charges.list({
-      limit: Number(limit),
-      starting_after,
-      expand: ["data.balance_transaction"],
-    });
-
-    const purchaseCodeByPaymentIntent = buildGiftPurchaseCodeMap(
-      restaurant?.purchasesGiftCards,
-    );
-
-    const charges = chargesList.data.map((charge) =>
-      formatChargeForDashboard(charge, purchaseCodeByPaymentIntent),
-    );
+    const { charges, hasMore, lastChargeId } =
+      await fetchVisibleDashboardCharges({
+        stripeInstance,
+        restaurantId: id,
+        purchasesGiftCards: restaurant?.purchasesGiftCards,
+        limit,
+        startingAfter: starting_after,
+      });
 
     return res.status(200).json({
       charges,
-      has_more: chargesList.has_more,
-      last_charge_id:
-        charges.length > 0 ? charges[charges.length - 1].id : null,
+      has_more: hasMore,
+      last_charge_id: lastChargeId,
     });
   } catch (error) {
     console.error("Erreur lors de la récupération des transactions :", error);
@@ -104,7 +353,7 @@ router.get("/owner/restaurants/:id/payments/search", async (req, res) => {
   try {
     // 1) Récupération du restaurant et de sa clé Stripe
     const restaurant = await RestaurantModel.findById(id).select(
-      "stripeSecretKey purchasesGiftCards.paymentIntentId purchasesGiftCards.purchaseCode",
+      "stripeSecretKey purchasesGiftCards",
     );
     if (!restaurant || !restaurant.stripeSecretKey) {
       return res
@@ -116,26 +365,19 @@ router.get("/owner/restaurants/:id/payments/search", async (req, res) => {
       decryptApiKey(restaurant.stripeSecretKey),
     );
 
-    // 2) Récupération de toutes les charges
-
-    const chargesList = await stripeInstance.charges.list({
-      limit: Number(limit),
-      expand: ["data.balance_transaction"],
+    const { charges: allCharges } = await fetchVisibleDashboardCharges({
+      stripeInstance,
+      restaurantId: id,
+      purchasesGiftCards: restaurant?.purchasesGiftCards,
+      limit,
     });
 
-    // 3) Filtrer uniquement sur billing_details.name (en minuscule)
+    // 3) Filtrer sur le nom client réellement affiché
     const lowerQuery = query.toLowerCase();
-    const filteredCharges = chargesList.data.filter((charge) => {
-      const billingName = (charge.billing_details?.name || "").toLowerCase();
-      return billingName.includes(lowerQuery);
-    });
-
-    const purchaseCodeByPaymentIntent = buildGiftPurchaseCodeMap(
-      restaurant?.purchasesGiftCards,
-    );
-
-    const charges = filteredCharges.map((charge) =>
-      formatChargeForDashboard(charge, purchaseCodeByPaymentIntent),
+    const charges = allCharges.filter((charge) =>
+      String(charge?.customer || "")
+        .toLowerCase()
+        .includes(lowerQuery),
     );
 
     // 5) Retour au client
@@ -387,7 +629,9 @@ router.post("/owner/restaurants/:id/payments/refund", async (req, res) => {
   const { paymentId } = req.body; // ID du paiement (charge.id)
 
   try {
-    const restaurant = await RestaurantModel.findById(id);
+    const restaurant = await RestaurantModel.findById(id).select(
+      "stripeSecretKey purchasesGiftCards giftCardSold",
+    );
     if (!restaurant || !restaurant.stripeSecretKey) {
       return res
         .status(404)
@@ -398,40 +642,47 @@ router.post("/owner/restaurants/:id/payments/refund", async (req, res) => {
       decryptApiKey(restaurant.stripeSecretKey),
     );
 
+    const charge = await stripeInstance.charges.retrieve(paymentId);
+    const paymentIntentId = getStripePaymentIntentId(charge?.payment_intent);
+    const giftPurchaseByPaymentIntent = buildGiftPurchaseMap(
+      restaurant?.purchasesGiftCards,
+    );
+    const refundedGiftPurchase =
+      giftPurchaseByPaymentIntent.get(paymentIntentId) || null;
+
     // On crée le remboursement via Stripe
     const refund = await stripeInstance.refunds.create({
       charge: paymentId,
     });
 
-    // 🔁 MAJ stats Stripe cartes cadeaux
-    if (!restaurant.giftCardSold) {
-      restaurant.giftCardSold = { totalSold: 0, totalRefunded: 0 };
+    if (refundedGiftPurchase) {
+      // 🔁 MAJ stats Stripe cartes cadeaux
+      if (!restaurant.giftCardSold) {
+        restaurant.giftCardSold = { totalSold: 0, totalRefunded: 0 };
+      }
+      if (restaurant.giftCardSold.totalSold > 0) {
+        restaurant.giftCardSold.totalSold -= 1;
+      }
+      restaurant.giftCardSold.totalRefunded += 1;
     }
-    if (restaurant.giftCardSold.totalSold > 0) {
-      restaurant.giftCardSold.totalSold -= 1;
+
+    if (refundedGiftPurchase) {
+      // 🔔 SSE: remboursement effectué + stats à jour
+      await restaurant.save();
+
+      broadcastToRestaurant(String(restaurant._id), {
+        type: "giftcard_refunded",
+        paymentId,
+        giftCardStats: restaurant.giftCardSold,
+      });
     }
-    restaurant.giftCardSold.totalRefunded += 1;
-
-    await restaurant.save();
-
-    await restaurant.save();
-
-    // 🔔 SSE: remboursement effectué + stats à jour
-    broadcastToRestaurant(String(restaurant._id), {
-      type: "giftcard_refunded",
-      paymentId,
-      giftCardStats: restaurant.giftCardSold,
-    });
 
     return res.status(200).json({
       success: true,
       message: "Remboursement effectué avec succès",
-      refund,
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: "Remboursement effectué avec succès",
+      transactionType: refundedGiftPurchase
+        ? "gift_card_purchase"
+        : "bank_hold_capture",
       refund,
     });
   } catch (error) {

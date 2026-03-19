@@ -48,7 +48,7 @@ export default function TransactionsDashboardComponent(props) {
         `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${restaurantId}/payouts/${payoutId}/payments`,
         {
           params: { limit: 10 },
-        }
+        },
       );
 
       const { payoutTransactions, has_more, last_tx_id } = response.data;
@@ -64,7 +64,7 @@ export default function TransactionsDashboardComponent(props) {
     } catch (error) {
       console.error(
         "Erreur lors du fetch des transactions d'un payout :",
-        error
+        error,
       );
     } finally {
       setPayoutDataLoading((prev) => ({ ...prev, [payoutId]: false }));
@@ -89,7 +89,7 @@ export default function TransactionsDashboardComponent(props) {
             limit: 10,
             starting_after: current.lastTxId,
           },
-        }
+        },
       );
 
       const { payoutTransactions, has_more, last_tx_id } = response.data;
@@ -105,7 +105,7 @@ export default function TransactionsDashboardComponent(props) {
     } catch (error) {
       console.error(
         "Erreur lors du load more transactions d'un payout :",
-        error
+        error,
       );
     } finally {
       setLoadMoreLoading((prev) => ({ ...prev, [payoutId]: false }));
@@ -127,17 +127,17 @@ export default function TransactionsDashboardComponent(props) {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex flex-col gap-1">
             <h2 className="text-base tablet:text-lg font-semibold text-darkBlue">
-              {t("title", "Transactions cartes cadeaux")}
+              {t("title", "Transactions")}
             </h2>
             <p className="text-[11px] tablet:text-xs text-darkBlue/60 max-w-xl">
               {selectedOption === "payouts"
                 ? t(
                     "payouts.subtitle",
-                    "Visualisez les virements reçus et les paiements associés."
+                    "Visualisez les virements reçus et les paiements associés.",
                   )
                 : t(
                     "payments.subtitle",
-                    "Consultez le détail des paiements cartes cadeaux et filtrez par client."
+                    "Consultez les achats de cartes cadeaux et les empreintes bancaires capturées, puis filtrez par client.",
                   )}
             </p>
           </div>
@@ -204,9 +204,7 @@ export default function TransactionsDashboardComponent(props) {
             <div className="flex flex-wrap gap-3">
               <button
                 type="button"
-                onClick={() =>
-                  props.onFetchPaymentsByClient(props.clientName)
-                }
+                onClick={() => props.onFetchPaymentsByClient(props.clientName)}
                 className="
                   inline-flex items-center justify-center gap-2 rounded-lg
                   bg-blue px-4 py-2 text-xs tablet:text-sm font-medium text-white

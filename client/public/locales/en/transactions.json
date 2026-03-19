@@ -1,7 +1,8 @@
 {
+  "title": "Transactions",
   "select": {
     "payouts": "Payout details",
-    "payments": "Payment details"
+    "payments": "Transaction details"
   },
   "payouts": {
     "information": {
@@ -47,12 +48,26 @@
     "empty": "No payouts found"
   },
   "payments": {
+    "title": "Transactions",
+    "subtitle": "View gift card purchases and captured bank holds, then filter by customer.",
     "date": "Date",
     "customer": "Customer",
+    "customerFallback": "Not provided",
+    "unknownCustomer": "Unknown customer",
+    "type": "Type",
     "giftCode": "Gift code",
     "grossAmount": "Amount paid",
     "fees": "Stripe fees",
     "netAmount": "Net amount",
+    "types": {
+      "giftCardPurchase": "Gift card purchase",
+      "bankHoldCapture": "Captured bank hold",
+      "other": "Other transaction"
+    },
+    "typeLabels": {
+      "giftCardPurchase": "Gift card",
+      "bankHoldCapture": "Captured bank hold"
+    },
     "status": {
       "title": "Status",
       "succeeded": "Succeeded",
@@ -74,9 +89,55 @@
     "refunding": "Refunding...",
     "loading": "Loading...",
     "loadMore": "Load more",
-    "empty": "No payments found",
+    "empty": "No transactions found",
+    "sourceStatus": {
+      "gift": {
+        "valid": "Valid",
+        "used": "Used",
+        "expired": "Expired",
+        "archived": "Archived"
+      },
+      "bankHold": {
+        "captured": "Captured",
+        "authorized": "Authorized",
+        "released": "Released"
+      }
+    },
+    "drawer": {
+      "title": "Transaction details",
+      "summary": "Summary",
+      "close": "Close",
+      "sections": {
+        "payment": "Payment",
+        "giftCard": "Gift card",
+        "reservation": "Reservation",
+        "bankHold": "Bank hold"
+      },
+      "fields": {
+        "type": "Type",
+        "paymentIntent": "PaymentIntent",
+        "chargeId": "Stripe charge",
+        "card": "Card",
+        "receipt": "Open Stripe receipt",
+        "sourceStatus": "Source status",
+        "beneficiary": "Beneficiary",
+        "buyer": "Buyer",
+        "email": "Email",
+        "phone": "Phone",
+        "value": "Value",
+        "validUntil": "Valid until",
+        "description": "Description",
+        "reservationDate": "Reservation date",
+        "reservationTime": "Time",
+        "guests": "Guests",
+        "reservationStatus": "Reservation status",
+        "capturedAt": "Captured at",
+        "table": "Table",
+        "commentary": "Commentary"
+      }
+    },
     "modale": {
-      "title": "Payment refund",
+      "title": "Transaction refund",
       "infoFirst": "After issuing a refund, the customer typically receives it within 5 to 10 business days.",
       "infoSecond": "Note that some refunds issued shortly after the initial payment may appear as a void. In this case, the original payment simply disappears from the customer's bank statement without a separate credit being issued.",
       "buttons": {
