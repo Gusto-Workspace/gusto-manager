@@ -126,6 +126,36 @@ const reservationBankHoldSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const reservationEmailTemplateContentSchema = new mongoose.Schema(
+  {
+    subject: { type: String, default: "" },
+    body: { type: String, default: "" },
+  },
+  { _id: false },
+);
+
+const reservationEmailTemplatesSchema = new mongoose.Schema(
+  {
+    pending: {
+      type: reservationEmailTemplateContentSchema,
+      default: () => ({}),
+    },
+    confirmed: {
+      type: reservationEmailTemplateContentSchema,
+      default: () => ({}),
+    },
+    canceled: {
+      type: reservationEmailTemplateContentSchema,
+      default: () => ({}),
+    },
+    bank_hold_action_required: {
+      type: reservationEmailTemplateContentSchema,
+      default: () => ({}),
+    },
+  },
+  { _id: false },
+);
+
 // Sous-schéma pour les paramètres de réservation
 const reservationParametersSchema = new mongoose.Schema({
   same_hours_as_restaurant: { type: Boolean, default: true },
@@ -163,6 +193,10 @@ const reservationParametersSchema = new mongoose.Schema({
   table_occupancy_lunch_minutes: { type: Number, min: 1 },
   table_occupancy_dinner_minutes: { type: Number, min: 1 },
   floorplan: { type: floorplanSchema, default: () => ({}) },
+  email_templates: {
+    type: reservationEmailTemplatesSchema,
+    default: () => ({}),
+  },
 
   // Horaires & pauses
   reservation_hours: { type: [openingHoursSchema], default: [] },

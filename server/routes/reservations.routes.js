@@ -23,6 +23,7 @@ const {
 // SERVICE MAILS RESERVATIONS
 const {
   sendReservationEmail,
+  sanitizeReservationEmailTemplatesInput,
 } = require("../services/reservations-mailer.service");
 
 // SERVICE CUSTOMERS
@@ -1215,6 +1216,7 @@ async function finalizePublicBankHoldReservation({
       sendReservationEmail("pending", {
         reservation,
         restaurantName,
+        restaurant,
       }).catch((e) => {
         console.error(
           "Email finalize(public/pending) failed:",
@@ -1227,6 +1229,7 @@ async function finalizePublicBankHoldReservation({
       sendReservationEmail("confirmed", {
         reservation,
         restaurantName,
+        restaurant,
       }).catch((e) => {
         console.error(
           "Email finalize(public/confirmed) failed:",
@@ -1419,11 +1422,23 @@ router.put(
               existing.table_blocked_ranges || [],
             );
 
+      const hasEmailTemplates = Object.prototype.hasOwnProperty.call(
+        parameters,
+        "email_templates",
+      );
+      const nextEmailTemplates = hasEmailTemplates
+        ? sanitizeReservationEmailTemplatesInput({
+            ...(existing.email_templates || {}),
+            ...(parameters.email_templates || {}),
+          })
+        : existing.email_templates || {};
+
       restaurant.reservations.parameters = {
         ...existing,
         ...parameters,
         blocked_ranges: nextBlocked,
         table_blocked_ranges: nextTableBlocked,
+        email_templates: nextEmailTemplates,
       };
 
       await restaurant.save();
@@ -1471,6 +1486,14 @@ router.put(
       });
     } catch (error) {
       console.error("Error updating reservation parameters:", error);
+      if (Number(error?.statusCode || 0) === 400) {
+        return res.status(400).json({
+          message:
+            error?.message ||
+            "Les modèles d’emails contiennent des variables invalides.",
+          details: error?.details || null,
+        });
+      }
       return res.status(500).json({ message: "Internal server error" });
     }
   },
@@ -2251,6 +2274,7 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
           sendReservationEmail("pending", {
             reservation: newReservation,
             restaurantName,
+            restaurant,
           })
             .then((r) => {
               if (r?.skipped)
@@ -2266,6 +2290,7 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
           sendReservationEmail("confirmed", {
             reservation: newReservation,
             restaurantName,
+            restaurant,
           })
             .then((r) => {
               if (r?.skipped)
@@ -2616,6 +2641,7 @@ router.post(
           sendReservationEmail("confirmed", {
             reservation: newReservation,
             restaurantName,
+            restaurant,
           })
             .then((r) => {
               if (r?.skipped) {
@@ -2716,6 +2742,7 @@ router.post(
             {
               reservation: newReservation,
               restaurantName,
+              restaurant,
               actionUrl,
               expiresAt: bankHoldExpiresAt,
               bankHoldAmountTotal: newReservation?.bankHold?.amountTotal,
@@ -3075,7 +3102,11 @@ router.put(
       try {
         // Pending -> Confirmed
         if (prevStatus === "Pending" && nextStatus === "Confirmed") {
-          sendReservationEmail("confirmed", { reservation, restaurantName })
+          sendReservationEmail("confirmed", {
+            reservation,
+            restaurantName,
+            restaurant,
+          })
             .then(
               (r) => r?.skipped && logSkip("confirmed", { reason: r.reason }),
             )
@@ -3085,7 +3116,11 @@ router.put(
         }
 
         if (prevStatus !== "Canceled" && nextStatus === "Canceled") {
-          sendReservationEmail("canceled", { reservation, restaurantName })
+          sendReservationEmail("canceled", {
+            reservation,
+            restaurantName,
+            restaurant,
+          })
             .then(
               (r) => r?.skipped && logSkip("canceled", { reason: r.reason }),
             )
@@ -3095,7 +3130,11 @@ router.put(
         }
 
         if (prevStatus !== "Rejected" && nextStatus === "Rejected") {
-          sendReservationEmail("rejected", { reservation, restaurantName })
+          sendReservationEmail("rejected", {
+            reservation,
+            restaurantName,
+            restaurant,
+          })
             .then(
               (r) => r?.skipped && logSkip("rejected", { reason: r.reason }),
             )
