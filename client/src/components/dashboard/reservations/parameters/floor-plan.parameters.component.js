@@ -645,7 +645,7 @@ export default function FloorPlanParametersComponent({
             <div className="min-w-0">
               <p className={title}>Plan de salle</p>
               <p className={hint}>
-                Créer les salles (salle principale, terrasse…) puis placer des
+                Créez les salles (salle principale, terrasse…) puis placer des
                 tables sur le plan.
               </p>
             </div>
