@@ -25,11 +25,14 @@ const CLOSE_MS = 280;
 const SWIPE_VELOCITY = 0.6;
 const CLOSE_RATIO = 0.25;
 
-function buildValidationState(templates) {
+function buildValidationState(
+  templates,
+  definitions = RESERVATION_EMAIL_TEMPLATE_DEFINITIONS,
+) {
   const currentTemplates = buildReservationEmailTemplatesState(templates);
   const nextValidationState = {};
 
-  for (const definition of RESERVATION_EMAIL_TEMPLATE_DEFINITIONS) {
+  for (const definition of definitions) {
     const current = currentTemplates?.[definition.key] || {};
     nextValidationState[definition.key] = {
       subject: getInvalidReservationEmailTemplateTokens(
@@ -112,6 +115,7 @@ export default function EmailsParametersComponent({
   savedTemplates,
   onTemplatesChange,
   restaurantName,
+  bankHoldEnabled = false,
   saveUI,
   onSave,
 }) {
@@ -131,6 +135,24 @@ export default function EmailsParametersComponent({
   const [showCloseWarning, setShowCloseWarning] = useState(false);
   const [showSavedFeedback, setShowSavedFeedback] = useState(false);
   const [validationState, setValidationState] = useState({});
+  const templateDefinitions = useMemo(
+    () =>
+      RESERVATION_EMAIL_TEMPLATE_DEFINITIONS.filter(
+        (definition) =>
+          bankHoldEnabled || definition.key !== "bank_hold_action_required",
+      ),
+    [bankHoldEnabled],
+  );
+  const visibleValidationState = useMemo(
+    () =>
+      Object.fromEntries(
+        templateDefinitions.map((definition) => [
+          definition.key,
+          validationState?.[definition.key] || { subject: [], body: [] },
+        ]),
+      ),
+    [templateDefinitions, validationState],
+  );
 
   const prevBodyOverflowRef = useRef("");
   const prevHtmlOverflowRef = useRef("");
@@ -161,7 +183,7 @@ export default function EmailsParametersComponent({
       )
     : null;
   const selectedValidation = drawerTemplateKey
-    ? validationState?.[drawerTemplateKey] || { subject: [], body: [] }
+    ? visibleValidationState?.[drawerTemplateKey] || { subject: [], body: [] }
     : { subject: [], body: [] };
   const hasUnsavedEmailChanges = useMemo(
     () =>
@@ -390,14 +412,16 @@ export default function EmailsParametersComponent({
   }
 
   async function handleSaveClick() {
-    const nextValidationState = buildValidationState(currentTemplates);
+    const nextValidationState = buildValidationState(
+      currentTemplates,
+      templateDefinitions,
+    );
     setValidationState(nextValidationState);
 
     if (hasValidationErrors(nextValidationState)) {
-      const firstInvalidDefinition =
-        RESERVATION_EMAIL_TEMPLATE_DEFINITIONS.find((definition) =>
-          hasTemplateValidationErrors(nextValidationState?.[definition.key]),
-        );
+      const firstInvalidDefinition = templateDefinitions.find((definition) =>
+        hasTemplateValidationErrors(nextValidationState?.[definition.key]),
+      );
 
       if (firstInvalidDefinition) {
         setDrawerTemplateKey(firstInvalidDefinition.key);
@@ -469,12 +493,11 @@ export default function EmailsParametersComponent({
                 du modèle à modifier.
               </p>
             </div>
-
           </div>
 
           <div className={divider} />
 
-          {hasValidationErrors(validationState) ? (
+          {hasValidationErrors(visibleValidationState) ? (
             <div className="mb-4 rounded-2xl border border-red/20 bg-red/5 px-4 py-3 text-sm text-red">
               Certaines variables ne sont pas reconnues. Ouvrez le modèle
               concerné pour corriger les balises invalides.
@@ -482,8 +505,10 @@ export default function EmailsParametersComponent({
           ) : null}
 
           <div className="space-y-3">
-            {RESERVATION_EMAIL_TEMPLATE_DEFINITIONS.map((definition) => {
-              const currentValidation = validationState?.[definition.key] || {
+            {templateDefinitions.map((definition) => {
+              const currentValidation = visibleValidationState?.[
+                definition.key
+              ] || {
                 subject: [],
                 body: [],
               };

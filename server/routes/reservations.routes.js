@@ -1404,6 +1404,28 @@ router.put(
         ? restaurant.reservations.parameters.toObject()
         : restaurant.reservations.parameters || {};
 
+      const nextBankHold =
+        Object.prototype.hasOwnProperty.call(parameters, "bank_hold") &&
+        parameters.bank_hold &&
+        typeof parameters.bank_hold === "object"
+          ? {
+              ...(existing.bank_hold || {}),
+              ...parameters.bank_hold,
+            }
+          : existing.bank_hold || {};
+
+      if (
+        Boolean(nextBankHold?.enabled) &&
+        !getRestaurantStripeSecretKey(restaurant)
+      ) {
+        return res.status(400).json({
+          message:
+            "Stripe doit être configuré avant d’activer l’empreinte bancaire.",
+          code: "missing_stripe_key",
+          stripeReady: false,
+        });
+      }
+
       const nextBlocked =
         Object.prototype.hasOwnProperty.call(parameters, "blocked_ranges") &&
         Array.isArray(parameters.blocked_ranges)

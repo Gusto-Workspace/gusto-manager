@@ -372,6 +372,13 @@ export default function ParametersReservationComponent(props) {
   const table_occupancy_dinner_minutes = watch(
     "table_occupancy_dinner_minutes",
   );
+  const stripeReady = Boolean(
+    String(
+      props.restaurantData?.stripeSecretKey ||
+        restaurantContext.restaurantData?.stripeSecretKey ||
+        "",
+    ).trim(),
+  );
 
   // Detect dirty per section
   useEffect(() => {
@@ -794,6 +801,7 @@ export default function ParametersReservationComponent(props) {
           register={register}
           watch={watch}
           errors={errors}
+          stripeReady={stripeReady}
           saveUI={sectionUI.bank_hold}
           onSave={() => saveSection("bank_hold")}
         />
@@ -813,6 +821,7 @@ export default function ParametersReservationComponent(props) {
           savedTemplates={initialSnapRef.current?.emails}
           onTemplatesChange={setEmailTemplates}
           restaurantName={props.restaurantData?.name}
+          bankHoldEnabled={Boolean(bank_hold_enabled)}
           saveUI={sectionUI.emails}
           onSave={() => saveSection("emails")}
         />

@@ -202,9 +202,9 @@ export default function AutomationsParametersComponent({
             Durée d’occupation d’une table
           </p>
           <p className="text-xs text-darkBlue/50">
-            Utilisée pour clôturer automatiquement une réservation et (si
-            activé) calculer les disponibilités. Ex : 90 min le midi, 120 min le
-            soir.
+            Utilisée pour clôturer automatiquement une réservation (si activé)
+            et calculer les disponibilités (si activé). Ex : 90 min le midi, 120
+            min le soir.
           </p>
 
           <div className="mt-3 grid grid-cols-1 midTablet:grid-cols-2 gap-3">
