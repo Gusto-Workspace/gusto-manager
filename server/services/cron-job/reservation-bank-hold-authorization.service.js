@@ -4,6 +4,9 @@ const Stripe = require("stripe");
 const ReservationModel = require("../../models/reservation.model");
 const RestaurantModel = require("../../models/restaurant.model");
 const { decryptApiKey } = require("../encryption.service");
+const {
+  buildReservationBankHoldStripeMetadata,
+} = require("../reservation-bank-hold-metadata.service");
 
 const BATCH_SIZE = 50;
 const LOCK_MAX_AGE_MS = 10 * 60 * 1000;
@@ -155,11 +158,10 @@ async function runReservationBankHoldAuthorization() {
         off_session: true,
         confirm: true,
         capture_method: "manual",
-        metadata: {
-          reservationId: String(locked._id),
-          restaurantId: String(locked.restaurant_id),
+        metadata: buildReservationBankHoldStripeMetadata({
+          reservation: locked,
           type: "reservation_bank_hold_scheduled_authorization",
-        },
+        }),
       });
 
       await markBankHoldAuthorized(locked._id, paymentIntent);

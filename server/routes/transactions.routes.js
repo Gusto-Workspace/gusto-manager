@@ -7,6 +7,9 @@ const ReservationModel = require("../models/reservation.model");
 
 // CRYPTO
 const { decryptApiKey } = require("../services/encryption.service");
+const {
+  extractReservationSnapshotFromStripeMetadata,
+} = require("../services/reservation-bank-hold-metadata.service");
 
 // SSE
 const { broadcastToRestaurant } = require("../services/sse-bus.service");
@@ -163,6 +166,20 @@ function normalizeReservationForTransaction(reservation) {
     table: reservation?.table || null,
     bankHold: reservation?.bankHold || {},
   };
+}
+
+function mergeReservationSnapshots(primaryReservation, fallbackReservation) {
+  if (primaryReservation && fallbackReservation) {
+    return {
+      ...fallbackReservation,
+      ...primaryReservation,
+      bankHold:
+        primaryReservation?.bankHold || fallbackReservation?.bankHold || {},
+      table: primaryReservation?.table || fallbackReservation?.table || null,
+    };
+  }
+
+  return primaryReservation || fallbackReservation || null;
 }
 
 async function buildReservationPaymentMaps({
@@ -348,8 +365,13 @@ async function fetchCapturedBankHoldFallbackTransactions({
             chargeId ||
             `captured-bank-hold-${normalizedReservation.reservationId || paymentIntentId}`,
           payment_intent:
-            charge?.payment_intent || paymentIntentId || charge?.payment_intent,
+            (charge?.payment_intent && typeof charge.payment_intent === "object"
+              ? charge.payment_intent
+              : paymentIntent) ||
+            charge?.payment_intent ||
+            paymentIntentId,
           metadata: {
+            ...(paymentIntent?.metadata || {}),
             ...(charge?.metadata || {}),
             reservationId:
               String(charge?.metadata?.reservationId || "").trim() ||
@@ -421,8 +443,15 @@ function formatChargeForDashboard({
     reservationByPaymentIntent.get(paymentIntentId) ||
     reservationById.get(reservationId) ||
     null;
+  const metadataReservation = extractReservationSnapshotFromStripeMetadata(
+    (key) => getStripeMetadataValue(charge, key),
+  );
+  const resolvedReservation = mergeReservationSnapshots(
+    matchedReservation,
+    metadataReservation,
+  );
 
-  if (!giftPurchase && !isBankHoldTransaction && !matchedReservation) {
+  if (!giftPurchase && !isBankHoldTransaction && !resolvedReservation) {
     return null;
   }
 
@@ -475,8 +504,8 @@ function formatChargeForDashboard({
   }
 
   const reservationCustomerName = buildFullName(
-    matchedReservation?.customerFirstName,
-    matchedReservation?.customerLastName,
+    resolvedReservation?.customerFirstName,
+    resolvedReservation?.customerLastName,
   );
 
   return {
@@ -485,19 +514,19 @@ function formatChargeForDashboard({
     customer: reservationCustomerName || fallbackCustomerLabel,
     purchaseCode: "",
     giftPurchase: null,
-    reservation: matchedReservation
+    reservation: resolvedReservation
       ? {
-          reservationId: matchedReservation?.reservationId || "",
-          customerFirstName: matchedReservation?.customerFirstName || "",
-          customerLastName: matchedReservation?.customerLastName || "",
-          customerEmail: matchedReservation?.customerEmail || "",
-          customerPhone: matchedReservation?.customerPhone || "",
-          numberOfGuests: matchedReservation?.numberOfGuests || 0,
-          reservationDate: matchedReservation?.reservationDate || null,
-          reservationTime: matchedReservation?.reservationTime || "",
-          reservationStatus: matchedReservation?.reservationStatus || "",
-          commentary: matchedReservation?.commentary || "",
-          table: matchedReservation?.table || null,
+          reservationId: resolvedReservation?.reservationId || "",
+          customerFirstName: resolvedReservation?.customerFirstName || "",
+          customerLastName: resolvedReservation?.customerLastName || "",
+          customerEmail: resolvedReservation?.customerEmail || "",
+          customerPhone: resolvedReservation?.customerPhone || "",
+          numberOfGuests: resolvedReservation?.numberOfGuests || 0,
+          reservationDate: resolvedReservation?.reservationDate || null,
+          reservationTime: resolvedReservation?.reservationTime || "",
+          reservationStatus: resolvedReservation?.reservationStatus || "",
+          commentary: resolvedReservation?.commentary || "",
+          table: resolvedReservation?.table || null,
         }
       : null,
     bankHold: {
