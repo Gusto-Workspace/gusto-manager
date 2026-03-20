@@ -594,6 +594,7 @@ export default function FloorPlanParametersComponent({
                 restaurantId={restaurantId}
                 setRestaurantData={setRestaurantData}
                 room={activeRoom}
+                allRooms={rooms}
                 roomName={roomName}
                 tablesCatalog={localCatalog}
                 placedTableRefIdsOtherRooms={placedInOtherRooms}
@@ -644,7 +645,7 @@ export default function FloorPlanParametersComponent({
             <div className="min-w-0">
               <p className={title}>Plan de salle</p>
               <p className={hint}>
-                Créer les salles (salle principale, terrasse…) puis placer des
+                Créez les salles (salle principale, terrasse…) puis placer des
                 tables sur le plan.
               </p>
             </div>
@@ -697,19 +698,6 @@ export default function FloorPlanParametersComponent({
               </DndContext>
             )}
           </div>
-
-          {/* petit warning si catalogue vide */}
-          {localCatalog.length === 0 && (
-            <div className="mt-4 rounded-2xl border border-orange/30 bg-orange/10 px-4 py-3 text-sm text-darkBlue/80">
-              <p className="font-semibold text-darkBlue">
-                Catalogue de tables vide
-              </p>
-              <p className="mt-1 text-darkBlue/70">
-                Ajoutez d’abord une table via “Nouvelle table” dans l’éditeur de
-                salle, puis placez-la sur le plan.
-              </p>
-            </div>
-          )}
         </div>
       </div>
     </>

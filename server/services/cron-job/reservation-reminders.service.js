@@ -85,13 +85,14 @@ async function runReservationReminder24h() {
 
       const restaurant = await RestaurantModel.findById(
         locked.restaurant_id,
-      ).select("name");
+      ).select("name reservations.parameters.email_templates");
 
       const restaurantName = restaurant?.name || "Restaurant";
 
       const result = await sendReservationEmail("reminder24h", {
         reservation: locked,
         restaurantName,
+        restaurant,
       });
 
       if (result?.skipped) {
@@ -105,10 +106,6 @@ async function runReservationReminder24h() {
       }
 
       await markReminderSent(locked._id);
-
-      console.log("[reservation-reminder-sent]", {
-        reservationId: String(locked._id),
-      });
     } catch (e) {
       console.error(
         "[reservation-reminder-error]",

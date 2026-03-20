@@ -38,6 +38,20 @@ export default function DashboardComponent(props) {
   const [monthlySales, setMonthlySales] = useState([]);
   const [monthlyDataLoading, setMonthlyDataLoading] = useState(true);
 
+  function mergeUniqueTransactions(previousPayments = [], nextPayments = []) {
+    const seen = new Set();
+
+    return [
+      ...previousPayments,
+      ...(Array.isArray(nextPayments) ? nextPayments : []),
+    ].filter((payment) => {
+      const paymentId = String(payment?.id || "").trim();
+      if (!paymentId || seen.has(paymentId)) return false;
+      seen.add(paymentId);
+      return true;
+    });
+  }
+
   useEffect(() => {
     setShowPaymentsDetails(false);
 
@@ -74,18 +88,18 @@ export default function DashboardComponent(props) {
             limit: 10,
             starting_after,
           },
-        }
+        },
       );
 
       const { charges, has_more, last_charge_id } = response.data;
 
-      setPayments((prev) => [...prev, ...charges]);
+      setPayments((prev) => mergeUniqueTransactions(prev, charges));
       setHasMorePayments(has_more);
       setLastChargeId(last_charge_id);
     } catch (error) {
       console.error(
         "Erreur lors de la récupération des cartes cadeaux :",
-        error
+        error,
       );
     } finally {
       setDataLoading(false);
@@ -107,7 +121,7 @@ export default function DashboardComponent(props) {
             query,
             limit: 100,
           },
-        }
+        },
       );
 
       setPayments(response.data.charges);
@@ -115,7 +129,7 @@ export default function DashboardComponent(props) {
     } catch (error) {
       console.error(
         "Erreur lors de la recherche des paiements pour le client :",
-        error
+        error,
       );
     } finally {
       setFilterLoading(false);
@@ -142,7 +156,7 @@ export default function DashboardComponent(props) {
             limit: 10,
             starting_after,
           },
-        }
+        },
       );
 
       const { payouts, has_more, last_payout_id } = response.data;
@@ -176,7 +190,7 @@ export default function DashboardComponent(props) {
     setMonthlyDataLoading(true);
     try {
       const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${props.restaurantData._id}/payments/monthly-sales`
+        `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${props.restaurantData._id}/payments/monthly-sales`,
       );
       setMonthlySales(response.data.monthlySales);
     } catch (error) {
@@ -195,7 +209,7 @@ export default function DashboardComponent(props) {
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${props.restaurantData._id}/visits/monthly`,
         {
           params: { months: 13 },
-        }
+        },
       );
       setMonthlyVisits(response.data.data);
     } catch (error) {
@@ -206,12 +220,20 @@ export default function DashboardComponent(props) {
   }
 
   // ---- Fonction appelée quand un paiement est remboursé avec succès ----
-  function handleRefundSuccess(paymentId) {
-    // On met à jour l'état local "payments" pour définir refunded = true
+  function handleRefundSuccess(paymentId, refundData = {}) {
+    const refundedAt =
+      refundData?.refundedAt ?? refundData?.refund?.created ?? null;
+
     setPayments((prevPayments) =>
       prevPayments.map((p) =>
-        p.id === paymentId ? { ...p, refunded: true } : p
-      )
+        p.id === paymentId
+          ? {
+              ...p,
+              refunded: true,
+              refundedAt,
+            }
+          : p,
+      ),
     );
   }
 
@@ -221,7 +243,7 @@ export default function DashboardComponent(props) {
   // Ne garde que les cartes qui n’ont pas d’optionKey (toujours visibles)
   // ou celles dont options[optionKey] est à true
   const mainDashboardCards = dashboardData.filter(
-    (card) => !card.optionKey || opts[card.optionKey] === true
+    (card) => !card.optionKey || opts[card.optionKey] === true,
   );
 
   return (
@@ -261,7 +283,7 @@ export default function DashboardComponent(props) {
                 ChartComponent={ChartComp}
               />
             );
-          }
+          },
         )}
       </div>
 
@@ -310,7 +332,7 @@ export default function DashboardComponent(props) {
                     ChartComponent={DonutChartComponent}
                   />
                 );
-              }
+              },
             )}
 
             <LastPayoutDashboardComponent

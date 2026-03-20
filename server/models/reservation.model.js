@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 
 const TableSchema = new mongoose.Schema(
   {
-    tableId: { type: mongoose.Schema.Types.ObjectId, default: null },
+    tableIds: { type: [mongoose.Schema.Types.ObjectId], default: [] },
     name: { type: String, default: "" },
     seats: { type: Number, default: 0 },
     source: { type: String, enum: ["configured", "manual"], default: "manual" },

@@ -21,10 +21,16 @@ import RangesParametersComponent from "../../reservations/parameters/ranges.para
 import HoursParametersComponent from "../../reservations/parameters/hours.parameters.component";
 import SlotsParametersComponent from "../../reservations/parameters/slots.parameters.component";
 import AutomationsParametersComponent from "../../reservations/parameters/automations.parameters.component";
+import EmailsParametersComponent from "../../reservations/parameters/emails.parameters.component";
 import SmartParametersComponent from "../../reservations/parameters/smart.parameters.component";
 import FloorPlanParametersComponent from "../../reservations/parameters/floor-plan.parameters.component";
 import SidebarReservationsWebapp from "../_shared/sidebar.webapp";
 import BankHoldParametersComponent from "../../reservations/parameters/bank-hold.parameters.component";
+import {
+  areReservationEmailTemplatesEqual,
+  buildReservationEmailTemplatesPayload,
+  buildReservationEmailTemplatesState,
+} from "../../../_shared/reservations/email-templates.reservations";
 
 // Helpers
 const statusLabel = (status) => {
@@ -127,6 +133,9 @@ export default function ParametersReservationComponent(props) {
   const [unassignedToFixError, setUnassignedToFixError] = useState("");
 
   const [tablesCatalog, setTablesCatalog] = useState([]);
+  const [emailTemplates, setEmailTemplates] = useState(
+    buildReservationEmailTemplatesState(),
+  );
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const openSidebar = () => setSidebarOpen(true);
@@ -208,6 +217,7 @@ export default function ParametersReservationComponent(props) {
     slots: null,
     bank_hold: null,
     automations: null,
+    emails: null,
     smart: null,
   });
 
@@ -216,6 +226,7 @@ export default function ParametersReservationComponent(props) {
     slots: { dirty: false, saving: false, saved: false },
     bank_hold: { dirty: false, saving: false, saved: false },
     automations: { dirty: false, saving: false, saved: false },
+    emails: { dirty: false, saving: false, saved: false },
     smart: { dirty: false, saving: false, saved: false },
   });
 
@@ -299,6 +310,9 @@ export default function ParametersReservationComponent(props) {
       setIsLoading(false);
       setDurationError({ lunch: false, dinner: false });
       setTablesCatalog(parameters.tables || []);
+      setEmailTemplates(
+        buildReservationEmailTemplatesState(parameters.email_templates),
+      );
 
       // Snapshot initial par section (utilisé pour détecter dirty)
       const snap = {
@@ -323,6 +337,7 @@ export default function ParametersReservationComponent(props) {
           table_occupancy_lunch_minutes: nextLunch,
           table_occupancy_dinner_minutes: nextDinner,
         },
+        emails: buildReservationEmailTemplatesState(parameters.email_templates),
         smart: {
           manage_disponibilities: parameters.manage_disponibilities ?? false,
         },
@@ -335,6 +350,7 @@ export default function ParametersReservationComponent(props) {
         slots: { dirty: false, saving: false, saved: false },
         bank_hold: { dirty: false, saving: false, saved: false },
         automations: { dirty: false, saving: false, saved: false },
+        emails: { dirty: false, saving: false, saved: false },
         smart: { dirty: false, saving: false, saved: false },
       });
     }
@@ -355,6 +371,13 @@ export default function ParametersReservationComponent(props) {
   const table_occupancy_lunch_minutes = watch("table_occupancy_lunch_minutes");
   const table_occupancy_dinner_minutes = watch(
     "table_occupancy_dinner_minutes",
+  );
+  const stripeReady = Boolean(
+    String(
+      props.restaurantData?.stripeSecretKey ||
+        restaurantContext.restaurantData?.stripeSecretKey ||
+        "",
+    ).trim(),
   );
 
   // Detect dirty per section
@@ -418,6 +441,17 @@ export default function ParametersReservationComponent(props) {
     table_occupancy_lunch_minutes,
     table_occupancy_dinner_minutes,
   ]);
+
+  useEffect(() => {
+    const snap = initialSnapRef.current?.emails;
+    if (!snap) return;
+
+    markSectionDirty(
+      "emails",
+      !areReservationEmailTemplatesEqual(snap, emailTemplates),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [emailTemplates]);
 
   useEffect(() => {
     const snap = initialSnapRef.current?.smart;
@@ -488,7 +522,7 @@ export default function ParametersReservationComponent(props) {
   async function saveSection(sectionKey) {
     try {
       const restaurantId = props.restaurantData?._id;
-      if (!restaurantId) return;
+      if (!restaurantId) return false;
 
       const token = localStorage.getItem("token");
       const currentParams =
@@ -575,7 +609,7 @@ export default function ParametersReservationComponent(props) {
                 : "table_occupancy_dinner_minutes",
             );
             setSaving(sectionKey, false);
-            return;
+            return false;
           }
 
           setDurationError({ lunch: false, dinner: false });
@@ -591,7 +625,7 @@ export default function ParametersReservationComponent(props) {
                 : "table_occupancy_dinner_minutes",
             );
             setSaving(sectionKey, false);
-            return;
+            return false;
           }
 
           setDurationError({ lunch: false, dinner: false });
@@ -609,6 +643,14 @@ export default function ParametersReservationComponent(props) {
           table_occupancy_dinner_minutes: shouldStoreDurations
             ? Number(dinnerRaw)
             : null,
+        };
+      }
+
+      if (sectionKey === "emails") {
+        const nextEmailTemplates =
+          buildReservationEmailTemplatesPayload(emailTemplates);
+        partial = {
+          email_templates: nextEmailTemplates,
         };
       }
 
@@ -665,10 +707,20 @@ export default function ParametersReservationComponent(props) {
           ),
         };
       }
+      if (sectionKey === "emails") {
+        const savedEmailTemplates = buildReservationEmailTemplatesState(
+          response?.data?.restaurant?.reservations?.parameters
+            ?.email_templates || partial.email_templates,
+        );
+        setEmailTemplates(savedEmailTemplates);
+        initialSnapRef.current.emails = savedEmailTemplates;
+      }
 
       setSaved(sectionKey, true);
+      return true;
     } catch (error) {
       console.error("Erreur sauvegarde paramètres réservation :", error);
+      return false;
     } finally {
       setSaving(sectionKey, false);
     }
@@ -749,6 +801,7 @@ export default function ParametersReservationComponent(props) {
           register={register}
           watch={watch}
           errors={errors}
+          stripeReady={stripeReady}
           saveUI={sectionUI.bank_hold}
           onSave={() => saveSection("bank_hold")}
         />
@@ -762,6 +815,15 @@ export default function ParametersReservationComponent(props) {
           durationError={durationError}
           saveUI={sectionUI.automations}
           onSave={() => saveSection("automations")}
+        />
+        <EmailsParametersComponent
+          templates={emailTemplates}
+          savedTemplates={initialSnapRef.current?.emails}
+          onTemplatesChange={setEmailTemplates}
+          restaurantName={props.restaurantData?.name}
+          bankHoldEnabled={Boolean(bank_hold_enabled)}
+          saveUI={sectionUI.emails}
+          onSave={() => saveSection("emails")}
         />
 
         {/* --- Bloc: Gestion intelligente + tables --- */}
@@ -783,7 +845,6 @@ export default function ParametersReservationComponent(props) {
           fmtShortFR={fmtShortFR}
           statusLabel={statusLabel}
         />
-
         <FloorPlanParametersComponent
           restaurantId={props.restaurantData?._id}
           setRestaurantData={props.setRestaurantData}

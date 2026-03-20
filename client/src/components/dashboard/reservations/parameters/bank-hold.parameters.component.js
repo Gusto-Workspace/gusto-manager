@@ -1,4 +1,4 @@
-import { CreditCard, Save, Check, Loader2 } from "lucide-react";
+import { CreditCard, Save, Check, Loader2, Info } from "lucide-react";
 
 export default function BankHoldParametersComponent({
   register,
@@ -6,8 +6,10 @@ export default function BankHoldParametersComponent({
   errors,
   saveUI,
   onSave,
+  stripeReady = false,
 }) {
   const enabled = Boolean(watch("bank_hold_enabled"));
+  const canToggle = stripeReady || enabled;
 
   const card = "rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm";
   const cardInner = "px-2 py-4 mobile:p-4 midTablet:p-6";
@@ -21,6 +23,7 @@ export default function BankHoldParametersComponent({
     "relative inline-flex h-8 w-14 items-center rounded-full border transition";
   const toggleOn = "bg-blue border-blue/40";
   const toggleOff = "bg-darkBlue/10 border-darkBlue/10";
+  const toggleDisabled = "opacity-50 cursor-not-allowed";
   const toggleDot =
     "absolute top-1/2 -translate-y-1/2 h-6 w-6 rounded-full bg-white shadow-sm transition";
   const toggleDotOn = "translate-x-7";
@@ -92,14 +95,17 @@ export default function BankHoldParametersComponent({
 
               <label className={toggleWrap}>
                 <span
-                  className={[toggleBase, enabled ? toggleOn : toggleOff].join(
-                    " ",
-                  )}
+                  className={[
+                    toggleBase,
+                    enabled ? toggleOn : toggleOff,
+                    !canToggle ? toggleDisabled : "",
+                  ].join(" ")}
                 >
                   <input
                     type="checkbox"
                     className="sr-only"
                     id="bank_hold_enabled"
+                    disabled={!canToggle}
                     {...register("bank_hold_enabled")}
                   />
                   <span
@@ -111,6 +117,18 @@ export default function BankHoldParametersComponent({
                 </span>
               </label>
             </div>
+
+            {!stripeReady ? (
+              <div className="mt-3 rounded-2xl border border-blue/15 bg-blue/5 px-3 py-3 text-sm text-darkBlue/70">
+                <div className="flex items-start gap-2">
+                  <Info className="mt-0.5 size-4 shrink-0 text-blue" />
+                  <p>
+                    Pour activer l’empreinte bancaire, veuillez contacter le
+                    service client afin de configurer l'option.
+                  </p>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3">
@@ -126,7 +144,7 @@ export default function BankHoldParametersComponent({
                 type="number"
                 min="0"
                 step="0.01"
-                disabled={!enabled}
+                disabled={!enabled || !stripeReady}
                 onWheel={(e) => e.currentTarget.blur()}
                 className={inputBase}
                 {...register("bank_hold_amount_per_person", {

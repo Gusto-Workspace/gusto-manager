@@ -129,6 +129,7 @@ export default function DayListReservationsComponent(props) {
           t={t}
           onAction={handleDrawerAction}
           errorMessage={actionError}
+          tablesCatalog={props.tablesCatalog}
         />
       </>
     );
@@ -161,6 +162,7 @@ export default function DayListReservationsComponent(props) {
                 <CardReservationComponent
                   key={reservation._id}
                   reservation={reservation}
+                  tablesCatalog={props.tablesCatalog}
                   openModalForAction={props.openModalForAction}
                   handleEditClick={props.handleEditClick}
                   onOpenDetails={openDetails}
@@ -178,6 +180,7 @@ export default function DayListReservationsComponent(props) {
         t={t}
         onAction={handleDrawerAction}
         errorMessage={actionError}
+        tablesCatalog={props.tablesCatalog}
       />
     </>
   );

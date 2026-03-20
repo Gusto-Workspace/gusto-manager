@@ -1,7 +1,8 @@
 {
+  "title": "Transactions",
   "select": {
     "payouts": "Détails des virements",
-    "payments": "Détails des paiements"
+    "payments": "Détails des transactions"
   },
   "payouts": {
     "information": {
@@ -47,11 +48,29 @@
     "empty": "Aucun virement trouvé"
   },
   "payments": {
+    "title": "Transactions",
+    "subtitle": "Consultez les achats de cartes cadeaux et les empreintes bancaires capturées, puis filtrez par client.",
     "date": "Date",
     "customer": "Client",
+    "customerFallback": "Non renseigné",
+    "unknownCustomer": "Non renseigné",
+    "type": "Type",
+    "giftCode": "Code cadeau",
     "grossAmount": "Montant payé",
     "fees": "Frais Stripe",
     "netAmount": "Montant net",
+    "paymentDate": "Date du paiement",
+    "refundedAt": "Remboursé le {{date}}",
+    "refundedAtLabel": "Remboursé le",
+    "types": {
+      "giftCardPurchase": "Achat carte cadeau",
+      "bankHoldCapture": "Empreinte bancaire capturée",
+      "other": "Autre transaction"
+    },
+    "typeLabels": {
+      "giftCardPurchase": "Carte cadeau",
+      "bankHoldCapture": "Empreinte capturée"
+    },
     "status": {
       "title": "Statut",
       "succeeded": "Réussi",
@@ -73,9 +92,55 @@
     "refunding": "Remboursement...",
     "loading": "Chargement...",
     "loadMore": "Charger plus",
-    "empty": "Aucun paiement trouvé",
+    "empty": "Aucune transaction trouvée",
+    "sourceStatus": {
+      "gift": {
+        "valid": "Valide",
+        "used": "Utilisée",
+        "expired": "Expirée",
+        "archived": "Archivée"
+      },
+      "bankHold": {
+        "captured": "Capturée",
+        "authorized": "Autorisée",
+        "released": "Libérée"
+      }
+    },
+    "drawer": {
+      "title": "Détail de la transaction",
+      "summary": "Résumé",
+      "close": "Fermer",
+      "sections": {
+        "payment": "Paiement",
+        "giftCard": "Carte cadeau",
+        "reservation": "Réservation",
+        "bankHold": "Empreinte bancaire"
+      },
+      "fields": {
+        "type": "Type",
+        "paymentIntent": "PaymentIntent",
+        "chargeId": "Charge Stripe",
+        "card": "Carte",
+        "receipt": "Voir le reçu Stripe",
+        "sourceStatus": "Statut source",
+        "beneficiary": "Bénéficiaire",
+        "buyer": "Acheteur",
+        "email": "Email",
+        "phone": "Téléphone",
+        "value": "Valeur",
+        "validUntil": "Valable jusqu'au",
+        "description": "Description",
+        "reservationDate": "Date de réservation",
+        "reservationTime": "Heure",
+        "guests": "Couverts",
+        "reservationStatus": "Statut réservation",
+        "capturedAt": "Capturée le",
+        "table": "Table",
+        "commentary": "Commentaire"
+      }
+    },
     "modale": {
-      "title": "Remboursement d'un paiement",
+      "title": "Remboursement d'une transaction",
       "infoFirst": " Après l'émission d'un remboursement, le client reçoit généralement le remboursement dans un délai de 5 à 10 jours ouvrables",
       "infoSecond": " À noter que certains remboursements, effectués peu de temps après le paiement initial, peuvent apparaître sous forme d'annulation. Dans ce cas, le paiement d'origine disparaît simplement du relevé bancaire du client, sans qu'un crédit distinct ne soit émis",
       "buttons": {

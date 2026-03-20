@@ -678,6 +678,9 @@ export default function ListReservationsComponent(props) {
             handleEditClick={handleEditClick}
             openModalForAction={openModalForAction}
             restaurantId={props.restaurantData?._id}
+            tablesCatalog={
+              props.restaurantData?.reservations?.parameters?.tables
+            }
           />
         </>
       )}

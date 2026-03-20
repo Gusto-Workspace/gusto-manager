@@ -48,6 +48,34 @@ function formatCurrency(amount, currency = "eur") {
   }).format(n);
 }
 
+function getReservationTableLabel(reservation, tablesCatalog = []) {
+  const explicitName = String(reservation?.table?.name || "").trim();
+  if (explicitName) return explicitName;
+
+  const tableIds = Array.isArray(reservation?.table?.tableIds)
+    ? reservation.table.tableIds
+    : [];
+
+  if (!tableIds.length) return null;
+
+  const catalogById = new Map(
+    (Array.isArray(tablesCatalog) ? tablesCatalog : []).map((table) => [
+      String(table?._id || ""),
+      String(table?.name || "").trim(),
+    ]),
+  );
+
+  const names = Array.from(
+    new Set(
+      tableIds
+        .map((id) => catalogById.get(String(id || "").trim()))
+        .filter(Boolean),
+    ),
+  );
+
+  return names.length ? names.join(" + ") : null;
+}
+
 export default function ReservationsDrawerComponent({
   open,
   onClose,
@@ -55,6 +83,7 @@ export default function ReservationsDrawerComponent({
   t,
   onAction,
   errorMessage,
+  tablesCatalog,
 }) {
   const [isVisible, setIsVisible] = useState(false);
   const [bankHoldOpen, setBankHoldOpen] = useState(false);
@@ -237,6 +266,8 @@ export default function ReservationsDrawerComponent({
 
   const canCaptureBankHold = bankHoldEnabled && bankHoldStatus === "authorized";
   const canReleaseBankHold = bankHoldEnabled && bankHoldStatus === "authorized";
+  const tableLabel =
+    getReservationTableLabel(reservation, tablesCatalog) || "-";
 
   const statusUi = useMemo(() => {
     if (status === "AwaitingBankHold")
@@ -520,9 +551,7 @@ export default function ReservationsDrawerComponent({
 
               <div className="flex items-start gap-2 text-sm text-darkBlue/80">
                 <TableSvg className="size-4 mt-0.5 text-darkBlue/40 opacity-40" />
-                <p className="min-w-0 truncate">
-                  {reservation?.table?.name || "-"}
-                </p>
+                <p className="min-w-0 truncate">{tableLabel}</p>
               </div>
 
               <div className="flex items-start gap-2 text-sm text-darkBlue/80">

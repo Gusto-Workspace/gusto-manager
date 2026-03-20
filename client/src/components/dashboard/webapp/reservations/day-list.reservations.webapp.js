@@ -149,6 +149,7 @@ export default function DayListReservationsWebapp(props) {
                   <CardReservationWebapp
                     key={reservation._id}
                     reservation={reservation}
+                    tablesCatalog={props.tablesCatalog}
                     openModalForAction={props.openModalForAction}
                     handleEditClick={props.handleEditClick}
                     onOpenDetails={openDetails}
@@ -167,6 +168,7 @@ export default function DayListReservationsWebapp(props) {
         t={t}
         onAction={handleDrawerAction}
         errorMessage={actionError}
+        tablesCatalog={props.tablesCatalog}
       />
     </>
   );

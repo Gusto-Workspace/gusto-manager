@@ -19,6 +19,16 @@ function safeNumber(v, fallback) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function normalizeIdList(values = []) {
+  return Array.from(
+    new Set(
+      (Array.isArray(values) ? values : [])
+        .map((value) => String(value || "").trim())
+        .filter((value) => mongoose.Types.ObjectId.isValid(value)),
+    ),
+  );
+}
+
 function ensureFloorplan(restaurant) {
   if (!restaurant.reservations) restaurant.reservations = {};
   if (!restaurant.reservations.parameters)
@@ -37,6 +47,65 @@ function ensureFloorplan(restaurant) {
 
 function getRooms(restaurant) {
   return restaurant?.reservations?.parameters?.floorplan?.rooms || [];
+}
+
+function pruneExpiredTableBlockedRanges(restaurant, now = new Date()) {
+  const current =
+    restaurant?.reservations?.parameters?.table_blocked_ranges || [];
+  const nowTs = now.getTime();
+
+  const next = current.filter((range) => {
+    const endTs = new Date(range?.endAt).getTime();
+    return Number.isFinite(endTs) && endTs > nowTs;
+  });
+
+  if (next.length === current.length) {
+    return false;
+  }
+
+  restaurant.reservations.parameters.table_blocked_ranges = next;
+  restaurant.markModified("reservations.parameters.table_blocked_ranges");
+
+  return true;
+}
+
+function syncTableCombinations(tables, targetId, nextRelatedIds) {
+  const normalizedTargetId = String(targetId || "");
+  const relatedSet = new Set(normalizeIdList(nextRelatedIds));
+
+  for (const table of tables) {
+    if (!table?._id) continue;
+
+    const currentId = String(table._id);
+    const currentLinks = normalizeIdList(table.combinableWith);
+
+    if (currentId === normalizedTargetId) {
+      table.combinableWith = Array.from(relatedSet);
+      continue;
+    }
+
+    const linkSet = new Set(currentLinks);
+
+    if (relatedSet.has(currentId)) {
+      linkSet.add(normalizedTargetId);
+    } else {
+      linkSet.delete(normalizedTargetId);
+    }
+
+    table.combinableWith = Array.from(linkSet);
+  }
+}
+
+function removeTableFromCombinations(tables, tableId) {
+  const normalizedTargetId = String(tableId || "");
+
+  for (const table of tables) {
+    if (!table?._id) continue;
+
+    table.combinableWith = normalizeIdList(table.combinableWith).filter(
+      (value) => value !== normalizedTargetId,
+    );
+  }
 }
 
 async function findRestaurantForOwner({ restaurantId, ownerId }) {
@@ -68,6 +137,12 @@ router.get(
         return res.status(404).json({ message: "Restaurant introuvable." });
 
       ensureFloorplan(restaurant);
+      const didPruneTableBlockedRanges =
+        pruneExpiredTableBlockedRanges(restaurant);
+
+      if (didPruneTableBlockedRanges) {
+        await restaurant.save();
+      }
 
       return res.json({
         rooms: getRooms(restaurant),
@@ -291,6 +366,13 @@ router.delete(
       restaurant.reservations.parameters.tables = tables.filter(
         (t) => String(t._id) !== String(tableId),
       );
+      removeTableFromCombinations(
+        restaurant.reservations.parameters.tables,
+        tableId,
+      );
+      restaurant.reservations.parameters.table_blocked_ranges = (
+        restaurant?.reservations?.parameters?.table_blocked_ranges || []
+      ).filter((range) => String(range?.tableId) !== String(tableId));
 
       if (restaurant.reservations.parameters.tables.length === beforeLen) {
         return res
@@ -321,6 +403,7 @@ router.delete(
 
       // important: marquer modifs
       restaurant.markModified("reservations.parameters.tables");
+      restaurant.markModified("reservations.parameters.table_blocked_ranges");
       restaurant.markModified("reservations.parameters.floorplan.rooms");
 
       await restaurant.save();
@@ -339,6 +422,99 @@ router.delete(
       return res.status(500).json({
         message: "Erreur serveur (DELETE catalog table).",
       });
+    }
+  },
+);
+
+router.put(
+  "/restaurants/:restaurantId/floorplans/catalog/tables/:tableId",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { restaurantId, tableId } = req.params;
+      const ownerId = req.user?.id;
+
+      if (!ownerId) return res.status(403).json({ message: "Unauthorized." });
+      if (String(req.user?.restaurantId) !== String(restaurantId)) {
+        return res.status(403).json({ message: "Restaurant mismatch" });
+      }
+      if (!isObjectId(restaurantId) || !isObjectId(tableId)) {
+        return res
+          .status(400)
+          .json({ message: "restaurantId/tableId invalide." });
+      }
+
+      const restaurant = await findRestaurantForOwner({
+        restaurantId,
+        ownerId,
+      });
+      if (!restaurant) {
+        return res.status(404).json({ message: "Restaurant introuvable." });
+      }
+
+      ensureFloorplan(restaurant);
+
+      if (!Array.isArray(restaurant.reservations?.parameters?.tables)) {
+        restaurant.reservations.parameters.tables = [];
+      }
+
+      const tables = restaurant.reservations.parameters.tables;
+      const table = tables.id(tableId);
+
+      if (!table) {
+        return res
+          .status(404)
+          .json({ message: "Table introuvable dans le catalogue." });
+      }
+
+      const name = String(req.body?.name ?? table.name ?? "").trim();
+      const onlineBookable =
+        req.body?.onlineBookable === undefined
+          ? table.onlineBookable !== false
+          : Boolean(req.body.onlineBookable);
+      const bookingPriority = Number.isFinite(Number(req.body?.bookingPriority))
+        ? Number(req.body.bookingPriority)
+        : Number(table.bookingPriority || 0);
+      const requestedCombinableWith = normalizeIdList(req.body?.combinableWith)
+        .filter((value) => value !== String(tableId))
+        .filter((value) =>
+          tables.some((candidate) => String(candidate?._id) === value),
+        );
+
+      if (!name) {
+        return res.status(400).json({ message: "Nom obligatoire." });
+      }
+
+      const duplicate = tables.some(
+        (t) =>
+          String(t?._id) !== String(tableId) &&
+          String(t?.name || "")
+            .trim()
+            .toLowerCase() === name.toLowerCase(),
+      );
+
+      if (duplicate) {
+        return res
+          .status(409)
+          .json({ message: "Une table avec ce nom existe déjà." });
+      }
+
+      table.name = name;
+      table.onlineBookable = onlineBookable;
+      table.bookingPriority = bookingPriority;
+      syncTableCombinations(tables, tableId, requestedCombinableWith);
+
+      restaurant.markModified("reservations.parameters.tables");
+      await restaurant.save();
+
+      return res.json({
+        tables: restaurant.reservations.parameters.tables || [],
+        updated: table,
+      });
+    } catch (e) {
+      return res
+        .status(500)
+        .json({ message: "Erreur serveur (PUT catalog table)." });
     }
   },
 );
@@ -376,6 +552,13 @@ router.post(
 
       const name = String(req.body?.name || "").trim();
       const seats = Number(req.body?.seats);
+      const onlineBookable =
+        req.body?.onlineBookable === undefined
+          ? true
+          : Boolean(req.body.onlineBookable);
+      const bookingPriority = Number.isFinite(Number(req.body?.bookingPriority))
+        ? Number(req.body.bookingPriority)
+        : 0;
 
       if (!name) return res.status(400).json({ message: "Nom obligatoire." });
       if (!Number.isFinite(seats) || seats < 1) {
@@ -395,7 +578,13 @@ router.post(
           .json({ message: "Une table avec ce nom existe déjà." });
       }
 
-      restaurant.reservations.parameters.tables.push({ name, seats });
+      restaurant.reservations.parameters.tables.push({
+        name,
+        seats,
+        onlineBookable,
+        bookingPriority,
+        combinableWith: [],
+      });
 
       restaurant.markModified("reservations.parameters.tables");
       await restaurant.save();
