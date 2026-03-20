@@ -113,7 +113,7 @@ export default function TransactionsDashboardComponent(props) {
   }
 
   return (
-    <section className="flex flex-col mt-4 gap-6">
+    <section className="flex flex-col gap-4">
       {/* Bloc sélection + filtres */}
       <section
         className="
