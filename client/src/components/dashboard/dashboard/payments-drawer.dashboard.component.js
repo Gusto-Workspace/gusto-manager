@@ -184,7 +184,7 @@ function Section({ title, children }) {
       <p className="text-xs font-semibold uppercase tracking-[0.14em] text-darkBlue/45">
         {title}
       </p>
-      <div className="flex flex-col gap-3">{children}</div>
+      <div className="flex flex-col gap-1">{children}</div>
     </section>
   );
 }

@@ -158,7 +158,7 @@ export default function PaymentsDashboardComponent(props) {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-1">
       {props?.payments?.length > 0 ? (
         <>
           {props.payments.map((payment) => {
