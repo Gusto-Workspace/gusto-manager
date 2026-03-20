@@ -623,12 +623,6 @@ export default function EmailsParametersComponent({
                   <p className="mt-1 text-sm text-darkBlue/60">
                     {selectedDefinition.description}
                   </p>
-                  <div className="mt-2 tablet:hidden">
-                    <span className="inline-flex items-center rounded-full border border-darkBlue/10 bg-white/80 px-3 py-1 text-xs font-semibold text-darkBlue">
-                      Insertion dans{" "}
-                      {activeField === "subject" ? "le sujet" : "le contenu"}
-                    </span>
-                  </div>
                 </div>
 
                 <button
@@ -784,10 +778,6 @@ export default function EmailsParametersComponent({
                 <div className="min-w-0">
                   <p className="text-xs font-semibold uppercase tracking-[0.14em] text-darkBlue/45">
                     Variables
-                  </p>
-                  <p className="text-xs text-darkBlue/55">
-                    Touchez une variable pour l’insérer dans{" "}
-                    {activeField === "subject" ? "le sujet" : "le contenu"}.
                   </p>
                 </div>
 
