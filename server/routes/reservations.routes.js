@@ -35,6 +35,9 @@ const {
 
 // ENCRYPTION
 const { decryptApiKey } = require("../services/encryption.service");
+const {
+  buildReservationBankHoldStripeMetadata,
+} = require("../services/reservation-bank-hold-metadata.service");
 
 const BANK_HOLD_IMMEDIATE_WINDOW_HOURS = 168; // 7 jours
 
@@ -1073,11 +1076,10 @@ async function createPublicBankHoldIntent({ stripe, reservation, flow }) {
       customer: customerId,
       payment_method_types: ["card"],
       usage: "off_session",
-      metadata: {
-        reservationId: String(reservation._id),
-        restaurantId: String(reservation.restaurant_id),
+      metadata: buildReservationBankHoldStripeMetadata({
+        reservation,
         type: "reservation_bank_hold_setup",
-      },
+      }),
     });
 
     return {
@@ -1094,11 +1096,10 @@ async function createPublicBankHoldIntent({ stripe, reservation, flow }) {
     capture_method: "manual",
     setup_future_usage: "off_session",
     payment_method_types: ["card"],
-    metadata: {
-      reservationId: String(reservation._id),
-      restaurantId: String(reservation.restaurant_id),
+    metadata: buildReservationBankHoldStripeMetadata({
+      reservation,
       type: "reservation_bank_hold_payment",
-    },
+    }),
   });
 
   return {
@@ -1288,7 +1289,32 @@ async function captureReservationBankHold({ restaurantId, reservationId }) {
     throw new Error("Clé Stripe restaurant introuvable.");
   }
 
-  const paymentIntent = await stripe.paymentIntents.capture(paymentIntentId);
+  const bankHoldMetadata = buildReservationBankHoldStripeMetadata({
+    reservation,
+    type: "reservation_bank_hold_payment",
+  });
+
+  const paymentIntent = await stripe.paymentIntents.capture(paymentIntentId, {
+    metadata: bankHoldMetadata,
+  });
+
+  const latestChargeId = String(paymentIntent?.latest_charge || "").trim();
+  if (latestChargeId) {
+    try {
+      await stripe.charges.update(latestChargeId, {
+        metadata: bankHoldMetadata,
+      });
+    } catch (error) {
+      console.error(
+        "[bank-hold] impossible de mettre a jour le snapshot de charge",
+        {
+          reservationId: String(reservation?._id || ""),
+          chargeId: latestChargeId,
+          error: error?.raw?.message || error?.message || error,
+        },
+      );
+    }
+  }
 
   reservation.bankHold.status = "captured";
   reservation.bankHold.capturedAt = new Date();
@@ -3627,6 +3653,55 @@ router.delete(
       const restaurant = await RestaurantModel.findById(restaurantId);
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found" });
+      }
+
+      const reservation = await ReservationModel.findById(reservationId);
+      if (!reservation) {
+        return res.status(404).json({ message: "Reservation not found" });
+      }
+
+      if (String(reservation.restaurant_id) !== String(restaurantId)) {
+        return res.status(404).json({ message: "Reservation not found" });
+      }
+
+      if (
+        String(reservation?.bankHold?.status || "") === "captured" &&
+        String(reservation?.bankHold?.paymentIntentId || "").trim()
+      ) {
+        const stripe = getStripeClientForRestaurant(restaurant);
+
+        if (stripe) {
+          try {
+            const bankHoldMetadata = buildReservationBankHoldStripeMetadata({
+              reservation,
+              type: "reservation_bank_hold_payment",
+            });
+
+            const paymentIntent = await stripe.paymentIntents.update(
+              String(reservation.bankHold.paymentIntentId).trim(),
+              {
+                metadata: bankHoldMetadata,
+              },
+            );
+
+            const latestChargeId = String(
+              paymentIntent?.latest_charge || "",
+            ).trim();
+            if (latestChargeId) {
+              await stripe.charges.update(latestChargeId, {
+                metadata: bankHoldMetadata,
+              });
+            }
+          } catch (error) {
+            console.error(
+              "[bank-hold] impossible de persister le snapshot avant suppression",
+              {
+                reservationId: String(reservation?._id || ""),
+                error: error?.raw?.message || error?.message || error,
+              },
+            );
+          }
+        }
       }
 
       // delete reservation doc

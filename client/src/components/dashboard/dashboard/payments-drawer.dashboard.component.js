@@ -619,49 +619,6 @@ export default function PaymentsDrawerDashboardComponent({
                   label={t?.("payments.phone", "Téléphone")}
                   value={transaction.reservation.customerPhone || "-"}
                 />
-
-                <div className="flex items-start gap-3 rounded-2xl border border-darkBlue/10 bg-white/70 px-4 py-3">
-                  <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-darkBlue/5 text-darkBlue">
-                    <TableSvg height={18} width={18} strokeColor="#1F2937" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-darkBlue/45">
-                      Table
-                    </p>
-                    <p className="mt-1 break-words text-sm text-darkBlue">
-                      {getReservationTableLabel(transaction.reservation)}
-                    </p>
-                  </div>
-                </div>
-
-                <DetailRow
-                  icon={Clock}
-                  label={t?.(
-                    "payments.reservationStatus",
-                    "Statut réservation",
-                  )}
-                  value={transaction.reservation.reservationStatus || "-"}
-                />
-
-                {transaction?.reservation?.commentary ? (
-                  <div className="flex items-start gap-3 rounded-2xl border border-darkBlue/10 bg-white/70 px-4 py-3">
-                    <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-darkBlue/5 text-darkBlue">
-                      <CommentarySvg
-                        height={18}
-                        width={18}
-                        strokeColor="#1F2937"
-                      />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-darkBlue/45">
-                        {t?.("payments.commentary", "Commentaire")}
-                      </p>
-                      <p className="mt-1 break-words text-sm text-darkBlue">
-                        {transaction.reservation.commentary}
-                      </p>
-                    </div>
-                  </div>
-                ) : null}
               </Section>
             ) : null}
 
