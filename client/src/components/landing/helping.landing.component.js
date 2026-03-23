@@ -27,13 +27,13 @@ export default function HelpingLandingComponent() {
                 width={95}
                 height={95}
                 alt="Icône horloge - gain de temps"
-                className="w-auto h-auto absolute -top-12 left-1/2 -translate-x-1/2 rounded-full"
+                className="absolute -top-12 left-1/2 -translate-x-1/2 rounded-full"
               />
 
               <h4 className="font-bold text-lg text-darkBlue mb-2">
                 Gagnez du temps
               </h4>
-              <p className="text-darkBlue">
+              <p className="text-darkBlue min-h-[48px]">
                 Automatisez jusqu’à 70% de vos tâches
               </p>
             </div>
@@ -49,13 +49,13 @@ export default function HelpingLandingComponent() {
                 width={95}
                 height={95}
                 alt="Icône graphique - augmentation des revenus"
-                className="w-auto h-auto absolute -top-14 left-1/2 -translate-x-1/2"
+                className="absolute -top-14 left-1/2 -translate-x-1/2"
               />
 
               <h4 className="font-bold text-lg text-darkBlue mb-2">
                 Boostez vos revenus
               </h4>
-              <p className="text-darkBlue">
+              <p className="text-darkBlue min-h-[48px]">
                 +15% en moyenne grâce à une meilleure gestion
               </p>
             </div>
@@ -71,12 +71,12 @@ export default function HelpingLandingComponent() {
                 width={95}
                 height={95}
                 alt="Icône like - fidélisation client"
-                className="w-auto h-auto absolute -top-9 left-1/2 -translate-x-1/2"
+                className="absolute -top-9 left-1/2 -translate-x-1/2"
               />
               <h4 className="font-bold text-lg text-darkBlue mb-2">
                 Fidélisez vos clients
               </h4>
-              <p className="text-darkBlue">
+              <p className="text-darkBlue min-h-[48px]">
                 Une meilleure expérience, plus de retours
               </p>
             </div>
