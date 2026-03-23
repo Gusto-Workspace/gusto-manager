@@ -33,7 +33,7 @@ export default function HelpingLandingComponent() {
               <h4 className="font-bold text-lg text-darkBlue mb-2">
                 Gagnez du temps
               </h4>
-              <p className="text-darkBlue min-h-[48px]">
+              <p className="text-darkBlue min-h-[48px] flex items-center">
                 Automatisez jusqu’à 70% de vos tâches
               </p>
             </div>
@@ -55,7 +55,7 @@ export default function HelpingLandingComponent() {
               <h4 className="font-bold text-lg text-darkBlue mb-2">
                 Boostez vos revenus
               </h4>
-              <p className="text-darkBlue min-h-[48px]">
+              <p className="text-darkBlue min-h-[48px] flex items-center">
                 +15% en moyenne grâce à une meilleure gestion
               </p>
             </div>
@@ -76,7 +76,7 @@ export default function HelpingLandingComponent() {
               <h4 className="font-bold text-lg text-darkBlue mb-2">
                 Fidélisez vos clients
               </h4>
-              <p className="text-darkBlue min-h-[48px]">
+              <p className="text-darkBlue min-h-[48px] flex items-center">
                 Une meilleure expérience, plus de retours
               </p>
             </div>
