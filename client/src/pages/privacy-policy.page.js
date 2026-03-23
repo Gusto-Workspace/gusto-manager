@@ -49,10 +49,10 @@ export default function PrivacyPolicyPage(props) {
         </>
       </Head>
 
-      <div className="min-h-screen">
+      <div className="min-h-screen font-mono bg-dirtyWhite ">
         <NavbarLanding />
         <div
-          className="bg-darkBlue py-36 px-[10%] text-white"
+          className="py-36 px-[10%] text-darkBlue"
           dangerouslySetInnerHTML={{ __html: t("about:policy") }}
         />
         <FooterLandingComponent />

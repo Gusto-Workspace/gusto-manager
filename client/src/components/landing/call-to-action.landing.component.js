@@ -1,9 +1,9 @@
 export default function CallToActionLandingComponent() {
   return (
-    <section className="bg-darkBlue text-white py-16 tablet:py-24">
+    <section className="text-darkBlue py-6 tablet:py-12" id="cta">
       <div className="container mx-auto px-4 tablet:px-6 text-center">
         <h2 className="text-3xl tablet:text-4xl font-bold mb-6">
-          Prêt à booster la gestion de votre restaurant ?
+          Une gestion plus simple et plus rentable
         </h2>
         <p className="text-xl mb-8 max-w-2xl mx-auto">
           Commencez dès aujourd'hui et découvrez comment Gusto Manager peut

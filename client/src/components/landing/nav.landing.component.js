@@ -5,8 +5,9 @@ import { Menu, X } from "lucide-react";
 
 // ROUTER
 import { useRouter } from "next/router";
+import Image from "next/image";
 
-export default function NavbarLanding(props) {
+export default function NavbarLanding() {
   const router = useRouter();
 
   const [isScrolled, setIsScrolled] = useState(false);
@@ -14,8 +15,7 @@ export default function NavbarLanding(props) {
 
   useEffect(() => {
     const handleScroll = () => {
-      if (window.scrollY > 10) setIsScrolled(true);
-      else setIsScrolled(false);
+      setIsScrolled(window.scrollY > 10);
     };
 
     window.addEventListener("scroll", handleScroll);
@@ -28,135 +28,135 @@ export default function NavbarLanding(props) {
     } else {
       document.body.style.overflow = "";
     }
+
+    return () => {
+      document.body.style.overflow = "";
+    };
   }, [isMobileMenuOpen]);
 
-  function wait(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+  function handleRestaurantSpace() {
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("token") : null;
+
+    if (isMobileMenuOpen) setIsMobileMenuOpen(false);
+
+    token ? router.push("/dashboard") : router.push("/dashboard/login");
   }
 
-  async function handleScrollToSection(id) {
-    setIsMobileMenuOpen(false);
-    await wait(300);
-    if (router.pathname !== "/") {
-      await router.push("/");
-      setTimeout(() => {
-        const section = document.querySelector(id);
-        if (section) {
-          section.scrollIntoView({ behavior: "smooth" });
-        }
-      }, 200);
-    } else {
-      requestAnimationFrame(() => {
-        const section = document.querySelector(id);
-        if (section) {
-          section.scrollIntoView({ behavior: "smooth" });
-        }
-      });
-    }
+  function handleContact() {
+    if (isMobileMenuOpen) setIsMobileMenuOpen(false);
+    router.push("/contact");
   }
 
   return (
-    <nav
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-        isScrolled ? "bg-white shadow-md py-3" : "bg-transparent py-5"
-      }`}
-    >
-      <div className="container mx-auto px-4 tablet:px-6 flex justify-between items-center">
-        <div className="text-2xl md:text-3xl font-display font-bold flex gap-2">
-          <a href="/" className={isScrolled ? "text-darkBlue" : "text-white"}>
-            Gusto Manager
-          </a>
-        </div>
+    <>
+      <nav className="fixed top-4 left-0 right-0 z-50">
+        <div className="mx-auto max-w-[95%] tablet:max-w-[85%] rounded-2xl bg-darkBlue border-2 border-darkBlue">
+          <div className="flex items-center justify-between px-5 py-4 tablet:px-6">
+            <a
+              href="/"
+              className="flex gap-4 items-center font-display font-bold text-lightGrey"
+            >
+              <Image
+                src="/img/logo-nav.png"
+                alt="Logo Gusto Manager"
+                width={45}
+                height={45}
+                className="h-auto w-auto"
+              />
+              <span className="uppercase text-xl">Gusto Manager</span>
+            </a>
 
-        <div className="hidden tablet:flex items-center gap-8">
-          {["#plateforme", "#avantages", "#fonctionnalités", "#modules"].map(
-            (id, i) => (
-              <a
-                key={i}
-                onClick={() => handleScrollToSection(id)}
-                className={`cursor-pointer ${
-                  isScrolled ? "text-darkBlue" : "text-white"
-                } hover:text-orange transition-colors`}
+            {/* DESKTOP ACTIONS */}
+            <div className="hidden tablet:flex items-center gap-3">
+              <button
+                onClick={handleContact}
+                className="rounded-2xl border-2 border-lightGrey/70 px-5 py-2 text-lightGrey transition-all duration-300 hover:bg-white/5 cursor-pointer"
               >
-                {id.replace("#", "").charAt(0).toUpperCase() + id.slice(2)}{" "}
-              </a>
-            ),
-          )}
-          <button
-            onClick={() => {
-              const token = localStorage.getItem("token");
-              token
-                ? router.push("/dashboard")
-                : router.push("/dashboard/login");
-            }}
-            className="bg-orange hover:bg-orange/90 text-white py-2 px-4 rounded-lg cursor-pointer"
-          >
-            Accéder à mon espace
-          </button>
-        </div>
+                Contactez-nous
+              </button>
 
-        <button
-          className={`tablet:hidden ${
-            isScrolled ? "text-darkBlue" : "text-white"
-          }`}
-          onClick={() => setIsMobileMenuOpen(true)}
-        >
-          <Menu size={32} />
-        </button>
-      </div>
+              <button
+                onClick={handleRestaurantSpace}
+                className="rounded-2xl bg-orange px-5 py-2 text-white transition-all duration-300 hover:bg-orange/90 cursor-pointer"
+              >
+                Espace restaurateur
+              </button>
+            </div>
 
-      {/* Overlay */}
-      {isMobileMenuOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/50 animate-fade-in"
-          onClick={() => setIsMobileMenuOpen(false)}
-        />
-      )}
-
-      {/* Mobile Menu */}
-      <div
-        className={`fixed top-0 left-0 right-0 z-50 bg-white shadow-md p-6 transition-transform duration-300 tablet:hidden rounded-b-xl ${
-          isMobileMenuOpen ? "translate-y-0" : "-translate-y-full"
-        }`}
-        style={{
-          transform: isMobileMenuOpen ? "translateY(0%)" : "translateY(-100%)",
-        }}
-      >
-        <div className="flex justify-end mb-4">
-          <button onClick={() => setIsMobileMenuOpen(false)}>
-            <X size={28} />
-          </button>
-        </div>
-
-        <div className="flex flex-col items-center gap-8">
-          <div className="text-2xl font-display font-bold absolute top-5 left-1/2 -translate-x-1/2">
-            <span className="text-darkBlue">Gusto Manager</span>
+            {/* MOBILE BURGER */}
+            <button
+              className="tablet:hidden text-lightGrey"
+              onClick={() => setIsMobileMenuOpen(true)}
+              aria-label="Ouvrir le menu"
+            >
+              <Menu size={30} />
+            </button>
           </div>
-          {["#plateforme", "#avantages", "#fonctionnalités", "#modules"].map(
-            (id, i) => (
-              <a
-                key={i}
-                onClick={() => handleScrollToSection(id)}
-                className="cursor-pointer text-darkBlue hover:text-orange transition-colors"
-              >
-                {id.replace("#", "").charAt(0).toUpperCase() + id.slice(2)}
-              </a>
-            ),
-          )}
-          <button
-            onClick={() => {
-              const token = localStorage.getItem("token");
-              setIsMobileMenuOpen(false);
-              token
-                ? router.push("/dashboard")
-                : router.push("/dashboard/login");
-            }}
-            className="bg-orange hover:bg-orange/90 text-white py-2 px-4 rounded-lg cursor-pointer"
-          >
-            Accéder à mon espace
-          </button>
+        </div>
+      </nav>
+
+      {/* MOBILE OVERLAY */}
+      <div
+        className={`fixed inset-0 z-[60] bg-black/40 transition-opacity duration-300 tablet:hidden ${
+          isMobileMenuOpen
+            ? "pointer-events-auto opacity-100"
+            : "pointer-events-none opacity-0"
+        }`}
+        onClick={() => setIsMobileMenuOpen(false)}
+      />
+
+      {/* MOBILE PANEL */}
+      <div
+        className={`fixed top-0 right-0 z-[70] h-full w-[85%] max-w-[360px] bg-darkBlue tablet:hidden transition-transform duration-300 ease-out ${
+          isMobileMenuOpen ? "translate-x-0" : "translate-x-full"
+        }`}
+      >
+        <div className="flex h-full flex-col px-6 py-5">
+          <div className="mb-10 flex items-center justify-between gap-4">
+            <a
+              href="/"
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="flex items-center gap-3 font-display font-bold text-lightGrey"
+            >
+              <Image
+                src="/img/logo-nav.png"
+                alt="Logo Gusto Manager"
+                width={40}
+                height={40}
+                className="w-auto h-auto"
+              />
+              <span className="uppercase text-lg leading-none">
+                Gusto Manager
+              </span>
+            </a>
+
+            <button
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="shrink-0 text-lightGrey"
+              aria-label="Fermer le menu"
+            >
+              <X size={28} />
+            </button>
+          </div>
+
+          <div className="mt-6 flex flex-col gap-4">
+            <button
+              onClick={handleContact}
+              className="w-full rounded-2xl border-2 border-lightGrey/70 px-5 py-3 text-lightGrey transition-all duration-300 hover:bg-white/5 cursor-pointer"
+            >
+              Contactez-nous
+            </button>
+
+            <button
+              onClick={handleRestaurantSpace}
+              className="w-full rounded-2xl bg-orange px-5 py-3 text-white transition-all duration-300 hover:bg-orange/90 cursor-pointer"
+            >
+              Espace restaurateur
+            </button>
+          </div>
         </div>
       </div>
-    </nav>
+    </>
   );
 }
