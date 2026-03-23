@@ -15,12 +15,12 @@ export default function ContactPage(props) {
 
   switch (i18n.language) {
     case "en":
-      title = "Gusto Manager";
+      title = "Gusto Manager | Logiciel de gestion tout-en-un pour les restaurateurs";
       description =
         "Simplifiez vos opérations quotidiennes grâce à une plateforme intuitive qui centralise la gestion de votre restaurant.";
       break;
     default:
-      title = "Gusto Manager";
+      title = "Gusto Manager | Logiciel de gestion tout-en-un pour les restaurateurs";
       description =
         "Simplifiez vos opérations quotidiennes grâce à une plateforme intuitive qui centralise la gestion de votre restaurant.";
   }
