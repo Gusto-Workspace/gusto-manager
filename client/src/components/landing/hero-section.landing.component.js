@@ -13,7 +13,7 @@ export default function HeroSectionLandingComponent() {
   }
 
   return (
-    <section className="relative overflow-hidden min-h-[100dvh] flex flex-col justify-center px-4 pt-28 pb-14 tablet:px-6 tablet:pt-32 tablet:pb-20">
+    <section className="relative overflow-hidden min-h-[100dvh] flex flex-col justify-center px-4 pt-28 pb-0 tablet:px-6 tablet:pt-32 tablet:pb-20">
       <div className="bg-darkBlue absolute top-0 left-0 right-0 h-[38%] tablet:h-[42%] desktop:h-[45%]" />
 
       <div className="relative z-10 w-full max-w-[1400px] mx-auto">
@@ -84,7 +84,7 @@ export default function HeroSectionLandingComponent() {
 
       <button
         onClick={() => handleScrollToSection("#helping")}
-        className="relative z-10 mt-8 self-center tablet:mt-10"
+        className="hidden tablet:block relative z-10 mt-8 self-center tablet:mt-10"
         aria-label="Faire défiler vers la section suivante"
       >
         <div className="animate-bounce">
