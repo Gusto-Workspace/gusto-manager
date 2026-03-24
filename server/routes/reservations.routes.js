@@ -3707,6 +3707,33 @@ router.delete(
 );
 
 /* ---------------------------------------------------------
+   GET PUBLIC RESERVATIONS AVAILABILITY LIST
+--------------------------------------------------------- */
+router.get("/public/restaurants/:id/reservations", async (req, res) => {
+  const restaurantId = req.params.id;
+
+  try {
+    const restaurant = await RestaurantModel.findById(restaurantId).select(
+      "_id",
+    );
+
+    if (!restaurant) {
+      return res.status(404).json({ message: "Restaurant not found" });
+    }
+
+    const reservations = await getRestaurantReservationsList(restaurantId, {
+      select: "reservationDate reservationTime status pendingExpiresAt table bankHold",
+      lean: true,
+    });
+
+    return res.status(200).json({ reservations });
+  } catch (error) {
+    console.error("Error fetching public reservations availability:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+/* ---------------------------------------------------------
    GET RESERVATIONS LIST
 --------------------------------------------------------- */
 router.get(

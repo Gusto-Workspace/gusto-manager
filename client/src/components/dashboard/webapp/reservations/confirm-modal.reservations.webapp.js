@@ -18,7 +18,10 @@ export default function ConfirmModalReservationsWebapp(props) {
 
   if (!props.isOpen) return null;
 
-  const name = props.reservation?.customerName || "ce client";
+  const firstName = String(props.reservation?.customerFirstName || "").trim();
+  const lastName = String(props.reservation?.customerLastName || "").trim();
+  const fallbackName = `${firstName} ${lastName}`.trim();
+  const name = props.reservation?.customerName || fallbackName || "ce client";
 
   const isDelete = props.actionType === "delete";
   const isActive = props.actionType === "active";
