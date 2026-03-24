@@ -134,8 +134,9 @@ export default function WepAppReservationsPage(props) {
             <ListReservationsWebapp
               restaurantData={restaurantContext.restaurantData}
               setRestaurantData={restaurantContext.setRestaurantData}
-              reservations={
-                restaurantContext?.restaurantData?.reservations?.list
+              reservations={restaurantContext.reservationsList}
+              refreshReservationsList={
+                restaurantContext.refreshReservationsList
               }
             />
           )}

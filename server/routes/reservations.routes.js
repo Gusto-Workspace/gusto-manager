@@ -11,6 +11,9 @@ const authenticateToken = require("../middleware/authentificate-token");
 // MODELS
 const RestaurantModel = require("../models/restaurant.model");
 const ReservationModel = require("../models/reservation.model");
+const {
+  getRestaurantReservationsList,
+} = require("../services/restaurant-reservations.service");
 
 // SSE BUS
 const { broadcastToRestaurant } = require("../services/sse-bus.service");
@@ -850,11 +853,13 @@ function applyRejectFields(reservation, nextStatus) {
 }
 
 async function fetchRestaurantFull(restaurantId) {
-  return RestaurantModel.findById(restaurantId)
+  const restaurant = await RestaurantModel.findById(restaurantId)
     .populate("owner_id", "firstname")
     .populate("menus")
     .populate("employees")
-    .populate({ path: "reservations.list" });
+    .lean();
+
+  return restaurant || null;
 }
 
 function getCustomerFullNameFromReservation(reservation) {
@@ -1499,29 +1504,23 @@ router.put(
       let unassignedReservationsNeedingAssignment = 0;
 
       if (!prevManage && nextManage) {
-        const ids = restaurant.reservations?.list || [];
+        const reservations = await getRestaurantReservationsList(restaurantId, {
+          select: "status pendingExpiresAt table bankHold",
+          lean: true,
+        });
 
-        if (ids.length) {
-          const reservations = await ReservationModel.find({
-            _id: { $in: ids },
-          })
-            .select("status pendingExpiresAt table bankHold")
-            .lean();
+        manualTablesNeedingAssignment = reservations.filter((r) => {
+          if (!isBlockingReservation(r)) return false;
+          return (
+            r?.table?.source === "manual" &&
+            Boolean((r?.table?.name || "").trim())
+          );
+        }).length;
 
-          manualTablesNeedingAssignment = reservations.filter((r) => {
-            if (!isBlockingReservation(r)) return false;
-            return (
-              r?.table?.source === "manual" &&
-              Boolean((r?.table?.name || "").trim())
-            );
-          }).length;
-
-          unassignedReservationsNeedingAssignment = reservations.filter((r) => {
-            if (!isBlockingReservation(r)) return false;
-            // ✅ table complètement absente
-            return !r?.table;
-          }).length;
-        }
+        unassignedReservationsNeedingAssignment = reservations.filter((r) => {
+          if (!isBlockingReservation(r)) return false;
+          return !r?.table;
+        }).length;
       }
 
       const updatedRestaurant = await fetchRestaurantFull(restaurantId);
@@ -2292,9 +2291,6 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
 
       await onReservationCreated(customer?._id, newReservation);
 
-      restaurant.reservations.list.push(newReservation._id);
-      await restaurant.save();
-
       broadcastToRestaurant(restaurantId, {
         type: "reservation_created",
         restaurantId,
@@ -2414,9 +2410,6 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
     try {
       await onReservationCreated(customer?._id, newReservation);
 
-      restaurant.reservations.list.push(newReservation._id);
-      await restaurant.save();
-
       broadcastToRestaurant(restaurantId, {
         type: "reservation_created",
         restaurantId,
@@ -2434,10 +2427,6 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
       console.error("Error preparing bank hold reservation:", error);
 
       await ReservationModel.findByIdAndDelete(newReservation._id);
-
-      await RestaurantModel.findByIdAndUpdate(restaurantId, {
-        $pull: { "reservations.list": newReservation._id },
-      });
 
       return res.status(500).json({
         message: "Impossible de préparer la validation de la carte bancaire.",
@@ -2675,9 +2664,6 @@ router.post(
 
         await onReservationCreated(customer?._id, newReservation);
 
-        restaurant.reservations.list.push(newReservation._id);
-        await restaurant.save();
-
         broadcastToRestaurant(restaurantId, {
           type: "reservation_created",
           restaurantId,
@@ -2768,9 +2754,6 @@ router.post(
       try {
         await onReservationCreated(customer?._id, newReservation);
 
-        restaurant.reservations.list.push(newReservation._id);
-        await restaurant.save();
-
         broadcastToRestaurant(restaurantId, {
           type: "reservation_created",
           restaurantId,
@@ -2821,10 +2804,6 @@ router.post(
         );
 
         await ReservationModel.findByIdAndDelete(newReservation._id);
-
-        await RestaurantModel.findByIdAndUpdate(restaurantId, {
-          $pull: { "reservations.list": newReservation._id },
-        });
 
         return res.status(500).json({
           message:
@@ -3707,13 +3686,6 @@ router.delete(
       // delete reservation doc
       await ReservationModel.findByIdAndDelete(reservationId);
 
-      // pull from restaurant list
-      await RestaurantModel.findByIdAndUpdate(
-        restaurantId,
-        { $pull: { "reservations.list": reservationId } },
-        { new: true },
-      );
-
       // ✅ SSE: suppression instantanée pour tous les devices
       broadcastToRestaurant(restaurantId, {
         type: "reservation_deleted",
@@ -3744,17 +3716,21 @@ router.get(
     const restaurantId = req.params.id;
 
     try {
-      const restaurant = await RestaurantModel.findById(restaurantId).populate({
-        path: "reservations.list",
-      });
+      const restaurant = await RestaurantModel.findById(restaurantId).select(
+        "_id",
+      );
 
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found" });
       }
 
+      const reservations = await getRestaurantReservationsList(restaurantId, {
+        lean: true,
+      });
+
       return res
         .status(200)
-        .json({ reservations: restaurant.reservations.list });
+        .json({ reservations });
     } catch (error) {
       console.error("Error fetching reservations:", error);
       return res.status(500).json({ message: "Internal server error" });
@@ -3785,17 +3761,11 @@ router.get(
         return res.status(200).json({ count: 0, reservations: [] });
       }
 
-      const ids = restaurant?.reservations?.list || [];
-      if (!ids.length) {
-        return res.status(200).json({ count: 0, reservations: [] });
-      }
-
-      // On récupère les réservations avec table "manuelle"
-      const reservations = await ReservationModel.find({ _id: { $in: ids } })
-        .select(
+      const reservations = await getRestaurantReservationsList(restaurantId, {
+        select:
           "customerFirstName customerLastName numberOfGuests reservationDate reservationTime status table source pendingExpiresAt",
-        )
-        .lean();
+        lean: true,
+      });
 
       const toFix = reservations
         .filter((r) => {
@@ -3863,16 +3833,11 @@ router.get(
         return res.status(200).json({ count: 0, reservations: [] });
       }
 
-      const ids = restaurant?.reservations?.list || [];
-      if (!ids.length) {
-        return res.status(200).json({ count: 0, reservations: [] });
-      }
-
-      const reservations = await ReservationModel.find({ _id: { $in: ids } })
-        .select(
+      const reservations = await getRestaurantReservationsList(restaurantId, {
+        select:
           "customerFirstName customerLastName numberOfGuests reservationDate reservationTime status table source pendingExpiresAt",
-        )
-        .lean();
+        lean: true,
+      });
 
       const toFix = reservations
         .filter((r) => {

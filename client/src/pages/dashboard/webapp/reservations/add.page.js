@@ -56,6 +56,10 @@ export default function WebappAddReservationsPage(props) {
               dataLoading={restaurantContext.dataLoading}
               restaurantData={restaurantContext.restaurantData}
               setRestaurantData={restaurantContext.setRestaurantData}
+              reservations={restaurantContext.reservationsList}
+              refreshReservationsList={
+                restaurantContext.refreshReservationsList
+              }
               reservation={props.reservation}
             />
           ) : (

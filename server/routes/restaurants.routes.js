@@ -229,10 +229,6 @@ router.get("/owner/restaurants/:id", authenticateToken, async (req, res) => {
     const restaurant = await RestaurantModel.findById(id)
       .populate("owner_id", "firstname")
       .populate("menus")
-      .populate({
-        path: "reservations.list",
-        populate: { path: "table" },
-      })
       .populate("employees");
 
     if (!restaurant) {
@@ -255,11 +251,7 @@ router.get("/restaurants/:id", async (req, res) => {
 
     const restaurant = await RestaurantModel.findById(id)
       .populate("owner_id", "firstname")
-      .populate("menus")
-      .populate({
-        path: "reservations.list",
-        populate: { path: "table" },
-      });
+      .populate("menus");
 
     if (!restaurant) {
       return res.status(404).json({ message: "Restaurant not found" });

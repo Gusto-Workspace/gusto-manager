@@ -144,6 +144,11 @@ ReservationSchema.index({
   "bankHold.authorizedAt": 1,
 });
 
+ReservationSchema.index({
+  restaurant_id: 1,
+  reservationDate: 1,
+});
+
 ReservationSchema.set("toJSON", { virtuals: true });
 ReservationSchema.set("toObject", { virtuals: true });
 

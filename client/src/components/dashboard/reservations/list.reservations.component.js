@@ -348,8 +348,9 @@ export default function ListReservationsComponent(props) {
             },
           },
         )
-        .then((response) => {
+        .then(async (response) => {
           props.setRestaurantData(response.data.restaurant);
+          await props.refreshReservationsList?.(props.restaurantData?._id);
 
           closeModal();
         })
@@ -395,7 +396,12 @@ export default function ListReservationsComponent(props) {
           setIsProcessing(false);
         });
     },
-    [selectedReservation, props.restaurantData, props.setRestaurantData],
+    [
+      selectedReservation,
+      props.restaurantData,
+      props.setRestaurantData,
+      props.refreshReservationsList,
+    ],
   );
 
   function deleteReservation() {
@@ -413,8 +419,9 @@ export default function ListReservationsComponent(props) {
           },
         },
       )
-      .then((response) => {
+      .then(async (response) => {
         props.setRestaurantData(response.data.restaurant);
+        await props.refreshReservationsList?.(props.restaurantData?._id);
         closeModal();
       })
       .catch((error) => {
@@ -447,8 +454,9 @@ export default function ListReservationsComponent(props) {
           },
         },
       )
-      .then((response) => {
+      .then(async (response) => {
         props.setRestaurantData(response.data.restaurant);
+        await props.refreshReservationsList?.(props.restaurantData?._id);
         closeModal();
       })
       .catch((error) => {
@@ -482,8 +490,9 @@ export default function ListReservationsComponent(props) {
           },
         },
       )
-      .then((response) => {
+      .then(async (response) => {
         props.setRestaurantData(response.data.restaurant);
+        await props.refreshReservationsList?.(props.restaurantData?._id);
         closeModal();
       })
       .catch((error) => {

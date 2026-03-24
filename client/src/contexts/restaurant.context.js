@@ -11,6 +11,7 @@ export default function RestaurantContext() {
   const router = useRouter();
 
   const [restaurantData, setRestaurantData] = useState(null);
+  const [reservationsList, setReservationsList] = useState([]);
   const [userConnected, setUserConnected] = useState(null);
   const [restaurantsList, setRestaurantsList] = useState([]);
   const [dataLoading, setDataLoading] = useState(true);
@@ -36,7 +37,6 @@ export default function RestaurantContext() {
   const newGiftPurchasesCount = unreadCounts.byModule.gift_cards || 0;
   const newLeaveRequestsCount = unreadCounts.byModule.employees || 0;
 
-  const initialReservationsLoadedRef = useRef(false);
   const hasFetchedDashboardDataRef = useRef(false);
   const sseRef = useRef(null);
   const currentPathRef = useRef("");
@@ -216,6 +216,59 @@ export default function RestaurantContext() {
     [restaurantData?._id],
   );
 
+  const fetchReservationsList = useCallback(
+    async (tokenOverride = null, restaurantId = null) => {
+      const token =
+        tokenOverride ||
+        (typeof window !== "undefined" ? localStorage.getItem("token") : null);
+      const rid = restaurantId || restaurantData?._id;
+
+      if (!token || !rid) {
+        setReservationsList([]);
+        return [];
+      }
+
+      try {
+        const { data } = await axios.get(
+          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${rid}/reservations`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+
+        const reservations = Array.isArray(data?.reservations)
+          ? data.reservations
+          : [];
+
+        setReservationsList(reservations);
+        return reservations;
+      } catch (e) {
+        console.warn("Failed to fetch reservations list", e);
+        return null;
+      }
+    },
+    [restaurantData?._id],
+  );
+
+  const refreshReservationsList = useCallback(
+    async (restaurantId = null, tokenOverride = null) =>
+      fetchReservationsList(tokenOverride, restaurantId),
+    [fetchReservationsList],
+  );
+
+  const syncRestaurantReservations = useCallback(
+    async (restaurant, tokenOverride = null) => {
+      const rid = restaurant?._id ? String(restaurant._id) : null;
+      const hasReservationsModule = restaurant?.options?.reservations === true;
+
+      if (!rid || !hasReservationsModule) {
+        setReservationsList([]);
+        return [];
+      }
+
+      return (await fetchReservationsList(tokenOverride, rid)) || [];
+    },
+    [fetchReservationsList],
+  );
+
   const reconnectRealtime = useCallback(() => {
     if (sseRef.current) {
       try {
@@ -272,56 +325,33 @@ export default function RestaurantContext() {
         if (payload.type === "reservation_created" && payload.reservation) {
           const r = payload.reservation;
 
-          setRestaurantData((prev) => {
-            if (!prev) return prev;
-            const list = prev?.reservations?.list || [];
-            const exists = list.some((x) => String(x._id) === String(r._id));
+          setReservationsList((prev) => {
+            const list = Array.isArray(prev) ? prev : [];
+            const exists = list.some((x) => String(x?._id) === String(r._id));
             if (exists) return prev;
-            return {
-              ...prev,
-              reservations: {
-                ...prev.reservations,
-                list: [r, ...list],
-              },
-            };
+            return [r, ...list];
           });
         }
 
         if (payload.type === "reservation_updated" && payload.reservation) {
           const r = payload.reservation;
 
-          setRestaurantData((prev) => {
-            if (!prev) return prev;
-
-            const list = prev?.reservations?.list || [];
+          setReservationsList((prev) => {
+            const list = Array.isArray(prev) ? prev : [];
             const id = String(r._id);
-
             const nextList = list.map((x) => (String(x._id) === id ? r : x));
-
-            return {
-              ...prev,
-              reservations: {
-                ...prev.reservations,
-                list: nextList,
-              },
-            };
+            return nextList;
           });
         }
 
         if (payload.type === "reservation_deleted" && payload.reservationId) {
           const deletedId = String(payload.reservationId);
 
-          setRestaurantData((prev) => {
-            if (!prev) return prev;
-            const list = prev?.reservations?.list || [];
-            return {
-              ...prev,
-              reservations: {
-                ...prev.reservations,
-                list: list.filter((x) => String(x._id) !== deletedId),
-              },
-            };
-          });
+          setReservationsList((prev) =>
+            (Array.isArray(prev) ? prev : []).filter(
+              (x) => String(x?._id) !== deletedId,
+            ),
+          );
         }
 
         if (payload.type === "giftcard_purchased" && payload.purchase) {
@@ -554,6 +584,7 @@ export default function RestaurantContext() {
   function handleInvalidToken() {
     setRestaurantsList([]);
     setRestaurantData(null);
+    setReservationsList([]);
     setUserConnected(null);
     setNotifications([]);
     setNotificationsNextCursor(null);
@@ -613,6 +644,7 @@ export default function RestaurantContext() {
         setNotificationsLoading(false);
 
         setRestaurantData(restaurant);
+        await syncRestaurantReservations(restaurant, token);
 
         // ✅ NEW: counts depuis l'API (owner)
         if (role === "owner") {
@@ -678,6 +710,7 @@ export default function RestaurantContext() {
 
           if (!restaurants.length) {
             setRestaurantData(null);
+            setReservationsList([]);
             setDataLoading(false);
             setIsAuth(true);
             return;
@@ -725,6 +758,7 @@ export default function RestaurantContext() {
 
           setRestaurantsList(restaurants || []);
           setRestaurantData(restaurant || null);
+          await syncRestaurantReservations(restaurant, token);
 
           // ✅ notifications counts aussi pour employee
           if (restaurant?._id) {
@@ -781,6 +815,7 @@ export default function RestaurantContext() {
     setDataLoading(true);
     setCloseEditing(true);
     customersCacheRef.current.clear();
+    setReservationsList([]);
 
     // ----- OWNER -----
     if (role === "owner") {
@@ -794,7 +829,6 @@ export default function RestaurantContext() {
           const { token: updatedToken } = response.data;
           localStorage.setItem("token", updatedToken);
           fetchRestaurantData(updatedToken, restaurantId);
-          initialReservationsLoadedRef.current = false;
           setCloseEditing(false);
         })
         .catch((error) => {
@@ -832,6 +866,7 @@ export default function RestaurantContext() {
               const { restaurant, restaurants } = res.data;
               setRestaurantsList(restaurants || []);
               setRestaurantData(restaurant || null);
+              await syncRestaurantReservations(restaurant, updatedToken);
 
               // ✅ reset drawer list
               setNotifications([]);
@@ -915,6 +950,7 @@ export default function RestaurantContext() {
 
         const restaurant = response?.data?.restaurant || null;
         setRestaurantData(restaurant);
+        await syncRestaurantReservations(restaurant, token);
 
         if (restaurant?._id) {
           await fetchUnreadCounts(token, String(restaurant._id));
@@ -935,6 +971,7 @@ export default function RestaurantContext() {
         const { restaurant, restaurants } = res.data || {};
         setRestaurantsList(restaurants || []);
         setRestaurantData(restaurant || null);
+        await syncRestaurantReservations(restaurant, token);
 
         if (restaurant?._id) {
           await fetchUnreadCounts(token, String(restaurant._id));
@@ -1000,7 +1037,7 @@ export default function RestaurantContext() {
 
     const checkExpiredReservations = () => {
       const now = new Date();
-      const reservations = restaurantData.reservations.list || [];
+      const reservations = reservationsList || [];
       reservations.forEach((reservation) => {
         if (reservation.status === "Finished" && reservation.finishedAt) {
           const finishedAt = new Date(reservation.finishedAt);
@@ -1017,7 +1054,7 @@ export default function RestaurantContext() {
     return () => clearInterval(intervalId);
   }, [
     restaurantData?._id,
-    restaurantData?.reservations?.list,
+    reservationsList,
     restaurantData?.reservations?.parameters?.deletion_duration,
     restaurantData?.reservations?.parameters?.deletion_duration_minutes,
   ]);
@@ -1033,7 +1070,7 @@ export default function RestaurantContext() {
 
     const checkAutoDeleteShortLived = () => {
       const now = new Date();
-      const reservations = restaurantData?.reservations?.list || [];
+      const reservations = reservationsList || [];
 
       reservations.forEach((r) => {
         const dateField = STATUS_TO_DATE_FIELD[r.status];
@@ -1051,7 +1088,7 @@ export default function RestaurantContext() {
     checkAutoDeleteShortLived();
     const id = setInterval(checkAutoDeleteShortLived, 30000);
     return () => clearInterval(id);
-  }, [restaurantData?._id, restaurantData?.reservations?.list]);
+  }, [restaurantData?._id, reservationsList]);
 
   useEffect(() => {
     if (!restaurantData) return;
@@ -1059,7 +1096,7 @@ export default function RestaurantContext() {
     const checkLateReservations = () => {
       const now = new Date();
       const gracePeriod = 5 * 60000;
-      const reservations = restaurantData.reservations.list || [];
+      const reservations = reservationsList || [];
 
       reservations.forEach((reservation) => {
         if (reservation.status === "Confirmed") {
@@ -1084,7 +1121,7 @@ export default function RestaurantContext() {
     checkLateReservations();
     const updateIntervalId = setInterval(checkLateReservations, 30000);
     return () => clearInterval(updateIntervalId);
-  }, [restaurantData?._id, restaurantData?.reservations?.list]);
+  }, [restaurantData?._id, reservationsList]);
 
   function getServiceBucketFromTime(reservationTime) {
     const [hh = "0"] = String(reservationTime || "00:00").split(":");
@@ -1113,7 +1150,7 @@ export default function RestaurantContext() {
 
     const checkAutoFinishReservations = () => {
       const now = new Date();
-      const reservations = restaurantData.reservations.list || [];
+      const reservations = reservationsList || [];
 
       reservations.forEach((reservation) => {
         if (reservation.status !== "Active") return;
@@ -1150,7 +1187,7 @@ export default function RestaurantContext() {
     return () => clearInterval(intervalId);
   }, [
     restaurantData?._id,
-    restaurantData?.reservations?.list,
+    reservationsList,
     restaurantData?.reservations?.parameters?.auto_finish_reservations,
     restaurantData?.reservations?.parameters?.table_occupancy_lunch_minutes,
     restaurantData?.reservations?.parameters?.table_occupancy_dinner_minutes,
@@ -1174,14 +1211,10 @@ export default function RestaurantContext() {
           },
         },
       )
-      .then((response) => {
-        setRestaurantData((prevData) => ({
-          ...prevData,
-          reservations: {
-            ...prevData.reservations,
-            list: response.data.restaurant.reservations.list,
-          },
-        }));
+      .then(async (response) => {
+        const restaurant = response?.data?.restaurant || null;
+        if (restaurant) setRestaurantData(restaurant);
+        await fetchReservationsList(token, restaurantData?._id);
       })
       .catch((error) => {
         console.error("Error auto-updating reservation to Finished:", error);
@@ -1209,14 +1242,10 @@ export default function RestaurantContext() {
           },
         },
       )
-      .then((response) => {
-        setRestaurantData((prevData) => ({
-          ...prevData,
-          reservations: {
-            ...prevData.reservations,
-            list: response.data.restaurant.reservations.list,
-          },
-        }));
+      .then(async (response) => {
+        const restaurant = response?.data?.restaurant || null;
+        if (restaurant) setRestaurantData(restaurant);
+        await fetchReservationsList(token, restaurantData?._id);
       })
       .catch((error) => {
         console.error("Error auto-updating reservation to Late:", error);
@@ -1244,14 +1273,10 @@ export default function RestaurantContext() {
           },
         },
       )
-      .then((response) => {
-        setRestaurantData((prevData) => ({
-          ...prevData,
-          reservations: {
-            ...prevData.reservations,
-            list: response.data.restaurant.reservations.list,
-          },
-        }));
+      .then(async (response) => {
+        const restaurant = response?.data?.restaurant || null;
+        if (restaurant) setRestaurantData(restaurant);
+        await fetchReservationsList(token, restaurantData?._id);
       })
       .catch((error) => {
         console.error("Error auto-deleting reservation:", error);
@@ -1275,6 +1300,7 @@ export default function RestaurantContext() {
     });
 
     setRestaurantData(null);
+    setReservationsList([]);
     setRestaurantsList([]);
     setNotifications([]);
     setNotificationsNextCursor(null);
@@ -1336,14 +1362,19 @@ export default function RestaurantContext() {
   return {
     restaurantData,
     setRestaurantData,
+    reservationsList,
+    setReservationsList,
     userConnected,
     setUserConnected,
     restaurantsList,
     dataLoading,
+    setDataLoading,
     setRestaurantsList,
     handleRestaurantSelect,
     fetchRestaurantsList,
     fetchRestaurantData,
+    fetchReservationsList,
+    refreshReservationsList,
     logout,
     setCloseEditing,
     closeEditing,
