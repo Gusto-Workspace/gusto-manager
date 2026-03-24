@@ -32,11 +32,11 @@ import {
 
 function getSituationChipClasses(situation) {
   if (situation === "working") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    return "border-green/20 bg-green/10 text-green";
   }
 
   if (situation === "on_break") {
-    return "border-amber-200 bg-amber-50 text-amber-700";
+    return "border-orange/20 bg-orange/10 text-orange";
   }
 
   return "border-darkBlue/10 bg-white text-darkBlue/70";
@@ -150,7 +150,9 @@ function WeekOverview({ days = [], onSelectDay }) {
     <section className="rounded-[30px] border border-darkBlue/10 bg-white px-5 py-5 shadow-sm">
       <div className="flex items-center gap-3">
         <CalendarDays className="size-5 text-blue" />
-        <h3 className="text-lg font-semibold text-darkBlue">Récap hebdomadaire</h3>
+        <h3 className="text-lg font-semibold text-darkBlue">
+          Récap hebdomadaire
+        </h3>
       </div>
 
       <div className="mt-4 grid gap-3 mobile:grid-cols-2 midTablet:grid-cols-4 desktop:grid-cols-7">
@@ -223,9 +225,11 @@ function SessionCard({ session, onOpenSignature }) {
         </div>
       </summary>
 
-      <div className="mt-4">
-        <AnomalyBadges anomalies={session.anomalies || []} />
-      </div>
+      {session?.anomalies?.length > 0 && (
+        <div className="mt-4">
+          <AnomalyBadges anomalies={session.anomalies || []} />
+        </div>
+      )}
 
       <div className="mt-4 rounded-2xl border border-darkBlue/10 bg-white/80 px-4 py-3">
         {!!session.breaks?.length ? (
@@ -244,7 +248,9 @@ function SessionCard({ session, onOpenSignature }) {
             ))}
           </div>
         ) : (
-          <p className="text-sm text-darkBlue/55">Aucune pause sur ce service.</p>
+          <p className="text-sm text-darkBlue/55">
+            Aucune pause sur ce service.
+          </p>
         )}
 
         <div className="mt-3 flex flex-col gap-2">
@@ -318,7 +324,9 @@ function MonthOverview({ days = [], onSelectDay }) {
             >
               <div className="flex flex-col gap-2 midTablet:flex-row midTablet:items-center midTablet:justify-between">
                 <div>
-                  <p className="font-medium text-darkBlue">{formatDateKey(day.date)}</p>
+                  <p className="font-medium text-darkBlue">
+                    {formatDateKey(day.date)}
+                  </p>
                   <p className="text-xs text-darkBlue/55">
                     {day.sessionCount} service{day.sessionCount > 1 ? "s" : ""}
                   </p>
@@ -331,9 +339,11 @@ function MonthOverview({ days = [], onSelectDay }) {
                 </div>
               </div>
 
-              <div className="mt-3">
-                <AnomalyBadges anomalies={day.anomalies || []} />
-              </div>
+              {day?.anomalies?.length > 0 && (
+                <div className="mt-3">
+                  <AnomalyBadges anomalies={day.anomalies || []} />
+                </div>
+              )}
             </button>
           ))
         )}
@@ -350,7 +360,9 @@ export default function TimeClockSummaryComponent({
   subtitle = "",
   allowOpenKiosk = false,
 }) {
-  const [anchorDate, setAnchorDate] = useState(() => toLocalDateKey(new Date()));
+  const [anchorDate, setAnchorDate] = useState(() =>
+    toLocalDateKey(new Date()),
+  );
   const [activeView, setActiveView] = useState("day");
   const [reloadKey, setReloadKey] = useState(0);
   const [summary, setSummary] = useState(null);
@@ -444,15 +456,19 @@ export default function TimeClockSummaryComponent({
 
   const monthRows = useMemo(() => {
     const source = summary?.month?.days || [];
-    return [...source].reverse().filter(
-      (day) => day.sessionCount > 0 || (day.anomalies || []).length > 0,
-    );
+    return [...source]
+      .reverse()
+      .filter(
+        (day) => day.sessionCount > 0 || (day.anomalies || []).length > 0,
+      );
   }, [summary?.month?.days]);
 
   if (loading) {
     return (
       <section className="rounded-[30px] border border-darkBlue/10 bg-white px-6 py-8 shadow-sm">
-        <p className="text-sm text-darkBlue/60">Chargement des horaires pointés…</p>
+        <p className="text-sm text-darkBlue/60">
+          Chargement des horaires pointés…
+        </p>
       </section>
     );
   }
@@ -493,10 +509,9 @@ export default function TimeClockSummaryComponent({
               className="inline-flex items-center justify-center gap-2 rounded-2xl border border-darkBlue/10 bg-white px-4 py-3 text-sm font-medium text-darkBlue shadow-sm transition hover:bg-darkBlue/5"
             >
               <RefreshCw
-                className={[
-                  "size-4",
-                  refreshing ? "animate-spin" : "",
-                ].join(" ")}
+                className={["size-4", refreshing ? "animate-spin" : ""].join(
+                  " ",
+                )}
               />
               Actualiser
             </button>
@@ -543,7 +558,8 @@ export default function TimeClockSummaryComponent({
               <div className="text-sm text-darkBlue/70">
                 {summary?.state?.activeSession ? (
                   <>
-                    Service commencé à {formatTime(summary.state.activeSession.clockInAt)}
+                    Service commencé à{" "}
+                    {formatTime(summary.state.activeSession.clockInAt)}
                     {summary.state.situation === "on_break"
                       ? " · pause actuellement en cours"
                       : ""}

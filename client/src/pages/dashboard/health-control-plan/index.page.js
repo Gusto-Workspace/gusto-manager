@@ -82,8 +82,7 @@ export default function HealthControlPlanPage(props) {
             ) : !employeeHasHealthControlPlanAccess ? (
               <NoAvailableComponent
                 dataLoading={restaurantContext.dataLoading}
-                emptyText="Vous n'avez pas accès à cette section"
-              />
+                 />
             ) : (
               <DashboardHealthControlPlanComponent />
             )}

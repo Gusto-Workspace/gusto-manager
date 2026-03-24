@@ -80,8 +80,7 @@ export default function CustomersPage(props) {
             ) : !employeeHasCustomersAccess ? (
               <NoAvailableComponent
                 dataLoading={restaurantContext.dataLoading}
-                emptyText="Vous n'avez pas accès à cette section"
-              />
+                 />
             ) : (
               <ListCustomersComponent/>
             )}

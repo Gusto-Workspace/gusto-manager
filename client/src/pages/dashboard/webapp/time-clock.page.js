@@ -41,6 +41,10 @@ export default function TimeClockWebAppPage() {
 
   const restaurant = restaurantContext?.restaurantData;
   const hasEmployeesModule = !!restaurant?.options?.employees;
+  const handleSoftReturn = () =>
+    restaurantContext?.resyncAfterForeground?.({ hard: false });
+  const handleHardReturn = () =>
+    restaurantContext?.resyncAfterForeground?.({ hard: true });
 
   return (
     <>
@@ -56,7 +60,9 @@ export default function TimeClockWebAppPage() {
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="Pointeuse" />
-        <link rel="apple-touch-icon" href="/icons/android/gusto-192.png" />
+
+        <link rel="apple-touch-icon" href="/icons/ios/time-clock-180.png?v=1" />
+
         <meta name="format-detection" content="telephone=no" />
       </Head>
 
@@ -74,6 +80,11 @@ export default function TimeClockWebAppPage() {
       <SplashScreenWebAppComponent
         loading={restaurantContext?.dataLoading}
         storageKey="gm:splash:webapp:timeclock"
+        enabled={restaurantContext?.isAuth}
+        lastActiveKey="gm:lastActive:webapp:timeclock"
+        thresholdMs={5 * 60 * 1000}
+        onSoftReturn={handleSoftReturn}
+        onHardReturn={handleHardReturn}
       />
     </>
   );

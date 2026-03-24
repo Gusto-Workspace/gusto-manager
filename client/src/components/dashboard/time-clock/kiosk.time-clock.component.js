@@ -36,11 +36,11 @@ function getEmployeeSnapshot(employee, restaurantId) {
 
 function getSituationClasses(situation) {
   if (situation === "working") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    return "border-green/20 bg-green/10 text-green";
   }
 
   if (situation === "on_break") {
-    return "border-amber-200 bg-amber-50 text-amber-700";
+    return "border-orange/20 bg-orange/10 text-orange";
   }
 
   return "border-darkBlue/10 bg-white text-darkBlue/70";
@@ -322,7 +322,7 @@ export default function TimeClockKioskComponent() {
           className={[
             "rounded-[28px] border px-5 py-4 shadow-sm",
             feedback.type === "success"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              ? "border-green/20 bg-green/10 text-green"
               : "border-red/15 bg-red/5 text-red",
           ].join(" ")}
         >
@@ -424,7 +424,7 @@ export default function TimeClockKioskComponent() {
         </section>
 
         <section className="rounded-[30px] border border-darkBlue/10 bg-white px-5 py-5 shadow-sm">
-          <div className="flex flex-col gap-4 midTablet:flex-row midTablet:items-start midTablet:justify-between">
+          <div className="flex  gap-4 flex-row items-start justify-between">
             <div>
               <p className="text-sm text-darkBlue/55">Salarié sélectionné</p>
               <h2 className="mt-1 text-2xl font-semibold text-darkBlue">

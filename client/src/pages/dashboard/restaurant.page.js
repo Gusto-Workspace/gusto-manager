@@ -83,8 +83,7 @@ export default function RestaurantPage(props) {
             {!employeeHasRestaurantAccess ? (
               <NoAvailableComponent
                 dataLoading={restaurantContext.dataLoading}
-                emptyText="Vous n'avez pas accès à cette section"
-              />
+                 />
             ) : (
               <>
                 <hr className="opacity-20" />

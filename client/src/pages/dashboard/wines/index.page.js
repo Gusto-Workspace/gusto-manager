@@ -80,8 +80,7 @@ export default function WinesPage(props) {
             ) : !employeeHasWinesAccess ? (
               <NoAvailableComponent
                 dataLoading={restaurantContext.dataLoading}
-                emptyText="Vous n'avez pas accès à cette section"
-              />
+                 />
             ) : (
               <CategoriesListWinesComponent />
             )}

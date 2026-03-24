@@ -84,8 +84,7 @@ export default function PlanningEmployeePage(props) {
             ) : !employeeHasEmployeesAccess ? (
               <NoAvailableComponent
                 dataLoading={restaurantContext.dataLoading}
-                emptyText="Vous n'avez pas accès à cette section"
-              />
+                 />
             ) : (
               <PlanningEmployeesComponent />
             )}
