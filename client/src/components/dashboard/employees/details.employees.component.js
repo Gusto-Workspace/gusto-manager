@@ -4,6 +4,7 @@ import axios from "axios";
 import { useForm } from "react-hook-form";
 import { GlobalContext } from "@/contexts/global.context";
 import { useTranslation } from "next-i18next";
+import { Clock3, SquareArrowOutUpRight } from "lucide-react";
 
 // SVG
 import { EmployeesSvg } from "@/components/_shared/_svgs/employees.svg";
@@ -13,6 +14,8 @@ import ModaleEmployeesComponent from "./modale.employees.component";
 import DocumentsEmployeeComponent from "./documents.employees.component";
 import AccessRightsEmployeesComponent from "./access-rights.employees.component";
 import DataEmployeesComponent from "./data.employees.component";
+import TimeClockEmployeesComponent from "./time-clock.employees.component";
+import { openTimeClockInNewTab } from "../time-clock/time-clock.utils";
 
 const DEFAULT_OPTIONS = {
   dashboard: false,
@@ -333,21 +336,33 @@ export default function DetailsEmployeesComponent({ employeeId }) {
       <hr className="opacity-20" />
 
       <div className="flex gap-2 items-center min-h-[40px]">
-        <div>
-          <EmployeesSvg width={30} height={30} fillColor="#131E3690" />
+        <div className="flex flex-1 flex-wrap items-center gap-3">
+          <div>
+            <EmployeesSvg width={30} height={30} fillColor="#131E3690" />
+          </div>
+          <h1 className="pl-2 text-xl flex-wrap tablet:text-2xl flex items-center gap-2">
+            <span
+              className="cursor-pointer hover:underline"
+              onClick={() => router.push("/dashboard/employees")}
+            >
+              {t("titles.main")}
+            </span>
+            <span>/</span>
+            <span>
+              {displayFirstname} {displayLastname}
+            </span>
+          </h1>
         </div>
-        <h1 className="pl-2 text-xl flex-wrap tablet:text-2xl flex items-center gap-2">
-          <span
-            className="cursor-pointer hover:underline"
-            onClick={() => router.push("/dashboard/employees")}
-          >
-            {t("titles.main")}
-          </span>
-          <span>/</span>
-          <span>
-            {displayFirstname} {displayLastname}
-          </span>
-        </h1>
+
+        <button
+          type="button"
+          onClick={openTimeClockInNewTab}
+          className="inline-flex items-center justify-center gap-2 rounded-2xl border border-darkBlue/10 bg-white px-4 py-3 text-sm font-medium text-darkBlue shadow-sm transition hover:bg-darkBlue/5"
+        >
+          <Clock3 className="size-4" />
+          <span className="hidden md:inline">Ouvrir la pointeuse</span>
+          <SquareArrowOutUpRight className="size-4" />
+        </button>
       </div>
 
       {/* Détails & Photo (formulaire branché sur le SNAPSHOT) */}
@@ -399,6 +414,11 @@ export default function DetailsEmployeesComponent({ employeeId }) {
         isDeletingDocId={isDeletingDocId}
         removeSelectedDoc={removeSelectedDoc}
         onDocTitleChange={onDocTitleChange}
+      />
+
+      <TimeClockEmployeesComponent
+        restaurantId={restaurantId}
+        employeeId={employeeId}
       />
 
       {/* Modal doublon */}
