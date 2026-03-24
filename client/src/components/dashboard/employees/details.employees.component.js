@@ -103,7 +103,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     // --- Récupérer le profile pour CE resto ---
     const profile =
       (found.restaurantProfiles || []).find(
-        (p) => String(p.restaurant) === String(restaurantId)
+        (p) => String(p.restaurant) === String(restaurantId),
       ) || null;
 
     const snapshot = profile?.snapshot || {};
@@ -169,7 +169,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     try {
       const fd = new FormData();
       Object.entries(data).forEach(
-        ([k, v]) => v !== undefined && fd.append(k, v)
+        ([k, v]) => v !== undefined && fd.append(k, v),
       );
       if (profileFile) fd.append("profilePicture", profileFile);
 
@@ -183,7 +183,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
       }));
 
       const updated = response.data.restaurant.employees.find(
-        (e) => e._id === employeeId
+        (e) => e._id === employeeId,
       );
       setEmployee(updated);
       setIsEditing(false);
@@ -208,14 +208,14 @@ export default function DetailsEmployeesComponent({ employeeId }) {
         }));
 
         const updated = response.data.restaurant.employees.find(
-          (e) => e._id === employeeId
+          (e) => e._id === employeeId,
         );
         setEmployee(updated);
         setOptionsSaved(true);
 
         const profile =
           (updated.restaurantProfiles || []).find(
-            (p) => String(p.restaurant) === String(restaurantId)
+            (p) => String(p.restaurant) === String(restaurantId),
           ) || null;
         const mergedOptions = {
           ...DEFAULT_OPTIONS,
@@ -235,14 +235,14 @@ export default function DetailsEmployeesComponent({ employeeId }) {
 
     const currentProfile =
       (employee?.restaurantProfiles || []).find(
-        (p) => String(p.restaurant) === String(restaurantId)
+        (p) => String(p.restaurant) === String(restaurantId),
       ) || null;
     const uploadedNames = new Set(
-      currentProfile?.documents?.map((d) => d.filename) || []
+      currentProfile?.documents?.map((d) => d.filename) || [],
     );
 
     const uniqueFiles = selectedFiles.filter(
-      (f) => !existingNames.has(f.name) && !uploadedNames.has(f.name)
+      (f) => !existingNames.has(f.name) && !uploadedNames.has(f.name),
     );
 
     if (uniqueFiles.length < selectedFiles.length) {
@@ -255,7 +255,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
 
   function onDocTitleChange(index, newTitle) {
     setDocs((prev) =>
-      prev.map((d, i) => (i === index ? { ...d, title: newTitle } : d))
+      prev.map((d, i) => (i === index ? { ...d, title: newTitle } : d)),
     );
   }
 
@@ -276,7 +276,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
         employees: response.data.restaurant.employees,
       }));
       const updated = response.data.restaurant.employees.find(
-        (e) => e._id === employeeId
+        (e) => e._id === employeeId,
       );
       setEmployee(updated);
       setDocs([]);
@@ -305,7 +305,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
         employees: response.data.restaurant.employees,
       }));
       const updated = response.data.restaurant.employees.find(
-        (e) => e._id === employeeId
+        (e) => e._id === employeeId,
       );
       setEmployee(updated);
       setDocToDelete(null);
@@ -321,7 +321,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
   // Profil & documents pour le restaurant courant
   const currentProfile =
     (employee.restaurantProfiles || []).find(
-      (p) => String(p.restaurant) === String(restaurantId)
+      (p) => String(p.restaurant) === String(restaurantId),
     ) || null;
 
   const currentSnapshot = currentProfile?.snapshot || {};
@@ -336,7 +336,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
       <hr className="opacity-20" />
 
       <div className="flex gap-2 items-center min-h-[40px]">
-        <div className="flex flex-1 flex-wrap items-center gap-3">
+        <div className="flex flex-1 flex-wrap items-center gap-2">
           <div>
             <EmployeesSvg width={30} height={30} fillColor="#131E3690" />
           </div>
@@ -353,16 +353,6 @@ export default function DetailsEmployeesComponent({ employeeId }) {
             </span>
           </h1>
         </div>
-
-        <button
-          type="button"
-          onClick={openTimeClockInNewTab}
-          className="inline-flex items-center justify-center gap-2 rounded-2xl border border-darkBlue/10 bg-white px-4 py-3 text-sm font-medium text-darkBlue shadow-sm transition hover:bg-darkBlue/5"
-        >
-          <Clock3 className="size-4" />
-          <span className="hidden midTablet:inline">Ouvrir la pointeuse</span>
-          <SquareArrowOutUpRight className="size-4" />
-        </button>
       </div>
 
       {/* Détails & Photo (formulaire branché sur le SNAPSHOT) */}
