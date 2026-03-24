@@ -76,6 +76,17 @@ function getReservationTableLabel(reservation, tablesCatalog = []) {
   return names.length ? names.join(" + ") : null;
 }
 
+function getReservationCustomerName(reservation) {
+  const fullName = String(reservation?.customerName || "").trim();
+  if (fullName) return fullName;
+
+  const firstName = String(reservation?.customerFirstName || "").trim();
+  const lastName = String(reservation?.customerLastName || "").trim();
+  const fallback = `${firstName} ${lastName}`.trim();
+
+  return fallback || "-";
+}
+
 export default function ReservationsDrawerComponent({
   open,
   onClose,
@@ -455,7 +466,7 @@ export default function ReservationsDrawerComponent({
               </p>
 
               <h3 className="text-base font-semibold text-darkBlue truncate">
-                {reservation?.customerName || "-"}
+                {getReservationCustomerName(reservation)}
               </h3>
 
               <div className="mt-1 flex flex-wrap items-center gap-2">
@@ -503,7 +514,7 @@ export default function ReservationsDrawerComponent({
               <div className="flex items-start gap-2 text-sm text-darkBlue/80">
                 <User className="size-4 mt-0.5 text-darkBlue/40" />
                 <p className="text-sm font-semibold text-darkBlue truncate">
-                  {reservation?.customerName || "-"}
+                  {getReservationCustomerName(reservation)}
                 </p>
               </div>
 

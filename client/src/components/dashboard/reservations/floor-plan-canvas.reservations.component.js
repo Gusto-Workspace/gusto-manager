@@ -1830,20 +1830,6 @@ export default function FloorPlanCanvasReservationsComponent({
             listening={false}
           />
         ) : null}
-
-        {Number(ref?.bookingPriority || 0) > 0 ? (
-          <Text
-            text={`P${Number(ref.bookingPriority)}`}
-            fontSize={10}
-            fill="rgba(19,30,54,0.48)"
-            width={w}
-            height={h}
-            align="center"
-            verticalAlign="middle"
-            offsetY={18}
-            listening={false}
-          />
-        ) : null}
       </Group>
     );
   }
