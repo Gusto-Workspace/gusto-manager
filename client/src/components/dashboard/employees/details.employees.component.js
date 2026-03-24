@@ -360,7 +360,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
           className="inline-flex items-center justify-center gap-2 rounded-2xl border border-darkBlue/10 bg-white px-4 py-3 text-sm font-medium text-darkBlue shadow-sm transition hover:bg-darkBlue/5"
         >
           <Clock3 className="size-4" />
-          <span className="hidden md:inline">Ouvrir la pointeuse</span>
+          <span className="hidden midTablet:inline">Ouvrir la pointeuse</span>
           <SquareArrowOutUpRight className="size-4" />
         </button>
       </div>

@@ -471,7 +471,7 @@ export default function PaymentsDrawerDashboardComponent({
 
         <div className="hide-scrollbar flex-1 overflow-y-auto bg-lightGrey p-4 overscroll-contain">
           <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-4 shadow-sm">
-            <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <div className="flex flex-col gap-2 midTablet:flex-row midTablet:items-end midTablet:justify-between">
               <div>
                 <p className="text-xs uppercase tracking-[0.12em] text-darkBlue/45">
                   {t?.("payments.drawer.summary", "Résumé")}

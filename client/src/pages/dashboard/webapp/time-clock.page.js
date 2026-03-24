@@ -60,7 +60,7 @@ export default function TimeClockWebAppPage() {
         <meta name="format-detection" content="telephone=no" />
       </Head>
 
-      <div className="min-h-[100dvh] bg-lightGrey px-3 py-4 text-darkBlue md:px-5 md:py-5">
+      <div className="min-h-[100dvh] bg-lightGrey px-3 py-4 text-darkBlue midTablet:px-5 midTablet:py-5">
         {!hasEmployeesModule ? (
           <NoAvailableComponent
             dataLoading={restaurantContext?.dataLoading}

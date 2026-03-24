@@ -286,22 +286,20 @@ export default function TimeClockKioskComponent() {
     }
   }
 
-  const latestSession = summary?.history?.[0] || null;
-
   return (
     <section className="flex flex-col gap-6">
       <div className="rounded-[34px] bg-darkBlue px-6 py-6 text-white shadow-[0_24px_80px_rgba(19,30,54,0.22)]">
-        <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+        <div className="flex flex-col gap-5 desktop:flex-row desktop:items-end desktop:justify-between">
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs uppercase tracking-[0.18em] text-white/80">
               <Clock3 className="size-3.5" />
               Pointeuse
             </div>
 
-            <h1 className="mt-4 text-3xl font-semibold leading-tight md:text-4xl">
+            <h1 className="mt-4 text-3xl font-semibold leading-tight midTablet:text-4xl">
               Borne de pointage
             </h1>
-            <p className="mt-2 max-w-2xl text-sm text-white/75 md:text-base">
+            <p className="mt-2 max-w-2xl text-sm text-white/75 midTablet:text-base">
               Sélectionnez un salarié, choisissez l'action proposée, signez, puis
               validez le pointage.
             </p>
@@ -343,7 +341,7 @@ export default function TimeClockKioskComponent() {
         </div>
       ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+      <div className="grid gap-6 desktop:grid-cols-[0.95fr_1.05fr]">
         <section className="rounded-[30px] border border-darkBlue/10 bg-white px-5 py-5 shadow-sm">
           <div className="flex items-center gap-3">
             <span className="inline-flex size-11 items-center justify-center rounded-2xl border border-darkBlue/10 bg-lightGrey/60 text-blue">
@@ -374,7 +372,7 @@ export default function TimeClockKioskComponent() {
             </div>
           ) : null}
 
-          <div className="mt-5 grid max-h-[58vh] grid-cols-1 gap-3 overflow-y-auto pr-1 md:grid-cols-2">
+          <div className="mt-5 grid max-h-[58vh] grid-cols-1 gap-2 overflow-y-auto pr-1 midTablet:grid-cols-2">
             {filteredEmployees.length ? (
               filteredEmployees.map((employee) => {
                 const isSelected =
@@ -418,7 +416,7 @@ export default function TimeClockKioskComponent() {
                 );
               })
             ) : (
-              <div className="rounded-[24px] border border-dashed border-darkBlue/15 bg-lightGrey/35 px-4 py-6 text-center text-sm text-darkBlue/55 md:col-span-2">
+              <div className="rounded-[24px] border border-dashed border-darkBlue/15 bg-lightGrey/35 px-4 py-6 text-center text-sm text-darkBlue/55 midTablet:col-span-2">
                 Aucun salarié ne correspond à cette recherche.
               </div>
             )}
@@ -426,7 +424,7 @@ export default function TimeClockKioskComponent() {
         </section>
 
         <section className="rounded-[30px] border border-darkBlue/10 bg-white px-5 py-5 shadow-sm">
-          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="flex flex-col gap-4 midTablet:flex-row midTablet:items-start midTablet:justify-between">
             <div>
               <p className="text-sm text-darkBlue/55">Salarié sélectionné</p>
               <h2 className="mt-1 text-2xl font-semibold text-darkBlue">
@@ -455,7 +453,7 @@ export default function TimeClockKioskComponent() {
           </div>
 
           <div className="mt-5 rounded-[26px] border border-darkBlue/10 bg-lightGrey/45 px-4 py-4">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-col gap-3 midTablet:flex-row midTablet:items-center midTablet:justify-between">
               <div>
                 <span
                   className={[
@@ -483,7 +481,7 @@ export default function TimeClockKioskComponent() {
           <div className="mt-5">
             <p className="text-sm font-medium text-darkBlue">Action à valider</p>
 
-            <div className="mt-3 grid gap-3 md:grid-cols-2">
+            <div className="mt-3 grid gap-3 midTablet:grid-cols-2">
               {(summary?.state?.availableActions || []).map((action) => (
                 <button
                   key={action}
@@ -515,7 +513,7 @@ export default function TimeClockKioskComponent() {
               ))}
 
               {!(summary?.state?.availableActions || []).length ? (
-                <div className="rounded-[24px] border border-dashed border-darkBlue/15 bg-lightGrey/35 px-4 py-6 text-sm text-darkBlue/55 md:col-span-2">
+                <div className="rounded-[24px] border border-dashed border-darkBlue/15 bg-lightGrey/35 px-4 py-6 text-sm text-darkBlue/55 midTablet:col-span-2">
                   Sélectionnez un salarié pour connaître les actions disponibles.
                 </div>
               ) : null}
@@ -566,30 +564,6 @@ export default function TimeClockKioskComponent() {
               </>
             )}
           </button>
-
-          <div className="mt-5 rounded-[24px] border border-darkBlue/10 bg-lightGrey/45 px-4 py-4">
-            <p className="text-sm font-medium text-darkBlue">Dernier service connu</p>
-
-            {latestSession ? (
-              <div className="mt-3 flex flex-col gap-2 text-sm text-darkBlue/70">
-                <p>
-                  {formatDate(new Date(`${latestSession.businessDate}T12:00:00`))} ·{" "}
-                  {formatTime(latestSession.clockInAt)} →{" "}
-                  {latestSession.clockOutAt
-                    ? formatTime(latestSession.clockOutAt)
-                    : "en cours"}
-                </p>
-                <p>
-                  Net {formatMinutes(latestSession.totals.workedMinutes)} · Pauses{" "}
-                  {formatMinutes(latestSession.totals.breakMinutes)}
-                </p>
-              </div>
-            ) : (
-              <p className="mt-3 text-sm text-darkBlue/55">
-                Aucun historique de pointage disponible pour ce salarié.
-              </p>
-            )}
-          </div>
         </section>
       </div>
     </section>

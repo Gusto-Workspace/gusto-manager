@@ -3,6 +3,7 @@ import axios from "axios";
 import {
   AlertTriangle,
   CalendarDays,
+  ChevronDown,
   Clock3,
   Coffee,
   LogIn,
@@ -104,52 +105,85 @@ function SummaryCard({ title, subtitle, worked, breaks, sessions }) {
   );
 }
 
-function RangeTable({ days = [], title, emptyText }) {
-  const rows = title === "Récap mensuel" ? [...days].reverse() : days;
-  const visibleRows =
-    title === "Récap mensuel"
-      ? rows.filter((day) => day.sessionCount > 0 || day.anomalies?.length > 0)
-      : rows;
+function formatCompactDateKey(value) {
+  if (!value) return "—";
 
+  try {
+    return new Intl.DateTimeFormat("fr-FR", {
+      weekday: "short",
+      day: "2-digit",
+      month: "2-digit",
+    }).format(new Date(`${value}T12:00:00`));
+  } catch {
+    return "—";
+  }
+}
+
+function ViewTabs({ activeView, onChange }) {
+  return (
+    <div className="inline-flex w-full flex-wrap gap-2 rounded-[24px] border border-darkBlue/10 bg-white p-2 shadow-sm midTablet:w-auto">
+      {[
+        ["day", "Jour"],
+        ["week", "Semaine"],
+        ["month", "Mois"],
+      ].map(([value, label]) => (
+        <button
+          key={value}
+          type="button"
+          onClick={() => onChange(value)}
+          className={[
+            "rounded-[18px] px-4 py-2 text-sm font-medium transition",
+            activeView === value
+              ? "bg-blue text-white shadow-sm"
+              : "text-darkBlue/65 hover:bg-darkBlue/5",
+          ].join(" ")}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function WeekOverview({ days = [], onSelectDay }) {
   return (
     <section className="rounded-[30px] border border-darkBlue/10 bg-white px-5 py-5 shadow-sm">
       <div className="flex items-center gap-3">
         <CalendarDays className="size-5 text-blue" />
-        <h3 className="text-lg font-semibold text-darkBlue">{title}</h3>
+        <h3 className="text-lg font-semibold text-darkBlue">Récap hebdomadaire</h3>
       </div>
 
-      <div className="mt-4 flex flex-col gap-3">
-        {!visibleRows.length ? (
-          <p className="text-sm text-darkBlue/55">{emptyText}</p>
-        ) : (
-          visibleRows.map((day) => (
-            <div
-              key={day.date}
-              className="rounded-2xl border border-darkBlue/10 bg-lightGrey/45 px-4 py-3"
-            >
-              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                <div className="min-w-0">
-                  <p className="font-medium text-darkBlue">{formatDateKey(day.date)}</p>
-                  <p className="text-xs text-darkBlue/55">
-                    {day.sessionCount > 0
-                      ? `${day.sessionCount} service${day.sessionCount > 1 ? "s" : ""}`
-                      : "Aucun service"}
-                  </p>
-                </div>
+      <div className="mt-4 grid gap-3 mobile:grid-cols-2 midTablet:grid-cols-4 desktop:grid-cols-7">
+        {days.map((day) => (
+          <button
+            key={day.date}
+            type="button"
+            onClick={() => onSelectDay?.(day.date)}
+            className="rounded-[24px] border border-darkBlue/10 bg-lightGrey/45 px-4 py-4 text-left transition hover:bg-darkBlue/5"
+          >
+            <p className="text-xs font-medium uppercase tracking-[0.14em] text-darkBlue/45">
+              {formatCompactDateKey(day.date)}
+            </p>
+            <p className="mt-3 text-xl font-semibold text-darkBlue">
+              {formatMinutes(day.totalWorkedMinutes)}
+            </p>
+            <p className="mt-1 text-xs text-darkBlue/55">
+              {day.sessionCount > 0
+                ? `${day.sessionCount} service${day.sessionCount > 1 ? "s" : ""}`
+                : "Repos"}
+            </p>
 
-                <div className="flex flex-wrap items-center gap-3 text-sm text-darkBlue/70">
-                  <span>Net {formatMinutes(day.totalWorkedMinutes)}</span>
-                  <span>Pauses {formatMinutes(day.totalBreakMinutes)}</span>
-                  <span>Brut {formatMinutes(day.totalGrossMinutes)}</span>
-                </div>
-              </div>
+            <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-darkBlue/60">
+              <span>Pauses {formatMinutes(day.totalBreakMinutes)}</span>
+            </div>
 
+            {!!day.anomalies?.length && (
               <div className="mt-3">
                 <AnomalyBadges anomalies={day.anomalies || []} />
               </div>
-            </div>
-          ))
-        )}
+            )}
+          </button>
+        ))}
       </div>
     </section>
   );
@@ -157,8 +191,8 @@ function RangeTable({ days = [], title, emptyText }) {
 
 function SessionCard({ session, onOpenSignature }) {
   return (
-    <article className="rounded-[26px] border border-darkBlue/10 bg-lightGrey/45 px-4 py-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+    <details className="group rounded-[26px] border border-darkBlue/10 bg-lightGrey/45 px-4 py-4">
+      <summary className="flex cursor-pointer list-none flex-col gap-3 midTablet:flex-row midTablet:items-center midTablet:justify-between">
         <div>
           <p className="text-lg font-semibold text-darkBlue">
             {formatTime(session.clockInAt)}{" "}
@@ -173,43 +207,45 @@ function SessionCard({ session, onOpenSignature }) {
           </p>
         </div>
 
-        <span
-          className={[
-            "inline-flex w-fit items-center rounded-full border px-3 py-1 text-xs font-medium",
-            getSituationChipClasses(session.situation),
-          ].join(" ")}
-        >
-          {getTimeClockSituationLabel(session.situation)}
-        </span>
-      </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            className={[
+              "inline-flex w-fit items-center rounded-full border px-3 py-1 text-xs font-medium",
+              getSituationChipClasses(session.situation),
+            ].join(" ")}
+          >
+            {getTimeClockSituationLabel(session.situation)}
+          </span>
+
+          <span className="inline-flex size-8 items-center justify-center rounded-2xl border border-darkBlue/10 bg-white text-darkBlue/60 transition group-open:rotate-180">
+            <ChevronDown className="size-4" />
+          </span>
+        </div>
+      </summary>
 
       <div className="mt-4">
         <AnomalyBadges anomalies={session.anomalies || []} />
       </div>
 
-      {!!session.breaks?.length && (
-        <div className="mt-4 rounded-2xl border border-darkBlue/10 bg-white/80 px-4 py-3">
-          <p className="text-sm font-semibold text-darkBlue">Pauses</p>
-
-          <div className="mt-3 flex flex-col gap-2">
+      <div className="mt-4 rounded-2xl border border-darkBlue/10 bg-white/80 px-4 py-3">
+        {!!session.breaks?.length ? (
+          <div className="flex flex-col gap-2">
             {session.breaks.map((item) => (
               <div
                 key={item.id}
-                className="flex flex-col gap-1 text-sm text-darkBlue/70 md:flex-row md:items-center md:justify-between"
+                className="flex flex-col gap-1 text-sm text-darkBlue/70 midTablet:flex-row midTablet:items-center midTablet:justify-between"
               >
                 <span>
-                  {formatTime(item.startAt)} →{" "}
+                  Pause {formatTime(item.startAt)} →{" "}
                   {item.endAt ? formatTime(item.endAt) : "en cours"}
                 </span>
                 <span>{formatMinutes(item.durationMinutes)}</span>
               </div>
             ))}
           </div>
-        </div>
-      )}
-
-      <div className="mt-4 rounded-2xl border border-darkBlue/10 bg-white/80 px-4 py-3">
-        <p className="text-sm font-semibold text-darkBlue">Historique du service</p>
+        ) : (
+          <p className="text-sm text-darkBlue/55">Aucune pause sur ce service.</p>
+        )}
 
         <div className="mt-3 flex flex-col gap-2">
           {(session.events || []).map((event) => {
@@ -218,7 +254,7 @@ function SessionCard({ session, onOpenSignature }) {
             return (
               <div
                 key={event.id}
-                className="flex flex-col gap-2 rounded-2xl border border-darkBlue/10 bg-lightGrey/40 px-3 py-3 md:flex-row md:items-center md:justify-between"
+                className="flex flex-col gap-2 rounded-2xl border border-darkBlue/10 bg-lightGrey/40 px-3 py-3 midTablet:flex-row midTablet:items-center midTablet:justify-between"
               >
                 <div className="flex items-center gap-3">
                   <span className="inline-flex size-9 items-center justify-center rounded-2xl border border-darkBlue/10 bg-white text-darkBlue/70">
@@ -255,7 +291,54 @@ function SessionCard({ session, onOpenSignature }) {
           })}
         </div>
       </div>
-    </article>
+    </details>
+  );
+}
+
+function MonthOverview({ days = [], onSelectDay }) {
+  return (
+    <section className="rounded-[30px] border border-darkBlue/10 bg-white px-5 py-5 shadow-sm">
+      <div className="flex items-center gap-3">
+        <CalendarDays className="size-5 text-blue" />
+        <h3 className="text-lg font-semibold text-darkBlue">Récap mensuel</h3>
+      </div>
+
+      <div className="mt-4 flex flex-col gap-3">
+        {!days.length ? (
+          <p className="text-sm text-darkBlue/55">
+            Aucun pointage sur le mois sélectionné.
+          </p>
+        ) : (
+          days.map((day) => (
+            <button
+              key={day.date}
+              type="button"
+              onClick={() => onSelectDay?.(day.date)}
+              className="rounded-2xl border border-darkBlue/10 bg-lightGrey/45 px-4 py-3 text-left transition hover:bg-darkBlue/5"
+            >
+              <div className="flex flex-col gap-2 midTablet:flex-row midTablet:items-center midTablet:justify-between">
+                <div>
+                  <p className="font-medium text-darkBlue">{formatDateKey(day.date)}</p>
+                  <p className="text-xs text-darkBlue/55">
+                    {day.sessionCount} service{day.sessionCount > 1 ? "s" : ""}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3 text-sm text-darkBlue/70">
+                  <span>Net {formatMinutes(day.totalWorkedMinutes)}</span>
+                  <span>Pauses {formatMinutes(day.totalBreakMinutes)}</span>
+                  <span>Brut {formatMinutes(day.totalGrossMinutes)}</span>
+                </div>
+              </div>
+
+              <div className="mt-3">
+                <AnomalyBadges anomalies={day.anomalies || []} />
+              </div>
+            </button>
+          ))
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -268,6 +351,7 @@ export default function TimeClockSummaryComponent({
   allowOpenKiosk = false,
 }) {
   const [anchorDate, setAnchorDate] = useState(() => toLocalDateKey(new Date()));
+  const [activeView, setActiveView] = useState("day");
   const [reloadKey, setReloadKey] = useState(0);
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -277,6 +361,7 @@ export default function TimeClockSummaryComponent({
 
   useEffect(() => {
     setAnchorDate(toLocalDateKey(new Date()));
+    setActiveView("day");
     setSummary(null);
     setLoading(true);
     setError("");
@@ -375,7 +460,7 @@ export default function TimeClockSummaryComponent({
   return (
     <>
       <section className="flex flex-col gap-6">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+        <div className="flex flex-col gap-4 desktop:flex-row desktop:items-end desktop:justify-between">
           <div className="min-w-0">
             <div className="flex items-center gap-3">
               <span className="inline-flex size-12 items-center justify-center rounded-2xl border border-darkBlue/10 bg-white text-blue shadow-sm">
@@ -436,7 +521,7 @@ export default function TimeClockSummaryComponent({
         ) : null}
 
         <section className="rounded-[30px] border border-darkBlue/10 bg-white px-5 py-5 shadow-sm">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col gap-4 midTablet:flex-row midTablet:items-center midTablet:justify-between">
             <div className="flex flex-col gap-3">
               <div className="flex flex-wrap items-center gap-3">
                 <span
@@ -482,7 +567,7 @@ export default function TimeClockSummaryComponent({
           </div>
         </section>
 
-        <div className="grid gap-4 lg:grid-cols-3">
+        <div className="grid gap-4 midTablet:grid-cols-3">
           <SummaryCard
             title="Journalier"
             subtitle={formatDateKey(summary?.day?.date)}
@@ -508,110 +593,66 @@ export default function TimeClockSummaryComponent({
           />
         </div>
 
-        <section className="rounded-[30px] border border-darkBlue/10 bg-white px-5 py-5 shadow-sm">
-          <div className="flex items-center gap-3">
-            <Clock3 className="size-5 text-blue" />
-            <h3 className="text-lg font-semibold text-darkBlue">
-              Détail journalier
-            </h3>
-          </div>
+        <div className="flex justify-end">
+          <ViewTabs activeView={activeView} onChange={setActiveView} />
+        </div>
 
-          <p className="mt-2 text-sm text-darkBlue/60">
-            {formatDateKey(summary?.day?.date)} · Net{" "}
-            {formatMinutes(summary?.day?.totalWorkedMinutes || 0)} · Pauses{" "}
-            {formatMinutes(summary?.day?.totalBreakMinutes || 0)}
-          </p>
+        {activeView === "day" ? (
+          <section className="rounded-[30px] border border-darkBlue/10 bg-white px-5 py-5 shadow-sm">
+            <div className="flex items-center gap-3">
+              <Clock3 className="size-5 text-blue" />
+              <h3 className="text-lg font-semibold text-darkBlue">
+                Détail journalier
+              </h3>
+            </div>
 
-          <div className="mt-4">
-            <AnomalyBadges anomalies={summary?.day?.anomalies || []} />
-          </div>
+            <p className="mt-2 text-sm text-darkBlue/60">
+              {formatDateKey(summary?.day?.date)} · Net{" "}
+              {formatMinutes(summary?.day?.totalWorkedMinutes || 0)} · Pauses{" "}
+              {formatMinutes(summary?.day?.totalBreakMinutes || 0)}
+            </p>
 
-          <div className="mt-5 flex flex-col gap-4">
-            {(summary?.day?.sessions || []).length ? (
-              summary.day.sessions.map((session) => (
-                <SessionCard
-                  key={session.id}
-                  session={session}
-                  onOpenSignature={(signature, titleText) =>
-                    setSignatureModal({ signature, title: titleText })
-                  }
-                />
-              ))
-            ) : (
-              <EmptyState text="Aucun pointage enregistré sur cette journée." />
-            )}
-          </div>
-        </section>
+            <div className="mt-4">
+              <AnomalyBadges anomalies={summary?.day?.anomalies || []} />
+            </div>
 
-        <RangeTable
-          title="Récap hebdomadaire"
-          days={summary?.week?.days || []}
-          emptyText="Aucun pointage sur la semaine sélectionnée."
-        />
+            <div className="mt-5 flex flex-col gap-3">
+              {(summary?.day?.sessions || []).length ? (
+                summary.day.sessions.map((session) => (
+                  <SessionCard
+                    key={session.id}
+                    session={session}
+                    onOpenSignature={(signature, titleText) =>
+                      setSignatureModal({ signature, title: titleText })
+                    }
+                  />
+                ))
+              ) : (
+                <EmptyState text="Aucun pointage enregistré sur cette journée." />
+              )}
+            </div>
+          </section>
+        ) : null}
 
-        <section className="rounded-[30px] border border-darkBlue/10 bg-white px-5 py-5 shadow-sm">
-          <div className="flex items-center gap-3">
-            <CalendarDays className="size-5 text-blue" />
-            <h3 className="text-lg font-semibold text-darkBlue">Récap mensuel</h3>
-          </div>
+        {activeView === "week" ? (
+          <WeekOverview
+            days={summary?.week?.days || []}
+            onSelectDay={(date) => {
+              setAnchorDate(date);
+              setActiveView("day");
+            }}
+          />
+        ) : null}
 
-          <div className="mt-4 flex flex-col gap-3">
-            {!monthRows.length ? (
-              <p className="text-sm text-darkBlue/55">
-                Aucun pointage sur le mois sélectionné.
-              </p>
-            ) : (
-              monthRows.map((day) => (
-                <div
-                  key={day.date}
-                  className="rounded-2xl border border-darkBlue/10 bg-lightGrey/45 px-4 py-3"
-                >
-                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <p className="font-medium text-darkBlue">{formatDateKey(day.date)}</p>
-                      <p className="text-xs text-darkBlue/55">
-                        {day.sessionCount} service{day.sessionCount > 1 ? "s" : ""}
-                      </p>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-3 text-sm text-darkBlue/70">
-                      <span>Net {formatMinutes(day.totalWorkedMinutes)}</span>
-                      <span>Pauses {formatMinutes(day.totalBreakMinutes)}</span>
-                      <span>Brut {formatMinutes(day.totalGrossMinutes)}</span>
-                    </div>
-                  </div>
-
-                  <div className="mt-3">
-                    <AnomalyBadges anomalies={day.anomalies || []} />
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </section>
-
-        <section className="rounded-[30px] border border-darkBlue/10 bg-white px-5 py-5 shadow-sm">
-          <div className="flex items-center gap-3">
-            <Clock3 className="size-5 text-blue" />
-            <h3 className="text-lg font-semibold text-darkBlue">Historique</h3>
-          </div>
-
-          <div className="mt-4 flex flex-col gap-4">
-            {(summary?.history || []).length ? (
-              summary.history.map((session) => (
-                <SessionCard
-                  key={session.id}
-                  session={session}
-                  onOpenSignature={(signature, titleText) =>
-                    setSignatureModal({ signature, title: titleText })
-                  }
-                />
-              ))
-            ) : (
-              <EmptyState text="Aucun historique disponible pour le moment." />
-            )}
-          </div>
-        </section>
+        {activeView === "month" ? (
+          <MonthOverview
+            days={monthRows}
+            onSelectDay={(date) => {
+              setAnchorDate(date);
+              setActiveView("day");
+            }}
+          />
+        ) : null}
       </section>
 
       {signatureModal ? (
