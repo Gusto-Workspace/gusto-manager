@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 
 // ICONS
-import { Check } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
 import axios from "axios";
 
 export default function ContactLandingComponent() {
@@ -40,140 +40,227 @@ export default function ContactLandingComponent() {
   }
 
   return (
-    <div className="mx-auto text-pretty px-[10%] py-32 flex flex-col tablet:flex-row gap-6 items-center">
-      <div className="w-full tablet:w-1/2 container mx-auto px-4 md:px-6">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          <div className="lg:col-span-5 pt-8">
-            <h2 className="text-3xl tablet:text-4xl font-bold text-lightGrey mb-4">
-              Nous contacter
+    <section className="py-20 pt-28 tablet:pb-24 tablet:pt-36 text-darkBlue">
+      <div className="mx-auto max-w-[90%] tablet:max-w-[85%]">
+        <div className="grid grid-cols-1 tablet:grid-cols-2 gap-10 items-start">
+          {/* LEFT CONTENT */}
+          <div className="tablet:sticky tablet:top-28">
+            <h2 className="mt-5 text-3xl tablet:text-4xl desktop:text-5xl font-bold leading-tight">
+              Parlons de votre restaurant
             </h2>
 
-            <div className="w-20 h-1 bg-orange my-6 rounded-full"></div>
-
-            <p className="text-lg text-lightGrey mb-4 font-light">
-              Découvrez comment Gusto Manager peut améliorer la gestion de votre
-              restaurant. Remplissez le formulaire pour qu'un expert vous
-              contacte.
-            </p>
-            <p className="text-lg text-lightGrey mb-4">
-              Réservez une démo produit avec notre équipe et découvrez{" "}
-              <span className="font-semibold text-lightGrey">
-                la meilleure plateforme de gestion pour votre restaurant, bar ou
-                café.
-              </span>
+            <p className="mt-5 text-lg text-darkBlue/75 leading-relaxed max-w-xl">
+              Découvrez comment Gusto Manager peut simplifier votre gestion,
+              centraliser vos outils et vous faire gagner du temps au quotidien.
             </p>
 
-            <h3 className="font-semibold text-lightGrey text-xl mb-4">
-              Prenez rendez-vous avec notre équipe pour :
-            </h3>
+            <div className="w-20 h-1 bg-orange my-8 rounded-full"></div>
 
-            <ul className="space-y-4 mb-8 font-light text-lg">
-              <li className="flex items-start gap-3">
-                <div className="text-white bg-orange rounded-full p-0.5 mt-1">
+            <p className="text-base tablet:text-lg text-darkBlue/80 leading-relaxed max-w-xl">
+              Prenez rendez-vous avec notre équipe pour découvrir la plateforme,
+              poser vos questions et voir concrètement comment elle peut
+              s’adapter à votre fonctionnement.
+            </p>
+
+            <div className="mt-8 space-y-4">
+              <div className="flex items-start gap-3">
+                <div className="shrink-0 rounded-full bg-orange p-1 text-white mt-0.5">
                   <Check className="h-4 w-4" />
                 </div>
-                <span className="text-lightGrey">
-                  Un appel (d'environ 30 minutes) pour discuter de vos besoins
-                </span>
-              </li>
+                <p className="text-darkBlue/85">
+                  Un échange d’environ 30 minutes pour comprendre vos besoins
+                </p>
+              </div>
 
-              <li className="flex items-start gap-3">
-                <div className="text-white bg-orange rounded-full p-0.5 mt-1">
+              <div className="flex items-start gap-3">
+                <div className="shrink-0 rounded-full bg-orange p-1 text-white mt-0.5">
                   <Check className="h-4 w-4" />
                 </div>
-                <span className="text-lightGrey">Une démo gratuite de notre plateforme de gestion</span>
-              </li>
+                <p className="text-darkBlue/85">
+                  Une démo personnalisée de la plateforme
+                </p>
+              </div>
 
-              <li className="flex items-start gap-3">
-                <div className="text-white bg-orange rounded-full p-0.5 mt-1">
+              <div className="flex items-start gap-3">
+                <div className="shrink-0 rounded-full bg-orange p-1 text-white mt-0.5">
                   <Check className="h-4 w-4" />
                 </div>
-                <span className="text-lightGrey">Toutes les informations pour vous aider à démarrer</span>
-              </li>
-            </ul>
+                <p className="text-darkBlue/85">
+                  Toutes les informations pour démarrer sereinement
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* RIGHT FORM */}
+          <div className="relative">
+            <div className="absolute inset-0 translate-x-3 translate-y-3 rounded-[28px] bg-orange/90" />
+            <div className="relative rounded-[28px] border-2 border-darkBlue bg-white p-6 tablet:p-8 desktop:p-10 shadow-[0_20px_60px_rgba(19,30,54,0.12)]">
+              <div className="mb-8">
+                <h3 className="text-2xl tablet:text-3xl font-bold">
+                  Demander une démo
+                </h3>
+                <p className="mt-2 text-darkBlue/65">
+                  Remplissez le formulaire et nous revenons vers vous
+                  rapidement.
+                </p>
+              </div>
+
+              {messageSent === true && (
+                <div className="mb-6 rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-green-700">
+                  Votre message a bien été envoyé.
+                </div>
+              )}
+
+              {messageSent === false && (
+                <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-red-700">
+                  Une erreur est survenue. Veuillez réessayer.
+                </div>
+              )}
+
+              <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+                {/* NOM */}
+                <div>
+                  <label
+                    htmlFor="name"
+                    className="mb-2 block text-sm font-semibold text-darkBlue"
+                  >
+                    Prénom & Nom <span className="text-orange">*</span>
+                  </label>
+                  <input
+                    id="name"
+                    type="text"
+                    placeholder="Votre prénom et nom"
+                    className={`w-full rounded-2xl border px-4 py-3.5 outline-none transition-all duration-200 placeholder:text-darkBlue/35 ${
+                      errors.name
+                        ? "border-red-400 bg-red-50"
+                        : "border-darkBlue/10 bg-dirtyWhite focus:border-darkBlue/25 focus:bg-white"
+                    }`}
+                    {...register("name", {
+                      required: "Ce champ est requis.",
+                    })}
+                  />
+                  {errors.name && (
+                    <p className="mt-2 text-sm text-red-500">
+                      {errors.name.message}
+                    </p>
+                  )}
+                </div>
+
+                {/* TEL */}
+                <div>
+                  <label
+                    htmlFor="phone"
+                    className="mb-2 block text-sm font-semibold text-darkBlue"
+                  >
+                    Numéro de téléphone <span className="text-orange">*</span>
+                  </label>
+                  <input
+                    id="phone"
+                    type="tel"
+                    placeholder="Votre numéro de téléphone"
+                    className={`w-full rounded-2xl border px-4 py-3.5 outline-none transition-all duration-200 placeholder:text-darkBlue/35 ${
+                      errors.phone
+                        ? "border-red-400 bg-red-50"
+                        : "border-darkBlue/10 bg-dirtyWhite focus:border-darkBlue/25 focus:bg-white"
+                    }`}
+                    {...register("phone", {
+                      required: "Ce champ est requis.",
+                    })}
+                  />
+                  {errors.phone && (
+                    <p className="mt-2 text-sm text-red-500">
+                      {errors.phone.message}
+                    </p>
+                  )}
+                </div>
+
+                {/* EMAIL */}
+                <div>
+                  <label
+                    htmlFor="email"
+                    className="mb-2 block text-sm font-semibold text-darkBlue"
+                  >
+                    E-mail <span className="text-orange">*</span>
+                  </label>
+                  <input
+                    id="email"
+                    type="email"
+                    placeholder="Votre e-mail"
+                    className={`w-full rounded-2xl border px-4 py-3.5 outline-none transition-all duration-200 placeholder:text-darkBlue/35 ${
+                      errors.email
+                        ? "border-red-400 bg-red-50"
+                        : "border-darkBlue/10 bg-dirtyWhite focus:border-darkBlue/25 focus:bg-white"
+                    }`}
+                    {...register("email", {
+                      required: "Le champ e-mail est requis.",
+                      pattern: {
+                        value: /^\S+@\S+\.\S+$/,
+                        message: "Format d’e-mail invalide.",
+                      },
+                    })}
+                  />
+                  {errors.email && (
+                    <p className="mt-2 text-sm text-red-500">
+                      {errors.email.message}
+                    </p>
+                  )}
+                </div>
+
+                {/* MESSAGE */}
+                <div>
+                  <label
+                    htmlFor="message"
+                    className="mb-2 block text-sm font-semibold text-darkBlue"
+                  >
+                    Votre message <span className="text-orange">*</span>
+                  </label>
+                  <textarea
+                    id="message"
+                    rows={5}
+                    placeholder="Parlez-nous de votre restaurant et de vos besoins"
+                    className={`w-full resize-none rounded-2xl border px-4 py-3.5 outline-none transition-all duration-200 placeholder:text-darkBlue/35 ${
+                      errors.message
+                        ? "border-red-400 bg-red-50"
+                        : "border-darkBlue/10 bg-dirtyWhite focus:border-darkBlue/25 focus:bg-white"
+                    }`}
+                    {...register("message", {
+                      required: "Ce champ est requis.",
+                    })}
+                  />
+                  {errors.message && (
+                    <p className="mt-2 text-sm text-red-500">
+                      {errors.message.message}
+                    </p>
+                  )}
+                </div>
+
+                {/* CTA */}
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-darkBlue px-6 py-4 text-base font-semibold text-white transition-all duration-300 hover:translate-y-[-1px] hover:bg-darkBlue/95 disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        Envoi en cours...
+                      </>
+                    ) : (
+                      "Demander une démo"
+                    )}
+                  </button>
+                </div>
+
+                <p className="text-center text-sm text-darkBlue/50">
+                  Réponse rapide • Sans engagement
+                </p>
+              </form>
+            </div>
           </div>
         </div>
       </div>
-
-      <div className="w-full tablet:w-1/2 bg-white rounded-xl shadow-md border border-darkBlue/5 hover:border-orange/50 p-12 transition-all duration-300 h-fit">
-        {/* Formulaire */}
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-          {/* Champ Prénom */}
-          <div>
-            <label htmlFor="prenom" className="block mb-1">
-              Prénom & Nom <span className="text-orange">*</span>
-            </label>
-            <input
-              id="prenom"
-              type="text"
-              className="border rounded w-full p-2 border-darkBlue/10"
-              placeholder="Votre prénom"
-              {...register("name", { required: true })}
-            />
-          </div>
-
-          {/* Champ Numéro de téléphone */}
-          <div>
-            <label htmlFor="phone" className="block mb-1">
-              Numéro de téléphone <span className="text-orange">*</span>
-            </label>
-            <input
-              id="phone"
-              type="tel"
-              className="border rounded w-full p-2 border-darkBlue/10"
-              placeholder="Votre numéro de téléphone"
-              {...register("phone", { required: true })}
-            />
-          </div>
-
-          {/* Champ E-mail professionnel */}
-          <div>
-            <label htmlFor="email" className="block mb-1">
-              E-mail <span className="text-orange">*</span>
-            </label>
-            <input
-              id="email"
-              type="email"
-              className="border rounded w-full p-2 border-darkBlue/10"
-              placeholder="Votre e-mail"
-              {...register("email", {
-                required: "Le champ Email est requis.",
-                pattern: {
-                  value: /^\S+@\S+\.\S+$/,
-                  message: "Format d’email invalide.",
-                },
-              })}
-            />
-          </div>
-
-          <div>
-            <label htmlFor="email" className="block mb-1">
-              Joindre un message <span className="text-orange">*</span>
-            </label>
-
-            <textarea
-              {...register("message", { required: true })}
-              className={`p-2 resize-none mt-1 block w-full border border-darkBlue/10 rounded`}
-              rows="4"
-            />
-          </div>
-
-          {/* Bouton Envoyer */}
-          <div className="mt-4">
-            <button
-              type="submit"
-              disabled={loading || messageSent}
-              className="bg-orange text-white font-semibold py-2 px-6 rounded shadow-md hover:opacity-90"
-            >
-              {loading
-                ? "En cours ..."
-                : messageSent
-                  ? "Message envoyé !"
-                  : "Envoyer"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+    </section>
   );
 }

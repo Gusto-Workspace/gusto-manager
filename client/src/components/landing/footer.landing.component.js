@@ -1,110 +1,91 @@
 import { useRouter } from "next/router";
 
 export default function FooterLandingComponent() {
-  const router = useRouter()
+  const router = useRouter();
+
   function wait(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  async function handleScrollToSection(id) {
-    await wait(300);
-    if (router.pathname !== "/") {
-      await router.push("/");
-      setTimeout(() => {
-        const section = document.querySelector(id);
-        if (section) {
-          section.scrollIntoView({ behavior: "smooth" });
-        }
-      }, 200);
-    } else {
-      requestAnimationFrame(() => {
-        const section = document.querySelector(id);
-        if (section) {
-          section.scrollIntoView({ behavior: "smooth" });
-        }
-      });
-    }
+  function handleRestaurantSpace() {
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("token") : null;
+
+    token ? router.push("/dashboard") : router.push("/dashboard/login");
   }
 
   return (
-    <footer className="bg-lightBlack text-white py-12 text-center tablet:text-left">
-      <div className="container mx-auto px-4 tablet:px-6">
-        <div className="grid grid-cols-1 tablet:grid-cols-3 gap-8">
+    <footer className="bg-darkBlue text-white pt-16 pb-10">
+      <div className="mx-auto max-w-[1400px] px-4 tablet:px-6">
+        <div className="grid grid-cols-1 tablet:grid-cols-3 gap-10">
+          {/* BRAND */}
           <div>
             <h3 className="text-2xl font-display font-bold mb-4">
               Gusto Manager
             </h3>
-            <p className="mb-4">
-              La solution modulaire de gestion digitale pour les restaurants.
+            <p className="text-white/70 leading-relaxed">
+              La plateforme tout-en-un pour simplifier la gestion de votre
+              restaurant et développer votre activité.
             </p>
           </div>
 
-          <div className="w-fit mx-auto">
-            <h4 className="font-bold text-lg mb-4">Liens rapides</h4>
-            <ul className="space-y-2">
-              <li>
-                <a
-                  onClick={() => handleScrollToSection("#plateforme")}
-                  className="cursor-pointer text-white hover:text-orange transition-colors"
-                >
-                  Plateforme
-                </a>
+          {/* NAVIGATION */}
+          <div>
+            <h4 className="font-semibold mb-4 text-white/90">Navigation</h4>
+            <ul className="space-y-3 text-white/70">
+              <li
+                onClick={handleRestaurantSpace}
+                className="cursor-pointer hover:text-white transition"
+              >
+                Espace restaurateur
               </li>
-              <li>
-                <a
-                  onClick={() => handleScrollToSection("#avantages")}
-                  className="cursor-pointer text-white hover:text-orange transition-colors"
-                >
-                  Avantages
-                </a>
-              </li>
-              <li>
-                <a
-                  onClick={() => handleScrollToSection("#fonctionnalités")}
-                  className="cursor-pointer text-white hover:text-orange transition-colors"
-                >
-                  Fonctionnalités
-                </a>
-              </li>
-              <li>
-                <a
-                  onClick={() => handleScrollToSection("#modules")}
-                  className="cursor-pointer text-white hover:text-orange transition-colors"
-                >
-                  Modules
-                </a>
+
+              <li
+                onClick={() => router.push("/contact")}
+                className="cursor-pointer hover:text-white transition"
+              >
+                Contact
               </li>
             </ul>
           </div>
 
-          <div className="w-fit mx-auto">
-            <h4 className="font-bold text-lg mb-4">Légal</h4>
-            <ul className="space-y-2">
-              <li>
-                <a
-                  href="/legal"
-                  className="hover:text-orange transition-colors"
-                >
-                  Mentions légales
-                </a>
-              </li>
-              <li>
-                <a
-                  href="/privacy-policy"
-                  className="hover:text-orange transition-colors"
-                >
-                  Politiques de confidentialité
-                </a>
-              </li>
-            </ul>
+          {/* CTA / CONTACT */}
+          <div>
+            <h4 className="font-semibold mb-4 text-white/90">Démarrer</h4>
+
+            <p className="text-white/70 mb-6">
+              Découvrez comment Gusto Manager peut transformer votre quotidien.
+            </p>
+
+            <button
+              onClick={() => router.push("/contact")}
+              className="w-full tablet:w-auto bg-orange hover:bg-orange/90 text-white px-6 py-3 rounded-2xl transition"
+            >
+              Demander une démo
+            </button>
           </div>
         </div>
 
-        <div className="border-t border-gray-700 mt-10 pt-8 text-center text-sm text-gray-300">
+        {/* BOTTOM */}
+        <div className="border-t text-nowrap border-white/10 mt-12 pt-6 flex flex-col tablet:flex-row items-center justify-between gap-4 text-sm text-white/50">
           <p>
-            &copy; {new Date().getFullYear()} Gusto Manager. Tous droits
-            réservés.
+            © {new Date().getFullYear()} Gusto Manager. Tous droits réservés.
           </p>
+
+          <div className="flex flex-col tablet:flex-row gap-4 tablet:gap-6">
+            <button
+              onClick={() => router.push("/legal")}
+              className="cursor-pointer hover:text-white transition"
+            >
+              Mentions légales
+            </button>
+            <button
+              onClick={() => router.push("/privacy-policy")}
+              className="cursor-pointer hover:text-white transition"
+            >
+              Politique de confidentialité
+            </button>
+          </div>
         </div>
       </div>
     </footer>
