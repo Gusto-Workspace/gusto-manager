@@ -15,12 +15,14 @@ export default function ContactPage(props) {
 
   switch (i18n.language) {
     case "en":
-      title = "Gusto Manager | Logiciel de gestion tout-en-un pour les restaurateurs";
+      title =
+        "Gusto Manager | Logiciel de gestion tout-en-un pour les restaurateurs";
       description =
         "Simplifiez vos opérations quotidiennes grâce à une plateforme intuitive qui centralise la gestion de votre restaurant.";
       break;
     default:
-      title = "Gusto Manager | Logiciel de gestion tout-en-un pour les restaurateurs";
+      title =
+        "Gusto Manager | Logiciel de gestion tout-en-un pour les restaurateurs";
       description =
         "Simplifiez vos opérations quotidiennes grâce à une plateforme intuitive qui centralise la gestion de votre restaurant.";
   }
@@ -44,26 +46,26 @@ export default function ContactPage(props) {
         </>
       </Head>
 
-      <div
-        className="min-h-screen text-pretty bg-dirtyWhite font-mono"
-        style={{
-          backgroundImage: `url("data:image/svg+xml;utf8,${encodeURIComponent(`
-      <svg xmlns='http://www.w3.org/2000/svg' width='95' height='95' fill='none'>
-        <g fill='#BDBDBD' fill-opacity='.6' clip-path='url(#a)' opacity='.8'>
-          <path d='M11.5 13a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm24 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm48 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm-24 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm-48 24a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm24 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm48 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm-24 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3ZM13 59.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm24 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm48 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm-24 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM11.5 85a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm24 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm48 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm-24 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z'/>
-        </g>
-        <defs>
-          <clipPath id='a'>
-            <path fill='#fff' d='M0 0h95v95H0z'/>
-          </clipPath>
-        </defs>
-      </svg>
-    `)}")`,
-          backgroundRepeat: "repeat",
-          backgroundAttachment: "fixed",
-          backgroundPosition: "top left",
-        }}
-      >
+      <div className="relative isolate min-h-screen bg-dirtyWhite font-mono text-pretty">
+        <div
+          className="pointer-events-none fixed inset-0 -z-10"
+          style={{
+            backgroundImage: `url("data:image/svg+xml;utf8,${encodeURIComponent(`
+        <svg xmlns='http://www.w3.org/2000/svg' width='95' height='95' fill='none'>
+          <g fill='#BDBDBD' fill-opacity='.6' clip-path='url(#a)' opacity='.8'>
+            <path d='M11.5 13a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm24 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm48 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm-24 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm-48 24a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm24 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm48 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm-24 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3ZM13 59.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm24 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm48 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm-24 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM11.5 85a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm24 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm48 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm-24 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z'/>
+          </g>
+          <defs>
+            <clipPath id='a'>
+              <path fill='#fff' d='M0 0h95v95H0z'/>
+            </clipPath>
+          </defs>
+        </svg>
+      `)}")`,
+            backgroundRepeat: "repeat",
+            backgroundPosition: "top left",
+          }}
+        />
         <NavbarLanding isContact={true} />
 
         <ContactLandingComponent />
