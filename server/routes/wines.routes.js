@@ -17,11 +17,7 @@ router.post("/restaurants/:restaurantId/wines/categories", async (req, res) => {
     const restaurant = await RestaurantModel.findById(restaurantId)
       .populate("owner_id", "firstname")
       .populate("employees")
-      .populate("menus")
-      .populate({
-        path: "reservations.list",
-        populate: { path: "table" },
-      });
+      .populate("menus");
 
     if (!restaurant) {
       return res.status(404).json({ message: "Restaurant not found." });
@@ -63,11 +59,7 @@ router.put(
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
         .populate("employees")
-        .populate("menus")
-        .populate({
-          path: "reservations.list",
-          populate: { path: "table" },
-        });
+        .populate("menus");
 
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found." });
@@ -113,11 +105,7 @@ router.delete(
       )
         .populate("owner_id", "firstname")
         .populate("employees")
-        .populate("menus")
-        .populate({
-          path: "reservations.list",
-          populate: { path: "table" },
-        });
+        .populate("menus");
 
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found." });
@@ -153,11 +141,7 @@ router.post("/restaurants/:restaurantId/wines", async (req, res) => {
     const restaurant = await RestaurantModel.findById(restaurantId)
       .populate("owner_id", "firstname")
       .populate("employees")
-      .populate("menus")
-      .populate({
-        path: "reservations.list",
-        populate: { path: "table" },
-      });
+      .populate("menus");
 
     if (!restaurant) {
       return res.status(404).json({ message: "Restaurant not found." });
@@ -221,11 +205,7 @@ router.put("/restaurants/:restaurantId/wines/:wineId", async (req, res) => {
     const restaurant = await RestaurantModel.findById(restaurantId)
       .populate("owner_id", "firstname")
       .populate("employees")
-      .populate("menus")
-      .populate({
-        path: "reservations.list",
-        populate: { path: "table" },
-      });
+      .populate("menus");
 
     if (!restaurant) {
       return res.status(404).json({ message: "Restaurant not found." });
@@ -356,11 +336,7 @@ router.delete("/restaurants/:restaurantId/wines/:wineId", async (req, res) => {
     const restaurant = await RestaurantModel.findById(restaurantId)
       .populate("owner_id", "firstname")
       .populate("employees")
-      .populate("menus")
-      .populate({
-        path: "reservations.list",
-        populate: { path: "table" },
-      });
+      .populate("menus");
 
     if (!restaurant) {
       return res.status(404).json({ message: "Restaurant not found." });
@@ -423,11 +399,7 @@ router.put(
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
         .populate("employees")
-        .populate("menus")
-        .populate({
-          path: "reservations.list",
-          populate: { path: "table" },
-        });
+        .populate("menus");
 
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found." });
@@ -466,11 +438,7 @@ router.put(
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
         .populate("employees")
-        .populate("menus")
-        .populate({
-          path: "reservations.list",
-          populate: { path: "table" },
-        });
+        .populate("menus");
 
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found." });
@@ -514,11 +482,7 @@ router.put(
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
         .populate("employees")
-        .populate("menus")
-        .populate({
-          path: "reservations.list",
-          populate: { path: "table" },
-        });
+        .populate("menus");
 
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found." });
@@ -570,11 +534,7 @@ router.post(
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
         .populate("employees")
-        .populate("menus")
-        .populate({
-          path: "reservations.list",
-          populate: { path: "table" },
-        });
+        .populate("menus");
 
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found." });
@@ -612,11 +572,7 @@ router.put(
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
         .populate("employees")
-        .populate("menus")
-        .populate({
-          path: "reservations.list",
-          populate: { path: "table" },
-        });
+        .populate("menus");
 
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found." });
@@ -659,11 +615,7 @@ router.delete(
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
         .populate("employees")
-        .populate("menus")
-        .populate({
-          path: "reservations.list",
-          populate: { path: "table" },
-        });
+        .populate("menus");
 
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found." });
@@ -711,11 +663,7 @@ router.post(
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
         .populate("employees")
-        .populate("menus")
-        .populate({
-          path: "reservations.list",
-          populate: { path: "table" },
-        });
+        .populate("menus");
 
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found." });
@@ -782,11 +730,7 @@ router.put(
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
         .populate("employees")
-        .populate("menus")
-        .populate({
-          path: "reservations.list",
-          populate: { path: "table" },
-        });
+        .populate("menus");
 
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found." });
@@ -838,11 +782,7 @@ router.put(
       const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
         .populate("employees")
-        .populate("menus")
-        .populate({
-          path: "reservations.list",
-          populate: { path: "table" },
-        });
+        .populate("menus");
 
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found." });

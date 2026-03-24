@@ -208,7 +208,6 @@ const reservationParametersSchema = new mongoose.Schema({
 const reservationsSchema = new mongoose.Schema(
   {
     parameters: { type: reservationParametersSchema, default: () => ({}) },
-    list: [{ type: mongoose.Schema.Types.ObjectId, ref: "Reservation" }],
   },
   { _id: false },
 );

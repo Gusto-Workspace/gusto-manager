@@ -85,8 +85,9 @@ export default function ReservationsPage(props) {
               <ListReservationsComponent
                 restaurantData={restaurantContext.restaurantData}
                 setRestaurantData={restaurantContext.setRestaurantData}
-                reservations={
-                  restaurantContext?.restaurantData?.reservations?.list
+                reservations={restaurantContext.reservationsList}
+                refreshReservationsList={
+                  restaurantContext.refreshReservationsList
                 }
               />
             )}

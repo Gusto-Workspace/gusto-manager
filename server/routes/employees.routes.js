@@ -274,11 +274,7 @@ router.post(
         const updatedRestaurant = await RestaurantModel.findById(restaurantId)
           .populate("owner_id", "firstname")
           .populate("menus")
-          .populate("employees")
-          .populate({
-            path: "reservations.list",
-            populate: { path: "table" },
-          });
+          .populate("employees");
 
         return res.status(201).json({ restaurant: updatedRestaurant });
       }
@@ -397,11 +393,7 @@ router.post(
       const updatedRestaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
         .populate("menus")
-        .populate("employees")
-        .populate({
-          path: "reservations.list",
-          populate: { path: "table" },
-        });
+        .populate("employees");
 
       return res.status(200).json({ restaurant: updatedRestaurant });
     } catch (error) {
@@ -493,11 +485,7 @@ router.patch(
       const updatedRestaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
         .populate("menus")
-        .populate("employees")
-        .populate({
-          path: "reservations.list",
-          populate: { path: "table" },
-        });
+        .populate("employees");
 
       res.status(200).json({ restaurant: updatedRestaurant });
     } catch (error) {
@@ -673,11 +661,7 @@ router.delete(
       const updatedRestaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
         .populate("menus")
-        .populate("employees")
-        .populate({
-          path: "reservations.list",
-          populate: { path: "table" },
-        });
+        .populate("employees");
 
       return res.json({ restaurant: updatedRestaurant });
     } catch (err) {
@@ -810,11 +794,7 @@ router.delete(
       const updatedRestaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
         .populate("menus")
-        .populate("employees")
-        .populate({
-          path: "reservations.list",
-          populate: { path: "table" },
-        });
+        .populate("employees");
 
       if (!updatedRestaurant) {
         return res
@@ -1119,11 +1099,7 @@ router.get("/employees/me", authenticateToken, async (req, res) => {
       restaurant = await RestaurantModel.findById(restaurantIdFromToken)
         .populate("owner_id", "firstname")
         .populate("employees")
-        .populate("menus")
-        .populate({
-          path: "reservations.list",
-          populate: { path: "table" },
-        });
+        .populate("menus");
 
       currentProfile = findRestaurantProfile(emp, restaurantIdFromToken);
     }
@@ -1134,11 +1110,7 @@ router.get("/employees/me", authenticateToken, async (req, res) => {
       restaurant = await RestaurantModel.findById(firstId)
         .populate("owner_id", "firstname")
         .populate("employees")
-        .populate("menus")
-        .populate({
-          path: "reservations.list",
-          populate: { path: "table" },
-        });
+        .populate("menus");
 
       currentProfile = findRestaurantProfile(emp, firstId);
     }

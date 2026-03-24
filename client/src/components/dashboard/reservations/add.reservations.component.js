@@ -533,6 +533,9 @@ function getBlockedTableIdsFront(parameters, reservationDate, reservationTime) {
 export default function AddReservationComponent(props) {
   const { t } = useTranslation("reservations");
   const router = useRouter();
+  const reservations = Array.isArray(props.reservations)
+    ? props.reservations
+    : [];
 
   const isEditing = !!props.reservation;
 
@@ -699,9 +702,7 @@ export default function AddReservationComponent(props) {
             "yyyy-MM-dd",
           );
 
-          const dayReservations = (
-            props.restaurantData.reservations.list || []
-          ).filter((r) => {
+          const dayReservations = reservations.filter((r) => {
             const resDate = new Date(r.reservationDate);
             const formattedResDate = format(resDate, "yyyy-MM-dd");
             if (formattedResDate !== formattedSelectedDate) return false;
@@ -761,7 +762,7 @@ export default function AddReservationComponent(props) {
     props.restaurantData.reservations.parameters.manage_disponibilities,
     props.restaurantData.reservations.parameters.same_hours_as_restaurant,
     props.restaurantData.reservations.parameters.tables,
-    props.restaurantData?.reservations?.list,
+    reservations,
     isEditing,
     props.reservation,
   ]);
@@ -822,8 +823,7 @@ export default function AddReservationComponent(props) {
     };
 
     // réservations du jour + bloquantes (en excluant la réservation éditée)
-    const dayBlocking = (props.restaurantData.reservations.list || []).filter(
-      (r) => {
+    const dayBlocking = reservations.filter((r) => {
         const resDate = new Date(r.reservationDate);
         const formattedResDate = format(resDate, "yyyy-MM-dd");
         if (formattedResDate !== formattedSelectedDate) return false;
@@ -831,8 +831,7 @@ export default function AddReservationComponent(props) {
         if (isEditing && String(r._id) === String(props.reservation?._id))
           return false;
         return true;
-      },
-    );
+    });
 
     const availableConfig = getAvailableConfiguredTableOptionsFront({
       parameters,
@@ -849,7 +848,7 @@ export default function AddReservationComponent(props) {
     reservationData.numberOfGuests,
     isEditing,
     props.reservation,
-    props.restaurantData.reservations.list,
+    reservations,
     props.restaurantData?.reservations?.parameters,
   ]);
 
@@ -1102,6 +1101,7 @@ export default function AddReservationComponent(props) {
       const { restaurant, tableReassigned, tableChange } = response.data || {};
 
       if (restaurant) props.setRestaurantData(restaurant);
+      await props.refreshReservationsList?.(props.restaurantData?._id);
 
       // ✅ MODALE: table réassignée
       if (tableReassigned) {
