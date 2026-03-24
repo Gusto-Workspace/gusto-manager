@@ -121,7 +121,7 @@ function formatCompactDateKey(value) {
 
 function ViewTabs({ activeView, onChange }) {
   return (
-    <div className="inline-flex w-full flex-wrap gap-2 rounded-[24px] border border-darkBlue/10 bg-white p-2 shadow-sm midTablet:w-auto">
+    <div className="inline-flex w-full mx-auto flex-wrap gap-2 justify-center rounded-[24px] border border-darkBlue/10 bg-white p-2 shadow-sm midTablet:w-auto">
       {[
         ["day", "Jour"],
         ["week", "Semaine"],
@@ -493,7 +493,7 @@ export default function TimeClockSummaryComponent({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white px-3 py-2 shadow-sm">
+            <div className="flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white pl-4 px-3 shadow-sm">
               <CalendarDays className="size-4 text-darkBlue/55" />
               <input
                 type="date"
