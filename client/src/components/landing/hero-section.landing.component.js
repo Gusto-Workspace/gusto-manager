@@ -34,7 +34,7 @@ export default function HeroSectionLandingComponent() {
                 intuitive qui centralise la gestion de votre restaurant.
               </p>
 
-              <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex flex-col mobile:flex-row gap-4">
                 <a
                   href="/contact"
                   className="inline-flex items-center justify-center rounded-2xl bg-darkBlue hover:bg-darkBlue/90 text-white px-7 py-3.5 text-base tablet:text-lg transition-all duration-300"

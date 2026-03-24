@@ -129,8 +129,7 @@ export default function WepAppReservationsPage(props) {
           ) : !employeeHasReservationsAccess ? (
             <NoAvailableComponent
               dataLoading={restaurantContext.dataLoading}
-              emptyText="Vous n'avez pas accès à cette section"
-            />
+             />
           ) : (
             <ListReservationsWebapp
               restaurantData={restaurantContext.restaurantData}

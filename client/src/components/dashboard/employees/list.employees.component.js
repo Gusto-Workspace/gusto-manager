@@ -5,8 +5,9 @@ import { GlobalContext } from "@/contexts/global.context";
 import { useTranslation } from "next-i18next";
 import { EmployeesSvg } from "../../_shared/_svgs/_index";
 import CardEmployeesComponent from "./card.employees.component";
+import { openTimeClockInNewTab } from "../time-clock/time-clock.utils";
 
-import { Search, X, Calendar, Plus } from "lucide-react";
+import { Search, X, Calendar, Plus, Clock3 } from "lucide-react";
 
 export default function ListEmployeesComponent() {
   const { t } = useTranslation("employees");
@@ -132,6 +133,15 @@ export default function ListEmployeesComponent() {
           {/* Buttons (style toolbar) */}
           <div className="shrink-0 flex items-center gap-2">
             <button
+              onClick={openTimeClockInNewTab}
+              className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition p-4"
+              aria-label="Ouvrir la pointeuse"
+              title="Ouvrir la pointeuse"
+            >
+              <Clock3 className="size-4 text-darkBlue/70" />
+            </button>
+
+            <button
               onClick={() => router.push("/dashboard/employees/planning")}
               className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition p-4"
               aria-label={t("buttons.planning")}
@@ -175,6 +185,13 @@ export default function ListEmployeesComponent() {
           </div>
 
           <div className="flex flex-wrap gap-4">
+            <button
+              onClick={openTimeClockInNewTab}
+              className="bg-white px-6 py-2 rounded-lg text-darkBlue border border-darkBlue/10 h-fit"
+            >
+              Ouvrir la pointeuse
+            </button>
+
             <button
               onClick={() => router.push("/dashboard/employees/planning")}
               className="bg-blue px-6 py-2 rounded-lg text-white h-fit"

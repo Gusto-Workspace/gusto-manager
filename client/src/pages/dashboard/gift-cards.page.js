@@ -80,8 +80,7 @@ export default function GiftsPage(props) {
             ) : !employeeHasGiftCardAccess ? (
               <NoAvailableComponent
                 dataLoading={restaurantContext.dataLoading}
-                emptyText="Vous n'avez pas accès à cette section"
-              />
+                 />
             ) : (
               <ListGiftsComponent />
             )}

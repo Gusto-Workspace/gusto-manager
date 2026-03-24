@@ -277,7 +277,7 @@ export default function PlanningMySpaceComponent({ employeeId, restaurantId }) {
             fillColor="#131E3690"
             strokeColor="#131E3690"
           />
-          <h1 className="text-lg sm:text-xl tablet:text-2xl">
+          <h1 className="text-lg mobile:text-xl midTablet:text-2xl">
             {t("titles.main")}
           </h1>
         </div>

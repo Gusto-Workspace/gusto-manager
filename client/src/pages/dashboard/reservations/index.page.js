@@ -80,8 +80,7 @@ export default function ReservationsPage(props) {
             ) : !employeeHasReservationsAccess ? (
               <NoAvailableComponent
                 dataLoading={restaurantContext.dataLoading}
-                emptyText="Vous n'avez pas accès à cette section"
-              />
+                 />
             ) : (
               <ListReservationsComponent
                 restaurantData={restaurantContext.restaurantData}

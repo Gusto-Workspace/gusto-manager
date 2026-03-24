@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState } from "react";
+import { useContext, useEffect } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
 
@@ -15,17 +15,12 @@ import WebAppListGiftCardsComponent from "@/components/dashboard/webapp/gift-car
 import SplashScreenWebAppComponent from "@/components/dashboard/webapp/_shared/splashscreen.webapp";
 import NotGoodDeviceWebAppComponent from "@/components/dashboard/webapp/_shared/not-good-device.webapp";
 
-// HOOK REFRESH
-import useRefetchOnReturn from "@/_assets/utils/useRefetchOnReturn";
-
 // WEB PUSB
 import { setupPushForModule } from "@/_assets/utils/webpush";
 
 export default function GiftsPage(props) {
   const router = useRouter();
   const { restaurantContext } = useContext(GlobalContext);
-
-  const [showRefetchSplash, setShowRefetchSplash] = useState(false);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -40,27 +35,6 @@ export default function GiftsPage(props) {
       );
     }
   }, [router.isReady, router.asPath]);
-
-  // ✅ Refetch quand retour au 1er plan après > 5 min
-  useRefetchOnReturn({
-    enabled: router.isReady && restaurantContext?.isAuth,
-    storageKey: "gm:lastActive:webapp:giftcards",
-    thresholdMs: 5 * 60 * 1000,
-    onRefetch: () => {
-      setShowRefetchSplash(true);
-      restaurantContext.refetchCurrentRestaurant?.();
-    },
-  });
-
-  // ✅ Quand le loading finit, on coupe le forceShow (avec anti-clignotement)
-  useEffect(() => {
-    if (!showRefetchSplash) return;
-
-    if (!restaurantContext?.dataLoading) {
-      const t = setTimeout(() => setShowRefetchSplash(false), 350);
-      return () => clearTimeout(t);
-    }
-  }, [restaurantContext?.dataLoading, showRefetchSplash]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -150,8 +124,7 @@ export default function GiftsPage(props) {
           ) : !employeeHasGiftCardAccess ? (
             <NoAvailableComponent
               dataLoading={restaurantContext.dataLoading}
-              emptyText="Vous n'avez pas accès à cette section"
-            />
+             />
           ) : (
             <WebAppListGiftCardsComponent
               restaurantName={restaurantContext?.restaurantData?.name}
@@ -165,7 +138,15 @@ export default function GiftsPage(props) {
       <SplashScreenWebAppComponent
         loading={restaurantContext.dataLoading}
         storageKey="gm:splash:webapp:giftcards"
-        forceShow={showRefetchSplash}
+        enabled={restaurantContext?.isAuth}
+        lastActiveKey="gm:lastActive:webapp:giftcards"
+        thresholdMs={5 * 60 * 1000}
+        onSoftReturn={() =>
+          restaurantContext.resyncAfterForeground?.({ hard: false })
+        }
+        onHardReturn={() =>
+          restaurantContext.resyncAfterForeground?.({ hard: true })
+        }
       />
     </>
   );

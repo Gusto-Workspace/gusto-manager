@@ -79,8 +79,7 @@ export default function TakeAwayPage(props) {
             ) : !employeeHasTakeAwayAccess ? (
               <NoAvailableComponent
                 dataLoading={restaurantContext.dataLoading}
-                emptyText="Vous n'avez pas accès à cette section"
-              />
+                 />
             ) : (
               <p>Vente à emporter</p>
             )}

@@ -17,6 +17,7 @@ import PlanningMySpaceComponent from "@/components/dashboard/my-space/planning.m
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
 import DaysOffMySpaceComponent from "@/components/dashboard/my-space/days-off.my-space.component";
 import TrainingSessionsMySpaceComponent from "@/components/dashboard/my-space/training-sessions.my-space.component";
+import TimeClockMySpaceComponent from "@/components/dashboard/my-space/time-clock.my-space.component";
 
 export default function MySpacePage(props) {
   const { t } = useTranslation("");
@@ -76,6 +77,8 @@ export default function MySpacePage(props) {
                   employeeId={employeeId}
                   restaurantId={restaurantId}
                 />
+
+                <TimeClockMySpaceComponent restaurantId={restaurantId} />
 
                 <DaysOffMySpaceComponent
                   employeeId={employeeId}

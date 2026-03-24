@@ -80,8 +80,7 @@ export default function MenusPage(props) {
             ) : !employeeHasMenusAccess ? (
               <NoAvailableComponent
                 dataLoading={restaurantContext.dataLoading}
-                emptyText="Vous n'avez pas accès à cette section"
-              />
+                 />
             ) : (
               <ListMenusComponent
                 menus={restaurantContext?.restaurantData?.menus}

@@ -339,7 +339,7 @@ export default function DashboardHealthControlPlanComponent() {
 
         {/* Search + count */}
         <div className="w-full">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+          <div className="flex flex-col midTablet:flex-row midTablet:items-center midTablet:justify-between gap-4 mb-4">
             <div className="flex items-center gap-3">
               <div className="relative max-w-[320px] w-full">
                 <input
