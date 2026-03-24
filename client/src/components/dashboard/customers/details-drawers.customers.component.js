@@ -17,6 +17,7 @@ import {
   Crown,
   RotateCcw,
   UserX,
+  LoaderCircle,
 } from "lucide-react";
 
 const CLOSE_MS = 280;
@@ -101,7 +102,7 @@ function TagPill({ tagKey }) {
 export default function DetailsDrawerCustomersComponent({
   open,
   onClose,
-  customer, // basic (list)
+  customer,
   t,
   restaurantId,
   onUpdated,
@@ -649,11 +650,13 @@ export default function DetailsDrawerCustomersComponent({
                 ) : (
                   <Pencil className="size-4 text-darkBlue/60" />
                 )}
-                {isEditing
-                  ? saving
-                    ? "Enregistrement..."
-                    : "Enregistrer"
-                  : "Modifier"}
+                {!isEditing ? (
+                  "Modifier"
+                ) : saving ? (
+                  <LoaderCircle className="size-3 animate-spin" />
+                ) : (
+                  "Enregistrer"
+                )}{" "}
               </button>
             </div>
 

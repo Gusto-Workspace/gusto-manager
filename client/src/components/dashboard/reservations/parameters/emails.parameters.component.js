@@ -520,7 +520,7 @@ export default function EmailsParametersComponent({
                   key={definition.key}
                   className="rounded-2xl border border-darkBlue/10 bg-white/60 px-4 py-4"
                 >
-                  <div className="flex flex-col gap-4 midTablet:flex-row midTablet:items-center midTablet:justify-between">
+                  <div className="flex  gap-4 items-center justify-between">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-semibold text-darkBlue">
@@ -542,11 +542,11 @@ export default function EmailsParametersComponent({
                     <button
                       type="button"
                       onClick={() => setDrawerTemplateKey(definition.key)}
-                      className="inline-flex shrink-0 items-center justify-center gap-2 rounded-2xl border border-darkBlue/10 bg-white px-4 py-3 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5"
+                      className="inline-flex shrink-0 items-center justify-center gap-2 rounded-2xl border border-darkBlue/10 bg-white px-3 midTablet:px-4 py-3 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5"
                       aria-label={`Ouvrir ${definition.title}`}
                     >
                       <ExternalLink className="size-4" />
-                      <span>Ouvrir</span>
+                      <span className="hidden midTablet:block">Ouvrir</span>
                     </button>
                   </div>
                 </div>
