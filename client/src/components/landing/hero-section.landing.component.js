@@ -46,17 +46,19 @@ export default function HeroSectionLandingComponent() {
   ];
 
   return (
-    <section className="relative flex min-h-[100vh] items-center overflow-hidden pt-28 pb-10 tablet:pt-26 tablet:pb-28">
+    <section className="min-h-[100vh] flex items-center relative overflow-hidden pt-28 pb-10 tablet:pt-26 tablet:pb-28">
       {/* BACKGROUND TOP */}
       <div className="absolute top-0 left-0 right-0 h-[320px] bg-darkBlue tablet:h-[400px]" />
 
-      <div className="relative z-10 mx-auto w-full">
+      <div className="relative z-10 mx-auto w-full ">
+        {/* TOP TRUST BAR */}
+
         {/* MAIN HERO */}
-        <div className="relative mx-auto max-w-[95%] tablet:max-w-[85%]">
+        <div className="relative max-w-[95%] tablet:max-w-[85%] mx-auto">
           <div className="absolute inset-0 translate-x-2 translate-y-2 rounded-[32px] bg-darkBlue" />
 
           <div className="relative overflow-hidden rounded-[32px] border-2 border-darkBlue bg-white">
-            <div className="grid items-stretch desktop:grid-cols-[1.05fr_0.95fr]">
+            <div className="grid items-center desktop:grid-cols-[1.05fr_0.95fr]">
               {/* LEFT */}
               <div className="px-6 py-10 tablet:pl-10 tablet:py-12 desktop:px-14 desktop:py-14">
                 <div className="max-w-[680px]">
@@ -111,8 +113,8 @@ export default function HeroSectionLandingComponent() {
               </div>
 
               {/* RIGHT */}
-              <div className="flex h-full pr-4 pb-6 tablet:pr-8 tablet:pb-8 desktop:pr-10 desktop:py-10">
-                <div className="relative mx-auto flex w-full h-full">
+              <div className="pr-4 pb-6 tablet:pr-8 tablet:pb-8 desktop:pr-10 desktop:py-0">
+                <div className="relative mx-auto w-full">
                   {/* floating card top */}
                   <div className="absolute left-3 top-3 z-20 hidden rounded-2xl border-2 border-darkBlue bg-white px-4 py-3 shadow-sm tablet:block">
                     <p className="text-xs font-medium uppercase tracking-[0.08em] text-darkBlue/55">
@@ -134,15 +136,16 @@ export default function HeroSectionLandingComponent() {
                   </div>
 
                   {/* image frame */}
-                  <div className="flex h-full w-full rounded-[28px] border-2 border-darkBlue bg-lightGrey/40 p-3 tablet:p-4">
-                    <div className="relative h-full w-full min-h-[320px] overflow-hidden rounded-[20px] bg-white desktop:min-h-0">
+                  <div className="rounded-[28px] border-2 border-darkBlue bg-lightGrey/40 p-3 tablet:p-4">
+                    <div className="overflow-hidden rounded-[20px] bg-white">
                       <Image
                         src="/img/bg-hero.png"
                         alt="Interface Gusto Manager"
-                        fill
+                        width={1400}
+                        height={1000}
                         priority
                         sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 640px"
-                        className="object-cover"
+                        className="h-auto w-full object-contain"
                         draggable={false}
                       />
                     </div>
@@ -180,7 +183,7 @@ export default function HeroSectionLandingComponent() {
 
       <button
         onClick={() => handleScrollToSection("#helping")}
-        className="absolute bottom-4 left-1/2 z-10 mx-auto mt-8 hidden -translate-x-1/2 self-center tablet:flex"
+        className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 mt-8 hidden self-center tablet:flex mx-auto"
         aria-label="Faire défiler vers la section suivante"
       >
         <div className="animate-bounce">
