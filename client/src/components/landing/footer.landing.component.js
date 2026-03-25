@@ -3,10 +3,6 @@ import { useRouter } from "next/router";
 export default function FooterLandingComponent() {
   const router = useRouter();
 
-  function wait(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-  }
-
   function handleRestaurantSpace() {
     const token =
       typeof window !== "undefined" ? localStorage.getItem("token") : null;
@@ -17,9 +13,10 @@ export default function FooterLandingComponent() {
   return (
     <footer className="bg-darkBlue text-white pt-16 pb-10">
       <div className="mx-auto max-w-[1400px] px-4 tablet:px-6">
-        <div className="grid grid-cols-1 tablet:grid-cols-3 gap-10">
-          {/* BRAND */}
-          <div>
+        <div className="grid grid-cols-1 tablet:grid-cols-3 gap-10 items-start">
+          
+          {/* LEFT */}
+          <div className="w-full max-w-[320px] text-left justify-self-start">
             <h3 className="text-2xl font-display font-bold mb-4">
               Gusto Manager
             </h3>
@@ -29,9 +26,10 @@ export default function FooterLandingComponent() {
             </p>
           </div>
 
-          {/* NAVIGATION */}
-          <div>
+          {/* CENTER */}
+          <div className="w-full max-w-[320px] text-left justify-self-center">
             <h4 className="font-semibold mb-4 text-white/90">Navigation</h4>
+
             <ul className="space-y-3 text-white/70">
               <li
                 onClick={handleRestaurantSpace}
@@ -49,8 +47,8 @@ export default function FooterLandingComponent() {
             </ul>
           </div>
 
-          {/* CTA / CONTACT */}
-          <div>
+          {/* RIGHT */}
+          <div className="w-full max-w-[320px] text-left justify-self-end">
             <h4 className="font-semibold mb-4 text-white/90">Démarrer</h4>
 
             <p className="text-white/70 mb-6">
@@ -67,12 +65,12 @@ export default function FooterLandingComponent() {
         </div>
 
         {/* BOTTOM */}
-        <div className="border-t text-nowrap border-white/10 mt-12 pt-6 flex flex-col tablet:flex-row items-center justify-between gap-4 text-sm text-white/50">
-          <p>
+        <div className="border-t border-white/10 mt-12 pt-6 flex flex-col tablet:flex-row items-center justify-between gap-4 text-sm text-white/50">
+          <p className="text-center tablet:text-left">
             © {new Date().getFullYear()} Gusto Manager. Tous droits réservés.
           </p>
 
-          <div className="flex flex-col tablet:flex-row gap-4 tablet:gap-6">
+          <div className="flex flex-col tablet:flex-row gap-4 tablet:gap-6 items-center">
             <button
               onClick={() => router.push("/legal")}
               className="cursor-pointer hover:text-white transition"

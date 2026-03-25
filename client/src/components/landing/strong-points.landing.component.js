@@ -1,7 +1,7 @@
 export default function StrongPointsLandingComponent() {
   return (
     <section className="py-6 tablet:py-12" id="strong-points">
-        <div className="mx-auto max-w-[95%] tablet:max-w-[85%]">
+      <div className="mx-auto max-w-[95%] tablet:max-w-[85%]">
         <div className="p-6 bg-darkBlue text-white rounded-2xl">
           <div className="flex flex-col tablet:flex-row items-center justify-between gap-6 text-center tablet:text-left px-6">
             {/* POINT 1 */}

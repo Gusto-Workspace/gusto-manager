@@ -10,7 +10,7 @@ export default function AdvantagesLandingComponent() {
     >
       <div className="container mx-auto px-4 tablet:px-6 flex flex-col gap-12 text-white">
         <div className="text-center max-w-3xl mx-auto">
-          <h2 className="uppercase text-3xl tablet:text-4xl font-bold  mb-6">
+          <h2 className="uppercase text-3xl tablet:text-4xl font-bold mb-6">
             Pourquoi choisir Gusto Manager ?
           </h2>
           <p className="text-lg text-balance">
