@@ -42,7 +42,7 @@ export default function FaqLandingComponent() {
       <div className="container max-w-[95%] tablet:max-w-[85%] mx-auto border-4 rounded-2xl border-darkBlue p-4 tablet:p-12">
         <div className="flex flex-col tablet:flex-row gap-0 tablet:gap-12 items-center">
           {/* LEFT - VISUEL */}
-          <div className="w-full">
+          <div className="midTablet:w-[40%] w-full">
             <Image
               src="/img/faq.png"
               alt="Hero"
@@ -54,7 +54,7 @@ export default function FaqLandingComponent() {
           </div>
 
           {/* RIGHT - FAQ */}
-          <div className="flex flex-col gap-2">
+          <div className="mid-tablet:w-[60%] w-full flex flex-col gap-2">
             <h2 className="text-balance uppercase text-3xl tablet:text-4xl font-bold text-darkBlue mb-6">
               Foire aux questions
             </h2>

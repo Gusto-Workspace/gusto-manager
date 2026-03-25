@@ -5,18 +5,18 @@ import Image from "next/image";
 export default function HelpingLandingComponent() {
   return (
     <section className="py-8 pt-12 tablet:pb-12" id="helping">
-      <div className="container mx-auto px-4 tablet:px-6">
+        <div className="mx-auto max-w-[95%] tablet:max-w-[85%]">
         <div className="text-center max-w-3xl mx-auto mb-12">
           <h2 className="uppercase text-3xl tablet:text-4xl font-bold text-darkBlue mb-4">
             Moins de gestion. Plus de clients.
           </h2>
-          <p className="text-lg text-darkBlue">
+          <p className="text-lg text-darkBlue text-balance">
             Gusto Manager automatise votre restaurant pour vous faire gagner du
             temps et augmenter votre chiffre d’affaires.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 tablet:grid-cols-3 gap-24 tablet:gap-8 pt-12">
+        <div className="grid grid-cols-1 tablet:grid-cols-3 gap-24 tablet:gap-8 pt-12 text-balance">
           {/* CARD 1 */}
           <div className="group relative text-balance">
             <div className="absolute inset-0 bg-orange rounded-xl translate-x-2 translate-y-2 transition-all duration-300 group-hover:translate-x-3 group-hover:translate-y-3 pointer-events-none" />
