@@ -42,6 +42,7 @@ export default function HeroSectionLandingComponent() {
     "Centralisez vos outils sur une seule plateforme",
     "Activez uniquement les modules dont vous avez besoin",
     "Gardez un site et une gestion toujours synchronisés",
+    "Disponible sur tous supports (ordinateur, tablette et téléphone)"
   ];
 
   return (

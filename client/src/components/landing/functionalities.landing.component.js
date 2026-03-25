@@ -10,7 +10,7 @@ const functionalities = [
     id: 1,
     title: "Site internet",
     description:
-      "Un site professionnel connecté à votre restaurant et vos à réservations.",
+      "Un site professionnel connecté à votre restaurant et à vos réservations.",
     longDescription:
       "Créez un site vitrine moderne, synchronisé avec votre établissement. Vos informations, vos horaires et vos réservations restent cohérents partout, sans double saisie.",
     img: "/img/functionalities/web.jpg",
