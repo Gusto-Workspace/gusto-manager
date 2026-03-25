@@ -200,7 +200,7 @@ export default function FunctionalitiesLandingComponent() {
                         <X size={20} />
                       </button>
 
-                      <div className="grid min-h-[70vh] grid-cols-1 gap-8 p-6 tablet:p-8 desktop:grid-cols-2 desktop:p-10">
+                      <div className="grid min-h-[70vh] grid-cols-1 gap-8 p-6 tablet:p-8 mobile:grid-cols-2 desktop:p-10">
                         <div className="flex flex-col justify-center">
                           <span className="mb-4 inline-flex w-fit rounded-full bg-darkBlue/5 px-3 py-1 text-sm font-medium text-darkBlue">
                             Fonctionnalité
@@ -220,7 +220,7 @@ export default function FunctionalitiesLandingComponent() {
                         </div>
 
                         <div className="flex items-center justify-center">
-                          <div className="relative h-[260px] w-full overflow-hidden rounded-2xl border border-darkBlue/10 bg-lightGrey/40 tablet:h-[340px] desktop:h-full desktop:min-h-[420px]">
+                          <div className="relative h-[260px] w-full overflow-hidden rounded-2xl border border-darkBlue/10 bg-lightGrey/40 mobile:h-full desktop:min-h-[420px]">
                             <Image
                               src={activeCard.img}
                               alt={activeCard.title}
