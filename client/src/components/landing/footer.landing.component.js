@@ -27,7 +27,7 @@ export default function FooterLandingComponent() {
           </div>
 
           {/* CENTER */}
-          <div className="w-full max-w-[320px] text-left justify-self-center">
+          <div className="max-w-[320px] w-fit text-left justify-self-center">
             <h4 className="font-semibold mb-4 text-white/90">Navigation</h4>
 
             <ul className="space-y-3 text-white/70">
