@@ -22,7 +22,7 @@ const functionalities = [
       "Modifiez vos menus, plats et boissons facilement, en temps réel.",
     longDescription:
       "Ajoutez, modifiez ou retirez vos plats, menus et boissons en quelques clics. Vos changements peuvent être publiés rapidement pour garder une carte toujours à jour.",
-    img: "/img/functionalities/web.jpg",
+    img: "/img/functionalities/menu.png",
   },
   {
     id: 3,
