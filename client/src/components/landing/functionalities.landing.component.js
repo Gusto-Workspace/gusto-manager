@@ -13,7 +13,7 @@ const functionalities = [
       "Un site professionnel connecté à votre restaurant et à vos réservations.",
     longDescription:
       "Créez un site vitrine moderne, synchronisé avec votre établissement. Vos informations, vos horaires et vos réservations restent cohérents partout, sans double saisie.",
-    img: "/img/functionalities/web.jpg",
+    img: "/img/functionalities/web.webp",
   },
   {
     id: 2,
@@ -22,7 +22,7 @@ const functionalities = [
       "Modifiez vos menus, plats et boissons facilement, en temps réel.",
     longDescription:
       "Ajoutez, modifiez ou retirez vos plats, menus et boissons en quelques clics. Vos changements peuvent être publiés rapidement pour garder une carte toujours à jour.",
-    img: "/img/functionalities/menu.png",
+    img: "/img/functionalities/menu.webp",
   },
   {
     id: 3,
@@ -31,7 +31,7 @@ const functionalities = [
       "Gérez vos réservations, réduisez les no-shows et optimisez votre remplissage.",
     longDescription:
       "Centralisez vos réservations, gérez les créneaux, les confirmations, les rappels et l’occupation. Vous gagnez du temps tout en améliorant le taux de remplissage.",
-    img: "/img/functionalities/reservation.jpg",
+    img: "/img/functionalities/reservation.webp",
   },
   {
     id: 4,
@@ -40,7 +40,7 @@ const functionalities = [
       "Développez vos revenus avec la vente de cartes cadeaux en ligne.",
     longDescription:
       "Proposez des cartes cadeaux directement depuis votre site. Une solution simple pour générer du chiffre d’affaires supplémentaire et attirer de nouveaux clients.",
-    img: "/img/functionalities/card.png",
+    img: "/img/functionalities/card.webp",
   },
   {
     id: 5,
@@ -49,7 +49,7 @@ const functionalities = [
       "Plannings, pointeuse et suivi des employés réunis en un seul outil.",
     longDescription:
       "Regroupez les plannings, le suivi des horaires et l’organisation de l’équipe dans une seule interface pour fluidifier la gestion quotidienne.",
-    img: "/img/functionalities/team.png",
+    img: "/img/functionalities/team.webp",
   },
   {
     id: 6,
@@ -58,7 +58,7 @@ const functionalities = [
       "Gérez vos contrôles et assurez la conformité de votre établissement.",
     longDescription:
       "Structurez vos relevés, vos contrôles et vos suivis HACCP pour garder une vision claire de votre conformité et rassurer votre équipe au quotidien.",
-    img: "/img/functionalities/haccp.png",
+    img: "/img/functionalities/haccp.webp",
   },
   {
     id: 7,
@@ -67,7 +67,7 @@ const functionalities = [
       "Centralisez vos clients et fidélisez-les grâce à un suivi personnalisé.",
     longDescription:
       "Retrouvez l’historique, les préférences et les informations utiles de vos clients afin d’améliorer l’expérience et renforcer la fidélisation.",
-    img: "/img/functionalities/customers.png",
+    img: "/img/functionalities/customers.webp",
   },
   {
     id: 8,
@@ -76,7 +76,7 @@ const functionalities = [
       "Soyez alerté en temps réel des réservations, demandes et actions importantes.",
     longDescription:
       "Recevez les bonnes alertes au bon moment pour rester réactif sur les nouvelles réservations, les changements importants ou les actions à traiter.",
-    img: "/img/functionalities/notifications.png",
+    img: "/img/functionalities/notifications.webp",
   },
   {
     id: 9,
@@ -85,7 +85,7 @@ const functionalities = [
       "Visualisez toute votre activité et prenez les bonnes décisions rapidement.",
     longDescription:
       "Gardez une vue d’ensemble sur votre activité, vos modules et vos opérations depuis une seule plateforme pensée pour vous faire gagner en clarté.",
-    img: "/img/functionalities/pilot.png",
+    img: "/img/functionalities/pilot.webp",
   },
 ];
 
