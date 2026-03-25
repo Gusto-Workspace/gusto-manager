@@ -10,7 +10,7 @@ export default function StrongPointsLandingComponent() {
             </div>
 
             {/* LOSANGE */}
-            <div className="w-3 h-3 bg-orange rotate-45 rounded-sm" />
+            <div className="w-3 h-3 bg-orange rotate-45 rounded-full" />
 
             {/* POINT 2 */}
             <div className="flex flex-col items-center tablet:items-start">
@@ -18,7 +18,7 @@ export default function StrongPointsLandingComponent() {
             </div>
 
             {/* LOSANGE */}
-            <div className="w-3 h-3 bg-orange rotate-45 rounded-sm" />
+            <div className="w-3 h-3 bg-orange rotate-45 rounded-full" />
 
             {/* POINT 3 */}
             <div className="flex flex-col items-center tablet:items-start">
@@ -26,7 +26,7 @@ export default function StrongPointsLandingComponent() {
             </div>
 
             {/* LOSANGE */}
-            <div className="w-3 h-3 bg-orange rotate-45 rounded-sm" />
+            <div className="w-3 h-3 bg-orange rotate-45 rounded-full" />
 
             {/* POINT 4 */}
             <div className="flex flex-col items-center tablet:items-start">
@@ -34,7 +34,7 @@ export default function StrongPointsLandingComponent() {
             </div>
 
             {/* LOSANGE */}
-            <div className="w-3 h-3 bg-orange rotate-45 rounded-sm" />
+            <div className="w-3 h-3 bg-orange rotate-45 rounded-full" />
 
             {/* POINT 5 */}
             <div className="flex flex-col items-center tablet:items-start">
