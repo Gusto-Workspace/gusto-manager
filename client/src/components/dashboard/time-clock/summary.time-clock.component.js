@@ -499,7 +499,7 @@ export default function TimeClockSummaryComponent({
                 type="date"
                 value={anchorDate}
                 onChange={(event) => setAnchorDate(event.target.value)}
-                className="bg-transparent text-sm text-darkBlue outline-none"
+                className="bg-white text-sm text-darkBlue outline-none"
               />
             </div>
 
@@ -516,16 +516,7 @@ export default function TimeClockSummaryComponent({
               Actualiser
             </button>
 
-            {allowOpenKiosk ? (
-              <button
-                type="button"
-                onClick={openTimeClockInNewTab}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue px-4 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-blue/90"
-              >
-                <SquareArrowOutUpRight className="size-4" />
-                Ouvrir la borne
-              </button>
-            ) : null}
+            
           </div>
         </div>
 

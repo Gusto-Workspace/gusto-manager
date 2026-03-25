@@ -12,11 +12,11 @@ export default function FooterLandingComponent() {
 
   return (
     <footer className="bg-darkBlue text-white pt-16 pb-10">
-      <div className="mx-auto max-w-[1400px] px-4 tablet:px-6">
-        <div className="grid grid-cols-1 tablet:grid-cols-3 gap-10 items-start">
+      <div className="mx-auto max-w-[95%] tablet:max-w-[85%]">
+        <div className="grid grid-cols-1 tablet:grid-cols-3 gap-10 items-center tablet:items-start text-center tablet:text-left">
           
           {/* LEFT */}
-          <div className="w-full max-w-[320px] text-left justify-self-start">
+          <div className="w-full max-w-[320px] mx-auto tablet:mx-0 tablet:justify-self-start">
             <h3 className="text-2xl font-display font-bold mb-4">
               Gusto Manager
             </h3>
@@ -27,7 +27,7 @@ export default function FooterLandingComponent() {
           </div>
 
           {/* CENTER */}
-          <div className="max-w-[320px] w-fit text-left justify-self-center">
+          <div className="max-w-[320px] w-fit mx-auto tablet:mx-0 tablet:justify-self-center">
             <h4 className="font-semibold mb-4 text-white/90">Navigation</h4>
 
             <ul className="space-y-3 text-white/70">
@@ -48,7 +48,7 @@ export default function FooterLandingComponent() {
           </div>
 
           {/* RIGHT */}
-          <div className="w-full max-w-[320px] text-left justify-self-end">
+          <div className="w-full max-w-[320px] mx-auto tablet:mx-0 tablet:justify-self-end">
             <h4 className="font-semibold mb-4 text-white/90">Démarrer</h4>
 
             <p className="text-white/70 mb-6">
@@ -65,8 +65,8 @@ export default function FooterLandingComponent() {
         </div>
 
         {/* BOTTOM */}
-        <div className="border-t border-white/10 mt-12 pt-6 flex flex-col tablet:flex-row items-center justify-between gap-4 text-sm text-white/50">
-          <p className="text-center tablet:text-left">
+        <div className="border-t border-white/10 mt-12 pt-6 flex flex-col tablet:flex-row items-center justify-between gap-4 text-sm text-white/50 text-center tablet:text-left">
+          <p>
             © {new Date().getFullYear()} Gusto Manager. Tous droits réservés.
           </p>
 
