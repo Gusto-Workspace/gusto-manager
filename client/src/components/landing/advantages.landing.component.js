@@ -88,7 +88,7 @@ export default function AdvantagesLandingComponent() {
         <div className="flex flex-col tablet:flex-row gap-4 justify-center">
           <a
             href="/contact"
-            className="bg-orange hover:bg-orange/90 text-white px-8 py-3 text-lg rounded-lg cursor-pointer"
+            className="bg-orange hover:bg-orange/90 text-white px-8 py-3 text-lg rounded-lg cursor-pointer text-center"
           >
             Nous contacter
           </a>

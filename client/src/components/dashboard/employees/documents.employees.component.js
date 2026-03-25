@@ -32,7 +32,7 @@ export default function DocumentsEmployeeComponent(props) {
   const cardWrap =
     "rounded-xl bg-white/70 border border-darkBlue/10 px-4 py-3 flex flex-col gap-2";
   const inputBaseCls =
-    "w-full rounded-lg border bg-white px-3 py-2 text-[14px] outline-none transition placeholder:text-darkBlue/40";
+    "w-full rounded-lg border bg-white px-3 py-2 text-base outline-none transition placeholder:text-darkBlue/40";
   const inputNormalCls = `${inputBaseCls} border-darkBlue/20`;
   const inputErrorCls = `${inputBaseCls} border-red`;
   const badgeCls =
