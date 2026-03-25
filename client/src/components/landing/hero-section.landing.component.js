@@ -6,6 +6,8 @@ import {
   Users,
   ShieldCheck,
   Check,
+  Globe,
+  Clock3,
 } from "lucide-react";
 import Image from "next/image";
 
@@ -28,9 +30,11 @@ export default function HeroSectionLandingComponent() {
   }
 
   const modules = [
+    { icon: Globe, label: "Site internet" },
     { icon: CalendarDays, label: "Réservations" },
     { icon: Gift, label: "Cartes cadeau" },
     { icon: Users, label: "Personnel" },
+    { icon: Clock3, label: "Pointeuse" },
     { icon: ShieldCheck, label: "HACCP" },
   ];
 
@@ -41,15 +45,16 @@ export default function HeroSectionLandingComponent() {
   ];
 
   return (
-    <section className="relative overflow-hidden px-4 pt-28 pb-10 tablet:px-6 tablet:pt-26">
+    <section className="min-h-[100vh] flex items-center relative overflow-hidden px-4 pt-28 pb-10 tablet:px-6 tablet:pt-26 tablet:pb-28">
       {/* BACKGROUND TOP */}
-      <div className="absolute top-0 left-0 right-0 h-[320px] bg-darkBlue tablet:h-[360px]" />
+      <div className="absolute top-0 left-0 right-0 h-[320px] bg-darkBlue tablet:h-[400px]" />
 
       <div className="relative z-10 mx-auto w-full max-w-[1400px]">
         {/* TOP TRUST BAR */}
-        
+
         {/* MAIN HERO */}
         <div className="relative">
+          <div className="absolute inset-0 translate-x-2 translate-y-2 rounded-[32px] bg-darkBlue" />
 
           <div className="relative overflow-hidden rounded-[32px] border-2 border-darkBlue bg-white">
             <div className="grid items-center desktop:grid-cols-[1.05fr_0.95fr]">
@@ -103,19 +108,6 @@ export default function HeroSectionLandingComponent() {
                       Découvrir les fonctionnalités
                     </button>
                   </div>
-
-                  {/* MINI PROOF */}
-                  <div className="mt-8 flex flex-wrap gap-3">
-                    <div className="rounded-full bg-dirtyWhite px-4 py-2 text-sm text-darkBlue">
-                      Sans commission
-                    </div>
-                    <div className="rounded-full bg-dirtyWhite px-4 py-2 text-sm text-darkBlue">
-                      Simple à utiliser
-                    </div>
-                    <div className="rounded-full bg-dirtyWhite px-4 py-2 text-sm text-darkBlue">
-                      Évolutif
-                    </div>
-                  </div>
                 </div>
               </div>
 
@@ -159,6 +151,7 @@ export default function HeroSectionLandingComponent() {
                         priority
                         sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 640px"
                         className="h-auto w-full object-contain"
+                        draggable={false}
                       />
                     </div>
                   </div>
@@ -168,30 +161,26 @@ export default function HeroSectionLandingComponent() {
           </div>
         </div>
 
-
         {/* MODULES */}
-        <div className="mt-6 grid grid-cols-2 gap-3 tablet:grid-cols-4">
+        <div className="mt-6 flex flex-wrap justify-center gap-2 tablet:gap-3">
           {modules.map((item) => {
             const Icon = item.icon;
 
             return (
               <div
                 key={item.label}
-                className="rounded-2xl border-2 border-darkBlue bg-white px-4 py-4 text-darkBlue"
+                className="rounded-2xl border-2 border-darkBlue bg-white px-4 py-2 text-darkBlue"
               >
                 <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-darkBlue text-white">
-                    <Icon size={20} />
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-darkBlue text-white">
+                    <Icon size={16} />
                   </div>
 
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.08em] text-darkBlue/55">
-                      Module
-                    </p>
-                    <p className="text-sm font-semibold tablet:text-base">
+                
+                    <p className="text-sm font-medium tablet:text-base">
                       {item.label}
                     </p>
-                  </div>
+              
                 </div>
               </div>
             );
@@ -201,7 +190,7 @@ export default function HeroSectionLandingComponent() {
 
       <button
         onClick={() => handleScrollToSection("#helping")}
-        className="relative z-10 mt-8 hidden self-center tablet:flex mx-auto"
+        className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 mt-8 hidden self-center tablet:flex mx-auto"
         aria-label="Faire défiler vers la section suivante"
       >
         <div className="animate-bounce">

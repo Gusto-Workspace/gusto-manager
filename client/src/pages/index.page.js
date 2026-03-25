@@ -14,6 +14,7 @@ import AdvantagesLandingComponent from "@/components/landing/advantages.landing.
 import HelpingLandingComponent from "@/components/landing/helping.landing.component";
 import FunctionalitiesLandingComponent from "@/components/landing/functionalities.landing.component";
 import FaqLandingComponent from "@/components/landing/faq.landing.component";
+import TestimonialLandingComponent from "@/components/landing/testimonial.landing.component";
 
 export default function HomePage(props) {
   let title;
@@ -78,6 +79,7 @@ export default function HomePage(props) {
         <AdvantagesLandingComponent />
         <FunctionalitiesLandingComponent />
         <StrongPointsLandingComponent />
+        <TestimonialLandingComponent/>
         <FaqLandingComponent />
         <CallToActionLandingComponent />
         <FooterLandingComponent />
