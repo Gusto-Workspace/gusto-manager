@@ -96,7 +96,7 @@ export default function HeroSectionLandingComponent() {
                   <div className="mt-8 flex flex-col gap-4 mobile:flex-row">
                     <a
                       href="/contact"
-                      className="inline-flex items-center justify-center rounded-2xl bg-darkBlue px-7 py-3.5 text-base font-medium text-white transition-all duration-300 hover:bg-darkBlue/90 tablet:text-lg"
+                      className="inline-flex items-center justify-center rounded-2xl bg-orange px-7 py-3.5 text-base font-medium text-white transition-all duration-300 hover:bg-orange/90 tablet:text-lg"
                     >
                       Demander une démo
                     </a>
