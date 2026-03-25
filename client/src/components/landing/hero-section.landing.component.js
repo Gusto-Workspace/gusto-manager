@@ -45,21 +45,21 @@ export default function HeroSectionLandingComponent() {
   ];
 
   return (
-    <section className="min-h-[100vh] flex items-center relative overflow-hidden px-4 pt-28 pb-10 tablet:px-6 tablet:pt-26 tablet:pb-28">
+    <section className="min-h-[100vh] flex items-center relative overflow-hidden pt-28 pb-10 tablet:pt-26 tablet:pb-28">
       {/* BACKGROUND TOP */}
       <div className="absolute top-0 left-0 right-0 h-[320px] bg-darkBlue tablet:h-[400px]" />
 
-      <div className="relative z-10 mx-auto w-full max-w-[1400px]">
+      <div className="relative z-10 mx-auto w-full ">
         {/* TOP TRUST BAR */}
 
         {/* MAIN HERO */}
-        <div className="relative">
+        <div className="relative max-w-[95%] tablet:max-w-[85%] mx-auto">
           <div className="absolute inset-0 translate-x-2 translate-y-2 rounded-[32px] bg-darkBlue" />
 
           <div className="relative overflow-hidden rounded-[32px] border-2 border-darkBlue bg-white">
             <div className="grid items-center desktop:grid-cols-[1.05fr_0.95fr]">
               {/* LEFT */}
-              <div className="px-6 py-10 tablet:px-10 tablet:py-12 desktop:px-14 desktop:py-14">
+              <div className="px-6 py-10 tablet:pl-10 tablet:py-12 desktop:px-14 desktop:py-14">
                 <div className="max-w-[680px]">
                   <h1 className="text-4xl font-bold uppercase leading-[0.95] text-darkBlue tablet:text-5xl desktop:text-6xl">
                     Gusto Manager
@@ -112,7 +112,7 @@ export default function HeroSectionLandingComponent() {
               </div>
 
               {/* RIGHT */}
-              <div className="px-4 pb-6 tablet:px-8 tablet:pb-8 desktop:px-8 desktop:py-8">
+              <div className="pr-4 pb-6 tablet:pr-8 tablet:pb-8 desktop:pr-10 desktop:py-8">
                 <div className="relative mx-auto w-full max-w-[640px]">
                   {/* floating card top */}
                   <div className="absolute left-3 top-3 z-20 hidden rounded-2xl border-2 border-darkBlue bg-white px-4 py-3 shadow-sm tablet:block">

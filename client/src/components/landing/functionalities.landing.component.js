@@ -101,7 +101,7 @@ export default function FunctionalitiesLandingComponent() {
 
   return (
     <section className="py-6 tablet:py-12" id="functionalities">
-      <div className="container mx-auto px-4 tablet:px-6">
+        <div className="mx-auto max-w-[95%] tablet:max-w-[85%]">
         <div className="mx-auto mb-16 max-w-3xl text-center">
           <h2 className="text-balance mb-6 text-3xl font-bold uppercase text-darkBlue tablet:text-4xl">
             Une plateforme qui s’adapte à votre restaurant
