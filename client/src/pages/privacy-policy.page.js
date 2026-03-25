@@ -51,7 +51,7 @@ export default function PrivacyPolicyPage(props) {
         </>
       </Head>
 
-      <div className="relative isolate min-h-screen bg-dirtyWhite font-mono text-pretty">
+      <div className="relative isolate min-h-screen bg-dirtyWhite barlow-semi-condensed-regular text-lg text-pretty">
         <div
           className="pointer-events-none fixed inset-0 -z-10"
           style={{
