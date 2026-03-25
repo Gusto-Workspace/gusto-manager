@@ -139,7 +139,7 @@ export default function HeroSectionLandingComponent() {
                   <div className="rounded-[28px] border-2 border-darkBlue bg-lightGrey/40 p-3 tablet:p-4">
                     <div className="overflow-hidden rounded-[20px] bg-white">
                       <Image
-                        src="/img/bg-hero.png"
+                        src="/img/bg-hero.webp"
                         alt="Interface Gusto Manager"
                         width={1400}
                         height={1000}

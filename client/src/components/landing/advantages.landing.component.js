@@ -21,16 +21,19 @@ export default function AdvantagesLandingComponent() {
 
         <div className="grid grid-cols-1 tablet:grid-cols-3 gap-6">
           <div className="bg-lightGrey bg-opacity-15 rounded-2xl px-4 py-8 flex flex-col gap-4 items-center text-center">
-            <h3 className="mb-2 flex items-center justify-center text-3xl font-semibold h-[56px]">Pensé pour les restaurateurs</h3>
-            <div className="bg-white rounded-2xl">
-              <Image
-                src="/img/advantage-3.png"
-                alt="Hero"
-                width={0}
-                height={0}
-                sizes="100vw"
-                className="w-full h-auto"
-              />
+            <h3 className="mb-2 flex items-center justify-center text-3xl font-semibold h-[56px]">
+              Pensé pour les restaurateurs
+            </h3>
+            <div className="bg-white rounded-2xl w-full">
+              <div className="relative w-full aspect-[4/3]">
+                <Image
+                  src="/img/advantage-3.webp"
+                  alt="Hero"
+                  fill
+                  className="object-cover rounded-2xl"
+                  sizes="(max-width: 768px) 100vw, 33vw"
+                />
+              </div>
             </div>
 
             <p className="text-pretty mt-2">
@@ -40,16 +43,19 @@ export default function AdvantagesLandingComponent() {
           </div>
 
           <div className="bg-lightGrey bg-opacity-15 rounded-2xl px-4 py-8 flex flex-col gap-4 items-center text-center">
-            <h3 className="mb-2 flex items-center justify-center text-3xl font-semibold h-[56px]">Simple à utiliser</h3>
-            <div className="bg-white rounded-2xl">
-              <Image
-                src="/img/advantage-1.png"
-                alt="Hero"
-                width={0}
-                height={0}
-                sizes="100vw"
-                className="w-full h-auto"
-              />
+            <h3 className="mb-2 flex items-center justify-center text-3xl font-semibold h-[56px]">
+              Simple à utiliser
+            </h3>
+            <div className="bg-white rounded-2xl w-full">
+              <div className="relative w-full aspect-[4/3]">
+                <Image
+                  src="/img/advantage-1.webp"
+                  alt="Hero"
+                  fill
+                  className="object-cover rounded-2xl"
+                  sizes="(max-width: 768px) 100vw, 33vw"
+                />
+              </div>
             </div>
             <p className="text-pretty mt-2">
               Une interface claire et intuitive, accessible à toute votre équipe
@@ -58,16 +64,19 @@ export default function AdvantagesLandingComponent() {
           </div>
 
           <div className="bg-lightGrey bg-opacity-15 rounded-2xl px-4 pt-8 pb-24 flex flex-col gap-4 items-center text-center">
-            <h3 className="mb-2 flex items-center justify-center text-3xl font-semibold h-[56px]">Évolutif</h3>
-            <div className="bg-white rounded-2xl">
-              <Image
-                src="/img/advantage-2.jpg"
-                alt="Hero"
-                width={0}
-                height={0}
-                sizes="100vw"
-                className="w-full h-auto"
-              />
+            <h3 className="mb-2 flex items-center justify-center text-3xl font-semibold h-[56px]">
+              Évolutif
+            </h3>
+            <div className="bg-white rounded-2xl w-full">
+              <div className="relative w-full aspect-[4/3]">
+                <Image
+                  src="/img/advantage-2.webp"
+                  alt="Hero"
+                  fill
+                  className="object-cover rounded-2xl"
+                  sizes="(max-width: 768px) 100vw, 33vw"
+                />
+              </div>
             </div>
             <p className="text-pretty mt-2">
               Activez uniquement les modules dont vous avez besoin et faites
