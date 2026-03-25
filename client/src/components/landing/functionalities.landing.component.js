@@ -145,7 +145,7 @@ export default function FunctionalitiesLandingComponent() {
                         <button
                           type="button"
                           onClick={() => setActiveCard(item)}
-                          className="absolute top-3 right-3 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-orange/15 bg-white text-orange transition-colors duration-200 hover:bg-darkBlue hover:text-white"
+                          className="absolute top-3 right-3 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-orange/15 bg-white text-orange transition-colors duration-200 hover:bg-orange hover:text-white"
                           aria-label={`Ouvrir ${item.title}`}
                         >
                           <Plus size={18} />
@@ -194,7 +194,7 @@ export default function FunctionalitiesLandingComponent() {
                       <button
                         type="button"
                         onClick={() => setActiveCard(null)}
-                        className="absolute top-4 right-4 z-20 flex h-11 w-11 items-center justify-center rounded-full border border-orange/15 bg-white text-orange transition-colors duration-200 hover:bg-darkBlue hover:text-white"
+                        className="absolute top-4 right-4 z-20 flex h-11 w-11 items-center justify-center rounded-full border border-orange/15 bg-white text-orange transition-colors duration-200 hover:bg-orange hover:text-white"
                         aria-label="Fermer"
                       >
                         <X size={20} />
