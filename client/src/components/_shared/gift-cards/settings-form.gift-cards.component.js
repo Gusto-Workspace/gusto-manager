@@ -236,6 +236,14 @@ export default function GiftCardSettingsFormComponent({
     "bg-white text-darkBlue border border-darkBlue opacity-60";
   const inputBase =
     "h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 text-base outline-none transition placeholder:text-darkBlue/35 focus:border-blue/60 focus:ring-2 focus:ring-blue/20";
+  const optionCardBase =
+    "rounded-2xl border px-4 py-4 text-left transition focus:outline-none";
+  const optionCardSelected =
+    "border-darkBlue bg-blue/10 ";
+  const optionCardIdle =
+    "border-darkBlue/10 bg-white/60 hover:border-darkBlue/20 hover:bg-white/80";
+  const optionBadgeBase =
+    "inline-flex h-6 items-center rounded-full border px-2.5 text-[11px] font-semibold uppercase tracking-[0.14em]";
 
   const renderSaveButton = (sectionKey) => {
     const state = sectionState?.[sectionKey] || {
@@ -329,113 +337,156 @@ export default function GiftCardSettingsFormComponent({
           <div className={divider} />
 
           <div className="grid grid-cols-1 gap-3">
-            <button
-              type="button"
-              onClick={() => onChange("validity_mode", "fixed_duration")}
-              className={`rounded-2xl border bg-white/60 px-4 py-4 text-left transition ${
-                settings.validity_mode === "fixed_duration"
-                  ? "border-blue/25 bg-blue/10"
-                  : "border-darkBlue/10"
-              }`}
-            >
-              <p className="text-sm font-semibold text-darkBlue">Durée fixe</p>
-              <p className="mt-1 text-xs text-darkBlue/60">
-                Exemple : 6 mois à partir de la date d’achat
-              </p>
+            {(() => {
+              const isSelected = settings.validity_mode === "fixed_duration";
 
-              {settings.validity_mode === "fixed_duration" ? (
-                <div className="mt-3 flex items-center gap-3">
-                  <input
-                    type="number"
-                    min="1"
-                    max="60"
-                    value={settings.validity_fixed_months}
-                    onChange={(event) =>
-                      onChange("validity_fixed_months", event.target.value)
-                    }
-                    onBlur={() =>
-                      onChange(
-                        "validity_fixed_months",
-                        String(
-                          sanitizeIntegerDraft(
-                            settings.validity_fixed_months,
-                            DEFAULT_GIFT_CARD_SETTINGS.validity_fixed_months,
-                            { min: 1, max: 60 },
-                          ),
-                        ),
-                      )
-                    }
-                    className={`${inputBase} w-24 px-3`}
-                  />
-                  <span className="text-sm text-darkBlue/70">mois</span>
-                </div>
-              ) : null}
-            </button>
+              return (
+                <button
+                  type="button"
+                  onClick={() => onChange("validity_mode", "fixed_duration")}
+                  className={[
+                    optionCardBase,
+                    isSelected ? optionCardSelected : optionCardIdle,
+                  ].join(" ")}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-darkBlue">
+                        Durée fixe
+                      </p>
+                      <p className="mt-1 text-xs text-darkBlue/60">
+                        Exemple : 6 mois à partir de la date d’achat
+                      </p>
+                    </div>
 
-            <button
-              type="button"
-              onClick={() => onChange("validity_mode", "until_date")}
-              className={`rounded-2xl border bg-white/60 px-4 py-4 text-left transition ${
-                settings.validity_mode === "until_date"
-                  ? "border-blue/25 bg-blue/10"
-                  : "border-darkBlue/10"
-              }`}
-            >
-              <p className="text-sm font-semibold text-darkBlue">
-                Jusqu’à une date donnée
-              </p>
-              <p className="mt-1 text-xs text-darkBlue/60">
-                Exemple : jusqu’au 25 juin, puis jusqu’au 25 juin suivant
-              </p>
-
-              {settings.validity_mode === "until_date" ? (
-                <div className="mt-3 flex items-center gap-2">
-                  <div className="relative flex-1">
-                    <input
-                      type="number"
-                      min="1"
-                      max="31"
-                      value={settings.validity_until_day}
-                      onChange={(event) =>
-                        onChange("validity_until_day", event.target.value)
-                      }
-                      onBlur={() =>
-                        onChange(
-                          "validity_until_day",
-                          String(
-                            sanitizeIntegerDraft(
-                              settings.validity_until_day,
-                              DEFAULT_GIFT_CARD_SETTINGS.validity_until_day,
-                              { min: 1, max: 31 },
-                            ),
-                          ),
-                        )
-                      }
-                      className={inputBase}
-                    />
-                  </div>
-
-                  <div className="relative flex-[1.4]">
-                    <select
-                      value={settings.validity_until_month}
-                      onChange={(event) =>
-                        onChange(
-                          "validity_until_month",
-                          Number(event.target.value),
-                        )
-                      }
-                      className={inputBase}
+                    <span
+                      className={[
+                        optionBadgeBase,
+                        isSelected
+                          ? "border-blue/20 bg-darkBlue text-white"
+                          : "border-darkBlue/10 bg-white/80 text-darkBlue/45",
+                      ].join(" ")}
                     >
-                      {MONTH_OPTIONS.map((month) => (
-                        <option key={month.value} value={month.value}>
-                          {month.label}
-                        </option>
-                      ))}
-                    </select>
+                      {isSelected ? "Actif" : "Choisir"}
+                    </span>
                   </div>
-                </div>
-              ) : null}
-            </button>
+
+                  {isSelected ? (
+                    <div className="mt-3 flex items-center gap-3">
+                      <input
+                        type="number"
+                        min="1"
+                        max="60"
+                        value={settings.validity_fixed_months}
+                        onChange={(event) =>
+                          onChange("validity_fixed_months", event.target.value)
+                        }
+                        onBlur={() =>
+                          onChange(
+                            "validity_fixed_months",
+                            String(
+                              sanitizeIntegerDraft(
+                                settings.validity_fixed_months,
+                                DEFAULT_GIFT_CARD_SETTINGS.validity_fixed_months,
+                                { min: 1, max: 60 },
+                              ),
+                            ),
+                          )
+                        }
+                        className={`${inputBase} w-24 px-3`}
+                      />
+                      <span className="text-sm text-darkBlue/70">mois</span>
+                    </div>
+                  ) : null}
+                </button>
+              );
+            })()}
+
+            {(() => {
+              const isSelected = settings.validity_mode === "until_date";
+
+              return (
+                <button
+                  type="button"
+                  onClick={() => onChange("validity_mode", "until_date")}
+                  className={[
+                    optionCardBase,
+                    isSelected ? optionCardSelected : optionCardIdle,
+                  ].join(" ")}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-darkBlue">
+                        Jusqu’à une date donnée
+                      </p>
+                      <p className="mt-1 text-xs text-darkBlue/60">
+                        Exemple : jusqu’au 25 juin, puis jusqu’au 25 juin
+                        suivant
+                      </p>
+                    </div>
+
+                    <span
+                      className={[
+                        optionBadgeBase,
+                        isSelected
+                          ? "border-blue/20 bg-darkBlue text-white"
+                          : "border-darkBlue/10 bg-white/80 text-darkBlue/45",
+                      ].join(" ")}
+                    >
+                      {isSelected ? "Actif" : "Choisir"}
+                    </span>
+                  </div>
+
+                  {isSelected ? (
+                    <div className="mt-3 flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type="number"
+                          min="1"
+                          max="31"
+                          value={settings.validity_until_day}
+                          onChange={(event) =>
+                            onChange("validity_until_day", event.target.value)
+                          }
+                          onBlur={() =>
+                            onChange(
+                              "validity_until_day",
+                              String(
+                                sanitizeIntegerDraft(
+                                  settings.validity_until_day,
+                                  DEFAULT_GIFT_CARD_SETTINGS.validity_until_day,
+                                  { min: 1, max: 31 },
+                                ),
+                              ),
+                            )
+                          }
+                          className={inputBase}
+                        />
+                      </div>
+
+                      <div className="relative flex-[1.4]">
+                        <select
+                          value={settings.validity_until_month}
+                          onChange={(event) =>
+                            onChange(
+                              "validity_until_month",
+                              Number(event.target.value),
+                            )
+                          }
+                          className={inputBase}
+                        >
+                          {MONTH_OPTIONS.map((month) => (
+                            <option key={month.value} value={month.value}>
+                              {month.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  ) : null}
+                </button>
+              );
+            })()}
           </div>
         </div>
       </div>
