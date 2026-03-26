@@ -6,7 +6,6 @@ import { format, parse, startOfWeek, addDays, getDay } from "date-fns";
 import frLocale from "date-fns/locale/fr";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 
-
 // I18N
 import { useTranslation } from "next-i18next";
 
@@ -18,6 +17,119 @@ import { CalendarSvg } from "@/components/_shared/_svgs/calendar.svg";
 
 // ICONS
 import { ChevronLeft, ChevronRight } from "lucide-react";
+
+const normalizeTitle = (value) =>
+  (value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+
+const isLeaveShiftRecord = (shift) =>
+  Boolean(
+    shift?.isLeave ||
+      shift?.leaveRequestId ||
+      ["conges", "conge"].includes(normalizeTitle(shift?.title)),
+  );
+
+const getShiftDisplayTitle = (shift) =>
+  isLeaveShiftRecord(shift) ? "Congés" : String(shift?.title || "").trim();
+
+const isStartOfDay = (value) =>
+  value instanceof Date && value.getHours() === 0 && value.getMinutes() === 0;
+
+const isEndOfDay = (value) =>
+  value instanceof Date && value.getHours() === 23 && value.getMinutes() === 59;
+
+const getInclusiveDaySpan = (start, end) => {
+  if (!(start instanceof Date) || !(end instanceof Date)) return 1;
+
+  const startDay = new Date(
+    start.getFullYear(),
+    start.getMonth(),
+    start.getDate(),
+  );
+  const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+
+  return (
+    Math.max(
+      0,
+      Math.round((endDay.getTime() - startDay.getTime()) / 86400000),
+    ) + 1
+  );
+};
+
+const getFullDayLeaveLabel = (start, end, isLeave) => {
+  if (!isLeave || !isStartOfDay(start) || !isEndOfDay(end)) return "";
+  const days = getInclusiveDaySpan(start, end);
+  return days > 1 ? `${days} jours` : "1 jour";
+};
+
+const formatEventTimeRange = (start, end) =>
+  `${format(start, "HH:mm", { locale: frLocale })}-${format(end, "HH:mm", {
+    locale: frLocale,
+  })}`;
+
+const getCalendarRangeBounds = (currentDate, currentView) => {
+  if (!(currentDate instanceof Date) || Number.isNaN(currentDate.getTime())) {
+    return null;
+  }
+
+  if (currentView === Views.DAY) {
+    const start = new Date(
+      currentDate.getFullYear(),
+      currentDate.getMonth(),
+      currentDate.getDate(),
+    );
+    const endExclusive = new Date(start.getTime());
+    endExclusive.setDate(endExclusive.getDate() + 1);
+    return { start, endExclusive };
+  }
+
+  if (currentView === Views.MONTH) {
+    const start = new Date(
+      currentDate.getFullYear(),
+      currentDate.getMonth(),
+      1,
+      0,
+      0,
+      0,
+      0,
+    );
+    const endExclusive = new Date(
+      currentDate.getFullYear(),
+      currentDate.getMonth() + 1,
+      1,
+      0,
+      0,
+      0,
+      0,
+    );
+    return { start, endExclusive };
+  }
+
+  const start = startOfWeek(currentDate, {
+    locale: frLocale,
+    weekStartsOn: 1,
+  });
+  const endExclusive = new Date(start.getTime());
+  endExclusive.setDate(endExclusive.getDate() + 7);
+  return { start, endExclusive };
+};
+
+const eventIntersectsRange = (event, bounds) => {
+  if (!bounds) return false;
+
+  const start =
+    event?.start instanceof Date ? event.start : new Date(event?.start);
+  const end = event?.end instanceof Date ? event.end : new Date(event?.end);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return false;
+  }
+
+  return start < bounds.endExclusive && end >= bounds.start;
+};
 
 export default function PlanningMySpaceComponent({ employeeId, restaurantId }) {
   const { t } = useTranslation("myspace");
@@ -88,27 +200,23 @@ export default function PlanningMySpaceComponent({ employeeId, restaurantId }) {
           (data.shifts || []).flatMap((s, i) => {
             const startDate = new Date(s.start);
             const endDate = new Date(s.end);
-            const durationMs = endDate - startDate;
-
-            if (s.title === "Congés" && durationMs >= 1000 * 60 * 60 * 24) {
-              return [
-                {
-                  id: `${employeeId}-leave-${i}`,
-                  title: s.title,
-                  start: startDate,
-                  end: endDate,
-                  allDay: false,
-                },
-              ];
-            }
+            const shiftLabel = getShiftDisplayTitle(s);
+            const isLeave = isLeaveShiftRecord(s);
+            const leaveDurationLabel = getFullDayLeaveLabel(
+              startDate,
+              endDate,
+              isLeave,
+            );
 
             return [
               {
-                id: `${employeeId}-shift-${i}`,
-                title: s.title,
+                id: `${employeeId}-${isLeave ? "leave" : "shift"}-${i}`,
+                title: shiftLabel,
                 start: startDate,
                 end: endDate,
-                allDay: false,
+                allDay: Boolean(leaveDurationLabel),
+                isLeave,
+                leaveDurationLabel,
               },
             ];
           }),
@@ -120,12 +228,53 @@ export default function PlanningMySpaceComponent({ employeeId, restaurantId }) {
   }, [employeeId, restaurantId]);
 
   const CustomEvent = ({ event }) => {
-    const start = format(event.start, "HH:mm");
-    const end = format(event.end, "HH:mm");
-    const tooltip = `${event.title}${!event.allDay ? ` : ${start} – ${end}` : ""}`;
+    const timeLabel = formatEventTimeRange(event.start, event.end);
+    const tooltip = event.allDay
+      ? `${event.title || "Congés"}${
+          event.leaveDurationLabel ? ` : ${event.leaveDurationLabel}` : ""
+        }`
+      : event.title
+        ? `${event.title} : ${timeLabel}`
+        : timeLabel;
+
+    if (event.allDay) {
+      return (
+        <div
+          className="truncate text-[11px] font-medium leading-tight"
+          title={tooltip}
+        >
+          {event.title || "Congés"}
+        </div>
+      );
+    }
+
+    const useCompactLayout = isMobile || currentView === Views.DAY;
+
+    if (useCompactLayout) {
+      return (
+        <div
+          className="flex h-full flex-col justify-start overflow-hidden whitespace-normal leading-[1.05]"
+          title={tooltip}
+        >
+          {event.title ? (
+            <span className="truncate text-[11px] font-medium opacity-95">
+              {event.title}
+            </span>
+          ) : null}
+        </div>
+      );
+    }
+
     return (
-      <div className="text-xs" title={tooltip}>
-        {event.title}
+      <div
+        className="flex h-full flex-col justify-start overflow-hidden whitespace-normal leading-tight"
+        title={tooltip}
+      >
+        {event.title ? (
+          <span className="truncate text-[11px] font-medium opacity-95">
+            {event.title}
+          </span>
+        ) : null}
       </div>
     );
   };
@@ -233,6 +382,15 @@ export default function PlanningMySpaceComponent({ employeeId, restaurantId }) {
     return `${left} – ${right}`;
   }, [date, currentView]);
 
+  const hasVisibleAllDayEvents = useMemo(() => {
+    if (currentView === Views.MONTH) return false;
+
+    const bounds = getCalendarRangeBounds(date, currentView);
+    return events.some(
+      (event) => event.allDay && eventIntersectsRange(event, bounds),
+    );
+  }, [currentView, date, events]);
+
   const goToday = () => setDate(new Date());
 
   const goPrev = () => {
@@ -267,7 +425,12 @@ export default function PlanningMySpaceComponent({ employeeId, restaurantId }) {
   }, [currentView, isMobile]);
 
   return (
-    <section className="flex flex-col gap-4 min-w-0" ref={calendarRef}>
+    <section
+      className={`${isMobile ? "gm-mobile-planning " : ""}gm-show-allday-calendar ${
+        hasVisibleAllDayEvents ? "gm-has-allday-events" : ""
+      } flex flex-col gap-4 min-w-0`}
+      ref={calendarRef}
+    >
       {/* Header */}
       <div className="flex gap-3 flex-wrap justify-between items-center">
         <div className="flex gap-2 items-center">
@@ -475,10 +638,9 @@ export default function PlanningMySpaceComponent({ employeeId, restaurantId }) {
       {/* Calendrier (webapp) */}
       <div className="rounded-3xl border border-darkBlue/10 bg-white/70 overflow-hidden">
         <div className="-mx-3 px-3 overflow-x-auto">
-                   <div
+          <div
             style={{ height: calendarHeight, minHeight: isMobile ? 420 : 520 }}
           >
-
             <Calendar
               components={{ event: CustomEvent, toolbar: () => null }}
               localizer={localizer}
@@ -497,14 +659,26 @@ export default function PlanningMySpaceComponent({ employeeId, restaurantId }) {
               toolbar={false}
               style={{ height: "100%", width: "100%" }}
               onSelectEvent={(event, e) => {
-                const start = format(event.start, "HH:mm");
-                const end = format(event.end, "HH:mm");
                 const { clientX: x, clientY: y } = e;
                 setTooltipInfo({
                   event,
                   x,
                   y,
-                  text: `${event.title} : ${start} – ${end}`,
+                  text: event.allDay
+                    ? `${event.title || "Congés"}${
+                        event.leaveDurationLabel
+                          ? ` : ${event.leaveDurationLabel}`
+                          : ""
+                      }`
+                    : event.title
+                      ? `${event.title} : ${format(event.start, "HH:mm")} – ${format(
+                          event.end,
+                          "HH:mm",
+                        )}`
+                      : `${format(event.start, "HH:mm")} – ${format(
+                          event.end,
+                          "HH:mm",
+                        )}`,
                 });
               }}
               messages={{
@@ -532,15 +706,17 @@ export default function PlanningMySpaceComponent({ employeeId, restaurantId }) {
                   format(d, "EEEE dd MMMM yyyy", { locale: frLocale }),
               }}
               eventPropGetter={(event) => {
-                const isLeave = event.title === "Congés";
+                const isLeave = !!event.isLeave;
+                const compactEvent = isMobile || currentView === Views.DAY;
                 return {
                   style: {
                     backgroundColor: isLeave ? "#FFD19C" : "#5779A3",
                     border: `1px solid ${isLeave ? "#FDBA74" : "#335982"}`,
-                    borderRadius: 12,
+                    borderRadius: compactEvent ? 10 : 12,
                     outline: "none",
-                    fontSize: 12,
-                    padding: "2px 6px",
+                    fontSize: compactEvent ? 11 : 12,
+                    padding: compactEvent ? "3px 5px" : "2px 6px",
+                    lineHeight: 1.05,
                   },
                 };
               }}

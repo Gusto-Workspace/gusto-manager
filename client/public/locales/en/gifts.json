@@ -16,7 +16,7 @@
     "valid": "Valid",
     "used": "Used",
     "expired": "Expired",
-    "archived" : "Archived",
+    "archived": "Archived",
     "amount": "Amount",
     "owner": "Owner",
     "description": "Description",
@@ -42,6 +42,7 @@
   "buttons": {
     "add": "Add",
     "addGift": "Add gift card",
+    "parameters": "Settings",
     "edit": "Edit",
     "editGift": "Edit gift card",
     "deleteGift": "Delete gift card",

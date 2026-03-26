@@ -11,6 +11,9 @@ const authenticateToken = require("../middleware/authentificate-token");
 const RestaurantModel = require("../models/restaurant.model");
 const VisitCounterModel = require("../models/visit-counter.model");
 const EmployeeModel = require("../models/employee.model");
+const {
+  refreshGiftCardLifecycle,
+} = require("../services/gift-card-lifecycle.service");
 
 // Ajoute le restaurant dans employee.restaurants s'il n'y est pas déjà
 function ensureEmployeeRestaurantLink(employee, restaurantId) {
@@ -64,64 +67,18 @@ function getOrCreateRestaurantProfile(employee, restaurantId) {
   return profile;
 }
 
-// Fonction pour mettre à jour le statut des cartes cadeaux expirées
-async function updateExpiredStatus(restaurantId) {
-  const restaurant = await RestaurantModel.findById(restaurantId);
-
-  if (!restaurant) {
-    console.error("Restaurant not found with ID:", restaurantId);
-    return;
-  }
-
-  const now = new Date();
-
-  restaurant.purchasesGiftCards.forEach((purchase) => {
-    if (purchase.status === "Valid" && purchase.validUntil < now) {
-      purchase.status = "Expired";
-    }
-  });
-
-  await restaurant.save();
-}
-
-// Fonction pour archiver les cartes cadeaux utilisées depuis plus de 2 mois
-async function updateArchivedStatus(restaurantId) {
-  const restaurant = await RestaurantModel.findById(restaurantId);
-
-  if (!restaurant) {
-    console.error("Restaurant not found with ID:", restaurantId);
-    return;
-  }
-
-  const now = new Date();
-
-  restaurant.purchasesGiftCards.forEach((purchase) => {
-    if (purchase.status === "Used" && purchase.useDate) {
-      const usedAt = new Date(purchase.useDate);
-      const archiveThreshold = new Date(usedAt);
-      archiveThreshold.setMonth(archiveThreshold.getMonth() + 2);
-
-      if (archiveThreshold <= now) {
-        purchase.status = "Archived";
-      }
-    }
-  });
-
-  await restaurant.save();
-}
-
 // fonction pour supprimer les blocages horaires manuels des réservations
 async function purgeExpiredBlockedRanges(restaurantId) {
   const restaurant = await RestaurantModel.findById(restaurantId);
   if (!restaurant) return;
 
   const now = new Date();
-  const ranges = restaurant?.reservations?.parameters?.blocked_ranges || [];
+  const ranges = restaurant?.reservationsSettings?.blocked_ranges || [];
 
   const filtered = ranges.filter((r) => new Date(r.endAt) > now);
 
   if (filtered.length !== ranges.length) {
-    restaurant.reservations.parameters.blocked_ranges = filtered;
+    restaurant.reservationsSettings.blocked_ranges = filtered;
     await restaurant.save();
   }
 }
@@ -221,9 +178,7 @@ router.get("/owner/restaurants/:id", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Met à jour les statuts des cartes expirées avant de récupérer les données
-    await updateExpiredStatus(id);
-    await updateArchivedStatus(id);
+    await refreshGiftCardLifecycle(id);
     await purgeExpiredBlockedRanges(id);
 
     const restaurant = await RestaurantModel.findById(id)
@@ -247,6 +202,7 @@ router.get("/restaurants/:id", async (req, res) => {
   try {
     const { id } = req.params;
 
+    await refreshGiftCardLifecycle(id);
     await purgeExpiredBlockedRanges(id);
 
     const restaurant = await RestaurantModel.findById(id)

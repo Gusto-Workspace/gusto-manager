@@ -15,7 +15,7 @@ import { useTranslation } from "next-i18next";
 
 // SVG
 import { GiftSvg } from "../../_shared/_svgs/_index";
-import { Plus } from "lucide-react";
+import { Plus, SlidersHorizontal } from "lucide-react";
 
 // DND
 import {
@@ -31,13 +31,13 @@ import { arrayMove, SortableContext } from "@dnd-kit/sortable";
 
 import {
   restrictToFirstScrollableAncestor,
-
   restrictToParentElement,
 } from "@dnd-kit/modifiers";
 
 // COMPONENTS
 import PurchasesGiftListComponent from "./purshases-gift-list.gift-cards.component";
 import CardGiftsComponent from "./card.gift-cards.component";
+import CreateDrawerGiftCardsComponent from "../../_shared/gift-cards/create-drawer.gift-cards.component";
 
 export default function ListGiftsComponent(props) {
   const { t } = useTranslation("gifts");
@@ -67,25 +67,10 @@ export default function ListGiftsComponent(props) {
     formState: { errors },
   } = useForm();
 
-  // Styles communs
-  const btnPrimary =
-    "inline-flex items-center justify-center rounded-xl bg-blue px-5 py-2.5 text-sm font-medium text-white shadow hover:bg-blue/90 transition disabled:opacity-60 disabled:cursor-not-allowed gap-2";
-  const btnSecondary =
-    "inline-flex items-center justify-center rounded-xl bg-red px-5 py-2.5 text-sm font-medium text-white shadow hover:bg-red/90 transition disabled:opacity-60 disabled:cursor-not-allowed";
   const sectionChipWrap = "flex items-center gap-3 my-6 max-w-4xl mx-auto px-2";
   const sectionChipLine = "h-px flex-1 bg-darkBlue/10";
   const sectionChipLabel =
     "inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/90 px-6 py-1.5 text-[11px] font-semibold tracking-[0.18em] text-darkBlue uppercase shadow-sm";
-  const modalCardCls =
-    "relative w-full max-w-[460px] rounded-2xl border border-darkBlue/10 bg-white/95 px-5 py-6 tablet:px-7 tablet:py-7 shadow-[0_22px_55px_rgba(19,30,54,0.18)] flex flex-col gap-5";
-  const fieldWrap = "flex flex-col gap-1.5";
-  const labelCls =
-    "text-xs font-semibold uppercase tracking-[0.08em] text-darkBlue/70";
-  const inputCls =
-    "h-10 w-full rounded-xl border border-darkBlue/15 bg-white px-3 text-sm outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-1 focus:ring-blue/30";
-  const textAreaCls =
-    "w-full rounded-xl border border-darkBlue/15 bg-white px-3 py-2 text-sm outline-none transition placeholder:text-darkBlue/40 resize-none min-h-[80px] focus:border-blue/60 focus:ring-1 focus:ring-blue/30";
-  const errorTextCls = "text-[11px] text-red mt-0.5";
 
   // ID DnD
   const id = useId();
@@ -243,17 +228,31 @@ export default function ListGiftsComponent(props) {
           </h1>
         </div>
 
-        <button
-          onClick={() => {
-            setEditingGift(null);
-            setIsDeleting(false);
-            setIsModalOpen(true);
-          }}
-          className={btnPrimary}
-        >
-          <Plus className="size-4" />
-          <span className="hidden mobile:block">{t("buttons.addGift")}</span>
-        </button>
+        <div className="shrink-0 flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => router.push("/dashboard/gift-cards/parameters")}
+            className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition h-[40px] w-[40px]"
+            aria-label={t("buttons.parameters", "Paramètres")}
+            title={t("buttons.parameters", "Paramètres")}
+          >
+            <SlidersHorizontal className="size-4 text-darkBlue/70" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setEditingGift(null);
+              setIsDeleting(false);
+              setIsModalOpen(true);
+            }}
+            className="inline-flex items-center justify-center rounded-full bg-blue text-white shadow-sm hover:bg-blue/90 active:scale-[0.98] transition h-[40px] w-[40px]"
+            aria-label={t("buttons.addGift")}
+            title={t("buttons.addGift")}
+          >
+            <Plus className="size-4" />
+          </button>
+        </div>
       </div>
 
       {/* Cartes montant fixe */}
@@ -273,7 +272,7 @@ export default function ListGiftsComponent(props) {
             onDragEnd={handleDragEnd}
             modifiers={[
               restrictToFirstScrollableAncestor,
-            
+
               restrictToParentElement,
             ]}
           >
@@ -313,7 +312,7 @@ export default function ListGiftsComponent(props) {
             onDragEnd={handleDragEnd}
             modifiers={[
               restrictToFirstScrollableAncestor,
-            
+
               restrictToParentElement,
             ]}
           >
@@ -344,97 +343,25 @@ export default function ListGiftsComponent(props) {
         }
       />
 
-      {/* MODALE ajout / édition / suppression */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center px-4">
-          <div
-            onClick={closeModal}
-            className="fixed inset-0 bg-black/25 backdrop-blur-[1px]"
-          />
-
-          <div className={modalCardCls}>
-            <h2 className="text-lg tablet:text-xl font-semibold text-center text-darkBlue">
-              {isDeleting
-                ? t("buttons.deleteGift")
-                : editingGift
-                  ? t("buttons.editGift")
-                  : t("buttons.addGift")}
-            </h2>
-
-            <form
-              onSubmit={handleSubmit(onSubmit)}
-              className="flex flex-col gap-5"
-            >
-              {/* Description */}
-              <div className={fieldWrap}>
-                <label className={labelCls}>
-                  <span>{t("form.labels.description")}</span>
-                  <span className="ml-2 text-[11px] text-darkBlue/40 italic">
-                    {t("form.labels.optional")}
-                  </span>
-                </label>
-
-                <textarea
-                  className={`${textAreaCls} ${
-                    isDeleting ? "opacity-60 cursor-not-allowed" : ""
-                  }`}
-                  {...register("description")}
-                  disabled={isDeleting}
-                  placeholder={t("Commencer à écrire...")}
-                />
-              </div>
-
-              {/* Valeur */}
-              <div className={fieldWrap}>
-                <label className={labelCls}>{t("form.labels.value")}</label>
-
-                <div className="flex items-stretch rounded-xl border border-darkBlue/15 bg-white/90 overflow-hidden text-sm">
-                  <span
-                    className={`px-3 inline-flex items-center text-darkBlue/70 select-none ${
-                      isDeleting ? "opacity-60" : ""
-                    }`}
-                  >
-                    {currencySymbol}
-                  </span>
-
-                  <input
-                    type="number"
-                    step="0.01"
-                    onWheel={(e) => e.currentTarget.blur()}
-                    placeholder="-"
-                    defaultValue={editingGift?.value || ""}
-                    disabled={isDeleting}
-                    {...register("value", { required: !isDeleting })}
-                    className={`h-10 w-full border-l px-3 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
-                      errors.value
-                        ? "border-red text-red"
-                        : "border-darkBlue/10 text-darkBlue"
-                    } ${isDeleting ? "opacity-60 cursor-not-allowed" : ""}`}
-                  />
-                </div>
-
-                {errors.value && !isDeleting && (
-                  <p className={errorTextCls}>{t("form.errors.required")}</p>
-                )}
-              </div>
-
-              {/* Actions */}
-              <div className="mt-1 flex flex-col gap-2 tablet:flex-row tablet:justify-center">
-                <button type="submit" className={btnPrimary}>
-                  {isDeleting ? t("buttons.confirm") : t("buttons.save")}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  className={btnSecondary}
-                >
-                  {t("buttons.cancel")}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <CreateDrawerGiftCardsComponent
+          open={isModalOpen}
+          onClose={closeModal}
+          title={
+            isDeleting
+              ? t("buttons.deleteGift")
+              : editingGift
+                ? t("buttons.editGift")
+                : t("buttons.addGift")
+          }
+          onSubmit={handleSubmit(onSubmit)}
+          register={register}
+          errors={errors}
+          currencySymbol={currencySymbol}
+          isDeleting={isDeleting}
+          editingGift={editingGift}
+          t={t}
+        />
       )}
     </section>
   );

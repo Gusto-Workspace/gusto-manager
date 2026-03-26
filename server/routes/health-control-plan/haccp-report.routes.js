@@ -32,7 +32,7 @@ const AllergenIncident = require("../../models/logs/allergen-incident.model");
 // 👉 modèle Employee pour récupérer les noms/prénoms
 const Employee = require("../../models/employee.model");
 
-const { buildHaccpReportPdf } = require("../../services/haccp-report-pdf.service");
+const { buildHaccpReportPdf } = require("../../services/pdf/haccp-report-pdf.service");
 
 /* ---------- helpers ---------- */
 

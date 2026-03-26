@@ -148,10 +148,9 @@ export default function ParametersReservationComponent(props) {
   });
 
   const blockedRanges = useMemo(() => {
-    const r =
-      props.restaurantData?.reservations?.parameters?.blocked_ranges || [];
+    const r = props.restaurantData?.reservationsSettings?.blocked_ranges || [];
     return Array.isArray(r) ? r : [];
-  }, [props.restaurantData?.reservations?.parameters?.blocked_ranges]);
+  }, [props.restaurantData?.reservationsSettings?.blocked_ranges]);
 
   async function fetchManualTablesToFix() {
     try {
@@ -265,8 +264,8 @@ export default function ParametersReservationComponent(props) {
 
   // Init depuis le contexte
   useEffect(() => {
-    if (restaurantContext?.restaurantData?.reservations) {
-      const { parameters } = restaurantContext.restaurantData.reservations;
+    if (restaurantContext?.restaurantData) {
+      const parameters = restaurantContext.restaurantData.reservationsSettings;
 
       const nextLunch =
         parameters?.table_occupancy_lunch_minutes === 0 ||
@@ -526,7 +525,7 @@ export default function ParametersReservationComponent(props) {
 
       const token = localStorage.getItem("token");
       const currentParams =
-        restaurantContext?.restaurantData?.reservations?.parameters || {};
+        restaurantContext?.restaurantData?.reservationsSettings || {};
 
       setSaving(sectionKey, true);
 
@@ -709,8 +708,8 @@ export default function ParametersReservationComponent(props) {
       }
       if (sectionKey === "emails") {
         const savedEmailTemplates = buildReservationEmailTemplatesState(
-          response?.data?.restaurant?.reservations?.parameters
-            ?.email_templates || partial.email_templates,
+          response?.data?.restaurant?.reservationsSettings?.email_templates ||
+            partial.email_templates,
         );
         setEmailTemplates(savedEmailTemplates);
         initialSnapRef.current.emails = savedEmailTemplates;
@@ -744,11 +743,11 @@ export default function ParametersReservationComponent(props) {
       <SidebarReservationsWebapp
         open={sidebarOpen}
         onClose={closeSidebar}
-        title={t("reservations:buttons.parameters", "Paramètres")}
+        title="Réservations"
       />
 
       <div className="midTablet:hidden bg-lightGrey">
-        <div className="flex items-center gap-3">
+        <div className="h-[50px] flex items-center gap-3">
           <button
             onClick={openSidebar}
             className="shrink-0 inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/50 hover:bg-darkBlue/5 transition p-3"
@@ -794,6 +793,7 @@ export default function ParametersReservationComponent(props) {
           auto_accept={auto_accept}
           saveUI={sectionUI.slots}
           onSave={() => saveSection("slots")}
+          savePresentation="icon"
         />
 
         {/* --- Bloc: Empreinte bancaire --- */}
@@ -804,6 +804,7 @@ export default function ParametersReservationComponent(props) {
           stripeReady={stripeReady}
           saveUI={sectionUI.bank_hold}
           onSave={() => saveSection("bank_hold")}
+          savePresentation="icon"
         />
 
         {/* --- Bloc: Automatisations --- */}
@@ -815,6 +816,7 @@ export default function ParametersReservationComponent(props) {
           durationError={durationError}
           saveUI={sectionUI.automations}
           onSave={() => saveSection("automations")}
+          savePresentation="icon"
         />
         <EmailsParametersComponent
           templates={emailTemplates}
@@ -824,6 +826,7 @@ export default function ParametersReservationComponent(props) {
           bankHoldEnabled={Boolean(bank_hold_enabled)}
           saveUI={sectionUI.emails}
           onSave={() => saveSection("emails")}
+          savePresentation="icon"
         />
 
         {/* --- Bloc: Gestion intelligente + tables --- */}
@@ -852,6 +855,7 @@ export default function ParametersReservationComponent(props) {
           onTablesCatalogUpdated={(nextTables) => {
             setTablesCatalog(Array.isArray(nextTables) ? nextTables : []);
           }}
+          savePresentation="icon"
         />
       </form>
     </section>

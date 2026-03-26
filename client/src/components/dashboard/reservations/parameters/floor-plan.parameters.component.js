@@ -151,6 +151,7 @@ export default function FloorPlanParametersComponent({
   setRestaurantData,
   tablesCatalog,
   onTablesCatalogUpdated,
+  savePresentation = "full",
 }) {
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -219,19 +220,16 @@ export default function FloorPlanParametersComponent({
 
           return {
             ...prev,
-            reservations: {
-              ...prev.reservations,
-              parameters: nextReservationParameters
-                ? nextReservationParameters
-                : {
-                    ...prev.reservations?.parameters,
-                    tables: nextTables,
-                    floorplan: {
-                      ...prev.reservations?.parameters?.floorplan,
-                      rooms: nextRooms,
-                    },
+            reservationsSettings: nextReservationParameters
+              ? nextReservationParameters
+              : {
+                  ...prev.reservationsSettings,
+                  tables: nextTables,
+                  floorplan: {
+                    ...prev.reservationsSettings?.floorplan,
+                    rooms: nextRooms,
                   },
-            },
+                },
           };
         });
       }
@@ -553,7 +551,9 @@ export default function FloorPlanParametersComponent({
                   onClick={handleSaveFloorplan}
                   disabled={!fpUI.dirty || fpUI.saving}
                   className={[
-                    "inline-flex items-center gap-2 rounded-xl px-3 midTablet:px-4 h-10 text-sm font-semibold transition",
+                    savePresentation === "icon"
+                      ? "inline-flex h-10 min-w-10 items-center justify-center rounded-xl transition"
+                      : "inline-flex items-center gap-2 rounded-xl px-3 midTablet:px-4 h-10 text-sm font-semibold transition",
                     fpUI.saved
                       ? "bg-white text-darkBlue border border-darkBlue"
                       : "bg-darkBlue text-white hover:opacity-90",
@@ -561,8 +561,18 @@ export default function FloorPlanParametersComponent({
                       ? "opacity-60 cursor-not-allowed"
                       : "",
                   ].join(" ")}
+                  aria-label="Enregistrer"
+                  title="Enregistrer"
                 >
-                  {fpUI.saving ? (
+                  {savePresentation === "icon" ? (
+                    fpUI.saving ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : fpUI.saved ? (
+                      <Check className="size-4" />
+                    ) : (
+                      <Save className="size-4" />
+                    )
+                  ) : fpUI.saving ? (
                     <>
                       <Loader2 className="size-4 animate-spin" />
                       <span className="hidden midTablet:block">

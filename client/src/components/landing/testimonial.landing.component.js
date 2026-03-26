@@ -22,7 +22,7 @@ const testimonials = [
   {
     name: "Claire Meunier",
     role: "Le Comptoir des Saveurs",
-    text: "Les cartes cadeau et les réservations en ligne nous ont apporté plus de clients sans complexifier notre organisation.",
+    text: "Les cartes cadeaux et les réservations en ligne nous ont apporté plus de clients sans complexifier notre organisation.",
   },
   {
     name: "Thomas Garcia",
@@ -62,7 +62,7 @@ const testimonials = [
   {
     name: "Anaïs Blanchard",
     role: "Le Carré Blanc",
-    text: "Entre la gestion des équipes, les réservations et les cartes cadeau, on gagne en temps et en lisibilité au quotidien.",
+    text: "Entre la gestion des équipes, les réservations et les cartes cadeaux, on gagne en temps et en lisibilité au quotidien.",
   },
 ];
 

@@ -340,18 +340,20 @@ export default function DetailsEmployeesComponent({ employeeId }) {
           <div>
             <EmployeesSvg width={30} height={30} fillColor="#131E3690" />
           </div>
-          <h1 className="pl-2 text-xl flex-wrap tablet:text-2xl flex items-center gap-2">
-            <span
-              className="cursor-pointer hover:underline"
-              onClick={() => router.push("/dashboard/employees")}
-            >
-              {t("titles.main")}
-            </span>
-            <span>/</span>
-            <span>
+
+          <div className="flex flex-col">
+            <h1 className="pl-2 text-xl flex-wrap tablet:text-2xl flex items-center gap-2">
+              <span
+                className="cursor-pointer hover:underline"
+                onClick={() => router.push("/dashboard/employees")}
+              >
+                {t("titles.main")}
+              </span>
+            </h1>
+            <span className="ml-2 text-xs font-semibold text-darkBlue/50">
               {displayFirstname} {displayLastname}
             </span>
-          </h1>
+          </div>
         </div>
       </div>
 

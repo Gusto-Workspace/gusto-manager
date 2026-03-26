@@ -146,10 +146,9 @@ export default function ParametersReservationComponent(props) {
   });
 
   const blockedRanges = useMemo(() => {
-    const r =
-      props.restaurantData?.reservations?.parameters?.blocked_ranges || [];
+    const r = props.restaurantData?.reservationsSettings?.blocked_ranges || [];
     return Array.isArray(r) ? r : [];
-  }, [props.restaurantData?.reservations?.parameters?.blocked_ranges]);
+  }, [props.restaurantData?.reservationsSettings?.blocked_ranges]);
 
   async function fetchManualTablesToFix() {
     try {
@@ -263,8 +262,8 @@ export default function ParametersReservationComponent(props) {
 
   // Init depuis le contexte
   useEffect(() => {
-    if (restaurantContext?.restaurantData?.reservations) {
-      const { parameters } = restaurantContext.restaurantData.reservations;
+    if (restaurantContext?.restaurantData) {
+      const parameters = restaurantContext.restaurantData.reservationsSettings;
 
       const nextLunch =
         parameters?.table_occupancy_lunch_minutes === 0 ||
@@ -528,7 +527,7 @@ export default function ParametersReservationComponent(props) {
 
       const token = localStorage.getItem("token");
       const currentParams =
-        restaurantContext?.restaurantData?.reservations?.parameters || {};
+        restaurantContext?.restaurantData?.reservationsSettings || {};
 
       setSaving(sectionKey, true);
 
@@ -711,8 +710,8 @@ export default function ParametersReservationComponent(props) {
       }
       if (sectionKey === "emails") {
         const savedEmailTemplates = buildReservationEmailTemplatesState(
-          response?.data?.restaurant?.reservations?.parameters
-            ?.email_templates || partial.email_templates,
+          response?.data?.restaurant?.reservationsSettings?.email_templates ||
+            partial.email_templates,
         );
         setEmailTemplates(savedEmailTemplates);
         initialSnapRef.current.emails = savedEmailTemplates;

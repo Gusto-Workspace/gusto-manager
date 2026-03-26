@@ -29,7 +29,7 @@ import {
 // COMPONENT
 import DetailsDrawerCustomersComponent from "../../customers/details-drawers.customers.component";
 import ConfirmModalCustomersComponent from "../../customers/confirm-modal.customers.component";
-import SidebarReservationsWebapp from "../_shared/sidebar.webapp";
+import SidebarReservationsWebapp from "./sidebar.webapp";
 
 function fmtPhone(p) {
   if (!p) return "-";
@@ -177,7 +177,11 @@ function useDebouncedValue(value, delay = 350) {
   return debounced;
 }
 
-export default function ListCustomersReservationsWebapp() {
+export default function ListCustomersReservationsWebapp({
+  defaultSourceFilter = "all",
+  sidebarTitle = "Réservations",
+  sidebarModule = "reservations",
+}) {
   const { t } = useTranslation("customers");
 
   const { restaurantContext } = useContext(GlobalContext);
@@ -199,7 +203,15 @@ export default function ListCustomersReservationsWebapp() {
   const debouncedQuery = useDebouncedValue(query, 350);
 
   const [tagFilter, setTagFilter] = useState("all");
-  const [sourceFilter, setSourceFilter] = useState("all");
+  const normalizedDefaultSourceFilter =
+    defaultSourceFilter === "reservations" ||
+    defaultSourceFilter === "gift_cards"
+      ? defaultSourceFilter
+      : "all";
+  const hasAppliedDefaultSourceRef = useRef(false);
+  const [sourceFilter, setSourceFilter] = useState(
+    normalizedDefaultSourceFilter,
+  );
 
   const [customers, setCustomers] = useState([]);
   const [pagination, setPagination] = useState({
@@ -229,8 +241,16 @@ export default function ListCustomersReservationsWebapp() {
   const closeSidebar = () => setSidebarOpen(false);
 
   useEffect(() => {
-    if (!showSourceFilter && sourceFilter !== "all") setSourceFilter("all");
-  }, [showSourceFilter, sourceFilter]);
+    if (!showSourceFilter) {
+      if (sourceFilter !== "all") setSourceFilter("all");
+      return;
+    }
+
+    if (!hasAppliedDefaultSourceRef.current) {
+      hasAppliedDefaultSourceRef.current = true;
+      setSourceFilter(normalizedDefaultSourceFilter);
+    }
+  }, [showSourceFilter, sourceFilter, normalizedDefaultSourceFilter]);
 
   useEffect(() => {
     setPagination((p) => ({ ...p, page: 1 }));
@@ -432,12 +452,13 @@ export default function ListCustomersReservationsWebapp() {
       <SidebarReservationsWebapp
         open={sidebarOpen}
         onClose={closeSidebar}
-        title="Réservations"
+        title={sidebarTitle}
+        module={sidebarModule}
       />
 
       {/* ✅ Header */}
       <div className="flex flex-col gap-3">
-        <div className="flex items-start justify-between gap-3">
+        <div className="h-[50px] flex items-center justify-between gap-3">
           <button
             type="button"
             onClick={openSidebar}

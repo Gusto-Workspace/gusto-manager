@@ -1328,20 +1328,16 @@ export default function RoomEditorComponent({
 
       return {
         ...prev,
-        reservations: {
-          ...prev.reservations,
-          parameters: {
-            ...prev.reservations?.parameters,
-            ...(Array.isArray(nextTables) ? { tables: nextTables } : {}),
-            ...(Array.isArray(nextTableBlockedRanges)
-              ? {
-                  table_blocked_ranges:
-                    filterActiveOrUpcomingTableBlockedRanges(
-                      nextTableBlockedRanges,
-                    ),
-                }
-              : {}),
-          },
+        reservationsSettings: {
+          ...prev.reservationsSettings,
+          ...(Array.isArray(nextTables) ? { tables: nextTables } : {}),
+          ...(Array.isArray(nextTableBlockedRanges)
+            ? {
+                table_blocked_ranges: filterActiveOrUpcomingTableBlockedRanges(
+                  nextTableBlockedRanges,
+                ),
+              }
+            : {}),
         },
       };
     });
@@ -1702,9 +1698,9 @@ export default function RoomEditorComponent({
       );
 
       const nextParameters =
-        res.data?.restaurant?.reservations?.parameters &&
-        typeof res.data.restaurant.reservations.parameters === "object"
-          ? res.data.restaurant.reservations.parameters
+        res.data?.restaurant?.reservationsSettings &&
+        typeof res.data.restaurant.reservationsSettings === "object"
+          ? res.data.restaurant.reservationsSettings
           : null;
 
       applyCatalogAndTableBlocks(
@@ -1743,9 +1739,9 @@ export default function RoomEditorComponent({
       );
 
       const nextParameters =
-        res.data?.restaurant?.reservations?.parameters &&
-        typeof res.data.restaurant.reservations.parameters === "object"
-          ? res.data.restaurant.reservations.parameters
+        res.data?.restaurant?.reservationsSettings &&
+        typeof res.data.restaurant.reservationsSettings === "object"
+          ? res.data.restaurant.reservationsSettings
           : null;
 
       applyCatalogAndTableBlocks(
@@ -1802,19 +1798,16 @@ export default function RoomEditorComponent({
 
         return {
           ...prev,
-          reservations: {
-            ...prev.reservations,
-            parameters: nextReservationParameters
-              ? nextReservationParameters
-              : {
-                  ...prev.reservations?.parameters,
-                  tables: savedTables,
-                  floorplan: {
-                    ...prev.reservations?.parameters?.floorplan,
-                    rooms: nextRooms,
-                  },
+          reservationsSettings: nextReservationParameters
+            ? nextReservationParameters
+            : {
+                ...prev.reservationsSettings,
+                tables: savedTables,
+                floorplan: {
+                  ...prev.reservationsSettings?.floorplan,
+                  rooms: nextRooms,
                 },
-          },
+              },
         };
       });
 
@@ -2096,23 +2089,20 @@ export default function RoomEditorComponent({
 
         return {
           ...prev,
-          reservations: {
-            ...prev.reservations,
-            parameters: nextReservationParameters
-              ? nextReservationParameters
-              : {
-                  ...prev.reservations?.parameters,
-                  ...(nextRooms
-                    ? {
-                        floorplan: {
-                          ...prev.reservations?.parameters?.floorplan,
-                          rooms: nextRooms,
-                        },
-                      }
-                    : {}),
-                  ...(nextTables ? { tables: nextTables } : {}),
-                },
-          },
+          reservationsSettings: nextReservationParameters
+            ? nextReservationParameters
+            : {
+                ...prev.reservationsSettings,
+                ...(nextRooms
+                  ? {
+                      floorplan: {
+                        ...prev.reservationsSettings?.floorplan,
+                        rooms: nextRooms,
+                      },
+                    }
+                  : {}),
+                ...(nextTables ? { tables: nextTables } : {}),
+              },
         };
       });
 
@@ -3508,7 +3498,7 @@ export default function RoomEditorComponent({
                   />
                 </label>
 
-                <label className="inline-flex items-center gap-2 text-sm text-darkBlue">
+                <label className="pt-6 pl-2 inline-flex items-center gap-2 text-sm text-darkBlue">
                   <input
                     type="checkbox"
                     checked={newTableOnlineBookable}

@@ -7,12 +7,16 @@ import {
   X,
   SlidersHorizontal,
   ChevronRight,
+  CreditCard,
+  List,
 } from "lucide-react";
 
 export default function SidebarReservationsWebapp({
   open,
   onClose,
-  title = "Réservations",
+  title ,
+  module ,
+  navItems,
 }) {
   const router = useRouter();
 
@@ -37,38 +41,70 @@ export default function SidebarReservationsWebapp({
     };
   }, [open]);
 
-  const navItems = [
-    {
-      label: "Réservations",
-      icon: CalendarDays,
-      href: "/dashboard/webapp/reservations",
-    },
-    {
-      label: "Plan de salle",
-      icon: LayoutGrid,
-      href: "/dashboard/webapp/reservations/floor-plan",
-    },
-    {
-      label: "Fichier clients",
-      icon: Users,
-      href: "/dashboard/webapp/reservations/customers",
-    },
-    {
-      label: "Paramètres",
-      icon: SlidersHorizontal,
-      href: "/dashboard/webapp/reservations/parameters",
-    },
-  ];
+  const defaultNavItemsByModule = {
+    reservations: [
+      {
+        label: "Réservations",
+        icon: CalendarDays,
+        href: "/dashboard/webapp/reservations",
+        match: (pathname) =>
+          pathname === "/dashboard/webapp/reservations" ||
+          pathname.startsWith("/dashboard/webapp/reservations/add"),
+      },
+      {
+        label: "Plan de salle",
+        icon: LayoutGrid,
+        href: "/dashboard/webapp/reservations/floor-plan",
+      },
+      {
+        label: "Fichier clients",
+        icon: Users,
+        href: "/dashboard/webapp/reservations/customers",
+      },
+      {
+        label: "Paramètres",
+        icon: SlidersHorizontal,
+        href: "/dashboard/webapp/reservations/parameters",
+      },
+    ],
+    gift_cards: [
+      {
+        label: "Cartes achetées",
+        icon: CreditCard,
+        href: "/dashboard/webapp/gift-cards",
+        match: (pathname) => pathname === "/dashboard/webapp/gift-cards",
+      },
+      {
+        label: "Listes des cartes",
+        icon: List,
+        href: "/dashboard/webapp/gift-cards/list",
+      },
+      {
+        label: "Fichier clients",
+        icon: Users,
+        href: "/dashboard/webapp/gift-cards/customers",
+      },
+      {
+        label: "Paramètres",
+        icon: SlidersHorizontal,
+        href: "/dashboard/webapp/gift-cards/parameters",
+      },
+    ],
+  };
 
-  const isActiveHref = (href) => {
+  const items =
+    Array.isArray(navItems) && navItems.length
+      ? navItems
+      : defaultNavItemsByModule[module] || defaultNavItemsByModule.reservations;
+
+  const isActiveItem = (item) => {
     const p = router.pathname || "";
-    if (href === "/dashboard/webapp/reservations") {
-      return (
-        p === "/dashboard/webapp/reservations" ||
-        p.startsWith("/dashboard/webapp/reservations/add")
-      );
+
+    if (typeof item?.match === "function") {
+      return Boolean(item.match(p, router));
     }
-    return p === href || p.startsWith(href + "/");
+
+    return p === item?.href || p.startsWith(`${item?.href || ""}/`);
   };
 
   const go = (href) => {
@@ -129,9 +165,9 @@ export default function SidebarReservationsWebapp({
 
           {/* Nav */}
           <nav className="p-3 flex flex-col gap-1">
-            {navItems.map((it) => {
+            {items.map((it) => {
               const Icon = it.icon;
-              const active = isActiveHref(it.href);
+              const active = isActiveItem(it);
 
               return (
                 <button

@@ -1,4 +1,5 @@
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/router";
 // AXIOS
 import axios from "axios";
 // CONTEXT
@@ -19,11 +20,12 @@ import {
 import { ChevronDown } from "lucide-react";
 
 // ✅ Bottomsheet
-import BottomSheetPurchasesComponent from "./bottom-sheet-purshases.gift-cards.component";
+import PurshasesDrawerGiftCardsComponent from "../../../_shared/gift-cards/purshases-drawer.gift-cards.component";
 
 export default function WebAppPurchasesGiftListComponent(props) {
   const { t } = useTranslation("gifts");
   const { restaurantContext } = useContext(GlobalContext);
+  const router = useRouter();
 
   // 🔗 SSE-friendly: always from context
   const purchasesGiftCards =
@@ -35,6 +37,12 @@ export default function WebAppPurchasesGiftListComponent(props) {
   // ✅ Bottomsheet
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedPurchase, setSelectedPurchase] = useState(null);
+  const autoOpenedPurchaseRef = useRef(null);
+  const rootRef = useRef(null);
+  const focusedPurchaseId =
+    typeof router.query.purchaseId === "string"
+      ? router.query.purchaseId
+      : null;
 
   // ✅ UX: “Afficher plus” par statut
   const STEP = 10;
@@ -67,7 +75,7 @@ export default function WebAppPurchasesGiftListComponent(props) {
 
   // ✅ Sticky header (webapp feel)
   const stickyHeaderWrap =
-    "sticky top-0 z-20 -mx-2 px-2 pt-2 pb-3 bg-white/50 backdrop-blur-md border-b border-darkBlue/10";
+    "sticky top-[-24px] z-20 -mx-2 mobile:-mx-6 px-2 mobile:px-6 py-3 bg-lightGrey/95 backdrop-blur-md border-b border-darkBlue/10";
 
   // Statuts couleurs
   const statusColor = {
@@ -103,6 +111,26 @@ export default function WebAppPurchasesGiftListComponent(props) {
   const formatName = (p) =>
     `${p?.beneficiaryFirstName || ""} ${p?.beneficiaryLastName || ""}`.trim() ||
     "-";
+
+  const getScrollContainer = () => {
+    if (typeof window === "undefined") return null;
+
+    let current = rootRef.current?.parentElement || null;
+    while (current) {
+      const styles = window.getComputedStyle(current);
+      const overflowY = styles.overflowY;
+      const isScrollable =
+        (overflowY === "auto" ||
+          overflowY === "scroll" ||
+          overflowY === "overlay") &&
+        current.scrollHeight > current.clientHeight;
+
+      if (isScrollable) return current;
+      current = current.parentElement;
+    }
+
+    return window;
+  };
 
   // ✅ Sort once (newest first)
   const sortedPurchases = useMemo(() => {
@@ -184,7 +212,34 @@ export default function WebAppPurchasesGiftListComponent(props) {
     setSelectedPurchase(purchase);
     setDetailsOpen(true);
   };
-  const closeDetails = () => setDetailsOpen(false);
+  const closeDetails = () => {
+    const scrollY = typeof window !== "undefined" ? window.scrollY || 0 : 0;
+
+    setDetailsOpen(false);
+    setSelectedPurchase(null);
+
+    if (!router.isReady || !focusedPurchaseId) return;
+
+    const nextQuery = { ...router.query };
+    delete nextQuery.purchaseId;
+
+    router
+      .replace(
+        {
+          pathname: router.pathname,
+          query: nextQuery,
+        },
+        undefined,
+        { shallow: true, scroll: false },
+      )
+      .finally(() => {
+        if (typeof window === "undefined") return;
+
+        window.requestAnimationFrame(() => {
+          window.scrollTo(0, scrollY);
+        });
+      });
+  };
 
   // ✅ API actions (only from bottomsheet)
   const runAction = async (purchase, type) => {
@@ -208,7 +263,7 @@ export default function WebAppPurchasesGiftListComponent(props) {
   };
 
   const handleDrawerAction = async (purchase, type) => {
-    setDetailsOpen(false);
+    closeDetails();
     try {
       await runAction(purchase, type);
     } catch (e) {
@@ -250,19 +305,24 @@ export default function WebAppPurchasesGiftListComponent(props) {
     if (isSearching) return;
 
     const statuses = ["Valid", "Used", "Expired", "Archived"];
+    const scrollContainer = getScrollContainer();
 
     let ticking = false;
 
     const getHeaderOffset = () => {
-      // hauteur “réelle” de ton sticky header
-      // si un jour tu changes son padding/typo, ça reste robuste
-      const headerEl = document.querySelector("[data-sticky-gifts-header]");
+      const headerEl = rootRef.current?.querySelector(
+        "[data-sticky-gifts-header]",
+      );
       return headerEl ? headerEl.getBoundingClientRect().height : 92;
     };
 
     const computeActive = () => {
       const headerOffset = getHeaderOffset();
-      const refY = headerOffset + 8;
+      const containerTop =
+        scrollContainer && scrollContainer !== window
+          ? scrollContainer.getBoundingClientRect().top
+          : 0;
+      const refY = containerTop + headerOffset + 8;
 
       let current = null;
 
@@ -291,18 +351,44 @@ export default function WebAppPurchasesGiftListComponent(props) {
     // initial
     computeActive();
 
-    window.addEventListener("scroll", onScroll, { passive: true });
+    if (scrollContainer && scrollContainer !== window) {
+      scrollContainer.addEventListener("scroll", onScroll, { passive: true });
+    } else {
+      window.addEventListener("scroll", onScroll, { passive: true });
+    }
     window.addEventListener("resize", onScroll);
 
     return () => {
-      window.removeEventListener("scroll", onScroll);
+      if (scrollContainer && scrollContainer !== window) {
+        scrollContainer.removeEventListener("scroll", onScroll);
+      } else {
+        window.removeEventListener("scroll", onScroll);
+      }
       window.removeEventListener("resize", onScroll);
     };
   }, [isSearching]);
 
+  useEffect(() => {
+    if (!focusedPurchaseId) {
+      autoOpenedPurchaseRef.current = null;
+      return;
+    }
+
+    if (autoOpenedPurchaseRef.current === focusedPurchaseId) return;
+
+    const targetPurchase = purchasesGiftCards.find(
+      (purchase) => String(purchase?._id) === String(focusedPurchaseId),
+    );
+
+    if (!targetPurchase) return;
+
+    autoOpenedPurchaseRef.current = focusedPurchaseId;
+    openDetails(targetPurchase);
+  }, [focusedPurchaseId, purchasesGiftCards]);
+
   return (
     <>
-      <div className="flex flex-col mt-6 px-2">
+      <div ref={rootRef} className="flex flex-col px-2">
         {/* ✅ Sticky header + search + active status chip */}
         <div className={stickyHeaderWrap} data-sticky-gifts-header>
           <div className="flex flex-col gap-3 tablet:flex-row tablet:items-center tablet:justify-between">
@@ -443,7 +529,7 @@ export default function WebAppPurchasesGiftListComponent(props) {
 
                                       <span className={metaPill}>
                                         <Hash className="size-3.5 opacity-50" />
-                                        <span className="font-mono text-[12px]">
+                                        <span className="font-mono font-normal text-[12px]">
                                           {purchase?.purchaseCode || "-"}
                                         </span>
                                       </span>
@@ -507,7 +593,7 @@ export default function WebAppPurchasesGiftListComponent(props) {
       </div>
 
       {/* ✅ BOTTOMSHEET */}
-      <BottomSheetPurchasesComponent
+      <PurshasesDrawerGiftCardsComponent
         open={detailsOpen}
         onClose={closeDetails}
         purchase={selectedPurchase}

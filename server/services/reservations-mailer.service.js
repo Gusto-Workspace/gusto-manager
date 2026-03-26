@@ -303,7 +303,7 @@ function sanitizeReservationEmailTemplatesInput(emailTemplates = {}) {
 }
 
 function getRestaurantEmailTemplates(restaurant) {
-  return restaurant?.reservations?.parameters?.email_templates || {};
+  return restaurant?.reservationsSettings?.email_templates || {};
 }
 
 function buildTemplateVariables({

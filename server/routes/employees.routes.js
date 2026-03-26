@@ -21,6 +21,16 @@ const TrainingSession = require("../models/logs/training-session.model");
 const {
   createAndBroadcastNotification,
 } = require("../services/notifications.service");
+const {
+  refreshGiftCardLifecycle,
+} = require("../services/gift-card-lifecycle.service");
+const {
+  buildPlanningExportPdf,
+} = require("../services/pdf/render-planning-export.service");
+const {
+  diffMinutes,
+  toLocalDateKey,
+} = require("../services/time-clock.service");
 
 // ---------- HELPERS MULTI-RESTAURANTS / PROFILES ----------
 
@@ -69,6 +79,299 @@ function getOrCreateRestaurantProfile(employee, restaurantId) {
       employee.restaurantProfiles[employee.restaurantProfiles.length - 1];
   }
   return profile;
+}
+
+async function getEmployeesAccessContext(request, restaurantId) {
+  const restaurant = await RestaurantModel.findById(restaurantId).select(
+    "name owner_id employees",
+  );
+
+  if (!restaurant) {
+    return { error: { status: 404, message: "Restaurant not found" } };
+  }
+
+  if (request.user?.role === "owner") {
+    if (String(restaurant.owner_id) !== String(request.user.id)) {
+      return { error: { status: 403, message: "Forbidden" } };
+    }
+
+    return { restaurant, isManager: true, currentEmployee: null };
+  }
+
+  if (request.user?.role === "employee") {
+    const currentEmployee = await EmployeeModel.findById(request.user.id);
+    if (
+      !currentEmployee ||
+      !employeeWorksInRestaurant(currentEmployee, restaurantId)
+    ) {
+      return { error: { status: 403, message: "Forbidden" } };
+    }
+
+    const profile = findRestaurantProfile(currentEmployee, restaurantId);
+    return {
+      restaurant,
+      isManager: profile?.options?.employees === true,
+      currentEmployee,
+    };
+  }
+
+  return { error: { status: 403, message: "Forbidden" } };
+}
+
+function toFilenamePart(value) {
+  return String(value || "restaurant")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
+}
+
+function dateKeyToLocalStart(key) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(key || ""))) return null;
+
+  const [year, month, day] = String(key)
+    .split("-")
+    .map((part) => Number(part));
+
+  const date = new Date(year, month - 1, day, 0, 0, 0, 0);
+  if (Number.isNaN(date.getTime())) return null;
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return date;
+}
+
+function getDateRangeBounds(startDateKey, endDateKey) {
+  const start = dateKeyToLocalStart(startDateKey);
+  const end = dateKeyToLocalStart(endDateKey);
+
+  if (!start || !end || start > end) return null;
+
+  const endExclusive = new Date(end.getTime());
+  endExclusive.setDate(endExclusive.getDate() + 1);
+
+  return { start, end, endExclusive };
+}
+
+function normalizePlanningTitle(value) {
+  return String(value || "").trim();
+}
+
+function normalizePlanningTitleKey(value) {
+  return normalizePlanningTitle(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function isLeaveShift(value) {
+  return (
+    value?.isLeave === true ||
+    value?.leaveRequestId != null ||
+    ["conges", "conge"].includes(normalizePlanningTitleKey(value?.title))
+  );
+}
+
+function getPlanningShiftTitle(value) {
+  if (isLeaveShift(value)) return "Congés";
+  return normalizePlanningTitle(value?.title);
+}
+
+function parseShiftDate(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function isStartOfDay(value) {
+  return (
+    value instanceof Date && value.getHours() === 0 && value.getMinutes() === 0
+  );
+}
+
+function isEndOfDay(value) {
+  return (
+    value instanceof Date &&
+    value.getHours() === 23 &&
+    value.getMinutes() === 59
+  );
+}
+
+function getInclusiveDaySpan(start, end) {
+  const startKey = toLocalDateKey(start);
+  const endKey = toLocalDateKey(end);
+  const startDay = dateKeyToLocalStart(startKey);
+  const endDay = dateKeyToLocalStart(endKey);
+
+  if (!startDay || !endDay) return 1;
+
+  return (
+    Math.max(
+      0,
+      Math.round((endDay.getTime() - startDay.getTime()) / 86400000),
+    ) + 1
+  );
+}
+
+function isFullDayLeave(start, end, leaveShift) {
+  return leaveShift && isStartOfDay(start) && isEndOfDay(end);
+}
+
+function getOrCreatePlanningDay(planningDays, dayKey) {
+  const existing = planningDays.get(dayKey);
+  if (existing) return existing;
+
+  const next = {
+    date: dayKey,
+    shifts: [],
+    shiftCount: 0,
+    totalMinutes: 0,
+  };
+
+  planningDays.set(dayKey, next);
+  return next;
+}
+
+function formatTimeLabel(value) {
+  if (!value) return "-";
+
+  try {
+    return new Intl.DateTimeFormat("fr-FR", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).format(new Date(value));
+  } catch {
+    return "-";
+  }
+}
+
+function getShiftEndLabel(startValue, endValue) {
+  const start = new Date(startValue);
+  const end = new Date(endValue);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return "-";
+
+  const endLabel = formatTimeLabel(end);
+  const startDay = toLocalDateKey(start);
+  const endDay = toLocalDateKey(end);
+
+  if (startDay === endDay) return endLabel;
+
+  const dayDelta = Math.max(
+    1,
+    Math.round(
+      (dateKeyToLocalStart(endDay).getTime() -
+        dateKeyToLocalStart(startDay).getTime()) /
+        86400000,
+    ),
+  );
+
+  return `${endLabel} (+${dayDelta}j)`;
+}
+
+function buildPlanningExportEmployee(employee, restaurantId, bounds) {
+  const profile = findRestaurantProfile(employee, restaurantId);
+  const snapshot = profile?.snapshot || {};
+  const planningDays = new Map();
+  let shiftCount = 0;
+  let plannedMinutes = 0;
+
+  const shifts = [...(profile?.shifts || [])].sort(
+    (left, right) => new Date(left.start) - new Date(right.start),
+  );
+
+  for (const shift of shifts) {
+    const shiftStart = new Date(shift.start);
+    const shiftEnd = new Date(shift.end);
+    const leaveShift = isLeaveShift(shift);
+
+    if (
+      Number.isNaN(shiftStart.getTime()) ||
+      Number.isNaN(shiftEnd.getTime())
+    ) {
+      continue;
+    }
+
+    if (shiftStart >= bounds.endExclusive || shiftEnd < bounds.start) {
+      continue;
+    }
+
+    const durationMinutes = diffMinutes(shiftStart, shiftEnd);
+    const fullDayLeave = isFullDayLeave(shiftStart, shiftEnd, leaveShift);
+
+    if (fullDayLeave) {
+      const firstVisibleDay = new Date(
+        Math.max(
+          dateKeyToLocalStart(toLocalDateKey(shiftStart)).getTime(),
+          bounds.start.getTime(),
+        ),
+      );
+      const lastVisibleDay = new Date(
+        Math.min(
+          dateKeyToLocalStart(toLocalDateKey(shiftEnd)).getTime(),
+          bounds.end.getTime(),
+        ),
+      );
+
+      for (
+        const cursor = new Date(firstVisibleDay.getTime());
+        cursor <= lastVisibleDay;
+        cursor.setDate(cursor.getDate() + 1)
+      ) {
+        const current = getOrCreatePlanningDay(
+          planningDays,
+          toLocalDateKey(cursor),
+        );
+        current.shifts.push({
+          title: getPlanningShiftTitle(shift),
+          textLabel: getPlanningShiftTitle(shift),
+          isLeave: true,
+        });
+      }
+
+      continue;
+    }
+
+    const dayKey = toLocalDateKey(shiftStart);
+    const current = getOrCreatePlanningDay(planningDays, dayKey);
+
+    current.shifts.push({
+      title: getPlanningShiftTitle(shift),
+      startLabel: formatTimeLabel(shiftStart),
+      endLabel: getShiftEndLabel(shiftStart, shiftEnd),
+      durationMinutes,
+      isLeave: leaveShift,
+    });
+    if (!leaveShift) {
+      current.shiftCount += 1;
+      current.totalMinutes += durationMinutes;
+      shiftCount += 1;
+      plannedMinutes += durationMinutes;
+    }
+    planningDays.set(dayKey, current);
+  }
+
+  return {
+    employee: {
+      id: employee?._id ? String(employee._id) : "",
+      firstname: snapshot.firstname || employee?.firstname || "",
+      lastname: snapshot.lastname || employee?.lastname || "",
+      post: snapshot.post || employee?.post || "",
+    },
+    totals: {
+      shiftCount,
+      plannedMinutes,
+    },
+    days: Array.from(planningDays.values()).sort((left, right) =>
+      left.date.localeCompare(right.date),
+    ),
+  };
 }
 
 // ---------- CLOUDINARY / MULTER ----------
@@ -840,19 +1143,35 @@ router.post(
   "/restaurants/:restaurantId/employees/:employeeId/shifts",
   async (req, res) => {
     const { restaurantId, employeeId } = req.params;
-    const { title, start, end, leaveRequestId = null } = req.body;
+    const {
+      title,
+      start,
+      end,
+      isLeave = false,
+      leaveRequestId = null,
+    } = req.body;
 
     const emp = await EmployeeModel.findById(employeeId);
     if (!emp || !employeeWorksInRestaurant(emp, restaurantId)) {
       return res.status(404).json({ message: "Employé non trouvé" });
     }
 
+    const parsedStart = parseShiftDate(start);
+    const parsedEnd = parseShiftDate(end);
+
+    if (!parsedStart || !parsedEnd || parsedEnd <= parsedStart) {
+      return res.status(400).json({ message: "Dates de shift invalides" });
+    }
+
     const profile = getOrCreateRestaurantProfile(emp, restaurantId);
+    const leaveShift =
+      isLeave === true || leaveRequestId != null || isLeaveShift({ title });
 
     profile.shifts.push({
-      title,
-      start: new Date(start),
-      end: new Date(end),
+      title: leaveShift ? "" : normalizePlanningTitle(title),
+      start: parsedStart,
+      end: parsedEnd,
+      isLeave: leaveShift,
       leaveRequestId: leaveRequestId || null,
     });
 
@@ -867,7 +1186,7 @@ router.put(
   "/restaurants/:restaurantId/employees/:employeeId/shifts/:shiftId",
   async (req, res) => {
     const { restaurantId, employeeId, shiftId } = req.params;
-    const { title, start, end } = req.body;
+    const { title, start, end, isLeave, leaveRequestId } = req.body;
 
     const emp = await EmployeeModel.findById(employeeId);
     if (!emp || !employeeWorksInRestaurant(emp, restaurantId)) {
@@ -878,9 +1197,36 @@ router.put(
     const shift = profile.shifts.id(shiftId);
     if (!shift) return res.status(404).json({ message: "Shift non trouvé" });
 
-    if (title !== undefined) shift.title = title;
-    if (start !== undefined) shift.start = new Date(start);
-    if (end !== undefined) shift.end = new Date(end);
+    if (title !== undefined) shift.title = normalizePlanningTitle(title);
+    if (start !== undefined) {
+      const parsedStart = parseShiftDate(start);
+      if (!parsedStart) {
+        return res.status(400).json({ message: "Date de début invalide" });
+      }
+      shift.start = parsedStart;
+    }
+    if (end !== undefined) {
+      const parsedEnd = parseShiftDate(end);
+      if (!parsedEnd) {
+        return res.status(400).json({ message: "Date de fin invalide" });
+      }
+      shift.end = parsedEnd;
+    }
+    if (leaveRequestId !== undefined) {
+      shift.leaveRequestId = leaveRequestId || null;
+    }
+    if (isLeave !== undefined) {
+      shift.isLeave = isLeave === true;
+    }
+
+    if (shift.end <= shift.start) {
+      return res.status(400).json({ message: "Dates de shift invalides" });
+    }
+
+    if (isLeaveShift(shift)) {
+      shift.isLeave = true;
+      shift.title = "";
+    }
 
     await emp.save();
     return res.json({ shift, shifts: profile.shifts });
@@ -905,6 +1251,104 @@ router.delete(
     shift.deleteOne();
     await emp.save();
     return res.json({ shifts: profile.shifts });
+  },
+);
+
+router.post(
+  "/restaurants/:restaurantId/employees/planning/export/pdf",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { restaurantId } = req.params;
+      const from = /^\d{4}-\d{2}-\d{2}$/.test(String(req.body?.from || ""))
+        ? String(req.body.from)
+        : null;
+      const to = /^\d{4}-\d{2}-\d{2}$/.test(String(req.body?.to || ""))
+        ? String(req.body.to)
+        : null;
+      const bounds = from && to ? getDateRangeBounds(from, to) : null;
+
+      if (!bounds) {
+        return res.status(400).json({
+          message: "Les dates de debut et de fin sont invalides.",
+        });
+      }
+
+      const accessContext = await getEmployeesAccessContext(req, restaurantId);
+      if (accessContext.error) {
+        return res
+          .status(accessContext.error.status)
+          .json({ message: accessContext.error.message });
+      }
+
+      if (!accessContext.isManager) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const requestedEmployeeIds = Array.isArray(req.body?.employeeIds)
+        ? req.body.employeeIds.map((value) => String(value))
+        : [];
+      const fallbackEmployeeIds = (
+        accessContext.restaurant?.employees || []
+      ).map((value) => String(value));
+      const selectedEmployeeIds = Array.from(
+        new Set(
+          requestedEmployeeIds.length
+            ? requestedEmployeeIds
+            : fallbackEmployeeIds,
+        ),
+      );
+
+      if (!selectedEmployeeIds.length) {
+        return res.status(400).json({ message: "Aucun salarie selectionne." });
+      }
+
+      const employees = await EmployeeModel.find({
+        _id: { $in: selectedEmployeeIds },
+        restaurants: restaurantId,
+      }).lean();
+
+      if (!employees.length) {
+        return res.status(404).json({ message: "Employees not found" });
+      }
+
+      const employeeOrder = new Map(
+        selectedEmployeeIds.map((id, index) => [String(id), index]),
+      );
+      const orderedEmployees = [...employees].sort((left, right) => {
+        const leftOrder = employeeOrder.get(String(left._id));
+        const rightOrder = employeeOrder.get(String(right._id));
+
+        if (Number.isFinite(leftOrder) && Number.isFinite(rightOrder)) {
+          return leftOrder - rightOrder;
+        }
+
+        return String(left._id).localeCompare(String(right._id));
+      });
+
+      const payload = orderedEmployees.map((employee) =>
+        buildPlanningExportEmployee(employee, restaurantId, bounds),
+      );
+
+      const pdfBuffer = await buildPlanningExportPdf({
+        restaurantName: accessContext.restaurant?.name || "Restaurant",
+        startDate: from,
+        endDate: to,
+        employees: payload,
+      });
+
+      const safeRestaurantName = toFilenamePart(accessContext.restaurant?.name);
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="planning-${safeRestaurantName}-${from}-au-${to}.pdf"`,
+      );
+
+      return res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Error exporting planning pdf:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
   },
 );
 
@@ -1020,9 +1464,10 @@ router.put(
       );
       if (!already) {
         profile.shifts.push({
-          title: "Congés",
+          title: "",
           start: lr.start,
           end: lr.end,
+          isLeave: true,
           leaveRequestId: lr._id,
         });
       }
@@ -1096,6 +1541,7 @@ router.get("/employees/me", authenticateToken, async (req, res) => {
     let currentProfile = null;
 
     if (restaurantIdFromToken) {
+      await refreshGiftCardLifecycle(restaurantIdFromToken);
       restaurant = await RestaurantModel.findById(restaurantIdFromToken)
         .populate("owner_id", "firstname")
         .populate("employees")
@@ -1107,6 +1553,7 @@ router.get("/employees/me", authenticateToken, async (req, res) => {
     // 3) Fallback : si token n’a pas de restaurantId, on prend le premier
     if (!restaurant && restaurants.length > 0) {
       const firstId = restaurants[0]._id;
+      await refreshGiftCardLifecycle(firstId);
       restaurant = await RestaurantModel.findById(firstId)
         .populate("owner_id", "firstname")
         .populate("employees")

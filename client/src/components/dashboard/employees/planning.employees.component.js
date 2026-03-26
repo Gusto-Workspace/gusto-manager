@@ -12,7 +12,9 @@ import { GlobalContext } from "@/contexts/global.context";
 import { useTranslation } from "next-i18next";
 import { EmployeesSvg } from "../../_shared/_svgs/_index";
 import CardEmployeesComponent from "./card.employees.component";
+import ExportRangeModalComponent from "./export-range-modal.component";
 import axios from "axios";
+import { getAuthConfig } from "../time-clock/time-clock.utils";
 
 import {
   Search,
@@ -21,6 +23,7 @@ import {
   ChevronRight,
   CalendarDays,
   Plus,
+  Download,
 } from "lucide-react";
 
 const DnDCalendar = withDragAndDrop(Calendar);
@@ -44,6 +47,158 @@ const canonicalizeShiftTitle = (title) => {
   return (title || "").trim();
 };
 
+const isLeaveShiftRecord = (shift) =>
+  Boolean(
+    shift?.isLeave ||
+      shift?.leaveRequestId ||
+      ["conges", "conge"].includes(normalizeTitle(shift?.title)),
+  );
+
+const getShiftDisplayTitle = (shift) => {
+  if (isLeaveShiftRecord(shift)) return "Congés";
+  return canonicalizeShiftTitle(shift?.title);
+};
+
+const getManagerEventTitle = (employee, shift) => {
+  const shiftLabel = getShiftDisplayTitle(shift);
+  return shiftLabel
+    ? `${shortName(employee)} - ${shiftLabel}`
+    : shortName(employee);
+};
+
+const formatEventTimeRange = (start, end) =>
+  `${format(start, "HH:mm", { locale: frLocale })}-${format(end, "HH:mm", {
+    locale: frLocale,
+  })}`;
+
+const pad2 = (value) => String(value).padStart(2, "0");
+
+function toInputDate(value) {
+  if (!value) return "";
+
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
+function toStartOfDay(value) {
+  if (!value) return null;
+  const date =
+    value instanceof Date ? new Date(value.getTime()) : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function toEndOfDay(value) {
+  if (!value) return null;
+  const date =
+    value instanceof Date ? new Date(value.getTime()) : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setHours(23, 59, 0, 0);
+  return date;
+}
+
+function isStartOfDay(value) {
+  return (
+    value instanceof Date && value.getHours() === 0 && value.getMinutes() === 0
+  );
+}
+
+function isEndOfDay(value) {
+  return (
+    value instanceof Date &&
+    value.getHours() === 23 &&
+    value.getMinutes() === 59
+  );
+}
+
+function getInclusiveDaySpan(start, end) {
+  if (!(start instanceof Date) || !(end instanceof Date)) return 1;
+
+  const startDay = new Date(
+    start.getFullYear(),
+    start.getMonth(),
+    start.getDate(),
+  );
+  const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+
+  return (
+    Math.max(
+      0,
+      Math.round((endDay.getTime() - startDay.getTime()) / 86400000),
+    ) + 1
+  );
+}
+
+function getFullDayLeaveLabel(start, end, isLeave) {
+  if (!isLeave || !isStartOfDay(start) || !isEndOfDay(end)) return "";
+  const days = getInclusiveDaySpan(start, end);
+  return days > 1 ? `${days} jours` : "1 jour";
+}
+
+function getCalendarRangeBounds(currentDate, currentView) {
+  if (!(currentDate instanceof Date) || Number.isNaN(currentDate.getTime())) {
+    return null;
+  }
+
+  if (currentView === Views.DAY) {
+    const start = new Date(
+      currentDate.getFullYear(),
+      currentDate.getMonth(),
+      currentDate.getDate(),
+    );
+    const endExclusive = new Date(start.getTime());
+    endExclusive.setDate(endExclusive.getDate() + 1);
+    return { start, endExclusive };
+  }
+
+  if (currentView === Views.MONTH) {
+    const start = new Date(
+      currentDate.getFullYear(),
+      currentDate.getMonth(),
+      1,
+      0,
+      0,
+      0,
+      0,
+    );
+    const endExclusive = new Date(
+      currentDate.getFullYear(),
+      currentDate.getMonth() + 1,
+      1,
+      0,
+      0,
+      0,
+      0,
+    );
+    return { start, endExclusive };
+  }
+
+  const start = startOfWeek(currentDate, {
+    locale: frLocale,
+    weekStartsOn: 1,
+  });
+  const endExclusive = new Date(start.getTime());
+  endExclusive.setDate(endExclusive.getDate() + 7);
+  return { start, endExclusive };
+}
+
+function eventIntersectsRange(event, bounds) {
+  if (!bounds) return false;
+
+  const start =
+    event?.start instanceof Date ? event.start : new Date(event?.start);
+  const end = event?.end instanceof Date ? event.end : new Date(event?.end);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return false;
+  }
+
+  return start < bounds.endExclusive && end >= bounds.start;
+}
+
 export default function PlanningEmployeesComponent() {
   const { t } = useTranslation("employees");
   const { restaurantContext } = useContext(GlobalContext);
@@ -66,6 +221,9 @@ export default function PlanningEmployeesComponent() {
   const [view, setView] = useState(Views.WEEK);
   const [date, setDate] = useState(new Date());
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isPlanningExportOpen, setIsPlanningExportOpen] = useState(false);
+  const [isPlanningExportLoading, setIsPlanningExportLoading] = useState(false);
+  const [planningExportError, setPlanningExportError] = useState("");
 
   // Modale d’ajout
   const [modalOpen, setModalOpen] = useState(false);
@@ -74,6 +232,8 @@ export default function PlanningEmployeesComponent() {
     start: null,
     end: null,
     title: "",
+    isLeave: false,
+    isFullDayLeave: false,
   });
   const [modalEmployeeQuery, setModalEmployeeQuery] = useState("");
 
@@ -102,7 +262,6 @@ export default function PlanningEmployeesComponent() {
 
   // ✅ Sur mobile: par défaut Jour (sinon week view illisible)
 
-
   // date‐fns localizer (FR)
   const locales = { fr: frLocale };
   const localizer = dateFnsLocalizer({
@@ -126,6 +285,16 @@ export default function PlanningEmployeesComponent() {
         shifts: e.shifts || [],
       })) || [],
     [restaurantContext.restaurantData?.employees],
+  );
+
+  const exportEmployees = useMemo(
+    () =>
+      allEmployees.map((employee) => ({
+        id: employee._id,
+        label: `${employee.firstname || ""} ${employee.lastname || ""}`.trim(),
+        subtitle: employee.post || "Poste non renseigné",
+      })),
+    [allEmployees],
   );
 
   // ─── HYDRATATION DES SHIFTS AU MONTAGE ─────────────────────────────────────
@@ -216,13 +385,23 @@ export default function PlanningEmployeesComponent() {
       (emp.shifts || []).map((s) => {
         const startDate = new Date(s.start);
         const endDate = new Date(s.end);
-        const isLeave = normalizeTitle(s.title) === "conges";
+        const isLeave = isLeaveShiftRecord(s);
+        const shiftLabel = getShiftDisplayTitle(s);
+        const leaveDurationLabel = getFullDayLeaveLabel(
+          startDate,
+          endDate,
+          isLeave,
+        );
 
         return {
           id: String(s._id),
-          title: `${shortName(emp)} - ${s.title}`,
+          title: getManagerEventTitle(emp, s),
+          shiftLabel,
+          employeeShortName: shortName(emp),
           start: startDate,
           end: endDate,
+          allDay: Boolean(leaveDurationLabel),
+          leaveDurationLabel,
           resourceId: emp._id,
           leaveRequestId: s.leaveRequestId || null,
           isLeave,
@@ -268,6 +447,15 @@ export default function PlanningEmployeesComponent() {
     [events, selectedEmployeeId],
   );
 
+  const hasVisibleAllDayEvents = useMemo(() => {
+    if (view === Views.MONTH) return false;
+
+    const bounds = getCalendarRangeBounds(date, view);
+    return visibleEvents.some(
+      (event) => event.allDay && eventIntersectsRange(event, bounds),
+    );
+  }, [date, view, visibleEvents]);
+
   // ─── Sélection d’un créneau ────────────────────────────────────────────────
   function handleSelectSlot(slotInfo) {
     if (selectedEmployeeId) {
@@ -276,6 +464,8 @@ export default function PlanningEmployeesComponent() {
         start: slotInfo.start,
         end: slotInfo.end,
         title: "",
+        isLeave: false,
+        isFullDayLeave: false,
       });
       setModalOpen(true);
       return;
@@ -286,6 +476,8 @@ export default function PlanningEmployeesComponent() {
       start: slotInfo.start,
       end: slotInfo.end,
       title: "",
+      isLeave: false,
+      isFullDayLeave: false,
     });
     setModalEmployeeQuery("");
     setModalOpen(true);
@@ -298,6 +490,8 @@ export default function PlanningEmployeesComponent() {
       start: null,
       end: null,
       title: "",
+      isLeave: false,
+      isFullDayLeave: false,
     });
     setModalEmployeeQuery("");
     setModalOpen(true);
@@ -305,13 +499,8 @@ export default function PlanningEmployeesComponent() {
 
   // ─── Valider l’ajout de shift ──────────────────────────────────────────────
   async function handleConfirmShift() {
-    const { employeeId, start, end, title } = modalData;
-    const safeTitle = canonicalizeShiftTitle(title);
-
-    if (!safeTitle.trim()) {
-      window.alert(t("planning:errors.titleRequired", "Le titre est requis"));
-      return;
-    }
+    const { employeeId, start, end, title, isLeave, isFullDayLeave } =
+      modalData;
     if (!employeeId) {
       window.alert(
         t("planning:errors.employeeRequired", "Sélectionnez un employé"),
@@ -323,13 +512,30 @@ export default function PlanningEmployeesComponent() {
       return;
     }
 
+    if (!start || !end || end <= start) {
+      window.alert(
+        t(
+          "planning:errors.invalidRange",
+          "La période sélectionnée est invalide",
+        ),
+      );
+      return;
+    }
+
+    const normalizedStart =
+      isLeave && isFullDayLeave ? toStartOfDay(start) : new Date(start);
+    const normalizedEnd =
+      isLeave && isFullDayLeave ? toEndOfDay(end) : new Date(end);
+    const safeTitle = isLeave ? "" : canonicalizeShiftTitle(title);
+
     try {
       const response = await axios.post(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}/shifts`,
         {
+          isLeave,
           title: safeTitle,
-          start: start.toISOString(),
-          end: end.toISOString(),
+          start: normalizedStart.toISOString(),
+          end: normalizedEnd.toISOString(),
         },
       );
 
@@ -342,13 +548,26 @@ export default function PlanningEmployeesComponent() {
 
       const employee = allEmployees.find((e) => e._id === employeeId) || {};
       const updatedEvents = updatedShifts.map((s) => ({
+        ...(() => {
+          const start = new Date(s.start);
+          const end = new Date(s.end);
+          const isLeave = isLeaveShiftRecord(s);
+          const leaveDurationLabel = getFullDayLeaveLabel(start, end, isLeave);
+
+          return {
+            start,
+            end,
+            allDay: Boolean(leaveDurationLabel),
+            leaveDurationLabel,
+            isLeave,
+          };
+        })(),
         id: String(s._id),
-        title: `${shortName(employee)} - ${s.title}`,
-        start: new Date(s.start),
-        end: new Date(s.end),
+        title: getManagerEventTitle(employee, s),
+        shiftLabel: getShiftDisplayTitle(s),
+        employeeShortName: shortName(employee),
         resourceId: employeeId,
         leaveRequestId: s.leaveRequestId || null,
-        isLeave: normalizeTitle(s.title) === "conges",
       }));
       const other = events.filter((ev) => ev.resourceId !== employeeId);
       setEvents([...other, ...updatedEvents]);
@@ -363,7 +582,14 @@ export default function PlanningEmployeesComponent() {
 
   function handleCancelShift() {
     setModalOpen(false);
-    setModalData({ employeeId: null, start: null, end: null, title: "" });
+    setModalData({
+      employeeId: null,
+      start: null,
+      end: null,
+      title: "",
+      isLeave: false,
+      isFullDayLeave: false,
+    });
     setModalEmployeeQuery("");
   }
 
@@ -372,7 +598,7 @@ export default function PlanningEmployeesComponent() {
     setDeleteModalData({
       eventId: event.id,
       employeeId: event.resourceId,
-      title: event.title.split(" - ")[1],
+      title: event.shiftLabel || event.title.split(" - ")[1],
       start: event.start,
       end: event.end,
       leaveRequestId: event.leaveRequestId || null,
@@ -464,11 +690,95 @@ export default function PlanningEmployeesComponent() {
     });
   }
 
+  async function handlePlanningExport(payload) {
+    if (!restaurantId) return;
+
+    setIsPlanningExportLoading(true);
+    setPlanningExportError("");
+
+    try {
+      const response = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/planning/export/pdf`,
+        payload,
+        {
+          ...getAuthConfig(),
+          responseType: "blob",
+        },
+      );
+
+      const blob = new Blob([response.data], { type: "application/pdf" });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `planning-salaries-${payload.from}-au-${payload.to}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      setIsPlanningExportOpen(false);
+    } catch (error) {
+      console.error("Erreur export planning salariés :", error);
+      setPlanningExportError(
+        error?.response?.data?.message ||
+          "Impossible de générer l'export planning pour le moment.",
+      );
+    } finally {
+      setIsPlanningExportLoading(false);
+    }
+  }
+
   const CustomEvent = ({ event }) => {
-    const isCompressedLeave =
-      event.isLeave && event.end - event.start === 1000 * 60 * 60;
-    if (isCompressedLeave) return <div className="text-xs">{event.title}</div>;
-    return <div className="text-xs">{event.title}</div>;
+    const timeLabel = formatEventTimeRange(event.start, event.end);
+    const compactLabel = selectedEmployeeId
+      ? event.shiftLabel || event.employeeShortName || ""
+      : [event.employeeShortName, event.shiftLabel].filter(Boolean).join(" · ");
+    const tooltip = event.allDay
+      ? event.title
+      : event.title
+        ? `${event.title} : ${timeLabel}`
+        : timeLabel;
+
+    if (event.allDay) {
+      return (
+        <div
+          className="truncate text-[11px] font-medium leading-tight"
+          title={tooltip}
+        >
+          {event.title}
+        </div>
+      );
+    }
+
+    const useCompactLayout = isMobile || view === Views.DAY;
+
+    if (useCompactLayout) {
+      return (
+        <div
+          className="flex h-full flex-col justify-start overflow-hidden whitespace-normal leading-[1.05]"
+          title={tooltip}
+        >
+          {compactLabel ? (
+            <span className="truncate text-[11px] font-medium opacity-95">
+              {compactLabel}
+            </span>
+          ) : null}
+        </div>
+      );
+    }
+
+    return (
+      <div
+        className="flex h-full flex-col justify-start overflow-hidden whitespace-normal leading-tight"
+        title={tooltip}
+      >
+        {event.title ? (
+          <span className="truncate text-[11px] font-medium opacity-95">
+            {event.title}
+          </span>
+        ) : null}
+      </div>
+    );
   };
 
   // ─── Toolbar mobile compacte ────────────────────────────────────────────────
@@ -488,6 +798,41 @@ export default function PlanningEmployeesComponent() {
     const left = format(start, "dd MMM", { locale: frLocale });
     const right = format(end, "dd MMM yyyy", { locale: frLocale });
     return `${left} – ${right}`;
+  }, [date, view]);
+
+  const exportDateRange = useMemo(() => {
+    if (!date) {
+      const now = new Date();
+      return {
+        from: toInputDate(now),
+        to: toInputDate(now),
+      };
+    }
+
+    if (view === Views.DAY) {
+      return {
+        from: toInputDate(date),
+        to: toInputDate(date),
+      };
+    }
+
+    if (view === Views.MONTH) {
+      const start = new Date(date.getFullYear(), date.getMonth(), 1);
+      const end = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+
+      return {
+        from: toInputDate(start),
+        to: toInputDate(end),
+      };
+    }
+
+    const start = startOfWeek(date, { locale: frLocale, weekStartsOn: 1 });
+    const end = addDays(start, 6);
+
+    return {
+      from: toInputDate(start),
+      to: toInputDate(end),
+    };
   }, [date, view]);
 
   const goToday = () => setDate(new Date());
@@ -515,8 +860,6 @@ export default function PlanningEmployeesComponent() {
     searchRef.current?.focus?.();
   };
 
-  const pad2 = (n) => String(n).padStart(2, "0");
-
   function dateToLocalInputValue(d) {
     if (!d) return "";
     const y = d.getFullYear();
@@ -527,17 +870,39 @@ export default function PlanningEmployeesComponent() {
     return `${y}-${m}-${day}T${hh}:${mm}`;
   }
 
+  function dateToLocalDateInputValue(d) {
+    if (!d) return "";
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  }
+
   function localInputValueToDate(v) {
     if (!v) return null;
     const d = new Date(v);
     return Number.isNaN(d.getTime()) ? null : d;
   }
 
+  function localDateInputValueToDate(v, boundary = "start") {
+    if (!v) return null;
+    const [year, month, day] = String(v)
+      .split("-")
+      .map((value) => Number(value));
+    const date = new Date(year, month - 1, day, 0, 0, 0, 0);
+    if (Number.isNaN(date.getTime())) return null;
+    if (boundary === "end") {
+      date.setHours(23, 59, 0, 0);
+    }
+    return date;
+  }
+
   // ─── Hauteur calendrier : évite le “gros blanc” ─────────────────────────────
   const calendarHeight = isMobile ? "calc(100vh - 160px)" : "75vh";
 
   return (
-    <section className="flex flex-col gap-4 min-w-0">
+    <section
+      className={`${isMobile ? "gm-mobile-planning " : ""}gm-show-allday-calendar ${
+        hasVisibleAllDayEvents ? "gm-has-allday-events" : ""
+      } flex flex-col gap-4 min-w-0`}
+    >
       {/* ================= Header ================= */}
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="flex flex-col gap-2">
@@ -558,6 +923,25 @@ export default function PlanningEmployeesComponent() {
 
         {/* ✅ Actions desktop/tablette */}
         <div className="hidden midTablet:flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setPlanningExportError("");
+              setIsPlanningExportOpen(true);
+            }}
+            className="
+      inline-flex items-center gap-2
+      rounded-2xl border border-darkBlue/10 bg-white/70
+      px-4 py-2 text-sm font-semibold text-darkBlue
+      hover:bg-darkBlue/5 transition
+    "
+          >
+            <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15 text-blue">
+              <Download className="size-4" />
+            </span>
+            <span className="whitespace-nowrap">Exporter le planning</span>
+          </button>
+
           {/* + Ajouter un créneau (ouvre ta modale) */}
           <button
             type="button"
@@ -599,23 +983,44 @@ export default function PlanningEmployeesComponent() {
           </button>
         </div>
 
-        {/* ✅ Mobile : on garde uniquement le bouton congés (ton bouton existant) */}
-        <button
-          type="button"
-          onClick={() => router.push("/dashboard/employees/planning/days-off")}
-          className="
-    midTablet:hidden
-    inline-flex items-center gap-2
-    rounded-2xl border border-darkBlue/10 bg-white/70
-    px-4 py-3 text-sm font-semibold text-darkBlue
-    hover:bg-darkBlue/5 transition
-  "
-        >
-          <span className="inline-flex items-center justify-center size-9 rounded-full bg-violet text-white">
-            <CalendarDays className="size-4" />
-          </span>
-          <span className="whitespace-nowrap">{t("titles.daysOff")}</span>
-        </button>
+        <div className="flex w-full items-stretch gap-2 midTablet:hidden">
+          <button
+            type="button"
+            onClick={() => {
+              setPlanningExportError("");
+              setIsPlanningExportOpen(true);
+            }}
+            className="
+      inline-flex flex-1 min-w-0 items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70
+      px-3 py-3 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5
+    "
+            aria-label="Exporter le planning"
+            title="Exporter le planning"
+          >
+            <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15 text-blue shrink-0">
+              <Download className="size-4" />
+            </span>
+            <span className="truncate">Exporter</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              router.push("/dashboard/employees/planning/days-off")
+            }
+            className="
+      inline-flex flex-1 min-w-0 items-center gap-2
+      rounded-2xl border border-darkBlue/10 bg-white/70
+      px-3 py-3 text-sm font-semibold text-darkBlue
+      hover:bg-darkBlue/5 transition
+    "
+          >
+            <span className="inline-flex items-center justify-center size-9 rounded-full bg-violet text-white shrink-0">
+              <CalendarDays className="size-4" />
+            </span>
+            <span className="truncate">{t("titles.daysOff")}</span>
+          </button>
+        </div>
       </div>
 
       {/* ================= Search ================= */}
@@ -819,6 +1224,7 @@ export default function PlanningEmployeesComponent() {
               draggableAccessor={() => false}
               eventPropGetter={(event) => {
                 const isLeave = event.isLeave;
+                const compactEvent = isMobile || view === Views.DAY;
                 return {
                   style: {
                     backgroundColor: isLeave
@@ -827,10 +1233,11 @@ export default function PlanningEmployeesComponent() {
                     border: `1px solid ${
                       isLeave ? "#FDBA74" : "rgba(255,255,255,0.9)"
                     }`,
-                    borderRadius: 12,
+                    borderRadius: compactEvent ? 10 : 12,
                     outline: "none",
-                    fontSize: 12,
-                    padding: "2px 6px",
+                    fontSize: compactEvent ? 11 : 12,
+                    padding: compactEvent ? "3px 5px" : "2px 6px",
+                    lineHeight: 1.05,
                   },
                 };
               }}
@@ -960,9 +1367,68 @@ export default function PlanningEmployeesComponent() {
               </div>
             )}
 
+            <div className="flex flex-col gap-3 rounded-2xl border border-darkBlue/10 bg-lightGrey/55 px-4 py-3">
+              <label className="inline-flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={modalData.isLeave}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setModalData((prev) => ({
+                      ...prev,
+                      isLeave: checked,
+                      isFullDayLeave: checked ? prev.isFullDayLeave : false,
+                      title: checked ? "" : prev.title,
+                    }));
+                  }}
+                  className="h-4 w-4 rounded border-darkBlue/20 text-blue focus:ring-blue/30"
+                />
+                <span className="text-sm font-medium text-darkBlue">
+                  {t("planning:labels.leave", "Congés")}
+                </span>
+              </label>
+
+              {modalData.isLeave && (
+                <label className="inline-flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={modalData.isFullDayLeave}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setModalData((prev) => {
+                        const next = {
+                          ...prev,
+                          isFullDayLeave: checked,
+                        };
+
+                        if (checked) {
+                          next.start = prev.start
+                            ? toStartOfDay(prev.start)
+                            : prev.start;
+                          if (prev.end) {
+                            next.end = toEndOfDay(prev.end);
+                          } else if (prev.start) {
+                            next.end = toEndOfDay(prev.start);
+                          }
+                        }
+
+                        return next;
+                      });
+                    }}
+                    className="h-4 w-4 rounded border-darkBlue/20 text-blue focus:ring-blue/30"
+                  />
+                  <span className="text-sm text-darkBlue/80">
+                    {t("planning:labels.fullDayLeave", "Journée entière")}
+                  </span>
+                </label>
+              )}
+            </div>
+
             <div className="grid gap-2">
               <p className="text-sm text-center text-darkBlue/80">
-                {t("planning:labels.slot", "Créneau :")}
+                {modalData.isLeave
+                  ? t("planning:labels.leavePeriod", "Période :")
+                  : t("planning:labels.slot", "Créneau :")}
               </p>
 
               <div className="grid grid-cols-1 gap-2">
@@ -971,17 +1437,28 @@ export default function PlanningEmployeesComponent() {
                     {t("planning:labels.start", "Début")}
                   </label>
                   <input
-                    type="datetime-local"
-                    value={dateToLocalInputValue(modalData.start)}
+                    type={
+                      modalData.isLeave && modalData.isFullDayLeave
+                        ? "date"
+                        : "datetime-local"
+                    }
+                    value={
+                      modalData.isLeave && modalData.isFullDayLeave
+                        ? dateToLocalDateInputValue(modalData.start)
+                        : dateToLocalInputValue(modalData.start)
+                    }
                     onChange={(e) => {
-                      const nextStart = localInputValueToDate(e.target.value);
+                      const nextStart =
+                        modalData.isLeave && modalData.isFullDayLeave
+                          ? localDateInputValueToDate(e.target.value, "start")
+                          : localInputValueToDate(e.target.value);
                       setModalData((prev) => {
                         const next = { ...prev, start: nextStart };
-                        // auto end si vide ou si end <= start
                         if (nextStart && (!next.end || next.end <= nextStart)) {
-                          next.end = new Date(
-                            nextStart.getTime() + 60 * 60 * 1000,
-                          ); // +1h
+                          next.end =
+                            prev.isLeave && prev.isFullDayLeave
+                              ? toEndOfDay(nextStart)
+                              : new Date(nextStart.getTime() + 60 * 60 * 1000);
                         }
                         return next;
                       });
@@ -1000,11 +1477,26 @@ export default function PlanningEmployeesComponent() {
                     {t("planning:labels.end", "Fin")}
                   </label>
                   <input
-                    type="datetime-local"
-                    value={dateToLocalInputValue(modalData.end)}
-                    min={dateToLocalInputValue(modalData.start)}
+                    type={
+                      modalData.isLeave && modalData.isFullDayLeave
+                        ? "date"
+                        : "datetime-local"
+                    }
+                    value={
+                      modalData.isLeave && modalData.isFullDayLeave
+                        ? dateToLocalDateInputValue(modalData.end)
+                        : dateToLocalInputValue(modalData.end)
+                    }
+                    min={
+                      modalData.isLeave && modalData.isFullDayLeave
+                        ? dateToLocalDateInputValue(modalData.start)
+                        : dateToLocalInputValue(modalData.start)
+                    }
                     onChange={(e) => {
-                      const nextEnd = localInputValueToDate(e.target.value);
+                      const nextEnd =
+                        modalData.isLeave && modalData.isFullDayLeave
+                          ? localDateInputValueToDate(e.target.value, "end")
+                          : localInputValueToDate(e.target.value);
                       setModalData((prev) => ({ ...prev, end: nextEnd }));
                     }}
                     className="
@@ -1018,26 +1510,28 @@ export default function PlanningEmployeesComponent() {
               </div>
             </div>
 
-            <div className="flex flex-col gap-2">
-              <input
-                type="text"
-                placeholder={t(
-                  "planning:placeholders.shiftTitle",
-                  "Titre du shift",
-                )}
-                value={modalData.title}
-                onChange={(e) =>
-                  setModalData((prev) => ({ ...prev, title: e.target.value }))
-                }
-                className="
-                  w-full h-10 rounded-lg border border-darkBlue/20 bg-white/95
-                  px-3 text-base outline-none
-                  placeholder:text-darkBlue/40
-                  focus:border-darkBlue/50 focus:ring-1 focus:ring-darkBlue/20
-                  transition
-                "
-              />
-            </div>
+            {!modalData.isLeave && (
+              <div className="flex flex-col gap-2">
+                <input
+                  type="text"
+                  placeholder={t(
+                    "planning:placeholders.shiftTitleOptional",
+                    "Titre du shift (facultatif)",
+                  )}
+                  value={modalData.title}
+                  onChange={(e) =>
+                    setModalData((prev) => ({ ...prev, title: e.target.value }))
+                  }
+                  className="
+                    w-full h-10 rounded-lg border border-darkBlue/20 bg-white/95
+                    px-3 text-base outline-none
+                    placeholder:text-darkBlue/40
+                    focus:border-darkBlue/50 focus:ring-1 focus:ring-darkBlue/20
+                    transition
+                  "
+                />
+              </div>
+            )}
 
             <div className="mt-2 flex justify-center gap-3">
               <button
@@ -1050,7 +1544,6 @@ export default function PlanningEmployeesComponent() {
                   disabled:opacity-50 disabled:cursor-not-allowed
                 "
                 disabled={
-                  !canonicalizeShiftTitle(modalData.title).trim() ||
                   !modalData.start ||
                   !modalData.end ||
                   (modalData.end &&
@@ -1182,6 +1675,24 @@ export default function PlanningEmployeesComponent() {
           </div>
         </div>
       )}
+
+      <ExportRangeModalComponent
+        open={isPlanningExportOpen}
+        title="Exporter le planning salariés"
+        description="Choisissez une période et les salariés à inclure dans le PDF planning."
+        confirmLabel="Exporter le planning"
+        employees={exportEmployees}
+        initialFrom={exportDateRange.from}
+        initialTo={exportDateRange.to}
+        loading={isPlanningExportLoading}
+        submitError={planningExportError}
+        onClose={() => {
+          if (isPlanningExportLoading) return;
+          setIsPlanningExportOpen(false);
+          setPlanningExportError("");
+        }}
+        onConfirm={handlePlanningExport}
+      />
     </section>
   );
 }

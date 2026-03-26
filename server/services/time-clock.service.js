@@ -5,6 +5,10 @@ const ACTIONS = {
   CLOCK_OUT: "clock_out",
 };
 
+function pad2(value) {
+  return String(value).padStart(2, "0");
+}
+
 function clampNumber(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
@@ -29,11 +33,40 @@ function toDateKey(value) {
   return date.toISOString().slice(0, 10);
 }
 
+function toLocalDateKey(value) {
+  if (typeof value === "string" && isValidDateKey(value)) return value;
+
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
 function dateKeyToDate(key) {
   if (!isValidDateKey(key)) return null;
 
   const date = new Date(`${key}T12:00:00.000Z`);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function dateKeyToLocalDate(key) {
+  if (!isValidDateKey(key)) return null;
+
+  const [year, month, day] = String(key)
+    .split("-")
+    .map((part) => Number(part));
+
+  const date = new Date(year, month - 1, day, 0, 0, 0, 0);
+  if (Number.isNaN(date.getTime())) return null;
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return date;
 }
 
 function addDaysToDateKey(key, amount) {
@@ -121,10 +154,7 @@ function normalizeSignaturePayload(rawSignature, signedAt = new Date()) {
         : rawStroke?.points || [];
 
       const points = dedupeConsecutivePoints(
-        rawPoints
-          .slice(0, 180)
-          .map(normalizePoint)
-          .filter(Boolean),
+        rawPoints.slice(0, 180).map(normalizePoint).filter(Boolean),
       );
 
       if (points.length < 2) return null;
@@ -189,19 +219,134 @@ function getAvailableActions(session) {
   return [ACTIONS.BREAK_START, ACTIONS.CLOCK_OUT];
 }
 
+function getRangeBounds(startDateKey, endDateKey) {
+  const start = dateKeyToLocalDate(startDateKey);
+  const end = dateKeyToLocalDate(endDateKey);
+
+  if (!start || !end || start > end) {
+    return null;
+  }
+
+  const endExclusive = new Date(end.getTime());
+  endExclusive.setDate(endExclusive.getDate() + 1);
+
+  return {
+    start,
+    end,
+    endExclusive,
+  };
+}
+
+function buildOverlapQuery(startDateKey, endDateKey) {
+  const bounds = getRangeBounds(startDateKey, endDateKey);
+  if (!bounds) return null;
+
+  return {
+    clockInAt: { $lt: bounds.endExclusive },
+    $or: [{ clockOutAt: null }, { clockOutAt: { $gte: bounds.start } }],
+  };
+}
+
+function splitIntervalByDay(startValue, endValue) {
+  const start = new Date(startValue);
+  const end = new Date(endValue);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return [];
+  if (end <= start) return [];
+
+  const segments = [];
+  let cursor = new Date(start.getTime());
+
+  while (cursor < end) {
+    const segmentDate = toLocalDateKey(cursor);
+    const nextBoundary = new Date(cursor.getTime());
+    nextBoundary.setHours(24, 0, 0, 0);
+
+    const segmentEnd = nextBoundary < end ? nextBoundary : end;
+    const minutes = diffMinutes(cursor, segmentEnd);
+
+    if (minutes > 0 && segmentDate) {
+      segments.push({
+        date: segmentDate,
+        startAt: new Date(cursor.getTime()),
+        endAt: new Date(segmentEnd.getTime()),
+        minutes,
+      });
+    }
+
+    cursor = new Date(segmentEnd.getTime());
+  }
+
+  return segments;
+}
+
+function buildEmptySessionDayShare(dateKey) {
+  return {
+    date: dateKey,
+    startAt: null,
+    endAt: null,
+    grossMinutes: 0,
+    breakMinutes: 0,
+    workedMinutes: 0,
+  };
+}
+
+function computeSessionDayBreakdown(session, { now = new Date() } = {}) {
+  const dayMap = new Map();
+  const effectiveEnd = session?.clockOutAt || now;
+
+  for (const segment of splitIntervalByDay(session?.clockInAt, effectiveEnd)) {
+    const current =
+      dayMap.get(segment.date) || buildEmptySessionDayShare(segment.date);
+    current.startAt =
+      !current.startAt || new Date(segment.startAt) < new Date(current.startAt)
+        ? segment.startAt
+        : current.startAt;
+    current.endAt =
+      !current.endAt || new Date(segment.endAt) > new Date(current.endAt)
+        ? segment.endAt
+        : current.endAt;
+    current.grossMinutes += segment.minutes;
+    dayMap.set(segment.date, current);
+  }
+
+  for (const currentBreak of session?.breaks || []) {
+    const breakEnd = currentBreak?.endAt || now;
+
+    for (const segment of splitIntervalByDay(currentBreak?.startAt, breakEnd)) {
+      const current =
+        dayMap.get(segment.date) || buildEmptySessionDayShare(segment.date);
+      current.breakMinutes += segment.minutes;
+      dayMap.set(segment.date, current);
+    }
+  }
+
+  const days = Array.from(dayMap.values())
+    .map((item) => ({
+      ...item,
+      workedMinutes: Math.max(0, item.grossMinutes - item.breakMinutes),
+    }))
+    .sort((left, right) => left.date.localeCompare(right.date));
+
+  return {
+    days,
+    spansMultipleDays: days.length > 1,
+  };
+}
+
 function computeSessionMetrics(
   session,
-  {
-    now = new Date(),
-    referenceDateKey = toDateKey(now),
-  } = {},
+  { now = new Date(), referenceDateKey = toLocalDateKey(now) } = {},
 ) {
   const activeBreak = findActiveBreak(session);
 
-  const completedBreakMinutes = (session?.breaks || []).reduce((total, item) => {
-    if (!item?.startAt || !item?.endAt) return total;
-    return total + diffMinutes(item.startAt, item.endAt);
-  }, 0);
+  const completedBreakMinutes = (session?.breaks || []).reduce(
+    (total, item) => {
+      if (!item?.startAt || !item?.endAt) return total;
+      return total + diffMinutes(item.startAt, item.endAt);
+    },
+    0,
+  );
 
   const activeBreakMinutes = activeBreak
     ? diffMinutes(activeBreak.startAt, now)
@@ -216,7 +361,8 @@ function computeSessionMetrics(
 
   if (
     session?.clockOutAt &&
-    new Date(session.clockOutAt).getTime() < new Date(session.clockInAt).getTime()
+    new Date(session.clockOutAt).getTime() <
+      new Date(session.clockInAt).getTime()
   ) {
     anomalies.push("invalid_times");
   }
@@ -295,10 +441,7 @@ function serializeBreak(item, now = new Date()) {
 
 function serializeSession(
   session,
-  {
-    now = new Date(),
-    referenceDateKey = toDateKey(now),
-  } = {},
+  { now = new Date(), referenceDateKey = toLocalDateKey(now) } = {},
 ) {
   const metrics = computeSessionMetrics(session, { now, referenceDateKey });
   const events = [...(session?.events || [])]
@@ -326,6 +469,22 @@ function serializeSession(
     anomalies: metrics.anomalies,
     breaks,
     events,
+    adjustments: [...(session?.adjustments || [])]
+      .sort((left, right) => new Date(right.editedAt) - new Date(left.editedAt))
+      .map((adjustment) => ({
+        id: adjustment?._id ? String(adjustment._id) : null,
+        editedAt: adjustment?.editedAt || null,
+        editedByRole: adjustment?.editedByRole || "owner",
+        editedById: adjustment?.editedById || "",
+        reason: adjustment?.reason || "",
+        previousClockInAt: adjustment?.previousClockInAt || null,
+        previousClockOutAt: adjustment?.previousClockOutAt || null,
+        clockInAt: adjustment?.clockInAt || null,
+        clockOutAt: adjustment?.clockOutAt || null,
+      })),
+    isManuallyEdited: Array.isArray(session?.adjustments)
+      ? session.adjustments.length > 0
+      : false,
     lastActionAt: session?.lastActionAt || null,
   };
 }
@@ -338,38 +497,101 @@ function buildEmptyDaySummary(dateKey) {
     totalBreakMinutes: 0,
     totalWorkedMinutes: 0,
     sessionCount: 0,
+    sessionIds: [],
     anomalies: [],
+  };
+}
+
+function buildSessionEntryForDay(
+  serializedSession,
+  dayShare,
+  spansMultipleDays,
+) {
+  return {
+    ...serializedSession,
+    dayTotals: {
+      startAt: dayShare?.startAt || serializedSession?.clockInAt || null,
+      endAt: dayShare?.endAt || serializedSession?.clockOutAt || null,
+      grossMinutes: dayShare?.grossMinutes || 0,
+      breakMinutes: dayShare?.breakMinutes || 0,
+      workedMinutes: dayShare?.workedMinutes || 0,
+    },
+    spansMultipleDays,
+    isPartialForDay:
+      spansMultipleDays &&
+      (serializedSession?.totals?.grossMinutes || 0) !==
+        (dayShare?.grossMinutes || 0),
+  };
+}
+
+function finalizeDaySummary(day) {
+  const sessionIds = Array.isArray(day?.sessionIds) ? day.sessionIds : [];
+
+  return {
+    date: day?.date || null,
+    sessions: Array.isArray(day?.sessions) ? day.sessions : [],
+    totalGrossMinutes: Number(day?.totalGrossMinutes || 0),
+    totalBreakMinutes: Number(day?.totalBreakMinutes || 0),
+    totalWorkedMinutes: Number(day?.totalWorkedMinutes || 0),
+    sessionCount: sessionIds.length,
+    anomalies: Array.isArray(day?.anomalies) ? day.anomalies : [],
   };
 }
 
 function groupSessionsByDay(
   sessions,
-  {
-    now = new Date(),
-    referenceDateKey = toDateKey(now),
-  } = {},
+  { now = new Date(), referenceDateKey = toLocalDateKey(now) } = {},
 ) {
   const dayMap = new Map();
 
   for (const session of sessions || []) {
     const serialized = serializeSession(session, { now, referenceDateKey });
-    const key = serialized.businessDate || referenceDateKey;
-    const current = dayMap.get(key) || buildEmptyDaySummary(key);
+    const breakdown = computeSessionDayBreakdown(session, { now });
+    const dayShares = breakdown.days.length
+      ? breakdown.days
+      : [
+          {
+            date: serialized.businessDate || referenceDateKey,
+            grossMinutes: 0,
+            breakMinutes: 0,
+            workedMinutes: 0,
+          },
+        ];
 
-    current.sessions.push(serialized);
-    current.totalGrossMinutes += serialized.totals.grossMinutes;
-    current.totalBreakMinutes += serialized.totals.breakMinutes;
-    current.totalWorkedMinutes += serialized.totals.workedMinutes;
-    current.sessionCount += 1;
-    current.anomalies = Array.from(
-      new Set([...(current.anomalies || []), ...(serialized.anomalies || [])]),
-    );
+    for (const dayShare of dayShares) {
+      const key = dayShare.date || serialized.businessDate || referenceDateKey;
+      const current = dayMap.get(key) || buildEmptyDaySummary(key);
 
-    dayMap.set(key, current);
+      current.sessions.push(
+        buildSessionEntryForDay(
+          serialized,
+          dayShare,
+          breakdown.spansMultipleDays,
+        ),
+      );
+      current.totalGrossMinutes += dayShare.grossMinutes || 0;
+      current.totalBreakMinutes += dayShare.breakMinutes || 0;
+      current.totalWorkedMinutes += dayShare.workedMinutes || 0;
+
+      if (serialized.id && !current.sessionIds.includes(serialized.id)) {
+        current.sessionIds.push(serialized.id);
+      }
+
+      current.anomalies = Array.from(
+        new Set([
+          ...(current.anomalies || []),
+          ...(serialized.anomalies || []),
+        ]),
+      );
+
+      dayMap.set(key, current);
+    }
   }
 
   for (const day of dayMap.values()) {
-    day.sessions.sort((left, right) => new Date(left.clockInAt) - new Date(right.clockInAt));
+    day.sessions.sort(
+      (left, right) => new Date(left.clockInAt) - new Date(right.clockInAt),
+    );
   }
 
   return dayMap;
@@ -378,10 +600,15 @@ function groupSessionsByDay(
 function buildRangeSummary(dayMap, startDate, endDate) {
   const days = [];
   let cursor = startDate;
+  const sessionIds = new Set();
 
   while (cursor && cursor <= endDate) {
     const current = dayMap.get(cursor) || buildEmptyDaySummary(cursor);
-    days.push(current);
+    const finalized = finalizeDaySummary(current);
+    (current.sessionIds || []).forEach((sessionId) =>
+      sessionIds.add(sessionId),
+    );
+    days.push(finalized);
     cursor = addDaysToDateKey(cursor, 1);
   }
 
@@ -401,8 +628,10 @@ function buildRangeSummary(dayMap, startDate, endDate) {
       (total, item) => total + item.totalWorkedMinutes,
       0,
     ),
-    totalSessions: days.reduce((total, item) => total + item.sessionCount, 0),
-    anomalies: Array.from(new Set(days.flatMap((item) => item.anomalies || []))),
+    totalSessions: sessionIds.size,
+    anomalies: Array.from(
+      new Set(days.flatMap((item) => item.anomalies || [])),
+    ),
   };
 }
 
@@ -431,10 +660,13 @@ function buildSummaryPayload({
   activeSession = null,
   now = new Date(),
 }) {
-  const referenceDateKey = anchorDateKey || toDateKey(now);
+  const referenceDateKey = anchorDateKey || toLocalDateKey(now);
   const weekRange = getWeekRangeFromDateKey(referenceDateKey);
   const monthRange = getMonthRangeFromDateKey(referenceDateKey);
   const dayMap = groupSessionsByDay(monthSessions, { now, referenceDateKey });
+  const day = finalizeDaySummary(
+    dayMap.get(referenceDateKey) || buildEmptyDaySummary(referenceDateKey),
+  );
 
   return {
     employee: getEmployeeDisplay(employee, restaurantId),
@@ -446,7 +678,7 @@ function buildSummaryPayload({
         ? serializeSession(activeSession, { now, referenceDateKey })
         : null,
     },
-    day: dayMap.get(referenceDateKey) || buildEmptyDaySummary(referenceDateKey),
+    day,
     week: buildRangeSummary(dayMap, weekRange.startDate, weekRange.endDate),
     month: buildRangeSummary(dayMap, monthRange.startDate, monthRange.endDate),
     history: (recentSessions || []).map((session) =>
@@ -456,13 +688,34 @@ function buildSummaryPayload({
   };
 }
 
+function buildEmployeeRangeSummary({
+  employee,
+  restaurantId,
+  startDate,
+  endDate,
+  sessions = [],
+  now = new Date(),
+}) {
+  const referenceDateKey = startDate || toLocalDateKey(now);
+  const dayMap = groupSessionsByDay(sessions, { now, referenceDateKey });
+
+  return {
+    employee: getEmployeeDisplay(employee, restaurantId),
+    range: buildRangeSummary(dayMap, startDate, endDate),
+  };
+}
+
 module.exports = {
   ACTIONS,
+  buildEmployeeRangeSummary,
+  buildOverlapQuery,
   buildSummaryPayload,
   computeSessionMetrics,
+  computeSessionDayBreakdown,
   diffMinutes,
   getAvailableActions,
   getEmployeeDisplay,
+  getRangeBounds,
   getMonthRangeFromDateKey,
   getSessionSituation,
   getWeekRangeFromDateKey,
@@ -471,4 +724,5 @@ module.exports = {
   serializeSession,
   syncSessionTotals,
   toDateKey,
+  toLocalDateKey,
 };

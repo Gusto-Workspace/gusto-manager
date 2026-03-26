@@ -55,7 +55,7 @@
 
   &__tile {
     border-radius: 12px;
-    
+
     &--now {
       background: hsla(249, 59%, 57%, 0.2) !important;
     }
@@ -90,25 +90,60 @@
   }
 }
 
-.rbc-allday-cell{display: none;}
+.rbc-allday-cell {
+  display: none;
+}
 
+.gm-show-allday-calendar {
+  .rbc-time-header {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(6px);
+  }
+
+  &.gm-has-allday-events .rbc-allday-cell {
+    display: block !important;
+    background: rgba(255, 255, 255, 0.88);
+  }
+
+  &.gm-has-allday-events .rbc-allday-cell .rbc-row:empty {
+    display: none;
+    min-height: 0 !important;
+  }
+}
+
+.gm-mobile-planning {
+  .rbc-day-slot .rbc-event-label {
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 2px;
+  }
+
+  .rbc-day-slot .rbc-event-content {
+    margin-top: 1px;
+    white-space: normal;
+  }
+}
 
 .rbc-toolbar {
-          display: none !important;
-        }
-        .rbc-time-view,
-        .rbc-month-view {
-          border-radius: 18px;
-          overflow: hidden;
-        }
-        .rbc-time-header,
-        .rbc-time-content,
-        .rbc-timeslot-group,
-        .rbc-day-slot .rbc-time-slot,
-        .rbc-time-header-content,
-        .rbc-time-header-gutter {
-          border-color: rgba(19, 30, 54, 0.08) !important;
-        }
-        .rbc-event {
-          box-shadow: none !important;
-        }
+  display: none !important;
+}
+.rbc-time-view,
+.rbc-month-view {
+  border-radius: 18px;
+  overflow: hidden;
+}
+.rbc-time-header,
+.rbc-time-content,
+.rbc-timeslot-group,
+.rbc-day-slot .rbc-time-slot,
+.rbc-time-header-content,
+.rbc-time-header-gutter {
+  border-color: rgba(19, 30, 54, 0.08) !important;
+}
+.rbc-event {
+  box-shadow: none !important;
+}

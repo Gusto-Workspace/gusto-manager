@@ -15,16 +15,23 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const link = event.notification?.data?.link || "/dashboard/webapp/gift-cards";
+  const rawLink =
+    event.notification?.data?.link || "/dashboard/webapp/gift-cards";
+  const targetUrl = new URL(rawLink, self.location.origin).href;
 
   event.waitUntil(
     clients
       .matchAll({ type: "window", includeUncontrolled: true })
       .then((clientList) => {
         for (const client of clientList) {
+          if ("navigate" in client) {
+            return client
+              .navigate(targetUrl)
+              .then((navigatedClient) => navigatedClient?.focus?.());
+          }
           if ("focus" in client) return client.focus();
         }
-        return clients.openWindow(link);
+        return clients.openWindow(targetUrl);
       }),
   );
 });

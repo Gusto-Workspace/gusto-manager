@@ -17,7 +17,7 @@ const optionsSchema = new mongoose.Schema(
     employees: { type: Boolean, default: false },
     health_control_plan: { type: Boolean, default: false },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const documentSchema = new mongoose.Schema(
@@ -27,13 +27,14 @@ const documentSchema = new mongoose.Schema(
     filename: { type: String, required: true },
     title: { type: String, required: true },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const shiftSchema = new mongoose.Schema({
-  title: { type: String, required: true },
+  title: { type: String, default: "" },
   start: { type: Date, required: true },
   end: { type: Date, required: true },
+  isLeave: { type: Boolean, default: false },
   leaveRequestId: { type: mongoose.Schema.Types.ObjectId, default: null },
 });
 
@@ -55,7 +56,7 @@ const leaveRequestSchema = new mongoose.Schema(
   {
     _id: true,
     timestamps: { createdAt: "createdAt", updatedAt: false },
-  }
+  },
 );
 
 const employeeSnapshotSchema = new mongoose.Schema(
@@ -70,7 +71,7 @@ const employeeSnapshotSchema = new mongoose.Schema(
     post: String,
     dateOnPost: Date,
   },
-  { _id: false }
+  { _id: false },
 );
 
 /**
@@ -93,7 +94,7 @@ const restaurantProfileSchema = new mongoose.Schema(
     leaveRequests: { type: [leaveRequestSchema], default: [] },
     snapshot: { type: employeeSnapshotSchema, default: {} },
   },
-  { _id: true }
+  { _id: true },
 );
 
 const employeeSchema = new mongoose.Schema({
@@ -163,7 +164,7 @@ employeeSchema.pre("save", async function (next) {
 // Méthode de comparaison de mot de passe
 employeeSchema.methods.comparePassword = async function (
   enteredPassword,
-  userPassword
+  userPassword,
 ) {
   try {
     return await bcrypt.compare(enteredPassword, userPassword);

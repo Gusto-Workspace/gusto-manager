@@ -29,6 +29,13 @@ export default function RestaurantContext() {
   // ✅ Liste de notifications (pour le drawer)
   const [notifications, setNotifications] = useState([]);
   const [notificationsNextCursor, setNotificationsNextCursor] = useState(null);
+  const [notificationsNextCursorByModule, setNotificationsNextCursorByModule] =
+    useState({
+      all: null,
+      reservations: null,
+      gift_cards: null,
+      employees: null,
+    });
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const lastNotificationsSyncRef = useRef(0);
 
@@ -65,7 +72,15 @@ export default function RestaurantContext() {
 
       if (!token || !rid) return;
 
-      if (reset) setNotificationsNextCursor(null);
+      const nextCursorKey = module || "all";
+
+      if (reset) {
+        if (!module) setNotificationsNextCursor(null);
+        setNotificationsNextCursorByModule((prev) => ({
+          ...prev,
+          [nextCursorKey]: null,
+        }));
+      }
 
       setNotificationsLoading(true);
 
@@ -88,7 +103,11 @@ export default function RestaurantContext() {
           : [];
         const next = data?.nextCursor ?? null;
 
-        setNotificationsNextCursor(next);
+        if (!module) setNotificationsNextCursor(next);
+        setNotificationsNextCursorByModule((prev) => ({
+          ...prev,
+          [nextCursorKey]: next,
+        }));
 
         setNotifications((prev) => {
           if (reset) return items;
@@ -447,8 +466,7 @@ export default function RestaurantContext() {
       return "reservations";
     if (pathname.startsWith("/dashboard/webapp/gift-cards"))
       return "gift_cards";
-    if (pathname.startsWith("/dashboard/webapp/time-clock"))
-      return "employees";
+    if (pathname.startsWith("/dashboard/webapp/time-clock")) return "employees";
     return null;
   }
 
@@ -588,6 +606,12 @@ export default function RestaurantContext() {
     setUserConnected(null);
     setNotifications([]);
     setNotificationsNextCursor(null);
+    setNotificationsNextCursorByModule({
+      all: null,
+      reservations: null,
+      gift_cards: null,
+      employees: null,
+    });
     setNotificationsLoading(false);
     setIsAuth(false);
 
@@ -641,6 +665,12 @@ export default function RestaurantContext() {
 
         setNotifications([]);
         setNotificationsNextCursor(null);
+        setNotificationsNextCursorByModule({
+          all: null,
+          reservations: null,
+          gift_cards: null,
+          employees: null,
+        });
         setNotificationsLoading(false);
 
         setRestaurantData(restaurant);
@@ -773,6 +803,12 @@ export default function RestaurantContext() {
           // ✅ reset liste notifs (propre)
           setNotifications([]);
           setNotificationsNextCursor(null);
+          setNotificationsNextCursorByModule({
+            all: null,
+            reservations: null,
+            gift_cards: null,
+            employees: null,
+          });
           setNotificationsLoading(false);
 
           setIsAuth(true);
@@ -871,6 +907,12 @@ export default function RestaurantContext() {
               // ✅ reset drawer list
               setNotifications([]);
               setNotificationsNextCursor(null);
+              setNotificationsNextCursorByModule({
+                all: null,
+                reservations: null,
+                gift_cards: null,
+                employees: null,
+              });
               setNotificationsLoading(false);
 
               // ✅ refresh counts for new restaurant
@@ -1032,7 +1074,7 @@ export default function RestaurantContext() {
   useEffect(() => {
     if (!restaurantData) return;
 
-    const parameters = restaurantData?.reservations?.parameters || {};
+    const parameters = restaurantData?.reservationsSettings || {};
     const deletionDurationMinutes = getDeletionMinutes(parameters);
 
     const checkExpiredReservations = () => {
@@ -1055,8 +1097,8 @@ export default function RestaurantContext() {
   }, [
     restaurantData?._id,
     reservationsList,
-    restaurantData?.reservations?.parameters?.deletion_duration,
-    restaurantData?.reservations?.parameters?.deletion_duration_minutes,
+    restaurantData?.reservationsSettings?.deletion_duration,
+    restaurantData?.reservationsSettings?.deletion_duration_minutes,
   ]);
 
   useEffect(() => {
@@ -1129,7 +1171,7 @@ export default function RestaurantContext() {
   }
 
   function getOccupancyMinutesFromRestaurant(restaurantData, reservationTime) {
-    const p = restaurantData?.reservations?.parameters || {};
+    const p = restaurantData?.reservationsSettings || {};
     const bucket = getServiceBucketFromTime(reservationTime);
 
     const v =
@@ -1145,7 +1187,7 @@ export default function RestaurantContext() {
     if (!restaurantData) return;
 
     const autoFinishEnabled =
-      restaurantData?.reservations?.parameters?.auto_finish_reservations;
+      restaurantData?.reservationsSettings?.auto_finish_reservations;
     if (!autoFinishEnabled) return;
 
     const checkAutoFinishReservations = () => {
@@ -1188,9 +1230,9 @@ export default function RestaurantContext() {
   }, [
     restaurantData?._id,
     reservationsList,
-    restaurantData?.reservations?.parameters?.auto_finish_reservations,
-    restaurantData?.reservations?.parameters?.table_occupancy_lunch_minutes,
-    restaurantData?.reservations?.parameters?.table_occupancy_dinner_minutes,
+    restaurantData?.reservationsSettings?.auto_finish_reservations,
+    restaurantData?.reservationsSettings?.table_occupancy_lunch_minutes,
+    restaurantData?.reservationsSettings?.table_occupancy_dinner_minutes,
   ]);
 
   function autoUpdateToFinished(reservation) {
@@ -1304,6 +1346,12 @@ export default function RestaurantContext() {
     setRestaurantsList([]);
     setNotifications([]);
     setNotificationsNextCursor(null);
+    setNotificationsNextCursorByModule({
+      all: null,
+      reservations: null,
+      gift_cards: null,
+      employees: null,
+    });
     setNotificationsLoading(false);
     setIsAuth(false);
     router.replace("/dashboard/login");
@@ -1386,6 +1434,7 @@ export default function RestaurantContext() {
     unreadCounts,
     notifications,
     notificationsNextCursor,
+    notificationsNextCursorByModule,
     notificationsLoading,
     fetchNotifications,
     lastNotificationsSyncRef,

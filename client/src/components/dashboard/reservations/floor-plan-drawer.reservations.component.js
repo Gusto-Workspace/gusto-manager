@@ -117,8 +117,8 @@ export default function FloorPlanDrawerReservationsComponent({
   const [selectedTableState, setSelectedTableState] = useState(null);
   const [shouldResetView, setShouldResetView] = useState(false);
 
-  const tablesCatalog = restaurantData?.reservations?.parameters?.tables || [];
-  const reservationParameters = restaurantData?.reservations?.parameters || {};
+  const tablesCatalog = restaurantData?.reservationsSettings?.tables || [];
+  const reservationParameters = restaurantData?.reservationsSettings || {};
 
   const contextDate = selectedDay || new Date();
   const contextDateKey = dateKeyOf(contextDate);

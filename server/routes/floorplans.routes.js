@@ -30,28 +30,25 @@ function normalizeIdList(values = []) {
 }
 
 function ensureFloorplan(restaurant) {
-  if (!restaurant.reservations) restaurant.reservations = {};
-  if (!restaurant.reservations.parameters)
-    restaurant.reservations.parameters = {};
-  if (!restaurant.reservations.parameters.floorplan) {
-    restaurant.reservations.parameters.floorplan = {
+  if (!restaurant.reservationsSettings) restaurant.reservationsSettings = {};
+  if (!restaurant.reservationsSettings.floorplan) {
+    restaurant.reservationsSettings.floorplan = {
       enabled: false,
       rooms: [],
       version: 1,
     };
   }
-  if (!Array.isArray(restaurant.reservations.parameters.floorplan.rooms)) {
-    restaurant.reservations.parameters.floorplan.rooms = [];
+  if (!Array.isArray(restaurant.reservationsSettings.floorplan.rooms)) {
+    restaurant.reservationsSettings.floorplan.rooms = [];
   }
 }
 
 function getRooms(restaurant) {
-  return restaurant?.reservations?.parameters?.floorplan?.rooms || [];
+  return restaurant?.reservationsSettings?.floorplan?.rooms || [];
 }
 
 function pruneExpiredTableBlockedRanges(restaurant, now = new Date()) {
-  const current =
-    restaurant?.reservations?.parameters?.table_blocked_ranges || [];
+  const current = restaurant?.reservationsSettings?.table_blocked_ranges || [];
   const nowTs = now.getTime();
 
   const next = current.filter((range) => {
@@ -63,8 +60,8 @@ function pruneExpiredTableBlockedRanges(restaurant, now = new Date()) {
     return false;
   }
 
-  restaurant.reservations.parameters.table_blocked_ranges = next;
-  restaurant.markModified("reservations.parameters.table_blocked_ranges");
+  restaurant.reservationsSettings.table_blocked_ranges = next;
+  restaurant.markModified("reservationsSettings.table_blocked_ranges");
 
   return true;
 }
@@ -146,12 +143,10 @@ router.get(
 
       return res.json({
         rooms: getRooms(restaurant),
-        enabled: Boolean(restaurant.reservations.parameters.floorplan.enabled),
-        version: Number(
-          restaurant.reservations.parameters.floorplan.version || 1,
-        ),
-        tables: restaurant?.reservations?.parameters?.tables || [],
-        reservationParameters: restaurant?.reservations?.parameters || {},
+        enabled: Boolean(restaurant.reservationsSettings.floorplan.enabled),
+        version: Number(restaurant.reservationsSettings.floorplan.version || 1),
+        tables: restaurant?.reservationsSettings?.tables || [],
+        reservationParameters: restaurant?.reservationsSettings || {},
       });
     } catch (e) {
       return res.status(500).json({ message: "Erreur serveur (GET rooms)." });
@@ -186,26 +181,24 @@ router.post(
 
       const name = safeString(req.body?.name, "Nouvelle salle");
 
-      restaurant.reservations.parameters.floorplan.rooms.push({
+      restaurant.reservationsSettings.floorplan.rooms.push({
         name,
         canvas: { width: 2000, height: 2000, gridSize: 50 },
         objects: [],
       });
 
       // auto enable dès la première salle
-      restaurant.reservations.parameters.floorplan.enabled = true;
+      restaurant.reservationsSettings.floorplan.enabled = true;
 
-      restaurant.reservations.parameters.floorplan.version =
-        Number(restaurant.reservations.parameters.floorplan.version || 1) + 1;
+      restaurant.reservationsSettings.floorplan.version =
+        Number(restaurant.reservationsSettings.floorplan.version || 1) + 1;
 
       await restaurant.save();
 
       return res.json({
         rooms: getRooms(restaurant),
-        enabled: Boolean(restaurant.reservations.parameters.floorplan.enabled),
-        version: Number(
-          restaurant.reservations.parameters.floorplan.version || 1,
-        ),
+        enabled: Boolean(restaurant.reservationsSettings.floorplan.enabled),
+        version: Number(restaurant.reservationsSettings.floorplan.version || 1),
       });
     } catch (e) {
       return res.status(500).json({ message: "Erreur serveur (POST room)." });
@@ -240,8 +233,7 @@ router.post(
 
       ensureFloorplan(restaurant);
 
-      const room =
-        restaurant.reservations.parameters.floorplan.rooms.id(roomId);
+      const room = restaurant.reservationsSettings.floorplan.rooms.id(roomId);
       if (!room) return res.status(404).json({ message: "Salle introuvable." });
 
       const clone = {
@@ -255,19 +247,17 @@ router.post(
           })),
       };
 
-      restaurant.reservations.parameters.floorplan.rooms.push(clone);
+      restaurant.reservationsSettings.floorplan.rooms.push(clone);
 
-      restaurant.reservations.parameters.floorplan.version =
-        Number(restaurant.reservations.parameters.floorplan.version || 1) + 1;
+      restaurant.reservationsSettings.floorplan.version =
+        Number(restaurant.reservationsSettings.floorplan.version || 1) + 1;
 
       await restaurant.save();
 
       return res.json({
         rooms: getRooms(restaurant),
-        enabled: Boolean(restaurant.reservations.parameters.floorplan.enabled),
-        version: Number(
-          restaurant.reservations.parameters.floorplan.version || 1,
-        ),
+        enabled: Boolean(restaurant.reservationsSettings.floorplan.enabled),
+        version: Number(restaurant.reservationsSettings.floorplan.version || 1),
       });
     } catch (e) {
       return res
@@ -304,24 +294,21 @@ router.delete(
 
       ensureFloorplan(restaurant);
 
-      const room =
-        restaurant.reservations.parameters.floorplan.rooms.id(roomId);
+      const room = restaurant.reservationsSettings.floorplan.rooms.id(roomId);
       if (!room) return res.status(404).json({ message: "Salle introuvable." });
 
       room.deleteOne();
 
-      restaurant.reservations.parameters.floorplan.version =
-        Number(restaurant.reservations.parameters.floorplan.version || 1) + 1;
+      restaurant.reservationsSettings.floorplan.version =
+        Number(restaurant.reservationsSettings.floorplan.version || 1) + 1;
 
       await restaurant.save();
 
       return res.json({
         rooms: getRooms(restaurant),
-        enabled: Boolean(restaurant.reservations.parameters.floorplan.enabled),
-        version: Number(
-          restaurant.reservations.parameters.floorplan.version || 1,
-        ),
-        reservationParameters: restaurant?.reservations?.parameters || {},
+        enabled: Boolean(restaurant.reservationsSettings.floorplan.enabled),
+        version: Number(restaurant.reservationsSettings.floorplan.version || 1),
+        reservationParameters: restaurant?.reservationsSettings || {},
       });
     } catch (e) {
       return res.status(500).json({ message: "Erreur serveur (DELETE room)." });
@@ -359,22 +346,22 @@ router.delete(
 
       ensureFloorplan(restaurant);
 
-      const tables = restaurant?.reservations?.parameters?.tables || [];
+      const tables = restaurant?.reservationsSettings?.tables || [];
       const beforeLen = tables.length;
 
       // 1) Supprimer du catalogue
-      restaurant.reservations.parameters.tables = tables.filter(
+      restaurant.reservationsSettings.tables = tables.filter(
         (t) => String(t._id) !== String(tableId),
       );
       removeTableFromCombinations(
-        restaurant.reservations.parameters.tables,
+        restaurant.reservationsSettings.tables,
         tableId,
       );
-      restaurant.reservations.parameters.table_blocked_ranges = (
-        restaurant?.reservations?.parameters?.table_blocked_ranges || []
+      restaurant.reservationsSettings.table_blocked_ranges = (
+        restaurant?.reservationsSettings?.table_blocked_ranges || []
       ).filter((range) => String(range?.tableId) !== String(tableId));
 
-      if (restaurant.reservations.parameters.tables.length === beforeLen) {
+      if (restaurant.reservationsSettings.tables.length === beforeLen) {
         return res
           .status(404)
           .json({ message: "Table introuvable dans le catalogue." });
@@ -398,25 +385,23 @@ router.delete(
       }
 
       // bump version
-      restaurant.reservations.parameters.floorplan.version =
-        Number(restaurant.reservations.parameters.floorplan.version || 1) + 1;
+      restaurant.reservationsSettings.floorplan.version =
+        Number(restaurant.reservationsSettings.floorplan.version || 1) + 1;
 
       // important: marquer modifs
-      restaurant.markModified("reservations.parameters.tables");
-      restaurant.markModified("reservations.parameters.table_blocked_ranges");
-      restaurant.markModified("reservations.parameters.floorplan.rooms");
+      restaurant.markModified("reservationsSettings.tables");
+      restaurant.markModified("reservationsSettings.table_blocked_ranges");
+      restaurant.markModified("reservationsSettings.floorplan.rooms");
 
       await restaurant.save();
 
       return res.json({
-        tables: restaurant.reservations.parameters.tables || [],
+        tables: restaurant.reservationsSettings.tables || [],
         rooms: getRooms(restaurant),
         removedInstances,
-        enabled: Boolean(restaurant.reservations.parameters.floorplan.enabled),
-        version: Number(
-          restaurant.reservations.parameters.floorplan.version || 1,
-        ),
-        reservationParameters: restaurant?.reservations?.parameters || {},
+        enabled: Boolean(restaurant.reservationsSettings.floorplan.enabled),
+        version: Number(restaurant.reservationsSettings.floorplan.version || 1),
+        reservationParameters: restaurant?.reservationsSettings || {},
       });
     } catch (e) {
       return res.status(500).json({
@@ -454,11 +439,11 @@ router.put(
 
       ensureFloorplan(restaurant);
 
-      if (!Array.isArray(restaurant.reservations?.parameters?.tables)) {
-        restaurant.reservations.parameters.tables = [];
+      if (!Array.isArray(restaurant.reservationsSettings?.tables)) {
+        restaurant.reservationsSettings.tables = [];
       }
 
-      const tables = restaurant.reservations.parameters.tables;
+      const tables = restaurant.reservationsSettings.tables;
       const table = tables.id(tableId);
 
       if (!table) {
@@ -504,11 +489,11 @@ router.put(
       table.bookingPriority = bookingPriority;
       syncTableCombinations(tables, tableId, requestedCombinableWith);
 
-      restaurant.markModified("reservations.parameters.tables");
+      restaurant.markModified("reservationsSettings.tables");
       await restaurant.save();
 
       return res.json({
-        tables: restaurant.reservations.parameters.tables || [],
+        tables: restaurant.reservationsSettings.tables || [],
         updated: table,
       });
     } catch (e) {
@@ -543,11 +528,9 @@ router.post(
 
       ensureFloorplan(restaurant);
 
-      if (!restaurant.reservations) restaurant.reservations = {};
-      if (!restaurant.reservations.parameters)
-        restaurant.reservations.parameters = {};
-      if (!Array.isArray(restaurant.reservations.parameters.tables)) {
-        restaurant.reservations.parameters.tables = [];
+      if (!restaurant.reservationsSettings) restaurant.reservationsSettings = {};
+      if (!Array.isArray(restaurant.reservationsSettings.tables)) {
+        restaurant.reservationsSettings.tables = [];
       }
 
       const name = String(req.body?.name || "").trim();
@@ -566,7 +549,7 @@ router.post(
       }
 
       // anti-doublon case-insensitive
-      const exists = restaurant.reservations.parameters.tables.some(
+      const exists = restaurant.reservationsSettings.tables.some(
         (t) =>
           String(t?.name || "")
             .trim()
@@ -578,7 +561,7 @@ router.post(
           .json({ message: "Une table avec ce nom existe déjà." });
       }
 
-      restaurant.reservations.parameters.tables.push({
+      restaurant.reservationsSettings.tables.push({
         name,
         seats,
         onlineBookable,
@@ -586,10 +569,10 @@ router.post(
         combinableWith: [],
       });
 
-      restaurant.markModified("reservations.parameters.tables");
+      restaurant.markModified("reservationsSettings.tables");
       await restaurant.save();
 
-      const tables = restaurant.reservations.parameters.tables || [];
+      const tables = restaurant.reservationsSettings.tables || [];
       const created =
         [...tables].reverse().find(
           (t) =>
@@ -652,20 +635,18 @@ router.put(
       const byId = new Map(rooms.map((room) => [String(room._id), room]));
       const reordered = nextIds.map((id) => byId.get(id)).filter(Boolean);
 
-      restaurant.reservations.parameters.floorplan.rooms = reordered;
-      restaurant.reservations.parameters.floorplan.version =
-        Number(restaurant.reservations.parameters.floorplan.version || 1) + 1;
+      restaurant.reservationsSettings.floorplan.rooms = reordered;
+      restaurant.reservationsSettings.floorplan.version =
+        Number(restaurant.reservationsSettings.floorplan.version || 1) + 1;
 
-      restaurant.markModified("reservations.parameters.floorplan.rooms");
+      restaurant.markModified("reservationsSettings.floorplan.rooms");
 
       await restaurant.save();
 
       return res.json({
         rooms: getRooms(restaurant),
-        enabled: Boolean(restaurant.reservations.parameters.floorplan.enabled),
-        version: Number(
-          restaurant.reservations.parameters.floorplan.version || 1,
-        ),
+        enabled: Boolean(restaurant.reservationsSettings.floorplan.enabled),
+        version: Number(restaurant.reservationsSettings.floorplan.version || 1),
       });
     } catch (e) {
       return res
@@ -704,8 +685,7 @@ router.put(
 
       ensureFloorplan(restaurant);
 
-      const room =
-        restaurant.reservations.parameters.floorplan.rooms.id(roomId);
+      const room = restaurant.reservationsSettings.floorplan.rooms.id(roomId);
 
       if (!room) return res.status(404).json({ message: "Salle introuvable." });
 
@@ -733,7 +713,7 @@ router.put(
 
         // catalogue tables existantes (subdocs)
         const catalogIds = new Set(
-          (restaurant.reservations?.parameters?.tables || []).map((t) =>
+          (restaurant.reservationsSettings?.tables || []).map((t) =>
             String(t?._id),
           ),
         );
@@ -809,7 +789,7 @@ router.put(
         );
 
         if (conflicts.length > 0) {
-          const catalog = restaurant?.reservations?.parameters?.tables || [];
+          const catalog = restaurant?.reservationsSettings?.tables || [];
           const names = conflicts
             .map((id) => {
               const t = catalog.find((x) => String(x?._id) === String(id));
@@ -832,22 +812,20 @@ router.put(
         room.objects = uniq;
       }
 
-      restaurant.reservations.parameters.floorplan.version =
-        Number(restaurant.reservations.parameters.floorplan.version || 1) + 1;
+      restaurant.reservationsSettings.floorplan.version =
+        Number(restaurant.reservationsSettings.floorplan.version || 1) + 1;
 
-      restaurant.markModified("reservations.parameters.floorplan.rooms");
+      restaurant.markModified("reservationsSettings.floorplan.rooms");
 
       await restaurant.save();
 
       return res.json({
         room,
         rooms: getRooms(restaurant),
-        enabled: Boolean(restaurant.reservations.parameters.floorplan.enabled),
-        version: Number(
-          restaurant.reservations.parameters.floorplan.version || 1,
-        ),
-        tables: restaurant?.reservations?.parameters?.tables || [],
-        reservationParameters: restaurant?.reservations?.parameters || {},
+        enabled: Boolean(restaurant.reservationsSettings.floorplan.enabled),
+        version: Number(restaurant.reservationsSettings.floorplan.version || 1),
+        tables: restaurant?.reservationsSettings?.tables || [],
+        reservationParameters: restaurant?.reservationsSettings || {},
       });
     } catch (e) {
       return res.status(500).json({ message: "Erreur serveur (PUT room)." });

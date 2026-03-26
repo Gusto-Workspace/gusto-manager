@@ -540,7 +540,7 @@ export default function AddReservationComponent(props) {
   const isEditing = !!props.reservation;
 
   const manageDisponibilities =
-    props.restaurantData?.reservations?.parameters?.manage_disponibilities;
+    props.restaurantData?.reservationsSettings?.manage_disponibilities;
 
   const subtitle = isEditing
     ? t("buttons.edit", "Modifier une réservation")
@@ -557,7 +557,7 @@ export default function AddReservationComponent(props) {
     commentary: "",
     table: "",
     requestBankHold: Boolean(
-      props.restaurantData?.reservations?.parameters?.bank_hold?.enabled,
+      props.restaurantData?.reservationsSettings?.bank_hold?.enabled,
     ),
   });
 
@@ -576,7 +576,7 @@ export default function AddReservationComponent(props) {
   const [postModalRedirect, setPostModalRedirect] = useState(false);
 
   const bankHoldFeatureEnabled = Boolean(
-    props.restaurantData?.reservations?.parameters?.bank_hold?.enabled,
+    props.restaurantData?.reservationsSettings?.bank_hold?.enabled,
   );
 
   const shouldRequestBankHold =
@@ -637,12 +637,12 @@ export default function AddReservationComponent(props) {
   }, [
     props.reservation,
     manageDisponibilities,
-    props.restaurantData?.reservations?.parameters?.tables,
+    props.restaurantData?.reservationsSettings?.tables,
   ]);
 
   useEffect(() => {
     if (
-      !props?.restaurantData?.reservations ||
+      !props?.restaurantData?.reservationsSettings ||
       !reservationData.reservationDate
     ) {
       setIsLoading(false);
@@ -652,7 +652,7 @@ export default function AddReservationComponent(props) {
     const selectedDay = reservationData.reservationDate.getDay();
     const dayIndex = selectedDay === 0 ? 6 : selectedDay - 1;
 
-    const parameters = props.restaurantData.reservations.parameters;
+    const parameters = props.restaurantData.reservationsSettings;
 
     const dayHours = parameters.same_hours_as_restaurant
       ? props.restaurantData.opening_hours[dayIndex]
@@ -757,18 +757,18 @@ export default function AddReservationComponent(props) {
     reservationData.reservationDate,
     reservationData.numberOfGuests,
     props.restaurantData.opening_hours,
-    props.restaurantData?.reservations?.parameters?.reservation_hours,
-    props.restaurantData?.reservations?.parameters?.interval,
-    props.restaurantData.reservations.parameters.manage_disponibilities,
-    props.restaurantData.reservations.parameters.same_hours_as_restaurant,
-    props.restaurantData.reservations.parameters.tables,
+    props.restaurantData?.reservationsSettings?.reservation_hours,
+    props.restaurantData?.reservationsSettings?.interval,
+    props.restaurantData.reservationsSettings.manage_disponibilities,
+    props.restaurantData.reservationsSettings.same_hours_as_restaurant,
+    props.restaurantData.reservationsSettings.tables,
     reservations,
     isEditing,
     props.reservation,
   ]);
 
   useEffect(() => {
-    const parameters = props.restaurantData.reservations.parameters;
+    const parameters = props.restaurantData.reservationsSettings;
 
     if (!parameters.manage_disponibilities) {
       setAvailableTables([]);
@@ -824,13 +824,13 @@ export default function AddReservationComponent(props) {
 
     // réservations du jour + bloquantes (en excluant la réservation éditée)
     const dayBlocking = reservations.filter((r) => {
-        const resDate = new Date(r.reservationDate);
-        const formattedResDate = format(resDate, "yyyy-MM-dd");
-        if (formattedResDate !== formattedSelectedDate) return false;
-        if (!isBlockingReservationFront(r)) return false;
-        if (isEditing && String(r._id) === String(props.reservation?._id))
-          return false;
-        return true;
+      const resDate = new Date(r.reservationDate);
+      const formattedResDate = format(resDate, "yyyy-MM-dd");
+      if (formattedResDate !== formattedSelectedDate) return false;
+      if (!isBlockingReservationFront(r)) return false;
+      if (isEditing && String(r._id) === String(props.reservation?._id))
+        return false;
+      return true;
     });
 
     const availableConfig = getAvailableConfiguredTableOptionsFront({
@@ -849,11 +849,11 @@ export default function AddReservationComponent(props) {
     isEditing,
     props.reservation,
     reservations,
-    props.restaurantData?.reservations?.parameters,
+    props.restaurantData?.reservationsSettings,
   ]);
 
   useEffect(() => {
-    const parameters = props.restaurantData?.reservations?.parameters;
+    const parameters = props.restaurantData?.reservationsSettings;
     if (!parameters?.manage_disponibilities) return;
 
     const hasPickedSlot =
@@ -900,7 +900,7 @@ export default function AddReservationComponent(props) {
     reservationData.reservationDate,
     reservationData.reservationTime,
     reservationData.table,
-    props.restaurantData?.reservations?.parameters,
+    props.restaurantData?.reservationsSettings,
   ]);
 
   function generateTimeOptions(openTime, closeTime, interval) {
@@ -943,7 +943,7 @@ export default function AddReservationComponent(props) {
 
     const selectedDay = date.getDay();
     const dayIndex = selectedDay === 0 ? 6 : selectedDay - 1;
-    const parameters = props.restaurantData.reservations.parameters;
+    const parameters = props.restaurantData.reservationsSettings;
     const dayHours = parameters.same_hours_as_restaurant
       ? props.restaurantData.opening_hours[dayIndex]
       : parameters.reservation_hours[dayIndex];
@@ -1223,7 +1223,7 @@ export default function AddReservationComponent(props) {
     const map = new Map();
 
     const rooms =
-      props.restaurantData?.reservations?.parameters?.floorplan?.rooms || [];
+      props.restaurantData?.reservationsSettings?.floorplan?.rooms || [];
 
     rooms.forEach((room) => {
       const roomName = String(room?.name || "").trim();
@@ -1243,7 +1243,7 @@ export default function AddReservationComponent(props) {
     });
 
     return map;
-  }, [props.restaurantData?.reservations?.parameters?.floorplan?.rooms]);
+  }, [props.restaurantData?.reservationsSettings?.floorplan?.rooms]);
 
   const tablesForSelectWithRoom = useMemo(() => {
     return (tablesForSelect || []).map((table) => {
@@ -1274,7 +1274,7 @@ export default function AddReservationComponent(props) {
 
     // ordre réel des salles dans le floorplan
     const roomOrder =
-      props.restaurantData?.reservations?.parameters?.floorplan?.rooms?.map(
+      props.restaurantData?.reservationsSettings?.floorplan?.rooms?.map(
         (room) => String(room?.name || "").trim() || "Salle sans nom",
       ) || [];
 
@@ -1313,7 +1313,7 @@ export default function AddReservationComponent(props) {
     return groups;
   }, [
     tablesForSelectWithRoom,
-    props.restaurantData?.reservations?.parameters?.floorplan?.rooms,
+    props.restaurantData?.reservationsSettings?.floorplan?.rooms,
   ]);
 
   useEffect(() => {

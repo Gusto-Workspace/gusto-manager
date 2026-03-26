@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/router";
 import {
   X,
   CheckCheck,
@@ -10,7 +11,9 @@ import {
   Users,
   MessageSquareText,
   Info,
+  ExternalLink,
 } from "lucide-react";
+import { getNotificationTargetPath } from "@/_assets/utils/notification-targets";
 
 const CLOSE_MS = 280;
 const PAGE_SIZE = 30;
@@ -102,6 +105,7 @@ export default function NotificationsDrawerComponent({
   lastNotificationsSyncRef,
   modulesFilter,
 }) {
+  const router = useRouter();
   const [isVisible, setIsVisible] = useState(false);
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [hasFetchedOnce, setHasFetchedOnce] = useState(false);
@@ -146,6 +150,7 @@ export default function NotificationsDrawerComponent({
 
   // ref stable pour éviter re-fetch loops si la fonction change d'identité
   const fetchRef = useRef(fetchNotifications);
+  const initialFetchDoneRef = useRef(false);
   useEffect(() => {
     fetchRef.current = fetchNotifications;
   }, [fetchNotifications]);
@@ -195,6 +200,7 @@ export default function NotificationsDrawerComponent({
     setIsVisible(false);
     setHasFetchedOnce(false);
     setDragY(0);
+    initialFetchDoneRef.current = false;
 
     lockScroll();
 
@@ -250,11 +256,14 @@ export default function NotificationsDrawerComponent({
   // - if multi modules => fallback fetch global + filter UI
   useEffect(() => {
     if (!open) return;
+    if (initialFetchDoneRef.current) return;
 
     const isStale =
       Date.now() - (lastNotificationsSyncRef?.current || 0) > 120000;
 
-    if (!listForUi.length || isStale) {
+    initialFetchDoneRef.current = true;
+
+    if (forcedModule || !listForUi.length || isStale) {
       fetchRef.current?.({
         module: forcedModule, // "reservations" when modulesFilter="reservations"
         unreadOnly: false,
@@ -262,7 +271,7 @@ export default function NotificationsDrawerComponent({
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, listForUi.length, forcedModule]);
+  }, [open, forcedModule, listForUi.length]);
 
   function loadMore() {
     if (!nextCursor || loading) return;
@@ -345,6 +354,24 @@ export default function NotificationsDrawerComponent({
 
     setDragY(0);
   };
+
+  async function handleNotificationOpenTarget(notification) {
+    const targetPath = getNotificationTargetPath(notification, {
+      pathname: router.pathname,
+    });
+
+    if (!targetPath) return;
+
+    try {
+      if (!notification?.read) {
+        await markNotificationRead?.(notification._id);
+      }
+    } catch {}
+
+    restoreScroll();
+    onClose?.();
+    router.push(targetPath);
+  }
 
   // overlay opacity while dragging (mobile)
   const overlayOpacity = !isVisible
@@ -490,9 +517,12 @@ export default function NotificationsDrawerComponent({
               {baseList.map((n) => {
                 const title = titleForNotification(n);
                 const when = fmtRelativeFR(n.createdAt);
+                const targetPath = getNotificationTargetPath(n, {
+                  pathname: router.pathname,
+                });
 
                 return (
-                  <button
+                  <div
                     key={n._id}
                     onClick={() => {
                       if (!n.read) markNotificationRead?.(n._id);
@@ -528,9 +558,13 @@ export default function NotificationsDrawerComponent({
                             {title}
                           </p>
 
-                          {!n.read ? (
+                          {n.read ? (
+                            <span className="text-[11px] font-medium text-darkBlue/45">
+                              Lu
+                            </span>
+                          ) : (
                             <span className="mt-1 inline-flex size-2 rounded-full bg-blue" />
-                          ) : null}
+                          )}
                         </div>
 
                         {n.message ? (
@@ -549,13 +583,25 @@ export default function NotificationsDrawerComponent({
                             {when}
                           </p>
 
-                          <span className="text-[11px] text-darkBlue/50">
-                            {n.read ? "Lu" : "Non lu"}
-                          </span>
+                          {targetPath ? (
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleNotificationOpenTarget(n);
+                              }}
+                              className="inline-flex items-center gap-1 rounded-lg border border-darkBlue/10 bg-white px-2 py-1 text-[11px] font-semibold text-darkBlue/70 hover:bg-darkBlue/5 transition"
+                              aria-label="Ouvrir"
+                              title="Ouvrir"
+                            >
+                              <ExternalLink className="size-3" />
+                              Voir
+                            </button>
+                          ) : null}
                         </div>
                       </div>
                     </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>

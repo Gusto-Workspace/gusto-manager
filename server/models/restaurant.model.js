@@ -204,14 +204,6 @@ const reservationParametersSchema = new mongoose.Schema({
   table_blocked_ranges: { type: [tableBlockedRangeSchema], default: [] },
 });
 
-// Sous-schéma pour les réservations
-const reservationsSchema = new mongoose.Schema(
-  {
-    parameters: { type: reservationParametersSchema, default: () => ({}) },
-  },
-  { _id: false },
-);
-
 // Sous-schéma pour les options
 const optionsSchema = new mongoose.Schema(
   {
@@ -373,6 +365,21 @@ const giftCardSoldSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const giftCardSettingsSchema = new mongoose.Schema(
+  {
+    validity_mode: {
+      type: String,
+      enum: ["fixed_duration", "until_date"],
+      default: "fixed_duration",
+    },
+    validity_fixed_months: { type: Number, min: 1, default: 6 },
+    validity_until_day: { type: Number, min: 1, max: 31, default: 25 },
+    validity_until_month: { type: Number, min: 1, max: 12, default: 6 },
+    archive_used_after_months: { type: Number, min: 0, default: 2 },
+  },
+  { _id: false },
+);
+
 // Schéma principal pour le restaurant
 const restaurantSchema = new mongoose.Schema({
   name: { type: String, required: true },
@@ -395,8 +402,12 @@ const restaurantSchema = new mongoose.Schema({
   menus: [{ type: mongoose.Schema.Types.ObjectId, ref: "Menu" }],
   giftCards: { type: [giftCardSchema], default: [] },
   purchasesGiftCards: { type: [giftCardPurchaseSchema], default: [] },
+  giftCardSettings: { type: giftCardSettingsSchema, default: () => ({}) },
   options: { type: optionsSchema, default: {} },
-  reservations: { type: reservationsSchema, default: {} },
+  reservationsSettings: {
+    type: reservationParametersSchema,
+    default: () => ({}),
+  },
   employees: [{ type: mongoose.Schema.Types.ObjectId, ref: "Employee" }],
   giftCardSold: { type: giftCardSoldSchema, default: () => ({}) },
   created_at: { type: Date, default: Date.now },
