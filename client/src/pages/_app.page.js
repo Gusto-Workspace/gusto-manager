@@ -23,8 +23,10 @@ function App({ Component, pageProps }) {
 
     if (p.startsWith("/dashboard/webapp/reservations"))
       return "/manifest-reservations.webmanifest";
-    if (p.startsWith("/dashboard/webapp/gift-cards")) return "/manifest-gift-cards.webmanifest";
-    if (p.startsWith("/dashboard/webapp/time-clock")) return "/manifest-time-clock.webmanifest";
+    if (p.startsWith("/dashboard/webapp/gift-cards"))
+      return "/manifest-gift-cards.webmanifest";
+    if (p.startsWith("/dashboard/webapp/time-clock"))
+      return "/manifest-time-clock.webmanifest";
     if (p.startsWith("/dashboard/admin")) return "/manifest-admin.webmanifest";
     // ajoute ici les autres modules...
     return "/manifest.webmanifest";
@@ -55,6 +57,45 @@ function App({ Component, pageProps }) {
     return () => {
       router.events.off("routeChangeComplete", handleRouteChange);
       router.events.off("routeChangeError", handleRouteChange);
+    };
+  }, [router]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!("serviceWorker" in navigator)) return;
+
+    const handleServiceWorkerMessage = (event) => {
+      const message = event?.data;
+      if (message?.type !== "notification:navigate") return;
+
+      const rawTargetUrl = String(message?.targetUrl || "").trim();
+      if (!rawTargetUrl) return;
+
+      try {
+        const targetUrl = new URL(rawTargetUrl, window.location.origin);
+        if (targetUrl.origin !== window.location.origin) return;
+
+        const nextPath = `${targetUrl.pathname}${targetUrl.search}${targetUrl.hash}`;
+        const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+
+        if (!nextPath || currentPath === nextPath) return;
+
+        router.push(nextPath, undefined, { scroll: false });
+      } catch (error) {
+        console.warn("Invalid service worker navigation target", error);
+      }
+    };
+
+    navigator.serviceWorker.addEventListener(
+      "message",
+      handleServiceWorkerMessage,
+    );
+
+    return () => {
+      navigator.serviceWorker.removeEventListener(
+        "message",
+        handleServiceWorkerMessage,
+      );
     };
   }, [router]);
 

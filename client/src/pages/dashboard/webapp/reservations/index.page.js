@@ -127,9 +127,7 @@ export default function WepAppReservationsPage(props) {
               emptyText="Vous n'avez pas souscrit à cette option"
             />
           ) : !employeeHasReservationsAccess ? (
-            <NoAvailableComponent
-              dataLoading={restaurantContext.dataLoading}
-             />
+            <NoAvailableComponent dataLoading={restaurantContext.dataLoading} />
           ) : (
             <ListReservationsWebapp
               restaurantData={restaurantContext.restaurantData}
@@ -138,6 +136,7 @@ export default function WepAppReservationsPage(props) {
               refreshReservationsList={
                 restaurantContext.refreshReservationsList
               }
+              markNotificationRead={restaurantContext.markNotificationRead}
             />
           )}
         </div>

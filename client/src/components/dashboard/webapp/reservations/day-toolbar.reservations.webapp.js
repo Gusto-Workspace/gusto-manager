@@ -1,5 +1,3 @@
-import { useRouter } from "next/router";
-
 // SVG
 import { ReservationSvg } from "@/components/_shared/_svgs/reservation.svg";
 import { ChevronLeft, LayoutGrid, Plus, Search, X } from "lucide-react";
@@ -9,7 +7,6 @@ import { useTranslation } from "next-i18next";
 
 export default function DayHeaderReservationsWebapp(props) {
   const { t } = useTranslation("reservations");
-  const router = useRouter();
 
   if (!props.selectedDay) return null;
 
@@ -27,7 +24,7 @@ export default function DayHeaderReservationsWebapp(props) {
           <div className="flex items-center justify-between gap-3">
             <button
               onClick={() => {
-                router.back();
+                props.handleBack?.();
               }}
               className="shrink-0 inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition p-3"
               aria-label={t("calendar.back", "Retour au calendrier")}

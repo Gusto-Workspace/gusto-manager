@@ -185,17 +185,25 @@ function buildNotificationContent({ type, data }) {
   }
 }
 
-function buildPushLink({ module, type, data, fallbackLink }) {
+function buildPushLink({
+  module,
+  type,
+  data,
+  fallbackLink,
+  notificationId = null,
+}) {
   if (module === "reservations") {
     return buildPath("/dashboard/webapp/reservations", {
       day: toDateKey(data?.reservationDate),
       reservationId: data?._id || data?.reservationId || null,
+      notificationId,
     });
   }
 
   if (module === "gift_cards") {
     return buildPath("/dashboard/webapp/gift-cards", {
       purchaseId: data?._id || data?.purchaseId || null,
+      notificationId,
     });
   }
 
@@ -293,6 +301,7 @@ async function createAndBroadcastNotification({
         type,
         data,
         fallbackLink: notif.link || "/dashboard",
+        notificationId: String(notif._id),
       }),
       data: meta,
     });
