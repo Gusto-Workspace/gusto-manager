@@ -996,20 +996,12 @@ export default function AddReservationComponent(props) {
     let tableChanged = hasUserChangedTable;
 
     if (
-      isEditing &&
-      manageDisponibilities &&
-      hasPickedSlot &&
-      updatedData.table
-    ) {
-      tableChanged = true;
-    }
-
-    if (
       manageDisponibilities &&
       hasPickedSlot &&
       !updatedData.table &&
       Array.isArray(tablesForSelect) &&
-      tablesForSelect.length > 0
+      tablesForSelect.length > 0 &&
+      (!isEditing || slotChanged || tableChanged)
     ) {
       const forced = String(tablesForSelect[0]._id);
       updatedData.table = forced;
