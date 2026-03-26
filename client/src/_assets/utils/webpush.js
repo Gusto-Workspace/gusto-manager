@@ -27,6 +27,9 @@ export async function setupPushForModule({
 
   // 1) register SW spécifique
   const reg = await navigator.serviceWorker.register(swUrl, { scope });
+  try {
+    await reg.update();
+  } catch {}
 
   // 2) permission
   const perm = await Notification.requestPermission();
