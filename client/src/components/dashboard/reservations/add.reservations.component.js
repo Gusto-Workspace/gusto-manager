@@ -914,11 +914,7 @@ export default function AddReservationComponent(props) {
     const intervalMinutes = parseInt(interval, 10);
     if (isNaN(intervalMinutes) || intervalMinutes <= 0) return times;
 
-    for (
-      let minutes = start;
-      minutes <= end - intervalMinutes;
-      minutes += intervalMinutes
-    ) {
+    for (let minutes = start; minutes <= end; minutes += intervalMinutes) {
       const hour = Math.floor(minutes / 60)
         .toString()
         .padStart(2, "0");

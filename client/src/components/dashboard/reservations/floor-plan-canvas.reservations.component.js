@@ -628,16 +628,21 @@ function getAABB(o, tablesCatalog) {
 
     if (o.shape === "line") {
       const pts = Array.isArray(o.points) ? o.points : [];
-      const x = Number(pts[0] || 0);
-      const y = Number(pts[1] || 0);
+      const cx = (Number(pts[0] || 0) + Number(pts[2] || 0)) / 2;
+      const cy = (Number(pts[1] || 0) + Number(pts[3] || 0)) / 2;
       const rel =
         pts.length >= 4
-          ? [0, 0, Number(pts[2] || 0) - x, Number(pts[3] || 0) - y]
+          ? [
+              Number(pts[0] || 0) - cx,
+              Number(pts[1] || 0) - cy,
+              Number(pts[2] || 0) - cx,
+              Number(pts[3] || 0) - cy,
+            ]
           : [0, 0, 0, 0];
 
       return getRotatedLineAABB(
-        x,
-        y,
+        cx,
+        cy,
         rel,
         Number(o.rotation || 0),
         Number(o?.style?.strokeWidth || 8),
@@ -1334,12 +1339,12 @@ export default function FloorPlanCanvasReservationsComponent({
   function renderDecor(obj) {
     if (obj.shape === "line") {
       const pts = safeArr(obj.points).map((n) => Number(n || 0));
+      const cx = (Number(pts[0] || 0) + Number(pts[2] || 0)) / 2;
+      const cy = (Number(pts[1] || 0) + Number(pts[3] || 0)) / 2;
       const rel =
         pts.length >= 4
-          ? [0, 0, pts[2] - pts[0], pts[3] - pts[1]]
+          ? [pts[0] - cx, pts[1] - cy, pts[2] - cx, pts[3] - cy]
           : [0, 0, 0, 0];
-      const x = Number(pts[0] || 0);
-      const y = Number(pts[1] || 0);
 
       const stroke = obj?.style?.stroke || "rgba(19,30,54,0.45)";
       const strokeWidth = Number(obj?.style?.strokeWidth || 4);
@@ -1347,8 +1352,8 @@ export default function FloorPlanCanvasReservationsComponent({
       return (
         <Group
           key={obj.id}
-          x={x}
-          y={y}
+          x={cx}
+          y={cy}
           rotation={Number(obj.rotation || 0)}
           listening={false}
         >

@@ -13,6 +13,8 @@ export default function ParametersGiftCardsComponent() {
 
   return (
     <section className="flex flex-col gap-6">
+      <hr className="opacity-20 hidden midTablet:block" />
+
       <div className="flex items-center justify-between gap-4">
         <div className="flex gap-2 items-center min-h-[40px]">
           <div>

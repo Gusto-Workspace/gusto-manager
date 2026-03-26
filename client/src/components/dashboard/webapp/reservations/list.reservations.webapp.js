@@ -25,6 +25,10 @@ export default function ListReservationsWebapp(props) {
     typeof router.query.reservationId === "string"
       ? router.query.reservationId
       : null;
+  const focusedNotificationId =
+    typeof router.query.notificationId === "string"
+      ? router.query.notificationId
+      : null;
 
   /* ---------- States (général) ---------- */
   const [isConfirmationModalOpen, setIsConfirmationModalOpen] = useState(false);
@@ -46,6 +50,7 @@ export default function ListReservationsWebapp(props) {
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const [disableDayClick, setDisableDayClick] = useState(false);
   const [isFloorPlanDrawerOpen, setIsFloorPlanDrawerOpen] = useState(false);
+  const autoMarkedNotificationRef = useRef(null);
 
   const closeKeyboardOnly = useCallback(() => {
     setDisableDayClick(true);
@@ -101,6 +106,31 @@ export default function ListReservationsWebapp(props) {
 
     const nextQuery = { ...router.query };
     delete nextQuery.reservationId;
+    delete nextQuery.notificationId;
+
+    router.replace(
+      {
+        pathname: router.pathname,
+        query: nextQuery,
+      },
+      undefined,
+      { shallow: true, scroll: false },
+    );
+  }, [router]);
+
+  const goBackToCalendar = useCallback(() => {
+    if (!router.isReady) {
+      setSelectedDay(null);
+      return;
+    }
+
+    const nextQuery = { ...router.query };
+    delete nextQuery.day;
+    delete nextQuery.reservationId;
+    delete nextQuery.notificationId;
+
+    setSelectedDay(null);
+    setActiveDayTab("All");
 
     router.replace(
       {
@@ -167,6 +197,23 @@ export default function ListReservationsWebapp(props) {
     );
     setActiveDayTab("All");
   }, [focusedReservationId, props.reservations]);
+
+  useEffect(() => {
+    if (!focusedNotificationId) {
+      autoMarkedNotificationRef.current = null;
+      return;
+    }
+
+    if (autoMarkedNotificationRef.current === focusedNotificationId) return;
+    if (typeof props.markNotificationRead !== "function") return;
+
+    autoMarkedNotificationRef.current = focusedNotificationId;
+    Promise.resolve(props.markNotificationRead(focusedNotificationId)).catch(
+      () => {
+        autoMarkedNotificationRef.current = null;
+      },
+    );
+  }, [focusedNotificationId, props.markNotificationRead]);
 
   /* =========================================================
    * Agrégats calendrier (pack par jour) + surbrillance recherche
@@ -727,6 +774,7 @@ export default function ListReservationsWebapp(props) {
           <DayToolbarReservationsWebapp
             selectedDay={selectedDay}
             setSelectedDay={setSelectedDay}
+            handleBack={goBackToCalendar}
             handleParametersClick={handleParametersClick}
             handleAddClick={handleAddClick}
             setSearchTerm={setSearchTerm}
