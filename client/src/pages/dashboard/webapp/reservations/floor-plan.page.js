@@ -16,7 +16,7 @@ import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
 import NotGoodDeviceWebAppComponent from "@/components/dashboard/webapp/_shared/not-good-device.webapp";
-import ListCustomersReservationsWebapp from "@/components/dashboard/webapp/reservations/list-customers.reservations.webapp";
+import ListCustomersReservationsWebapp from "@/components/dashboard/webapp/_shared/list-customers.webapp";
 import SplashScreenWebAppComponent from "@/components/dashboard/webapp/_shared/splashscreen.webapp";
 import FloorPlanReservationsWebapp from "@/components/dashboard/webapp/reservations/floor-plan.reservation.webapp";
 

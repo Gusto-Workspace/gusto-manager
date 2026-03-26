@@ -32,7 +32,7 @@ export default function HeroSectionLandingComponent() {
   const modules = [
     { icon: Globe, label: "Site internet" },
     { icon: CalendarDays, label: "Réservations" },
-    { icon: Gift, label: "Cartes cadeau" },
+    { icon: Gift, label: "Cartes cadeaux" },
     { icon: Users, label: "Personnel" },
     { icon: Clock3, label: "Pointeuse" },
     { icon: ShieldCheck, label: "HACCP" },
@@ -71,7 +71,7 @@ export default function HeroSectionLandingComponent() {
                   </p>
 
                   <p className="mt-5 max-w-[620px] text-base leading-relaxed text-darkBlue/80 tablet:text-lg desktop:text-xl">
-                    Réservations, cartes cadeau, gestion du personnel, HACCP,
+                    Réservations, cartes cadeaux, gestion du personnel, HACCP,
                     site internet… centralisez votre activité dans un outil
                     clair, professionnel et évolutif.
                   </p>

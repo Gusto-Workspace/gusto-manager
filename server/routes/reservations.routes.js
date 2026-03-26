@@ -681,8 +681,7 @@ function computePendingExpiresAt(restaurant, anchorDate = null) {
 
   const PENDING_MINUTES = Math.max(
     1,
-    Number(restaurant?.reservations?.parameters?.pending_duration_minutes) ||
-      120,
+    Number(restaurant?.reservationsSettings?.pending_duration_minutes) || 120,
   );
 
   try {
@@ -1134,7 +1133,7 @@ async function finalizePublicBankHoldReservation({
     throw new Error("Clé Stripe restaurant introuvable.");
   }
 
-  const autoAccept = Boolean(restaurant?.reservations?.parameters?.auto_accept);
+  const autoAccept = Boolean(restaurant?.reservationsSettings?.auto_accept);
   const finalStatus = autoAccept ? "Confirmed" : "Pending";
 
   if (intentType === "setup") {
@@ -1424,16 +1423,14 @@ router.put(
 
       // ✅ ancien état (avant merge)
       const prevManage = Boolean(
-        restaurant?.reservations?.parameters?.manage_disponibilities,
+        restaurant?.reservationsSettings?.manage_disponibilities,
       );
 
-      restaurant.reservations = restaurant.reservations || {};
-      restaurant.reservations.parameters =
-        restaurant.reservations.parameters || {};
+      restaurant.reservationsSettings = restaurant.reservationsSettings || {};
 
-      const existing = restaurant.reservations.parameters?.toObject?.()
-        ? restaurant.reservations.parameters.toObject()
-        : restaurant.reservations.parameters || {};
+      const existing = restaurant.reservationsSettings?.toObject?.()
+        ? restaurant.reservationsSettings.toObject()
+        : restaurant.reservationsSettings || {};
 
       const nextBankHold =
         Object.prototype.hasOwnProperty.call(parameters, "bank_hold") &&
@@ -1486,7 +1483,7 @@ router.put(
           })
         : existing.email_templates || {};
 
-      restaurant.reservations.parameters = {
+      restaurant.reservationsSettings = {
         ...existing,
         ...parameters,
         blocked_ranges: nextBlocked,
@@ -1497,7 +1494,7 @@ router.put(
       await restaurant.save();
 
       const nextManage = Boolean(
-        restaurant?.reservations?.parameters?.manage_disponibilities,
+        restaurant?.reservationsSettings?.manage_disponibilities,
       );
 
       let manualTablesNeedingAssignment = 0;
@@ -1585,20 +1582,18 @@ router.post(
       }
 
       // ✅ SAFE INIT (évite crash si reservations/parameters n'existent pas)
-      restaurant.reservations = restaurant.reservations || {};
-      restaurant.reservations.parameters =
-        restaurant.reservations.parameters || {};
-      restaurant.reservations.parameters.blocked_ranges =
-        restaurant.reservations.parameters.blocked_ranges || [];
+      restaurant.reservationsSettings = restaurant.reservationsSettings || {};
+      restaurant.reservationsSettings.blocked_ranges =
+        restaurant.reservationsSettings.blocked_ranges || [];
 
       // purge rapide des ranges finies
       const now = new Date();
-      const ranges = restaurant.reservations.parameters.blocked_ranges;
-      restaurant.reservations.parameters.blocked_ranges = ranges.filter(
+      const ranges = restaurant.reservationsSettings.blocked_ranges;
+      restaurant.reservationsSettings.blocked_ranges = ranges.filter(
         (r) => new Date(r.endAt) > now,
       );
 
-      restaurant.reservations.parameters.blocked_ranges.push({
+      restaurant.reservationsSettings.blocked_ranges.push({
         startAt: start,
         endAt: end,
         note: (note || "").toString(),
@@ -1635,14 +1630,12 @@ router.delete(
       }
 
       // ✅ SAFE INIT (évite crash si reservations/parameters n'existent pas)
-      restaurant.reservations = restaurant.reservations || {};
-      restaurant.reservations.parameters =
-        restaurant.reservations.parameters || {};
-      restaurant.reservations.parameters.blocked_ranges =
-        restaurant.reservations.parameters.blocked_ranges || [];
+      restaurant.reservationsSettings = restaurant.reservationsSettings || {};
+      restaurant.reservationsSettings.blocked_ranges =
+        restaurant.reservationsSettings.blocked_ranges || [];
 
-      const ranges = restaurant.reservations.parameters.blocked_ranges;
-      restaurant.reservations.parameters.blocked_ranges = ranges.filter(
+      const ranges = restaurant.reservationsSettings.blocked_ranges;
+      restaurant.reservationsSettings.blocked_ranges = ranges.filter(
         (r) => String(r._id) !== String(rangeId),
       );
 
@@ -1700,26 +1693,24 @@ router.post(
         return res.status(404).json({ message: "Restaurant not found" });
       }
 
-      restaurant.reservations = restaurant.reservations || {};
-      restaurant.reservations.parameters =
-        restaurant.reservations.parameters || {};
-      restaurant.reservations.parameters.table_blocked_ranges =
-        restaurant.reservations.parameters.table_blocked_ranges || [];
+      restaurant.reservationsSettings = restaurant.reservationsSettings || {};
+      restaurant.reservationsSettings.table_blocked_ranges =
+        restaurant.reservationsSettings.table_blocked_ranges || [];
 
       const tableExists = (
-        restaurant.reservations.parameters.tables || []
+        restaurant.reservationsSettings.tables || []
       ).some((t) => String(t._id) === String(tableId));
 
       if (!tableExists) {
         return res.status(400).json({ message: "Table invalide." });
       }
 
-      restaurant.reservations.parameters.table_blocked_ranges =
+      restaurant.reservationsSettings.table_blocked_ranges =
         filterActiveOrUpcomingTableBlockedRanges(
-          restaurant.reservations.parameters.table_blocked_ranges,
+          restaurant.reservationsSettings.table_blocked_ranges,
         );
 
-      restaurant.reservations.parameters.table_blocked_ranges.push({
+      restaurant.reservationsSettings.table_blocked_ranges.push({
         tableId,
         startAt: start,
         endAt: end,
@@ -1756,20 +1747,18 @@ router.delete(
         return res.status(404).json({ message: "Restaurant not found" });
       }
 
-      restaurant.reservations = restaurant.reservations || {};
-      restaurant.reservations.parameters =
-        restaurant.reservations.parameters || {};
-      restaurant.reservations.parameters.table_blocked_ranges =
-        restaurant.reservations.parameters.table_blocked_ranges || [];
+      restaurant.reservationsSettings = restaurant.reservationsSettings || {};
+      restaurant.reservationsSettings.table_blocked_ranges =
+        restaurant.reservationsSettings.table_blocked_ranges || [];
 
-      const ranges = restaurant.reservations.parameters.table_blocked_ranges;
+      const ranges = restaurant.reservationsSettings.table_blocked_ranges;
 
-      restaurant.reservations.parameters.table_blocked_ranges = ranges.filter(
+      restaurant.reservationsSettings.table_blocked_ranges = ranges.filter(
         (r) => String(r._id) !== String(rangeId),
       );
-      restaurant.reservations.parameters.table_blocked_ranges =
+      restaurant.reservationsSettings.table_blocked_ranges =
         filterActiveOrUpcomingTableBlockedRanges(
-          restaurant.reservations.parameters.table_blocked_ranges,
+          restaurant.reservationsSettings.table_blocked_ranges,
         );
 
       await restaurant.save();
@@ -2083,7 +2072,7 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
     if (!restaurant)
       return res.status(404).json({ message: "Restaurant not found" });
 
-    const parameters = restaurant?.reservations?.parameters || {};
+    const parameters = restaurant?.reservationsSettings || {};
     const autoAccept = Boolean(parameters.auto_accept);
 
     const normalizedDay = normalizeReservationDayToUTC(
@@ -2117,7 +2106,7 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
     let pendingExpiresAt = null;
 
     if (!autoAccept) {
-      const params = restaurant?.reservations?.parameters || {};
+      const params = restaurant?.reservationsSettings || {};
       const now = new Date();
 
       // ✅ si now est dans un blocked range => anchor = fin du blocked range
@@ -2454,7 +2443,7 @@ router.post(
       if (!restaurant)
         return res.status(404).json({ message: "Restaurant not found" });
 
-      const parameters = restaurant?.reservations?.parameters || {};
+      const parameters = restaurant?.reservationsSettings || {};
 
       const normalizedDay = normalizeReservationDayToUTC(
         reservationData.reservationDate,
@@ -2930,7 +2919,7 @@ router.put(
         return res.status(404).json({ message: "Restaurant not found" });
       }
 
-      const parameters = restaurant?.reservations?.parameters || {};
+      const parameters = restaurant?.reservationsSettings || {};
 
       // ✅ si on repasse en statut "bloquant" (Confirmed/Active/Late/Pending),
       // on vérifie que le créneau n'est pas dans un blocked_range
@@ -3259,7 +3248,7 @@ router.put(
         return res.status(404).json({ message: "Restaurant not found" });
       }
 
-      const parameters = restaurantLean?.reservations?.parameters || {};
+      const parameters = restaurantLean?.reservationsSettings || {};
 
       // ✅ on ne bloque sur pause QUE si date/heure changent
       const existingDate = normalizeReservationDayToUTC(
@@ -3780,7 +3769,7 @@ router.get(
         return res.status(404).json({ message: "Restaurant not found" });
       }
 
-      const parameters = restaurant?.reservations?.parameters || {};
+      const parameters = restaurant?.reservationsSettings || {};
       const manage = Boolean(parameters?.manage_disponibilities);
 
       // ✅ si pas de gestion intelligente, rien à corriger
@@ -3853,9 +3842,7 @@ router.get(
         return res.status(404).json({ message: "Restaurant not found" });
       }
 
-      const manage = Boolean(
-        restaurant?.reservations?.parameters?.manage_disponibilities,
-      );
+      const manage = Boolean(restaurant?.reservationsSettings?.manage_disponibilities);
       if (!manage) {
         return res.status(200).json({ count: 0, reservations: [] });
       }

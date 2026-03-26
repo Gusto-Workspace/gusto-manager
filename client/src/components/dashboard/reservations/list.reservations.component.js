@@ -751,9 +751,7 @@ export default function ListReservationsComponent(props) {
             focusedReservationId={focusedReservationId}
             clearFocusedReservationId={clearFocusedReservationId}
             restaurantId={props.restaurantData?._id}
-            tablesCatalog={
-              props.restaurantData?.reservations?.parameters?.tables
-            }
+            tablesCatalog={props.restaurantData?.reservationsSettings?.tables}
           />
         </>
       )}

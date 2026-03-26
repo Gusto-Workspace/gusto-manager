@@ -52,7 +52,7 @@ cron.schedule("*/5 * * * *", async () => {
       try {
         const restaurant = await RestaurantModel.findById(
           reservation.restaurant_id,
-        ).select("name reservations.parameters.email_templates");
+        ).select("name reservationsSettings.email_templates");
 
         await sendReservationEmail("canceled", {
           reservation,

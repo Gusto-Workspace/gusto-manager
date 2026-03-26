@@ -85,7 +85,7 @@ async function runReservationReminder24h() {
 
       const restaurant = await RestaurantModel.findById(
         locked.restaurant_id,
-      ).select("name reservations.parameters.email_templates");
+      ).select("name reservationsSettings.email_templates");
 
       const restaurantName = restaurant?.name || "Restaurant";
 

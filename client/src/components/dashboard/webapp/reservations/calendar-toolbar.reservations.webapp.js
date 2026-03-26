@@ -96,7 +96,7 @@ export default function CalendarToolbarReservationsWebapp(props) {
       />
 
       {/* ================= Toolbar ================= */}
-      <div className="flex items-center justify-between gap-3">
+      <div className="h-[50px] flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1 flex items-center gap-2">
           <button
             type="button"

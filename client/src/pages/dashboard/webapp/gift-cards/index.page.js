@@ -105,7 +105,7 @@ export default function GiftsPage(props) {
         />
 
         <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="mobile-web-app-capable" content="yes"/>
+        <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="Cartes cadeaux" />
 
@@ -115,19 +115,18 @@ export default function GiftsPage(props) {
       </Head>
 
       <div className="block midTablet:hidden">
-        <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 min-h-screen">
+        <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 h-[100dvh] overflow-y-auto overscroll-none hide-scrollbar">
           {!hasGiftCardModule ? (
             <NoAvailableComponent
               dataLoading={restaurantContext.dataLoading}
               emptyText="Vous n'avez pas souscrit à cette option"
             />
           ) : !employeeHasGiftCardAccess ? (
-            <NoAvailableComponent
-              dataLoading={restaurantContext.dataLoading}
-             />
+            <NoAvailableComponent dataLoading={restaurantContext.dataLoading} />
           ) : (
             <WebAppListGiftCardsComponent
               restaurantName={restaurantContext?.restaurantData?.name}
+              view="purchases"
             />
           )}
         </div>

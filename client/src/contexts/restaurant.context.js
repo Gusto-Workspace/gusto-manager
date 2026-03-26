@@ -1074,7 +1074,7 @@ export default function RestaurantContext() {
   useEffect(() => {
     if (!restaurantData) return;
 
-    const parameters = restaurantData?.reservations?.parameters || {};
+    const parameters = restaurantData?.reservationsSettings || {};
     const deletionDurationMinutes = getDeletionMinutes(parameters);
 
     const checkExpiredReservations = () => {
@@ -1097,8 +1097,8 @@ export default function RestaurantContext() {
   }, [
     restaurantData?._id,
     reservationsList,
-    restaurantData?.reservations?.parameters?.deletion_duration,
-    restaurantData?.reservations?.parameters?.deletion_duration_minutes,
+    restaurantData?.reservationsSettings?.deletion_duration,
+    restaurantData?.reservationsSettings?.deletion_duration_minutes,
   ]);
 
   useEffect(() => {
@@ -1171,7 +1171,7 @@ export default function RestaurantContext() {
   }
 
   function getOccupancyMinutesFromRestaurant(restaurantData, reservationTime) {
-    const p = restaurantData?.reservations?.parameters || {};
+    const p = restaurantData?.reservationsSettings || {};
     const bucket = getServiceBucketFromTime(reservationTime);
 
     const v =
@@ -1187,7 +1187,7 @@ export default function RestaurantContext() {
     if (!restaurantData) return;
 
     const autoFinishEnabled =
-      restaurantData?.reservations?.parameters?.auto_finish_reservations;
+      restaurantData?.reservationsSettings?.auto_finish_reservations;
     if (!autoFinishEnabled) return;
 
     const checkAutoFinishReservations = () => {
@@ -1230,9 +1230,9 @@ export default function RestaurantContext() {
   }, [
     restaurantData?._id,
     reservationsList,
-    restaurantData?.reservations?.parameters?.auto_finish_reservations,
-    restaurantData?.reservations?.parameters?.table_occupancy_lunch_minutes,
-    restaurantData?.reservations?.parameters?.table_occupancy_dinner_minutes,
+    restaurantData?.reservationsSettings?.auto_finish_reservations,
+    restaurantData?.reservationsSettings?.table_occupancy_lunch_minutes,
+    restaurantData?.reservationsSettings?.table_occupancy_dinner_minutes,
   ]);
 
   function autoUpdateToFinished(reservation) {

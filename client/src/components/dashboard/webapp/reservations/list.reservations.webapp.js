@@ -752,9 +752,7 @@ export default function ListReservationsWebapp(props) {
             openModalForAction={openModalForAction}
             focusedReservationId={focusedReservationId}
             clearFocusedReservationId={clearFocusedReservationId}
-            tablesCatalog={
-              props.restaurantData?.reservations?.parameters?.tables
-            }
+            tablesCatalog={props.restaurantData?.reservationsSettings?.tables}
           />
         </>
       )}

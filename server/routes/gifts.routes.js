@@ -3,6 +3,7 @@ const router = express.Router();
 
 // MODELS
 const RestaurantModel = require("../models/restaurant.model");
+const authenticateToken = require("../middleware/authentificate-token");
 
 // SSE BUS
 const { broadcastToRestaurant } = require("../services/sse-bus.service");
@@ -16,6 +17,10 @@ const {
 const {
   createAndBroadcastNotification,
 } = require("../services/notifications.service");
+const {
+  computeGiftCardValidUntil,
+  sanitizeGiftCardSettingsInput,
+} = require("../services/gift-card-lifecycle.service");
 
 function generateGiftCode() {
   const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -59,6 +64,42 @@ router.post("/restaurants/:id/gifts", async (req, res) => {
     res.status(500).json({ error: "Error adding gift card" });
   }
 });
+
+router.put(
+  "/restaurants/:id/gifts/settings",
+  authenticateToken,
+  async (req, res) => {
+    const restaurantId = req.params.id;
+    const rawSettings = req.body?.settings || {};
+
+    try {
+      const restaurant = await RestaurantModel.findById(restaurantId);
+      if (!restaurant) {
+        return res.status(404).json({ message: "Restaurant not found" });
+      }
+
+      const nextSettings = sanitizeGiftCardSettingsInput({
+        ...(restaurant?.giftCardSettings?.toObject?.()
+          ? restaurant.giftCardSettings.toObject()
+          : restaurant?.giftCardSettings || {}),
+        ...rawSettings,
+      });
+
+      restaurant.giftCardSettings = nextSettings;
+      await restaurant.save();
+
+      const updatedRestaurant = await RestaurantModel.findById(restaurantId)
+        .populate("owner_id", "firstname")
+        .populate("employees")
+        .populate("menus");
+
+      return res.status(200).json({ restaurant: updatedRestaurant });
+    } catch (error) {
+      console.error("Error updating gift card settings:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  },
+);
 
 // UPDATE RESTAURANT GIFT CARDS
 router.put("/restaurants/:id/gifts/:giftId", async (req, res) => {
@@ -139,7 +180,6 @@ router.post(
       buyerFirstName,
       buyerLastName,
       buyerPhone,
-      validUntil: clientValidUntil,
       paymentIntentId,
       amount,
     } = req.body;
@@ -172,17 +212,11 @@ router.post(
         { $set: { giftCardSold: { totalSold: 0, totalRefunded: 0 } } },
       );
 
-      // 3) validUntil
-      let validUntil;
-      if (clientValidUntil) {
-        const parsed = new Date(clientValidUntil);
-        if (!isNaN(parsed.getTime())) validUntil = parsed;
-      }
-      if (!validUntil) {
-        validUntil = new Date();
-        validUntil.setMonth(validUntil.getMonth() + 6);
-        validUntil.setHours(23, 59, 59, 999);
-      }
+      // 3) validUntil depuis les paramètres du restaurant
+      const validUntil = computeGiftCardValidUntil(
+        restaurant?.giftCardSettings,
+        new Date(),
+      );
 
       const customer = await upsertCustomer({
         restaurantId,

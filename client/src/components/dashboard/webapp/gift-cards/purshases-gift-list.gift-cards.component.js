@@ -38,6 +38,7 @@ export default function WebAppPurchasesGiftListComponent(props) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedPurchase, setSelectedPurchase] = useState(null);
   const autoOpenedPurchaseRef = useRef(null);
+  const rootRef = useRef(null);
   const focusedPurchaseId =
     typeof router.query.purchaseId === "string"
       ? router.query.purchaseId
@@ -74,7 +75,7 @@ export default function WebAppPurchasesGiftListComponent(props) {
 
   // ✅ Sticky header (webapp feel)
   const stickyHeaderWrap =
-    "sticky top-0 z-20 -mx-2 px-2 pt-2 pb-3 bg-white/50 backdrop-blur-md border-b border-darkBlue/10";
+    "sticky top-[-24px] z-20 -mx-2 mobile:-mx-6 px-2 mobile:px-6 py-3 bg-lightGrey/95 backdrop-blur-md border-b border-darkBlue/10";
 
   // Statuts couleurs
   const statusColor = {
@@ -110,6 +111,26 @@ export default function WebAppPurchasesGiftListComponent(props) {
   const formatName = (p) =>
     `${p?.beneficiaryFirstName || ""} ${p?.beneficiaryLastName || ""}`.trim() ||
     "-";
+
+  const getScrollContainer = () => {
+    if (typeof window === "undefined") return null;
+
+    let current = rootRef.current?.parentElement || null;
+    while (current) {
+      const styles = window.getComputedStyle(current);
+      const overflowY = styles.overflowY;
+      const isScrollable =
+        (overflowY === "auto" ||
+          overflowY === "scroll" ||
+          overflowY === "overlay") &&
+        current.scrollHeight > current.clientHeight;
+
+      if (isScrollable) return current;
+      current = current.parentElement;
+    }
+
+    return window;
+  };
 
   // ✅ Sort once (newest first)
   const sortedPurchases = useMemo(() => {
@@ -284,19 +305,24 @@ export default function WebAppPurchasesGiftListComponent(props) {
     if (isSearching) return;
 
     const statuses = ["Valid", "Used", "Expired", "Archived"];
+    const scrollContainer = getScrollContainer();
 
     let ticking = false;
 
     const getHeaderOffset = () => {
-      // hauteur “réelle” de ton sticky header
-      // si un jour tu changes son padding/typo, ça reste robuste
-      const headerEl = document.querySelector("[data-sticky-gifts-header]");
+      const headerEl = rootRef.current?.querySelector(
+        "[data-sticky-gifts-header]",
+      );
       return headerEl ? headerEl.getBoundingClientRect().height : 92;
     };
 
     const computeActive = () => {
       const headerOffset = getHeaderOffset();
-      const refY = headerOffset + 8;
+      const containerTop =
+        scrollContainer && scrollContainer !== window
+          ? scrollContainer.getBoundingClientRect().top
+          : 0;
+      const refY = containerTop + headerOffset + 8;
 
       let current = null;
 
@@ -325,11 +351,19 @@ export default function WebAppPurchasesGiftListComponent(props) {
     // initial
     computeActive();
 
-    window.addEventListener("scroll", onScroll, { passive: true });
+    if (scrollContainer && scrollContainer !== window) {
+      scrollContainer.addEventListener("scroll", onScroll, { passive: true });
+    } else {
+      window.addEventListener("scroll", onScroll, { passive: true });
+    }
     window.addEventListener("resize", onScroll);
 
     return () => {
-      window.removeEventListener("scroll", onScroll);
+      if (scrollContainer && scrollContainer !== window) {
+        scrollContainer.removeEventListener("scroll", onScroll);
+      } else {
+        window.removeEventListener("scroll", onScroll);
+      }
       window.removeEventListener("resize", onScroll);
     };
   }, [isSearching]);
@@ -354,7 +388,7 @@ export default function WebAppPurchasesGiftListComponent(props) {
 
   return (
     <>
-      <div className="flex flex-col mt-6 px-2">
+      <div ref={rootRef} className="flex flex-col px-2">
         {/* ✅ Sticky header + search + active status chip */}
         <div className={stickyHeaderWrap} data-sticky-gifts-header>
           <div className="flex flex-col gap-3 tablet:flex-row tablet:items-center tablet:justify-between">

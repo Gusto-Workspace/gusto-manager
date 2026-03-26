@@ -1,8 +1,8 @@
 {
   "titles": {
-    "main": "Cartes Cadeau",
+    "main": "Cartes cadeaux",
     "second": "Achetées sur le site",
-    "amountCard": "Cartes cadeau avec montant",
+    "amountCard": "Cartes cadeaux avec montant",
     "menuCard": "Cartes cadeaux pour des menus"
   },
   "form": {
@@ -42,6 +42,7 @@
   "buttons": {
     "add": "Ajouter",
     "addGift": "Ajouter une carte cadeau",
+    "parameters": "Paramètres",
     "edit": "Modifier",
     "editGift": "Modifier une carte cadeau",
     "deleteGift": "Suppression d'une carte cadeaux",

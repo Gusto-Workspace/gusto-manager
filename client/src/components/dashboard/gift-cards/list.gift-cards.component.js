@@ -15,7 +15,7 @@ import { useTranslation } from "next-i18next";
 
 // SVG
 import { GiftSvg } from "../../_shared/_svgs/_index";
-import { Plus } from "lucide-react";
+import { Plus, SlidersHorizontal } from "lucide-react";
 
 // DND
 import {
@@ -67,9 +67,6 @@ export default function ListGiftsComponent(props) {
     formState: { errors },
   } = useForm();
 
-  // Styles communs
-  const btnPrimary =
-    "inline-flex items-center justify-center rounded-xl bg-blue px-5 py-2.5 text-sm font-medium text-white shadow hover:bg-blue/90 transition disabled:opacity-60 disabled:cursor-not-allowed gap-2";
   const sectionChipWrap = "flex items-center gap-3 my-6 max-w-4xl mx-auto px-2";
   const sectionChipLine = "h-px flex-1 bg-darkBlue/10";
   const sectionChipLabel =
@@ -231,17 +228,31 @@ export default function ListGiftsComponent(props) {
           </h1>
         </div>
 
-        <button
-          onClick={() => {
-            setEditingGift(null);
-            setIsDeleting(false);
-            setIsModalOpen(true);
-          }}
-          className={btnPrimary}
-        >
-          <Plus className="size-4" />
-          <span className="hidden mobile:block">{t("buttons.addGift")}</span>
-        </button>
+        <div className="shrink-0 flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => router.push("/dashboard/gift-cards/parameters")}
+            className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition h-[40px] w-[40px]"
+            aria-label={t("buttons.parameters", "Paramètres")}
+            title={t("buttons.parameters", "Paramètres")}
+          >
+            <SlidersHorizontal className="size-4 text-darkBlue/70" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setEditingGift(null);
+              setIsDeleting(false);
+              setIsModalOpen(true);
+            }}
+            className="inline-flex items-center justify-center rounded-full bg-blue text-white shadow-sm hover:bg-blue/90 active:scale-[0.98] transition h-[40px] w-[40px]"
+            aria-label={t("buttons.addGift")}
+            title={t("buttons.addGift")}
+          >
+            <Plus className="size-4" />
+          </button>
+        </div>
       </div>
 
       {/* Cartes montant fixe */}

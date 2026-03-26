@@ -67,7 +67,7 @@ function getVariableDisplayLabel(variableKey) {
   return getReservationEmailVariableDisplayToken(variableKey);
 }
 
-function SaveButton({ saveUI, onClick }) {
+function SaveButton({ saveUI, onClick, savePresentation = "full" }) {
   const saveBtnBase =
     "inline-flex items-center gap-2 rounded-xl px-3 h-10 text-sm font-semibold transition";
   const saveBtnPrimary =
@@ -85,12 +85,24 @@ function SaveButton({ saveUI, onClick }) {
       onClick={onClick}
       disabled={saveUI?.saving || saveUI?.saved}
       className={[
-        saveBtnBase,
+        savePresentation === "icon"
+          ? "inline-flex h-10 min-w-10 items-center justify-center rounded-xl transition"
+          : saveBtnBase,
         saveUI?.saved ? saveBtnDone : saveBtnPrimary,
         saveUI?.saving ? "opacity-60 cursor-not-allowed" : "",
       ].join(" ")}
+      aria-label="Enregistrer"
+      title="Enregistrer"
     >
-      {saveUI?.saving ? (
+      {savePresentation === "icon" ? (
+        saveUI?.saving ? (
+          <Loader2 className="size-4 animate-spin" />
+        ) : saveUI?.saved ? (
+          <Check className="size-4" />
+        ) : (
+          <Save className="size-4" />
+        )
+      ) : saveUI?.saving ? (
         <>
           <Loader2 className="size-4 animate-spin" />
           Enregistrement...
@@ -118,6 +130,7 @@ export default function EmailsParametersComponent({
   bankHoldEnabled = false,
   saveUI,
   onSave,
+  savePresentation = "full",
 }) {
   const currentTemplates = useMemo(
     () => buildReservationEmailTemplatesState(templates),
@@ -798,12 +811,16 @@ export default function EmailsParametersComponent({
 
             <div className="border-t border-darkBlue/10 bg-white px-4 py-3 midTablet:px-6">
               <div className="flex flex-wrap items-center justify-end gap-3">
-                <SaveButton saveUI={drawerSaveUI} onClick={handleSaveClick} />
+                <SaveButton
+                  saveUI={drawerSaveUI}
+                  onClick={handleSaveClick}
+                  savePresentation={savePresentation}
+                />
 
                 <button
                   type="button"
                   onClick={requestCloseDrawer}
-                  className="inline-flex items-center justify-center gap-2 rounded-full border border-darkBlue/15 bg-darkBlue/5 px-4 py-2 text-sm font-medium text-darkBlue hover:bg-darkBlue/8"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-darkBlue/15 bg-darkBlue/5 px-4 h-[40px] text-sm font-medium text-darkBlue hover:bg-darkBlue/8"
                 >
                   Fermer
                 </button>
@@ -811,8 +828,16 @@ export default function EmailsParametersComponent({
             </div>
 
             {showCloseWarning ? (
-              <div className="absolute inset-0 z-[3] flex items-center justify-center bg-darkBlue/20 p-4">
-                <div className="w-full max-w-[420px] rounded-3xl border border-darkBlue/10 bg-white p-5 shadow-[0_25px_80px_rgba(19,30,54,0.25)]">
+              <div className="absolute inset-0 z-20 flex items-center justify-center p-4">
+                <div
+                  className="absolute inset-0 bg-darkBlue/20"
+                  onClick={() => setShowCloseWarning(false)}
+                />
+
+                <div
+                  onClick={(event) => event.stopPropagation()}
+                  className="relative z-[1] w-full max-w-[420px] rounded-3xl border border-darkBlue/10 bg-white p-5 shadow-[0_25px_80px_rgba(19,30,54,0.25)]"
+                >
                   <p className="text-base font-semibold text-darkBlue">
                     Modifications non enregistrées
                   </p>
@@ -820,7 +845,6 @@ export default function EmailsParametersComponent({
                     Les changements de ce template n&apos;ont pas été
                     enregistrés.
                   </p>
-
                   <div className="mt-5 flex flex-col gap-2 tablet:flex-row tablet:justify-end">
                     <button
                       type="button"

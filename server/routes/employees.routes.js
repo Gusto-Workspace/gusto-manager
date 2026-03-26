@@ -22,6 +22,9 @@ const {
   createAndBroadcastNotification,
 } = require("../services/notifications.service");
 const {
+  refreshGiftCardLifecycle,
+} = require("../services/gift-card-lifecycle.service");
+const {
   buildPlanningExportPdf,
 } = require("../services/pdf/render-planning-export.service");
 const {
@@ -1538,6 +1541,7 @@ router.get("/employees/me", authenticateToken, async (req, res) => {
     let currentProfile = null;
 
     if (restaurantIdFromToken) {
+      await refreshGiftCardLifecycle(restaurantIdFromToken);
       restaurant = await RestaurantModel.findById(restaurantIdFromToken)
         .populate("owner_id", "firstname")
         .populate("employees")
@@ -1549,6 +1553,7 @@ router.get("/employees/me", authenticateToken, async (req, res) => {
     // 3) Fallback : si token n’a pas de restaurantId, on prend le premier
     if (!restaurant && restaurants.length > 0) {
       const firstId = restaurants[0]._id;
+      await refreshGiftCardLifecycle(firstId);
       restaurant = await RestaurantModel.findById(firstId)
         .populate("owner_id", "firstname")
         .populate("employees")

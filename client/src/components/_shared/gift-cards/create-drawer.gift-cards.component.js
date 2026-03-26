@@ -249,7 +249,7 @@ export default function CreateDrawerGiftCardsComponent({
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
         >
-          <div className="pt-3 pb-2 flex justify-center">
+          <div className="bg-white/70 py-3 flex justify-center">
             <div className="h-1.5 w-12 rounded-full bg-darkBlue/20" />
           </div>
         </div>

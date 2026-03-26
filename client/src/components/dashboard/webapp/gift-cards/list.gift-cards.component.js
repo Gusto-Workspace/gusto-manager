@@ -15,8 +15,7 @@ import { useTranslation } from "next-i18next";
 
 // SVG
 import { NotificationSvg } from "@/components/_shared/_svgs/notification.svg";
-import { GiftSvg } from "../../../_shared/_svgs/_index";
-import { ChevronDown, Plus } from "lucide-react";
+import { ChevronDown, Menu, Plus } from "lucide-react";
 
 // DND
 import {
@@ -42,6 +41,7 @@ import CreateDrawerGiftCardsComponent from "../../../_shared/gift-cards/create-d
 
 import BottomSheetChangeRestaurantComponent from "../_shared/bottom-sheet-change-restaurant.webapp";
 import NotificationsDrawerComponent from "@/components/_shared/notifications/notifications-drawer.component";
+import SidebarReservationsWebapp from "../_shared/sidebar.webapp";
 
 export default function WebAppListGiftCardsComponent(props) {
   const { t } = useTranslation("gifts");
@@ -49,6 +49,7 @@ export default function WebAppListGiftCardsComponent(props) {
   const router = useRouter();
   const { locale } = router;
   const currencySymbol = locale === "fr" ? "€" : "$";
+  const view = props?.view || "purchases";
 
   // ----- Initialisation giftCards depuis le contexte pour éviter le flash -----
   const initialCards = restaurantContext?.restaurantData?.giftCards || [];
@@ -56,6 +57,7 @@ export default function WebAppListGiftCardsComponent(props) {
   // ✅ BottomSheet change restaurant
   const [changeRestaurantOpen, setChangeRestaurantOpen] = useState(false);
   const [openNotificationsDrawer, setOpenNotificationsDrawer] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingGift, setEditingGift] = useState(null);
@@ -75,9 +77,6 @@ export default function WebAppListGiftCardsComponent(props) {
     formState: { errors },
   } = useForm();
 
-  // Styles communs
-  const btnPrimary =
-    "inline-flex items-center justify-center rounded-xl bg-blue px-5 py-2.5 text-sm font-medium text-white shadow hover:bg-blue/90 transition disabled:opacity-60 disabled:cursor-not-allowed";
   const sectionChipWrap = "flex items-center gap-3 my-6 max-w-4xl mx-auto px-2";
   const sectionChipLine = "h-px flex-1 bg-darkBlue/10";
   const sectionChipLabel =
@@ -105,6 +104,10 @@ export default function WebAppListGiftCardsComponent(props) {
     t?.("titles.main", "Cartes cadeaux");
   const unreadCount =
     restaurantContext?.unreadCounts?.byModule?.gift_cards || 0;
+  const isCatalogOnly = view === "catalog";
+  const isPurchasesOnly = view === "purchases";
+  const showCatalog = view === "catalog" || view === "all";
+  const showPurchases = view === "purchases" || view === "all";
 
   const openChangeRestaurant = () => {
     if (!canSwitchRestaurant) return;
@@ -112,6 +115,8 @@ export default function WebAppListGiftCardsComponent(props) {
   };
 
   const closeChangeRestaurant = () => setChangeRestaurantOpen(false);
+  const openSidebar = () => setSidebarOpen(true);
+  const closeSidebar = () => setSidebarOpen(false);
 
   // Met à jour les listes quand restaurantData change (après fetch ou modif)
   useEffect(() => {
@@ -243,6 +248,13 @@ export default function WebAppListGiftCardsComponent(props) {
 
   return (
     <section className="flex flex-col gap-2">
+      <SidebarReservationsWebapp
+        open={sidebarOpen}
+        onClose={closeSidebar}
+        title={t?.("titles.main", "Cartes cadeaux")}
+        module="gift_cards"
+      />
+
       {/* ✅ Change restaurant bottom sheet (même comportement que réservations) */}
       <BottomSheetChangeRestaurantComponent
         open={changeRestaurantOpen}
@@ -256,90 +268,105 @@ export default function WebAppListGiftCardsComponent(props) {
 
       {/* Header page */}
       <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0 flex-1 flex items-center gap-2">
-          <GiftSvg
-            width={30}
-            height={30}
-            className="min-h-[30px] min-w-[30px] shrink-0"
-            fillColor="#131E3690"
-          />
-
-          {/* ✅ Le titre devient aussi le trigger du changement de restaurant */}
+        <div className="h-[50px] min-w-0 flex-1 flex items-center gap-2">
           <button
             type="button"
-            onClick={openChangeRestaurant}
-            className={`min-w-0 flex-1 overflow-hidden inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-3 py-2 transition ${
-              canSwitchRestaurant
-                ? "cursor-pointer hover:bg-darkBlue/5"
-                : "cursor-default opacity-90"
-            }`}
-            disabled={!canSwitchRestaurant}
-            aria-label={
-              canSwitchRestaurant ? "Changer de restaurant" : "Restaurant"
-            }
-            title={canSwitchRestaurant ? "Changer de restaurant" : undefined}
+            onClick={openSidebar}
+            className="shrink-0 inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/50 transition p-3"
+            aria-label="Ouvrir le menu"
+            title="Menu"
           >
-            <span className="flex-1 truncate text-left text-lg font-semibold text-darkBlue">
-              {currentName}
-            </span>
-            {canSwitchRestaurant ? (
-              <ChevronDown className="size-4 text-darkBlue/50 shrink-0" />
-            ) : null}
+            <Menu className="size-5 text-darkBlue/70" />
           </button>
+
+          {isCatalogOnly ? (
+            <h1 className="flex-1 min-w-0 text-xl font-semibold text-darkBlue truncate">
+              Liste des cartes cadeaux
+            </h1>
+          ) : (
+            <button
+              type="button"
+              onClick={openChangeRestaurant}
+              className={`min-w-0 flex-1 overflow-hidden inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-3 py-2 transition ${
+                canSwitchRestaurant
+                  ? "cursor-pointer hover:bg-darkBlue/5"
+                  : "cursor-default opacity-90"
+              }`}
+              disabled={!canSwitchRestaurant}
+              aria-label={
+                canSwitchRestaurant ? "Changer de restaurant" : "Restaurant"
+              }
+              title={canSwitchRestaurant ? "Changer de restaurant" : undefined}
+            >
+              <span className="flex-1 truncate text-left text-lg font-semibold text-darkBlue">
+                {currentName}
+              </span>
+              {canSwitchRestaurant ? (
+                <ChevronDown className="size-4 text-darkBlue/50 shrink-0" />
+              ) : null}
+            </button>
+          )}
         </div>
 
         <div className="shrink-0 flex items-center gap-1">
-          <div className="relative">
+          {!isCatalogOnly ? (
+            <div className="relative">
+              <button
+                className="bg-blue p-2.5 rounded-full bg-opacity-40 active:scale-[0.98] transition"
+                onClick={() => setOpenNotificationsDrawer(true)}
+                aria-label="Ouvrir les notifications"
+                title="Notifications"
+              >
+                <NotificationSvg width={25} height={25} fillColor="#4583FF" />
+              </button>
+
+              {unreadCount > 0 && (
+                <span className="absolute top-1 right-1 inline-flex items-center justify-center px-1 py-0.5 text-xs font-bold leading-none text-white transform translate-x-1/2 -translate-y-1/2 bg-red rounded-full">
+                  {unreadCount}
+                </span>
+              )}
+
+              <NotificationsDrawerComponent
+                open={openNotificationsDrawer}
+                onClose={() => setOpenNotificationsDrawer(false)}
+                notifications={restaurantContext?.notifications}
+                nextCursor={
+                  restaurantContext?.notificationsNextCursorByModule
+                    ?.gift_cards ?? null
+                }
+                loading={restaurantContext?.notificationsLoading}
+                fetchNotifications={restaurantContext?.fetchNotifications}
+                markNotificationRead={restaurantContext?.markNotificationRead}
+                markAllRead={restaurantContext?.markAllRead}
+                role={restaurantContext?.userConnected?.role}
+                lastNotificationsSyncRef={
+                  restaurantContext?.lastNotificationsSyncRef
+                }
+                modulesFilter="gift_cards"
+              />
+            </div>
+          ) : null}
+
+          {!isPurchasesOnly ? (
             <button
-              className="bg-blue p-2.5 rounded-full bg-opacity-40 active:scale-[0.98] transition"
-              onClick={() => setOpenNotificationsDrawer(true)}
-              aria-label="Ouvrir les notifications"
-              title="Notifications"
+              type="button"
+              onClick={() => {
+                setEditingGift(null);
+                setIsDeleting(false);
+                setIsModalOpen(true);
+              }}
+              className="inline-flex items-center justify-center rounded-full bg-blue text-white shadow-sm hover:bg-blue/90 active:scale-[0.98] transition p-3.5"
+              aria-label={t("buttons.addGift")}
+              title={t("buttons.addGift")}
             >
-              <NotificationSvg width={25} height={25} fillColor="#4583FF" />
+              <Plus className="size-4" />
             </button>
-
-            {unreadCount > 0 && (
-              <span className="absolute top-1 right-1 inline-flex items-center justify-center px-1 py-0.5 text-xs font-bold leading-none text-white transform translate-x-1/2 -translate-y-1/2 bg-red rounded-full">
-                {unreadCount}
-              </span>
-            )}
-
-            <NotificationsDrawerComponent
-              open={openNotificationsDrawer}
-              onClose={() => setOpenNotificationsDrawer(false)}
-              notifications={restaurantContext?.notifications}
-              nextCursor={
-                restaurantContext?.notificationsNextCursorByModule
-                  ?.gift_cards ?? null
-              }
-              loading={restaurantContext?.notificationsLoading}
-              fetchNotifications={restaurantContext?.fetchNotifications}
-              markNotificationRead={restaurantContext?.markNotificationRead}
-              markAllRead={restaurantContext?.markAllRead}
-              role={restaurantContext?.userConnected?.role}
-              lastNotificationsSyncRef={
-                restaurantContext?.lastNotificationsSyncRef
-              }
-              modulesFilter="gift_cards"
-            />
-          </div>
-
-          <button
-            onClick={() => {
-              setEditingGift(null);
-              setIsDeleting(false);
-              setIsModalOpen(true);
-            }}
-            className="inline-flex items-center justify-center rounded-full bg-blue text-white shadow-sm hover:bg-blue/90 active:scale-[0.98] transition p-3.5"
-          >
-            <Plus className="size-4" />
-          </button>
+          ) : null}
         </div>
       </div>
 
       {/* Cartes montant fixe */}
-      {giftCardsValue?.length > 0 && (
+      {showCatalog && giftCardsValue?.length > 0 && (
         <div>
           <div className={sectionChipWrap}>
             <div className={sectionChipLine} />
@@ -379,7 +406,7 @@ export default function WebAppListGiftCardsComponent(props) {
       )}
 
       {/* Cartes type “menu / expérience” */}
-      {giftCardsDescription?.length > 0 && (
+      {showCatalog && giftCardsDescription?.length > 0 && (
         <div>
           <div className={sectionChipWrap}>
             <div className={sectionChipLine} />
@@ -419,11 +446,13 @@ export default function WebAppListGiftCardsComponent(props) {
       )}
 
       {/* Achats de cartes cadeaux */}
-      <WebAppPurchasesGiftListComponent
-        purchasesGiftCards={
-          restaurantContext?.restaurantData?.purchasesGiftCards
-        }
-      />
+      {showPurchases ? (
+        <WebAppPurchasesGiftListComponent
+          purchasesGiftCards={
+            restaurantContext?.restaurantData?.purchasesGiftCards
+          }
+        />
+      ) : null}
 
       {/* MODALE ajout / édition / suppression */}
       {isModalOpen && (

@@ -111,8 +111,8 @@ export default function FloorPlanReservationsWebapp({
     initialFloorPlanState.roomsResolved,
   );
 
-  const tablesCatalog = restaurantData?.reservations?.parameters?.tables || [];
-  const reservationParameters = restaurantData?.reservations?.parameters || {};
+  const tablesCatalog = restaurantData?.reservationsSettings?.tables || [];
+  const reservationParameters = restaurantData?.reservationsSettings || {};
 
   const contextDate = selectedDay || new Date();
   const contextDateKey = dateKeyOf(contextDate);
@@ -263,7 +263,7 @@ export default function FloorPlanReservationsWebapp({
       />
 
       <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-3">
+        <div className="h-[50px] flex items-center justify-between gap-3">
           <button
             type="button"
             onClick={openSidebar}

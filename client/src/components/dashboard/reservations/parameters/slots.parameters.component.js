@@ -7,6 +7,7 @@ export default function SlotsParametersComponent({
   auto_accept,
   saveUI,
   onSave,
+  savePresentation = "full",
 }) {
   const card = "rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm";
   const cardInner = "px-2 py-4 mobile:p-4 midTablet:p-6";
@@ -36,6 +37,7 @@ export default function SlotsParametersComponent({
     "bg-darkBlue text-white hover:opacity-90 active:scale-[0.98]";
   const saveBtnDone =
     "bg-white text-darkBlue border border-darkBlue opacity-60";
+  const showSaveButton = saveUI?.dirty || saveUI?.saving || saveUI?.saved;
 
   return (
     <div className={card}>
@@ -49,18 +51,30 @@ export default function SlotsParametersComponent({
             <p className={hint}>Paramètres des créneaux et de la validation.</p>
           </div>
 
-          {(saveUI?.dirty || saveUI?.saving || saveUI?.saved) && (
+          {showSaveButton && (
             <button
               type="button"
               onClick={onSave}
               disabled={saveUI?.saving || saveUI?.saved}
               className={[
-                saveBtnBase,
+                savePresentation === "icon"
+                  ? "inline-flex h-10 min-w-10 items-center justify-center rounded-xl transition"
+                  : saveBtnBase,
                 saveUI?.saved ? saveBtnDone : saveBtnPrimary,
                 saveUI?.saving ? "opacity-60 cursor-not-allowed" : "",
               ].join(" ")}
+              aria-label="Enregistrer"
+              title="Enregistrer"
             >
-              {saveUI?.saving ? (
+              {savePresentation === "icon" ? (
+                saveUI?.saving ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : saveUI?.saved ? (
+                  <Check className="size-4" />
+                ) : (
+                  <Save className="size-4" />
+                )
+              ) : saveUI?.saving ? (
                 <>
                   <Loader2 className="size-4 animate-spin" />
                   Enregistrement…
@@ -117,7 +131,8 @@ export default function SlotsParametersComponent({
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="font-semibold text-darkBlue">
-                  Accepter automatiquement les demandes de réservations de votre site internet
+                  Accepter automatiquement les demandes de réservations de votre
+                  site internet
                 </p>
                 <p className="text-xs text-darkBlue/50 mt-1">
                   Les réservations du site passent directement en “Confirmée”.
