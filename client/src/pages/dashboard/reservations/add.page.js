@@ -99,7 +99,7 @@ export async function getServerSideProps({ query, locale }) {
 
     if (reservationId) {
       const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/reservations/${reservationId}`
+        `${process.env.NEXT_PUBLIC_API_URL}/reservations/${reservationId}`,
       );
       reservation = response.data.reservation;
     }
