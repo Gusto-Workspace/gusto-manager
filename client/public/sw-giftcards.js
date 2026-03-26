@@ -1,28 +1,22 @@
+self.addEventListener("install", (event) => {
+  event.waitUntil(self.skipWaiting());
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(self.clients.claim());
+});
+
 self.addEventListener("push", (event) => {
   function syncAppBadge(countValue) {
     const count = Number(countValue);
     if (!Number.isFinite(count) || count < 0) return Promise.resolve();
 
-    const setBadge =
-      typeof self.navigator?.setAppBadge === "function"
-        ? self.navigator.setAppBadge.bind(self.navigator)
-        : typeof self.registration?.setAppBadge === "function"
-          ? self.registration.setAppBadge.bind(self.registration)
-          : null;
-
-    const clearBadge =
-      typeof self.navigator?.clearAppBadge === "function"
-        ? self.navigator.clearAppBadge.bind(self.navigator)
-        : typeof self.registration?.clearAppBadge === "function"
-          ? self.registration.clearAppBadge.bind(self.registration)
-          : null;
-
-    if (count > 0 && setBadge) {
-      return Promise.resolve(setBadge(count)).catch(() => {});
+    if (count > 0 && typeof self.navigator?.setAppBadge === "function") {
+      return Promise.resolve(self.navigator.setAppBadge(count)).catch(() => {});
     }
 
-    if (count === 0 && clearBadge) {
-      return Promise.resolve(clearBadge()).catch(() => {});
+    if (count === 0 && typeof self.navigator?.clearAppBadge === "function") {
+      return Promise.resolve(self.navigator.clearAppBadge()).catch(() => {});
     }
 
     return Promise.resolve();
@@ -43,7 +37,7 @@ self.addEventListener("push", (event) => {
     payload?.data?.badgeCount ?? payload?.badgeCount ?? payload?.badge ?? null;
 
   event.waitUntil(
-    Promise.all([
+    Promise.allSettled([
       syncAppBadge(badgeCount),
       self.registration.showNotification(title, options),
     ]),
