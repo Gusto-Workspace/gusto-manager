@@ -21,6 +21,13 @@ const TrainingSession = require("../models/logs/training-session.model");
 const {
   createAndBroadcastNotification,
 } = require("../services/notifications.service");
+const {
+  buildPlanningExportPdf,
+} = require("../services/pdf/render-planning-export.service");
+const {
+  diffMinutes,
+  toLocalDateKey,
+} = require("../services/time-clock.service");
 
 // ---------- HELPERS MULTI-RESTAURANTS / PROFILES ----------
 
@@ -69,6 +76,188 @@ function getOrCreateRestaurantProfile(employee, restaurantId) {
       employee.restaurantProfiles[employee.restaurantProfiles.length - 1];
   }
   return profile;
+}
+
+async function getEmployeesAccessContext(request, restaurantId) {
+  const restaurant = await RestaurantModel.findById(restaurantId).select(
+    "name owner_id employees",
+  );
+
+  if (!restaurant) {
+    return { error: { status: 404, message: "Restaurant not found" } };
+  }
+
+  if (request.user?.role === "owner") {
+    if (String(restaurant.owner_id) !== String(request.user.id)) {
+      return { error: { status: 403, message: "Forbidden" } };
+    }
+
+    return { restaurant, isManager: true, currentEmployee: null };
+  }
+
+  if (request.user?.role === "employee") {
+    const currentEmployee = await EmployeeModel.findById(request.user.id);
+    if (
+      !currentEmployee ||
+      !employeeWorksInRestaurant(currentEmployee, restaurantId)
+    ) {
+      return { error: { status: 403, message: "Forbidden" } };
+    }
+
+    const profile = findRestaurantProfile(currentEmployee, restaurantId);
+    return {
+      restaurant,
+      isManager: profile?.options?.employees === true,
+      currentEmployee,
+    };
+  }
+
+  return { error: { status: 403, message: "Forbidden" } };
+}
+
+function toFilenamePart(value) {
+  return String(value || "restaurant")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
+}
+
+function dateKeyToLocalStart(key) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(key || ""))) return null;
+
+  const [year, month, day] = String(key)
+    .split("-")
+    .map((part) => Number(part));
+
+  const date = new Date(year, month - 1, day, 0, 0, 0, 0);
+  if (Number.isNaN(date.getTime())) return null;
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return date;
+}
+
+function getDateRangeBounds(startDateKey, endDateKey) {
+  const start = dateKeyToLocalStart(startDateKey);
+  const end = dateKeyToLocalStart(endDateKey);
+
+  if (!start || !end || start > end) return null;
+
+  const endExclusive = new Date(end.getTime());
+  endExclusive.setDate(endExclusive.getDate() + 1);
+
+  return { start, end, endExclusive };
+}
+
+function formatTimeLabel(value) {
+  if (!value) return "-";
+
+  try {
+    return new Intl.DateTimeFormat("fr-FR", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).format(new Date(value));
+  } catch {
+    return "-";
+  }
+}
+
+function getShiftEndLabel(startValue, endValue) {
+  const start = new Date(startValue);
+  const end = new Date(endValue);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return "-";
+
+  const endLabel = formatTimeLabel(end);
+  const startDay = toLocalDateKey(start);
+  const endDay = toLocalDateKey(end);
+
+  if (startDay === endDay) return endLabel;
+
+  const dayDelta = Math.max(
+    1,
+    Math.round(
+      (dateKeyToLocalStart(endDay).getTime() -
+        dateKeyToLocalStart(startDay).getTime()) /
+        86400000,
+    ),
+  );
+
+  return `${endLabel} (+${dayDelta}j)`;
+}
+
+function buildPlanningExportEmployee(employee, restaurantId, bounds) {
+  const profile = findRestaurantProfile(employee, restaurantId);
+  const snapshot = profile?.snapshot || {};
+  const planningDays = new Map();
+  let shiftCount = 0;
+  let plannedMinutes = 0;
+
+  const shifts = [...(profile?.shifts || [])].sort(
+    (left, right) => new Date(left.start) - new Date(right.start),
+  );
+
+  for (const shift of shifts) {
+    const shiftStart = new Date(shift.start);
+    const shiftEnd = new Date(shift.end);
+
+    if (
+      Number.isNaN(shiftStart.getTime()) ||
+      Number.isNaN(shiftEnd.getTime())
+    ) {
+      continue;
+    }
+
+    if (shiftStart >= bounds.endExclusive || shiftEnd < bounds.start) {
+      continue;
+    }
+
+    const dayKey = toLocalDateKey(shiftStart);
+    const current = planningDays.get(dayKey) || {
+      date: dayKey,
+      shifts: [],
+      shiftCount: 0,
+      totalMinutes: 0,
+    };
+    const durationMinutes = diffMinutes(shiftStart, shiftEnd);
+
+    current.shifts.push({
+      title: shift.title || "Créneau",
+      startLabel: formatTimeLabel(shiftStart),
+      endLabel: getShiftEndLabel(shiftStart, shiftEnd),
+      durationMinutes,
+    });
+    current.shiftCount += 1;
+    current.totalMinutes += durationMinutes;
+    planningDays.set(dayKey, current);
+
+    shiftCount += 1;
+    plannedMinutes += durationMinutes;
+  }
+
+  return {
+    employee: {
+      id: employee?._id ? String(employee._id) : "",
+      firstname: snapshot.firstname || employee?.firstname || "",
+      lastname: snapshot.lastname || employee?.lastname || "",
+      post: snapshot.post || employee?.post || "",
+    },
+    totals: {
+      shiftCount,
+      plannedMinutes,
+    },
+    days: Array.from(planningDays.values()).sort((left, right) =>
+      left.date.localeCompare(right.date),
+    ),
+  };
 }
 
 // ---------- CLOUDINARY / MULTER ----------
@@ -905,6 +1094,104 @@ router.delete(
     shift.deleteOne();
     await emp.save();
     return res.json({ shifts: profile.shifts });
+  },
+);
+
+router.post(
+  "/restaurants/:restaurantId/employees/planning/export/pdf",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { restaurantId } = req.params;
+      const from = /^\d{4}-\d{2}-\d{2}$/.test(String(req.body?.from || ""))
+        ? String(req.body.from)
+        : null;
+      const to = /^\d{4}-\d{2}-\d{2}$/.test(String(req.body?.to || ""))
+        ? String(req.body.to)
+        : null;
+      const bounds = from && to ? getDateRangeBounds(from, to) : null;
+
+      if (!bounds) {
+        return res.status(400).json({
+          message: "Les dates de debut et de fin sont invalides.",
+        });
+      }
+
+      const accessContext = await getEmployeesAccessContext(req, restaurantId);
+      if (accessContext.error) {
+        return res
+          .status(accessContext.error.status)
+          .json({ message: accessContext.error.message });
+      }
+
+      if (!accessContext.isManager) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const requestedEmployeeIds = Array.isArray(req.body?.employeeIds)
+        ? req.body.employeeIds.map((value) => String(value))
+        : [];
+      const fallbackEmployeeIds = (
+        accessContext.restaurant?.employees || []
+      ).map((value) => String(value));
+      const selectedEmployeeIds = Array.from(
+        new Set(
+          requestedEmployeeIds.length
+            ? requestedEmployeeIds
+            : fallbackEmployeeIds,
+        ),
+      );
+
+      if (!selectedEmployeeIds.length) {
+        return res.status(400).json({ message: "Aucun salarie selectionne." });
+      }
+
+      const employees = await EmployeeModel.find({
+        _id: { $in: selectedEmployeeIds },
+        restaurants: restaurantId,
+      }).lean();
+
+      if (!employees.length) {
+        return res.status(404).json({ message: "Employees not found" });
+      }
+
+      const employeeOrder = new Map(
+        selectedEmployeeIds.map((id, index) => [String(id), index]),
+      );
+      const orderedEmployees = [...employees].sort((left, right) => {
+        const leftOrder = employeeOrder.get(String(left._id));
+        const rightOrder = employeeOrder.get(String(right._id));
+
+        if (Number.isFinite(leftOrder) && Number.isFinite(rightOrder)) {
+          return leftOrder - rightOrder;
+        }
+
+        return String(left._id).localeCompare(String(right._id));
+      });
+
+      const payload = orderedEmployees.map((employee) =>
+        buildPlanningExportEmployee(employee, restaurantId, bounds),
+      );
+
+      const pdfBuffer = await buildPlanningExportPdf({
+        restaurantName: accessContext.restaurant?.name || "Restaurant",
+        startDate: from,
+        endDate: to,
+        employees: payload,
+      });
+
+      const safeRestaurantName = toFilenamePart(accessContext.restaurant?.name);
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="planning-${safeRestaurantName}-${from}-au-${to}.pdf"`,
+      );
+
+      return res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Error exporting planning pdf:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
   },
 );
 

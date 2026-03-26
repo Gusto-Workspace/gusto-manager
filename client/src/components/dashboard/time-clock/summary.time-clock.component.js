@@ -9,6 +9,7 @@ import {
   LogIn,
   LogOut,
   PenLine,
+  Pencil,
   RefreshCw,
   SquareArrowOutUpRight,
 } from "lucide-react";
@@ -18,6 +19,7 @@ import {
   TIME_CLOCK_ACTIONS,
   TIME_CLOCK_REFRESH_EVENT,
   TIME_CLOCK_STORAGE_KEY,
+  emitTimeClockRefresh,
   formatDateKey,
   formatDateTime,
   formatMinutes,
@@ -103,6 +105,21 @@ function SummaryCard({ title, subtitle, worked, breaks, sessions }) {
       </div>
     </div>
   );
+}
+
+function pad2(value) {
+  return String(value).padStart(2, "0");
+}
+
+function toDateTimeInputValue(value) {
+  if (!value) return "";
+
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}T${pad2(
+    date.getHours(),
+  )}:${pad2(date.getMinutes())}`;
 }
 
 function formatCompactDateKey(value) {
@@ -191,7 +208,7 @@ function WeekOverview({ days = [], onSelectDay }) {
   );
 }
 
-function SessionCard({ session, onOpenSignature }) {
+function SessionCard({ session, onOpenSignature, canEdit = false, onEdit }) {
   return (
     <details className="group rounded-[26px] border border-darkBlue/10 bg-lightGrey/45 px-4 py-4">
       <summary className="flex cursor-pointer list-none flex-col gap-3 midTablet:flex-row midTablet:items-center midTablet:justify-between">
@@ -202,11 +219,28 @@ function SessionCard({ session, onOpenSignature }) {
             {session.clockOutAt ? formatTime(session.clockOutAt) : "en cours"}
           </p>
 
-          <p className="mt-1 text-sm text-darkBlue/65">
-            Net {formatMinutes(session.totals.workedMinutes)} · Pauses{" "}
-            {formatMinutes(session.totals.breakMinutes)} · Brut{" "}
-            {formatMinutes(session.totals.grossMinutes)}
-          </p>
+          {session.isPartialForDay ? (
+            <>
+              <p className="mt-1 text-sm text-darkBlue/65">
+                Part du jour · Net{" "}
+                {formatMinutes(session.dayTotals?.workedMinutes)} · Pauses{" "}
+                {formatMinutes(session.dayTotals?.breakMinutes)} · Brut{" "}
+                {formatMinutes(session.dayTotals?.grossMinutes)}
+              </p>
+              <p className="mt-1 text-xs text-darkBlue/50">
+                Service complet · Net{" "}
+                {formatMinutes(session.totals.workedMinutes)} · Pauses{" "}
+                {formatMinutes(session.totals.breakMinutes)} · Brut{" "}
+                {formatMinutes(session.totals.grossMinutes)}
+              </p>
+            </>
+          ) : (
+            <p className="mt-1 text-sm text-darkBlue/65">
+              Net {formatMinutes(session.totals.workedMinutes)} · Pauses{" "}
+              {formatMinutes(session.totals.breakMinutes)} · Brut{" "}
+              {formatMinutes(session.totals.grossMinutes)}
+            </p>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -231,7 +265,34 @@ function SessionCard({ session, onOpenSignature }) {
         </div>
       )}
 
+      {session?.isManuallyEdited && session?.adjustments?.[0] ? (
+        <div className="mt-4 rounded-2xl border border-blue/15 bg-blue/5 px-4 py-3 text-sm text-darkBlue/70">
+          <p className="font-medium text-darkBlue">
+            Horaires modifiés manuellement
+          </p>
+          <p className="mt-1 text-xs text-darkBlue/55">
+            {formatDateTime(session.adjustments[0].editedAt)}
+            {session.adjustments[0].reason
+              ? ` · ${session.adjustments[0].reason}`
+              : ""}
+          </p>
+        </div>
+      ) : null}
+
       <div className="mt-4 rounded-2xl border border-darkBlue/10 bg-white/80 px-4 py-3">
+        {canEdit ? (
+          <div className="mb-3 flex justify-end">
+            <button
+              type="button"
+              onClick={() => onEdit?.(session)}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-darkBlue/10 bg-white px-3 py-2 text-sm text-darkBlue/70 transition hover:bg-darkBlue/5"
+            >
+              <Pencil className="size-4" />
+              Modifier les horaires
+            </button>
+          </div>
+        ) : null}
+
         {!!session.breaks?.length ? (
           <div className="flex flex-col gap-2">
             {session.breaks.map((item) => (
@@ -370,6 +431,10 @@ export default function TimeClockSummaryComponent({
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [signatureModal, setSignatureModal] = useState(null);
+  const [sessionEditModal, setSessionEditModal] = useState(null);
+  const [savingSessionEdit, setSavingSessionEdit] = useState(false);
+  const [sessionEditError, setSessionEditError] = useState("");
+  const allowManagerActions = !selfView && Boolean(employeeId);
 
   useEffect(() => {
     setAnchorDate(toLocalDateKey(new Date()));
@@ -377,6 +442,8 @@ export default function TimeClockSummaryComponent({
     setSummary(null);
     setLoading(true);
     setError("");
+    setSessionEditModal(null);
+    setSessionEditError("");
   }, [restaurantId, employeeId, selfView]);
 
   useEffect(() => {
@@ -463,6 +530,64 @@ export default function TimeClockSummaryComponent({
       );
   }, [summary?.month?.days]);
 
+  function openSessionEdit(session) {
+    setSessionEditError("");
+    setSessionEditModal({
+      sessionId: session.id,
+      clockInAt: toDateTimeInputValue(session.clockInAt),
+      clockOutAt: toDateTimeInputValue(session.clockOutAt || new Date()),
+      reason: "",
+    });
+  }
+
+  function closeSessionEdit() {
+    if (savingSessionEdit) return;
+    setSessionEditModal(null);
+    setSessionEditError("");
+  }
+
+  async function handleSubmitSessionEdit(event) {
+    event.preventDefault();
+    if (!sessionEditModal?.sessionId || savingSessionEdit) return;
+
+    if (
+      !sessionEditModal.clockInAt ||
+      !sessionEditModal.clockOutAt ||
+      sessionEditModal.clockOutAt <= sessionEditModal.clockInAt
+    ) {
+      setSessionEditError("Choisissez des horaires cohérents.");
+      return;
+    }
+
+    setSavingSessionEdit(true);
+    setSessionEditError("");
+
+    try {
+      const { data } = await axios.patch(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/time-clock/sessions/${sessionEditModal.sessionId}`,
+        {
+          clockInAt: new Date(sessionEditModal.clockInAt).toISOString(),
+          clockOutAt: new Date(sessionEditModal.clockOutAt).toISOString(),
+          reason: sessionEditModal.reason,
+          anchorDate,
+        },
+        getAuthConfig(),
+      );
+
+      setSummary(data?.summary || null);
+      setSessionEditModal(null);
+      emitTimeClockRefresh();
+    } catch (requestError) {
+      console.error("Failed to update time-clock session:", requestError);
+      setSessionEditError(
+        requestError?.response?.data?.message ||
+          "Impossible d'enregistrer la modification pour le moment.",
+      );
+    } finally {
+      setSavingSessionEdit(false);
+    }
+  }
+
   if (loading) {
     return (
       <section className="rounded-[30px] border border-darkBlue/10 bg-white px-6 py-8 shadow-sm">
@@ -516,7 +641,16 @@ export default function TimeClockSummaryComponent({
               Actualiser
             </button>
 
-            
+            {allowOpenKiosk ? (
+              <button
+                type="button"
+                onClick={openTimeClockInNewTab}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-darkBlue/10 bg-white px-4 py-3 text-sm font-medium text-darkBlue shadow-sm transition hover:bg-darkBlue/5"
+              >
+                <SquareArrowOutUpRight className="size-4" />
+                Ouvrir la borne
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -629,6 +763,8 @@ export default function TimeClockSummaryComponent({
                   <SessionCard
                     key={session.id}
                     session={session}
+                    canEdit={allowManagerActions}
+                    onEdit={openSessionEdit}
                     onOpenSignature={(signature, titleText) =>
                       setSignatureModal({ signature, title: titleText })
                     }
@@ -661,6 +797,128 @@ export default function TimeClockSummaryComponent({
           />
         ) : null}
       </section>
+
+      {sessionEditModal ? (
+        <div className="fixed inset-0 z-[135] flex items-end justify-center p-3 midTablet:items-center midTablet:p-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/30"
+            onClick={closeSessionEdit}
+            aria-label="Fermer"
+          />
+
+          <div className="relative w-full max-w-[620px] rounded-[32px] border border-darkBlue/10 bg-white p-5 shadow-[0_24px_80px_rgba(19,30,54,0.22)]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h4 className="text-lg font-semibold text-darkBlue">
+                  Modifier un service
+                </h4>
+                <p className="text-sm text-darkBlue/60">
+                  Ajustez l'entrée et la sortie pour corriger une journée.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeSessionEdit}
+                className="inline-flex size-10 items-center justify-center rounded-2xl border border-darkBlue/10 bg-white text-darkBlue/60 transition hover:bg-darkBlue/5"
+                disabled={savingSessionEdit}
+              >
+                ×
+              </button>
+            </div>
+
+            <form
+              onSubmit={handleSubmitSessionEdit}
+              className="mt-5 flex flex-col gap-4"
+            >
+              <div className="grid gap-4 midTablet:grid-cols-2">
+                <label className="flex flex-col gap-2">
+                  <span className="text-sm font-medium text-darkBlue">
+                    Heure d'entrée
+                  </span>
+                  <input
+                    type="datetime-local"
+                    value={sessionEditModal.clockInAt}
+                    onChange={(event) =>
+                      setSessionEditModal((current) => ({
+                        ...current,
+                        clockInAt: event.target.value,
+                      }))
+                    }
+                    className="h-12 rounded-2xl border border-darkBlue/10 bg-lightGrey/35 px-4 text-sm text-darkBlue outline-none"
+                  />
+                </label>
+
+                <label className="flex flex-col gap-2">
+                  <span className="text-sm font-medium text-darkBlue">
+                    Heure de sortie
+                  </span>
+                  <input
+                    type="datetime-local"
+                    value={sessionEditModal.clockOutAt}
+                    onChange={(event) =>
+                      setSessionEditModal((current) => ({
+                        ...current,
+                        clockOutAt: event.target.value,
+                      }))
+                    }
+                    className="h-12 rounded-2xl border border-darkBlue/10 bg-lightGrey/35 px-4 text-sm text-darkBlue outline-none"
+                  />
+                </label>
+              </div>
+
+              <label className="flex flex-col gap-2">
+                <span className="text-sm font-medium text-darkBlue">
+                  Motif de correction
+                </span>
+                <textarea
+                  rows={3}
+                  value={sessionEditModal.reason}
+                  onChange={(event) =>
+                    setSessionEditModal((current) => ({
+                      ...current,
+                      reason: event.target.value,
+                    }))
+                  }
+                  placeholder="Ex. sortie oubliée, correction manager…"
+                  className="rounded-2xl border border-darkBlue/10 bg-lightGrey/35 px-4 py-3 text-sm text-darkBlue outline-none"
+                />
+              </label>
+
+              {sessionEditError ? (
+                <div className="rounded-2xl border border-red/15 bg-red/5 px-4 py-3 text-sm text-red">
+                  {sessionEditError}
+                </div>
+              ) : null}
+
+              <div className="flex flex-col gap-2 midTablet:flex-row midTablet:justify-end">
+                <button
+                  type="button"
+                  onClick={closeSessionEdit}
+                  className="h-12 rounded-2xl border border-darkBlue/10 bg-white px-5 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5"
+                  disabled={savingSessionEdit}
+                >
+                  Annuler
+                </button>
+
+                <button
+                  type="submit"
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-blue px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue/90 disabled:opacity-60"
+                  disabled={savingSessionEdit}
+                >
+                  {savingSessionEdit ? (
+                    <span className="size-4 rounded-full border-2 border-white/35 border-t-white animate-spin" />
+                  ) : (
+                    <Pencil className="size-4" />
+                  )}
+                  Enregistrer
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
 
       {signatureModal ? (
         <div className="fixed inset-0 z-[130] flex items-center justify-center p-4">

@@ -59,6 +59,24 @@ const eventSchema = new mongoose.Schema(
   { _id: true },
 );
 
+const adjustmentSchema = new mongoose.Schema(
+  {
+    editedAt: { type: Date, default: Date.now },
+    editedByRole: {
+      type: String,
+      enum: ["owner", "employee", "system"],
+      default: "owner",
+    },
+    editedById: { type: String, default: "" },
+    reason: { type: String, default: "" },
+    previousClockInAt: { type: Date, default: null },
+    previousClockOutAt: { type: Date, default: null },
+    clockInAt: { type: Date, default: null },
+    clockOutAt: { type: Date, default: null },
+  },
+  { _id: true },
+);
+
 const employeeSnapshotSchema = new mongoose.Schema(
   {
     firstname: { type: String, default: "" },
@@ -104,6 +122,7 @@ const timeClockSessionSchema = new mongoose.Schema(
     clockOutAt: { type: Date, default: null },
     breaks: { type: [breakSchema], default: [] },
     events: { type: [eventSchema], default: [] },
+    adjustments: { type: [adjustmentSchema], default: [] },
     totals: { type: totalsSchema, default: () => ({}) },
     source: {
       type: String,

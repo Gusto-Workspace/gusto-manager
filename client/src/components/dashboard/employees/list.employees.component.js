@@ -5,9 +5,29 @@ import { GlobalContext } from "@/contexts/global.context";
 import { useTranslation } from "next-i18next";
 import { EmployeesSvg } from "../../_shared/_svgs/_index";
 import CardEmployeesComponent from "./card.employees.component";
-import { openTimeClockInNewTab } from "../time-clock/time-clock.utils";
+import ExportRangeModalComponent from "./export-range-modal.component";
+import {
+  getAuthConfig,
+  openTimeClockInNewTab,
+} from "../time-clock/time-clock.utils";
 
-import { Search, X, Calendar, Plus, Clock3 } from "lucide-react";
+import { Search, X, Calendar, Plus, Clock3, Download } from "lucide-react";
+
+function pad2(value) {
+  return String(value).padStart(2, "0");
+}
+
+function getCurrentMonthRange() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const lastDay = new Date(year, month + 1, 0).getDate();
+
+  return {
+    from: `${year}-${pad2(month + 1)}-01`,
+    to: `${year}-${pad2(month + 1)}-${pad2(lastDay)}`,
+  };
+}
 
 export default function ListEmployeesComponent() {
   const { t } = useTranslation("employees");
@@ -18,6 +38,9 @@ export default function ListEmployeesComponent() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isLoadingDelete, setIsLoadingDelete] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
+  const [isHoursExportOpen, setIsHoursExportOpen] = useState(false);
+  const [isHoursExportLoading, setIsHoursExportLoading] = useState(false);
+  const [hoursExportError, setHoursExportError] = useState("");
 
   const searchRef = useRef(null);
 
@@ -54,6 +77,25 @@ export default function ListEmployeesComponent() {
     });
   }, [restaurantContext.restaurantData?.employees, restaurantId, searchTerm]);
 
+  const exportEmployees = useMemo(() => {
+    return (restaurantContext.restaurantData?.employees || []).map(
+      (employee) => {
+        const snapshot = getSnapshotForRestaurant(employee);
+        const firstname = snapshot.firstname ?? employee.firstname ?? "";
+        const lastname = snapshot.lastname ?? employee.lastname ?? "";
+        const post = snapshot.post ?? employee.post ?? "";
+
+        return {
+          id: employee._id,
+          label: `${firstname} ${lastname}`.trim(),
+          subtitle: post || "Poste non renseigné",
+        };
+      },
+    );
+  }, [restaurantContext.restaurantData?.employees, restaurantId]);
+
+  const defaultExportRange = useMemo(() => getCurrentMonthRange(), []);
+
   const handleSearchChange = (e) => setSearchTerm(e.target.value);
 
   const clearSearch = () => {
@@ -84,6 +126,44 @@ export default function ListEmployeesComponent() {
       setSelectedEmployee(null);
     }
   };
+
+  async function handleExportHours(payload) {
+    if (!restaurantId) return;
+
+    setIsHoursExportLoading(true);
+    setHoursExportError("");
+
+    try {
+      const response = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/time-clock/export/pdf`,
+        payload,
+        {
+          ...getAuthConfig(),
+          responseType: "blob",
+        },
+      );
+
+      const blob = new Blob([response.data], { type: "application/pdf" });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `heures-salaries-${payload.from}-au-${payload.to}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      setIsHoursExportOpen(false);
+    } catch (error) {
+      console.error("Erreur export heures salariés :", error);
+      setHoursExportError(
+        error?.response?.data?.message ||
+          "Impossible de générer l'export PDF pour le moment.",
+      );
+    } finally {
+      setIsHoursExportLoading(false);
+    }
+  }
 
   return (
     <section className="flex flex-col gap-6">
@@ -132,6 +212,18 @@ export default function ListEmployeesComponent() {
 
           {/* Buttons (style toolbar) */}
           <div className="shrink-0 flex items-center gap-2">
+            <button
+              onClick={() => {
+                setHoursExportError("");
+                setIsHoursExportOpen(true);
+              }}
+              className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition p-4"
+              aria-label="Exporter les heures"
+              title="Exporter les heures"
+            >
+              <Download className="size-4 text-darkBlue/70" />
+            </button>
+
             <button
               onClick={openTimeClockInNewTab}
               className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition p-4"
@@ -186,6 +278,16 @@ export default function ListEmployeesComponent() {
 
           <div className="flex flex-wrap gap-4">
             <button
+              onClick={() => {
+                setHoursExportError("");
+                setIsHoursExportOpen(true);
+              }}
+              className="bg-white px-6 py-2 rounded-lg text-darkBlue border border-darkBlue/10 h-fit"
+            >
+              Exporter les heures
+            </button>
+
+            <button
               onClick={openTimeClockInNewTab}
               className="bg-white px-6 py-2 rounded-lg text-darkBlue border border-darkBlue/10 h-fit"
             >
@@ -223,124 +325,143 @@ export default function ListEmployeesComponent() {
 
       {/* Confirmation de suppression */}
       {isDeleting && (
-  <div
-    className="fixed inset-0 z-[100] flex items-end midTablet:items-center justify-center p-3 midTablet:p-6"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="delete-employee-title"
-    onKeyDown={(e) => {
-      if (e.key === "Escape" && !isLoadingDelete) setIsDeleting(false);
-    }}
-  >
-    {/* Overlay */}
-    <button
-      type="button"
-      onClick={() => {
-        if (isLoadingDelete) return;
-        setIsDeleting(false);
-      }}
-      className="absolute inset-0 bg-black/25 backdrop-blur-[2px]"
-      aria-label={t("buttons.close", "Fermer")}
-    />
-
-    {/* Modal card */}
-    <div className="relative w-full max-w-[460px]">
-      <div className="rounded-3xl border border-darkBlue/10 bg-white/90 backdrop-blur shadow-[0_20px_60px_rgba(0,0,0,0.15)] overflow-hidden animate-[fadeInUp_.18s_ease-out]">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-3 px-5 pt-5">
-          <div className="min-w-0">
-            <h2
-              id="delete-employee-title"
-              className="text-lg font-semibold text-darkBlue"
-            >
-              {t("modale.titles.deleteEmployee")}
-            </h2>
-            <p className="mt-1 text-sm text-darkBlue/70">
-              {t("modale.description.deleteEmployee")}
-            </p>
-          </div>
-
+        <div
+          className="fixed inset-0 z-[100] flex items-end midTablet:items-center justify-center p-3 midTablet:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-employee-title"
+          onKeyDown={(e) => {
+            if (e.key === "Escape" && !isLoadingDelete) setIsDeleting(false);
+          }}
+        >
+          {/* Overlay */}
           <button
             type="button"
             onClick={() => {
               if (isLoadingDelete) return;
               setIsDeleting(false);
             }}
-            className="shrink-0 inline-flex items-center justify-center size-10 rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition"
+            className="absolute inset-0 bg-black/25 backdrop-blur-[2px]"
             aria-label={t("buttons.close", "Fermer")}
-            title={t("buttons.close", "Fermer")}
-            disabled={isLoadingDelete}
-          >
-            <span className="text-xl leading-none text-darkBlue/60">×</span>
-          </button>
-        </div>
+          />
 
-        {/* Content */}
-        <div className="px-5 pb-5">
-          <div className="mt-4 rounded-2xl border border-darkBlue/10 bg-white/70 px-4 py-3">
-            <div className="text-sm text-darkBlue/70">
-              <span className="font-medium text-darkBlue">
-                {selectedEmployee?.firstname} {selectedEmployee?.lastname}
-              </span>
+          {/* Modal card */}
+          <div className="relative w-full max-w-[460px]">
+            <div className="rounded-3xl border border-darkBlue/10 bg-white/90 backdrop-blur shadow-[0_20px_60px_rgba(0,0,0,0.15)] overflow-hidden animate-[fadeInUp_.18s_ease-out]">
+              {/* Header */}
+              <div className="flex items-start justify-between gap-3 px-5 pt-5">
+                <div className="min-w-0">
+                  <h2
+                    id="delete-employee-title"
+                    className="text-lg font-semibold text-darkBlue"
+                  >
+                    {t("modale.titles.deleteEmployee")}
+                  </h2>
+                  <p className="mt-1 text-sm text-darkBlue/70">
+                    {t("modale.description.deleteEmployee")}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isLoadingDelete) return;
+                    setIsDeleting(false);
+                  }}
+                  className="shrink-0 inline-flex items-center justify-center size-10 rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition"
+                  aria-label={t("buttons.close", "Fermer")}
+                  title={t("buttons.close", "Fermer")}
+                  disabled={isLoadingDelete}
+                >
+                  <span className="text-xl leading-none text-darkBlue/60">
+                    ×
+                  </span>
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="px-5 pb-5">
+                <div className="mt-4 rounded-2xl border border-darkBlue/10 bg-white/70 px-4 py-3">
+                  <div className="text-sm text-darkBlue/70">
+                    <span className="font-medium text-darkBlue">
+                      {selectedEmployee?.firstname} {selectedEmployee?.lastname}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-xs text-darkBlue/50">
+                    {t(
+                      "modale.hint.deleteEmployee",
+                      "Cette action est définitive.",
+                    )}
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="mt-5 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isLoadingDelete) return;
+                      setIsDeleting(false);
+                    }}
+                    disabled={isLoadingDelete}
+                    className="flex-1 h-12 rounded-2xl border border-darkBlue/10 bg-white/70 text-darkBlue font-semibold hover:bg-darkBlue/5 transition disabled:opacity-60"
+                  >
+                    {t("buttons.cancel")}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={confirmDelete}
+                    disabled={isLoadingDelete}
+                    className="flex-1 h-12 rounded-2xl bg-red text-white font-semibold shadow-sm hover:bg-red/90 active:scale-[0.99] transition disabled:opacity-60 inline-flex items-center justify-center gap-2"
+                  >
+                    {isLoadingDelete ? (
+                      <>
+                        <span className="size-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+                        <span>{t("buttons.loading")}</span>
+                      </>
+                    ) : (
+                      t("buttons.confirm")
+                    )}
+                  </button>
+                </div>
+              </div>
             </div>
-            <div className="mt-1 text-xs text-darkBlue/50">
-              {t(
-                "modale.hint.deleteEmployee",
-                "Cette action est définitive.",
-              )}
-            </div>
-          </div>
 
-          {/* Actions */}
-          <div className="mt-5 flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                if (isLoadingDelete) return;
-                setIsDeleting(false);
-              }}
-              disabled={isLoadingDelete}
-              className="flex-1 h-12 rounded-2xl border border-darkBlue/10 bg-white/70 text-darkBlue font-semibold hover:bg-darkBlue/5 transition disabled:opacity-60"
-            >
-              {t("buttons.cancel")}
-            </button>
-
-            <button
-              type="button"
-              onClick={confirmDelete}
-              disabled={isLoadingDelete}
-              className="flex-1 h-12 rounded-2xl bg-red text-white font-semibold shadow-sm hover:bg-red/90 active:scale-[0.99] transition disabled:opacity-60 inline-flex items-center justify-center gap-2"
-            >
-              {isLoadingDelete ? (
-                <>
-                  <span className="size-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-                  <span>{t("buttons.loading")}</span>
-                </>
-              ) : (
-                t("buttons.confirm")
-              )}
-            </button>
+            {/* Small animation keyframes (Tailwind arbitrary) */}
+            <style jsx>{`
+              @keyframes fadeInUp {
+                from {
+                  opacity: 0;
+                  transform: translateY(10px);
+                }
+                to {
+                  opacity: 1;
+                  transform: translateY(0);
+                }
+              }
+            `}</style>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Small animation keyframes (Tailwind arbitrary) */}
-      <style jsx>{`
-        @keyframes fadeInUp {
-          from {
-            opacity: 0;
-            transform: translateY(10px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-      `}</style>
-    </div>
-  </div>
-)}
-
+      <ExportRangeModalComponent
+        open={isHoursExportOpen}
+        title="Exporter les heures salariés"
+        description="Choisissez une période et les salariés à inclure dans le PDF."
+        confirmLabel="Exporter les heures"
+        employees={exportEmployees}
+        initialFrom={defaultExportRange.from}
+        initialTo={defaultExportRange.to}
+        loading={isHoursExportLoading}
+        submitError={hoursExportError}
+        onClose={() => {
+          if (isHoursExportLoading) return;
+          setIsHoursExportOpen(false);
+          setHoursExportError("");
+        }}
+        onConfirm={handleExportHours}
+      />
     </section>
   );
 }

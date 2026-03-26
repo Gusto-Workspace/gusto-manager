@@ -12,7 +12,9 @@ import { GlobalContext } from "@/contexts/global.context";
 import { useTranslation } from "next-i18next";
 import { EmployeesSvg } from "../../_shared/_svgs/_index";
 import CardEmployeesComponent from "./card.employees.component";
+import ExportRangeModalComponent from "./export-range-modal.component";
 import axios from "axios";
+import { getAuthConfig } from "../time-clock/time-clock.utils";
 
 import {
   Search,
@@ -21,6 +23,7 @@ import {
   ChevronRight,
   CalendarDays,
   Plus,
+  Download,
 } from "lucide-react";
 
 const DnDCalendar = withDragAndDrop(Calendar);
@@ -44,6 +47,17 @@ const canonicalizeShiftTitle = (title) => {
   return (title || "").trim();
 };
 
+const pad2 = (value) => String(value).padStart(2, "0");
+
+function toInputDate(value) {
+  if (!value) return "";
+
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
 export default function PlanningEmployeesComponent() {
   const { t } = useTranslation("employees");
   const { restaurantContext } = useContext(GlobalContext);
@@ -66,6 +80,9 @@ export default function PlanningEmployeesComponent() {
   const [view, setView] = useState(Views.WEEK);
   const [date, setDate] = useState(new Date());
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isPlanningExportOpen, setIsPlanningExportOpen] = useState(false);
+  const [isPlanningExportLoading, setIsPlanningExportLoading] = useState(false);
+  const [planningExportError, setPlanningExportError] = useState("");
 
   // Modale d’ajout
   const [modalOpen, setModalOpen] = useState(false);
@@ -102,7 +119,6 @@ export default function PlanningEmployeesComponent() {
 
   // ✅ Sur mobile: par défaut Jour (sinon week view illisible)
 
-
   // date‐fns localizer (FR)
   const locales = { fr: frLocale };
   const localizer = dateFnsLocalizer({
@@ -126,6 +142,16 @@ export default function PlanningEmployeesComponent() {
         shifts: e.shifts || [],
       })) || [],
     [restaurantContext.restaurantData?.employees],
+  );
+
+  const exportEmployees = useMemo(
+    () =>
+      allEmployees.map((employee) => ({
+        id: employee._id,
+        label: `${employee.firstname || ""} ${employee.lastname || ""}`.trim(),
+        subtitle: employee.post || "Poste non renseigné",
+      })),
+    [allEmployees],
   );
 
   // ─── HYDRATATION DES SHIFTS AU MONTAGE ─────────────────────────────────────
@@ -464,6 +490,44 @@ export default function PlanningEmployeesComponent() {
     });
   }
 
+  async function handlePlanningExport(payload) {
+    if (!restaurantId) return;
+
+    setIsPlanningExportLoading(true);
+    setPlanningExportError("");
+
+    try {
+      const response = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/planning/export/pdf`,
+        payload,
+        {
+          ...getAuthConfig(),
+          responseType: "blob",
+        },
+      );
+
+      const blob = new Blob([response.data], { type: "application/pdf" });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `planning-salaries-${payload.from}-au-${payload.to}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      setIsPlanningExportOpen(false);
+    } catch (error) {
+      console.error("Erreur export planning salariés :", error);
+      setPlanningExportError(
+        error?.response?.data?.message ||
+          "Impossible de générer l'export planning pour le moment.",
+      );
+    } finally {
+      setIsPlanningExportLoading(false);
+    }
+  }
+
   const CustomEvent = ({ event }) => {
     const isCompressedLeave =
       event.isLeave && event.end - event.start === 1000 * 60 * 60;
@@ -490,6 +554,41 @@ export default function PlanningEmployeesComponent() {
     return `${left} – ${right}`;
   }, [date, view]);
 
+  const exportDateRange = useMemo(() => {
+    if (!date) {
+      const now = new Date();
+      return {
+        from: toInputDate(now),
+        to: toInputDate(now),
+      };
+    }
+
+    if (view === Views.DAY) {
+      return {
+        from: toInputDate(date),
+        to: toInputDate(date),
+      };
+    }
+
+    if (view === Views.MONTH) {
+      const start = new Date(date.getFullYear(), date.getMonth(), 1);
+      const end = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+
+      return {
+        from: toInputDate(start),
+        to: toInputDate(end),
+      };
+    }
+
+    const start = startOfWeek(date, { locale: frLocale, weekStartsOn: 1 });
+    const end = addDays(start, 6);
+
+    return {
+      from: toInputDate(start),
+      to: toInputDate(end),
+    };
+  }, [date, view]);
+
   const goToday = () => setDate(new Date());
 
   const goPrev = () => {
@@ -514,8 +613,6 @@ export default function PlanningEmployeesComponent() {
     setSearchTerm("");
     searchRef.current?.focus?.();
   };
-
-  const pad2 = (n) => String(n).padStart(2, "0");
 
   function dateToLocalInputValue(d) {
     if (!d) return "";
@@ -558,6 +655,25 @@ export default function PlanningEmployeesComponent() {
 
         {/* ✅ Actions desktop/tablette */}
         <div className="hidden midTablet:flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setPlanningExportError("");
+              setIsPlanningExportOpen(true);
+            }}
+            className="
+      inline-flex items-center gap-2
+      rounded-2xl border border-darkBlue/10 bg-white/70
+      px-4 py-2 text-sm font-semibold text-darkBlue
+      hover:bg-darkBlue/5 transition
+    "
+          >
+            <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15 text-blue">
+              <Download className="size-4" />
+            </span>
+            <span className="whitespace-nowrap">Exporter le planning</span>
+          </button>
+
           {/* + Ajouter un créneau (ouvre ta modale) */}
           <button
             type="button"
@@ -599,23 +715,41 @@ export default function PlanningEmployeesComponent() {
           </button>
         </div>
 
-        {/* ✅ Mobile : on garde uniquement le bouton congés (ton bouton existant) */}
-        <button
-          type="button"
-          onClick={() => router.push("/dashboard/employees/planning/days-off")}
-          className="
-    midTablet:hidden
-    inline-flex items-center gap-2
-    rounded-2xl border border-darkBlue/10 bg-white/70
-    px-4 py-3 text-sm font-semibold text-darkBlue
-    hover:bg-darkBlue/5 transition
-  "
-        >
-          <span className="inline-flex items-center justify-center size-9 rounded-full bg-violet text-white">
-            <CalendarDays className="size-4" />
-          </span>
-          <span className="whitespace-nowrap">{t("titles.daysOff")}</span>
-        </button>
+        <div className="flex items-center gap-2 midTablet:hidden">
+          <button
+            type="button"
+            onClick={() => {
+              setPlanningExportError("");
+              setIsPlanningExportOpen(true);
+            }}
+            className="
+      inline-flex items-center justify-center rounded-2xl border border-darkBlue/10 bg-white/70
+      px-4 py-3 text-darkBlue transition hover:bg-darkBlue/5
+    "
+            aria-label="Exporter le planning"
+            title="Exporter le planning"
+          >
+            <Download className="size-4" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              router.push("/dashboard/employees/planning/days-off")
+            }
+            className="
+      inline-flex items-center gap-2
+      rounded-2xl border border-darkBlue/10 bg-white/70
+      px-4 py-3 text-sm font-semibold text-darkBlue
+      hover:bg-darkBlue/5 transition
+    "
+          >
+            <span className="inline-flex items-center justify-center size-9 rounded-full bg-violet text-white">
+              <CalendarDays className="size-4" />
+            </span>
+            <span className="whitespace-nowrap">{t("titles.daysOff")}</span>
+          </button>
+        </div>
       </div>
 
       {/* ================= Search ================= */}
@@ -1182,6 +1316,24 @@ export default function PlanningEmployeesComponent() {
           </div>
         </div>
       )}
+
+      <ExportRangeModalComponent
+        open={isPlanningExportOpen}
+        title="Exporter le planning salariés"
+        description="Choisissez une période et les salariés à inclure dans le PDF planning."
+        confirmLabel="Exporter le planning"
+        employees={exportEmployees}
+        initialFrom={exportDateRange.from}
+        initialTo={exportDateRange.to}
+        loading={isPlanningExportLoading}
+        submitError={planningExportError}
+        onClose={() => {
+          if (isPlanningExportLoading) return;
+          setIsPlanningExportOpen(false);
+          setPlanningExportError("");
+        }}
+        onConfirm={handlePlanningExport}
+      />
     </section>
   );
 }
