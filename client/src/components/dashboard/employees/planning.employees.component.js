@@ -47,6 +47,25 @@ const canonicalizeShiftTitle = (title) => {
   return (title || "").trim();
 };
 
+const isLeaveShiftRecord = (shift) =>
+  Boolean(
+    shift?.isLeave ||
+      shift?.leaveRequestId ||
+      ["conges", "conge"].includes(normalizeTitle(shift?.title)),
+  );
+
+const getShiftDisplayTitle = (shift) => {
+  if (isLeaveShiftRecord(shift)) return "Congés";
+  return canonicalizeShiftTitle(shift?.title);
+};
+
+const getManagerEventTitle = (employee, shift) => {
+  const shiftLabel = getShiftDisplayTitle(shift);
+  return shiftLabel
+    ? `${shortName(employee)} - ${shiftLabel}`
+    : shortName(employee);
+};
+
 const pad2 = (value) => String(value).padStart(2, "0");
 
 function toInputDate(value) {
@@ -56,6 +75,123 @@ function toInputDate(value) {
   if (Number.isNaN(date.getTime())) return "";
 
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
+function toStartOfDay(value) {
+  if (!value) return null;
+  const date =
+    value instanceof Date ? new Date(value.getTime()) : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function toEndOfDay(value) {
+  if (!value) return null;
+  const date =
+    value instanceof Date ? new Date(value.getTime()) : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setHours(23, 59, 0, 0);
+  return date;
+}
+
+function isStartOfDay(value) {
+  return (
+    value instanceof Date && value.getHours() === 0 && value.getMinutes() === 0
+  );
+}
+
+function isEndOfDay(value) {
+  return (
+    value instanceof Date &&
+    value.getHours() === 23 &&
+    value.getMinutes() === 59
+  );
+}
+
+function getInclusiveDaySpan(start, end) {
+  if (!(start instanceof Date) || !(end instanceof Date)) return 1;
+
+  const startDay = new Date(
+    start.getFullYear(),
+    start.getMonth(),
+    start.getDate(),
+  );
+  const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+
+  return (
+    Math.max(
+      0,
+      Math.round((endDay.getTime() - startDay.getTime()) / 86400000),
+    ) + 1
+  );
+}
+
+function getFullDayLeaveLabel(start, end, isLeave) {
+  if (!isLeave || !isStartOfDay(start) || !isEndOfDay(end)) return "";
+  const days = getInclusiveDaySpan(start, end);
+  return days > 1 ? `${days} jours` : "1 jour";
+}
+
+function getCalendarRangeBounds(currentDate, currentView) {
+  if (!(currentDate instanceof Date) || Number.isNaN(currentDate.getTime())) {
+    return null;
+  }
+
+  if (currentView === Views.DAY) {
+    const start = new Date(
+      currentDate.getFullYear(),
+      currentDate.getMonth(),
+      currentDate.getDate(),
+    );
+    const endExclusive = new Date(start.getTime());
+    endExclusive.setDate(endExclusive.getDate() + 1);
+    return { start, endExclusive };
+  }
+
+  if (currentView === Views.MONTH) {
+    const start = new Date(
+      currentDate.getFullYear(),
+      currentDate.getMonth(),
+      1,
+      0,
+      0,
+      0,
+      0,
+    );
+    const endExclusive = new Date(
+      currentDate.getFullYear(),
+      currentDate.getMonth() + 1,
+      1,
+      0,
+      0,
+      0,
+      0,
+    );
+    return { start, endExclusive };
+  }
+
+  const start = startOfWeek(currentDate, {
+    locale: frLocale,
+    weekStartsOn: 1,
+  });
+  const endExclusive = new Date(start.getTime());
+  endExclusive.setDate(endExclusive.getDate() + 7);
+  return { start, endExclusive };
+}
+
+function eventIntersectsRange(event, bounds) {
+  if (!bounds) return false;
+
+  const start =
+    event?.start instanceof Date ? event.start : new Date(event?.start);
+  const end = event?.end instanceof Date ? event.end : new Date(event?.end);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return false;
+  }
+
+  return start < bounds.endExclusive && end >= bounds.start;
 }
 
 export default function PlanningEmployeesComponent() {
@@ -91,6 +227,8 @@ export default function PlanningEmployeesComponent() {
     start: null,
     end: null,
     title: "",
+    isLeave: false,
+    isFullDayLeave: false,
   });
   const [modalEmployeeQuery, setModalEmployeeQuery] = useState("");
 
@@ -242,13 +380,22 @@ export default function PlanningEmployeesComponent() {
       (emp.shifts || []).map((s) => {
         const startDate = new Date(s.start);
         const endDate = new Date(s.end);
-        const isLeave = normalizeTitle(s.title) === "conges";
+        const isLeave = isLeaveShiftRecord(s);
+        const shiftLabel = getShiftDisplayTitle(s);
+        const leaveDurationLabel = getFullDayLeaveLabel(
+          startDate,
+          endDate,
+          isLeave,
+        );
 
         return {
           id: String(s._id),
-          title: `${shortName(emp)} - ${s.title}`,
+          title: getManagerEventTitle(emp, s),
+          shiftLabel,
           start: startDate,
           end: endDate,
+          allDay: Boolean(leaveDurationLabel),
+          leaveDurationLabel,
           resourceId: emp._id,
           leaveRequestId: s.leaveRequestId || null,
           isLeave,
@@ -294,6 +441,15 @@ export default function PlanningEmployeesComponent() {
     [events, selectedEmployeeId],
   );
 
+  const hasVisibleAllDayEvents = useMemo(() => {
+    if (view === Views.MONTH) return false;
+
+    const bounds = getCalendarRangeBounds(date, view);
+    return visibleEvents.some(
+      (event) => event.allDay && eventIntersectsRange(event, bounds),
+    );
+  }, [date, view, visibleEvents]);
+
   // ─── Sélection d’un créneau ────────────────────────────────────────────────
   function handleSelectSlot(slotInfo) {
     if (selectedEmployeeId) {
@@ -302,6 +458,8 @@ export default function PlanningEmployeesComponent() {
         start: slotInfo.start,
         end: slotInfo.end,
         title: "",
+        isLeave: false,
+        isFullDayLeave: false,
       });
       setModalOpen(true);
       return;
@@ -312,6 +470,8 @@ export default function PlanningEmployeesComponent() {
       start: slotInfo.start,
       end: slotInfo.end,
       title: "",
+      isLeave: false,
+      isFullDayLeave: false,
     });
     setModalEmployeeQuery("");
     setModalOpen(true);
@@ -324,6 +484,8 @@ export default function PlanningEmployeesComponent() {
       start: null,
       end: null,
       title: "",
+      isLeave: false,
+      isFullDayLeave: false,
     });
     setModalEmployeeQuery("");
     setModalOpen(true);
@@ -331,13 +493,8 @@ export default function PlanningEmployeesComponent() {
 
   // ─── Valider l’ajout de shift ──────────────────────────────────────────────
   async function handleConfirmShift() {
-    const { employeeId, start, end, title } = modalData;
-    const safeTitle = canonicalizeShiftTitle(title);
-
-    if (!safeTitle.trim()) {
-      window.alert(t("planning:errors.titleRequired", "Le titre est requis"));
-      return;
-    }
+    const { employeeId, start, end, title, isLeave, isFullDayLeave } =
+      modalData;
     if (!employeeId) {
       window.alert(
         t("planning:errors.employeeRequired", "Sélectionnez un employé"),
@@ -349,13 +506,30 @@ export default function PlanningEmployeesComponent() {
       return;
     }
 
+    if (!start || !end || end <= start) {
+      window.alert(
+        t(
+          "planning:errors.invalidRange",
+          "La période sélectionnée est invalide",
+        ),
+      );
+      return;
+    }
+
+    const normalizedStart =
+      isLeave && isFullDayLeave ? toStartOfDay(start) : new Date(start);
+    const normalizedEnd =
+      isLeave && isFullDayLeave ? toEndOfDay(end) : new Date(end);
+    const safeTitle = isLeave ? "" : canonicalizeShiftTitle(title);
+
     try {
       const response = await axios.post(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}/shifts`,
         {
+          isLeave,
           title: safeTitle,
-          start: start.toISOString(),
-          end: end.toISOString(),
+          start: normalizedStart.toISOString(),
+          end: normalizedEnd.toISOString(),
         },
       );
 
@@ -368,13 +542,25 @@ export default function PlanningEmployeesComponent() {
 
       const employee = allEmployees.find((e) => e._id === employeeId) || {};
       const updatedEvents = updatedShifts.map((s) => ({
+        ...(() => {
+          const start = new Date(s.start);
+          const end = new Date(s.end);
+          const isLeave = isLeaveShiftRecord(s);
+          const leaveDurationLabel = getFullDayLeaveLabel(start, end, isLeave);
+
+          return {
+            start,
+            end,
+            allDay: Boolean(leaveDurationLabel),
+            leaveDurationLabel,
+            isLeave,
+          };
+        })(),
         id: String(s._id),
-        title: `${shortName(employee)} - ${s.title}`,
-        start: new Date(s.start),
-        end: new Date(s.end),
+        title: getManagerEventTitle(employee, s),
+        shiftLabel: getShiftDisplayTitle(s),
         resourceId: employeeId,
         leaveRequestId: s.leaveRequestId || null,
-        isLeave: normalizeTitle(s.title) === "conges",
       }));
       const other = events.filter((ev) => ev.resourceId !== employeeId);
       setEvents([...other, ...updatedEvents]);
@@ -389,7 +575,14 @@ export default function PlanningEmployeesComponent() {
 
   function handleCancelShift() {
     setModalOpen(false);
-    setModalData({ employeeId: null, start: null, end: null, title: "" });
+    setModalData({
+      employeeId: null,
+      start: null,
+      end: null,
+      title: "",
+      isLeave: false,
+      isFullDayLeave: false,
+    });
     setModalEmployeeQuery("");
   }
 
@@ -398,7 +591,7 @@ export default function PlanningEmployeesComponent() {
     setDeleteModalData({
       eventId: event.id,
       employeeId: event.resourceId,
-      title: event.title.split(" - ")[1],
+      title: event.shiftLabel || event.title.split(" - ")[1],
       start: event.start,
       end: event.end,
       leaveRequestId: event.leaveRequestId || null,
@@ -624,17 +817,39 @@ export default function PlanningEmployeesComponent() {
     return `${y}-${m}-${day}T${hh}:${mm}`;
   }
 
+  function dateToLocalDateInputValue(d) {
+    if (!d) return "";
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  }
+
   function localInputValueToDate(v) {
     if (!v) return null;
     const d = new Date(v);
     return Number.isNaN(d.getTime()) ? null : d;
   }
 
+  function localDateInputValueToDate(v, boundary = "start") {
+    if (!v) return null;
+    const [year, month, day] = String(v)
+      .split("-")
+      .map((value) => Number(value));
+    const date = new Date(year, month - 1, day, 0, 0, 0, 0);
+    if (Number.isNaN(date.getTime())) return null;
+    if (boundary === "end") {
+      date.setHours(23, 59, 0, 0);
+    }
+    return date;
+  }
+
   // ─── Hauteur calendrier : évite le “gros blanc” ─────────────────────────────
   const calendarHeight = isMobile ? "calc(100vh - 160px)" : "75vh";
 
   return (
-    <section className="flex flex-col gap-4 min-w-0">
+    <section
+      className={`gm-show-allday-calendar ${
+        hasVisibleAllDayEvents ? "gm-has-allday-events" : ""
+      } flex flex-col gap-4 min-w-0`}
+    >
       {/* ================= Header ================= */}
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="flex flex-col gap-2">
@@ -723,8 +938,8 @@ export default function PlanningEmployeesComponent() {
               setIsPlanningExportOpen(true);
             }}
             className="
-      inline-flex items-center justify-center rounded-2xl border border-darkBlue/10 bg-white/70
-      px-4 py-3 text-darkBlue transition hover:bg-darkBlue/5
+      inline-flex items-center justify-center rounded-full midTablet:rounded-2xl border border-darkBlue/10 bg-white/70
+      midTablet:px-4 px-3 py-3 text-darkBlue transition hover:bg-darkBlue/5
     "
             aria-label="Exporter le planning"
             title="Exporter le planning"
@@ -739,15 +954,17 @@ export default function PlanningEmployeesComponent() {
             }
             className="
       inline-flex items-center gap-2
-      rounded-2xl border border-darkBlue/10 bg-white/70
-      px-4 py-3 text-sm font-semibold text-darkBlue
+      rounded-2xl midTablet:border border-darkBlue/10 midTablet:bg-white/70
+      midTablet:px-4 py-3 text-sm font-semibold text-darkBlue
       hover:bg-darkBlue/5 transition
     "
           >
             <span className="inline-flex items-center justify-center size-9 rounded-full bg-violet text-white">
               <CalendarDays className="size-4" />
             </span>
-            <span className="whitespace-nowrap">{t("titles.daysOff")}</span>
+            <span className="hidden midTablet:block whitespace-nowrap">
+              {t("titles.daysOff")}
+            </span>
           </button>
         </div>
       </div>
@@ -1094,9 +1311,68 @@ export default function PlanningEmployeesComponent() {
               </div>
             )}
 
+            <div className="flex flex-col gap-3 rounded-2xl border border-darkBlue/10 bg-lightGrey/55 px-4 py-3">
+              <label className="inline-flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={modalData.isLeave}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setModalData((prev) => ({
+                      ...prev,
+                      isLeave: checked,
+                      isFullDayLeave: checked ? prev.isFullDayLeave : false,
+                      title: checked ? "" : prev.title,
+                    }));
+                  }}
+                  className="h-4 w-4 rounded border-darkBlue/20 text-blue focus:ring-blue/30"
+                />
+                <span className="text-sm font-medium text-darkBlue">
+                  {t("planning:labels.leave", "Congés")}
+                </span>
+              </label>
+
+              {modalData.isLeave && (
+                <label className="inline-flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={modalData.isFullDayLeave}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setModalData((prev) => {
+                        const next = {
+                          ...prev,
+                          isFullDayLeave: checked,
+                        };
+
+                        if (checked) {
+                          next.start = prev.start
+                            ? toStartOfDay(prev.start)
+                            : prev.start;
+                          if (prev.end) {
+                            next.end = toEndOfDay(prev.end);
+                          } else if (prev.start) {
+                            next.end = toEndOfDay(prev.start);
+                          }
+                        }
+
+                        return next;
+                      });
+                    }}
+                    className="h-4 w-4 rounded border-darkBlue/20 text-blue focus:ring-blue/30"
+                  />
+                  <span className="text-sm text-darkBlue/80">
+                    {t("planning:labels.fullDayLeave", "Journée entière")}
+                  </span>
+                </label>
+              )}
+            </div>
+
             <div className="grid gap-2">
               <p className="text-sm text-center text-darkBlue/80">
-                {t("planning:labels.slot", "Créneau :")}
+                {modalData.isLeave
+                  ? t("planning:labels.leavePeriod", "Période :")
+                  : t("planning:labels.slot", "Créneau :")}
               </p>
 
               <div className="grid grid-cols-1 gap-2">
@@ -1105,17 +1381,28 @@ export default function PlanningEmployeesComponent() {
                     {t("planning:labels.start", "Début")}
                   </label>
                   <input
-                    type="datetime-local"
-                    value={dateToLocalInputValue(modalData.start)}
+                    type={
+                      modalData.isLeave && modalData.isFullDayLeave
+                        ? "date"
+                        : "datetime-local"
+                    }
+                    value={
+                      modalData.isLeave && modalData.isFullDayLeave
+                        ? dateToLocalDateInputValue(modalData.start)
+                        : dateToLocalInputValue(modalData.start)
+                    }
                     onChange={(e) => {
-                      const nextStart = localInputValueToDate(e.target.value);
+                      const nextStart =
+                        modalData.isLeave && modalData.isFullDayLeave
+                          ? localDateInputValueToDate(e.target.value, "start")
+                          : localInputValueToDate(e.target.value);
                       setModalData((prev) => {
                         const next = { ...prev, start: nextStart };
-                        // auto end si vide ou si end <= start
                         if (nextStart && (!next.end || next.end <= nextStart)) {
-                          next.end = new Date(
-                            nextStart.getTime() + 60 * 60 * 1000,
-                          ); // +1h
+                          next.end =
+                            prev.isLeave && prev.isFullDayLeave
+                              ? toEndOfDay(nextStart)
+                              : new Date(nextStart.getTime() + 60 * 60 * 1000);
                         }
                         return next;
                       });
@@ -1134,11 +1421,26 @@ export default function PlanningEmployeesComponent() {
                     {t("planning:labels.end", "Fin")}
                   </label>
                   <input
-                    type="datetime-local"
-                    value={dateToLocalInputValue(modalData.end)}
-                    min={dateToLocalInputValue(modalData.start)}
+                    type={
+                      modalData.isLeave && modalData.isFullDayLeave
+                        ? "date"
+                        : "datetime-local"
+                    }
+                    value={
+                      modalData.isLeave && modalData.isFullDayLeave
+                        ? dateToLocalDateInputValue(modalData.end)
+                        : dateToLocalInputValue(modalData.end)
+                    }
+                    min={
+                      modalData.isLeave && modalData.isFullDayLeave
+                        ? dateToLocalDateInputValue(modalData.start)
+                        : dateToLocalInputValue(modalData.start)
+                    }
                     onChange={(e) => {
-                      const nextEnd = localInputValueToDate(e.target.value);
+                      const nextEnd =
+                        modalData.isLeave && modalData.isFullDayLeave
+                          ? localDateInputValueToDate(e.target.value, "end")
+                          : localInputValueToDate(e.target.value);
                       setModalData((prev) => ({ ...prev, end: nextEnd }));
                     }}
                     className="
@@ -1152,26 +1454,28 @@ export default function PlanningEmployeesComponent() {
               </div>
             </div>
 
-            <div className="flex flex-col gap-2">
-              <input
-                type="text"
-                placeholder={t(
-                  "planning:placeholders.shiftTitle",
-                  "Titre du shift",
-                )}
-                value={modalData.title}
-                onChange={(e) =>
-                  setModalData((prev) => ({ ...prev, title: e.target.value }))
-                }
-                className="
-                  w-full h-10 rounded-lg border border-darkBlue/20 bg-white/95
-                  px-3 text-base outline-none
-                  placeholder:text-darkBlue/40
-                  focus:border-darkBlue/50 focus:ring-1 focus:ring-darkBlue/20
-                  transition
-                "
-              />
-            </div>
+            {!modalData.isLeave && (
+              <div className="flex flex-col gap-2">
+                <input
+                  type="text"
+                  placeholder={t(
+                    "planning:placeholders.shiftTitleOptional",
+                    "Titre du shift (facultatif)",
+                  )}
+                  value={modalData.title}
+                  onChange={(e) =>
+                    setModalData((prev) => ({ ...prev, title: e.target.value }))
+                  }
+                  className="
+                    w-full h-10 rounded-lg border border-darkBlue/20 bg-white/95
+                    px-3 text-base outline-none
+                    placeholder:text-darkBlue/40
+                    focus:border-darkBlue/50 focus:ring-1 focus:ring-darkBlue/20
+                    transition
+                  "
+                />
+              </div>
+            )}
 
             <div className="mt-2 flex justify-center gap-3">
               <button
@@ -1184,7 +1488,6 @@ export default function PlanningEmployeesComponent() {
                   disabled:opacity-50 disabled:cursor-not-allowed
                 "
                 disabled={
-                  !canonicalizeShiftTitle(modalData.title).trim() ||
                   !modalData.start ||
                   !modalData.end ||
                   (modalData.end &&

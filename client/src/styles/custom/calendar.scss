@@ -92,6 +92,26 @@
 
 .rbc-allday-cell{display: none;}
 
+.gm-show-allday-calendar {
+  .rbc-time-header {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(6px);
+  }
+
+  &.gm-has-allday-events .rbc-allday-cell {
+    display: block !important;
+    background: rgba(255, 255, 255, 0.88);
+  }
+
+  &.gm-has-allday-events .rbc-allday-cell .rbc-row:empty {
+    display: none;
+    min-height: 0 !important;
+  }
+}
+
 
 .rbc-toolbar {
           display: none !important;

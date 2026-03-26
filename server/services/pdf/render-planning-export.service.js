@@ -168,6 +168,24 @@ function getArrowLinesHeight(doc, lines, fontSize = 9, rowPadding = 5) {
   return count * lineHeight + rowPadding * 2;
 }
 
+function drawTextLine(doc, text, x, y, width, options = {}) {
+  const fontSize = options.fontSize || 9;
+  const color = options.color || COLORS.text;
+  const lineHeight = fontSize + 3;
+
+  doc
+    .font("Helvetica")
+    .fontSize(fontSize)
+    .fillColor(color)
+    .text(safeText(text) || "-", x, y, {
+      width,
+      lineBreak: false,
+      ellipsis: true,
+    });
+
+  return lineHeight;
+}
+
 function drawTable(doc, headers, rows, columnWidths) {
   const startX = doc.page.margins.left;
   const availableWidth =
@@ -249,18 +267,29 @@ function drawTable(doc, headers, rows, columnWidths) {
         })();
 
         (cell.lines || []).forEach((line, lineIndex) => {
-          drawArrowLine(
-            doc,
-            line,
-            contentX,
-            contentY + lineIndex * lineHeight,
-            width - 12,
-            {
-              fixedLeftWidth,
-              fontSize: 9,
-              getArrowCenterY,
-            },
-          );
+          if (line?.type === "text") {
+            drawTextLine(
+              doc,
+              line.text,
+              contentX,
+              contentY + lineIndex * lineHeight,
+              width - 12,
+              { fontSize: 9 },
+            );
+          } else {
+            drawArrowLine(
+              doc,
+              line,
+              contentX,
+              contentY + lineIndex * lineHeight,
+              width - 12,
+              {
+                fixedLeftWidth,
+                fontSize: 9,
+                getArrowCenterY,
+              },
+            );
+          }
         });
       } else {
         doc
@@ -447,10 +476,21 @@ async function buildPlanningExportPdf({
           ? {
               type: "arrow_lines",
               lines: (day.shifts || []).map((shift) => ({
-                prefix: `${safeText(shift.title) || "Créneau"} ·`,
-                left: shift.startLabel,
-                right: shift.endLabel,
-                suffix: `(${formatMinutes(shift.durationMinutes)})`,
+                ...(shift.textLabel
+                  ? {
+                      type: "text",
+                      text: shift.textLabel,
+                    }
+                  : {
+                      prefix: safeText(shift.title)
+                        ? `${safeText(shift.title)} ·`
+                        : "",
+                      left: shift.startLabel,
+                      right: shift.endLabel,
+                      suffix: shift.isLeave
+                        ? ""
+                        : `(${formatMinutes(shift.durationMinutes)})`,
+                    }),
               })),
             }
           : "-",
