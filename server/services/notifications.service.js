@@ -272,6 +272,12 @@ async function createAndBroadcastNotification({
     readAt: null,
   });
 
+  const unreadBadgeCount = await NotificationModel.countDocuments({
+    restaurantId,
+    module,
+    read: false,
+  });
+
   broadcastToRestaurant(String(restaurantId), {
     type: "notification_created",
     notification: {
@@ -303,7 +309,11 @@ async function createAndBroadcastNotification({
         fallbackLink: notif.link || "/dashboard",
         notificationId: String(notif._id),
       }),
-      data: meta,
+      data: {
+        ...meta,
+        notificationId: String(notif._id),
+        badgeCount: unreadBadgeCount,
+      },
     });
   } catch (err) {
     console.error("WebPush error:", err?.message || err);

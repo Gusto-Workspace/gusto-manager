@@ -4,7 +4,7 @@ import "@/styles/tailwind.css";
 import "@/styles/custom/_index.scss";
 
 // REACT
-import { useEffect, useMemo } from "react";
+import { useContext, useEffect, useMemo } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
 
@@ -12,7 +12,63 @@ import Head from "next/head";
 import { appWithTranslation } from "next-i18next";
 
 // CONTEXT
-import { GlobalProvider } from "@/contexts/global.context";
+import { GlobalContext, GlobalProvider } from "@/contexts/global.context";
+
+function WebAppNotificationBadgeSync() {
+  const router = useRouter();
+  const { restaurantContext } = useContext(GlobalContext);
+
+  const targetModule = useMemo(() => {
+    const pathname = router.pathname || "";
+
+    if (pathname.startsWith("/dashboard/webapp/reservations")) {
+      return "reservations";
+    }
+
+    if (pathname.startsWith("/dashboard/webapp/gift-cards")) {
+      return "gift_cards";
+    }
+
+    return null;
+  }, [router.pathname]);
+
+  const badgeCount = useMemo(() => {
+    if (!targetModule) return null;
+    return Number(
+      restaurantContext?.unreadCounts?.byModule?.[targetModule] || 0,
+    );
+  }, [restaurantContext?.unreadCounts?.byModule, targetModule]);
+
+  useEffect(() => {
+    if (typeof navigator === "undefined") return;
+    if (!targetModule) return;
+    if (restaurantContext?.dataLoading) return;
+
+    const setBadge =
+      typeof navigator.setAppBadge === "function"
+        ? navigator.setAppBadge.bind(navigator)
+        : null;
+    const clearBadge =
+      typeof navigator.clearAppBadge === "function"
+        ? navigator.clearAppBadge.bind(navigator)
+        : null;
+
+    if (!setBadge && !clearBadge) return;
+
+    const count = Number.isFinite(badgeCount) ? badgeCount : 0;
+
+    Promise.resolve()
+      .then(() => {
+        if (count > 0 && setBadge) return setBadge(count);
+        if (clearBadge) return clearBadge();
+        if (setBadge) return setBadge();
+        return undefined;
+      })
+      .catch(() => {});
+  }, [badgeCount, restaurantContext?.dataLoading, targetModule]);
+
+  return null;
+}
 
 function App({ Component, pageProps }) {
   const router = useRouter();
@@ -110,6 +166,7 @@ function App({ Component, pageProps }) {
       </Head>
 
       <GlobalProvider>
+        <WebAppNotificationBadgeSync />
         <Component {...pageProps} />
       </GlobalProvider>
     </>
