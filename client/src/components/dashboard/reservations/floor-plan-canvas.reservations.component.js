@@ -464,6 +464,10 @@ function getBlockedTableIdsMap(parameters, referenceDate, selectedTime) {
 function getVisualTableState({ tableStatus, ref, blockedTableIds }) {
   const refId = String(ref?._id || "");
 
+  if (["occupied", "late", "assigned", "to_release"].includes(tableStatus)) {
+    return tableStatus;
+  }
+
   if (blockedTableIds.has(refId)) return "blocked";
   if (ref?.onlineBookable === false) return "internal_only";
 
