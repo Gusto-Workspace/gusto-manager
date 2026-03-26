@@ -44,10 +44,6 @@ export default function GiftsPage(props) {
 
     const restaurantId = restaurantContext.restaurantData._id;
 
-    // évite de relancer à chaque re-render / refetch
-    const key = `gm:push:subscribed:gift_cards:${restaurantId}`;
-    if (localStorage.getItem(key) === "1") return;
-
     const token = localStorage.getItem("token");
 
     setupPushForModule({
@@ -55,9 +51,7 @@ export default function GiftsPage(props) {
       restaurantId,
       token,
       apiUrl: process.env.NEXT_PUBLIC_API_URL,
-    })
-      .then(() => localStorage.setItem(key, "1"))
-      .catch(() => {});
+    }).catch(() => {});
   }, [restaurantContext?.isAuth, restaurantContext?.restaurantData?._id]);
 
   let title;

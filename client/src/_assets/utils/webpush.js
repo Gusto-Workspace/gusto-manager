@@ -20,7 +20,10 @@ export async function setupPushForModule({
     return;
 
   const isReservations = module === "reservations";
-  const swUrl = isReservations ? "/sw-reservations.js" : "/sw-giftcards.js";
+  const swVersion = "2026-03-26-badge-2";
+  const swUrl = isReservations
+    ? `/sw-reservations.js?v=${swVersion}`
+    : `/sw-giftcards.js?v=${swVersion}`;
   const scope = isReservations
     ? "/dashboard/webapp/reservations/"
     : "/dashboard/webapp/gift-cards/";
@@ -32,17 +35,24 @@ export async function setupPushForModule({
   } catch {}
 
   // 2) permission
-  const perm = await Notification.requestPermission();
+  let perm = Notification.permission;
+  if (perm === "default") {
+    perm = await Notification.requestPermission();
+  }
   if (perm !== "granted") return;
 
   // 3) subscribe
   const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
   const applicationServerKey = urlBase64ToUint8Array(publicKey);
 
-  const sub = await reg.pushManager.subscribe({
-    userVisibleOnly: true,
-    applicationServerKey,
-  });
+  let sub = await reg.pushManager.getSubscription();
+
+  if (!sub) {
+    sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey,
+    });
+  }
 
   // 4) envoyer au backend
   await fetch(`${apiUrl}/push/subscribe`, {

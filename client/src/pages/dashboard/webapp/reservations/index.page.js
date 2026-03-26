@@ -54,10 +54,6 @@ export default function WepAppReservationsPage(props) {
     if (!restaurantContext?.isAuth) return;
     if (!restaurantContext?.restaurantData?._id) return;
 
-    // évite de relancer à chaque re-render / refetch
-    const key = `gm:push:subscribed:reservations:${restaurantContext.restaurantData._id}`;
-    if (localStorage.getItem(key) === "1") return;
-
     const token = localStorage.getItem("token");
 
     setupPushForModule({
@@ -65,11 +61,9 @@ export default function WepAppReservationsPage(props) {
       restaurantId: restaurantContext.restaurantData._id,
       token,
       apiUrl: process.env.NEXT_PUBLIC_API_URL,
-    })
-      .then(() => localStorage.setItem(key, "1"))
-      .catch(() => {
-        // ne pas set le flag si ça échoue
-      });
+    }).catch(() => {
+      // noop
+    });
   }, [restaurantContext?.isAuth, restaurantContext?.restaurantData?._id]);
 
   const restaurant = restaurantContext.restaurantData;
