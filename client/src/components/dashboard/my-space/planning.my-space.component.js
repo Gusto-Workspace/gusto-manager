@@ -65,6 +65,11 @@ const getFullDayLeaveLabel = (start, end, isLeave) => {
   return days > 1 ? `${days} jours` : "1 jour";
 };
 
+const formatEventTimeRange = (start, end) =>
+  `${format(start, "HH:mm", { locale: frLocale })}-${format(end, "HH:mm", {
+    locale: frLocale,
+  })}`;
+
 const getCalendarRangeBounds = (currentDate, currentView) => {
   if (!(currentDate instanceof Date) || Number.isNaN(currentDate.getTime())) {
     return null;
@@ -223,18 +228,53 @@ export default function PlanningMySpaceComponent({ employeeId, restaurantId }) {
   }, [employeeId, restaurantId]);
 
   const CustomEvent = ({ event }) => {
-    const start = format(event.start, "HH:mm");
-    const end = format(event.end, "HH:mm");
+    const timeLabel = formatEventTimeRange(event.start, event.end);
     const tooltip = event.allDay
       ? `${event.title || "Congés"}${
           event.leaveDurationLabel ? ` : ${event.leaveDurationLabel}` : ""
         }`
       : event.title
-        ? `${event.title} : ${start} – ${end}`
-        : `${start} – ${end}`;
+        ? `${event.title} : ${timeLabel}`
+        : timeLabel;
+
+    if (event.allDay) {
+      return (
+        <div
+          className="truncate text-[11px] font-medium leading-tight"
+          title={tooltip}
+        >
+          {event.title || "Congés"}
+        </div>
+      );
+    }
+
+    const useCompactLayout = isMobile || currentView === Views.DAY;
+
+    if (useCompactLayout) {
+      return (
+        <div
+          className="flex h-full flex-col justify-start overflow-hidden whitespace-normal leading-[1.05]"
+          title={tooltip}
+        >
+          {event.title ? (
+            <span className="truncate text-[11px] font-medium opacity-95">
+              {event.title}
+            </span>
+          ) : null}
+        </div>
+      );
+    }
+
     return (
-      <div className="text-xs" title={tooltip}>
-        {event.title}
+      <div
+        className="flex h-full flex-col justify-start overflow-hidden whitespace-normal leading-tight"
+        title={tooltip}
+      >
+        {event.title ? (
+          <span className="truncate text-[11px] font-medium opacity-95">
+            {event.title}
+          </span>
+        ) : null}
       </div>
     );
   };
@@ -386,7 +426,7 @@ export default function PlanningMySpaceComponent({ employeeId, restaurantId }) {
 
   return (
     <section
-      className={`gm-show-allday-calendar ${
+      className={`${isMobile ? "gm-mobile-planning " : ""}gm-show-allday-calendar ${
         hasVisibleAllDayEvents ? "gm-has-allday-events" : ""
       } flex flex-col gap-4 min-w-0`}
       ref={calendarRef}
@@ -667,14 +707,16 @@ export default function PlanningMySpaceComponent({ employeeId, restaurantId }) {
               }}
               eventPropGetter={(event) => {
                 const isLeave = !!event.isLeave;
+                const compactEvent = isMobile || currentView === Views.DAY;
                 return {
                   style: {
                     backgroundColor: isLeave ? "#FFD19C" : "#5779A3",
                     border: `1px solid ${isLeave ? "#FDBA74" : "#335982"}`,
-                    borderRadius: 12,
+                    borderRadius: compactEvent ? 10 : 12,
                     outline: "none",
-                    fontSize: 12,
-                    padding: "2px 6px",
+                    fontSize: compactEvent ? 11 : 12,
+                    padding: compactEvent ? "3px 5px" : "2px 6px",
+                    lineHeight: 1.05,
                   },
                 };
               }}

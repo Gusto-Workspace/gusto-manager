@@ -95,6 +95,8 @@ export default function ListEmployeesComponent() {
   }, [restaurantContext.restaurantData?.employees, restaurantId]);
 
   const defaultExportRange = useMemo(() => getCurrentMonthRange(), []);
+  const totalEmployees =
+    restaurantContext.restaurantData?.employees?.length || 0;
 
   const handleSearchChange = (e) => setSearchTerm(e.target.value);
 
@@ -172,11 +174,19 @@ export default function ListEmployeesComponent() {
       {/* Header + actions */}
       <div className="flex flex-col gap-4">
         {/* ✅ Titre: inchangé */}
-        <div className="flex items-center gap-2 min-h-[40px]">
-          <EmployeesSvg width={30} height={30} fillColor="#131E3690" />
-          <h1 className="pl-2 text-xl tablet:text-2xl">
-            {t("employees:titles.main")}
-          </h1>
+        <div className="flex gap-2 items-center min-h-[40px]">
+          <div>
+            <EmployeesSvg width={30} height={30} fillColor="#131E3690" />
+          </div>
+
+          <div className="flex flex-col">
+            <h1 className="pl-2 text-xl flex-wrap tablet:text-2xl flex items-center gap-2">
+              <span>{t("employees:titles.main")}</span>
+            </h1>
+            <span className="ml-2 text-xs font-semibold text-darkBlue/50">
+              {totalEmployees} {totalEmployees > 1 ? "employés" : "employé"}
+            </span>
+          </div>
         </div>
 
         {/* Mobile webapp actions row */}

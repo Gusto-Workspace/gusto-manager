@@ -66,6 +66,11 @@ const getManagerEventTitle = (employee, shift) => {
     : shortName(employee);
 };
 
+const formatEventTimeRange = (start, end) =>
+  `${format(start, "HH:mm", { locale: frLocale })}-${format(end, "HH:mm", {
+    locale: frLocale,
+  })}`;
+
 const pad2 = (value) => String(value).padStart(2, "0");
 
 function toInputDate(value) {
@@ -392,6 +397,7 @@ export default function PlanningEmployeesComponent() {
           id: String(s._id),
           title: getManagerEventTitle(emp, s),
           shiftLabel,
+          employeeShortName: shortName(emp),
           start: startDate,
           end: endDate,
           allDay: Boolean(leaveDurationLabel),
@@ -559,6 +565,7 @@ export default function PlanningEmployeesComponent() {
         id: String(s._id),
         title: getManagerEventTitle(employee, s),
         shiftLabel: getShiftDisplayTitle(s),
+        employeeShortName: shortName(employee),
         resourceId: employeeId,
         leaveRequestId: s.leaveRequestId || null,
       }));
@@ -722,10 +729,56 @@ export default function PlanningEmployeesComponent() {
   }
 
   const CustomEvent = ({ event }) => {
-    const isCompressedLeave =
-      event.isLeave && event.end - event.start === 1000 * 60 * 60;
-    if (isCompressedLeave) return <div className="text-xs">{event.title}</div>;
-    return <div className="text-xs">{event.title}</div>;
+    const timeLabel = formatEventTimeRange(event.start, event.end);
+    const compactLabel = selectedEmployeeId
+      ? event.shiftLabel || event.employeeShortName || ""
+      : [event.employeeShortName, event.shiftLabel].filter(Boolean).join(" · ");
+    const tooltip = event.allDay
+      ? event.title
+      : event.title
+        ? `${event.title} : ${timeLabel}`
+        : timeLabel;
+
+    if (event.allDay) {
+      return (
+        <div
+          className="truncate text-[11px] font-medium leading-tight"
+          title={tooltip}
+        >
+          {event.title}
+        </div>
+      );
+    }
+
+    const useCompactLayout = isMobile || view === Views.DAY;
+
+    if (useCompactLayout) {
+      return (
+        <div
+          className="flex h-full flex-col justify-start overflow-hidden whitespace-normal leading-[1.05]"
+          title={tooltip}
+        >
+          {compactLabel ? (
+            <span className="truncate text-[11px] font-medium opacity-95">
+              {compactLabel}
+            </span>
+          ) : null}
+        </div>
+      );
+    }
+
+    return (
+      <div
+        className="flex h-full flex-col justify-start overflow-hidden whitespace-normal leading-tight"
+        title={tooltip}
+      >
+        {event.title ? (
+          <span className="truncate text-[11px] font-medium opacity-95">
+            {event.title}
+          </span>
+        ) : null}
+      </div>
+    );
   };
 
   // ─── Toolbar mobile compacte ────────────────────────────────────────────────
@@ -846,7 +899,7 @@ export default function PlanningEmployeesComponent() {
 
   return (
     <section
-      className={`gm-show-allday-calendar ${
+      className={`${isMobile ? "gm-mobile-planning " : ""}gm-show-allday-calendar ${
         hasVisibleAllDayEvents ? "gm-has-allday-events" : ""
       } flex flex-col gap-4 min-w-0`}
     >
@@ -930,7 +983,7 @@ export default function PlanningEmployeesComponent() {
           </button>
         </div>
 
-        <div className="flex items-center gap-2 midTablet:hidden">
+        <div className="flex w-full items-stretch gap-2 midTablet:hidden">
           <button
             type="button"
             onClick={() => {
@@ -938,13 +991,16 @@ export default function PlanningEmployeesComponent() {
               setIsPlanningExportOpen(true);
             }}
             className="
-      inline-flex items-center justify-center rounded-full midTablet:rounded-2xl border border-darkBlue/10 bg-white/70
-      midTablet:px-4 px-3 py-3 text-darkBlue transition hover:bg-darkBlue/5
+      inline-flex flex-1 min-w-0 items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70
+      px-3 py-3 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5
     "
             aria-label="Exporter le planning"
             title="Exporter le planning"
           >
-            <Download className="size-4" />
+            <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15 text-blue shrink-0">
+              <Download className="size-4" />
+            </span>
+            <span className="truncate">Exporter</span>
           </button>
 
           <button
@@ -953,18 +1009,16 @@ export default function PlanningEmployeesComponent() {
               router.push("/dashboard/employees/planning/days-off")
             }
             className="
-      inline-flex items-center gap-2
-      rounded-2xl midTablet:border border-darkBlue/10 midTablet:bg-white/70
-      midTablet:px-4 py-3 text-sm font-semibold text-darkBlue
+      inline-flex flex-1 min-w-0 items-center gap-2
+      rounded-2xl border border-darkBlue/10 bg-white/70
+      px-3 py-3 text-sm font-semibold text-darkBlue
       hover:bg-darkBlue/5 transition
     "
           >
-            <span className="inline-flex items-center justify-center size-9 rounded-full bg-violet text-white">
+            <span className="inline-flex items-center justify-center size-9 rounded-full bg-violet text-white shrink-0">
               <CalendarDays className="size-4" />
             </span>
-            <span className="hidden midTablet:block whitespace-nowrap">
-              {t("titles.daysOff")}
-            </span>
+            <span className="truncate">{t("titles.daysOff")}</span>
           </button>
         </div>
       </div>
@@ -1170,6 +1224,7 @@ export default function PlanningEmployeesComponent() {
               draggableAccessor={() => false}
               eventPropGetter={(event) => {
                 const isLeave = event.isLeave;
+                const compactEvent = isMobile || view === Views.DAY;
                 return {
                   style: {
                     backgroundColor: isLeave
@@ -1178,10 +1233,11 @@ export default function PlanningEmployeesComponent() {
                     border: `1px solid ${
                       isLeave ? "#FDBA74" : "rgba(255,255,255,0.9)"
                     }`,
-                    borderRadius: 12,
+                    borderRadius: compactEvent ? 10 : 12,
                     outline: "none",
-                    fontSize: 12,
-                    padding: "2px 6px",
+                    fontSize: compactEvent ? 11 : 12,
+                    padding: compactEvent ? "3px 5px" : "2px 6px",
+                    lineHeight: 1.05,
                   },
                 };
               }}
