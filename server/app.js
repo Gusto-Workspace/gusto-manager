@@ -22,21 +22,18 @@ app.use(express.json());
 
 // MONGOOSE
 mongoose
-  .connect(process.env.CONNECTION_STRING, { connectTimeoutMS: 5000 })
-  .then(() => console.log("Connected to MongoDB"))
+  .connect(process.env.CONNECTION_STRING_TEST, { connectTimeoutMS: 5000 })
+  .then(() => console.log("Connected to MongoDB Test BDD"))
   .catch((err) => console.log("MongoDB connection error:", err));
 
 // CORS
 app.use(
   cors({
     origin: [
-      "https://www.gusto-manager.com", // Client
-      "https://www.lacoquille-concarneau.fr", // Client La coquille
-      "https://www.embrunslorient.fr", // Client Embruns
-      "https://www.bourrasquekerroch.fr", // Client Bourrasque
-      "https://gusto-manager.onrender.com", // Server
-      "https://reservations-module.vercel.app", // module reservations test
-      "https://a-lassiette-gusto-manager-presentation.vercel.app", // site prez A l'Assiette
+      "http://localhost:8002", // Client
+      "http://localhost:8003", // Client site restaurant
+      "http://localhost:8006", // Client module réservation
+      "http://localhost:8012", // Server
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     credentials: true,
