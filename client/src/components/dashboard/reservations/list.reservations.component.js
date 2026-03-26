@@ -18,6 +18,12 @@ import FloorPlanDrawerReservationsComponent from "./floor-plan-drawer.reservatio
 export default function ListReservationsComponent(props) {
   const { t } = useTranslation("reservations");
   const router = useRouter();
+  const selectedDayKey =
+    typeof router.query.day === "string" ? router.query.day : null;
+  const focusedReservationId =
+    typeof router.query.reservationId === "string"
+      ? router.query.reservationId
+      : null;
 
   /* ---------- States (général) ---------- */
   const [isConfirmationModalOpen, setIsConfirmationModalOpen] = useState(false);
@@ -103,6 +109,62 @@ export default function ListReservationsComponent(props) {
     if (!s) return s;
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
+
+  useEffect(() => {
+    if (!selectedDayKey) {
+      setSelectedDay(null);
+      return;
+    }
+
+    const [y, m, d] = selectedDayKey.split("-").map(Number);
+    if (!y || !m || !d) return;
+
+    setSelectedDay(new Date(y, m - 1, d, 12, 0, 0, 0));
+  }, [selectedDayKey]);
+
+  const clearFocusedReservationId = useCallback(() => {
+    if (!router.isReady) return;
+
+    const nextQuery = { ...router.query };
+    delete nextQuery.reservationId;
+
+    router.replace(
+      {
+        pathname: router.pathname,
+        query: nextQuery,
+      },
+      undefined,
+      { shallow: true, scroll: false },
+    );
+  }, [router]);
+
+  useEffect(() => {
+    if (!focusedReservationId) return;
+    if (!Array.isArray(props.reservations) || !props.reservations.length)
+      return;
+
+    const reservation = props.reservations.find(
+      (item) => String(item?._id) === String(focusedReservationId),
+    );
+    if (!reservation) return;
+
+    const reservationDateTime = getReservationDateTime(reservation);
+    if (!reservationDateTime) return;
+
+    setCurrentMonth(startOfMonth(reservationDateTime));
+    setSelectedDay(
+      new Date(
+        reservationDateTime.getFullYear(),
+        reservationDateTime.getMonth(),
+        reservationDateTime.getDate(),
+        12,
+        0,
+        0,
+        0,
+      ),
+    );
+    setActiveDayTab("All");
+  }, [focusedReservationId, props.reservations]);
 
   function handleOpenFloorPlanDrawer() {
     setIsFloorPlanDrawerOpen(true);
@@ -686,6 +748,8 @@ export default function ListReservationsComponent(props) {
             activeDayTab={activeDayTab}
             handleEditClick={handleEditClick}
             openModalForAction={openModalForAction}
+            focusedReservationId={focusedReservationId}
+            clearFocusedReservationId={clearFocusedReservationId}
             restaurantId={props.restaurantData?._id}
             tablesCatalog={
               props.restaurantData?.reservations?.parameters?.tables

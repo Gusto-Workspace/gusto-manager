@@ -21,6 +21,10 @@ export default function ListReservationsWebapp(props) {
 
   const selectedDayKey =
     typeof router.query.day === "string" ? router.query.day : null;
+  const focusedReservationId =
+    typeof router.query.reservationId === "string"
+      ? router.query.reservationId
+      : null;
 
   /* ---------- States (général) ---------- */
   const [isConfirmationModalOpen, setIsConfirmationModalOpen] = useState(false);
@@ -92,6 +96,22 @@ export default function ListReservationsWebapp(props) {
     setSelectedDay(new Date(y, m - 1, d, 12, 0, 0, 0));
   }, [selectedDayKey]);
 
+  const clearFocusedReservationId = useCallback(() => {
+    if (!router.isReady) return;
+
+    const nextQuery = { ...router.query };
+    delete nextQuery.reservationId;
+
+    router.replace(
+      {
+        pathname: router.pathname,
+        query: nextQuery,
+      },
+      undefined,
+      { shallow: true, scroll: false },
+    );
+  }, [router]);
+
   /* =========================================================
    * Utilitaires date/heure
    * =======================================================*/
@@ -119,6 +139,34 @@ export default function ListReservationsWebapp(props) {
     if (!s) return s;
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
+
+  useEffect(() => {
+    if (!focusedReservationId) return;
+    if (!Array.isArray(props.reservations) || !props.reservations.length)
+      return;
+
+    const reservation = props.reservations.find(
+      (item) => String(item?._id) === String(focusedReservationId),
+    );
+    if (!reservation) return;
+
+    const reservationDateTime = getReservationDateTime(reservation);
+    if (!reservationDateTime) return;
+
+    setCurrentMonth(startOfMonth(reservationDateTime));
+    setSelectedDay(
+      new Date(
+        reservationDateTime.getFullYear(),
+        reservationDateTime.getMonth(),
+        reservationDateTime.getDate(),
+        12,
+        0,
+        0,
+        0,
+      ),
+    );
+    setActiveDayTab("All");
+  }, [focusedReservationId, props.reservations]);
 
   /* =========================================================
    * Agrégats calendrier (pack par jour) + surbrillance recherche
@@ -702,6 +750,8 @@ export default function ListReservationsWebapp(props) {
             activeDayTab={activeDayTab}
             handleEditClick={handleEditClick}
             openModalForAction={openModalForAction}
+            focusedReservationId={focusedReservationId}
+            clearFocusedReservationId={clearFocusedReservationId}
             tablesCatalog={
               props.restaurantData?.reservations?.parameters?.tables
             }

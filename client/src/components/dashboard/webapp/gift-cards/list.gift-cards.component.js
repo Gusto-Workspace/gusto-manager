@@ -14,6 +14,7 @@ import { GlobalContext } from "@/contexts/global.context";
 import { useTranslation } from "next-i18next";
 
 // SVG
+import { NotificationSvg } from "@/components/_shared/_svgs/notification.svg";
 import { GiftSvg } from "../../../_shared/_svgs/_index";
 import { ChevronDown, Plus } from "lucide-react";
 
@@ -31,16 +32,16 @@ import { arrayMove, SortableContext } from "@dnd-kit/sortable";
 
 import {
   restrictToFirstScrollableAncestor,
-
   restrictToParentElement,
 } from "@dnd-kit/modifiers";
 
 // COMPONENTS
 import WebAppPurchasesGiftListComponent from "./purshases-gift-list.gift-cards.component";
 import CardGiftsComponent from "./card.gift-cards.component";
-import BottomSheetCreateGiftCardsComponent from "./bottom-sheet-create.gift-cards.component";
+import CreateDrawerGiftCardsComponent from "../../../_shared/gift-cards/create-drawer.gift-cards.component";
 
 import BottomSheetChangeRestaurantComponent from "../_shared/bottom-sheet-change-restaurant.webapp";
+import NotificationsDrawerComponent from "@/components/_shared/notifications/notifications-drawer.component";
 
 export default function WebAppListGiftCardsComponent(props) {
   const { t } = useTranslation("gifts");
@@ -54,6 +55,7 @@ export default function WebAppListGiftCardsComponent(props) {
 
   // ✅ BottomSheet change restaurant
   const [changeRestaurantOpen, setChangeRestaurantOpen] = useState(false);
+  const [openNotificationsDrawer, setOpenNotificationsDrawer] = useState(false);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingGift, setEditingGift] = useState(null);
@@ -76,22 +78,10 @@ export default function WebAppListGiftCardsComponent(props) {
   // Styles communs
   const btnPrimary =
     "inline-flex items-center justify-center rounded-xl bg-blue px-5 py-2.5 text-sm font-medium text-white shadow hover:bg-blue/90 transition disabled:opacity-60 disabled:cursor-not-allowed";
-  const btnSecondary =
-    "inline-flex items-center justify-center rounded-xl bg-red px-5 py-2.5 text-sm font-medium text-white shadow hover:bg-red/90 transition disabled:opacity-60 disabled:cursor-not-allowed";
   const sectionChipWrap = "flex items-center gap-3 my-6 max-w-4xl mx-auto px-2";
   const sectionChipLine = "h-px flex-1 bg-darkBlue/10";
   const sectionChipLabel =
     "inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/90 px-6 py-1.5 text-[11px] font-semibold tracking-[0.18em] text-darkBlue uppercase shadow-sm";
-  const modalCardCls =
-    "relative w-full max-w-[460px] rounded-2xl border border-darkBlue/10 bg-white/95 px-5 py-6 tablet:px-7 tablet:py-7 shadow-[0_22px_55px_rgba(19,30,54,0.18)] flex flex-col gap-5";
-  const fieldWrap = "flex flex-col gap-1.5";
-  const labelCls =
-    "text-xs font-semibold uppercase tracking-[0.08em] text-darkBlue/70";
-  const inputCls =
-    "h-10 w-full rounded-xl border border-darkBlue/15 bg-white px-3 text-sm outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-1 focus:ring-blue/30";
-  const textAreaCls =
-    "w-full rounded-xl border border-darkBlue/15 bg-white px-3 py-2 text-sm outline-none transition placeholder:text-darkBlue/40 resize-none min-h-[80px] focus:border-blue/60 focus:ring-1 focus:ring-blue/30";
-  const errorTextCls = "text-[11px] text-red mt-0.5";
 
   // ID DnD
   const id = useId();
@@ -113,6 +103,8 @@ export default function WebAppListGiftCardsComponent(props) {
     restaurantContext?.restaurantData?.name ||
     props?.restaurantName ||
     t?.("titles.main", "Cartes cadeaux");
+  const unreadCount =
+    restaurantContext?.unreadCounts?.byModule?.gift_cards || 0;
 
   const openChangeRestaurant = () => {
     if (!canSwitchRestaurant) return;
@@ -263,12 +255,12 @@ export default function WebAppListGiftCardsComponent(props) {
       />
 
       {/* Header page */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex gap-2 items-center min-h-[40px]">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0 flex-1 flex items-center gap-2">
           <GiftSvg
             width={30}
             height={30}
-            className="min-h-[30px] min-w-[30px]"
+            className="min-h-[30px] min-w-[30px] shrink-0"
             fillColor="#131E3690"
           />
 
@@ -276,7 +268,7 @@ export default function WebAppListGiftCardsComponent(props) {
           <button
             type="button"
             onClick={openChangeRestaurant}
-            className={`min-w-0 inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-3 py-2 transition ${
+            className={`min-w-0 flex-1 overflow-hidden inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-3 py-2 transition ${
               canSwitchRestaurant
                 ? "cursor-pointer hover:bg-darkBlue/5"
                 : "cursor-default opacity-90"
@@ -287,7 +279,7 @@ export default function WebAppListGiftCardsComponent(props) {
             }
             title={canSwitchRestaurant ? "Changer de restaurant" : undefined}
           >
-            <span className="truncate text-lg font-semibold text-darkBlue">
+            <span className="flex-1 truncate text-left text-lg font-semibold text-darkBlue">
               {currentName}
             </span>
             {canSwitchRestaurant ? (
@@ -296,16 +288,54 @@ export default function WebAppListGiftCardsComponent(props) {
           </button>
         </div>
 
-        <button
-          onClick={() => {
-            setEditingGift(null);
-            setIsDeleting(false);
-            setIsModalOpen(true);
-          }}
-          className="inline-flex items-center justify-center rounded-full bg-blue text-white shadow-sm hover:bg-blue/90 active:scale-[0.98] transition p-4"
-        >
-          <Plus className="size-4" />
-        </button>
+        <div className="shrink-0 flex items-center gap-1">
+          <div className="relative">
+            <button
+              className="bg-blue p-2.5 rounded-full bg-opacity-40 active:scale-[0.98] transition"
+              onClick={() => setOpenNotificationsDrawer(true)}
+              aria-label="Ouvrir les notifications"
+              title="Notifications"
+            >
+              <NotificationSvg width={25} height={25} fillColor="#4583FF" />
+            </button>
+
+            {unreadCount > 0 && (
+              <span className="absolute top-1 right-1 inline-flex items-center justify-center px-1 py-0.5 text-xs font-bold leading-none text-white transform translate-x-1/2 -translate-y-1/2 bg-red rounded-full">
+                {unreadCount}
+              </span>
+            )}
+
+            <NotificationsDrawerComponent
+              open={openNotificationsDrawer}
+              onClose={() => setOpenNotificationsDrawer(false)}
+              notifications={restaurantContext?.notifications}
+              nextCursor={
+                restaurantContext?.notificationsNextCursorByModule
+                  ?.gift_cards ?? null
+              }
+              loading={restaurantContext?.notificationsLoading}
+              fetchNotifications={restaurantContext?.fetchNotifications}
+              markNotificationRead={restaurantContext?.markNotificationRead}
+              markAllRead={restaurantContext?.markAllRead}
+              role={restaurantContext?.userConnected?.role}
+              lastNotificationsSyncRef={
+                restaurantContext?.lastNotificationsSyncRef
+              }
+              modulesFilter="gift_cards"
+            />
+          </div>
+
+          <button
+            onClick={() => {
+              setEditingGift(null);
+              setIsDeleting(false);
+              setIsModalOpen(true);
+            }}
+            className="inline-flex items-center justify-center rounded-full bg-blue text-white shadow-sm hover:bg-blue/90 active:scale-[0.98] transition p-3.5"
+          >
+            <Plus className="size-4" />
+          </button>
+        </div>
       </div>
 
       {/* Cartes montant fixe */}
@@ -324,7 +354,7 @@ export default function WebAppListGiftCardsComponent(props) {
             onDragEnd={handleDragEnd}
             modifiers={[
               restrictToFirstScrollableAncestor,
-            
+
               restrictToParentElement,
             ]}
           >
@@ -364,7 +394,7 @@ export default function WebAppListGiftCardsComponent(props) {
             onDragEnd={handleDragEnd}
             modifiers={[
               restrictToFirstScrollableAncestor,
-            
+
               restrictToParentElement,
             ]}
           >
@@ -397,7 +427,7 @@ export default function WebAppListGiftCardsComponent(props) {
 
       {/* MODALE ajout / édition / suppression */}
       {isModalOpen && (
-        <BottomSheetCreateGiftCardsComponent
+        <CreateDrawerGiftCardsComponent
           open={isModalOpen}
           onClose={closeModal}
           title={

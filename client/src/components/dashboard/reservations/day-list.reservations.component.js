@@ -2,7 +2,7 @@ import axios from "axios";
 
 // I18N
 import { useTranslation } from "next-i18next";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 // COMPONENTS
 import CardReservationComponent from "./card.reservations.component";
@@ -14,8 +14,10 @@ export default function DayListReservationsComponent(props) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedReservation, setSelectedReservation] = useState(null);
   const [actionError, setActionError] = useState("");
+  const autoOpenedReservationRef = useRef(null);
 
   const list = props?.dayData?.byStatus?.[props.activeDayTab] || [];
+  const allReservationsOfDay = props?.dayData?.byStatus?.All || [];
 
   const openDetails = (reservation) => {
     setSelectedReservation(reservation);
@@ -25,7 +27,29 @@ export default function DayListReservationsComponent(props) {
 
   const closeDetails = () => {
     setDetailsOpen(false);
+    props.clearFocusedReservationId?.();
   };
+
+  useEffect(() => {
+    const focusedReservationId = props?.focusedReservationId;
+
+    if (!focusedReservationId) {
+      autoOpenedReservationRef.current = null;
+      return;
+    }
+
+    if (autoOpenedReservationRef.current === focusedReservationId) return;
+
+    const targetReservation = allReservationsOfDay.find(
+      (reservation) =>
+        String(reservation?._id) === String(focusedReservationId),
+    );
+
+    if (!targetReservation) return;
+
+    autoOpenedReservationRef.current = focusedReservationId;
+    openDetails(targetReservation);
+  }, [allReservationsOfDay, props?.focusedReservationId]);
 
   // Actions depuis le drawer
   const handleDrawerAction = async (reservation, actionType) => {
@@ -66,7 +90,7 @@ export default function DayListReservationsComponent(props) {
         );
 
         // ✅ succès -> on peut fermer (SSE met à jour)
-        setDetailsOpen(false);
+        closeDetails();
         return;
       } catch (e) {
         // ✅ slot plus dispo -> afficher DANS le drawer
@@ -81,7 +105,7 @@ export default function DayListReservationsComponent(props) {
 
     // edit normal
     if (actionType === "edit") {
-      setDetailsOpen(false);
+      closeDetails();
       props.handleEditClick(reservation);
       return;
     }
@@ -90,12 +114,12 @@ export default function DayListReservationsComponent(props) {
       actionType === "capture_bank_hold" ||
       actionType === "release_bank_hold"
     ) {
-      setDetailsOpen(false);
+      closeDetails();
       props.openModalForAction(reservation, actionType);
       return;
     }
 
-    setDetailsOpen(false);
+    closeDetails();
     props.openModalForAction(reservation, actionType);
   };
 

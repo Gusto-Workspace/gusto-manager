@@ -35,17 +35,10 @@ export default function BottomSheetPurchasesComponent({
   onAction, // (purchase, actionType) => void
 }) {
   const [isVisible, setIsVisible] = useState(false);
+  const [isTabletUp, setIsTabletUp] = useState(false);
 
-  // iOS scroll lock
-  const scrollYRef = useRef(0);
-  const prevStylesRef = useRef({
-    bodyPosition: "",
-    bodyTop: "",
-    bodyLeft: "",
-    bodyRight: "",
-    bodyWidth: "",
-    htmlOverflow: "",
-  });
+  const prevBodyOverflowRef = useRef("");
+  const prevHtmlOverflowRef = useRef("");
 
   const panelRef = useRef(null);
   const [panelH, setPanelH] = useState(null);
@@ -61,50 +54,16 @@ export default function BottomSheetPurchasesComponent({
 
   const lockScroll = () => {
     if (typeof document === "undefined") return;
-    const body = document.body;
-    const html = document.documentElement;
-
-    scrollYRef.current = window.scrollY || 0;
-
-    prevStylesRef.current = {
-      bodyPosition: body.style.position || "",
-      bodyTop: body.style.top || "",
-      bodyLeft: body.style.left || "",
-      bodyRight: body.style.right || "",
-      bodyWidth: body.style.width || "",
-      htmlOverflow: html.style.overflow || "",
-    };
-
-    html.style.overflow = "hidden";
-    body.style.position = "fixed";
-    body.style.top = `-${scrollYRef.current}px`;
-    body.style.left = "0";
-    body.style.right = "0";
-    body.style.width = "100%";
+    prevBodyOverflowRef.current = document.body.style.overflow || "";
+    prevHtmlOverflowRef.current = document.documentElement.style.overflow || "";
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
   };
 
   const restoreScroll = () => {
     if (typeof document === "undefined") return;
-    const body = document.body;
-    const html = document.documentElement;
-
-    const {
-      bodyPosition,
-      bodyTop,
-      bodyLeft,
-      bodyRight,
-      bodyWidth,
-      htmlOverflow,
-    } = prevStylesRef.current;
-
-    body.style.position = bodyPosition || "";
-    body.style.top = bodyTop || "";
-    body.style.left = bodyLeft || "";
-    body.style.right = bodyRight || "";
-    body.style.width = bodyWidth || "";
-    html.style.overflow = htmlOverflow || "";
-
-    window.scrollTo(0, scrollYRef.current || 0);
+    document.body.style.overflow = prevBodyOverflowRef.current || "";
+    document.documentElement.style.overflow = prevHtmlOverflowRef.current || "";
   };
 
   function closeWithAnimation() {
@@ -122,6 +81,22 @@ export default function BottomSheetPurchasesComponent({
     const h = el.getBoundingClientRect().height || 0;
     if (h > 0) setPanelH(h);
   };
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mq = window.matchMedia("(min-width: 768px)");
+    const update = () => setIsTabletUp(mq.matches);
+
+    update();
+    if (mq.addEventListener) mq.addEventListener("change", update);
+    else mq.addListener(update);
+
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", update);
+      else mq.removeListener(update);
+    };
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -214,6 +189,7 @@ export default function BottomSheetPurchasesComponent({
   );
 
   const onPointerDown = (e) => {
+    if (isTabletUp) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
 
     dragStateRef.current.active = true;
@@ -228,6 +204,7 @@ export default function BottomSheetPurchasesComponent({
   };
 
   const onPointerMove = (e) => {
+    if (isTabletUp) return;
     if (!dragStateRef.current.active) return;
 
     const y = e.clientY;
@@ -241,6 +218,7 @@ export default function BottomSheetPurchasesComponent({
   };
 
   const onPointerUp = () => {
+    if (isTabletUp) return;
     if (!dragStateRef.current.active) return;
     dragStateRef.current.active = false;
 
@@ -264,11 +242,7 @@ export default function BottomSheetPurchasesComponent({
   if (!open) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-[170] tablet:hidden"
-      role="dialog"
-      aria-modal="true"
-    >
+    <div className="fixed inset-0 z-[170]" role="dialog" aria-modal="true">
       {/* Overlay */}
       <div
         className={`
@@ -284,71 +258,100 @@ export default function BottomSheetPurchasesComponent({
       <div
         ref={panelRef}
         className={`
-          absolute left-0 right-0 bottom-0 z-[1]
-          w-full rounded-t-[28px]
+          absolute z-[1]
           border border-white/30 bg-lightGrey
           shadow-[0_-30px_90px_rgba(0,0,0,0.28)]
-          overflow-hidden min-h-[40vh] max-h-[88vh]
+          overflow-hidden
           flex flex-col
+
+          left-0 right-0 bottom-0 w-full min-h-[40vh] max-h-[88vh]
+          rounded-t-[28px]
+
+          tablet:top-0 tablet:bottom-0 tablet:left-auto tablet:right-0
+          tablet:h-full tablet:w-[520px] tablet:max-h-[100vh]
+          tablet:rounded-none
         `}
-        style={{
-          transform: isVisible ? `translateY(${dragY}px)` : "translateY(100%)",
-          transition: dragStateRef.current.active
-            ? "none"
-            : "transform 200ms ease-out",
-          willChange: "transform",
-        }}
+        style={
+          isTabletUp
+            ? {
+                transform: isVisible ? "translateX(0)" : "translateX(100%)",
+                transition: "transform 220ms ease-out",
+                willChange: "transform",
+              }
+            : {
+                transform: isVisible
+                  ? `translateY(${dragY}px)`
+                  : "translateY(100%)",
+                transition: dragStateRef.current.active
+                  ? "none"
+                  : "transform 200ms ease-out",
+                willChange: "transform",
+              }
+        }
         onClick={(e) => e.stopPropagation()}
       >
         {/* Drag zone */}
         <div
-          className="cursor-grab active:cursor-grabbing touch-none"
+          className="cursor-grab active:cursor-grabbing touch-none tablet:hidden"
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
         >
-          <div className="pt-3 pb-2 flex justify-center">
+          <div className="py-3 flex justify-center bg-white/70">
             <div className="h-1.5 w-12 rounded-full bg-darkBlue/20" />
           </div>
+        </div>
 
-          {/* Header */}
-          <div className="px-4 pb-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-xs text-darkBlue/50">
-                  {t("titles.second")} — {t("labels.details", "Détails")}
-                </p>
+        {/* Header */}
+        <div className="sticky top-0 z-10 px-4 pb-3 midTablet:py-3 border-b border-darkBlue/10 bg-white/70">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs text-darkBlue/50">
+                {t("labels.details", "Détails")} — Carte cadeau achetée
+              </p>
 
-                {/* ✅ “Bénéficiaire : …” */}
-                <h3 className="mt-1 text-lg font-semibold text-darkBlue leading-tight truncate">
-                  Bénéficiaire : {beneficiaryName}
-                </h3>
+              <h3 className="text-base font-semibold text-darkBlue truncate">
+                {beneficiaryName}
+              </h3>
 
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <span
-                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${statusUi.cls}`}
-                  >
-                    {statusUi.label}
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <span
+                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${statusUi.cls}`}
+                >
+                  {statusUi.label}
+                </span>
+
+                {purchase?.value != null ? (
+                  <span className="inline-flex items-center gap-2 rounded-full border border-darkBlue/10 bg-white/80 px-3 py-1 text-xs font-semibold text-darkBlue">
+                    <CreditCard className="size-3.5 text-darkBlue/50" />
+                    {purchase.value}€
                   </span>
+                ) : null}
 
-                  {purchase?.value != null && (
-                    <span className="inline-flex items-center gap-2 rounded-full border border-darkBlue/10 bg-white/80 px-3 py-1 text-xs font-semibold text-darkBlue">
-                      <CreditCard className="size-3.5 text-darkBlue/50" />
-                      {purchase.value}€
+                {purchase?.purchaseCode ? (
+                  <span className="inline-flex items-center gap-2 rounded-full border border-darkBlue/10 bg-white/80 px-3 py-1 text-xs font-semibold text-darkBlue">
+                    <Hash className="size-3.5 text-darkBlue/50" />
+                    <span className="font-mono font-normal text-[11px]">
+                      {purchase.purchaseCode}
                     </span>
-                  )}
-                </div>
-              </div>
+                  </span>
+                ) : null}
 
-              <button
-                onClick={closeWithAnimation}
-                className="shrink-0 inline-flex items-center justify-center rounded-2xl border border-white/40 bg-white/70 hover:bg-white/85 active:scale-[0.98] transition p-2 shadow-sm"
-                aria-label={t("buttons.close", "Fermer")}
-              >
-                <X className="size-4 text-darkBlue/70" />
-              </button>
+                <span className="inline-flex items-center gap-2 rounded-full border border-darkBlue/10 bg-white/80 px-3 py-1 text-xs font-semibold text-darkBlue">
+                  <Calendar className="size-3.5 text-darkBlue/50" />
+                  {createdDate ? createdDate.toLocaleDateString("fr-FR") : "-"}
+                </span>
+              </div>
             </div>
+
+            <button
+              onClick={closeWithAnimation}
+              className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2"
+              aria-label={t("buttons.close", "Fermer")}
+            >
+              <X className="size-4 text-darkBlue/70" />
+            </button>
           </div>
         </div>
 
@@ -360,7 +363,7 @@ export default function BottomSheetPurchasesComponent({
             </p>
 
             <div className="flex items-start gap-2 text-sm text-darkBlue/80">
-              <Hash className="size-4 mt-0.5 text-darkBlue/40" />
+              <Hash className="size-4 mt-0.5 font-normal text-darkBlue/40" />
               <p className="min-w-0">
                 {t("labels.code")} :{" "}
                 <span className="font-mono text-[13px]">
@@ -443,7 +446,7 @@ export default function BottomSheetPurchasesComponent({
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 border-t border-white/40 bg-white/70 backdrop-blur-xl px-4 py-3 pb-[calc(env(safe-area-inset-bottom)+24px)]">
+        <div className="midTablet:hidden sticky bottom-0 border-t border-white/40 bg-white/70 backdrop-blur-xl px-4 py-3 tablet:pb-3 pb-[calc(env(safe-area-inset-bottom)+24px)]">
           <button
             onClick={closeWithAnimation}
             className="w-full inline-flex items-center justify-center rounded-xl bg-blue px-4 py-3 text-white text-sm font-semibold shadow-sm hover:bg-blue/90 active:scale-[0.98] transition"

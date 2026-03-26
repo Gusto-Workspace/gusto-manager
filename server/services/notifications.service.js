@@ -20,6 +20,30 @@ function formatDateFR(d) {
   return date.toLocaleDateString("fr-FR");
 }
 
+function toDateKey(dateInput) {
+  if (!dateInput) return "";
+  const date = new Date(dateInput);
+  if (Number.isNaN(date.getTime())) return "";
+
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(
+    date.getDate(),
+  )}`;
+}
+
+function buildPath(basePath, query = {}) {
+  const params = new URLSearchParams();
+
+  Object.entries(query).forEach(([key, value]) => {
+    if (value === null || value === undefined) return;
+    const normalized = String(value).trim();
+    if (!normalized) return;
+    params.set(key, normalized);
+  });
+
+  const qs = params.toString();
+  return qs ? `${basePath}?${qs}` : basePath;
+}
+
 /* ========================= RÉSERVATIONS ========================= */
 
 function buildLocalDateTime(reservationDate, reservationTime) {
@@ -100,7 +124,10 @@ function buildNotificationContent({ type, data }) {
       return {
         title,
         message: `${name} ${guests} ${when}`.replace(/\s+/g, " ").trim(),
-        link: "/dashboard/reservations",
+        link: buildPath("/dashboard/reservations", {
+          day: toDateKey(data?.reservationDate),
+          reservationId: data?._id || data?.reservationId || null,
+        }),
       };
     }
 
@@ -116,7 +143,9 @@ function buildNotificationContent({ type, data }) {
       return {
         title: "Carte cadeau vendue",
         message: `${euros ? `Montant ${euros}` : "Nouvel achat"}`.trim(),
-        link: "/dashboard/gift-cards",
+        link: buildPath("/dashboard/gift-cards", {
+          purchaseId: data?._id || data?.purchaseId || null,
+        }),
       };
     }
 
@@ -145,13 +174,38 @@ function buildNotificationContent({ type, data }) {
       return {
         title: "Demande de congés",
         message: `${emp} • ${periodText}`.replace(/\s+/g, " ").trim(),
-        link: "/dashboard/employees/planning/days-off",
+        link: buildPath("/dashboard/employees/planning/days-off", {
+          employeeId: data?.employeeId || null,
+        }),
       };
     }
 
     default:
       return { title: "Notification", message: "Nouvel événement", link: "" };
   }
+}
+
+function buildPushLink({ module, type, data, fallbackLink }) {
+  if (module === "reservations") {
+    return buildPath("/dashboard/webapp/reservations", {
+      day: toDateKey(data?.reservationDate),
+      reservationId: data?._id || data?.reservationId || null,
+    });
+  }
+
+  if (module === "gift_cards") {
+    return buildPath("/dashboard/webapp/gift-cards", {
+      purchaseId: data?._id || data?.purchaseId || null,
+    });
+  }
+
+  if (module === "employees" && type === "leave_request_created") {
+    return buildPath("/dashboard/employees/planning/days-off", {
+      employeeId: data?.employeeId || null,
+    });
+  }
+
+  return fallbackLink || "/dashboard";
 }
 
 function buildNotificationMeta({ type, data }) {
@@ -234,13 +288,12 @@ async function createAndBroadcastNotification({
       module,
       title: content.title,
       message: content.message,
-      link:
-        module === "reservations"
-          ? "/dashboard/webapp/reservations"
-          : module === "gift_cards"
-            ? "/dashboard/webapp/gift-cards"
-            : notif.link || "/dashboard",
-
+      link: buildPushLink({
+        module,
+        type,
+        data,
+        fallbackLink: notif.link || "/dashboard",
+      }),
       data: meta,
     });
   } catch (err) {

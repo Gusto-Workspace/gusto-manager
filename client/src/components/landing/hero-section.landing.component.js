@@ -113,7 +113,7 @@ export default function HeroSectionLandingComponent() {
               </div>
 
               {/* RIGHT */}
-              <div className="pr-4 pb-6 tablet:pr-8 tablet:pb-8 desktop:pr-10 desktop:py-0">
+              <div className="pr-4 pl-4 desktop:pl-0 pb-6 tablet:pr-8 tablet:pb-8 desktop:pr-10 desktop:py-0">
                 <div className="relative mx-auto w-full">
                   {/* floating card top */}
                   <div className="absolute left-3 top-3 z-20 hidden rounded-2xl border-2 border-darkBlue bg-white px-4 py-3 shadow-sm tablet:block">

@@ -30,7 +30,8 @@ export default function CalendarToolbarReservationsWebapp(props) {
   const openSidebar = () => setSidebarOpen(true);
   const closeSidebar = () => setSidebarOpen(false);
 
-  const unreadCount = restaurantContext?.unreadCounts?.total || 0;
+  const unreadCount =
+    restaurantContext?.unreadCounts?.byModule?.reservations || 0;
 
   const monthYearLabel = props.capitalizeFirst(
     new Intl.DateTimeFormat("fr-FR", {
@@ -154,7 +155,10 @@ export default function CalendarToolbarReservationsWebapp(props) {
               open={openNotificationsDrawer}
               onClose={() => setOpenNotificationsDrawer(false)}
               notifications={restaurantContext?.notifications}
-              nextCursor={restaurantContext?.notificationsNextCursor}
+              nextCursor={
+                restaurantContext?.notificationsNextCursorByModule
+                  ?.reservations ?? null
+              }
               loading={restaurantContext?.notificationsLoading}
               fetchNotifications={restaurantContext?.fetchNotifications}
               markNotificationRead={restaurantContext?.markNotificationRead}

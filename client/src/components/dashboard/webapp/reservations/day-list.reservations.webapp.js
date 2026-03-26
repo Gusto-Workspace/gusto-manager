@@ -1,6 +1,6 @@
 // I18N
 import { useTranslation } from "next-i18next";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 // AXIOS
 import axios from "axios";
@@ -15,8 +15,10 @@ export default function DayListReservationsWebapp(props) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedReservation, setSelectedReservation] = useState(null);
   const [actionError, setActionError] = useState("");
+  const autoOpenedReservationRef = useRef(null);
 
   const list = props?.dayData?.byStatus?.[props.activeDayTab] || [];
+  const allReservationsOfDay = props?.dayData?.byStatus?.All || [];
 
   const openDetails = (reservation) => {
     setSelectedReservation(reservation);
@@ -26,7 +28,29 @@ export default function DayListReservationsWebapp(props) {
 
   const closeDetails = () => {
     setDetailsOpen(false);
+    props.clearFocusedReservationId?.();
   };
+
+  useEffect(() => {
+    const focusedReservationId = props?.focusedReservationId;
+
+    if (!focusedReservationId) {
+      autoOpenedReservationRef.current = null;
+      return;
+    }
+
+    if (autoOpenedReservationRef.current === focusedReservationId) return;
+
+    const targetReservation = allReservationsOfDay.find(
+      (reservation) =>
+        String(reservation?._id) === String(focusedReservationId),
+    );
+
+    if (!targetReservation) return;
+
+    autoOpenedReservationRef.current = focusedReservationId;
+    openDetails(targetReservation);
+  }, [allReservationsOfDay, props?.focusedReservationId]);
 
   // Actions depuis le drawer
   const handleDrawerAction = async (reservation, actionType) => {
@@ -67,7 +91,7 @@ export default function DayListReservationsWebapp(props) {
         );
 
         // ✅ succès -> on peut fermer (SSE met à jour)
-        setDetailsOpen(false);
+        closeDetails();
         return;
       } catch (e) {
         // ✅ slot plus dispo -> afficher DANS le drawer
@@ -81,7 +105,7 @@ export default function DayListReservationsWebapp(props) {
     }
 
     if (actionType === "edit") {
-      setDetailsOpen(false);
+      closeDetails();
       props.handleEditClick(reservation);
       return;
     }
@@ -90,12 +114,12 @@ export default function DayListReservationsWebapp(props) {
       actionType === "capture_bank_hold" ||
       actionType === "release_bank_hold"
     ) {
-      setDetailsOpen(false);
+      closeDetails();
       props.openModalForAction(reservation, actionType);
       return;
     }
 
-    setDetailsOpen(false);
+    closeDetails();
     props.openModalForAction(reservation, actionType);
   };
 
