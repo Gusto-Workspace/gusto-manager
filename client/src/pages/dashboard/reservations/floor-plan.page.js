@@ -73,6 +73,10 @@ export default function FloorPlanReservationsPage(props) {
                 dataLoading={restaurantContext.dataLoading}
                 restaurantData={restaurantContext.restaurantData}
                 setRestaurantData={restaurantContext.setRestaurantData}
+                reservations={restaurantContext.reservationsList}
+                refreshReservationsList={
+                  restaurantContext.refreshReservationsList
+                }
                 reservation={props.reservation}
               />
             ) : (
@@ -95,7 +99,7 @@ export async function getServerSideProps({ query, locale }) {
 
     if (reservationId) {
       const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/reservations/${reservationId}`
+        `${process.env.NEXT_PUBLIC_API_URL}/reservations/${reservationId}`,
       );
       reservation = response.data.reservation;
     }
