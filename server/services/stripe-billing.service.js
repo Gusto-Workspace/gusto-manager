@@ -6,6 +6,22 @@ function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function toTimestampSeconds(value) {
+  const numeric = Number(value || 0);
+  if (Number.isFinite(numeric) && numeric > 0) {
+    return Math.floor(numeric);
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.floor(parsed / 1000);
+    }
+  }
+
+  return 0;
+}
+
 function toIdString(value) {
   if (!value) return "";
   if (typeof value === "string") return value;
@@ -358,6 +374,26 @@ async function listSubscriptionMigrationChain({
   return chain;
 }
 
+function getSubscriptionVisibleHistoryStartAt(subscription) {
+  return Math.max(
+    toTimestampSeconds(subscription?.metadata?.payerHistoryVisibleSince),
+    toTimestampSeconds(subscription?.metadata?.transferTriggeredAt),
+  );
+}
+
+function invoiceBelongsToCurrentPayerHistory({ subscription, invoice }) {
+  if (!invoice?.id) return false;
+
+  const visibleHistoryStartAt =
+    getSubscriptionVisibleHistoryStartAt(subscription);
+
+  if (!visibleHistoryStartAt) {
+    return true;
+  }
+
+  return toTimestampSeconds(invoice?.created) >= visibleHistoryStartAt;
+}
+
 async function listSubscriptionInvoicesHistory({
   subscriptionId,
   maxDepth = 10,
@@ -368,6 +404,7 @@ async function listSubscriptionInvoicesHistory({
     maxDepth,
   });
   const invoiceMap = new Map();
+  const currentSubscription = chain[0] || null;
 
   for (const subscription of chain) {
     const invoices = await stripe.invoices.list({
@@ -377,6 +414,15 @@ async function listSubscriptionInvoicesHistory({
 
     invoices.data.forEach((invoice) => {
       if (!invoice?.id) return;
+      if (
+        currentSubscription &&
+        !invoiceBelongsToCurrentPayerHistory({
+          subscription: currentSubscription,
+          invoice,
+        })
+      ) {
+        return;
+      }
 
       invoiceMap.set(invoice.id, {
         ...invoice,
@@ -401,6 +447,7 @@ module.exports = {
   customerIsDedicatedToRestaurant,
   ensureRestaurantStripeCustomer,
   findRestaurantSubscription,
+  invoiceBelongsToCurrentPayerHistory,
   isStripeCustomerDedicatedToRestaurant,
   listSubscriptionInvoicesHistory,
   listSubscriptionMigrationChain,

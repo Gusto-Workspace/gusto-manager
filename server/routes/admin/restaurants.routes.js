@@ -454,6 +454,8 @@ router.put("/admin/restaurants/:id", async (req, res) => {
               pendingPayerOwnerName: "",
               previousPayerOwnerId: "",
               previousPayerOwnerName: "",
+              transferTriggeredAt: "",
+              payerHistoryVisibleSince: "",
             },
           },
         );
