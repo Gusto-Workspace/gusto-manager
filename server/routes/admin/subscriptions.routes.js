@@ -9,6 +9,7 @@ const {
   ensureRestaurantStripeCustomer,
   customerIsDedicatedToRestaurant,
   findRestaurantSubscription,
+  invoiceBelongsToCurrentPayerHistory,
   isStripeCustomerDedicatedToRestaurant,
   listSubscriptionInvoicesHistory,
   loadRestaurantBillingContext,
@@ -432,6 +433,7 @@ function serializePayerChangePreview(preview) {
         : "",
       currentPayerOwnerName:
         normalizeString(preview.subscription?.metadata?.payerOwnerName) ||
+        normalizeString(preview.subscription?.metadata?.previousPayerOwnerName) ||
         preview.sourceCustomer?.name ||
         "",
     },
@@ -752,9 +754,14 @@ router.get("/admin/all-subscriptions", authenticateToken, async (req, res) => {
             normalizeString(subscription?.metadata?.migratedFromSubscriptionId),
           ) || null;
         const displayInvoice =
-          subscription?.latest_invoice ||
-          migratedFromSubscription?.latest_invoice ||
-          null;
+          [subscription?.latest_invoice, migratedFromSubscription?.latest_invoice]
+            .filter(Boolean)
+            .find((invoice) =>
+              invoiceBelongsToCurrentPayerHistory({
+                subscription,
+                invoice,
+              }),
+            ) || null;
         const billingMode =
           restaurant &&
           customerIsDedicatedToRestaurant(customer, restaurant._id)
@@ -1095,6 +1102,8 @@ router.post("/admin/update-subscription-payer-sepa", async (req, res) => {
             pendingPayerOwnerName: "",
             previousPayerOwnerId: "",
             previousPayerOwnerName: "",
+            transferTriggeredAt: "",
+            payerHistoryVisibleSince: new Date().toISOString(),
           },
           owner: preview.owner,
         }),

@@ -243,6 +243,7 @@ export default function ChangePayerSubscriptionAdminComponent() {
   const isStep1Done = !!clientSecret;
   const isStep2Done = !!paymentMethodId;
   const isStep3Done = !!updateDone;
+  const chargesImmediately = preview?.subscription?.chargesImmediately !== false;
   const selectedProductLabel = useMemo(() => {
     const product = subscriptionProducts.find(
       (item) => item?.default_price?.id === selectedPriceId,
@@ -367,7 +368,7 @@ export default function ChangePayerSubscriptionAdminComponent() {
                       "Premier prélèvement",
                     )}{" "}
                     :{" "}
-                    {preview.subscription?.chargesImmediately
+                    {chargesImmediately
                       ? t(
                           "subscriptions.payerChange.immediate",
                           "Immédiat",
