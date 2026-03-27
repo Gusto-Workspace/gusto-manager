@@ -51,6 +51,9 @@ export default function RestaurantsPage(props) {
           : restaurant,
       ),
     );
+    adminContext.fetchRestaurantsList();
+    adminContext.fetchOwnersList();
+    adminContext.fetchOwnersSubscriptionsList();
     setSelectedRestaurant(null);
   }
 

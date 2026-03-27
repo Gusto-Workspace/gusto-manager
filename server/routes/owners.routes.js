@@ -11,6 +11,9 @@ const streamifier = require("streamifier");
 // MODELS
 const OwnerModel = require("../models/owner.model");
 const RestaurantModel = require("../models/restaurant.model");
+const {
+  stripeCustomerUsedByAnyRestaurant,
+} = require("../services/stripe-billing.service");
 
 // MIDDLEWARE
 const authenticateToken = require("../middleware/authentificate-token");
@@ -281,7 +284,10 @@ router.put(
       const token = jwt.sign(payload, process.env.JWT_SECRET);
 
       // Optional: keep Stripe in sync
-      if (owner.stripeCustomerId) {
+      if (
+        owner.stripeCustomerId &&
+        !(await stripeCustomerUsedByAnyRestaurant(owner.stripeCustomerId))
+      ) {
         try {
           await stripe.customers.update(owner.stripeCustomerId, {
             email: owner.email,

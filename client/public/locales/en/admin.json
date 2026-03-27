@@ -81,6 +81,11 @@
   "subscriptions": {
     "list": {
       "add": "Add a subscription",
+      "changePayer": "Change payer",
+      "payerUpdateNeeded": "Payer update needed",
+      "migrate": "Migrate",
+      "legacyCustomer": "Legacy customer",
+      "dedicatedCustomer": "Restaurant customer",
       "type": "Subscription type",
       "owner": "Owner",
       "restaurant": "Restaurant",
@@ -112,6 +117,59 @@
       "buttons": {
         "loading": "Creating...",
         "create": "Create subscription"
+      }
+    },
+    "migration": {
+      "title": "Migrate a legacy subscription",
+      "subtitle": "Create a restaurant-dedicated Stripe customer and move billing to it.",
+      "back": "Back to subscriptions",
+      "loading": "Loading migration...",
+      "source": "Source subscription",
+      "restaurant": "Restaurant",
+      "owner": "Current owner",
+      "customer": "Current Stripe customer",
+      "target": "Billing target",
+      "targetHint": "Future charges will run from the restaurant-dedicated Stripe customer.",
+      "flow": "A new SEPA mandate is collected for this restaurant. The old subscription is closed right after the new one is created, and the next charge restarts on the known renewal date.",
+      "step1": "Create SetupIntent",
+      "step2": "Confirm the new SEPA mandate",
+      "step3": "Migrate subscription",
+      "cta": "Start migration",
+      "done": "Migration completed. Redirecting shortly…",
+      "nextCharge": "Next charge",
+      "noNextCharge": "Immediate",
+      "errors": {
+        "preview": "Error while loading the migration",
+        "setup": "Error while creating the SetupIntent",
+        "migrate": "Error while migrating the subscription",
+        "paymentMethod": "No SEPA mandate confirmed yet. Please confirm the IBAN first."
+      }
+    },
+    "payerChange": {
+      "title": "Change the restaurant payer",
+      "subtitle": "Collect the new owner's SEPA mandate and apply it to the existing subscription.",
+      "back": "Back to subscriptions",
+      "loading": "Loading payer change...",
+      "source": "Current subscription",
+      "subscription": "Subscription to apply",
+      "restaurant": "Restaurant",
+      "owner": "New owner",
+      "currentPayer": "Current payer",
+      "target": "Expected new mandate",
+      "targetHint": "The SEPA mandate confirmed below will be used immediately to restart the restaurant billing cycle.",
+      "flow": "The restaurant keeps the same Stripe subscription, but the billing cycle restarts immediately under the new owner.",
+      "step1": "Create SetupIntent",
+      "step2": "Confirm the new SEPA mandate",
+      "step3": "Apply the new payer",
+      "cta": "Update payer",
+      "done": "The subscription payer has been updated. Redirecting shortly…",
+      "nextCharge": "First charge",
+      "immediate": "Immediate",
+      "errors": {
+        "preview": "Error while loading the payer change",
+        "setup": "Error while creating the SetupIntent",
+        "update": "Error while updating the payer",
+        "paymentMethod": "No SEPA mandate confirmed yet. Please confirm the IBAN first."
       }
     }
   }

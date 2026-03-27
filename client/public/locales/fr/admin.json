@@ -36,7 +36,7 @@
         "reservations": "Réservations",
         "takeAway": "Ventes à emporter",
         "healthControlPlan": "HACCP",
-        "customers" : "Fichier clients"
+        "customers": "Fichier clients"
       },
       "buttons": {
         "add": "Ajouter",
@@ -80,6 +80,11 @@
   "subscriptions": {
     "list": {
       "add": "Ajouter un abonnement",
+      "changePayer": "Changer le payeur",
+      "payerUpdateNeeded": "Payeur à mettre à jour",
+      "migrate": "Migrer",
+      "legacyCustomer": "Client legacy",
+      "dedicatedCustomer": "Client restaurant",
       "type": "Type abonnement",
       "owner": "Propriétaire",
       "restaurant": "Restaurant",
@@ -112,6 +117,59 @@
       "buttons": {
         "loading": "Création en cours...",
         "create": "Créer l'abonnement"
+      }
+    },
+    "migration": {
+      "title": "Migrer un abonnement legacy",
+      "subtitle": "Créer un client Stripe dédié au restaurant et basculer la facturation.",
+      "back": "Retour aux abonnements",
+      "loading": "Chargement de la migration...",
+      "source": "Abonnement source",
+      "restaurant": "Restaurant",
+      "owner": "Propriétaire actuel",
+      "customer": "Client Stripe actuel",
+      "target": "Cible de facturation",
+      "targetHint": "Le prélèvement futur partira depuis le client Stripe dédié au restaurant.",
+      "flow": "Un nouveau mandat SEPA est demandé pour ce restaurant. L'ancien abonnement est clôturé immédiatement après la création du nouveau, et le prochain prélèvement repart à la prochaine échéance connue.",
+      "step1": "Créer le SetupIntent",
+      "step2": "Confirmer le nouveau mandat SEPA",
+      "step3": "Migrer l'abonnement",
+      "cta": "Lancer la migration",
+      "done": "Migration terminée. Redirection dans un instant…",
+      "nextCharge": "Prochaine échéance",
+      "noNextCharge": "Immédiate",
+      "errors": {
+        "preview": "Erreur lors du chargement de la migration",
+        "setup": "Erreur lors de la création du SetupIntent",
+        "migrate": "Erreur lors de la migration de l'abonnement",
+        "paymentMethod": "Aucun mandat SEPA confirmé. Veuillez d'abord confirmer l’IBAN."
+      }
+    },
+    "payerChange": {
+      "title": "Changer le payeur du restaurant",
+      "subtitle": "Collecter le mandat SEPA du nouveau propriétaire et l'appliquer à l'abonnement existant.",
+      "back": "Retour aux abonnements",
+      "loading": "Chargement du changement de payeur...",
+      "source": "Abonnement actuel",
+      "subscription": "Abonnement à appliquer",
+      "restaurant": "Restaurant",
+      "owner": "Nouveau propriétaire",
+      "currentPayer": "Payeur actuel",
+      "target": "Nouveau mandat attendu",
+      "targetHint": "Le mandat SEPA confirmé ci-dessous sera utilisé immédiatement pour redémarrer la facturation du restaurant.",
+      "flow": "Le restaurant conserve son abonnement Stripe, mais le cycle de facturation est relancé immédiatement au nom du nouveau propriétaire.",
+      "step1": "Créer le SetupIntent",
+      "step2": "Confirmer le nouveau mandat SEPA",
+      "step3": "Appliquer le nouveau payeur",
+      "cta": "Mettre à jour le payeur",
+      "done": "Le payeur de l’abonnement a été mis à jour. Redirection dans un instant…",
+      "nextCharge": "Premier prélèvement",
+      "immediate": "Immédiat",
+      "errors": {
+        "preview": "Erreur lors du chargement du changement de payeur",
+        "setup": "Erreur lors de la création du SetupIntent",
+        "update": "Erreur lors de la mise à jour du payeur",
+        "paymentMethod": "Aucun mandat SEPA confirmé. Veuillez d'abord confirmer l’IBAN."
       }
     }
   }

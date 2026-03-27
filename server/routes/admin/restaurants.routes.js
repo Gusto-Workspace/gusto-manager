@@ -8,12 +8,87 @@ const authenticateToken = require("../../middleware/authentificate-token");
 // MODELS
 const RestaurantModel = require("../../models/restaurant.model");
 const OwnerModel = require("../../models/owner.model");
+const {
+  ensureRestaurantStripeCustomer,
+  findRestaurantSubscription,
+  isStripeCustomerDedicatedToRestaurant,
+} = require("../../services/stripe-billing.service");
 
 // CRYPTO
 const {
   encryptApiKey,
   decryptApiKey,
 } = require("../../services/encryption.service");
+
+function normalizeString(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function buildOwnerName(owner = {}) {
+  return [owner?.firstname, owner?.lastname]
+    .map((part) => normalizeString(part))
+    .filter(Boolean)
+    .join(" ");
+}
+
+async function backfillSingleRestaurantOwnerCustomer(owner) {
+  if (!owner?.stripeCustomerId) return;
+
+  const restaurantIds = Array.isArray(owner.restaurants)
+    ? owner.restaurants
+    : [];
+  if (restaurantIds.length !== 1) return;
+
+  const legacyRestaurant = await RestaurantModel.findById(restaurantIds[0]);
+  if (!legacyRestaurant || legacyRestaurant.stripeCustomerId) return;
+
+  legacyRestaurant.stripeCustomerId = owner.stripeCustomerId;
+  await legacyRestaurant.save();
+
+  try {
+    await ensureRestaurantStripeCustomer({
+      restaurant: legacyRestaurant,
+      owner,
+      createIfMissing: false,
+      syncExisting: true,
+    });
+  } catch (error) {
+    console.warn(
+      "[stripe-billing] impossible de synchroniser le customer legacy du restaurant:",
+      error?.message || error,
+    );
+  }
+}
+
+async function assertRestaurantTransferBillingIsSafe(restaurant) {
+  if (!restaurant?._id) return;
+
+  const { subscription, stripeCustomerId } = await findRestaurantSubscription({
+    restaurantId: restaurant._id,
+  });
+
+  if (!subscription) return;
+
+  const isDedicatedRestaurantCustomer =
+    await isStripeCustomerDedicatedToRestaurant({
+      stripeCustomerId,
+      restaurantId: restaurant._id,
+    });
+
+  if (isDedicatedRestaurantCustomer) {
+    return {
+      subscription,
+      stripeCustomerId,
+      isDedicatedRestaurantCustomer: true,
+    };
+  }
+
+  const error = new Error(
+    "Transfert bloqué : ce restaurant a encore un abonnement Stripe rattaché à un client partagé. Il faut d'abord migrer sa facturation vers un client Stripe dédié.",
+  );
+  error.statusCode = 409;
+  throw error;
+}
 
 // GET STRIPE KEY FOR A SPECIFIC RESTAURANT
 router.get("/admin/restaurants/:id/stripe-key", async (req, res) => {
@@ -71,6 +146,8 @@ router.post("/admin/add-restaurant", async (req, res) => {
       if (!owner) {
         return res.status(404).json({ message: "Propriétaire non trouvé" });
       }
+
+      await backfillSingleRestaurantOwnerCustomer(owner);
     } else {
       owner = new OwnerModel({
         firstname: ownerData.firstname,
@@ -148,6 +225,21 @@ router.post("/admin/add-restaurant", async (req, res) => {
     owner.restaurants.push(newRestaurant._id);
     await owner.save();
 
+    try {
+      await ensureRestaurantStripeCustomer({
+        restaurantId: newRestaurant._id,
+        billingAddress: restaurantData.address,
+        phone: restaurantData.phone,
+        language: restaurantData.language,
+        syncExisting: true,
+      });
+    } catch (error) {
+      console.warn(
+        "[stripe-billing] impossible d'initialiser le customer du restaurant:",
+        error?.message || error,
+      );
+    }
+
     const populatedRestaurant = await RestaurantModel.findById(
       newRestaurant._id,
     ).populate("owner_id", "firstname lastname email");
@@ -174,18 +266,27 @@ router.put("/admin/restaurants/:id", async (req, res) => {
     }
 
     let previousOwner = null;
-    let newOwner = null;
+    let currentOwner = null;
+    let shouldEnsureRestaurantCustomer = false;
+    let syncRestaurantCustomerAfterSave = false;
+    let transferBillingContext = null;
+    let payerChange = null;
 
     if (
       existingOwnerId &&
       existingOwnerId !== restaurant.owner_id?.toString()
     ) {
-      newOwner = await OwnerModel.findById(existingOwnerId);
-      if (!newOwner) {
+      transferBillingContext =
+        await assertRestaurantTransferBillingIsSafe(restaurant);
+
+      currentOwner = await OwnerModel.findById(existingOwnerId);
+      if (!currentOwner) {
         return res
           .status(404)
           .json({ message: "Nouveau propriétaire non trouvé" });
       }
+
+      await backfillSingleRestaurantOwnerCustomer(currentOwner);
 
       if (restaurant.owner_id) {
         previousOwner = await OwnerModel.findById(restaurant.owner_id);
@@ -197,16 +298,21 @@ router.put("/admin/restaurants/:id", async (req, res) => {
           await previousOwner.save();
         }
       }
-      newOwner.restaurants.push(restaurant._id);
-      await newOwner.save();
+      currentOwner.restaurants.push(restaurant._id);
+      await currentOwner.save();
 
-      restaurant.owner_id = newOwner._id;
+      restaurant.owner_id = currentOwner._id;
+      shouldEnsureRestaurantCustomer = true;
+      syncRestaurantCustomerAfterSave = true;
     } else if (!existingOwnerId && ownerData && ownerData.firstname) {
+      transferBillingContext =
+        await assertRestaurantTransferBillingIsSafe(restaurant);
+
       if (restaurant.owner_id) {
         previousOwner = await OwnerModel.findById(restaurant.owner_id);
       }
 
-      const newOwnerData = new OwnerModel({
+      currentOwner = new OwnerModel({
         firstname: ownerData.firstname,
         lastname: ownerData.lastname,
         email: ownerData.email,
@@ -214,18 +320,18 @@ router.put("/admin/restaurants/:id", async (req, res) => {
         phoneNumber: ownerData.phoneNumber,
       });
 
-      await newOwnerData.save();
+      await currentOwner.save();
 
       const customer = await stripe.customers.create({
-        email: newOwnerData.email,
-        name: `${newOwnerData.firstname} ${newOwnerData.lastname}`,
+        email: currentOwner.email,
+        name: `${currentOwner.firstname} ${currentOwner.lastname}`,
         metadata: {
-          owner_id: newOwnerData._id.toString(),
+          owner_id: currentOwner._id.toString(),
         },
       });
 
-      newOwnerData.stripeCustomerId = customer.id;
-      await newOwnerData.save();
+      currentOwner.stripeCustomerId = customer.id;
+      await currentOwner.save();
 
       if (previousOwner) {
         previousOwner.restaurants = previousOwner.restaurants.filter(
@@ -235,9 +341,20 @@ router.put("/admin/restaurants/:id", async (req, res) => {
         await previousOwner.save();
       }
 
-      restaurant.owner_id = newOwnerData._id;
-      newOwnerData.restaurants.push(restaurant._id);
-      await newOwnerData.save();
+      restaurant.owner_id = currentOwner._id;
+      currentOwner.restaurants.push(restaurant._id);
+      await currentOwner.save();
+      shouldEnsureRestaurantCustomer = true;
+      syncRestaurantCustomerAfterSave = true;
+    } else {
+      currentOwner = await OwnerModel.findById(restaurant.owner_id);
+      const ownerRestaurantCount = Array.isArray(currentOwner?.restaurants)
+        ? currentOwner.restaurants.length
+        : 0;
+
+      shouldEnsureRestaurantCustomer =
+        Boolean(restaurant.stripeCustomerId) || ownerRestaurantCount <= 1;
+      syncRestaurantCustomerAfterSave = shouldEnsureRestaurantCustomer;
     }
 
     // Mise à jour des informations du restaurant
@@ -285,6 +402,88 @@ router.put("/admin/restaurants/:id", async (req, res) => {
 
     await restaurant.save();
 
+    if (shouldEnsureRestaurantCustomer && currentOwner) {
+      try {
+        await ensureRestaurantStripeCustomer({
+          restaurantId: restaurant._id,
+          billingAddress: restaurantData.address,
+          phone: restaurantData.phone,
+          language: restaurantData.language,
+          createIfMissing: true,
+          syncExisting: syncRestaurantCustomerAfterSave,
+        });
+      } catch (error) {
+        console.warn(
+          "[stripe-billing] impossible de synchroniser le customer du restaurant:",
+          error?.message || error,
+        );
+      }
+    }
+
+    const transferredWithDedicatedSubscription =
+      Boolean(transferBillingContext?.subscription?.id) &&
+      Boolean(transferBillingContext?.isDedicatedRestaurantCustomer) &&
+      previousOwner &&
+      currentOwner &&
+      previousOwner._id?.toString() !== currentOwner._id?.toString();
+
+    if (transferredWithDedicatedSubscription) {
+      const subscriptionMetadata = {
+        ...(transferBillingContext.subscription.metadata || {}),
+      };
+      const currentOwnerId = currentOwner._id.toString();
+      const currentOwnerName = buildOwnerName(currentOwner);
+      const currentPayerOwnerId = normalizeString(
+        subscriptionMetadata.payerOwnerId,
+      );
+
+      const payerAlreadyMatchesOwner =
+        currentPayerOwnerId && currentPayerOwnerId === currentOwnerId;
+
+      if (payerAlreadyMatchesOwner) {
+        await stripe.subscriptions.update(
+          transferBillingContext.subscription.id,
+          {
+            metadata: {
+              ...subscriptionMetadata,
+              payerOwnerId: currentOwnerId,
+              payerOwnerName: currentOwnerName,
+              payerOwnerEmail: normalizeString(currentOwner.email),
+              payerChangeRequired: "false",
+              pendingPayerOwnerId: "",
+              pendingPayerOwnerName: "",
+              previousPayerOwnerId: "",
+              previousPayerOwnerName: "",
+            },
+          },
+        );
+      } else {
+        await stripe.subscriptions.update(
+          transferBillingContext.subscription.id,
+          {
+            metadata: {
+              ...subscriptionMetadata,
+              payerChangeRequired: "true",
+              pendingPayerOwnerId: currentOwnerId,
+              pendingPayerOwnerName: currentOwnerName,
+              previousPayerOwnerId:
+                currentPayerOwnerId || previousOwner._id?.toString() || "",
+              previousPayerOwnerName:
+                normalizeString(subscriptionMetadata.payerOwnerName) ||
+                buildOwnerName(previousOwner),
+              transferTriggeredAt: new Date().toISOString(),
+            },
+          },
+        );
+
+        payerChange = {
+          required: true,
+          restaurantId: restaurant._id.toString(),
+          subscriptionId: transferBillingContext.subscription.id,
+        };
+      }
+    }
+
     const updatedRestaurant = await RestaurantModel.findById(
       restaurant._id,
     ).populate("owner_id", "firstname lastname email");
@@ -292,10 +491,14 @@ router.put("/admin/restaurants/:id", async (req, res) => {
     res.status(200).json({
       message: "Restaurant mis à jour avec succès",
       restaurant: updatedRestaurant,
+      payerChangeRequired: Boolean(payerChange?.required),
+      payerChange,
     });
   } catch (error) {
     console.error("Erreur lors de la mise à jour du restaurant:", error);
-    res.status(500).json({ message: "Erreur interne du serveur" });
+    res
+      .status(error?.statusCode || 500)
+      .json({ message: error?.message || "Erreur interne du serveur" });
   }
 });
 
