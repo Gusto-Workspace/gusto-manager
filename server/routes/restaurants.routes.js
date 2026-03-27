@@ -14,6 +14,10 @@ const EmployeeModel = require("../models/employee.model");
 const {
   refreshGiftCardLifecycle,
 } = require("../services/gift-card-lifecycle.service");
+const {
+  findRestaurantSubscription,
+  listSubscriptionInvoicesHistory,
+} = require("../services/stripe-billing.service");
 
 // Ajoute le restaurant dans employee.restaurants s'il n'y est pas déjà
 function ensureEmployeeRestaurantLink(employee, restaurantId) {
@@ -256,29 +260,20 @@ router.get("/restaurants/:id", async (req, res) => {
   }
 });
 
-// GET CURRENT SUBSCRIPTION FOR A RESTAURANT BY CUSTOMER ID
+// GET CURRENT SUBSCRIPTION FOR A RESTAURANT
 router.get("/restaurant-subscription", authenticateToken, async (req, res) => {
   const { restaurantId } = req.query;
-  const stripeCustomerId = req.user?.stripeCustomerId;
-
-  if (!stripeCustomerId) {
-    return res.status(400).json({
-      message:
-        "stripeCustomerId est manquant dans les informations d'utilisateur.",
-    });
+  if (!restaurantId) {
+    return res
+      .status(400)
+      .json({ message: "restaurantId est requis pour cette requête." });
   }
 
   try {
-    // Récupère les abonnements spécifiques au client
-    const subscriptions = await stripe.subscriptions.list({
-      customer: stripeCustomerId,
-      expand: ["data.items.data.price"], // Expansion nécessaire
-    });
-
-    // Cherche l'abonnement correspondant dans les métadonnées
-    const restaurantSubscription = subscriptions.data.find(
-      (subscription) => subscription.metadata.restaurantId === restaurantId,
-    );
+    const { subscription: restaurantSubscription } =
+      await findRestaurantSubscription({
+        restaurantId,
+      });
 
     if (!restaurantSubscription) {
       return res
@@ -286,22 +281,29 @@ router.get("/restaurant-subscription", authenticateToken, async (req, res) => {
         .json({ message: "Aucun abonnement trouvé pour ce restaurant." });
     }
 
+    const hydratedSubscription = await stripe.subscriptions.retrieve(
+      restaurantSubscription.id,
+      {
+        expand: ["items.data.price"],
+      },
+    );
+
     // Récupère l'ID du produit associé à l'abonnement
-    const price = restaurantSubscription.items.data[0].price;
+    const price = hydratedSubscription.items.data[0].price;
     const product = await stripe.products.retrieve(price.product);
 
     // Récupérer les factures associées à l'abonnement
-    const invoices = await stripe.invoices.list({
-      subscription: restaurantSubscription.id,
-      limit: 100, // Ajustez cette limite si nécessaire
+    const invoices = await listSubscriptionInvoicesHistory({
+      subscriptionId: hydratedSubscription.id,
+      limitPerSubscription: 100,
     });
 
     const subscriptionDetails = {
       name: product.name,
       amount: price.unit_amount / 100,
       currency: price.currency.toUpperCase(),
-      status: restaurantSubscription.status,
-      invoices: invoices.data.map((invoice) => ({
+      status: hydratedSubscription.status,
+      invoices: invoices.map((invoice) => ({
         id: invoice.id,
         amount_due: invoice.amount_due / 100,
         currency: invoice.currency.toUpperCase(),
@@ -314,9 +316,10 @@ router.get("/restaurant-subscription", authenticateToken, async (req, res) => {
     res.status(200).json({ subscription: subscriptionDetails });
   } catch (error) {
     console.error("Erreur lors de la récupération de l'abonnement:", error);
-    res
-      .status(500)
-      .json({ message: "Erreur lors de la récupération de l'abonnement" });
+    res.status(error?.statusCode || 500).json({
+      message:
+        error?.message || "Erreur lors de la récupération de l'abonnement",
+    });
   }
 });
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useRouter } from "next/router";
 
 // REACT HOOK FORM
 import { useForm } from "react-hook-form";
@@ -21,10 +22,12 @@ const CLOSE_MS = 250;
 
 export default function AddRestaurantModal(props) {
   const { t } = useTranslation("admin");
+  const router = useRouter();
 
   const [owners, setOwners] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showStripeKey, setShowStripeKey] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   // ✅ animation (mobile only thanks to tablet: overrides)
   const [isVisible, setIsVisible] = useState(false);
@@ -147,6 +150,7 @@ export default function AddRestaurantModal(props) {
 
     try {
       setLoading(true);
+      setSubmitError("");
 
       const payload = {
         restaurantData,
@@ -163,6 +167,18 @@ export default function AddRestaurantModal(props) {
           payload,
         );
         props.handleEditRestaurant(response.data.restaurant);
+
+        if (response.data.payerChangeRequired && response.data.payerChange) {
+          setLoading(false);
+          closeWithAnimation();
+
+          setTimeout(() => {
+            router.push(
+              `/dashboard/admin/subscriptions/change-payer/${response.data.payerChange.restaurantId}`,
+            );
+          }, CLOSE_MS);
+          return;
+        }
       } else {
         response = await axios.post(
           `${process.env.NEXT_PUBLIC_API_URL}/admin/add-restaurant`,
@@ -175,6 +191,10 @@ export default function AddRestaurantModal(props) {
       closeWithAnimation();
     } catch (error) {
       console.error("Erreur lors de l'ajout/mise à jour du restaurant:", error);
+      setSubmitError(
+        error?.response?.data?.message ||
+          "Erreur lors de l'ajout ou de la mise à jour du restaurant.",
+      );
       setLoading(false);
     }
   }
@@ -254,6 +274,12 @@ export default function AddRestaurantModal(props) {
             onSubmit={handleSubmit(onSubmit)}
             className="flex flex-col gap-4"
           >
+            {submitError ? (
+              <div className="rounded-xl border border-red/20 bg-red/10 px-4 py-3 text-sm text-red">
+                {submitError}
+              </div>
+            ) : null}
+
             {/* CARD: Restaurant */}
             <div className="rounded-2xl bg-white/70 border border-darkBlue/10 p-4">
               <div className="flex items-center gap-2 mb-3">
@@ -373,7 +399,7 @@ export default function AddRestaurantModal(props) {
                     key: "reservations",
                     label: t("restaurants.form.options.reservations"),
                   },
-                   {
+                  {
                     key: "customers",
                     label: t("restaurants.form.options.customers"),
                   },

@@ -1,5 +1,5 @@
 import { useRouter } from "next/router";
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import axios from "axios";
 import { useTranslation } from "next-i18next";
 
@@ -15,11 +15,10 @@ import {
   Mail,
   Store,
   Loader2,
-  ChevronDown,
   ExternalLink,
   AlertTriangle,
   Tag,
-  X,
+  RefreshCcw,
 } from "lucide-react";
 import InvoicesDrawerSubscriptionsComponent from "./invoices-drawer-subscriptions.admin.component";
 
@@ -50,6 +49,14 @@ export default function ListSubscriptionsAdminComponent(props) {
 
   function handleAddClick() {
     router.push(`/dashboard/admin/subscriptions/add`);
+  }
+
+  function handleMigrationClick(subscriptionId) {
+    router.push(`/dashboard/admin/subscriptions/migrate/${subscriptionId}`);
+  }
+
+  function handleChangePayerClick(restaurantId) {
+    router.push(`/dashboard/admin/subscriptions/change-payer/${restaurantId}`);
   }
 
   const fmtStripeDate = (seconds) => {
@@ -155,10 +162,11 @@ export default function ListSubscriptionsAdminComponent(props) {
         ) : (
           <ul className="grid grid-cols-1 gap-3 midTablet:grid-cols-2 desktop:grid-cols-3">
             {subscriptions.map((sub) => {
-              const lastInvoice = sub?.latest_invoice || null;
-              const st = statusUi(lastInvoice?.status);
+              const displayInvoiceStatus = sub?.displayInvoiceStatus || "";
+              const st = displayInvoiceStatus
+                ? statusUi(displayInvoiceStatus)
+                : null;
               const isLoadingInv = loadingInvoicesId === sub.id;
-              const isSelected = selectedSubId === sub.id;
 
               return (
                 <li
@@ -179,7 +187,7 @@ export default function ListSubscriptionsAdminComponent(props) {
                         </h2>
                         <p className="text-xs text-darkBlue/50 truncate">
                           {t("subscriptions.list.owner")} :{" "}
-                          {lastInvoice?.customer_name || "-"}
+                          {sub.displayOwnerName || "-"}
                         </p>
                       </div>
                     </div>
@@ -210,26 +218,56 @@ export default function ListSubscriptionsAdminComponent(props) {
                   </span>
 
                   <div className="flex flex-col gap-2">
-                    {lastInvoice?.status && (
+                    {st && (
                       <span className="inline-flex items-center gap-2 pt-2 text-xs font-semibold text-darkBlue">
                         <Receipt className="size-3.5 text-darkBlue/50" />
                         <span className={st.cls}>{st.label}</span>
                       </span>
                     )}
 
+                    <span
+                      className={`
+                        w-fit inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold
+                        ${
+                          sub.billingMode === "legacy_customer"
+                            ? "border-orange/20 bg-orange/10 text-orange"
+                            : "border-green/20 bg-green/10 text-green"
+                        }
+                      `}
+                    >
+                      {sub.billingMode === "legacy_customer"
+                        ? t(
+                            "subscriptions.list.legacyCustomer",
+                            "Client legacy",
+                          )
+                        : t(
+                            "subscriptions.list.dedicatedCustomer",
+                            "Client restaurant",
+                          )}
+                    </span>
+
+                    {sub.payerChangeRequired && (
+                      <span className="w-fit inline-flex items-center gap-2 rounded-full border border-red/20 bg-red/10 px-3 py-1 text-xs font-semibold text-red">
+                        {t(
+                          "subscriptions.list.payerUpdateNeeded",
+                          "Payeur à mettre à jour",
+                        )}
+                      </span>
+                    )}
+
                     <div className="flex items-start gap-2 text-sm text-darkBlue/80">
                       <Mail className="size-4 mt-0.5 text-darkBlue/40" />
                       <p className="min-w-0 truncate">
-                        {lastInvoice?.customer_email || "-"}
+                        {sub.displayCustomerEmail || "-"}
                       </p>
                     </div>
 
-                    {lastInvoice?.created ? (
+                    {sub.displayLastInvoiceAt ? (
                       <div className="flex items-start gap-2 text-sm text-darkBlue/80">
                         <Calendar className="size-4 mt-0.5 text-darkBlue/40" />
                         <p className="min-w-0 truncate">
                           {t("subscriptions.list.lastInvoice")} :{" "}
-                          {fmtStripeDate(lastInvoice.created)}
+                          {fmtStripeDate(sub.displayLastInvoiceAt)}
                         </p>
                       </div>
                     ) : (
@@ -239,6 +277,26 @@ export default function ListSubscriptionsAdminComponent(props) {
                       </div>
                     )}
                   </div>
+
+                  {sub.migrationAvailable && (
+                    <button
+                      onClick={() => handleMigrationClick(sub.id)}
+                      className="mt-1 inline-flex items-center justify-center gap-2 rounded-xl border border-orange/20 bg-orange/10 px-3 py-2 text-sm font-semibold text-orange transition hover:bg-orange/15"
+                    >
+                      <RefreshCcw className="size-4" />
+                      {t("subscriptions.list.migrate", "Migrer")}
+                    </button>
+                  )}
+
+                  {sub.payerChangeRequired && sub.restaurantId && (
+                    <button
+                      onClick={() => handleChangePayerClick(sub.restaurantId)}
+                      className="mt-1 inline-flex items-center justify-center gap-2 rounded-xl border border-red/20 bg-red/10 px-3 py-2 text-sm font-semibold text-red transition hover:bg-red/15"
+                    >
+                      <RefreshCcw className="size-4" />
+                      {t("subscriptions.list.changePayer", "Changer le payeur")}
+                    </button>
+                  )}
                 </li>
               );
             })}

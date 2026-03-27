@@ -133,7 +133,7 @@ export default function AddSubscriptionsAdminComponent() {
     try {
       const res = await axios.post(
         `${process.env.NEXT_PUBLIC_API_URL}/admin/create-setup-intent`,
-        { stripeCustomerId: selectedOwner.stripeCustomerId },
+        { restaurantId: selectedRestaurantId },
       );
       setClientSecret(res.data.clientSecret);
     } catch (err) {
@@ -168,7 +168,6 @@ export default function AddSubscriptionsAdminComponent() {
       await axios.post(
         `${process.env.NEXT_PUBLIC_API_URL}/admin/create-subscription-sepa`,
         {
-          stripeCustomerId: selectedOwner.stripeCustomerId,
           priceId: selectedPriceId,
           paymentMethodId,
           billingAddress: restaurantData.address,

@@ -5,6 +5,9 @@ const stripe = require("stripe")(process.env.STRIPE_API_SECRET_KEY);
 // MODELS
 const OwnerModel = require("../../models/owner.model");
 const RestaurantModel = require("../../models/restaurant.model");
+const {
+  stripeCustomerUsedByAnyRestaurant,
+} = require("../../services/stripe-billing.service");
 
 // OWNERS LIST
 router.get("/admin/owners", async (req, res) => {
@@ -57,7 +60,10 @@ router.put("/admin/owners/:id", async (req, res) => {
     await owner.save();
 
     // Vérifier si le propriétaire a un client Stripe
-    if (owner.stripeCustomerId) {
+    if (
+      owner.stripeCustomerId &&
+      !(await stripeCustomerUsedByAnyRestaurant(owner.stripeCustomerId))
+    ) {
       // Mettre à jour le client Stripe avec les nouvelles informations du propriétaire
       try {
         await stripe.customers.update(owner.stripeCustomerId, {
@@ -77,8 +83,7 @@ router.put("/admin/owners/:id", async (req, res) => {
 
     // Retourner le propriétaire mis à jour
     res.status(200).json({
-      message:
-        "Propriétaire mis à jour avec succès, et informations Stripe mises à jour",
+      message: "Propriétaire mis à jour avec succès",
       owner,
     });
   } catch (error) {
@@ -139,16 +144,34 @@ router.delete("/admin/owners/:id", async (req, res) => {
 
     // 2. Supprimer le client de Stripe si l'ID Stripe existe
     if (owner.stripeCustomerId) {
-      try {
-        await stripe.customers.del(owner.stripeCustomerId);
-      } catch (stripeError) {
-        console.error(
-          "Erreur lors de la suppression du client Stripe:",
-          stripeError
-        );
-        return res
-          .status(500)
-          .json({ message: "Erreur lors de la suppression du client Stripe" });
+      await RestaurantModel.updateMany(
+        {
+          owner_id: req.params.id,
+          $or: [
+            { stripeCustomerId: { $exists: false } },
+            { stripeCustomerId: null },
+            { stripeCustomerId: "" },
+          ],
+        },
+        { stripeCustomerId: owner.stripeCustomerId },
+      );
+
+      const customerStillUsed = await stripeCustomerUsedByAnyRestaurant(
+        owner.stripeCustomerId,
+      );
+
+      if (!customerStillUsed) {
+        try {
+          await stripe.customers.del(owner.stripeCustomerId);
+        } catch (stripeError) {
+          console.error(
+            "Erreur lors de la suppression du client Stripe:",
+            stripeError
+          );
+          return res.status(500).json({
+            message: "Erreur lors de la suppression du client Stripe",
+          });
+        }
       }
     }
 
