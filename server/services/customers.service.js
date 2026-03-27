@@ -1,5 +1,6 @@
 // services/customers.service.js
 const CustomerModel = require("../models/customer.model");
+const { recomputeCustomerTagsForId } = require("./customer-tags.service");
 
 function normEmail(v) {
   const s = String(v || "")
@@ -129,6 +130,8 @@ async function onReservationCreated(customerId, reservation) {
       },
     },
   );
+
+  await recomputeCustomerTagsForId(customerId, now);
 }
 
 // ✅ Quand le statut change (pour canceled)
@@ -177,6 +180,8 @@ async function onReservationStatusChanged(
     { _id: customerId, "stats.reservationsCanceled": { $lt: 0 } },
     { $set: { "stats.reservationsCanceled": 0 } },
   );
+
+  await recomputeCustomerTagsForId(customerId, now);
 }
 
 // ✅ Stats + mini-historique (gift purchase)
@@ -209,6 +214,8 @@ async function onGiftPurchased(customerId, purchaseSubdoc) {
       },
     },
   );
+
+  await recomputeCustomerTagsForId(customerId, now);
 }
 
 module.exports = {

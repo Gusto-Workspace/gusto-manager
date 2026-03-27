@@ -7,12 +7,13 @@ import {
   Search,
   LayoutGrid,
   X,
+  Filter,
 } from "lucide-react";
 
 // I18N
 import { useTranslation } from "next-i18next";
 
-export default function DayHeaderReservationsComponent(props) {
+export default function DayToolbarReservationsComponent(props) {
   const { t } = useTranslation("reservations");
   if (!props.selectedDay) return null;
 
@@ -159,19 +160,22 @@ export default function DayHeaderReservationsComponent(props) {
               className="min-h-[30px] min-w-[30px]"
               fillColor="#131E3690"
             />
-            <h1 className="pl-2 text-xl tablet:text-2xl flex gap-1 items-center midTablet:gap-2">
-              <span
-                className="cursor-pointer hover:underline"
-                onClick={() => {
-                  props.setSelectedDay(null);
-                }}
-              >
-                {t("titles.main")}
+
+            <div className="flex flex-col">
+              <h1 className="pl-2 text-xl flex-wrap tablet:text-2xl flex items-center gap-2">
+                <span
+                  className="cursor-pointer hover:underline"
+                  onClick={() => {
+                    props.setSelectedDay(null);
+                  }}
+                >
+                  {t("titles.main")}
+                </span>
+              </h1>
+              <span className="pl-2 font-normal text-xs opacity-70">
+                {dateStrLong}
               </span>
-              <span className="font-normal text-sm opacity-70 mt-0.5 midTablet:mt-1">
-                - {dateStrLong}
-              </span>
-            </h1>
+            </div>
           </div>
 
           <div className="flex gap-1">
@@ -201,42 +205,25 @@ export default function DayHeaderReservationsComponent(props) {
             >
               <Plus className="size-4" />
             </button>
-          </div>
-        </div>
 
-        {/* Ligne 2 */}
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => {
                 props.setSelectedDay(null);
                 props.setSearchTerm("");
                 props.keepFocus(props.calendarSearchRef);
               }}
-              className="px-3 py-2 rounded-lg border border-[#131E3690] bg-white flex items-center gap-2"
+              className="ml-6 inline-flex items-center gap-2 rounded-lg border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition px-4 py-2 text-sm font-semibold text-darkBlue"
+              aria-label={t("calendar.back", "Retour au calendrier")}
               title={t("calendar.back", "Retour au calendrier")}
             >
-              <ChevronLeft className="w-4 h-4" />
-              <span>{t("calendar.back", "Retour au calendrier")}</span>
+              <ChevronLeft className="size-4 text-darkBlue/60" />
+              Retour
             </button>
-
-            <label className="sr-only" htmlFor="day-status-select">
-              {t("list.status.filter", "Filtrer par statut")}
-            </label>
-            <select
-              id="day-status-select"
-              value={props.activeDayTab}
-              onChange={(e) => props.setActiveDayTab(e.target.value)}
-              className="h-10 px-3 rounded-lg border border-[#131E3690] bg-white"
-            >
-              {props.dayStatusTabs.map((s) => (
-                <option key={s} value={s}>
-                  {props.statusTranslations[s]} ({props.dayData.counts[s] || 0})
-                </option>
-              ))}
-            </select>
           </div>
+        </div>
 
+        {/* Ligne 2 */}
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <div className="flex items-center relative gap-2 bg-white border border-darkBlue/10 rounded-2xl px-3 py-2 w-full tablet:w-[320px] shadow-sm">
             <Search className="size-4 text-darkBlue/40" />
 
@@ -261,6 +248,26 @@ export default function DayHeaderReservationsComponent(props) {
                 &times;
               </button>
             )}
+          </div>
+
+          <label className="sr-only" htmlFor="day-status-select">
+            {t("list.status.filter", "Filtrer par statut")}
+          </label>
+          <div className="flex items-center gap-2 bg-white border border-darkBlue/10 rounded-2xl px-3 py-2 shadow-sm">
+            <Filter className="size-4 text-darkBlue/40" />
+
+            <select
+              id="day-status-select"
+              value={props.activeDayTab}
+              onChange={(e) => props.setActiveDayTab(e.target.value)}
+              className="bg-white outline-none text-sm text-darkBlue"
+            >
+              {props.dayStatusTabs.map((s) => (
+                <option key={s} value={s}>
+                  {props.statusTranslations[s]} ({props.dayData.counts[s] || 0})
+                </option>
+              ))}
+            </select>
           </div>
         </div>
       </div>

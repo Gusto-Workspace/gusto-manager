@@ -17,6 +17,7 @@ import {
   Crown,
   RotateCcw,
   UserX,
+  PlusCircle,
   LoaderCircle,
 } from "lucide-react";
 
@@ -58,6 +59,11 @@ function getInitials(firstName, lastName) {
 }
 
 const TAGS_UI = {
+  new: {
+    label: "Nouveau",
+    cls: "bg-violet/10 text-violet border-violet/20",
+    Icon: PlusCircle,
+  },
   regular: {
     label: "Régulier",
     cls: "bg-blue/10 text-blue border-blue/20",

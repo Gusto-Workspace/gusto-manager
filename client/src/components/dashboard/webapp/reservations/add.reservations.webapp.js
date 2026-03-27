@@ -151,8 +151,20 @@ function isBlockingReservationFront(r) {
 function requiredTableSizeFromGuestsFront(n) {
   const g = Number(n || 0);
   if (g <= 0) return 0;
-  if (g === 1) return 1;
   return g % 2 === 0 ? g : g + 1;
+}
+
+function getEligibleSingleTableSeatSizesFromGuestsFront(n) {
+  const g = Number(n || 0);
+  if (!Number.isFinite(g) || g <= 0) return [];
+  if (g === 1) return [1, 2];
+  return [requiredTableSizeFromGuestsFront(g)];
+}
+
+function getRequiredCombinedTableSizeFromGuestsFront(n) {
+  const g = Number(n || 0);
+  if (!Number.isFinite(g) || g <= 1) return 0;
+  return requiredTableSizeFromGuestsFront(g);
 }
 
 function normalizeBookingPriorityFront(value) {
@@ -254,10 +266,14 @@ function computeCapacityStateFront({
   blockingReservations,
   overlaps,
   eligibleTables,
-  requiredSize,
   blockedTableIds = new Set(),
 }) {
   const capacity = eligibleTables.length;
+  const eligibleSeatSizes = new Set(
+    eligibleTables
+      .map((table) => Number(table?.seats))
+      .filter((value) => Number.isFinite(value) && value > 0),
+  );
 
   const eligibleIds = new Set(
     eligibleTables.map((table) => getConfiguredTableSelectionKeyFront(table)),
@@ -302,7 +318,7 @@ function computeCapacityStateFront({
       }
 
       if (
-        Number(reservation.table.seats) === Number(requiredSize) &&
+        eligibleSeatSizes.has(Number(reservation.table.seats)) &&
         reservationIds.length <= 1
       ) {
         unassignedCount += 1;
@@ -312,7 +328,7 @@ function computeCapacityStateFront({
 
     if (reservation.table.source === "manual") {
       const name = String(reservation.table.name || "").trim();
-      if (name && Number(reservation.table.seats) === Number(requiredSize)) {
+      if (name && eligibleSeatSizes.has(Number(reservation.table.seats))) {
         unassignedCount += 1;
       }
     }
@@ -353,10 +369,15 @@ function isConfiguredTableFreeFront({
   });
 }
 
-function getEligibleSingleTablesFront({ parameters, requiredSize }) {
+function getEligibleSingleTablesFront({ parameters, singleSeatSizes = [] }) {
+  const allowedSeats = new Set(
+    (Array.isArray(singleSeatSizes) ? singleSeatSizes : [])
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value) && value > 0),
+  );
   const pool = (
     Array.isArray(parameters?.tables) ? parameters.tables : []
-  ).filter((table) => Number(table?.seats) === Number(requiredSize));
+  ).filter((table) => allowedSeats.has(Number(table?.seats)));
 
   return sortTablesByPriorityFront(pool).map(buildSingleTableOptionFront);
 }
@@ -402,21 +423,21 @@ function getEligibleCombinedTablesFront({ parameters, requiredSize }) {
 
 function getAvailableConfiguredTableOptionsFront({
   parameters,
-  requiredSize,
+  singleSeatSizes = [],
+  comboSeatSize = 0,
   blockingReservations,
   overlaps,
   blockedTableIds = new Set(),
 }) {
   const singleOptions = getEligibleSingleTablesFront({
     parameters,
-    requiredSize,
+    singleSeatSizes,
   });
 
   const singleState = computeCapacityStateFront({
     blockingReservations,
     overlaps,
     eligibleTables: singleOptions,
-    requiredSize,
     blockedTableIds,
   });
 
@@ -450,9 +471,17 @@ function getAvailableConfiguredTableOptionsFront({
     };
   }
 
+  if (!comboSeatSize) {
+    return {
+      mode: "none",
+      options: [],
+      singleState,
+    };
+  }
+
   const comboOptions = getEligibleCombinedTablesFront({
     parameters,
-    requiredSize,
+    requiredSize: comboSeatSize,
   });
 
   const freeComboOptions = comboOptions.filter((tableDef) =>
@@ -508,7 +537,7 @@ function getBlockedTableIdsFront(parameters, reservationDate, reservationTime) {
   if (!candidateStart) return new Set();
 
   const candidateEnd = new Date(
-    candidateStart.getTime() + Math.max(0, occupancyMinutes) * 60 * 1000,
+    candidateStart.getTime() + Math.max(1, occupancyMinutes) * 60 * 1000,
   );
 
   const ids = new Set();
@@ -525,6 +554,37 @@ function getBlockedTableIdsFront(parameters, reservationDate, reservationTime) {
   });
 
   return ids;
+}
+
+function isDateTimeBlockedFront(parameters, reservationDate, reservationTime) {
+  const ranges = Array.isArray(parameters?.blocked_ranges)
+    ? parameters?.blocked_ranges
+    : [];
+
+  const candidateStart = buildReservationDateTimeFront(
+    reservationDate,
+    reservationTime,
+  );
+  if (!candidateStart) return false;
+
+  const occupancyMinutes = getOccupancyMinutesFront(
+    parameters,
+    reservationTime,
+  );
+  const candidateEnd = new Date(
+    candidateStart.getTime() + Math.max(1, occupancyMinutes) * 60 * 1000,
+  );
+
+  return ranges.some((range) => {
+    const start = new Date(range?.startAt).getTime();
+    const end = new Date(range?.endAt).getTime();
+    return (
+      Number.isFinite(start) &&
+      Number.isFinite(end) &&
+      candidateStart.getTime() < end &&
+      candidateEnd.getTime() > start
+    );
+  });
 }
 
 export default function AddReservationComponent(props) {
@@ -588,15 +648,6 @@ export default function AddReservationComponent(props) {
       router.push("/dashboard/webapp/reservations");
     }
   };
-
-  function isToday(date) {
-    const today = new Date();
-    return (
-      date.getDate() === today.getDate() &&
-      date.getMonth() === today.getMonth() &&
-      date.getFullYear() === today.getFullYear()
-    );
-  }
 
   useEffect(() => {
     if (!props.reservation) return;
@@ -672,26 +723,18 @@ export default function AddReservationComponent(props) {
         generateTimeOptions(open, close, interval),
       );
 
-      // Filtre "aujourd’hui" => ne pas proposer dans le passé
-      if (isToday(reservationData.reservationDate)) {
-        const now = new Date();
-        const currentMinutes = now.getHours() * 60 + now.getMinutes();
-        allAvailableTimes = allAvailableTimes.filter((time) => {
-          const [hour, minute] = time.split(":").map(Number);
-          const timeInMinutes = hour * 60 + minute;
-          return timeInMinutes > currentMinutes;
-        });
-      }
-
       // -----------------------------
       // ✅ Filtre dispo basé sur capacité (si manage ON)
       // (aligné backend: pool éligible + overlap + manual unassigned)
       // -----------------------------
       if (parameters.manage_disponibilities) {
         const guests = Number(reservationData.numberOfGuests || 0);
-        const requiredSize = requiredTableSizeFromGuestsFront(guests);
+        const singleSeatSizes =
+          getEligibleSingleTableSeatSizesFromGuestsFront(guests);
+        const comboSeatSize =
+          getRequiredCombinedTableSizeFromGuestsFront(guests);
 
-        if (requiredSize > 0) {
+        if (singleSeatSizes.length > 0) {
           const formattedSelectedDate = format(
             reservationData.reservationDate,
             "yyyy-MM-dd",
@@ -708,6 +751,16 @@ export default function AddReservationComponent(props) {
           });
 
           allAvailableTimes = allAvailableTimes.filter((time) => {
+            if (
+              isDateTimeBlockedFront(
+                parameters,
+                reservationData.reservationDate,
+                time,
+              )
+            ) {
+              return false;
+            }
+
             const candidateStart = minutesFromHHmm(time);
             const durCandidate = getOccupancyMinutesFront(parameters, time);
             const candidateEnd = candidateStart + durCandidate;
@@ -732,7 +785,8 @@ export default function AddReservationComponent(props) {
             return (
               getAvailableConfiguredTableOptionsFront({
                 parameters,
-                requiredSize,
+                singleSeatSizes,
+                comboSeatSize,
                 blockingReservations: dayReservations,
                 overlaps,
                 blockedTableIds,
@@ -780,8 +834,21 @@ export default function AddReservationComponent(props) {
     }
 
     const guests = Number(reservationData.numberOfGuests || 0);
-    const requiredSize = requiredTableSizeFromGuestsFront(guests);
-    if (!requiredSize) {
+    const singleSeatSizes =
+      getEligibleSingleTableSeatSizesFromGuestsFront(guests);
+    const comboSeatSize = getRequiredCombinedTableSizeFromGuestsFront(guests);
+    if (!singleSeatSizes.length) {
+      setAvailableTables([]);
+      return;
+    }
+
+    if (
+      isDateTimeBlockedFront(
+        parameters,
+        reservationData.reservationDate,
+        reservationData.reservationTime,
+      )
+    ) {
       setAvailableTables([]);
       return;
     }
@@ -830,7 +897,8 @@ export default function AddReservationComponent(props) {
 
     const availableConfig = getAvailableConfiguredTableOptionsFront({
       parameters,
-      requiredSize,
+      singleSeatSizes,
+      comboSeatSize,
       blockingReservations: dayBlocking,
       overlaps,
       blockedTableIds,
