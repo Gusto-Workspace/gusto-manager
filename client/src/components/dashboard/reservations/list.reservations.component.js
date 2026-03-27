@@ -11,7 +11,7 @@ import axios from "axios";
 import ConfirmationModalReservationComponent from "./confirm-modal.reservations.component";
 import CalendarToolbarReservationsComponent from "./calendar-toolbar.reservations.component";
 import CalendarMonthReservationsComponent from "./calendar-month.reservations.component";
-import DayHeaderReservationsComponent from "./day-toolbar.reservations.component";
+import DayToolbarReservationsComponent from "./day-toolbar.reservations.component";
 import DayListReservationsComponent from "./day-list.reservations.component";
 import FloorPlanDrawerReservationsComponent from "./floor-plan-drawer.reservations.component";
 
@@ -723,7 +723,7 @@ export default function ListReservationsComponent(props) {
         </>
       ) : (
         <>
-          <DayHeaderReservationsComponent
+          <DayToolbarReservationsComponent
             selectedDay={selectedDay}
             setSelectedDay={setSelectedDay}
             handleParametersClick={handleParametersClick}

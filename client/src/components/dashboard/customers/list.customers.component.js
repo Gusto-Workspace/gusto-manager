@@ -25,6 +25,7 @@ import {
   Crown,
   RotateCcw,
   UserX,
+  PlusCircle,
   X,
 } from "lucide-react";
 
@@ -52,6 +53,8 @@ function tagHelp(tagKey) {
       return "Client VIP (réservations fréquentes / forte récurrence)";
     case "regular":
       return "Client fidèle (revient souvent)";
+    case "new":
+      return "Client récemment acquis, à suivre de près";
     case "to_reconquer":
       return "Client à relancer (ne vient plus comme avant)";
     case "lost":
@@ -63,6 +66,11 @@ function tagHelp(tagKey) {
 
 // ✅ tags (avec icons)
 const TAGS_UI = {
+  new: {
+    label: "Nouveau",
+    cls: "bg-violet/10 text-violet border-violet/20",
+    Icon: PlusCircle,
+  },
   regular: {
     label: "Régulier",
     cls: "bg-blue/10 text-blue border-blue/20",
@@ -512,6 +520,7 @@ export default function ListCustomersComponent() {
               className="bg-white outline-none text-sm text-darkBlue"
             >
               <option value="all">Tous</option>
+              <option value="new">Nouveau</option>
               <option value="very_regular">Très régulier</option>
               <option value="regular">Régulier</option>
               <option value="to_reconquer">À reconquérir</option>

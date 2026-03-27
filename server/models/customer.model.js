@@ -32,7 +32,7 @@ const customerSchema = new mongoose.Schema(
     phone: { type: String, default: "", trim: true },
     phoneNorm: { type: String, default: null, index: true },
 
-    tags: { type: [String], default: [] }, // very_regular, regular, to_reconquer, lost
+    tags: { type: [String], default: [] }, // new, very_regular, regular, to_reconquer, lost
     notes: { type: String, default: "" },
 
     stats: {

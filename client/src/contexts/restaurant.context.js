@@ -1321,6 +1321,7 @@ export default function RestaurantContext() {
         await fetchReservationsList(token, restaurantData?._id);
       })
       .catch((error) => {
+        if (error?.response?.status === 404) return;
         console.error("Error auto-deleting reservation:", error);
       })
       .finally(() => {

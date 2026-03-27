@@ -58,9 +58,19 @@ export default function CalendarToolbarReservationsComponent(props) {
             className="min-h-[30px] min-w-[30px]"
             fillColor="#131E3690"
           />
-          <h1 className="pl-2 text-xl tablet:text-2xl flex gap-1 items-center midTablet:gap-2">
-            <span className="select-none">{t("titles.main")}</span>
-          </h1>
+          <div className="flex flex-col">
+              <h1 className="pl-2 text-xl flex-wrap tablet:text-2xl flex items-center gap-2">
+                <span
+                  className="cursor-pointer hover:underline"
+                  onClick={() => router.push("/dashboard/reservations")}
+                >
+                  {t("titles.main")}
+                </span>
+              </h1>
+              <span className="ml-2 text-xs font-semibold text-darkBlue/50">
+                Calendrier
+              </span>
+            </div>
         </div>
 
         {/* Right: actions (icônes) */}
