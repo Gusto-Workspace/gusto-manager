@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Phone,
   Mail,
+  PlusCircle,
   UserCheck,
   Crown,
   RotateCcw,
@@ -51,6 +52,8 @@ function tagHelp(tagKey) {
       return "Client VIP (réservations fréquentes / forte récurrence)";
     case "regular":
       return "Client fidèle (revient souvent)";
+    case "new":
+      return "Client récemment acquis, à suivre de près";
     case "to_reconquer":
       return "Client à relancer (ne vient plus comme avant)";
     case "lost":
@@ -61,6 +64,11 @@ function tagHelp(tagKey) {
 }
 
 const TAGS_UI = {
+  new: {
+    label: "Nouveau",
+    cls: "bg-violet/10 text-violet border-violet/20",
+    Icon: PlusCircle,
+  },
   regular: {
     label: "Régulier",
     cls: "bg-blue/10 text-blue border-blue/20",

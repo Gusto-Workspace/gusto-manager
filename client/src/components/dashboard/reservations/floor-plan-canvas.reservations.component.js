@@ -773,6 +773,7 @@ export default function FloorPlanCanvasReservationsComponent({
   const [scale, setScale] = useState(0.7);
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
+  const [liveTick, setLiveTick] = useState(() => Date.now());
 
   const catalog = useMemo(() => safeArr(tablesCatalog), [tablesCatalog]);
   const objects = useMemo(() => safeArr(room?.objects), [room?.objects]);
@@ -906,7 +907,22 @@ export default function FloorPlanCanvasReservationsComponent({
     selectedDate,
     liveMode,
     selectedTime,
+    liveTick,
   ]);
+
+  useEffect(() => {
+    if (!liveMode) return;
+
+    setLiveTick(Date.now());
+
+    const intervalId = window.setInterval(() => {
+      setLiveTick(Date.now());
+    }, 15000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [liveMode]);
 
   useLayoutEffect(() => {
     didInitialFitRef.current = false;
@@ -1405,7 +1421,6 @@ export default function FloorPlanCanvasReservationsComponent({
             lineCap="round"
             lineJoin="round"
             perfectDrawEnabled={false}
-            strokeScaleEnabled={false}
           />
         </Group>
       );
