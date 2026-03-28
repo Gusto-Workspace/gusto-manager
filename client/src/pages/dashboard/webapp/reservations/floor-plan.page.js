@@ -58,9 +58,7 @@ export default function WebAppFloorPlanReservationsPage(props) {
               restaurantData={restaurantContext.restaurantData}
               setRestaurantData={restaurantContext.setRestaurantData}
               restaurantId={restaurantContext?.restaurantData?._id}
-              reservations={
-                restaurantContext?.restaurantData?.reservations?.list
-              }
+              reservations={restaurantContext?.reservationsList}
             />
           ) : (
             <NoAvailableComponent dataLoading={restaurantContext.dataLoading} />

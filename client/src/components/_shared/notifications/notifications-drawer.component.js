@@ -198,7 +198,6 @@ export default function NotificationsDrawerComponent({
     if (!open) return;
 
     setIsVisible(false);
-    setHasFetchedOnce(false);
     setDragY(0);
     initialFetchDoneRef.current = false;
 
@@ -293,8 +292,8 @@ export default function NotificationsDrawerComponent({
 
   const baseList = displayedList;
 
-  const shouldShowLoading = !hasFetchedOnce || (loading && !baseList.length);
-  const shouldShowEmpty = hasFetchedOnce && !loading && !baseList.length;
+  const shouldShowLoading = !hasFetchedOnce && !baseList.length;
+  const shouldShowEmpty = hasFetchedOnce && !baseList.length;
 
   const markAllLabel = unreadOnly ? "Tout lire (non lues)" : "Tout lire";
 

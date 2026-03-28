@@ -118,8 +118,8 @@ export default function SmartParametersComponent({
               Gestion intelligente des tables
             </p>
             <p className={hint}>
-              Calcule les disponibilités selon les tables et le nombre de
-              personnes.
+              Assigne automatiquement les réservations à des tables du plan de
+              salle selon la capacité et les disponibilités.
             </p>
           </div>
 
