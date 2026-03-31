@@ -42,7 +42,7 @@ export default function AddModaleDrinksComponent(props) {
               defaultValue={props.editingCategory?.name || ""}
               disabled={props.isDeleting || props.isSubmitting}
               {...props.register("name", { required: !props.isDeleting })}
-              className={`border p-2 rounded-lg w-full ${
+              className={`w-full rounded-lg border p-2 text-base ${
                 props.errors.name ? "border-red" : ""
               } ${props.isDeleting || props.isSubmitting ? "opacity-50 cursor-not-allowed" : ""}`}
             />
@@ -68,7 +68,7 @@ export default function AddModaleDrinksComponent(props) {
                   props.setIsModalOpen(false);
                   props.setEditingCategory(null);
                   props.setIsDeleting(false);
-                  props.reset()
+                  props.reset();
                 }
               }}
               className="px-4 py-2 rounded-lg text-white bg-red"

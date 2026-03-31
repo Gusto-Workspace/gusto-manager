@@ -13,6 +13,7 @@ import { GlobalContext } from "@/contexts/global.context";
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
+import CatalogHeaderDashboardComponent from "@/components/dashboard/_shared/catalog-header.dashboard.component";
 
 // SVG
 import { HealthSvg } from "@/components/_shared/_svgs/health.svg";
@@ -40,7 +41,7 @@ export default function ServiceTemperaturePage(props) {
   const token = useMemo(
     () =>
       typeof window !== "undefined" ? localStorage.getItem("token") : null,
-    []
+    [],
   );
 
   useEffect(() => {
@@ -54,7 +55,7 @@ export default function ServiceTemperaturePage(props) {
           params: { active: 1 },
         });
         const items = (data?.items || []).sort((a, b) =>
-          String(a?.name || "").localeCompare(String(b?.name || ""), "fr")
+          String(a?.name || "").localeCompare(String(b?.name || ""), "fr"),
         );
         setZones(items);
       } catch (e) {
@@ -75,7 +76,7 @@ export default function ServiceTemperaturePage(props) {
 
   const handleZonesChanged = useCallback((nextList) => {
     const sorted = [...(nextList || [])].sort((a, b) =>
-      String(a?.name || "").localeCompare(String(b?.name || ""), "fr")
+      String(a?.name || "").localeCompare(String(b?.name || ""), "fr"),
     );
     setZones(sorted);
   }, []);
@@ -117,38 +118,33 @@ export default function ServiceTemperaturePage(props) {
               <section className="flex flex-col gap-6">
                 <hr className="opacity-20" />
 
-                <div className="flex flex-wrap justify-between gap-4">
-                  <div className="flex items-center gap-2 min-h-[40px]">
+                <CatalogHeaderDashboardComponent
+                  icon={
                     <HealthSvg width={30} height={30} fillColor="#131E3690" />
-                    <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2 flex-wrap">
-                      <span
-                        className="cursor-pointer hover:underline"
-                        onClick={() =>
-                          router.push("/dashboard/health-control-plan")
-                        }
-                      >
-                        {t("health-control-plan:titles.main")}
-                      </span>
-                      <>
-                        <span>/</span>
-                        <span>T° service</span>
-                      </>
-                    </h1>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setIsZoneModalOpen(true)}
-                    className="bg-blue px-4 py-2 rounded-lg text-white h-fit disabled:opacity-60 inline-flex items-center gap-2"
-                    disabled={zonesLoading}
-                    title={
-                      zonesLoading ? "Chargement des zones…" : "Gérer les zones"
-                    }
-                  >
-                    <List className="size-4" />
-                    Liste des zones
-                  </button>
-                </div>
+                  }
+                  title={t("health-control-plan:titles.main")}
+                  onTitleClick={() =>
+                    router.push("/dashboard/health-control-plan")
+                  }
+                  onBack={() => router.push("/dashboard/health-control-plan")}
+                  subtitle="T° service"
+                  actions={
+                    <button
+                      type="button"
+                      onClick={() => setIsZoneModalOpen(true)}
+                      className="bg-blue px-4 py-2 rounded-lg text-white h-fit disabled:opacity-60 inline-flex items-center gap-2"
+                      disabled={zonesLoading}
+                      title={
+                        zonesLoading
+                          ? "Chargement des zones…"
+                          : "Gérer les zones"
+                      }
+                    >
+                      <List className="size-4" />
+                      Liste des zones
+                    </button>
+                  }
+                />
 
                 <div className="flex flex-col gap-6">
                   <ServiceTemperatureForm
@@ -160,7 +156,7 @@ export default function ServiceTemperaturePage(props) {
                       window.dispatchEvent(
                         new CustomEvent("service-temperature:upsert", {
                           detail: { doc },
-                        })
+                        }),
                       );
                     }}
                     onCancel={() => setEditing(null)}

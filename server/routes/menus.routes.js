@@ -5,10 +5,35 @@ const router = express.Router();
 const RestaurantModel = require("../models/restaurant.model");
 const MenuModel = require("../models/menu.model");
 
+function buildCustomGroupRelations(group, dishesLength) {
+  const totalRelations = Math.max((dishesLength || 0) - 1, 0);
+
+  if (totalRelations === 0) {
+    return [];
+  }
+
+  const explicitRelations = Array.isArray(group?.relations)
+    ? group.relations
+        .slice(0, totalRelations)
+        .map((relation) => (relation === "and" ? "and" : "or"))
+    : [];
+
+  if (explicitRelations.length === totalRelations) {
+    return explicitRelations;
+  }
+
+  const fallbackRelation = group?.relation === "and" ? "and" : "or";
+
+  return Array.from({ length: totalRelations }, (_, index) => {
+    return explicitRelations[index] || fallbackRelation;
+  });
+}
+
 // ADD MENU
 router.post("/restaurants/:restaurantId/add-menus", async (req, res) => {
   const { restaurantId } = req.params;
-  const { combinations, description, name, type, price, dishes } = req.body;
+  const { combinations, description, name, type, price, dishes, customGroups } =
+    req.body;
 
   try {
     // Vérifiez si le restaurant existe
@@ -25,6 +50,7 @@ router.post("/restaurants/:restaurantId/add-menus", async (req, res) => {
       name,
       type,
       dishes,
+      customGroups,
       price,
     });
     await newMenu.save();
@@ -69,19 +95,98 @@ router.get("/menus/:menuId", async (req, res) => {
       return res.status(404).json({ message: "Restaurant not found" });
     }
 
-    // Filtrez les plats du restaurant pour ne garder que ceux du menu
+    const allCategories = restaurant.dish_categories || [];
+    const menuDishIds = (menu.dishes || []).map((dishId) => dishId.toString());
     const selectedDishes = [];
-    restaurant.dish_categories.forEach((category) => {
-      const dishes = category.dishes.filter((dish) =>
-        menu.dishes.includes(dish._id.toString())
-      );
-      if (dishes.length > 0) {
-        selectedDishes.push({
-          category: category.name,
-          dishes: dishes,
-        });
+
+    const findDishAcrossCategories = (dishId) => {
+      const normalizedDishId = dishId?.toString?.() || String(dishId || "");
+
+      for (const category of allCategories) {
+        const dish = (category.dishes || []).find(
+          (item) => item._id.toString() === normalizedDishId,
+        );
+
+        if (dish) {
+          return { category, dish };
+        }
       }
-    });
+
+      return null;
+    };
+
+    if (
+      menu.type === "custom" &&
+      Array.isArray(menu.customGroups) &&
+      menu.customGroups.length > 0
+    ) {
+      menu.customGroups.forEach((group) => {
+        const normalizedCategoryId = group.categoryId
+          ? String(group.categoryId)
+          : "";
+
+        const categoryById = allCategories.find(
+          (category) => category._id.toString() === normalizedCategoryId,
+        );
+
+        const resolvedDishes = (group.dishes || [])
+          .map((dishId) => {
+            if (categoryById) {
+              return (categoryById.dishes || []).find(
+                (dish) => dish._id.toString() === dishId.toString(),
+              );
+            }
+
+            const found = findDishAcrossCategories(dishId);
+            return found?.dish || null;
+          })
+          .filter(Boolean);
+
+        if (resolvedDishes.length > 0) {
+          const fallbackCategory = !categoryById
+            ? findDishAcrossCategories(group.dishes?.[0])?.category
+            : null;
+          const relations = buildCustomGroupRelations(
+            group,
+            resolvedDishes.length,
+          );
+
+          selectedDishes.push({
+            categoryId:
+              categoryById?._id?.toString() ||
+              fallbackCategory?._id?.toString() ||
+              normalizedCategoryId,
+            category:
+              categoryById?.name ||
+              fallbackCategory?.name ||
+              group.categoryName ||
+              "",
+            relation: relations[0] || group.relation || "or",
+            relations,
+            dishes: resolvedDishes,
+          });
+        }
+      });
+    } else {
+      allCategories.forEach((category) => {
+        const dishes = (category.dishes || []).filter((dish) =>
+          menuDishIds.includes(dish._id.toString()),
+        );
+
+        if (dishes.length > 0) {
+          selectedDishes.push({
+            categoryId: category._id.toString(),
+            category: category.name,
+            relation: "or",
+            relations: Array.from(
+              { length: Math.max(dishes.length - 1, 0) },
+              () => "or",
+            ),
+            dishes,
+          });
+        }
+      });
+    }
 
     // Retournez le menu avec les détails des plats
     res.status(200).json({ menu, selectedDishes });

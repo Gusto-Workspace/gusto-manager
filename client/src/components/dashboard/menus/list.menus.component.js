@@ -15,6 +15,9 @@ import { MenuSvg } from "../../_shared/_svgs/_index";
 
 // COMPONENTS
 import CardListMenuComponent from "./card-list-menu.menus.component";
+import CatalogHeaderDashboardComponent, {
+  CatalogActionButton,
+} from "../_shared/catalog-header.dashboard.component";
 
 // DND
 import {
@@ -29,7 +32,7 @@ import { arrayMove, SortableContext } from "@dnd-kit/sortable";
 
 import {
   restrictToFirstScrollableAncestor,
-  restrictToParentElement
+  restrictToParentElement,
 } from "@dnd-kit/modifiers";
 
 export default function ListMenusComponent(props) {
@@ -151,20 +154,16 @@ export default function ListMenusComponent(props) {
     <div className="flex flex-col gap-6">
       <hr className="opacity-20" />
 
-      <div className="flex flex-wrap gap-4 justify-between">
-        <div className="flex gap-2 items-center min-h-[40px]">
-          <MenuSvg width={30} height={30} fillColor="#131E3690" />
-
-          <h1 className="pl-2 text-xl tablet:text-2xl">{t("titles.main")}</h1>
-        </div>
-
-        <button
-          onClick={handleAddClick}
-          className="bg-blue px-6 py-2 rounded-lg text-white cursor-pointer"
-        >
-          {t("buttons.add")}
-        </button>
-      </div>
+      <CatalogHeaderDashboardComponent
+        icon={<MenuSvg width={30} height={30} fillColor="#131E3690" />}
+        title={t("titles.main")}
+        actions={
+          <CatalogActionButton
+            onClick={handleAddClick}
+            label={t("buttons.add")}
+          />
+        }
+      />
 
       {menus && (
         <DndContext
@@ -173,7 +172,7 @@ export default function ListMenusComponent(props) {
           onDragEnd={handleDragEnd}
           modifiers={[
             restrictToFirstScrollableAncestor,
-          
+
             restrictToParentElement,
           ]}
         >

@@ -27,7 +27,8 @@
         "name": "Nom du menu",
         "selectedDishes": "Plats sélectionnés",
         "selectPlaceholder": " Sélectionnez des plats dans la carte pour les ajouter à votre menu",
-        "or": "ou"
+        "or": "ou",
+        "and": "et"
       }
     }
   },

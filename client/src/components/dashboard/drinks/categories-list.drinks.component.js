@@ -30,14 +30,14 @@ import { arrayMove, SortableContext } from "@dnd-kit/sortable";
 
 import {
   restrictToFirstScrollableAncestor,
-
-  restrictToParentElement
+  restrictToParentElement,
 } from "@dnd-kit/modifiers";
 
 // COMPONENTS
 import CardCategoryListComponent from "./card-category-list.drinks.component";
 import AddModaleDrinksComponent from "./add-modale.drinks.component";
 import GlobalDrinksComponent from "./global.drinks.component";
+import { CatalogCategoryActionButton } from "../_shared/catalog-header.dashboard.component";
 
 export default function CategoriesListDrinksComponent() {
   const { t } = useTranslation("drinks");
@@ -214,16 +214,14 @@ export default function CategoriesListDrinksComponent() {
           <h1 className="pl-2 text-xl tablet:text-2xl">{t("titles.main")}</h1>
         </div>
 
-        <button
+        <CatalogCategoryActionButton
           onClick={() => {
             setEditingCategory(null);
             setIsDeleting(false);
             setIsModalOpen(true);
           }}
-          className="bg-blue px-6 py-2 rounded-lg text-white cursor-pointer"
-        >
-          {t("buttons.addCategory")}
-        </button>
+          label={t("buttons.addCategory")}
+        />
       </div>
 
       {categories && (
@@ -233,8 +231,8 @@ export default function CategoriesListDrinksComponent() {
             collisionDetection={closestCenter}
             onDragEnd={handleDragEnd}
             modifiers={[
-              restrictToFirstScrollableAncestor,      
-              restrictToParentElement
+              restrictToFirstScrollableAncestor,
+              restrictToParentElement,
             ]}
           >
             <SortableContext

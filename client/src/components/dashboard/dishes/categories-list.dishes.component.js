@@ -12,6 +12,7 @@ import { GlobalContext } from "@/contexts/global.context";
 
 // I18N
 import { useTranslation } from "next-i18next";
+import { CatalogCategoryActionButton } from "../_shared/catalog-header.dashboard.component";
 
 // SVG
 import { DishSvg } from "../../_shared/_svgs/_index";
@@ -246,16 +247,14 @@ export default function CategoriesListDishesComponent() {
         </div>
 
         {/* Bouton ajouter à droite */}
-        <button
+        <CatalogCategoryActionButton
           onClick={() => {
             setEditingCategory(null);
             setIsDeleting(false);
             setIsModalOpen(true);
           }}
-          className="bg-blue px-6 py-2 rounded-xl text-white text-sm font-medium shadow-sm hover:bg-blue/90 cursor-pointer"
-        >
-          {t("buttons.addCategory")}
-        </button>
+          label={t("buttons.addCategory")}
+        />
       </div>
 
       {categories && categories.length > 0 && (

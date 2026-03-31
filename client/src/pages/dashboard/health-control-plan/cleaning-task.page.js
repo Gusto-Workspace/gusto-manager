@@ -2,7 +2,6 @@ import { useContext, useState } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
 
-
 // I18N
 import { i18n, useTranslation } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
@@ -19,6 +18,7 @@ import CleaningTaskList from "@/components/dashboard/health-control-plan/cleanin
 
 // SVG
 import { HealthSvg } from "@/components/_shared/_svgs/health.svg";
+import CatalogHeaderDashboardComponent from "@/components/dashboard/_shared/catalog-header.dashboard.component";
 
 export default function CleaningTaskPage(props) {
   const { t } = useTranslation("");
@@ -81,27 +81,17 @@ export default function CleaningTaskPage(props) {
               <section className="flex flex-col gap-6">
                 <hr className="opacity-20" />
 
-                <div className="flex justify-between  gap-4">
-                  <div className="flex items-center gap-2 min-h-[40px]">
+                <CatalogHeaderDashboardComponent
+                  icon={
                     <HealthSvg width={30} height={30} fillColor="#131E3690" />
-
-                    <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2 flex-wrap">
-                      <span
-                        className="cursor-pointer hover:underline"
-                        onClick={() =>
-                          router.push("/dashboard/health-control-plan")
-                        }
-                      >
-                        {t("health-control-plan:titles.main")}
-                      </span>
-
-                      <>
-                        <span>/</span>
-                        <span>Nettoyage locaux</span>
-                      </>
-                    </h1>
-                  </div>
-                </div>
+                  }
+                  title={t("health-control-plan:titles.main")}
+                  onTitleClick={() =>
+                    router.push("/dashboard/health-control-plan")
+                  }
+                  onBack={() => router.push("/dashboard/health-control-plan")}
+                  subtitle="Nettoyage locaux"
+                />
 
                 <div className="flex flex-col gap-6">
                   <CleaningTaskForm
@@ -112,7 +102,7 @@ export default function CleaningTaskPage(props) {
                       window.dispatchEvent(
                         new CustomEvent("cleaning-task:upsert", {
                           detail: { doc },
-                        })
+                        }),
                       );
                     }}
                     onCancel={() => setEditing(null)}

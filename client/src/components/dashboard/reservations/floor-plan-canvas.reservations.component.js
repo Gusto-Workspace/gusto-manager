@@ -1158,19 +1158,27 @@ export default function FloorPlanCanvasReservationsComponent({
     return { x: evt?.clientX ?? 0, y: evt?.clientY ?? 0 };
   }
 
-  function getTouchPoints(evt) {
+  function toStagePoint(stage, point) {
+    const rect = stage?.container?.()?.getBoundingClientRect?.();
+    return {
+      x: point.x - (rect?.left || 0),
+      y: point.y - (rect?.top || 0),
+    };
+  }
+
+  function getTouchPoints(evt, stage) {
     const touches = evt?.touches;
     if (!touches || touches.length < 2) return null;
 
     return {
-      p1: {
+      p1: toStagePoint(stage, {
         x: touches[0].clientX,
         y: touches[0].clientY,
-      },
-      p2: {
+      }),
+      p2: toStagePoint(stage, {
         x: touches[1].clientX,
         y: touches[1].clientY,
-      },
+      }),
     };
   }
 
@@ -1203,7 +1211,7 @@ export default function FloorPlanCanvasReservationsComponent({
       hasUserMovedViewRef.current = true;
       setIsPanning(false);
 
-      const pts = getTouchPoints(evt);
+      const pts = getTouchPoints(evt, stage);
       if (!pts) return;
 
       const mid = getMidpoint(pts.p1, pts.p2);
@@ -1247,7 +1255,10 @@ export default function FloorPlanCanvasReservationsComponent({
     if (evt?.touches?.length >= 2) {
       preventIfCancelable(evt);
 
-      const pts = getTouchPoints(evt);
+      const stage = stageRef.current;
+      if (!stage) return;
+
+      const pts = getTouchPoints(evt, stage);
       if (!pts) return;
 
       const mid = getMidpoint(pts.p1, pts.p2);

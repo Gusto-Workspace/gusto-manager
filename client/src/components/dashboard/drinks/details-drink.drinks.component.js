@@ -42,12 +42,8 @@ export default function DetailsDrinkComponent(props) {
     : "";
 
   const description = props?.drink?.description
-    ? props.drink.description.length > 35
-      ? props.drink.description.charAt(0).toUpperCase() +
-        props.drink.description.slice(1, 35) +
-        "..."
-      : props.drink.description.charAt(0).toUpperCase() +
-        props.drink.description.slice(1)
+    ? props.drink.description.charAt(0).toUpperCase() +
+      props.drink.description.slice(1)
     : "";
 
   const hasMeta = props.drink.bio;
@@ -57,11 +53,11 @@ export default function DetailsDrinkComponent(props) {
       ref={setNodeRef}
       style={style}
       className={[
-        "group flex flex-col gap-3 rounded-2xl border border-white/40 bg-white/50 px-3 py-3 midTablet:flex-row midTablet:items-center midTablet:justify-between midTablet:px-4",
+        "group flex w-full max-w-full flex-col gap-3 overflow-hidden rounded-2xl border border-white/40 bg-white/50 px-3 py-3 midTablet:flex-row midTablet:items-center midTablet:justify-between midTablet:px-4",
         isDragging ? "opacity-70 shadow-lg scale-[1.01] z-50" : "",
       ].join(" ")}
     >
-      <div className="flex min-w-0 items-start gap-3 midTablet:items-center">
+      <div className="flex w-full min-w-0 items-start gap-3 overflow-hidden midTablet:items-center">
         <button
           type="button"
           {...attributes}
@@ -73,21 +69,27 @@ export default function DetailsDrinkComponent(props) {
           <DragSvg width={14} height={14} />
         </button>
 
-        <div className="min-w-0 flex-1">
-          <div className="flex justify-between midTablet:justify-normal min-w-0 items-center gap-2">
-            <h3 className="truncate text-[15px] font-medium text-darkBlue midTablet:text-[16px]">
-              {name}
+        <div className="w-0 min-w-0 flex-1 overflow-hidden">
+          <div className="flex w-full min-w-0 items-center gap-2 overflow-hidden">
+            <h3
+              className="w-0 min-w-0 flex-1 text-[15px] font-medium text-darkBlue midTablet:text-[16px]"
+              title={name}
+            >
+              <span className="block truncate">{name}</span>
             </h3>
 
             {!props.drink.showOnWebsite && (
-              <span className="shrink-0 rounded-full bg-darkBlue/10 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.08em] text-darkBlue/60">
+              <span className="ml-auto shrink-0 rounded-full bg-darkBlue/10 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.08em] text-darkBlue/60">
                 Off
               </span>
             )}
           </div>
 
-          <p className="mt-1 truncate text-sm text-darkBlue/45">
-            {description}
+          <p
+            className="mt-1 w-full min-w-0 text-sm text-darkBlue/45"
+            title={description}
+          >
+            <span className="block truncate">{description}</span>
           </p>
         </div>
       </div>

@@ -18,10 +18,11 @@ import HealthMesuresList from "@/components/dashboard/health-control-plan/health
 
 // SVG
 import { HealthSvg } from "@/components/_shared/_svgs/health.svg";
+import CatalogHeaderDashboardComponent from "@/components/dashboard/_shared/catalog-header.dashboard.component";
 
 export default function HealthMesuresPage(props) {
   const { t } = useTranslation("");
-    const router = useRouter();
+  const router = useRouter();
   const { restaurantContext } = useContext(GlobalContext);
 
   const [editing, setEditing] = useState(null);
@@ -80,35 +81,17 @@ export default function HealthMesuresPage(props) {
               <section className="flex flex-col gap-6">
                 <hr className="opacity-20" />
 
-                <div className="flex justify-between  gap-4">
-                 
-                    <div className="flex items-center gap-2 min-h-[40px]">
-                      <HealthSvg width={30} height={30} fillColor="#131E3690" />
-
-                      
-
-                      <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2 flex-wrap">
-                        <span
-                          className="cursor-pointer hover:underline"
-                          onClick={() => router.push("/dashboard/health-control-plan")}
-                        >
-                         {t("health-control-plan:titles.main")}
-                        </span>
-
-                        
-                          <>
-                            <span>/</span>
-                            <span
-                             
-                            >
-                              Mesures d'hygiène
-                            </span>
-                          </>
-                      
-                      </h1>
-                    </div>
-                  
-                </div>
+                <CatalogHeaderDashboardComponent
+                  icon={
+                    <HealthSvg width={30} height={30} fillColor="#131E3690" />
+                  }
+                  title={t("health-control-plan:titles.main")}
+                  onTitleClick={() =>
+                    router.push("/dashboard/health-control-plan")
+                  }
+                  onBack={() => router.push("/dashboard/health-control-plan")}
+                  subtitle="Mesures d'hygiène"
+                />
 
                 <div className="flex flex-col gap-6">
                   <HealthMesuresForm
@@ -119,7 +102,7 @@ export default function HealthMesuresPage(props) {
                       window.dispatchEvent(
                         new CustomEvent("health-mesures:upsert", {
                           detail: { doc },
-                        })
+                        }),
                       );
                     }}
                     onCancel={() => setEditing(null)}

@@ -6,6 +6,7 @@ import frLocale from "date-fns/locale/fr";
 import { GlobalContext } from "@/contexts/global.context";
 import { useTranslation } from "next-i18next";
 import { EmployeesSvg } from "../../_shared/_svgs/_index";
+import CatalogHeaderDashboardComponent from "../_shared/catalog-header.dashboard.component";
 import {
   Search,
   CalendarDays,
@@ -31,7 +32,7 @@ export default function DaysOffEmployeesComponent() {
     if (!employees.length) return;
 
     const alreadyHaveLeave = employees.some(
-      (e) => Array.isArray(e.leaveRequests) && e.leaveRequests.length > 0
+      (e) => Array.isArray(e.leaveRequests) && e.leaveRequests.length > 0,
     );
     if (alreadyHaveLeave) return;
 
@@ -43,21 +44,17 @@ export default function DaysOffEmployeesComponent() {
           employees.map((emp) =>
             axios
               .get(
-                `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${emp._id}/leave-requests`
+                `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${emp._id}/leave-requests`,
               )
               .then((res) => ({
                 employeeId: emp._id,
                 leaveRequests: res.data || [],
               }))
               .catch((err) => {
-                console.error(
-                  "Erreur fetch leave-requests pour",
-                  emp._id,
-                  err
-                );
+                console.error("Erreur fetch leave-requests pour", emp._id, err);
                 return { employeeId: emp._id, leaveRequests: [] };
-              })
-          )
+              }),
+          ),
         );
 
         if (canceled) return;
@@ -69,7 +66,7 @@ export default function DaysOffEmployeesComponent() {
             ...prev,
             employees: prevEmployees.map((emp) => {
               const match = results.find(
-                (r) => String(r.employeeId) === String(emp._id)
+                (r) => String(r.employeeId) === String(emp._id),
               );
               return match
                 ? { ...emp, leaveRequests: match.leaveRequests }
@@ -101,7 +98,7 @@ export default function DaysOffEmployeesComponent() {
     if (!searchTerm.trim()) return allEmployees;
     const norm = normalize(searchTerm);
     return allEmployees.filter((e) =>
-      normalize(`${e.firstname} ${e.lastname}`).includes(norm)
+      normalize(`${e.firstname} ${e.lastname}`).includes(norm),
     );
   }, [allEmployees, searchTerm]);
 
@@ -118,7 +115,7 @@ export default function DaysOffEmployeesComponent() {
         (emp.leaveRequests || []).map((req) => ({
           ...req,
           employee: emp,
-        }))
+        })),
       )
       .sort((a, b) => createdTs(b) - createdTs(a)); // plus récent d'abord
     setRequests(all);
@@ -131,7 +128,7 @@ export default function DaysOffEmployeesComponent() {
         if (acc[req.status]) acc[req.status].push(req);
         return acc;
       },
-      { pending: [], approved: [], rejected: [], canceled: [] }
+      { pending: [], approved: [], rejected: [], canceled: [] },
     );
   }, [requests]);
 
@@ -161,15 +158,15 @@ export default function DaysOffEmployeesComponent() {
 
       const { data } = await axios.put(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${empId}/leave-requests/${reqId}`,
-        { status }
+        { status },
       );
       // data = { leaveRequest, shifts }
 
       // 1) Mettre à jour la liste aplanie locale
       setRequests((rs) =>
         rs.map((r) =>
-          r._id === reqId && r.employee._id === empId ? { ...r, status } : r
-        )
+          r._id === reqId && r.employee._id === empId ? { ...r, status } : r,
+        ),
       );
 
       // 2) Mettre à jour le contexte global (pour le planning)
@@ -180,11 +177,11 @@ export default function DaysOffEmployeesComponent() {
             ? {
                 ...e,
                 leaveRequests: (e.leaveRequests || []).map((lr) =>
-                  String(lr._id) === String(reqId) ? { ...lr, status } : lr
+                  String(lr._id) === String(reqId) ? { ...lr, status } : lr,
                 ),
                 shifts: data.shifts || [],
               }
-            : e
+            : e,
         ),
       }));
     } catch (err) {
@@ -207,41 +204,33 @@ export default function DaysOffEmployeesComponent() {
   return (
     <section className="flex flex-col gap-6 min-w-0">
       {/* ─── En-tête ─────────────────────────────────────────────── */}
-      <div className="flex justify-between flex-wrap gap-4">
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-2 min-h-[40px]">
-            <EmployeesSvg
-              width={30}
-              height={30}
-              fillColor="#131E3690"
-              className="min-w-[30px]"
-            />
-            <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2 flex-wrap">
-              <span
-                className="cursor-pointer hover:underline"
-                onClick={() => router.push("/dashboard/employees")}
-              >
-                {t("titles.main")}
-              </span>
-              <span>/</span>
-              <span
-                className="cursor-pointer hover:underline"
-                onClick={() => router.push("/dashboard/employees/planning")}
-              >
-                {t("titles.planning")}
-              </span>
-              <span>/</span>
-              <span className="">{t("titles.daysOff")}</span>
-            </h1>
-          </div>
-          <p className="text-xs text-darkBlue/60 max-w-xl">
-            {t(
-              "daysOff.helper",
-              "Visualisez et gérez les demandes de congés des employés, par statut."
-            )}
-          </p>
-        </div>
-      </div>
+      <CatalogHeaderDashboardComponent
+        icon={
+          <EmployeesSvg
+            width={30}
+            height={30}
+            fillColor="#131E3690"
+            className="min-w-[30px]"
+          />
+        }
+        title={t("titles.main")}
+        onTitleClick={() => router.push("/dashboard/employees")}
+        onBack={() => router.push("/dashboard/employees/planning")}
+        subtitleItems={[
+          {
+            label: t("titles.planning"),
+            onClick: () => router.push("/dashboard/employees/planning"),
+          },
+          { label: t("titles.daysOff") },
+        ]}
+      />
+
+      <p className="text-xs text-darkBlue/60 max-w-xl">
+        {t(
+          "daysOff.helper",
+          "Visualisez et gérez les demandes de congés des employés, par statut.",
+        )}
+      </p>
 
       {/* ─── Barre de recherche ───────────────────────────────────── */}
       <div className={`midTablet:w-[380px]`}>
@@ -250,13 +239,15 @@ export default function DaysOffEmployeesComponent() {
             type="text"
             placeholder={t(
               "placeholders.searchEmployee",
-              "Rechercher un employé"
+              "Rechercher un employé",
             )}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full h-10 rounded-lg border border-darkBlue/20 bg-white/90 px-3 pr-9 text-base outline-none transition placeholder:text-darkBlue/40 focus:border-darkBlue/50"
           />
-          {!searchTerm && <Search className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/30" />}
+          {!searchTerm && (
+            <Search className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/30" />
+          )}
           {searchTerm && (
             <button
               type="button"
@@ -346,10 +337,10 @@ export default function DaysOffEmployeesComponent() {
                             ? new Date(req.createdAt)
                             : new Date(
                                 parseInt(String(req._id).substring(0, 8), 16) *
-                                  1000
+                                  1000,
                               ),
                           "dd/MM/yyyy HH:mm",
-                          { locale: frLocale }
+                          { locale: frLocale },
                         )}
                       </div>
                     </div>
@@ -364,7 +355,7 @@ export default function DaysOffEmployeesComponent() {
                               updateStatus(
                                 req.employee._id,
                                 req._id,
-                                "approved"
+                                "approved",
                               )
                             }
                             className="inline-flex items-center gap-2 rounded-lg bg-green px-3 py-1.5 text-xs font-medium text-white shadow hover:opacity-90 transition"
@@ -377,7 +368,7 @@ export default function DaysOffEmployeesComponent() {
                               updateStatus(
                                 req.employee._id,
                                 req._id,
-                                "rejected"
+                                "rejected",
                               )
                             }
                             className="inline-flex items-center gap-2 rounded-lg bg-red px-3 py-1.5 text-xs font-medium text-white shadow hover:opacity-90 transition"

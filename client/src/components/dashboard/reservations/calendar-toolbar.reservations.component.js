@@ -49,7 +49,7 @@ export default function CalendarToolbarReservationsComponent(props) {
   return (
     <div className="flex flex-col gap-2">
       {/* Top bar */}
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-start justify-between gap-3">
         {/* Left: icon + title (inchangé) */}
         <div className="min-w-0 flex-1 flex items-center gap-2 h-[48px] midTablet:h-auto">
           <ReservationSvg

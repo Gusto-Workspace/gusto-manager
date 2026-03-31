@@ -15,6 +15,7 @@ import { GlobalContext } from "@/contexts/global.context";
 
 // SVG
 import { NewsSvg, RemoveSvg, UploadSvg } from "../../_shared/_svgs/_index";
+import CatalogHeaderDashboardComponent from "../_shared/catalog-header.dashboard.component";
 
 // COMPONENTS
 import TiptapEditor from "../../_shared/editor/tiptatp.editor.component";
@@ -147,20 +148,20 @@ export default function AddNewsComponent(props) {
     <section className="flex flex-col gap-6">
       <hr className="opacity-20" />
 
-      {/* Header */}
-      <div className="flex gap-2 py-1 items-center">
-        <NewsSvg
-          width={30}
-          height={30}
-          className="min-h-[30px] min-w-[30px]"
-          strokeColor="#131E3690"
-        />
-
-        <h1 className="pl-2 text-xl tablet:text-2xl flex items-center flex-wrap text-darkBlue">
-          {t("titles.main")} /{" "}
-          {props.news ? t("buttons.edit") : t("buttons.add")}
-        </h1>
-      </div>
+      <CatalogHeaderDashboardComponent
+        icon={
+          <NewsSvg
+            width={30}
+            height={30}
+            className="min-h-[30px] min-w-[30px]"
+            strokeColor="#131E3690"
+          />
+        }
+        title={t("titles.main")}
+        onTitleClick={() => router.push("/dashboard/news")}
+        onBack={() => router.push("/dashboard/news")}
+        subtitle={props.news ? t("buttons.edit") : t("buttons.add")}
+      />
 
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-5">
         {/* Carte infos générales */}

@@ -10,6 +10,7 @@ import { Clock3, SquareArrowOutUpRight } from "lucide-react";
 import { EmployeesSvg } from "@/components/_shared/_svgs/employees.svg";
 
 // COMPONENTS
+import CatalogHeaderDashboardComponent from "../_shared/catalog-header.dashboard.component";
 import ModaleEmployeesComponent from "./modale.employees.component";
 import DocumentsEmployeeComponent from "./documents.employees.component";
 import AccessRightsEmployeesComponent from "./access-rights.employees.component";
@@ -335,27 +336,13 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     <section className="flex flex-col gap-6">
       <hr className="opacity-20" />
 
-      <div className="flex gap-2 items-center min-h-[40px]">
-        <div className="flex flex-1 flex-wrap items-center gap-2">
-          <div>
-            <EmployeesSvg width={30} height={30} fillColor="#131E3690" />
-          </div>
-
-          <div className="flex flex-col">
-            <h1 className="pl-2 text-xl flex-wrap tablet:text-2xl flex items-center gap-2">
-              <span
-                className="cursor-pointer hover:underline"
-                onClick={() => router.push("/dashboard/employees")}
-              >
-                {t("titles.main")}
-              </span>
-            </h1>
-            <span className="ml-2 text-xs font-semibold text-darkBlue/50">
-              {displayFirstname} {displayLastname}
-            </span>
-          </div>
-        </div>
-      </div>
+      <CatalogHeaderDashboardComponent
+        icon={<EmployeesSvg width={30} height={30} fillColor="#131E3690" />}
+        title={t("titles.main")}
+        onTitleClick={() => router.push("/dashboard/employees")}
+        onBack={() => router.push("/dashboard/employees")}
+        subtitle={`${displayFirstname} ${displayLastname}`.trim()}
+      />
 
       {/* Détails & Photo (formulaire branché sur le SNAPSHOT) */}
       <DataEmployeesComponent

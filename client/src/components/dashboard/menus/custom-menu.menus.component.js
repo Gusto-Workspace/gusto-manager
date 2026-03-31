@@ -19,6 +19,28 @@ import { DeleteSvg } from "../../_shared/_svgs/delete.svg";
 // COMPONENTS
 import GlobalDishesComponent from "../dishes/global.dishes.component";
 
+function normalizeRelations(
+  dishes = [],
+  relations = [],
+  fallbackRelation = "or",
+) {
+  const totalRelations = Math.max(dishes.length - 1, 0);
+
+  if (totalRelations === 0) {
+    return [];
+  }
+
+  const normalizedRelations = Array.isArray(relations)
+    ? relations
+        .slice(0, totalRelations)
+        .map((relation) => (relation === "and" ? "and" : "or"))
+    : [];
+
+  return Array.from({ length: totalRelations }, (_, index) => {
+    return normalizedRelations[index] || fallbackRelation;
+  });
+}
+
 export default function CustomMenuComponent(props) {
   const { t } = useTranslation("menus");
   const router = useRouter();
@@ -31,6 +53,7 @@ export default function CustomMenuComponent(props) {
 
   const [isLoading, setIsLoading] = useState(false);
   const [selectedDishes, setSelectedDishes] = useState({});
+  const selectedDishGroups = Object.values(selectedDishes);
 
   const {
     register,
@@ -63,10 +86,29 @@ export default function CustomMenuComponent(props) {
     // Initialiser les plats sélectionnés
     if (props.selectedDishes && props.selectedDishes.length > 0) {
       const initialSelectedDishes = {};
-      props.selectedDishes.forEach((category) => {
-        initialSelectedDishes[category.category] = category.dishes;
+      props.selectedDishes.forEach((group) => {
+        const groupKey = String(group.categoryId || group.category || "");
+
+        if (!groupKey) return;
+
+        const dishes = group.dishes || [];
+        const relations = normalizeRelations(
+          dishes,
+          group.relations,
+          group.relation || "or",
+        );
+
+        initialSelectedDishes[groupKey] = {
+          categoryId: String(group.categoryId || groupKey),
+          categoryName: group.category,
+          relation: relations[0] || group.relation || "or",
+          relations,
+          dishes,
+        };
       });
       setSelectedDishes(initialSelectedDishes);
+    } else {
+      setSelectedDishes({});
     }
   }, [
     restaurantContext?.restaurantData?.dish_categories,
@@ -77,30 +119,112 @@ export default function CustomMenuComponent(props) {
 
   function handleDishClick(category, dish) {
     setSelectedDishes((prev) => {
-      const newDishes = { ...prev };
-      if (!newDishes[category.name]) {
-        newDishes[category.name] = [];
-      }
+      const groupKey = String(category._id);
+      const existingGroup = prev[groupKey] || {
+        categoryId: String(category._id),
+        categoryName: category.name,
+        relation: "or",
+        relations: [],
+        dishes: [],
+      };
+      const exists = existingGroup.dishes.some((d) => d._id === dish._id);
 
-      const exists = newDishes[category.name].some((d) => d._id === dish._id);
       if (!exists) {
-        newDishes[category.name].push(dish);
+        const nextDishes = [...existingGroup.dishes, dish];
+        const nextRelations = normalizeRelations(
+          nextDishes,
+          existingGroup.relations,
+          existingGroup.relation || "or",
+        );
+
+        return {
+          ...prev,
+          [groupKey]: {
+            ...existingGroup,
+            categoryName: category.name,
+            relation: nextRelations[0] || existingGroup.relation || "or",
+            relations: nextRelations,
+            dishes: nextDishes,
+          },
+        };
       }
 
-      return newDishes;
+      return prev;
     });
   }
 
-  function handleRemoveDish(categoryName, dishId) {
+  function handleRemoveDish(groupKey, dishId) {
     setSelectedDishes((prev) => {
       const updated = { ...prev };
-      updated[categoryName] = updated[categoryName].filter(
-        (dish) => dish._id !== dishId
+
+      if (!updated[groupKey]) return prev;
+
+      const dishIndex = updated[groupKey].dishes.findIndex(
+        (dish) => dish._id === dishId,
       );
-      if (!updated[categoryName].length) {
-        delete updated[categoryName];
+
+      if (dishIndex === -1) return prev;
+
+      const nextDishes = updated[groupKey].dishes.filter(
+        (dish) => dish._id !== dishId,
+      );
+      const currentRelations = updated[groupKey].relations || [];
+      let nextRelations = [];
+
+      if (nextDishes.length > 1) {
+        if (dishIndex === 0) {
+          nextRelations = currentRelations.slice(1);
+        } else if (dishIndex === updated[groupKey].dishes.length - 1) {
+          nextRelations = currentRelations.slice(0, -1);
+        } else {
+          nextRelations = currentRelations.filter(
+            (_, relationIndex) => relationIndex !== dishIndex,
+          );
+        }
+
+        nextRelations = normalizeRelations(
+          nextDishes,
+          nextRelations,
+          updated[groupKey].relation || "or",
+        );
       }
+
+      updated[groupKey] = {
+        ...updated[groupKey],
+        relation: nextRelations[0] || updated[groupKey].relation || "or",
+        relations: nextRelations,
+        dishes: nextDishes,
+      };
+
+      if (!updated[groupKey].dishes.length) {
+        delete updated[groupKey];
+      }
+
       return updated;
+    });
+  }
+
+  function handleRelationChange(groupKey, relationIndex, relation) {
+    setSelectedDishes((prev) => {
+      if (!prev[groupKey]) return prev;
+
+      const currentGroup = prev[groupKey];
+      const nextRelations = [...(currentGroup.relations || [])];
+      nextRelations[relationIndex] = relation === "and" ? "and" : "or";
+      const normalizedRelations = normalizeRelations(
+        currentGroup.dishes,
+        nextRelations,
+        currentGroup.relation || "or",
+      );
+
+      return {
+        ...prev,
+        [groupKey]: {
+          ...currentGroup,
+          relation: normalizedRelations[0] || currentGroup.relation || "or",
+          relations: normalizedRelations,
+        },
+      };
     });
   }
 
@@ -112,14 +236,27 @@ export default function CustomMenuComponent(props) {
         ? null
         : parseFloat(String(data.price).replace(",", "."));
 
+    const customGroups = selectedDishGroups
+      .map((group) => ({
+        categoryId: group.categoryId,
+        categoryName: group.categoryName,
+        relation: group.relation || "or",
+        relations: normalizeRelations(
+          group.dishes,
+          group.relations,
+          group.relation || "or",
+        ),
+        dishes: group.dishes.map((dish) => dish._id),
+      }))
+      .filter((group) => group.dishes.length > 0);
+
     const formattedData = {
       type: props.menuType,
       name: data.name,
       description: data.description || "",
       price: priceValue,
-      dishes: Object.values(selectedDishes)
-        .flat()
-        .map((dish) => dish._id),
+      dishes: customGroups.flatMap((group) => group.dishes),
+      customGroups,
     };
 
     const baseUrl = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}`;
@@ -144,7 +281,7 @@ export default function CustomMenuComponent(props) {
       });
   }
 
-  const hasSelectedDishes = Object.keys(selectedDishes).length > 0;
+  const hasSelectedDishes = selectedDishGroups.length > 0;
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -230,15 +367,20 @@ export default function CustomMenuComponent(props) {
               </p>
             ) : (
               <div className="mt-4 flex flex-col gap-4">
-                {Object.keys(selectedDishes).map((categoryName) => {
-                  const dishes = selectedDishes[categoryName];
+                {selectedDishGroups.map((group) => {
+                  const dishes = group.dishes || [];
+                  const relations = normalizeRelations(
+                    dishes,
+                    group.relations,
+                    group.relation || "or",
+                  );
 
                   return (
-                    <div key={categoryName} className="flex flex-col gap-2">
+                    <div key={group.categoryId} className="flex flex-col gap-2">
                       {/* Titre de catégorie */}
                       <div className="relative py-1">
                         <h3 className="relative mx-auto w-fit rounded-full border border-darkBlue/10 bg-white px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-darkBlue z-10">
-                          {categoryName}
+                          {group.categoryName}
                         </h3>
                         <hr className="pointer-events-none absolute left-0 top-1/2 h-px w-full -translate-y-1/2 border-0 bg-darkBlue/10" />
                       </div>
@@ -261,7 +403,7 @@ export default function CustomMenuComponent(props) {
                                 <button
                                   type="button"
                                   onClick={() =>
-                                    handleRemoveDish(categoryName, dish._id)
+                                    handleRemoveDish(group.categoryId, dish._id)
                                   }
                                   className="ml-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-red/5 hover:bg-red/10 transition desktop:opacity-60 hover:opacity-100"
                                 >
@@ -278,7 +420,52 @@ export default function CustomMenuComponent(props) {
                             {i < dishes.length - 1 && (
                               <div className="flex items-center justify-center gap-2 text-[11px] tablet:text-xs text-darkBlue/40">
                                 <span className="h-px w-6 bg-darkBlue/10" />
-                                <span>{t("form.custom.labels.or")}</span>
+
+                                {props.isEditing ? (
+                                  <div className="inline-flex rounded-full border border-darkBlue/10 bg-white p-1 shadow-sm">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleRelationChange(
+                                          group.categoryId,
+                                          i,
+                                          "or",
+                                        )
+                                      }
+                                      className={`min-w-[46px] rounded-full px-1 py-0.5 text-[8px] font-semibold uppercase tracking-[0.08em] transition ${
+                                        relations[i] !== "and"
+                                          ? "bg-blue text-white"
+                                          : "text-darkBlue/60 hover:bg-darkBlue/5"
+                                      }`}
+                                    >
+                                      {t("form.custom.labels.or")}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleRelationChange(
+                                          group.categoryId,
+                                          i,
+                                          "and",
+                                        )
+                                      }
+                                      className={`min-w-[46px] rounded-full px-1 py-0.5 text-[8px] font-semibold uppercase tracking-[0.08em] transition ${
+                                        relations[i] === "and"
+                                          ? "bg-blue text-white"
+                                          : "text-darkBlue/60 hover:bg-darkBlue/5"
+                                      }`}
+                                    >
+                                      {t("form.custom.labels.and")}
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span>
+                                    {relations[i] === "and"
+                                      ? t("form.custom.labels.and")
+                                      : t("form.custom.labels.or")}
+                                  </span>
+                                )}
+
                                 <span className="h-px w-6 bg-darkBlue/10" />
                               </div>
                             )}
@@ -318,7 +505,7 @@ export default function CustomMenuComponent(props) {
 
         {/* Colonne droite : liste des plats */}
         {props.isEditing && (
-          <div className="w-full flex-1">
+          <div className="w-full flex-1 tablet:sticky tablet:top-6 tablet:self-start tablet:max-h-[calc(100vh-3rem)] tablet:overflow-y-auto tablet:pr-1">
             <GlobalDishesComponent
               createMenu={true}
               categories={categories}

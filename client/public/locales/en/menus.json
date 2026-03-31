@@ -27,7 +27,8 @@
         "name": "Menu name",
         "selectedDishes": "Selected dishes",
         "selectPlaceholder": " Sélect dishes on individuals dishes to add on this menu",
-        "or": "or"
+        "or": "or",
+        "and": "and"
       }
     }
   },

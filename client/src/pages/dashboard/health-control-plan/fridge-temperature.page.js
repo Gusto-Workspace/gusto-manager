@@ -15,12 +15,11 @@ import NoAvailableComponent from "@/components/_shared/options/no-available.opti
 import FridgeTemperatureForm from "@/components/dashboard/health-control-plan/fridge-temperature/form.component";
 import FridgeTemperatureList from "@/components/dashboard/health-control-plan/fridge-temperature/list.component";
 import FridgeManagerModal from "@/components/dashboard/health-control-plan/fridge-temperature/fridge-manager-modale.component";
-
+import CatalogHeaderDashboardComponent from "@/components/dashboard/_shared/catalog-header.dashboard.component";
 
 // ICONS + SVG
 import { HealthSvg } from "@/components/_shared/_svgs/health.svg";
 import { List } from "lucide-react";
-
 
 export default function FridgeTemperaturePage() {
   const { t } = useTranslation("");
@@ -37,7 +36,7 @@ export default function FridgeTemperaturePage() {
   const token = useMemo(
     () =>
       typeof window !== "undefined" ? localStorage.getItem("token") : null,
-    []
+    [],
   );
 
   useEffect(() => {
@@ -64,7 +63,7 @@ export default function FridgeTemperaturePage() {
           params: { active: 1 }, // n’affiche que les actives dans les tableaux
         });
         const items = (data?.items || []).sort((a, b) =>
-          String(a.name).localeCompare(String(b.name), "fr")
+          String(a.name).localeCompare(String(b.name), "fr"),
         );
         setFridges(items);
       } finally {
@@ -78,7 +77,7 @@ export default function FridgeTemperaturePage() {
   const handleFridgesChanged = (nextList) => {
     // nextList est déjà triée dans la modale ; on peut re-trier pour sûreté :
     const sorted = [...(nextList || [])].sort((a, b) =>
-      String(a.name).localeCompare(String(b.name), "fr")
+      String(a.name).localeCompare(String(b.name), "fr"),
     );
     setFridges(sorted);
   };
@@ -95,7 +94,7 @@ export default function FridgeTemperaturePage() {
       <div className="flex">
         <NavComponent />
 
-          <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 min-h-screen">
+        <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 min-h-screen">
           <SettingsComponent
             dataLoading={restaurantContext.dataLoading}
             setDataLoading={restaurantContext.setDataLoading}
@@ -107,38 +106,32 @@ export default function FridgeTemperaturePage() {
           {restaurantContext?.restaurantData?.options?.health_control_plan ? (
             <section className="flex flex-col gap-6">
               <hr className="opacity-20" />
-              <div className="flex justify-between flex-wrap gap-4">
-                <div className="flex items-center gap-2 min-h-[40px]">
+              <CatalogHeaderDashboardComponent
+                icon={
                   <HealthSvg width={30} height={30} fillColor="#131E3690" />
-                  <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2 flex-wrap">
-                    <span
-                      className="cursor-pointer hover:underline"
-                      onClick={() =>
-                        router.push("/dashboard/health-control-plan")
-                      }
-                    >
-                      {t("health-control-plan:titles.main")}
-                    </span>
-                    <>
-                      <span>/</span>
-                      <span>T° enceintes frigorifiques</span>
-                    </>
-                  </h1>
-                </div>
-                <button
-                  onClick={() => setIsFridgeModalOpen(true)}
-                  className="bg-blue px-4 py-2 rounded-lg text-white h-fit disabled:opacity-60 inline-flex items-center gap-2"
-                  disabled={fridgesLoading}
-                  title={
-                    fridgesLoading
-                      ? "Chargement des enceintes…"
-                      : "Gérer les enceintes"
-                  }
-                >
-                  <List className="size-4" />
-                  Liste des enceintes
-                </button>
-              </div>
+                }
+                title={t("health-control-plan:titles.main")}
+                onTitleClick={() =>
+                  router.push("/dashboard/health-control-plan")
+                }
+                onBack={() => router.push("/dashboard/health-control-plan")}
+                subtitle="T° enceintes frigorifiques"
+                actions={
+                  <button
+                    onClick={() => setIsFridgeModalOpen(true)}
+                    className="bg-blue px-4 py-2 rounded-lg text-white h-fit disabled:opacity-60 inline-flex items-center gap-2"
+                    disabled={fridgesLoading}
+                    title={
+                      fridgesLoading
+                        ? "Chargement des enceintes…"
+                        : "Gérer les enceintes"
+                    }
+                  >
+                    <List className="size-4" />
+                    Liste des enceintes
+                  </button>
+                }
+              />
 
               <div className="flex flex-col gap-6">
                 <FridgeTemperatureForm
@@ -148,7 +141,7 @@ export default function FridgeTemperaturePage() {
                     window.dispatchEvent(
                       new CustomEvent("fridge-temperature:upsert", {
                         detail: { doc },
-                      })
+                      }),
                     );
                   }}
                 />

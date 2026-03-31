@@ -1072,10 +1072,13 @@ export default function RoomEditorComponent({
     const cw = centerWorldRef.current?.x ?? canvasW / 2;
     const ch = centerWorldRef.current?.y ?? canvasH / 2;
 
-    setPos({
+    const nextPos = {
       x: stageSize.w / 2 - cw * sc,
       y: stageSize.h / 2 - ch * sc,
-    });
+    };
+
+    posRef.current = nextPos;
+    setPos(nextPos);
   }, [stageSize.w, stageSize.h, canvasW, canvasH]);
 
   useEffect(() => {
@@ -1407,10 +1410,12 @@ export default function RoomEditorComponent({
     const size = stage.size();
     const cx = size.width / 2;
     const cy = size.height / 2;
+    const currentPos = posRef.current || pos || { x: 0, y: 0 };
+    const currentScale = scaleRef.current || scale || 1;
 
     return {
-      x: (cx - pos.x) / scale,
-      y: (cy - pos.y) / scale,
+      x: (cx - currentPos.x) / currentScale,
+      y: (cy - currentPos.y) / currentScale,
     };
   }
 
@@ -2176,7 +2181,7 @@ export default function RoomEditorComponent({
     const stage = stageRef.current;
     if (!stage) return;
 
-    const oldScale = scale;
+    const oldScale = scaleRef.current || scale;
     const pointer = stage.getPointerPosition();
     if (!pointer) return;
 
@@ -2189,13 +2194,20 @@ export default function RoomEditorComponent({
     );
 
     const mousePointTo = {
-      x: (pointer.x - pos.x) / oldScale,
-      y: (pointer.y - pos.y) / oldScale,
+      x: (pointer.x - posRef.current.x) / oldScale,
+      y: (pointer.y - posRef.current.y) / oldScale,
     };
 
     const newPos = {
       x: pointer.x - mousePointTo.x * newScale,
       y: pointer.y - mousePointTo.y * newScale,
+    };
+
+    scaleRef.current = newScale;
+    posRef.current = newPos;
+    centerWorldRef.current = {
+      x: (stageSize.w / 2 - newPos.x) / newScale,
+      y: (stageSize.h / 2 - newPos.y) / newScale,
     };
 
     setScale(newScale);
@@ -2219,19 +2231,27 @@ export default function RoomEditorComponent({
     return { x: evt?.clientX ?? 0, y: evt?.clientY ?? 0 };
   }
 
-  function getTouchPoints(evt) {
+  function toStagePoint(stage, point) {
+    const rect = stage?.container?.()?.getBoundingClientRect?.();
+    return {
+      x: point.x - (rect?.left || 0),
+      y: point.y - (rect?.top || 0),
+    };
+  }
+
+  function getTouchPoints(evt, stage) {
     const touches = evt?.touches;
     if (!touches || touches.length < 2) return null;
 
     return {
-      p1: {
+      p1: toStagePoint(stage, {
         x: touches[0].clientX,
         y: touches[0].clientY,
-      },
-      p2: {
+      }),
+      p2: toStagePoint(stage, {
         x: touches[1].clientX,
         y: touches[1].clientY,
-      },
+      }),
     };
   }
 
@@ -2246,9 +2266,15 @@ export default function RoomEditorComponent({
     };
   }
 
+  function preventIfCancelable(evt) {
+    if (evt?.cancelable) {
+      evt.preventDefault();
+    }
+  }
+
   function startPan(e) {
     const evt = e?.evt;
-    evt?.preventDefault?.();
+    preventIfCancelable(evt);
 
     const stage = stageRef.current;
     if (!stage) return;
@@ -2258,7 +2284,7 @@ export default function RoomEditorComponent({
       hasUserMovedViewRef.current = true;
       setIsPanning(false);
 
-      const pts = getTouchPoints(evt);
+      const pts = getTouchPoints(evt, stage);
       if (!pts) return;
 
       const mid = getMidpoint(pts.p1, pts.p2);
@@ -2301,9 +2327,12 @@ export default function RoomEditorComponent({
 
     // ✅ PINCH MOVE
     if (evt?.touches?.length >= 2) {
-      evt.preventDefault?.();
+      preventIfCancelable(evt);
 
-      const pts = getTouchPoints(evt);
+      const stage = stageRef.current;
+      if (!stage) return;
+
+      const pts = getTouchPoints(evt, stage);
       if (!pts) return;
 
       const mid = getMidpoint(pts.p1, pts.p2);
@@ -2323,6 +2352,13 @@ export default function RoomEditorComponent({
         y: mid.y - pinch.worldPoint.y * nextScale,
       };
 
+      scaleRef.current = nextScale;
+      posRef.current = newPos;
+      centerWorldRef.current = {
+        x: (stageSize.w / 2 - newPos.x) / nextScale,
+        y: (stageSize.h / 2 - newPos.y) / nextScale,
+      };
+
       setScale(nextScale);
       setPos(newPos);
       return;
@@ -2334,7 +2370,7 @@ export default function RoomEditorComponent({
     // ✅ PAN CLASSIQUE
     if (!isPanning) return;
 
-    evt.preventDefault?.();
+    preventIfCancelable(evt);
 
     let dx = evt?.movementX;
     let dy = evt?.movementY;
@@ -2347,14 +2383,24 @@ export default function RoomEditorComponent({
       panRef.current.lastY = y;
     }
 
-    setPos((prev) => ({
-      x: prev.x + dx,
-      y: prev.y + dy,
-    }));
+    setPos((prev) => {
+      const next = {
+        x: prev.x + dx,
+        y: prev.y + dy,
+      };
+
+      posRef.current = next;
+      centerWorldRef.current = {
+        x: (stageSize.w / 2 - next.x) / (scaleRef.current || scale),
+        y: (stageSize.h / 2 - next.y) / (scaleRef.current || scale),
+      };
+
+      return next;
+    });
   }
 
   function stopPan(e) {
-    e?.evt?.preventDefault?.();
+    preventIfCancelable(e?.evt);
 
     // fin du pinch si < 2 doigts
     if (pinchRef.current.active) {
@@ -2869,7 +2915,6 @@ export default function RoomEditorComponent({
               lineCap="round"
               lineJoin="round"
               perfectDrawEnabled={false}
-              strokeScaleEnabled={false}
             />
           </Group>
 

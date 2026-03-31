@@ -30,7 +30,6 @@ import { arrayMove, SortableContext } from "@dnd-kit/sortable";
 
 import {
   restrictToFirstScrollableAncestor,
-
   restrictToParentElement,
 } from "@dnd-kit/modifiers";
 
@@ -38,6 +37,7 @@ import {
 import CardCategoryListComponent from "./card-category-list.wines.component";
 import AddModaleWinesComponent from "./add-modale.wines.component";
 import GlobalWinesComponent from "./global.wines.component";
+import { CatalogCategoryActionButton } from "../_shared/catalog-header.dashboard.component";
 
 export default function CategoriesListWinesComponent() {
   const { t } = useTranslation("wines");
@@ -214,16 +214,14 @@ export default function CategoriesListWinesComponent() {
           <h1 className="pl-2 text-xl tablet:text-2xl">{t("titles.main")}</h1>
         </div>
 
-        <button
+        <CatalogCategoryActionButton
           onClick={() => {
             setEditingCategory(null);
             setIsDeleting(false);
             setIsModalOpen(true);
           }}
-          className="bg-blue px-6 py-2 rounded-lg text-white cursor-pointer"
-        >
-          {t("buttons.addCategory")}
-        </button>
+          label={t("buttons.addCategory")}
+        />
       </div>
 
       {categories && (

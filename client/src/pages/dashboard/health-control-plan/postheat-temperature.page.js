@@ -17,6 +17,7 @@ import NoAvailableComponent from "@/components/_shared/options/no-available.opti
 
 // SVG
 import { HealthSvg } from "@/components/_shared/_svgs/health.svg";
+import CatalogHeaderDashboardComponent from "@/components/dashboard/_shared/catalog-header.dashboard.component";
 
 // COMPONENTS
 import PostheatTemperatureForm from "@/components/dashboard/health-control-plan/postheat-temperature/form.component";
@@ -35,7 +36,7 @@ export default function PostHeatTemperaturePage(props) {
   // --- Appareils (même logique que la page preheat)
   const token = useMemo(
     () => (typeof window !== "undefined" ? localStorage.getItem("token") : ""),
-    []
+    [],
   );
   const restaurantId = restaurantContext?.restaurantData?._id;
 
@@ -54,7 +55,7 @@ export default function PostHeatTemperaturePage(props) {
           params: { active: 1 },
         });
         const items = (data?.items || []).sort((a, b) =>
-          String(a.name).localeCompare(String(b.name), "fr")
+          String(a.name).localeCompare(String(b.name), "fr"),
         );
         setEquipments(items);
       } finally {
@@ -66,7 +67,7 @@ export default function PostHeatTemperaturePage(props) {
 
   const handleEquipmentsChanged = (next) => {
     const sorted = [...(next || [])].sort((a, b) =>
-      String(a.name).localeCompare(String(b.name), "fr")
+      String(a.name).localeCompare(String(b.name), "fr"),
     );
     setEquipments(sorted);
   };
@@ -108,41 +109,32 @@ export default function PostHeatTemperaturePage(props) {
             {restaurantContext?.restaurantData?.options?.health_control_plan ? (
               <section className="flex flex-col gap-6">
                 <hr className="opacity-20" />
-                <div className="flex justify-between flex-wrap gap-4">
-                  <div className="flex items-center gap-2 min-h-[40px]">
+                <CatalogHeaderDashboardComponent
+                  icon={
                     <HealthSvg width={30} height={30} fillColor="#131E3690" />
-
-                    <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2 flex-wrap">
-                      <span
-                        className="cursor-pointer hover:underline"
-                        onClick={() =>
-                          router.push("/dashboard/health-control-plan")
-                        }
-                      >
-                        {t("health-control-plan:titles.main")}
-                      </span>
-
-                      <>
-                        <span>/</span>
-                        <span>T° sortie de chauffe</span>
-                      </>
-                    </h1>
-                  </div>
-
-                  <button
-                    onClick={() => setIsEquipmentModalOpen(true)}
-                    className="bg-blue px-4 py-2 rounded-lg text-white h-fit disabled:opacity-60 inline-flex items-center gap-2"
-                    disabled={equipmentsLoading}
-                    title={
-                      equipmentsLoading
-                        ? "Chargement des appareils…"
-                        : "Gérer les appareils"
-                    }
-                  >
-                    <List className="size-4" />
-                    Liste des appareils
-                  </button>
-                </div>
+                  }
+                  title={t("health-control-plan:titles.main")}
+                  onTitleClick={() =>
+                    router.push("/dashboard/health-control-plan")
+                  }
+                  onBack={() => router.push("/dashboard/health-control-plan")}
+                  subtitle="T° sortie de chauffe"
+                  actions={
+                    <button
+                      onClick={() => setIsEquipmentModalOpen(true)}
+                      className="bg-blue px-4 py-2 rounded-lg text-white h-fit disabled:opacity-60 inline-flex items-center gap-2"
+                      disabled={equipmentsLoading}
+                      title={
+                        equipmentsLoading
+                          ? "Chargement des appareils…"
+                          : "Gérer les appareils"
+                      }
+                    >
+                      <List className="size-4" />
+                      Liste des appareils
+                    </button>
+                  }
+                />
 
                 <div className="flex flex-col gap-6">
                   <PostheatTemperatureForm
@@ -154,7 +146,7 @@ export default function PostHeatTemperaturePage(props) {
                       window.dispatchEvent(
                         new CustomEvent("postheat-temperature:upsert", {
                           detail: { doc },
-                        })
+                        }),
                       );
                     }}
                     onCancel={() => setEditing(null)}

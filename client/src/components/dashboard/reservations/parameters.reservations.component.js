@@ -14,7 +14,7 @@ import { ReservationSvg } from "../../_shared/_svgs/reservation.svg";
 import { useForm } from "react-hook-form";
 
 // ICONS
-import { Loader2, X, ChevronLeft } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 // AXIOS
 import axios from "axios";
@@ -28,6 +28,7 @@ import EmailsParametersComponent from "./parameters/emails.parameters.component"
 import SmartParametersComponent from "./parameters/smart.parameters.component";
 import FloorPlanParametersComponent from "./parameters/floor-plan.parameters.component";
 import BankHoldParametersComponent from "./parameters/bank-hold.parameters.component";
+import CatalogHeaderDashboardComponent from "../_shared/catalog-header.dashboard.component";
 import {
   areReservationEmailTemplatesEqual,
   buildReservationEmailTemplatesPayload,
@@ -742,73 +743,23 @@ export default function ParametersReservationComponent(props) {
 
   return (
     <section className="flex flex-col gap-6">
-      {/* =========================
-          ✅ HEADER
-          ========================= */}
-      <div className="midTablet:hidden  bg-lightGrey">
-        <div className="flex items-center justify-between gap-3 h-[50px]">
-          <button
-            onClick={handleBack}
-            className="shrink-0 inline-flex items-center justify-center rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition p-2"
-            aria-label={t("reservations:calendar.back", "Retour")}
-            title={t("reservations:calendar.back", "Retour")}
-          >
-            <ChevronLeft className="size-5 text-darkBlue/70" />
-          </button>
+      <hr className="opacity-20" />
 
-          <div className="min-w-0 flex-1 flex items-center gap-2">
-            <ReservationSvg
-              width={26}
-              height={26}
-              className="min-h-[26px] min-w-[26px]"
-              fillColor="#131E3690"
-            />
-            <div className="min-w-0">
-              <p className="text-xl font-semibold text-darkBlue truncate">
-                {t("reservations:titles.main", "Réservations")}
-              </p>
-              <p className="text-sm text-darkBlue/50 truncate">{subtitle}</p>
-            </div>
-          </div>
-
-          <div className="shrink-0 w-[40px]" />
-        </div>
-      </div>
-
-      <hr className="opacity-20 hidden midTablet:block" />
-
-      <div className="hidden midTablet:flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex gap-2 items-center min-h-[40px]">
+      <CatalogHeaderDashboardComponent
+        icon={
           <ReservationSvg
             width={30}
             height={30}
             className="min-h-[30px] min-w-[30px]"
             fillColor="#131E3690"
           />
-          <div className="flex flex-col">
-            <h1 className="pl-2 text-xl flex-wrap tablet:text-2xl flex items-center gap-2">
-              <span
-                className="cursor-pointer hover:underline"
-                onClick={() => router.push("/dashboard/reservations")}
-              >
-                {t("titles.main")}
-              </span>
-            </h1>
-            <span className="ml-2 text-xs font-semibold text-darkBlue/50">
-              Paramètres
-            </span>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={handleBack}
-          className="inline-flex items-center gap-2 rounded-lg border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition px-4 py-2 text-sm font-semibold text-darkBlue"
-        >
-          <ChevronLeft className="size-4 shrink-0 text-darkBlue/60" />
-          {t("reservations:buttons.back", "Retour")}
-        </button>
-      </div>
+        }
+        title={t("reservations:titles.main", "Réservations")}
+        onTitleClick={() => router.push("/dashboard/reservations")}
+        onBack={handleBack}
+        backLabel={t("reservations:buttons.back", "Retour")}
+        subtitle={subtitle}
+      />
 
       {/* =========================
           ✅ FORM (on garde RHF pour les values)

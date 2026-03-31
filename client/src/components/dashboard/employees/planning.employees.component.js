@@ -13,6 +13,7 @@ import { useTranslation } from "next-i18next";
 import { EmployeesSvg } from "../../_shared/_svgs/_index";
 import CardEmployeesComponent from "./card.employees.component";
 import ExportRangeModalComponent from "./export-range-modal.component";
+import CatalogHeaderDashboardComponent from "../_shared/catalog-header.dashboard.component";
 import axios from "axios";
 import { getAuthConfig } from "../time-clock/time-clock.utils";
 
@@ -904,123 +905,109 @@ export default function PlanningEmployeesComponent() {
       } flex flex-col gap-4 min-w-0`}
     >
       {/* ================= Header ================= */}
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2 min-h-[40px]">
-            <EmployeesSvg width={30} height={30} fillColor="#131E3690" />
-            <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2 flex-wrap">
-              <span
-                className="cursor-pointer hover:underline"
-                onClick={() => router.push("/dashboard/employees")}
-              >
-                {t("titles.main")}
-              </span>
-              <span>/</span>
-              <span>{t("titles.planning")}</span>
-            </h1>
-          </div>
-        </div>
-
-        {/* ✅ Actions desktop/tablette */}
-        <div className="hidden midTablet:flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setPlanningExportError("");
-              setIsPlanningExportOpen(true);
-            }}
-            className="
+      <CatalogHeaderDashboardComponent
+        icon={<EmployeesSvg width={30} height={30} fillColor="#131E3690" />}
+        title={t("titles.main")}
+        onTitleClick={() => router.push("/dashboard/employees")}
+        onBack={() => router.push("/dashboard/employees")}
+        subtitle={t("titles.planning")}
+        actions={
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                setPlanningExportError("");
+                setIsPlanningExportOpen(true);
+              }}
+              className="hidden midTablet:inline-flex
       inline-flex items-center gap-2
       rounded-2xl border border-darkBlue/10 bg-white/70
       px-4 py-2 text-sm font-semibold text-darkBlue
       hover:bg-darkBlue/5 transition
     "
-          >
-            <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15 text-blue">
-              <Download className="size-4" />
-            </span>
-            <span className="whitespace-nowrap">Exporter le planning</span>
-          </button>
+            >
+              <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15 text-blue">
+                <Download className="size-4" />
+              </span>
+              <span className="whitespace-nowrap">Exporter le planning</span>
+            </button>
 
-          {/* + Ajouter un créneau (ouvre ta modale) */}
-          <button
-            type="button"
-            onClick={openManualAdd}
-            className="
+            <button
+              type="button"
+              onClick={openManualAdd}
+              className="hidden midTablet:inline-flex
       inline-flex items-center gap-2
       rounded-2xl bg-white text-blue
       px-4 py-2 text-sm font-semibold border border-blue
       shadow-sm hover:bg-darkBlue/5 active:scale-[0.98] transition
     "
-            aria-label={t("planning:buttons.addShift", "Ajouter un créneau")}
-            title={t("planning:buttons.addShift", "Ajouter un créneau")}
-          >
-            <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15">
-              <Plus className="size-4" />
-            </span>
-            <span className="whitespace-nowrap">
-              {t("planning:buttons.addShift", "Ajouter un créneau")}
-            </span>
-          </button>
+              aria-label={t("planning:buttons.addShift", "Ajouter un créneau")}
+              title={t("planning:buttons.addShift", "Ajouter un créneau")}
+            >
+              <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15">
+                <Plus className="size-4" />
+              </span>
+              <span className="whitespace-nowrap">
+                {t("planning:buttons.addShift", "Ajouter un créneau")}
+              </span>
+            </button>
 
-          {/* Demandes de congés */}
-          <button
-            type="button"
-            onClick={() =>
-              router.push("/dashboard/employees/planning/days-off")
-            }
-            className="
+            <button
+              type="button"
+              onClick={() =>
+                router.push("/dashboard/employees/planning/days-off")
+              }
+              className="hidden midTablet:inline-flex
       inline-flex items-center gap-2
       rounded-2xl border border-darkBlue/10 bg-white/70
       px-4 py-2 text-sm font-semibold text-darkBlue
       hover:bg-darkBlue/5 transition
     "
-          >
-            <span className="inline-flex items-center justify-center size-9 rounded-full bg-violet text-white">
-              <CalendarDays className="size-4" />
-            </span>
-            <span className="whitespace-nowrap">{t("titles.daysOff")}</span>
-          </button>
-        </div>
+            >
+              <span className="inline-flex items-center justify-center size-9 rounded-full bg-violet text-white">
+                <CalendarDays className="size-4" />
+              </span>
+              <span className="whitespace-nowrap">{t("titles.daysOff")}</span>
+            </button>
+          </>
+        }
+      />
 
-        <div className="flex w-full items-stretch gap-2 midTablet:hidden">
-          <button
-            type="button"
-            onClick={() => {
-              setPlanningExportError("");
-              setIsPlanningExportOpen(true);
-            }}
-            className="
+      <div className="flex w-full items-stretch gap-2 midTablet:hidden">
+        <button
+          type="button"
+          onClick={() => {
+            setPlanningExportError("");
+            setIsPlanningExportOpen(true);
+          }}
+          className="
       inline-flex flex-1 min-w-0 items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70
       px-3 py-3 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5
     "
-            aria-label="Exporter le planning"
-            title="Exporter le planning"
-          >
-            <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15 text-blue shrink-0">
-              <Download className="size-4" />
-            </span>
-            <span className="truncate">Exporter</span>
-          </button>
+          aria-label="Exporter le planning"
+          title="Exporter le planning"
+        >
+          <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15 text-blue shrink-0">
+            <Download className="size-4" />
+          </span>
+          <span className="truncate">Exporter</span>
+        </button>
 
-          <button
-            type="button"
-            onClick={() =>
-              router.push("/dashboard/employees/planning/days-off")
-            }
-            className="
+        <button
+          type="button"
+          onClick={() => router.push("/dashboard/employees/planning/days-off")}
+          className="
       inline-flex flex-1 min-w-0 items-center gap-2
       rounded-2xl border border-darkBlue/10 bg-white/70
       px-3 py-3 text-sm font-semibold text-darkBlue
       hover:bg-darkBlue/5 transition
     "
-          >
-            <span className="inline-flex items-center justify-center size-9 rounded-full bg-violet text-white shrink-0">
-              <CalendarDays className="size-4" />
-            </span>
-            <span className="truncate">{t("titles.daysOff")}</span>
-          </button>
-        </div>
+        >
+          <span className="inline-flex items-center justify-center size-9 rounded-full bg-violet text-white shrink-0">
+            <CalendarDays className="size-4" />
+          </span>
+          <span className="truncate">{t("titles.daysOff")}</span>
+        </button>
       </div>
 
       {/* ================= Search ================= */}

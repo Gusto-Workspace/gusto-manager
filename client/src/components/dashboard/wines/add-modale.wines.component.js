@@ -41,7 +41,7 @@ export default function AddModaleWinesComponent(props) {
               placeholder="-"
               disabled={props.isDeleting || props.isSubmitting}
               {...props.register("name", { required: !props.isDeleting })}
-              className={`border p-2 rounded-lg w-full ${
+              className={`w-full rounded-lg border p-2 text-base ${
                 props.errors.name ? "border-red" : ""
               } ${props.isDeleting || props.isSubmitting ? "opacity-50 cursor-not-allowed" : ""}`}
             />

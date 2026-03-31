@@ -18,6 +18,7 @@ import InventoryLotList from "@/components/dashboard/health-control-plan/invento
 
 // SVG
 import { HealthSvg } from "@/components/_shared/_svgs/health.svg";
+import CatalogHeaderDashboardComponent from "@/components/dashboard/_shared/catalog-header.dashboard.component";
 
 export default function InventoryLotPage(props) {
   const { t } = useTranslation("");
@@ -80,27 +81,17 @@ export default function InventoryLotPage(props) {
               <section className="flex flex-col gap-6">
                 <hr className="opacity-20" />
 
-                <div className="flex justify-between  gap-4">
-                  <div className="flex items-center gap-2 min-h-[40px]">
+                <CatalogHeaderDashboardComponent
+                  icon={
                     <HealthSvg width={30} height={30} fillColor="#131E3690" />
-
-                    <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2 flex-wrap">
-                      <span
-                        className="cursor-pointer hover:underline"
-                        onClick={() =>
-                          router.push("/dashboard/health-control-plan")
-                        }
-                      >
-                        {t("health-control-plan:titles.main")}
-                      </span>
-
-                      <>
-                        <span>/</span>
-                        <span>Traçabilité étiquettes</span>
-                      </>
-                    </h1>
-                  </div>
-                </div>
+                  }
+                  title={t("health-control-plan:titles.main")}
+                  onTitleClick={() =>
+                    router.push("/dashboard/health-control-plan")
+                  }
+                  onBack={() => router.push("/dashboard/health-control-plan")}
+                  subtitle="Traçabilité étiquettes"
+                />
 
                 <div className="flex flex-col gap-6">
                   <InventoryLotForm
@@ -111,7 +102,7 @@ export default function InventoryLotPage(props) {
                       window.dispatchEvent(
                         new CustomEvent("inventory-lot:upsert", {
                           detail: { doc },
-                        })
+                        }),
                       );
                     }}
                     onCancel={() => setEditing(null)}
