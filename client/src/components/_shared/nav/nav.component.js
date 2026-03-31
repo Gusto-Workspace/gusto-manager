@@ -205,10 +205,20 @@ export default function NavComponent() {
 
   const sortedNavItems = useMemo(() => {
     const role = restaurantContext.userConnected?.role;
+    const restaurantOptions = restaurantContext.restaurantData?.options || {};
+    const hiddenOptionKeys = new Set(
+      ["drinks", "wines"].filter((key) => !restaurantOptions[key]),
+    );
+
     let items = navItemsData.map((item) => ({
       ...item,
       enabled: isOptionEnabled(item.href),
     }));
+
+    items = items.filter((item) => {
+      const optionKey = HREF_TO_OPTION_KEY[item.href];
+      return !hiddenOptionKeys.has(optionKey);
+    });
 
     if (role === "owner") {
       items = items.filter((item) => item.href !== "/dashboard/my-space");
@@ -218,7 +228,11 @@ export default function NavComponent() {
 
     // enabled d'abord
     return items.sort((a, b) => (b.enabled === true) - (a.enabled === true));
-  }, [isOptionEnabled, restaurantContext.userConnected?.role]);
+  }, [
+    isOptionEnabled,
+    restaurantContext.userConnected?.role,
+    restaurantContext.restaurantData?.options,
+  ]);
 
   return (
     <div>

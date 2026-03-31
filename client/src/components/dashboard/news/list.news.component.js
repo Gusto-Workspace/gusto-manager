@@ -18,6 +18,10 @@ import {
   NoImageSvg,
   NoVisibleSvg,
 } from "../../_shared/_svgs/_index";
+import {
+  CatalogActionButton,
+  default as CatalogHeaderDashboardComponent,
+} from "../_shared/catalog-header.dashboard.component";
 
 export default function ListNewsComponent(props) {
   const { t } = useTranslation("news");
@@ -29,8 +33,6 @@ export default function ListNewsComponent(props) {
 
   const cardCls =
     "rounded-2xl border border-darkBlue/10 bg-white/50 px-4 py-3 tablet:px-5 tablet:py-4 shadow-[0_18px_45px_rgba(19,30,54,0.06)] hover:shadow-[0_22px_55px_rgba(19,30,54,0.10)] transition-shadow flex flex-col gap-3";
-  const btnPrimary =
-    "inline-flex items-center gap-2 rounded-xl bg-blue text-white text-sm font-medium px-4 py-2.5 shadow-sm hover:bg-blue/90 transition";
   const btnSecondary =
     "inline-flex min-w-[120px] items-center justify-center rounded-xl border border-red bg-red text-white text-sm font-medium px-4 py-2.5 shadow-sm hover:bg-red/90 transition disabled:opacity-60 disabled:cursor-not-allowed";
   const iconPill =
@@ -61,7 +63,7 @@ export default function ListNewsComponent(props) {
 
     axios
       .delete(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/news/${selectedNews._id}`
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/news/${selectedNews._id}`,
       )
       .then((response) => {
         restaurantContext.setRestaurantData((prev) => ({
@@ -84,7 +86,7 @@ export default function ListNewsComponent(props) {
     axios
       .put(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/news/${data._id}`,
-        { visible: updatedVisibility }
+        { visible: updatedVisibility },
       )
       .then((response) => {
         restaurantContext.setRestaurantData((prev) => ({
@@ -98,30 +100,32 @@ export default function ListNewsComponent(props) {
   }
 
   const hasNews = Array.isArray(props?.news) && props.news.length > 0;
+  const totalNews = props?.news?.length || 0;
 
   return (
     <section className="flex flex-col gap-6">
       <hr className="opacity-20" />
 
-      {/* Header */}
-      <div className="flex gap-4 flex-wrap justify-between items-center">
-        <div className="flex gap-2 items-center min-h-[40px]">
+      <CatalogHeaderDashboardComponent
+        icon={
           <NewsSvg
             width={30}
             height={30}
             className="min-h-[30px] min-w-[30px]"
             strokeColor="#131E3690"
           />
-
-          <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2 text-darkBlue">
-            {t("titles.main")}
-          </h1>
-        </div>
-
-        <button onClick={handleAddClick} className={btnPrimary}>
-          {t("buttons.add")}
-        </button>
-      </div>
+        }
+        title={t("titles.main")}
+        subtitle={`${totalNews} ${
+          totalNews > 1 || totalNews === 0 ? "actualités" : "actualité"
+        }`}
+        actions={
+          <CatalogActionButton
+            label={t("buttons.add")}
+            onClick={handleAddClick}
+          />
+        }
+      />
 
       {/* Liste / Empty state */}
       {!hasNews ? (

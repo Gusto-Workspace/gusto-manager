@@ -10,6 +10,7 @@ import { useTranslation } from "next-i18next";
 
 // SVG
 import { HealthSvg } from "@/components/_shared/_svgs/health.svg";
+import CatalogHeaderDashboardComponent from "../_shared/catalog-header.dashboard.component";
 
 const tiles = [
   {
@@ -221,7 +222,7 @@ export default function DashboardHealthControlPlanComponent() {
           _searchText: `${tile.key} ${tile.label} ${translatedLabel} ${tile.note} ${translatedNote}`,
         };
       }),
-    [t]
+    [t],
   );
 
   // filtered tiles by searchTerm (matches key/label/note, accent-insensitive)
@@ -229,14 +230,14 @@ export default function DashboardHealthControlPlanComponent() {
     const q = normalize(searchTerm);
     if (!q) return tilesWithText;
     return tilesWithText.filter((tile) =>
-      normalize(tile._searchText).includes(q)
+      normalize(tile._searchText).includes(q),
     );
   }, [tilesWithText, searchTerm]);
 
   const handleDownloadReport = async () => {
     if (!restaurantId) {
       setReportError(
-        "Aucun restaurant sélectionné. Veuillez recharger le tableau de bord."
+        "Aucun restaurant sélectionné. Veuillez recharger le tableau de bord.",
       );
       return;
     }
@@ -244,7 +245,7 @@ export default function DashboardHealthControlPlanComponent() {
     // Garde-fou : empêcher un "to" antérieur à "from"
     if (reportFrom && reportTo && reportTo < reportFrom) {
       setReportError(
-        "La date de fin ne peut pas être antérieure à la date de début."
+        "La date de fin ne peut pas être antérieure à la date de début.",
       );
       return;
     }
@@ -276,7 +277,7 @@ export default function DashboardHealthControlPlanComponent() {
                 Authorization: `Bearer ${token}`,
               }
             : {},
-        }
+        },
       );
 
       const blob = new Blob([response.data], { type: "application/pdf" });
@@ -303,7 +304,7 @@ export default function DashboardHealthControlPlanComponent() {
     } catch (err) {
       console.error("Erreur lors du téléchargement du rapport HACCP :", err);
       setReportError(
-        "Impossible de générer le rapport. Veuillez réessayer dans quelques instants."
+        "Impossible de générer le rapport. Veuillez réessayer dans quelques instants.",
       );
     } finally {
       setReportLoading(false);
@@ -315,27 +316,22 @@ export default function DashboardHealthControlPlanComponent() {
       <hr className="opacity-20" />
 
       <div className="flex flex-col gap-4">
-        <div className="flex justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-2 min-h-[40px]">
-            <HealthSvg width={30} height={30} fillColor="#131E3690" />
-
-            <h1 className="pl-2 py-1 text-xl tablet:text-2xl">
-              {t("health-control-plan:titles.main")}
-            </h1>
-          </div>
-
-          {/* Bouton édition de rapport */}
-          <button
-            type="button"
-            onClick={() => {
-              setIsReportModalOpen(true);
-              setReportError(null);
-            }}
-            className="bg-blue h-fit px-6 py-2 rounded-lg text-white cursor-pointer hover:opacity-80 transition-all ease-in-out"
-          >
-            Générer un rapport
-          </button>
-        </div>
+        <CatalogHeaderDashboardComponent
+          icon={<HealthSvg width={30} height={30} fillColor="#131E3690" />}
+          title={t("health-control-plan:titles.main")}
+          actions={
+            <button
+              type="button"
+              onClick={() => {
+                setIsReportModalOpen(true);
+                setReportError(null);
+              }}
+              className="bg-blue h-fit px-6 py-2 rounded-lg text-white cursor-pointer hover:opacity-80 transition-all ease-in-out"
+            >
+              Générer un rapport
+            </button>
+          }
+        />
 
         {/* Search + count */}
         <div className="w-full">
@@ -346,14 +342,14 @@ export default function DashboardHealthControlPlanComponent() {
                   type="text"
                   placeholder={t(
                     "placeholders.searchTile",
-                    "Rechercher une catégorie"
+                    "Rechercher une catégorie",
                   )}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full p-2 pr-10 border border-[#131E3690] rounded-lg bg-white"
                   aria-label={t(
                     "placeholders.searchTile",
-                    "Rechercher une catégorie"
+                    "Rechercher une catégorie",
                   )}
                 />
                 {searchTerm && (
@@ -447,14 +443,14 @@ export default function DashboardHealthControlPlanComponent() {
             <h2 className="text-lg font-semibold mb-2">
               {t(
                 "health-control-plan:report.modalTitle",
-                "Générer un rapport HACCP"
+                "Générer un rapport HACCP",
               )}
             </h2>
 
             <p className="text-sm text-slate-600">
               {t(
                 "health-control-plan:report.modalDescription",
-                "Sélectionnez une plage de dates pour générer un rapport complet de vos enregistrements HACCP."
+                "Sélectionnez une plage de dates pour générer un rapport complet de vos enregistrements HACCP.",
               )}
             </p>
 
@@ -474,7 +470,7 @@ export default function DashboardHealthControlPlanComponent() {
 
                     if (reportTo && value && value > reportTo) {
                       setReportError(
-                        "La date de début ne peut pas être postérieure à la date de fin."
+                        "La date de début ne peut pas être postérieure à la date de fin.",
                       );
                       return;
                     }
@@ -500,7 +496,7 @@ export default function DashboardHealthControlPlanComponent() {
 
                     if (reportFrom && value && value < reportFrom) {
                       setReportError(
-                        "La date de fin ne peut pas être antérieure à la date de début."
+                        "La date de fin ne peut pas être antérieure à la date de début.",
                       );
                       return;
                     }
@@ -539,7 +535,7 @@ export default function DashboardHealthControlPlanComponent() {
                   ? t("common:loading", "Génération…")
                   : t(
                       "health-control-plan:report.generate",
-                      "Générer le rapport"
+                      "Générer le rapport",
                     )}
               </button>
             </div>

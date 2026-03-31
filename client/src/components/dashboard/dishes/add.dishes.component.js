@@ -21,6 +21,7 @@ import {
   VeganSvg,
   VegetarianSvg,
 } from "../../_shared/_svgs/_index";
+import CatalogHeaderDashboardComponent from "../_shared/catalog-header.dashboard.component";
 
 export default function AddDishesComponent(props) {
   const { t } = useTranslation("dishes");
@@ -124,7 +125,7 @@ export default function AddDishesComponent(props) {
   const labelCls =
     "text-xs font-semibold uppercase tracking-[0.08em] text-darkBlue/70 flex items-center gap-2";
   const inputCls =
-    "h-11 w-full rounded-xl border border-darkBlue/10 bg-white/80 px-3 text-sm outline-none transition placeholder:text-darkBlue/40";
+    "h-11 w-full rounded-xl border border-darkBlue/10 bg-white/80 px-3 text-base outline-none transition placeholder:text-darkBlue/40";
   const btnPrimary =
     "inline-flex min-w-[120px] items-center justify-center rounded-xl bg-blue text-white text-sm font-medium px-4 py-2.5 shadow-sm hover:bg-blue/90 transition disabled:opacity-60 disabled:cursor-not-allowed";
   const btnSecondary =
@@ -137,23 +138,36 @@ export default function AddDishesComponent(props) {
   const vegetarianChecked = watch("vegetarian");
   const bioChecked = watch("bio");
   const glutenFreeChecked = watch("glutenFree");
+  const formattedCategoryRoute = props.category
+    ? `/dashboard/dishes/${props.category.name
+        .replace(/\//g, "-")
+        .replace(/\s+/g, "&")
+        .toLowerCase()}-${props.category._id}`
+    : "/dashboard/dishes";
 
   return (
     <section className="flex flex-col gap-6">
       <hr className="opacity-20" />
-      <div className="flex gap-2 min-h-[40px] items-center">
-        <DishSvg width={30} height={30} fillColor="#131E3690" />
-        <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2 flex-wrap">
-          <span>{t("titles.main")}</span>
-          {props.category && (
-            <>
-              <span>/</span> <span>{props.category.name}</span>
-            </>
-          )}
-          <span>/</span>
-          <span>{props.dish ? t("buttons.edit") : t("buttons.add")}</span>
-        </h1>
-      </div>
+      <CatalogHeaderDashboardComponent
+        icon={<DishSvg width={30} height={30} fillColor="#131E3690" />}
+        title={t("titles.main")}
+        onTitleClick={() => router.push("/dashboard/dishes")}
+        onBack={() => router.push(formattedCategoryRoute)}
+        backLabel={t("buttons.return", "Retour")}
+        subtitleItems={
+          props.category?.name
+            ? [
+                {
+                  label: props.category.name,
+                  onClick: () => router.push(formattedCategoryRoute),
+                },
+                {
+                  label: props.dish ? t("buttons.edit") : t("buttons.add"),
+                },
+              ]
+            : []
+        }
+      />
 
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-5">
         {/* Carte infos générales (nom, description, prix) */}
@@ -227,7 +241,7 @@ export default function AddDishesComponent(props) {
                       return Number.isFinite(n) && n >= 0;
                     },
                   })}
-                  className={`h-11 w-full border-l px-3 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
+                  className={`h-11 w-full border-l px-3 text-base outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
                     errors.price
                       ? "border-red text-red"
                       : "border-darkBlue/10 text-darkBlue"

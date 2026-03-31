@@ -15,6 +15,7 @@ import { GlobalContext } from "@/contexts/global.context";
 
 // SVG
 import { BioSvg, DrinkSvg } from "../../_shared/_svgs/_index";
+import CatalogHeaderDashboardComponent from "../_shared/catalog-header.dashboard.component";
 
 export default function AddDrinksComponent(props) {
   const { t } = useTranslation("drinks");
@@ -119,7 +120,7 @@ export default function AddDrinksComponent(props) {
           .toLowerCase();
 
         router.push(
-          `/dashboard/drinks/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${props.subCategory._id}`
+          `/dashboard/drinks/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${props.subCategory._id}`,
         );
       } else {
         const formattedName = props.category.name
@@ -142,7 +143,7 @@ export default function AddDrinksComponent(props) {
   const labelCls =
     "text-xs font-semibold uppercase tracking-[0.08em] text-darkBlue/70 flex items-center gap-2";
   const inputCls =
-    "h-11 w-full rounded-xl border border-darkBlue/10 bg-white/80 px-3 text-sm outline-none transition placeholder:text-darkBlue/40";
+    "h-11 w-full rounded-xl border border-darkBlue/10 bg-white/80 px-3 text-base outline-none transition placeholder:text-darkBlue/40";
   const btnPrimary =
     "inline-flex min-w-[120px] items-center justify-center rounded-xl bg-blue text-white text-sm font-medium px-4 py-2.5 shadow-sm hover:bg-blue/90 transition disabled:opacity-60 disabled:cursor-not-allowed";
   const btnSecondary =
@@ -150,40 +151,75 @@ export default function AddDrinksComponent(props) {
   const badgeToggleBase =
     "inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-medium transition cursor-pointer select-none";
   const errorTextCls = "text-[11px] text-red mt-0.5";
+  const formattedCategoryRoute = props.category
+    ? `/dashboard/drinks/${props.category.name
+        .replace(/\//g, "-")
+        .replace(/\s+/g, "&")
+        .toLowerCase()}-${props.category._id}`
+    : "/dashboard/drinks";
+  const formattedSubCategoryRoute =
+    props.category && props.subCategory
+      ? `/dashboard/drinks/${props.category.name
+          .replace(/\//g, "-")
+          .replace(/\s+/g, "&")
+          .toLowerCase()}-${props.category._id}/${props.subCategory.name
+          .replace(/\//g, "-")
+          .replace(/\s+/g, "&")
+          .toLowerCase()}-${props.subCategory._id}`
+      : null;
 
   return (
     <section className="flex flex-col gap-6">
       <hr className="opacity-20" />
-
-      <div className="flex gap-2 min-h-[40px] items-center">
-        <DrinkSvg
-          width={30}
-          height={30}
-          className="min-h-[30px] min-w-[30px]"
-          fillColor="#131E3690"
-        />
-
-        <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2 flex-wrap">
-          <span>{t("titles.main")}</span>
-
-          {props.category && (
-            <>
-              <span>/</span>
-              <span>{props.category.name}</span>
-            </>
-          )}
-
-          {props.subCategory && (
-            <>
-              <span>/</span>
-              <span>{props.subCategory.name}</span>
-            </>
-          )}
-
-          <span>/</span>
-          <span>{props.drink ? t("buttons.edit") : t("buttons.add")}</span>
-        </h1>
-      </div>
+      <CatalogHeaderDashboardComponent
+        icon={
+          <DrinkSvg
+            width={30}
+            height={30}
+            className="min-h-[30px] min-w-[30px]"
+            fillColor="#131E3690"
+          />
+        }
+        title={t("titles.main")}
+        onTitleClick={() => router.push("/dashboard/drinks")}
+        onBack={() =>
+          router.push(
+            props.subCategory
+              ? formattedSubCategoryRoute || formattedCategoryRoute
+              : formattedCategoryRoute,
+          )
+        }
+        backLabel={t("buttons.return", "Retour")}
+        subtitleItems={
+          props.subCategory
+            ? [
+                {
+                  label: props.category?.name,
+                  onClick: () => router.push(formattedCategoryRoute),
+                },
+                {
+                  label: props.subCategory.name,
+                  onClick: formattedSubCategoryRoute
+                    ? () => router.push(formattedSubCategoryRoute)
+                    : undefined,
+                },
+                {
+                  label: props.drink ? t("buttons.edit") : t("buttons.add"),
+                },
+              ]
+            : props.category?.name
+              ? [
+                  {
+                    label: props.category.name,
+                    onClick: () => router.push(formattedCategoryRoute),
+                  },
+                  {
+                    label: props.drink ? t("buttons.edit") : t("buttons.add"),
+                  },
+                ]
+              : []
+        }
+      />
 
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-5">
         {/* Carte infos générales (nom, description, prix) */}
@@ -210,9 +246,7 @@ export default function AddDrinksComponent(props) {
                   errors.name ? "border-red ring-1 ring-red/30" : ""
                 }`}
               />
-              {errors.name && (
-                <p className={errorTextCls}>Requis</p>
-              )}
+              {errors.name && <p className={errorTextCls}>Requis</p>}
             </div>
 
             {/* Description */}
@@ -256,7 +290,7 @@ export default function AddDrinksComponent(props) {
                   {...register("price", {
                     validate: (v) => v !== "" && v != null,
                   })}
-                  className={`h-11 w-full border-l px-3 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
+                  className={`h-11 w-full border-l px-3 text-base outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
                     errors.price
                       ? "border-red text-red"
                       : "border-darkBlue/10 text-darkBlue"
@@ -264,9 +298,7 @@ export default function AddDrinksComponent(props) {
                 />
               </div>
 
-              {errors.price && (
-                <p className={errorTextCls}>Requis</p>
-              )}
+              {errors.price && <p className={errorTextCls}>Requis</p>}
             </div>
           </div>
         </div>

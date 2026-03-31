@@ -33,15 +33,15 @@ export default function CategoriesInputFixedMenuComponent(props) {
               return {
                 ...error,
                 emptyCategories: error.emptyCategories.filter(
-                  (index) => index !== catIndex
+                  (index) => index !== catIndex,
                 ),
               };
             }
             return error;
           })
           .filter(
-            (error) => error.emptyCategories.length > 0 || error.emptyPrice
-          )
+            (error) => error.emptyCategories.length > 0 || error.emptyPrice,
+          ),
       );
     }
   }
@@ -50,7 +50,7 @@ export default function CategoriesInputFixedMenuComponent(props) {
     errorFields.some(
       (error) =>
         error.comboIndex === combinationIndex &&
-        error.emptyCategories.includes(j)
+        error.emptyCategories.includes(j),
     );
 
   const isLastField = (j) => j === fields.length - 1;
@@ -76,7 +76,7 @@ export default function CategoriesInputFixedMenuComponent(props) {
                         ctrlField.onChange(e);
                         handleCategoryChange(e.target.value, j);
                       }}
-                      className={`h-11 w-full rounded-xl border bg-white/80 px-3 pr-9 text-sm outline-none transition appearance-none ${
+                      className={`h-11 w-full rounded-xl border bg-white/80 px-3 pr-9 text-base outline-none transition appearance-none ${
                         hasCategoryError(j)
                           ? "border-red/70 focus:border-red"
                           : "border-darkBlue/10 focus:border-darkBlue/40"

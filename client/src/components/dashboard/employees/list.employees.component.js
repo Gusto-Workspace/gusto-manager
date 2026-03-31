@@ -6,6 +6,7 @@ import { useTranslation } from "next-i18next";
 import { EmployeesSvg } from "../../_shared/_svgs/_index";
 import CardEmployeesComponent from "./card.employees.component";
 import ExportRangeModalComponent from "./export-range-modal.component";
+import CatalogHeaderDashboardComponent from "../_shared/catalog-header.dashboard.component";
 import {
   getAuthConfig,
   openTimeClockInNewTab,
@@ -173,21 +174,13 @@ export default function ListEmployeesComponent() {
 
       {/* Header + actions */}
       <div className="flex flex-col gap-4">
-        {/* ✅ Titre: inchangé */}
-        <div className="flex gap-2 items-center min-h-[40px]">
-          <div>
-            <EmployeesSvg width={30} height={30} fillColor="#131E3690" />
-          </div>
-
-          <div className="flex flex-col">
-            <h1 className="pl-2 text-xl flex-wrap tablet:text-2xl flex items-center gap-2">
-              <span>{t("employees:titles.main")}</span>
-            </h1>
-            <span className="ml-2 text-xs font-semibold text-darkBlue/50">
-              {totalEmployees} {totalEmployees > 1 ? "employés" : "employé"}
-            </span>
-          </div>
-        </div>
+        <CatalogHeaderDashboardComponent
+          icon={<EmployeesSvg width={30} height={30} fillColor="#131E3690" />}
+          title={t("employees:titles.main")}
+          subtitle={`${totalEmployees} ${
+            totalEmployees > 1 || totalEmployees === 0 ? "employés" : "employé"
+          }`}
+        />
 
         {/* Mobile webapp actions row */}
         <div className="flex items-center justify-between gap-3 midTablet:hidden">

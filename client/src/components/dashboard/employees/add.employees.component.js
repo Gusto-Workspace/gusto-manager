@@ -18,6 +18,7 @@ import { useTranslation } from "next-i18next";
 
 // SVG
 import { EmployeesSvg } from "../../_shared/_svgs/_index";
+import CatalogHeaderDashboardComponent from "../_shared/catalog-header.dashboard.component";
 
 // ICONS LUCIDE
 import {
@@ -108,7 +109,7 @@ export default function AddEmployeesComponent() {
         t("errors.fetchExistingEmployees", {
           defaultValue:
             "Impossible de récupérer la liste des employés existants.",
-        })
+        }),
       );
     } finally {
       setIsLoadingExisting(false);
@@ -293,7 +294,7 @@ export default function AddEmployeesComponent() {
                         currentRestaurantId &&
                         Array.isArray(emp.restaurants) &&
                         emp.restaurants.some(
-                          (r) => String(r._id) === String(currentRestaurantId)
+                          (r) => String(r._id) === String(currentRestaurantId),
                         );
 
                       const disabled =
@@ -372,7 +373,7 @@ export default function AddEmployeesComponent() {
               </p>
             </section>
           </div>,
-          document.body
+          document.body,
         )
       : null;
 
@@ -383,25 +384,13 @@ export default function AddEmployeesComponent() {
       <section className="flex flex-col gap-6">
         <hr className="opacity-20" />
 
-        <div className="flex justify-between flex-wrap gap-4">
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center gap-2 min-h-[40px]">
-              <EmployeesSvg width={30} height={30} fillColor="#131E3690" />
-
-              <h1 className="pl-2 text-xl tablet:text-2xl flex items-center gap-2 flex-wrap">
-                <span
-                  className="cursor-pointer hover:underline"
-                  onClick={() => router.push("/dashboard/employees")}
-                >
-                  {t("employees:titles.main")}
-                </span>
-                <span>/</span>
-                <span>Ajouter</span>
-              </h1>
-            </div>
-          </div>
-
-          <div className="flex items-center">
+        <CatalogHeaderDashboardComponent
+          icon={<EmployeesSvg width={30} height={30} fillColor="#131E3690" />}
+          title={t("employees:titles.main")}
+          onTitleClick={() => router.push("/dashboard/employees")}
+          onBack={() => router.push("/dashboard/employees")}
+          subtitle={t("buttons.add", "Ajouter")}
+          actions={
             <button
               type="button"
               onClick={handleOpenImportModal}
@@ -412,8 +401,8 @@ export default function AddEmployeesComponent() {
                 defaultValue: "Importer un employé existant",
               })}
             </button>
-          </div>
-        </div>
+          }
+        />
 
         <form
           onSubmit={handleSubmit(onSubmit)}

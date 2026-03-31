@@ -35,6 +35,10 @@ import {
 import DetailsWineComponent from "./details-wine.wines.component";
 import AddModaleWinesComponent from "./add-modale.wines.component";
 import CardCategoryListComponent from "./card-category-list.wines.component";
+import CatalogHeaderDashboardComponent, {
+  CatalogActionButton,
+  CatalogCategoryActionButton,
+} from "../_shared/catalog-header.dashboard.component";
 
 export default function ListWinesComponent(props) {
   const { t } = useTranslation("wines");
@@ -363,81 +367,58 @@ export default function ListWinesComponent(props) {
         .toLowerCase()}-${props.category._id}`
     : baseRoute;
 
-  const formattedSubCategoryRoute = props.subCategory
-    ? `/dashboard/wines/${props.category.name
-        .replace(/\//g, "-")
-        .replace(/\s+/g, "&")
-        .toLowerCase()}-${props.category._id}/${props.subCategory.name
-        .replace(/\//g, "-")
-        .replace(/\s+/g, "&")
-        .toLowerCase()}-${props.subCategory._id}`
-    : formattedCategoryRoute;
-
   return (
     <div className="flex flex-col gap-6">
       <hr className="opacity-20" />
 
-      <div className="flex gap-4 flex-wrap justify-between">
-        <div className="flex gap-2 items-center min-h-[40px]">
+      <CatalogHeaderDashboardComponent
+        icon={
           <WineSvg
             width={30}
             height={30}
             className="min-h-[30px] min-w-[30px]"
             fillColor="#131E3690"
           />
+        }
+        title={t("titles.main")}
+        onTitleClick={() => router.push(baseRoute)}
+        onBack={
+          props.subCategory
+            ? () => router.push(formattedCategoryRoute)
+            : props.category
+              ? () => router.push(baseRoute)
+              : undefined
+        }
+        backLabel={t("buttons.return", "Retour")}
+        subtitleItems={
+          props.subCategory
+            ? [
+                {
+                  label: props.category?.name,
+                  onClick: () => router.push(formattedCategoryRoute),
+                },
+                { label: props.subCategory.name },
+              ]
+            : props.category?.name
+              ? [{ label: props.category.name }]
+              : []
+        }
+        actions={
+          <>
+            <CatalogActionButton
+              onClick={handleAddClick}
+              label={t("buttons.addWine")}
+            />
 
-          <h1 className="pl-2 text-xl tablet:text-2xl flex flex-wrap items-center gap-2">
-            <span
-              className="cursor-pointer hover:underline"
-              onClick={() => router.push(baseRoute)}
-            >
-              {t("titles.main")}
-            </span>
-
-            {props.category && (
-              <>
-                <span>/</span>
-                <span
-                  className="cursor-pointer hover:underline"
-                  onClick={() => router.push(formattedCategoryRoute)}
-                >
-                  {props.category.name}
-                </span>
-              </>
+            {!props.subCategory && (
+              <CatalogCategoryActionButton
+                onClick={handleAddSubCategoryClick}
+                label={t("buttons.addSubCategory")}
+              />
             )}
-
-            {props.subCategory && (
-              <>
-                <span>/</span>
-                <span
-                  className="cursor-pointer hover:underline"
-                  onClick={() => router.push(formattedSubCategoryRoute)}
-                >
-                  {props.subCategory.name}
-                </span>
-              </>
-            )}
-          </h1>
-        </div>
-
-        <div className="flex flex-wrap gap-4">
-          <button
-            onClick={handleAddClick}
-            className="bg-blue px-6 py-2 rounded-lg text-white cursor-pointer"
-          >
-            {t("buttons.addWine")}
-          </button>
-
-          {!props.subCategory && (
-            <button
-              onClick={handleAddSubCategoryClick}
-              className="bg-blue px-6 py-2 rounded-lg text-white cursor-pointer"
-            >
-              {t("buttons.addSubCategory")}
-            </button>
-          )}
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {subCategories && (
         <div className="flex flex-col gap-12">

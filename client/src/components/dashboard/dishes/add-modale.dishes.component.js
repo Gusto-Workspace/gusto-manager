@@ -54,7 +54,7 @@ export default function AddModaleDishesComponent(props) {
               defaultValue={props.editingCategory?.name || ""}
               disabled={props.isDeleting}
               {...props.register("name", { required: !props.isDeleting })}
-              className={`border p-2 rounded-lg w-full ${
+              className={`w-full rounded-lg border p-2 text-base ${
                 props.errors.name ? "border-red" : ""
               } ${props.isDeleting ? "opacity-50 cursor-not-allowed" : ""}`}
             />
@@ -68,7 +68,7 @@ export default function AddModaleDishesComponent(props) {
 
             <textarea
               placeholder="-"
-              className={`h-[150px] border p-2 rounded-lg w-full resize-none  ${props.isDeleting ? "opacity-50 cursor-not-allowed" : ""}`}
+              className={`h-[150px] w-full rounded-lg border p-2 text-base resize-none ${props.isDeleting ? "opacity-50 cursor-not-allowed" : ""}`}
               {...props.register("description", { required: false })}
               disabled={props.isDeleting}
             />

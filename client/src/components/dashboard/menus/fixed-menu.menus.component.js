@@ -222,11 +222,11 @@ export default function FixedMenuComponent(props) {
             </span>
           </label>
 
-          <input
-            type="text"
+          <textarea
             placeholder="-"
+            rows={4}
             {...register("description")}
-            className="h-11 w-full rounded-xl border border-darkBlue/10 bg-white/80 px-3 text-base outline-none transition"
+            className="min-h-[110px] w-full rounded-xl border border-darkBlue/10 bg-white/80 px-3 py-2 text-base resize-none outline-none transition"
             disabled={!props.isEditing}
           />
         </div>
@@ -350,11 +350,11 @@ export default function FixedMenuComponent(props) {
                       </span>
                     </label>
 
-                    <input
-                      type="text"
+                    <textarea
                       placeholder="-"
+                      rows={4}
                       {...register(`combinations.${i}.description`)}
-                      className="h-11 w-full rounded-xl border border-darkBlue/10 bg-white px-3 outline-none transition"
+                      className="min-h-[96px] w-full rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-base resize-none outline-none transition"
                       disabled={!props.isEditing}
                     />
                   </div>
@@ -379,7 +379,7 @@ export default function FixedMenuComponent(props) {
                         placeholder="-"
                         step="0.01"
                         {...register(`combinations.${i}.price`, {})}
-                        className={`h-11 w-full border-l px-3 text-base midTablet:text-sm outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none
+                        className={`h-11 w-full border-l px-3 text-base outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none
     ${priceHasError ? "border-red/60 text-red" : "border-darkBlue/10"}`}
                         disabled={!props.isEditing}
                         onWheel={(e) => e.target.blur()}
