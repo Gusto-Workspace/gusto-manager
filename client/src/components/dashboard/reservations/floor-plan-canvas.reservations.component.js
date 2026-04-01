@@ -717,7 +717,7 @@ function fitToBounds({
 }
 
 const INITIAL_VIEW_PADDING_MOBILE = 16;
-const INITIAL_VIEW_PADDING_DESKTOP = 48;
+const INITIAL_VIEW_PADDING_DESKTOP = 0;
 
 function reservationStatusLabel(status) {
   const map = {
