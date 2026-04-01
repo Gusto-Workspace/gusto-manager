@@ -217,6 +217,31 @@ router.get("/restaurants/:id", async (req, res) => {
       return res.status(404).json({ message: "Restaurant not found" });
     }
 
+    const resolveDish = (dishId) => {
+      for (const category of restaurant.dish_categories || []) {
+        const dish = category.dishes.find(
+          (currentDish) => currentDish._id.toString() === dishId.toString(),
+        );
+
+        if (dish) {
+          return {
+            _id: dish._id,
+            name: dish.name,
+            description: dish.description,
+            price: dish.price,
+            showOnWebsite: dish.showOnWebsite,
+            vegan: dish.vegan,
+            vegetarian: dish.vegetarian,
+            bio: dish.bio,
+            glutenFree: dish.glutenFree,
+            category: category.name,
+          };
+        }
+      }
+
+      return dishId;
+    };
+
     const restaurantData = {
       ...restaurant.toObject(),
       menus: restaurant.menus.map((menu) => ({
@@ -228,28 +253,14 @@ router.get("/restaurants/:id", async (req, res) => {
         visible: menu.visible,
         created_at: menu.created_at,
         combinations: menu.combinations,
-        dishes: menu.dishes.map((dishId) => {
-          for (const category of restaurant.dish_categories) {
-            const dish = category.dishes.find(
-              (dish) => dish._id.toString() === dishId.toString(),
-            );
-            if (dish) {
-              return {
-                _id: dish._id,
-                name: dish.name,
-                description: dish.description,
-                price: dish.price,
-                showOnWebsite: dish.showOnWebsite,
-                vegan: dish.vegan,
-                vegetarian: dish.vegetarian,
-                bio: dish.bio,
-                glutenFree: dish.glutenFree,
-                category: category.name,
-              };
-            }
-          }
-          return dishId;
-        }),
+        dishes: menu.dishes.map(resolveDish),
+        customGroups: (menu.customGroups || []).map((group) => ({
+          categoryId: group.categoryId,
+          categoryName: group.categoryName,
+          relation: group.relation,
+          relations: group.relations || [],
+          dishes: (group.dishes || []).map(resolveDish),
+        })),
       })),
     };
 

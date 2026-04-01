@@ -899,6 +899,9 @@ export default function RoomEditorComponent({
     };
   }
 
+  const INITIAL_VIEW_PADDING_MOBILE = 16;
+  const INITIAL_VIEW_PADDING_DESKTOP = 64;
+
   function applyInitialView(objsOverride) {
     if (!stageSize.w || !stageSize.h) return;
 
@@ -920,7 +923,7 @@ export default function RoomEditorComponent({
         bounds,
         stageW: stageSize.w,
         stageH: stageSize.h,
-        paddingPx: 24,
+        paddingPx: INITIAL_VIEW_PADDING_MOBILE,
         minScale: 0.25,
         maxScale: 1.2,
       });
@@ -945,7 +948,7 @@ export default function RoomEditorComponent({
       bounds,
       stageW: stageSize.w,
       stageH: stageSize.h,
-      paddingPx: 80,
+      paddingPx: INITIAL_VIEW_PADDING_DESKTOP,
       minScale: 0.15,
       maxScale: 2,
     });
