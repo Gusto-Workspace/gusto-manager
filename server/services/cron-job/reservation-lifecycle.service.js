@@ -207,11 +207,48 @@ async function runReservationLifecycleCron() {
   );
 
   for (const reservation of confirmedReservations) {
+    const restaurant = await getRestaurantCached(
+      restaurantCache,
+      reservation.restaurant_id,
+    );
+    if (!restaurant) continue;
+
     const reservationStart = buildReservationDateTime(
       reservation.reservationDate,
       reservation.reservationTime,
     );
     if (!reservationStart) continue;
+
+    const manageSmartAvailability = Boolean(
+      restaurant?.reservationsSettings?.manage_disponibilities,
+    );
+    const autoFinishReservations = Boolean(
+      restaurant?.reservationsSettings?.auto_finish_reservations,
+    );
+
+    if (!manageSmartAvailability) {
+      if (!autoFinishReservations) continue;
+
+      const occupancyMinutes = getOccupancyMinutes(
+        restaurant,
+        reservation.reservationTime,
+      );
+      if (!occupancyMinutes) continue;
+
+      const finishThreshold = new Date(
+        reservationStart.getTime() + occupancyMinutes * 60 * 1000,
+      );
+
+      if (now >= finishThreshold) {
+        await transitionReservationStatus({
+          reservation,
+          nextStatus: "Finished",
+          restaurantCache,
+        });
+      }
+
+      continue;
+    }
 
     if (now.getTime() >= reservationStart.getTime() + LATE_GRACE_PERIOD_MS) {
       await transitionReservationStatus({
