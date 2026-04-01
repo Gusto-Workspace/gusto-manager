@@ -43,6 +43,7 @@ export default function CategoriesListDishesComponent() {
   const { t } = useTranslation("dishes");
   const router = useRouter();
   const { restaurantContext } = useContext(GlobalContext);
+  const restaurantId = restaurantContext?.restaurantData?._id;
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState(null);
@@ -56,6 +57,9 @@ export default function CategoriesListDishesComponent() {
 
   // Afficher / masquer les catégories non visibles
   const [showHidden, setShowHidden] = useState(false);
+  const showHiddenStorageKey = restaurantId
+    ? `gusto:dishes:show-hidden-categories:${restaurantId}`
+    : "";
 
   // DnD sensors
   const mouseSensor = useSensor(MouseSensor);
@@ -65,6 +69,27 @@ export default function CategoriesListDishesComponent() {
   useEffect(() => {
     setCategories(restaurantContext?.restaurantData?.dish_categories || []);
   }, [restaurantContext?.restaurantData]);
+
+  useEffect(() => {
+    if (!showHiddenStorageKey || typeof window === "undefined") return;
+
+    try {
+      const persistedValue = window.localStorage.getItem(showHiddenStorageKey);
+      setShowHidden(persistedValue === "1");
+    } catch (error) {
+      console.error("Error reading hidden categories preference:", error);
+    }
+  }, [showHiddenStorageKey]);
+
+  useEffect(() => {
+    if (!showHiddenStorageKey || typeof window === "undefined") return;
+
+    try {
+      window.localStorage.setItem(showHiddenStorageKey, showHidden ? "1" : "0");
+    } catch (error) {
+      console.error("Error saving hidden categories preference:", error);
+    }
+  }, [showHiddenStorageKey, showHidden]);
 
   const {
     register,
@@ -216,45 +241,46 @@ export default function CategoriesListDishesComponent() {
     <div className="flex flex-col gap-6">
       <hr className="opacity-20" />
 
-      <div className="flex flex-wrap gap-4 justify-between items-start">
-        {/* Titre + bouton toggle alignés à gauche */}
-        <div className="flex flex-col gap-2">
-          <div className="flex gap-2 items-center min-h-[40px]">
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 flex gap-2 items-center min-h-[40px]">
             <DishSvg width={30} height={30} fillColor="#131E3690" />
             <h1 className="pl-2 text-xl tablet:text-2xl">{t("titles.main")}</h1>
           </div>
 
-          {hiddenCount > 0 && (
-            <button
-              type="button"
-              onClick={() => setShowHidden((prev) => !prev)}
-              className="
+          <div className="shrink-0">
+            <CatalogCategoryActionButton
+              onClick={() => {
+                setEditingCategory(null);
+                setIsDeleting(false);
+                setIsModalOpen(true);
+              }}
+              label={t("buttons.addCategory")}
+            />
+          </div>
+        </div>
+
+        {hiddenCount > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowHidden((prev) => !prev)}
+            className="
                 inline-flex items-center gap-2
+                w-fit
                 rounded-full border border-darkBlue/10 bg-white/80
                 px-3 py-1.5
                 text-[11px] font-medium text-darkBlue/70 tracking-[0.12em] uppercase
                 shadow-sm hover:bg-darkBlue/5 transition
               "
-            >
-              <span
-                className={`inline-block h-1.5 w-1.5 rounded-full ${
-                  showHidden ? "bg-darkBlue/40" : "bg-darkBlue/25"
-                }`}
-              />
-              <span>{toggleHiddenLabel}</span>
-            </button>
-          )}
-        </div>
-
-        {/* Bouton ajouter à droite */}
-        <CatalogCategoryActionButton
-          onClick={() => {
-            setEditingCategory(null);
-            setIsDeleting(false);
-            setIsModalOpen(true);
-          }}
-          label={t("buttons.addCategory")}
-        />
+          >
+            <span
+              className={`inline-block h-1.5 w-1.5 rounded-full ${
+                showHidden ? "bg-darkBlue/40" : "bg-darkBlue/25"
+              }`}
+            />
+            <span>{toggleHiddenLabel}</span>
+          </button>
+        )}
       </div>
 
       {categories && categories.length > 0 && (
