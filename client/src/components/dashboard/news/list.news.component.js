@@ -33,6 +33,8 @@ export default function ListNewsComponent(props) {
 
   const cardCls =
     "rounded-2xl border border-darkBlue/10 bg-white/50 px-4 py-3 tablet:px-5 tablet:py-4 shadow-[0_18px_45px_rgba(19,30,54,0.06)] hover:shadow-[0_22px_55px_rgba(19,30,54,0.10)] transition-shadow flex flex-col gap-3";
+  const btnPrimary =
+    "inline-flex min-w-[120px] items-center justify-center rounded-xl bg-blue text-white text-sm font-medium px-4 py-2.5 shadow-sm hover:bg-blue/90 transition disabled:opacity-60 disabled:cursor-not-allowed";
   const btnSecondary =
     "inline-flex min-w-[120px] items-center justify-center rounded-xl border border-red bg-red text-white text-sm font-medium px-4 py-2.5 shadow-sm hover:bg-red/90 transition disabled:opacity-60 disabled:cursor-not-allowed";
   const iconPill =
