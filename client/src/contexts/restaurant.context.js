@@ -1134,6 +1134,10 @@ export default function RestaurantContext() {
 
   useEffect(() => {
     if (!restaurantData) return;
+    const manageSmartAvailability = Boolean(
+      restaurantData?.reservationsSettings?.manage_disponibilities,
+    );
+    if (!manageSmartAvailability) return;
 
     const checkLateReservations = () => {
       const now = new Date();
@@ -1163,7 +1167,11 @@ export default function RestaurantContext() {
     checkLateReservations();
     const updateIntervalId = setInterval(checkLateReservations, 30000);
     return () => clearInterval(updateIntervalId);
-  }, [restaurantData?._id, reservationsList]);
+  }, [
+    restaurantData?._id,
+    reservationsList,
+    restaurantData?.reservationsSettings?.manage_disponibilities,
+  ]);
 
   function getServiceBucketFromTime(reservationTime) {
     const [hh = "0"] = String(reservationTime || "00:00").split(":");
@@ -1186,6 +1194,9 @@ export default function RestaurantContext() {
   useEffect(() => {
     if (!restaurantData) return;
 
+    const manageSmartAvailability = Boolean(
+      restaurantData?.reservationsSettings?.manage_disponibilities,
+    );
     const autoFinishEnabled =
       restaurantData?.reservationsSettings?.auto_finish_reservations;
     if (!autoFinishEnabled) return;
@@ -1195,7 +1206,11 @@ export default function RestaurantContext() {
       const reservations = reservationsList || [];
 
       reservations.forEach((reservation) => {
-        if (reservation.status !== "Active") return;
+        const canAutoFinish = manageSmartAvailability
+          ? reservation.status === "Active"
+          : ["Confirmed", "Active"].includes(reservation.status);
+
+        if (!canAutoFinish) return;
 
         const minutes = getOccupancyMinutesFromRestaurant(
           restaurantData,
@@ -1230,6 +1245,7 @@ export default function RestaurantContext() {
   }, [
     restaurantData?._id,
     reservationsList,
+    restaurantData?.reservationsSettings?.manage_disponibilities,
     restaurantData?.reservationsSettings?.auto_finish_reservations,
     restaurantData?.reservationsSettings?.table_occupancy_lunch_minutes,
     restaurantData?.reservationsSettings?.table_occupancy_dinner_minutes,
@@ -1267,6 +1283,8 @@ export default function RestaurantContext() {
   }
 
   function autoUpdateToLate(reservation) {
+    if (!restaurantData?.reservationsSettings?.manage_disponibilities) return;
+
     const id = String(reservation._id);
 
     if (autoUpdatingReservations.includes(id)) return;

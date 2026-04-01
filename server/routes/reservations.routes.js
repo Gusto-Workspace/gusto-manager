@@ -3861,13 +3861,16 @@ router.put(
       // ✅ Grace logic
       // ---------------------
       const gracePeriod = 5 * 60000;
+      const manageSmartAvailability = Boolean(
+        parameters?.manage_disponibilities,
+      );
 
       const statusExplicit = Object.prototype.hasOwnProperty.call(
         updateData,
         "status",
       );
 
-      if (touchesDateTime && !statusExplicit) {
+      if (manageSmartAvailability && touchesDateTime && !statusExplicit) {
         const base = buildReservationDateTime(candidateDate, candidateTime);
         const reservationWithGrace = new Date(base.getTime() + gracePeriod);
 
