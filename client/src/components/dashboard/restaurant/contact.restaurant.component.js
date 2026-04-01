@@ -119,9 +119,11 @@ export default function ContactRestaurantComponent(props) {
   const fieldCard =
     "group rounded-xl bg-white/70 border border-darkBlue/10 px-4 py-3 flex flex-row items-center justify-between gap-2";
   const labelWrap =
-    "flex items-center gap-3 midTablet:min-w-[160px] text-darkBlue";
+    "flex shrink-0 items-center gap-3 midTablet:min-w-[160px] text-darkBlue";
   const labelText = "font-semibold text-sm whitespace-nowrap";
-  const valueText = "text-right text-sm text-darkBlue truncate";
+  const valueWrap = "min-w-0 flex-1 flex justify-end";
+  const valueText =
+    "w-0 min-w-0 flex-1 text-right text-sm text-darkBlue truncate";
   const inputCls =
     "w-full midTablet:w-1/2 rounded-lg border bg-white px-3 py-2 text-[14px] text-right outline-none transition placeholder:text-darkBlue/40 border-darkBlue/20";
   const inputErrorCls = `${inputCls} border-red`;
@@ -251,24 +253,28 @@ export default function ContactRestaurantComponent(props) {
                   <SimpleSkeletonComponent justify="justify-end" />
                 </div>
               ) : editing ? (
-                <input
-                  type="text"
-                  {...register(item.field, {
-                    required: isRequired ? t("error.required") : false,
-                  })}
-                  className={errors[item.field] ? inputErrorCls : inputCls}
-                  placeholder={!isRequired ? t("emptyInput") : ""}
-                />
+                <div className={valueWrap}>
+                  <input
+                    type="text"
+                    {...register(item.field, {
+                      required: isRequired ? t("error.required") : false,
+                    })}
+                    className={errors[item.field] ? inputErrorCls : inputCls}
+                    placeholder={!isRequired ? t("emptyInput") : ""}
+                  />
+                </div>
               ) : (
-                <p className={valueText}>
-                  {fieldValue ? (
-                    fieldValue
-                  ) : (
-                    <span className="text-xs italic text-darkBlue/50">
-                      {t("notUsed")}
-                    </span>
-                  )}
-                </p>
+                <div className={valueWrap}>
+                  <p className={valueText}>
+                    {fieldValue ? (
+                      fieldValue
+                    ) : (
+                      <span className="text-xs italic text-darkBlue/50">
+                        {t("notUsed")}
+                      </span>
+                    )}
+                  </p>
+                </div>
               )}
             </div>
           );
