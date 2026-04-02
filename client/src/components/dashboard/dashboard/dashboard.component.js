@@ -251,7 +251,10 @@ export default function DashboardComponent(props) {
       <div className="grid grid-cols-1 tablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-3 gap-2 midTablet:gap-4 z-[5]">
         {mainDashboardCards.map(
           ({ title, IconComponent, getCounts, emptyLabel, noDonut }) => {
-            const { visible, hidden, total } = getCounts(props.restaurantData);
+            const { visible, hidden, total } = getCounts(
+              props.restaurantData,
+              props.reservationsList,
+            );
 
             // Si la carte ne doit pas afficher de donut, on prépare un chart vide
             let chartData = [];

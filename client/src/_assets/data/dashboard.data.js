@@ -9,6 +9,17 @@ import {
   ReservationSvg,
 } from "../../components/_shared/_svgs/_index";
 
+function isSameLocalDay(dateValue, referenceDate = new Date()) {
+  const parsedDate = new Date(dateValue);
+  if (Number.isNaN(parsedDate.getTime())) return false;
+
+  return (
+    parsedDate.getDate() === referenceDate.getDate() &&
+    parsedDate.getMonth() === referenceDate.getMonth() &&
+    parsedDate.getFullYear() === referenceDate.getFullYear()
+  );
+}
+
 export const dashboardData = [
   {
     title: "labels.totalMenu",
@@ -31,12 +42,12 @@ export const dashboardData = [
     getCounts: (restaurantData) => {
       const total = restaurantData?.dish_categories?.reduce(
         (acc, category) => acc + (category.dishes?.length || 0),
-        0
+        0,
       );
       const visible = restaurantData?.dish_categories?.reduce(
         (acc, category) =>
           acc + category.dishes?.filter((dish) => dish.showOnWebsite).length,
-        0
+        0,
       );
       const hidden = total - visible;
       return { visible, hidden, total, emptyLabel: "labels.emptyDish" };
@@ -53,26 +64,26 @@ export const dashboardData = [
           const categoryDrinks = category.drinks?.length || 0;
           const subCategoryDrinks = category.subCategories?.reduce(
             (subAcc, subCategory) => subAcc + (subCategory.drinks?.length || 0),
-            0
+            0,
           );
           return acc + categoryDrinks + subCategoryDrinks;
         },
-        0
+        0,
       );
       const visible = restaurantData?.drink_categories?.reduce(
         (acc, category) => {
           const visibleCategoryDrinks = category.drinks?.filter(
-            (drink) => drink.showOnWebsite
+            (drink) => drink.showOnWebsite,
           ).length;
           const visibleSubCategoryDrinks = category.subCategories?.reduce(
             (subAcc, subCategory) =>
               subAcc +
               subCategory.drinks?.filter((drink) => drink.showOnWebsite).length,
-            0
+            0,
           );
           return acc + visibleCategoryDrinks + visibleSubCategoryDrinks;
         },
-        0
+        0,
       );
       const hidden = total - visible;
       return { visible, hidden, total, emptyLabel: "labels.emptyDrink" };
@@ -88,24 +99,24 @@ export const dashboardData = [
         const categoryWines = category.wines?.length || 0;
         const subCategoryWines = category.subCategories?.reduce(
           (subAcc, subCategory) => subAcc + (subCategory.wines?.length || 0),
-          0
+          0,
         );
         return acc + categoryWines + subCategoryWines;
       }, 0);
       const visible = restaurantData?.wine_categories?.reduce(
         (acc, category) => {
           const visibleCategoryWines = category.wines?.filter(
-            (wine) => wine.showOnWebsite
+            (wine) => wine.showOnWebsite,
           ).length;
           const visibleSubCategoryWines = category.subCategories?.reduce(
             (subAcc, subCategory) =>
               subAcc +
               subCategory.wines?.filter((wine) => wine.showOnWebsite).length,
-            0
+            0,
           );
           return acc + visibleCategoryWines + visibleSubCategoryWines;
         },
-        0
+        0,
       );
       const hidden = total - visible;
       return { visible, hidden, total, emptyLabel: "labels.emptyWine" };
@@ -130,7 +141,7 @@ export const dashboardData = [
     IconComponent: ReservationSvg,
     emptyLabel: "labels.emptyReservations",
     noDonut: true,
-    getCounts: (restaurantData) => {
+    getCounts: (restaurantData, reservationsList = []) => {
       if (!restaurantData?.options?.reservations) {
         return {
           visible: 0,
@@ -140,14 +151,15 @@ export const dashboardData = [
         };
       }
 
-      const todayDate = new Date().toISOString().split("T")[0];
-      const reservationsList = restaurantData?.reservations?.list || [];
-      const todayReservations = reservationsList.filter((reservation) => {
-        return (
-          reservation.reservationDate &&
-          reservation.reservationDate.split("T")[0] === todayDate
-        );
+      const todayReservations = (
+        Array.isArray(reservationsList) ? reservationsList : []
+      ).filter((reservation) => {
+        const status = String(reservation?.status || "").trim();
+        if (["Canceled", "Rejected"].includes(status)) return false;
+
+        return isSameLocalDay(reservation?.reservationDate, new Date());
       });
+
       const total = todayReservations.length;
       return {
         visible: total,

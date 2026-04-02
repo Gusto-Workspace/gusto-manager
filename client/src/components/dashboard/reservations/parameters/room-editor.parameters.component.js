@@ -403,6 +403,12 @@ export default function RoomEditorComponent({
   const wrapRef = useRef(null);
   const stageRef = useRef(null);
   const panRef = useRef({ lastX: 0, lastY: 0 });
+  const panGestureRef = useRef({
+    active: false,
+    startX: 0,
+    startY: 0,
+    moved: false,
+  });
 
   const canvasW = Number(room?.canvas?.width || 2000);
   const canvasH = Number(room?.canvas?.height || 2000);
@@ -429,6 +435,8 @@ export default function RoomEditorComponent({
     startPos: { x: 0, y: 0 },
     worldPoint: { x: 0, y: 0 },
   });
+  const suppressObjectSelectRef = useRef(false);
+  const clearSuppressTimeoutRef = useRef(null);
 
   const [objects, setObjects] = useState(() => safeArr(room?.objects));
   const [selectedId, setSelectedId] = useState(null);
@@ -2218,6 +2226,7 @@ export default function RoomEditorComponent({
   }
 
   const [isPanning, setIsPanning] = useState(false);
+  const PAN_ACTIVATION_THRESHOLD_PX = 6;
 
   function getClientXY(evt) {
     // Touch
@@ -2275,6 +2284,26 @@ export default function RoomEditorComponent({
     }
   }
 
+  function scheduleClearObjectSelectionSuppression() {
+    if (clearSuppressTimeoutRef.current) {
+      window.clearTimeout(clearSuppressTimeoutRef.current);
+    }
+
+    clearSuppressTimeoutRef.current = window.setTimeout(() => {
+      suppressObjectSelectRef.current = false;
+      clearSuppressTimeoutRef.current = null;
+    }, 0);
+  }
+
+  function shouldStartPanFromTarget(e) {
+    const stage = e?.target?.getStage?.();
+    const isStageTarget = e?.target === stage;
+
+    if (isStageTarget) return true;
+
+    return isMobile && !selectedId;
+  }
+
   function startPan(e) {
     const evt = e?.evt;
     preventIfCancelable(evt);
@@ -2286,6 +2315,7 @@ export default function RoomEditorComponent({
     if (evt?.touches?.length >= 2) {
       hasUserMovedViewRef.current = true;
       setIsPanning(false);
+      suppressObjectSelectRef.current = true;
 
       const pts = getTouchPoints(evt, stage);
       if (!pts) return;
@@ -2310,18 +2340,21 @@ export default function RoomEditorComponent({
       return;
     }
 
-    // ✅ PAN 1 doigt / souris uniquement si on part du fond
-    if (e.target === e.target.getStage()) {
-      pinchRef.current.active = false;
-      hasUserMovedViewRef.current = true;
-      setSelectedId(null);
-      setSelectedAnchor(null);
-      setIsPanning(true);
+    if (!shouldStartPanFromTarget(e)) return;
 
-      const { x, y } = getClientXY(evt);
-      panRef.current.lastX = x;
-      panRef.current.lastY = y;
-    }
+    pinchRef.current.active = false;
+    const shouldPanImmediately = e?.target === e?.target?.getStage?.();
+    setIsPanning(shouldPanImmediately);
+
+    const { x, y } = getClientXY(evt);
+    panRef.current.lastX = x;
+    panRef.current.lastY = y;
+    panGestureRef.current = {
+      active: true,
+      startX: x,
+      startY: y,
+      moved: false,
+    };
   }
 
   function movePan(e) {
@@ -2371,20 +2404,39 @@ export default function RoomEditorComponent({
     if (pinchRef.current.active) return;
 
     // ✅ PAN CLASSIQUE
-    if (!isPanning) return;
+    if (!isPanning && !panGestureRef.current.active) return;
 
-    preventIfCancelable(evt);
-
+    const { x, y } = getClientXY(evt);
     let dx = evt?.movementX;
     let dy = evt?.movementY;
 
     if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
-      const { x, y } = getClientXY(evt);
       dx = x - panRef.current.lastX;
       dy = y - panRef.current.lastY;
-      panRef.current.lastX = x;
-      panRef.current.lastY = y;
     }
+
+    panRef.current.lastX = x;
+    panRef.current.lastY = y;
+
+    if (!panGestureRef.current.moved) {
+      const distanceFromStart = Math.hypot(
+        x - panGestureRef.current.startX,
+        y - panGestureRef.current.startY,
+      );
+
+      if (distanceFromStart < PAN_ACTIVATION_THRESHOLD_PX) {
+        return;
+      }
+
+      panGestureRef.current.moved = true;
+      suppressObjectSelectRef.current = true;
+      hasUserMovedViewRef.current = true;
+      setSelectedId(null);
+      setSelectedAnchor(null);
+      setIsPanning(true);
+    }
+
+    preventIfCancelable(evt);
 
     setPos((prev) => {
       const next = {
@@ -2404,12 +2456,22 @@ export default function RoomEditorComponent({
 
   function stopPan(e) {
     preventIfCancelable(e?.evt);
+    const hadMoved = panGestureRef.current.moved;
 
     // fin du pinch si < 2 doigts
     if (pinchRef.current.active) {
       pinchRef.current.active = false;
+      scheduleClearObjectSelectionSuppression();
+    } else if (hadMoved) {
+      scheduleClearObjectSelectionSuppression();
     }
 
+    panGestureRef.current = {
+      active: false,
+      startX: 0,
+      startY: 0,
+      moved: false,
+    };
     setIsPanning(false);
   }
 
@@ -2419,6 +2481,27 @@ export default function RoomEditorComponent({
     const container = stage.container();
     if (container) container.style.touchAction = "none";
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (clearSuppressTimeoutRef.current) {
+        window.clearTimeout(clearSuppressTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  function handleObjectSelection(id, e) {
+    if (e) e.cancelBubble = true;
+    if (suppressObjectSelectRef.current) return;
+    selectObject(id);
+  }
+
+  function handleCanvasTap(e) {
+    if (suppressObjectSelectRef.current) return;
+    if (e?.target !== e?.target?.getStage?.()) return;
+    setSelectedId(null);
+    setSelectedAnchor(null);
+  }
 
   function bumpRotate15ById(id, e) {
     if (e) e.cancelBubble = true;
@@ -2634,7 +2717,7 @@ export default function RoomEditorComponent({
       <Group
         x={obj.x}
         y={obj.y}
-        draggable
+        draggable={!isMobile || isSelected}
         onDragStart={(e) => {
           e.target.moveToTop();
           e.target.getLayer()?.batchDraw();
@@ -2662,8 +2745,8 @@ export default function RoomEditorComponent({
             return next;
           });
         }}
-        onClick={() => selectObject(obj.id)}
-        onTap={() => selectObject(obj.id)}
+        onClick={(e) => handleObjectSelection(obj.id, e)}
+        onTap={(e) => handleObjectSelection(obj.id, e)}
       >
         <Group
           rotation={obj.rotation || 0}
@@ -2776,7 +2859,7 @@ export default function RoomEditorComponent({
     const shape = obj.shape;
 
     const strokeSelected = "rgba(0,122,255,0.9)";
-    const onClick = () => selectObject(obj.id);
+    const onClick = (e) => handleObjectSelection(obj.id, e);
 
     if (shape === "line") {
       const pts = safeArr(obj.points);
@@ -2793,13 +2876,13 @@ export default function RoomEditorComponent({
         <Group
           x={cx}
           y={cy}
-          draggable={!obj.locked}
+          draggable={!obj.locked && (!isMobile || isSelected)}
           onDragStart={(e) => {
             e.target.moveToTop();
             e.target.getLayer()?.batchDraw();
           }}
-          onClick={() => selectObject(obj.id)}
-          onTap={() => selectObject(obj.id)}
+          onClick={onClick}
+          onTap={onClick}
           onDragEnd={(e) => {
             const nx = e.target.x();
             const ny = e.target.y();
@@ -2958,13 +3041,13 @@ export default function RoomEditorComponent({
         <Group
           x={x}
           y={y}
-          draggable
+          draggable={!isMobile || isSelected}
           onDragStart={(e) => {
             e.target.moveToTop();
             e.target.getLayer()?.batchDraw();
           }}
-          onClick={() => selectObject(obj.id)}
-          onTap={() => selectObject(obj.id)}
+          onClick={onClick}
+          onTap={onClick}
           onDragEnd={(e) => {
             let { x, y } = e.target.position();
 
@@ -3180,13 +3263,13 @@ export default function RoomEditorComponent({
       <Group
         x={x}
         y={y}
-        draggable
+        draggable={!isMobile || isSelected}
         onDragStart={(e) => {
           e.target.moveToTop();
           e.target.getLayer()?.batchDraw();
         }}
-        onClick={() => selectObject(obj.id)}
-        onTap={() => selectObject(obj.id)}
+        onClick={onClick}
+        onTap={onClick}
         onDragEnd={(e) => {
           const nx = e.target.x();
           const ny = e.target.y();
@@ -3462,6 +3545,8 @@ export default function RoomEditorComponent({
             onTouchMove={movePan}
             onTouchEnd={stopPan}
             onTouchCancel={stopPan}
+            onClick={handleCanvasTap}
+            onTap={handleCanvasTap}
           >
             <Layer>
               {gridLines}
