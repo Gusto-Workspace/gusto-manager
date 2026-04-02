@@ -749,6 +749,12 @@ export default function FloorPlanCanvasReservationsComponent({
   const wrapRef = useRef(null);
   const stageRef = useRef(null);
   const panRef = useRef({ lastX: 0, lastY: 0 });
+  const panGestureRef = useRef({
+    active: false,
+    startX: 0,
+    startY: 0,
+    moved: false,
+  });
   const pinchRef = useRef({
     active: false,
     startDist: 0,
@@ -756,6 +762,8 @@ export default function FloorPlanCanvasReservationsComponent({
     startPos: { x: 0, y: 0 },
     worldPoint: { x: 0, y: 0 },
   });
+  const suppressTableSelectRef = useRef(false);
+  const clearSuppressTimeoutRef = useRef(null);
 
   const canvasW = Number(room?.canvas?.width || 2000);
   const canvasH = Number(room?.canvas?.height || 2000);
@@ -1196,10 +1204,23 @@ export default function FloorPlanCanvasReservationsComponent({
     };
   }
 
+  const PAN_ACTIVATION_THRESHOLD_PX = 6;
+
   function preventIfCancelable(evt) {
     if (evt?.cancelable) {
       evt.preventDefault();
     }
+  }
+
+  function scheduleClearTableSelectionSuppression() {
+    if (clearSuppressTimeoutRef.current) {
+      window.clearTimeout(clearSuppressTimeoutRef.current);
+    }
+
+    clearSuppressTimeoutRef.current = window.setTimeout(() => {
+      suppressTableSelectRef.current = false;
+      clearSuppressTimeoutRef.current = null;
+    }, 0);
   }
 
   function startPan(e) {
@@ -1213,6 +1234,7 @@ export default function FloorPlanCanvasReservationsComponent({
     if (evt?.touches?.length >= 2) {
       hasUserMovedViewRef.current = true;
       setIsPanning(false);
+      suppressTableSelectRef.current = true;
 
       const pts = getTouchPoints(evt, stage);
       if (!pts) return;
@@ -1238,16 +1260,18 @@ export default function FloorPlanCanvasReservationsComponent({
     }
 
     // ✅ PAN 1 doigt / souris
-    if (e.target === e.target.getStage()) {
-      pinchRef.current.active = false;
-      hasUserMovedViewRef.current = true;
-      onSelectTable?.(null);
-      setIsPanning(true);
+    pinchRef.current.active = false;
+    setIsPanning(true);
 
-      const { x, y } = getClientXY(evt);
-      panRef.current.lastX = x;
-      panRef.current.lastY = y;
-    }
+    const { x, y } = getClientXY(evt);
+    panRef.current.lastX = x;
+    panRef.current.lastY = y;
+    panGestureRef.current = {
+      active: true,
+      startX: x,
+      startY: y,
+      moved: false,
+    };
   }
 
   function movePan(e) {
@@ -1298,18 +1322,30 @@ export default function FloorPlanCanvasReservationsComponent({
 
     if (!isPanning) return;
 
-    preventIfCancelable(evt);
+    const { x, y } = getClientXY(evt);
+    const dx = x - panRef.current.lastX;
+    const dy = y - panRef.current.lastY;
 
-    let dx = evt?.movementX;
-    let dy = evt?.movementY;
+    panRef.current.lastX = x;
+    panRef.current.lastY = y;
 
-    if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
-      const { x, y } = getClientXY(evt);
-      dx = x - panRef.current.lastX;
-      dy = y - panRef.current.lastY;
-      panRef.current.lastX = x;
-      panRef.current.lastY = y;
+    if (!panGestureRef.current.moved) {
+      const distanceFromStart = Math.hypot(
+        x - panGestureRef.current.startX,
+        y - panGestureRef.current.startY,
+      );
+
+      if (distanceFromStart < PAN_ACTIVATION_THRESHOLD_PX) {
+        return;
+      }
+
+      panGestureRef.current.moved = true;
+      suppressTableSelectRef.current = true;
+      hasUserMovedViewRef.current = true;
+      onSelectTable?.(null);
     }
+
+    preventIfCancelable(evt);
 
     setPos((prev) => {
       const next = {
@@ -1330,10 +1366,21 @@ export default function FloorPlanCanvasReservationsComponent({
   function endPan(e) {
     preventIfCancelable(e?.evt);
 
+    const hadMoved = panGestureRef.current.moved;
+
     if (pinchRef.current.active) {
       pinchRef.current.active = false;
+      scheduleClearTableSelectionSuppression();
+    } else if (hadMoved) {
+      scheduleClearTableSelectionSuppression();
     }
 
+    panGestureRef.current = {
+      active: false,
+      startX: 0,
+      startY: 0,
+      moved: false,
+    };
     setIsPanning(false);
   }
 
@@ -1343,6 +1390,25 @@ export default function FloorPlanCanvasReservationsComponent({
     const container = stage.container();
     if (container) container.style.touchAction = "none";
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (clearSuppressTimeoutRef.current) {
+        window.clearTimeout(clearSuppressTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  function handleTableSelection(nextState) {
+    if (suppressTableSelectRef.current) return;
+    onSelectTable?.(nextState);
+  }
+
+  function handleCanvasTap(e) {
+    if (suppressTableSelectRef.current) return;
+    if (e?.target !== e?.target?.getStage?.()) return;
+    onSelectTable?.(null);
+  }
 
   useLayoutEffect(() => {
     if (!tooltipRef.current) return;
@@ -1748,7 +1814,7 @@ export default function FloorPlanCanvasReservationsComponent({
         x={Number(obj.x || 0)}
         y={Number(obj.y || 0)}
         onClick={() =>
-          onSelectTable?.({
+          handleTableSelection({
             object: obj,
             ref,
             reservation: displayReservation,
@@ -1761,7 +1827,7 @@ export default function FloorPlanCanvasReservationsComponent({
           })
         }
         onTap={() =>
-          onSelectTable?.({
+          handleTableSelection({
             object: obj,
             ref,
             reservation: displayReservation,
@@ -1957,6 +2023,8 @@ export default function FloorPlanCanvasReservationsComponent({
             width={stageSize.w}
             height={stageSize.h}
             onWheel={handleWheel}
+            onClick={handleCanvasTap}
+            onTap={handleCanvasTap}
             onMouseDown={startPan}
             onMouseMove={movePan}
             onMouseUp={endPan}

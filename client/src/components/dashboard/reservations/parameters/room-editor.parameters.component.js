@@ -2634,7 +2634,7 @@ export default function RoomEditorComponent({
       <Group
         x={obj.x}
         y={obj.y}
-        draggable
+        draggable={!isMobile || isSelected}
         onDragStart={(e) => {
           e.target.moveToTop();
           e.target.getLayer()?.batchDraw();
@@ -2793,7 +2793,7 @@ export default function RoomEditorComponent({
         <Group
           x={cx}
           y={cy}
-          draggable={!obj.locked}
+          draggable={!obj.locked && (!isMobile || isSelected)}
           onDragStart={(e) => {
             e.target.moveToTop();
             e.target.getLayer()?.batchDraw();
@@ -2958,7 +2958,7 @@ export default function RoomEditorComponent({
         <Group
           x={x}
           y={y}
-          draggable
+          draggable={!isMobile || isSelected}
           onDragStart={(e) => {
             e.target.moveToTop();
             e.target.getLayer()?.batchDraw();
@@ -3180,7 +3180,7 @@ export default function RoomEditorComponent({
       <Group
         x={x}
         y={y}
-        draggable
+        draggable={!isMobile || isSelected}
         onDragStart={(e) => {
           e.target.moveToTop();
           e.target.getLayer()?.batchDraw();
