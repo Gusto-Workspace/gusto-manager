@@ -7,7 +7,6 @@ import axios from "axios";
 import {
   Plus,
   Pencil,
-  Copy,
   Trash2,
   ChevronLeft,
   Save,
@@ -47,13 +46,7 @@ function safeArr(a) {
   return Array.isArray(a) ? a : [];
 }
 
-function RoomRowSortable({
-  room,
-  localCatalog,
-  onEdit,
-  onDuplicate,
-  onDelete,
-}) {
+function RoomRowSortable({ room, localCatalog, onEdit, onDelete }) {
   const {
     attributes,
     listeners,
@@ -121,17 +114,6 @@ function RoomRowSortable({
         >
           <Pencil className="size-4 text-darkBlue/70" />
         </button>
-
-        <button
-          type="button"
-          onClick={onDuplicate}
-          className="inline-flex items-center justify-center size-10 rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition"
-          title="Dupliquer"
-          aria-label="Dupliquer"
-        >
-          <Copy className="size-4 text-darkBlue/70" />
-        </button>
-
         <button
           type="button"
           onClick={onDelete}
@@ -359,22 +341,6 @@ export default function FloorPlanParametersComponent({
       }
     } catch (e) {
       setError(e?.response?.data?.message || "Impossible de créer la salle.");
-    }
-  }
-
-  async function duplicateRoom(roomId) {
-    try {
-      setError("");
-      const res = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/floorplans/rooms/${roomId}/duplicate`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
-      setRooms(safeArr(res.data?.rooms));
-    } catch (e) {
-      setError(
-        e?.response?.data?.message || "Impossible de dupliquer la salle.",
-      );
     }
   }
 
@@ -699,7 +665,6 @@ export default function FloorPlanParametersComponent({
                           setActiveRoomId(r._id);
                           setMode("edit");
                         }}
-                        onDuplicate={() => duplicateRoom(r._id)}
                         onDelete={() => requestDeleteRoom(r._id)}
                       />
                     ))}

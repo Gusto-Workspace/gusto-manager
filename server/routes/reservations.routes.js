@@ -631,7 +631,7 @@ function isTableBlockOverlapping({ block, candidateStart, candidateEnd }) {
   const start = candidateStart.getTime();
   const end = candidateEnd.getTime();
 
-  return start < blockEnd && end > blockStart;
+  return start <= blockEnd && end > blockStart;
 }
 
 function getBlockedTableIdsForDateTime(
@@ -1004,7 +1004,7 @@ function isDateTimeBlocked(parameters, candidateDT, occupancyMs = 0) {
     return (
       Number.isFinite(start) &&
       Number.isFinite(end) &&
-      candidateStart.getTime() < end &&
+      candidateStart.getTime() <= end &&
       candidateEnd.getTime() > start
     );
   });

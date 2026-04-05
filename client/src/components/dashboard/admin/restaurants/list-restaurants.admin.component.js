@@ -241,8 +241,8 @@ export default function ListRestaurantsAdminComponent(props) {
 
                     <div className="flex items-start gap-2 text-sm text-darkBlue/80">
                       <Mail className="size-4 mt-0.5 text-darkBlue/40" />
-                      {owner?.email ? (
-                        <p className="min-w-0 truncate">{owner.email}</p>
+                      {restaurant?.email ? (
+                        <p className="min-w-0 truncate">{restaurant.email}</p>
                       ) : (
                         <p className="italic text-darkBlue/40">-</p>
                       )}

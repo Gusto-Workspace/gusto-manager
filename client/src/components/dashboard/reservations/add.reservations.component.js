@@ -553,7 +553,7 @@ function getBlockedTableIdsFront(parameters, reservationDate, reservationTime) {
 
     if (!Number.isFinite(start) || !Number.isFinite(end)) return;
 
-    if (candidateStart.getTime() < end && candidateEnd.getTime() > start) {
+    if (candidateStart.getTime() <= end && candidateEnd.getTime() > start) {
       ids.add(String(range.tableId));
     }
   });
@@ -586,7 +586,7 @@ function isDateTimeBlockedFront(parameters, reservationDate, reservationTime) {
     return (
       Number.isFinite(start) &&
       Number.isFinite(end) &&
-      candidateStart.getTime() < end &&
+      candidateStart.getTime() <= end &&
       candidateEnd.getTime() > start
     );
   });
