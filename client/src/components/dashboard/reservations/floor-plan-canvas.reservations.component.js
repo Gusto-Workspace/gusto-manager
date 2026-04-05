@@ -453,7 +453,7 @@ function getBlockedTableIdsMap(parameters, referenceDate, selectedTime) {
 
     if (!Number.isFinite(rStart) || !Number.isFinite(rEnd)) return;
 
-    if (start.getTime() < rEnd && end.getTime() > rStart) {
+    if (start.getTime() <= rEnd && end.getTime() > rStart) {
       ids.add(String(range.tableId));
     }
   });

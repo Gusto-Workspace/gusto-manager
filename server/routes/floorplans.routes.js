@@ -206,67 +206,6 @@ router.post(
   },
 );
 
-/** ========================= DUPLICATE ROOM ========================= */
-router.post(
-  "/restaurants/:restaurantId/floorplans/rooms/:roomId/duplicate",
-  authenticateToken,
-  async (req, res) => {
-    try {
-      const { restaurantId, roomId } = req.params;
-      const ownerId = req.user?.id;
-
-      if (!ownerId) return res.status(403).json({ message: "Unauthorized." });
-      if (String(req.user?.restaurantId) !== String(restaurantId)) {
-        return res.status(403).json({ message: "Restaurant mismatch" });
-      }
-      if (!isObjectId(restaurantId) || !isObjectId(roomId))
-        return res
-          .status(400)
-          .json({ message: "restaurantId/roomId invalide." });
-
-      const restaurant = await findRestaurantForOwner({
-        restaurantId,
-        ownerId,
-      });
-      if (!restaurant)
-        return res.status(404).json({ message: "Restaurant introuvable." });
-
-      ensureFloorplan(restaurant);
-
-      const room = restaurant.reservationsSettings.floorplan.rooms.id(roomId);
-      if (!room) return res.status(404).json({ message: "Salle introuvable." });
-
-      const clone = {
-        name: `${room.name} (copie)`,
-        canvas: { ...room.canvas },
-        objects: (room.objects || [])
-          .filter((o) => o?.type !== "table")
-          .map((o) => ({
-            ...(o.toObject?.() ? o.toObject() : o),
-            id: `${o.id}_copy_${Date.now()}`,
-          })),
-      };
-
-      restaurant.reservationsSettings.floorplan.rooms.push(clone);
-
-      restaurant.reservationsSettings.floorplan.version =
-        Number(restaurant.reservationsSettings.floorplan.version || 1) + 1;
-
-      await restaurant.save();
-
-      return res.json({
-        rooms: getRooms(restaurant),
-        enabled: Boolean(restaurant.reservationsSettings.floorplan.enabled),
-        version: Number(restaurant.reservationsSettings.floorplan.version || 1),
-      });
-    } catch (e) {
-      return res
-        .status(500)
-        .json({ message: "Erreur serveur (duplicate room)." });
-    }
-  },
-);
-
 /** ========================= DELETE ROOM ========================= */
 router.delete(
   "/restaurants/:restaurantId/floorplans/rooms/:roomId",
@@ -528,7 +467,8 @@ router.post(
 
       ensureFloorplan(restaurant);
 
-      if (!restaurant.reservationsSettings) restaurant.reservationsSettings = {};
+      if (!restaurant.reservationsSettings)
+        restaurant.reservationsSettings = {};
       if (!Array.isArray(restaurant.reservationsSettings.tables)) {
         restaurant.reservationsSettings.tables = [];
       }
