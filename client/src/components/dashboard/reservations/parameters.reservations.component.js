@@ -77,6 +77,28 @@ function shallowEqual(a, b) {
   return true;
 }
 
+function buildEmailsSectionSnapshot({
+  templates,
+  notifyRestaurantOnNewPublicReservation = false,
+}) {
+  return {
+    templates: buildReservationEmailTemplatesState(templates),
+    notify_restaurant_on_new_public_reservation: Boolean(
+      notifyRestaurantOnNewPublicReservation,
+    ),
+  };
+}
+
+function areEmailsSectionSnapshotsEqual(left, right) {
+  if (!left || !right) return false;
+
+  return (
+    Boolean(left.notify_restaurant_on_new_public_reservation) ===
+      Boolean(right.notify_restaurant_on_new_public_reservation) &&
+    areReservationEmailTemplatesEqual(left.templates, right.templates)
+  );
+}
+
 export default function ParametersReservationComponent(props) {
   const { t } = useTranslation(["reservations", "restaurant"]);
   const { restaurantContext } = useContext(GlobalContext);
@@ -139,6 +161,10 @@ export default function ParametersReservationComponent(props) {
   const [emailTemplates, setEmailTemplates] = useState(
     buildReservationEmailTemplatesState(),
   );
+  const [
+    notifyRestaurantOnNewPublicReservation,
+    setNotifyRestaurantOnNewPublicReservation,
+  ] = useState(false);
 
   // UX errors (pas RHF)
   const [durationError, setDurationError] = useState({
@@ -311,6 +337,9 @@ export default function ParametersReservationComponent(props) {
       setEmailTemplates(
         buildReservationEmailTemplatesState(parameters.email_templates),
       );
+      setNotifyRestaurantOnNewPublicReservation(
+        parameters?.notify_restaurant_on_new_public_reservation ?? false,
+      );
 
       // Snapshot initial par section (utilisé pour détecter dirty)
       const snap = {
@@ -335,7 +364,11 @@ export default function ParametersReservationComponent(props) {
           table_occupancy_lunch_minutes: nextLunch,
           table_occupancy_dinner_minutes: nextDinner,
         },
-        emails: buildReservationEmailTemplatesState(parameters.email_templates),
+        emails: buildEmailsSectionSnapshot({
+          templates: parameters.email_templates,
+          notifyRestaurantOnNewPublicReservation:
+            parameters?.notify_restaurant_on_new_public_reservation ?? false,
+        }),
         smart: {
           manage_disponibilities: parameters.manage_disponibilities ?? false,
         },
@@ -482,10 +515,16 @@ export default function ParametersReservationComponent(props) {
 
     markSectionDirty(
       "emails",
-      !areReservationEmailTemplatesEqual(snap, emailTemplates),
+      !areEmailsSectionSnapshotsEqual(
+        snap,
+        buildEmailsSectionSnapshot({
+          templates: emailTemplates,
+          notifyRestaurantOnNewPublicReservation,
+        }),
+      ),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [emailTemplates]);
+  }, [emailTemplates, notifyRestaurantOnNewPublicReservation]);
 
   useEffect(() => {
     const snap = initialSnapRef.current?.smart;
@@ -653,6 +692,9 @@ export default function ParametersReservationComponent(props) {
           buildReservationEmailTemplatesPayload(emailTemplates);
         partial = {
           email_templates: nextEmailTemplates,
+          notify_restaurant_on_new_public_reservation: Boolean(
+            notifyRestaurantOnNewPublicReservation,
+          ),
         };
       }
 
@@ -714,8 +756,20 @@ export default function ParametersReservationComponent(props) {
           response?.data?.restaurant?.reservationsSettings?.email_templates ||
             partial.email_templates,
         );
+        const savedNotifyRestaurantOnNewPublicReservation = Boolean(
+          response?.data?.restaurant?.reservationsSettings
+            ?.notify_restaurant_on_new_public_reservation ??
+            partial.notify_restaurant_on_new_public_reservation,
+        );
         setEmailTemplates(savedEmailTemplates);
-        initialSnapRef.current.emails = savedEmailTemplates;
+        setNotifyRestaurantOnNewPublicReservation(
+          savedNotifyRestaurantOnNewPublicReservation,
+        );
+        initialSnapRef.current.emails = buildEmailsSectionSnapshot({
+          templates: savedEmailTemplates,
+          notifyRestaurantOnNewPublicReservation:
+            savedNotifyRestaurantOnNewPublicReservation,
+        });
       }
 
       setSaved(sectionKey, true);
@@ -812,9 +866,16 @@ export default function ParametersReservationComponent(props) {
         />
         <EmailsParametersComponent
           templates={emailTemplates}
-          savedTemplates={initialSnapRef.current?.emails}
+          savedTemplates={initialSnapRef.current?.emails?.templates}
           onTemplatesChange={setEmailTemplates}
+          notifyRestaurantOnNewPublicReservation={
+            notifyRestaurantOnNewPublicReservation
+          }
+          onNotifyRestaurantOnNewPublicReservationChange={
+            setNotifyRestaurantOnNewPublicReservation
+          }
           restaurantName={props.restaurantData?.name}
+          restaurantEmail={props.restaurantData?.email}
           bankHoldEnabled={Boolean(bank_hold_enabled)}
           saveUI={sectionUI.emails}
           onSave={() => saveSection("emails")}

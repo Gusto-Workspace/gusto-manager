@@ -28,6 +28,7 @@ const {
 // SERVICE MAILS RESERVATIONS
 const {
   sendReservationEmail,
+  sendRestaurantNewPublicReservationEmail,
   sanitizeReservationEmailTemplatesInput,
 } = require("../services/reservations-mailer.service");
 
@@ -1681,6 +1682,10 @@ async function finalizePublicBankHoldReservation({
 
   try {
     const restaurantName = restaurant?.name || "Restaurant";
+    const shouldNotifyRestaurantOnNewPublicReservation = Boolean(
+      restaurant?.reservationsSettings
+        ?.notify_restaurant_on_new_public_reservation,
+    );
 
     if (finalizedReservation.status === "Pending") {
       sendReservationEmail("pending", {
@@ -1703,6 +1708,18 @@ async function finalizePublicBankHoldReservation({
       }).catch((e) => {
         console.error(
           "Email finalize(public/confirmed) failed:",
+          e?.response?.body || e,
+        );
+      });
+    }
+
+    if (shouldNotifyRestaurantOnNewPublicReservation) {
+      sendRestaurantNewPublicReservationEmail({
+        reservation: finalizedReservation,
+        restaurant,
+      }).catch((e) => {
+        console.error(
+          "Restaurant email finalize(public) failed:",
           e?.response?.body || e,
         );
       });
@@ -2704,6 +2721,10 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
 
       const customerEmail = String(reservationData.customerEmail || "").trim();
       const customerPhone = String(reservationData.customerPhone || "").trim();
+      const shouldNotifyRestaurantOnNewPublicReservation = Boolean(
+        restaurant?.reservationsSettings
+          ?.notify_restaurant_on_new_public_reservation,
+      );
 
       // -------------------------------------------------
       // FLOW NORMAL (sans empreinte bancaire)
@@ -2794,6 +2815,25 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
               })
               .catch((e) => {
                 console.error("Email create failed:", e?.response?.body || e);
+              });
+          }
+          if (shouldNotifyRestaurantOnNewPublicReservation) {
+            sendRestaurantNewPublicReservationEmail({
+              reservation: newReservation,
+              restaurant,
+            })
+              .then((result) => {
+                if (result?.skipped) {
+                  console.log("[restaurant-public-reservation-email-skip]", {
+                    reason: result?.reason,
+                  });
+                }
+              })
+              .catch((e) => {
+                console.error(
+                  "Restaurant public reservation email failed:",
+                  e?.response?.body || e,
+                );
               });
           }
         } catch (e) {

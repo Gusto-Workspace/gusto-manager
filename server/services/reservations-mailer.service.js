@@ -202,6 +202,12 @@ function getReservationCustomerName(reservation) {
   return `${firstName} ${lastName}`.trim();
 }
 
+function getRestaurantReservationStatusLabel(status) {
+  return String(status || "").trim() === "Confirmed"
+    ? "Confirmée"
+    : "En attente";
+}
+
 function brevoClient() {
   const defaultClient = SibApiV3Sdk.ApiClient.instance;
   const apiKey = defaultClient.authentications["api-key"];
@@ -379,6 +385,75 @@ function buildEmailHtml({ bodyHtml, restaurantName, actionUrl, actionLabel }) {
   </html>`;
 }
 
+function renderInfoRowsHtml(rows = []) {
+  return rows
+    .filter((row) => row && row.value)
+    .map(
+      (row) => `
+        <tr>
+          <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb;font-weight:700;color:#111827;white-space:nowrap;vertical-align:top;">
+            ${escapeHtml(row.label)}
+          </td>
+          <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb;color:#374151;">
+            ${escapeHtml(row.value)}
+          </td>
+        </tr>
+      `,
+    )
+    .join("");
+}
+
+function buildRestaurantReservationNotificationHtml({
+  reservation,
+  restaurantName,
+}) {
+  const customerName = getReservationCustomerName(reservation) || "Client";
+  const commentary = String(reservation?.commentary || "").trim();
+  const rows = [
+    { label: "Client", value: customerName },
+    {
+      label: "Statut",
+      value: getRestaurantReservationStatusLabel(reservation?.status),
+    },
+    { label: "Date", value: fmtDateFR(reservation?.reservationDate) || "-" },
+    { label: "Heure", value: String(reservation?.reservationTime || "-") },
+    {
+      label: "Couverts",
+      value: buildGuestCountLabel(reservation?.numberOfGuests),
+    },
+    {
+      label: "Email client",
+      value: String(reservation?.customerEmail || "").trim() || "Non renseigné",
+    },
+    {
+      label: "Téléphone",
+      value: String(reservation?.customerPhone || "").trim() || "Non renseigné",
+    },
+    {
+      label: "Table",
+      value: String(reservation?.table?.name || "").trim() || "Non attribuée",
+    },
+    {
+      label: "Commentaire",
+      value: commentary || "Aucun commentaire",
+    },
+  ];
+
+  return buildEmailHtml({
+    restaurantName,
+    bodyHtml: `
+      <p style="margin:0 0 16px; line-height:1.6;">
+        Une nouvelle réservation a été créée depuis le site du restaurant.
+      </p>
+      <div style="overflow:hidden;border:1px solid #e5e7eb;border-radius:18px;background:#f9fafb;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+          ${renderInfoRowsHtml(rows)}
+        </table>
+      </div>
+    `,
+  });
+}
+
 function getTemplateForEmailType(type, restaurant) {
   const editableDefinition = EDITABLE_TEMPLATE_BY_TYPE[type];
   if (editableDefinition) {
@@ -445,8 +520,42 @@ async function sendReservationEmail(
   });
 }
 
+async function sendRestaurantNewPublicReservationEmail({
+  reservation,
+  restaurant,
+}) {
+  if (!reservation) return { skipped: true, reason: "no_reservation" };
+
+  const toEmail = String(restaurant?.email || "").trim();
+  const restaurantName = String(restaurant?.name || "Restaurant").trim();
+  const customerName = getReservationCustomerName(reservation) || "Client";
+  const reservationDate = fmtDateFR(reservation?.reservationDate);
+  const reservationTime = String(reservation?.reservationTime || "").trim();
+
+  const subjectParts = [`Nouvelle réservation site`, customerName];
+  if (reservationDate) {
+    subjectParts.push(
+      reservationTime
+        ? `${reservationDate} à ${reservationTime}`
+        : reservationDate,
+    );
+  }
+
+  return sendEmail({
+    subject: subjectParts.filter(Boolean).join(" • "),
+    htmlContent: buildRestaurantReservationNotificationHtml({
+      reservation,
+      restaurantName,
+    }),
+    toEmail,
+    toName: restaurantName,
+    restaurantName,
+  });
+}
+
 module.exports = {
   RESERVATION_EMAIL_TEMPLATE_DEFINITIONS,
   sendReservationEmail,
+  sendRestaurantNewPublicReservationEmail,
   sanitizeReservationEmailTemplatesInput,
 };

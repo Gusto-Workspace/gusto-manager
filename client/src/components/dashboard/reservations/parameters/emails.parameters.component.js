@@ -126,7 +126,10 @@ export default function EmailsParametersComponent({
   templates,
   savedTemplates,
   onTemplatesChange,
+  notifyRestaurantOnNewPublicReservation = false,
+  onNotifyRestaurantOnNewPublicReservationChange,
   restaurantName,
+  restaurantEmail = "",
   bankHoldEnabled = false,
   saveUI,
   onSave,
@@ -490,6 +493,15 @@ export default function EmailsParametersComponent({
     "text-base font-semibold text-darkBlue flex items-center gap-2";
   const hint = "text-sm text-darkBlue/60";
   const divider = "h-px bg-darkBlue/10 my-4";
+  const toggleWrap = "inline-flex items-center gap-2 select-none";
+  const toggleBase =
+    "relative inline-flex h-8 w-14 items-center rounded-full border transition";
+  const toggleOn = "bg-blue border-blue/40";
+  const toggleOff = "bg-darkBlue/10 border-darkBlue/10";
+  const toggleDot =
+    "absolute top-1/2 -translate-y-1/2 h-6 w-6 rounded-full bg-white shadow-sm transition";
+  const toggleDotOn = "translate-x-7";
+  const toggleDotOff = "translate-x-1";
 
   return (
     <>
@@ -505,6 +517,61 @@ export default function EmailsParametersComponent({
                 Personnalisez chaque email de réservation en ouvrant le détail
                 du modèle à modifier.
               </p>
+            </div>
+
+            <SaveButton
+              saveUI={saveUI}
+              onClick={handleSaveClick}
+              savePresentation={savePresentation}
+            />
+          </div>
+
+          <div className={divider} />
+
+          <div className="rounded-2xl border border-darkBlue/10 bg-white/60 px-4 py-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-semibold text-darkBlue">
+                  Recevoir un email à chaque nouvelle réservation sur le site
+                </p>
+                <p className="mt-1 text-sm text-darkBlue/55">
+                  Envoie un email à{" "}
+                  <span className="font-semibold text-darkBlue">
+                    {restaurantEmail || "l’adresse du restaurant"}
+                  </span>{" "}
+                  avec les détails de la réservation.
+                </p>
+              </div>
+
+              <label className={toggleWrap}>
+                <span
+                  className={[
+                    toggleBase,
+                    notifyRestaurantOnNewPublicReservation
+                      ? toggleOn
+                      : toggleOff,
+                  ].join(" ")}
+                >
+                  <input
+                    type="checkbox"
+                    className="sr-only"
+                    checked={notifyRestaurantOnNewPublicReservation}
+                    onChange={(event) =>
+                      onNotifyRestaurantOnNewPublicReservationChange?.(
+                        event.target.checked,
+                      )
+                    }
+                  />
+                  <span
+                    className={[
+                      toggleDot,
+                      notifyRestaurantOnNewPublicReservation
+                        ? toggleDotOn
+                        : toggleDotOff,
+                    ].join(" ")}
+                  />
+                </span>
+              </label>
             </div>
           </div>
 

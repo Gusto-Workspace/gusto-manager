@@ -197,6 +197,10 @@ const reservationParametersSchema = new mongoose.Schema({
     type: reservationEmailTemplatesSchema,
     default: () => ({}),
   },
+  notify_restaurant_on_new_public_reservation: {
+    type: Boolean,
+    default: false,
+  },
 
   // Horaires & pauses
   reservation_hours: { type: [openingHoursSchema], default: [] },
