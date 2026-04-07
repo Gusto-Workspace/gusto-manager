@@ -18,6 +18,9 @@ const {
   findRestaurantSubscription,
   listSubscriptionInvoicesHistory,
 } = require("../services/stripe-billing.service");
+const {
+  buildSubscriptionSummary,
+} = require("../services/stripe-subscription-catalog.service");
 
 // Ajoute le restaurant dans employee.restaurants s'il n'y est pas déjà
 function ensureEmployeeRestaurantLink(employee, restaurantId) {
@@ -298,10 +301,7 @@ router.get("/restaurant-subscription", authenticateToken, async (req, res) => {
         expand: ["items.data.price"],
       },
     );
-
-    // Récupère l'ID du produit associé à l'abonnement
-    const price = hydratedSubscription.items.data[0].price;
-    const product = await stripe.products.retrieve(price.product);
+    const summary = await buildSubscriptionSummary(hydratedSubscription);
 
     // Récupérer les factures associées à l'abonnement
     const invoices = await listSubscriptionInvoicesHistory({
@@ -310,13 +310,30 @@ router.get("/restaurant-subscription", authenticateToken, async (req, res) => {
     });
 
     const subscriptionDetails = {
-      name: product.name,
-      amount: price.unit_amount / 100,
-      currency: price.currency.toUpperCase(),
+      name: summary.plan?.productName || "",
+      amount: summary.totalAmount,
+      currency: summary.currency,
+      nextChargeAt:
+        typeof hydratedSubscription.current_period_end === "number"
+          ? hydratedSubscription.current_period_end
+          : 0,
+      plan: summary.plan
+        ? {
+            name: summary.plan.productName,
+            amount: summary.plan.amount,
+            currency: summary.plan.currency,
+          }
+        : null,
+      addons: summary.addons.map((item) => ({
+        name: item.productName,
+        amount: item.amount,
+        currency: item.currency,
+      })),
       status: hydratedSubscription.status,
       invoices: invoices.map((invoice) => ({
         id: invoice.id,
         amount_due: invoice.amount_due / 100,
+        amount: invoice.amount_due / 100,
         currency: invoice.currency.toUpperCase(),
         status: invoice.status,
         date: invoice.created,

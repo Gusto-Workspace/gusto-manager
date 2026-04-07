@@ -9,13 +9,13 @@ export default function SubscriptionInfoComponent(props) {
 
   const cardCls =
     "w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 py-4 tablet:px-6 tablet:py-5 shadow-[0_18px_45px_rgba(19,30,54,0.06)] flex items-center justify-between gap-4";
-  const titleCls =
-    "text-sm tablet:text-base font-semibold text-darkBlue text-balance";
   const contentWrapCls =
     "flex flex-col items-end text-right text-sm text-darkBlue/80 gap-0.5";
   const planNameCls = "font-medium text-darkBlue";
   const amountCls = "text-sm text-darkBlue/80";
   const emptyTextCls = "text-sm text-darkBlue/50 italic";
+  const addonsCls = "text-xs text-darkBlue/55";
+  const nextChargeCls = "text-xs text-darkBlue/55";
 
   const hasPlan = !!props.subscriptionData?.amount;
 
@@ -45,6 +45,21 @@ export default function SubscriptionInfoComponent(props) {
                 {props.subscriptionData.currency === "EUR" ? "€" : "$"} /{" "}
                 {t("text.month")}
               </p>
+              {props.subscriptionData?.nextChargeAt ? (
+                <p className={nextChargeCls}>
+                  {t("text.nextCharge", "Prochaine échéance")} :{" "}
+                  {new Date(
+                    props.subscriptionData.nextChargeAt * 1000,
+                  ).toLocaleDateString("fr-FR")}
+                </p>
+              ) : null}
+              {props.subscriptionData?.addons?.length ? (
+                <p className={addonsCls}>
+                  {props.subscriptionData.addons
+                    .map((addon) => addon.name)
+                    .join(", ")}
+                </p>
+              ) : null}
             </>
           ) : (
             <p className={emptyTextCls}>{t("text.noSubscription")}</p>
