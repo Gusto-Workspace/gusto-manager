@@ -38,7 +38,7 @@ app.use(
       "https://www.bourrasquekerroch.fr", // Client Bourrasque
       "https://gusto-manager.onrender.com", // Server
       "https://reservations-module.vercel.app", // module reservations test
-      "https://a-lassiette-gusto-manager-presentation.vercel.app", // site prez A l'Assiette
+      "https://alassiettebrive.com", // Client A l'Assiette
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     credentials: true,
