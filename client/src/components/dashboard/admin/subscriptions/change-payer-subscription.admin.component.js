@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { useContext, useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import axios from "axios";
 import { useTranslation } from "next-i18next";
@@ -40,10 +40,6 @@ export default function ChangePayerSubscriptionAdminComponent() {
   const { t } = useTranslation("admin");
   const router = useRouter();
   const { adminContext } = useContext(GlobalContext);
-  const subscriptionProducts = useMemo(
-    () => adminContext?.subscriptionsList || [],
-    [adminContext],
-  );
 
   const restaurantId =
     typeof router.query.restaurantId === "string"
@@ -59,7 +55,6 @@ export default function ChangePayerSubscriptionAdminComponent() {
 
   const [clientSecret, setClientSecret] = useState(null);
   const [paymentMethodId, setPaymentMethodId] = useState(null);
-  const [selectedPriceId, setSelectedPriceId] = useState("");
   const [updateDone, setUpdateDone] = useState(false);
   const [redirecting, setRedirecting] = useState(false);
 
@@ -72,7 +67,6 @@ export default function ChangePayerSubscriptionAdminComponent() {
       setMessageType("info");
       setClientSecret(null);
       setPaymentMethodId(null);
-      setSelectedPriceId("");
       setUpdateDone(false);
       setRedirecting(false);
 
@@ -83,7 +77,6 @@ export default function ChangePayerSubscriptionAdminComponent() {
 
         const nextPreview = response.data.preview || null;
         setPreview(nextPreview);
-        setSelectedPriceId(nextPreview?.subscription?.priceId || "");
       } catch (error) {
         console.error("Erreur chargement changement payeur:", error);
         setPreview(null);
@@ -164,7 +157,6 @@ export default function ChangePayerSubscriptionAdminComponent() {
           billingAddress: preview.restaurant.address,
           phone: preview.restaurant.phone,
           language: preview.restaurant.language,
-          priceId: selectedPriceId || preview.subscription?.priceId,
         },
       );
 
@@ -243,20 +235,8 @@ export default function ChangePayerSubscriptionAdminComponent() {
   const isStep1Done = !!clientSecret;
   const isStep2Done = !!paymentMethodId;
   const isStep3Done = !!updateDone;
-  const chargesImmediately = preview?.subscription?.chargesImmediately !== false;
-  const selectedProductLabel = useMemo(() => {
-    const product = subscriptionProducts.find(
-      (item) => item?.default_price?.id === selectedPriceId,
-    );
-
-    if (!product) return null;
-
-    const price = product.default_price;
-    const amount =
-      typeof price?.unit_amount === "number" ? price.unit_amount / 100 : null;
-    const currency = price?.currency ? price.currency.toUpperCase() : "";
-    return `${product.name}${amount != null ? ` — ${amount} ${currency}` : ""}`;
-  }, [selectedPriceId, subscriptionProducts]);
+  const chargesImmediately =
+    preview?.subscription?.chargesImmediately !== false;
 
   if (loadingPreview) {
     return (
@@ -331,9 +311,9 @@ export default function ChangePayerSubscriptionAdminComponent() {
                     {t("subscriptions.payerChange.source", "Abonnement actuel")}
                   </p>
                   <p className="text-xs text-darkBlue/50">
-                    {preview.subscription?.productName || "-"}
-                    {preview.subscription?.amount != null
-                      ? ` — ${preview.subscription.amount} ${preview.subscription.currency}`
+                    {preview.subscription?.plan?.name || "-"}
+                    {preview.subscription?.totalAmount != null
+                      ? ` — ${preview.subscription.totalAmount} ${preview.subscription.currency}`
                       : ""}
                   </p>
                 </div>
@@ -369,13 +349,10 @@ export default function ChangePayerSubscriptionAdminComponent() {
                     )}{" "}
                     :{" "}
                     {chargesImmediately
-                      ? t(
-                          "subscriptions.payerChange.immediate",
-                          "Immédiat",
-                        )
+                      ? t("subscriptions.payerChange.immediate", "Immédiat")
                       : formatStripeDate(
-                            preview.subscription?.currentPeriodEnd,
-                          ) || "-"}
+                          preview.subscription?.currentPeriodEnd,
+                        ) || "-"}
                   </p>
                 </div>
               </div>
@@ -406,51 +383,28 @@ export default function ChangePayerSubscriptionAdminComponent() {
                 <p>{t("subscriptions.payerChange.flow")}</p>
               </div>
 
-              <div className="mt-3">
-                <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-darkBlue/50">
-                  {t(
-                    "subscriptions.payerChange.subscription",
-                    "Nouvel abonnement",
-                  )}
-                </label>
+              <div className="mt-3 rounded-xl border border-darkBlue/10 bg-white/70 p-3 text-sm text-darkBlue/80">
+                <p className="font-semibold text-darkBlue">
+                  Configuration conservée
+                </p>
+                <p className="mt-1">
+                  {preview.subscription?.plan?.name || "-"} —{" "}
+                  {preview.subscription?.totalAmount || 0}{" "}
+                  {preview.subscription?.currency || "EUR"}
+                </p>
 
-                <select
-                  className="w-full rounded-xl border border-darkBlue/10 bg-white/70 px-3 py-2 text-sm text-darkBlue outline-none transition focus:border-blue/40"
-                  value={selectedPriceId}
-                  onChange={(e) => setSelectedPriceId(e.target.value)}
-                  disabled={loading || redirecting}
-                >
-                  <option value="" disabled>
-                    -
-                  </option>
-                  {subscriptionProducts.map((product) => {
-                    const price = product?.default_price;
-                    const amount =
-                      typeof price?.unit_amount === "number"
-                        ? price.unit_amount / 100
-                        : null;
-                    const currency = price?.currency
-                      ? price.currency.toUpperCase()
-                      : "";
-
-                    return (
-                      <option
-                        key={product.id}
-                        value={price?.id || ""}
-                        disabled={!price?.id}
-                      >
-                        {product.name}
-                        {amount != null ? ` — ${amount} ${currency}` : ""}
-                      </option>
-                    );
-                  })}
-                </select>
-
-                {selectedProductLabel ? (
-                  <p className="mt-2 text-xs text-darkBlue/50">
-                    {selectedProductLabel}
+                {preview.subscription?.addons?.length ? (
+                  <p className="mt-2 text-xs text-darkBlue/55">
+                    Modules :{" "}
+                    {preview.subscription.addons
+                      .map((addon) => addon.name)
+                      .join(", ")}
                   </p>
-                ) : null}
+                ) : (
+                  <p className="mt-2 text-xs text-darkBlue/45">
+                    Aucun module additionnel
+                  </p>
+                )}
               </div>
 
               {preview.restaurant?.address?.line1 && (

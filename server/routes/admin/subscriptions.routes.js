@@ -16,6 +16,12 @@ const {
   retrieveStripeCustomer,
   retrieveStripeSubscription,
 } = require("../../services/stripe-billing.service");
+const {
+  buildCatalogSelectionMetadata,
+  buildSubscriptionSummary,
+  listSubscriptionCatalogProducts,
+  resolveCatalogSelection,
+} = require("../../services/stripe-subscription-catalog.service");
 
 function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -205,6 +211,110 @@ function isSubscriptionMigrationSafe({ subscription, latestInvoiceStatus }) {
   return { safe: true, reason: "" };
 }
 
+function serializeSubscriptionLineItem(item = {}) {
+  return {
+    subscriptionItemId: normalizeString(item?.subscriptionItemId),
+    priceId: normalizeString(item?.priceId),
+    productId: normalizeString(item?.productId),
+    name: item?.productName || "",
+    description: item?.description || "",
+    amount: Number(item?.amount || 0),
+    totalAmount: Number(item?.totalAmount || 0),
+    currency: item?.currency || "",
+    quantity: Number(item?.quantity || 1),
+    kind: normalizeString(item?.kind),
+    code: normalizeString(item?.code),
+  };
+}
+
+function serializeSubscriptionSummary(summary = {}) {
+  return {
+    plan: summary?.plan ? serializeSubscriptionLineItem(summary.plan) : null,
+    addons: Array.isArray(summary?.addons)
+      ? summary.addons.map(serializeSubscriptionLineItem)
+      : [],
+    otherItems: Array.isArray(summary?.otherItems)
+      ? summary.otherItems.map(serializeSubscriptionLineItem)
+      : [],
+    items: Array.isArray(summary?.items)
+      ? summary.items.map(serializeSubscriptionLineItem)
+      : [],
+    planPriceId: normalizeString(summary?.plan?.priceId),
+    addonPriceIds: Array.isArray(summary?.addons)
+      ? summary.addons
+          .map((item) => normalizeString(item?.priceId))
+          .filter(Boolean)
+      : [],
+    totalAmount: Number(summary?.totalAmount || 0),
+    currency: summary?.currency || "",
+  };
+}
+
+function buildSubscriptionItemUpdatePayload({ currentSummary, selection }) {
+  const operations = [];
+
+  const currentPlan = currentSummary?.plan || null;
+  if (currentPlan?.subscriptionItemId) {
+    operations.push({
+      id: currentPlan.subscriptionItemId,
+      price: selection.plan.priceId,
+      quantity: Number(currentPlan.quantity || 1),
+    });
+  } else {
+    operations.push({ price: selection.plan.priceId });
+  }
+
+  (currentSummary?.otherItems || []).forEach((item) => {
+    if (!item?.subscriptionItemId || !item?.priceId) return;
+    operations.push({
+      id: item.subscriptionItemId,
+      price: item.priceId,
+      quantity: Number(item.quantity || 1),
+    });
+  });
+
+  const currentAddonsByPriceId = new Map();
+  (currentSummary?.addons || []).forEach((item) => {
+    const priceId = normalizeString(item?.priceId);
+    if (!priceId) return;
+
+    if (!currentAddonsByPriceId.has(priceId)) {
+      currentAddonsByPriceId.set(priceId, []);
+    }
+
+    currentAddonsByPriceId.get(priceId).push(item);
+  });
+
+  (selection?.addons || []).forEach((addon) => {
+    const matchingQueue =
+      currentAddonsByPriceId.get(normalizeString(addon?.priceId)) || [];
+    const existingAddon = matchingQueue.shift();
+
+    if (existingAddon?.subscriptionItemId) {
+      operations.push({
+        id: existingAddon.subscriptionItemId,
+        price: existingAddon.priceId,
+        quantity: Number(existingAddon.quantity || 1),
+      });
+      return;
+    }
+
+    operations.push({ price: addon.priceId });
+  });
+
+  Array.from(currentAddonsByPriceId.values())
+    .flat()
+    .forEach((item) => {
+      if (!item?.subscriptionItemId) return;
+      operations.push({
+        id: item.subscriptionItemId,
+        deleted: true,
+      });
+    });
+
+  return operations;
+}
+
 async function findRestaurantSubscriptionOnCustomer({
   stripeCustomerId,
   restaurantId,
@@ -300,12 +410,7 @@ async function buildSubscriptionMigrationPreview({
   } else if (!migrationSafety.safe) {
     blockingReason = migrationSafety.reason;
   }
-
-  const price = sourceSubscription?.items?.data?.[0]?.price || null;
-  const product =
-    typeof price?.product === "string"
-      ? await stripe.products.retrieve(price.product)
-      : null;
+  const summary = await buildSubscriptionSummary(sourceSubscription);
 
   const nextChargeAt = await deriveSubscriptionNextChargeAt(sourceSubscription);
 
@@ -320,8 +425,7 @@ async function buildSubscriptionMigrationPreview({
     latestInvoiceStatus,
     canMigrate: !blockingReason,
     blockingReason,
-    price,
-    product,
+    summary,
     nextChargeAt,
   };
 }
@@ -362,11 +466,7 @@ async function buildSubscriptionPayerChangePreview({ restaurantId }) {
       expand: ["items.data.price", "latest_invoice", "default_payment_method"],
     },
   );
-  const price = hydratedSubscription?.items?.data?.[0]?.price || null;
-  const product =
-    typeof price?.product === "string"
-      ? await stripe.products.retrieve(price.product)
-      : null;
+  const summary = await buildSubscriptionSummary(hydratedSubscription);
 
   const currentPayerOwnerId = normalizeString(
     hydratedSubscription?.metadata?.payerOwnerId,
@@ -388,13 +488,48 @@ async function buildSubscriptionPayerChangePreview({ restaurantId }) {
     stripeCustomerId,
     sourceCustomer,
     subscription: hydratedSubscription,
-    price,
-    product,
+    summary,
     payerChangeRequired,
   };
 }
 
+async function buildSubscriptionEditPreview({ subscriptionId }) {
+  const subscription = await retrieveStripeSubscription(subscriptionId, {
+    expand: ["items.data.price", "latest_invoice"],
+  });
+
+  if (!subscription?.id) {
+    const error = new Error("Abonnement Stripe introuvable.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const restaurantId = normalizeString(subscription?.metadata?.restaurantId);
+  if (!restaurantId) {
+    const error = new Error(
+      "Impossible de retrouver le restaurant associé à cet abonnement.",
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const { restaurant, owner } =
+    await loadRestaurantBillingContext(restaurantId);
+  const summary = await buildSubscriptionSummary(subscription);
+  const nextChargeAt = await deriveSubscriptionNextChargeAt(subscription);
+
+  return {
+    restaurant,
+    owner,
+    subscription,
+    summary,
+    nextChargeAt,
+  };
+}
+
 function serializePayerChangePreview(preview) {
+  const summary = serializeSubscriptionSummary(preview.summary);
+
   return {
     canUpdatePayer: true,
     payerChangeRequired: preview.payerChangeRequired,
@@ -422,18 +557,16 @@ function serializePayerChangePreview(preview) {
       status: preview.subscription?.status || "",
       currentPeriodEnd: toTimestamp(preview.subscription?.current_period_end),
       chargesImmediately: true,
-      priceId: preview.price?.id || "",
-      productName: preview.product?.name || "",
-      amount:
-        typeof preview.price?.unit_amount === "number"
-          ? preview.price.unit_amount / 100
-          : null,
-      currency: preview.price?.currency
-        ? preview.price.currency.toUpperCase()
-        : "",
+      ...summary,
+      priceId: summary.planPriceId || "",
+      productName: summary.plan?.name || "",
+      amount: summary.totalAmount || null,
+      currency: summary.currency || "",
       currentPayerOwnerName:
         normalizeString(preview.subscription?.metadata?.payerOwnerName) ||
-        normalizeString(preview.subscription?.metadata?.previousPayerOwnerName) ||
+        normalizeString(
+          preview.subscription?.metadata?.previousPayerOwnerName,
+        ) ||
         preview.sourceCustomer?.name ||
         "",
     },
@@ -445,8 +578,7 @@ function serializeMigrationPreview(preview) {
   const owner = preview.owner;
   const sourceSubscription = preview.sourceSubscription;
   const sourceCustomer = preview.sourceCustomer;
-  const price = preview.price;
-  const product = preview.product;
+  const summary = serializeSubscriptionSummary(preview.summary);
 
   return {
     canMigrate: preview.canMigrate,
@@ -477,11 +609,11 @@ function serializeMigrationPreview(preview) {
       status: sourceSubscription?.status || "",
       currentPeriodEnd: preview.nextChargeAt,
       latestInvoiceStatus: preview.latestInvoiceStatus,
-      priceId: price?.id || "",
-      productName: product?.name || "",
-      amount:
-        typeof price?.unit_amount === "number" ? price.unit_amount / 100 : null,
-      currency: price?.currency ? price.currency.toUpperCase() : "",
+      ...summary,
+      priceId: summary.planPriceId || "",
+      productName: summary.plan?.name || "",
+      amount: summary.totalAmount || null,
+      currency: summary.currency || "",
     },
     existingDedicatedSubscription: preview.existingDedicatedSubscription
       ? {
@@ -492,16 +624,41 @@ function serializeMigrationPreview(preview) {
   };
 }
 
+function serializeEditPreview(preview) {
+  return {
+    restaurant: {
+      id: preview.restaurant?._id?.toString?.() || "",
+      name: preview.restaurant?.name || "",
+      phone: preview.restaurant?.phone || "",
+      email: preview.restaurant?.email || "",
+      language: preview.restaurant?.language || "fr",
+      address: serializeAddress(preview.restaurant?.address),
+    },
+    owner: {
+      id: preview.owner?._id?.toString?.() || "",
+      firstname: preview.owner?.firstname || "",
+      lastname: preview.owner?.lastname || "",
+      email: preview.owner?.email || "",
+    },
+    subscription: {
+      id: preview.subscription?.id || "",
+      status: preview.subscription?.status || "",
+      currentPeriodEnd:
+        Number(preview.nextChargeAt || 0) ||
+        toTimestamp(preview.subscription?.current_period_end),
+      nextChargeAt:
+        Number(preview.nextChargeAt || 0) ||
+        toTimestamp(preview.subscription?.current_period_end),
+      ...serializeSubscriptionSummary(preview.summary),
+    },
+  };
+}
+
 // GET STRIPE SUBSCRIPTIONS
 router.get("/admin/subscriptions", async (req, res) => {
   try {
-    const products = await stripe.products.list({
-      limit: 20,
-      active: true,
-      expand: ["data.default_price"], // Expande le prix par défaut de chaque produit
-    });
-
-    res.status(200).json({ products: products.data });
+    const products = await listSubscriptionCatalogProducts();
+    res.status(200).json({ products });
   } catch (error) {
     console.error("Erreur lors de la récupération des abonnements:", error);
     res.status(500).json({
@@ -554,6 +711,8 @@ router.post("/admin/create-subscription-sepa", async (req, res) => {
   const {
     stripeCustomerId,
     priceId,
+    planPriceId,
+    addonPriceIds,
     paymentMethodId,
     billingAddress,
     phone,
@@ -637,20 +796,29 @@ router.post("/admin/create-subscription-sepa", async (req, res) => {
       });
     }
 
+    const selection = await resolveCatalogSelection({
+      planPriceId: planPriceId || priceId,
+      addonPriceIds,
+    });
+
     // Créer l'abonnement en prélèvement automatique
     const subscription = await stripe.subscriptions.create({
       customer: resolvedStripeCustomerId,
-      items: [{ price: priceId }],
+      items: [
+        { price: selection.plan.priceId },
+        ...selection.addons.map((addon) => ({ price: addon.priceId })),
+      ],
       default_payment_method: paymentMethodId,
       collection_method: "charge_automatically",
       metadata: buildSubscriptionPayerMetadata({
         metadata: {
           restaurantId,
           restaurantName: resolvedRestaurantName,
+          ...buildCatalogSelectionMetadata(selection),
         },
         owner: resolvedSubscriptionOwner,
       }),
-      expand: ["latest_invoice.payment_intent"],
+      expand: ["latest_invoice.payment_intent", "items.data.price"],
     });
 
     res.status(201).json({
@@ -740,9 +908,8 @@ router.get("/admin/all-subscriptions", authenticateToken, async (req, res) => {
 
     const formattedSubscriptions = await Promise.all(
       subscriptions.data.map(async (subscription) => {
-        const price = subscription.items.data[0].price;
-        const productId = price.product;
-        const product = await stripe.products.retrieve(productId);
+        const summary = await buildSubscriptionSummary(subscription);
+        const nextChargeAt = await deriveSubscriptionNextChargeAt(subscription);
         const restaurantId = normalizeString(
           subscription?.metadata?.restaurantId,
         );
@@ -754,7 +921,10 @@ router.get("/admin/all-subscriptions", authenticateToken, async (req, res) => {
             normalizeString(subscription?.metadata?.migratedFromSubscriptionId),
           ) || null;
         const displayInvoice =
-          [subscription?.latest_invoice, migratedFromSubscription?.latest_invoice]
+          [
+            subscription?.latest_invoice,
+            migratedFromSubscription?.latest_invoice,
+          ]
             .filter(Boolean)
             .find((invoice) =>
               invoiceBelongsToCurrentPayerHistory({
@@ -795,15 +965,25 @@ router.get("/admin/all-subscriptions", authenticateToken, async (req, res) => {
 
         return {
           ...subscription,
-          productName: product.name,
-          productAmount: price.unit_amount / 100,
-          productCurrency: price.currency.toUpperCase(),
+          plan: summary.plan
+            ? serializeSubscriptionLineItem(summary.plan)
+            : null,
+          addons: summary.addons.map(serializeSubscriptionLineItem),
+          otherItems: summary.otherItems.map(serializeSubscriptionLineItem),
+          productName: summary.plan?.productName || "",
+          productAmount: summary.totalAmount,
+          productCurrency: summary.currency,
+          totalAmount: summary.totalAmount,
+          totalCurrency: summary.currency,
+          addonNames: summary.addons.map((item) => item.productName),
+          addonCount: summary.addons.length,
           restaurantId: subscription.metadata.restaurantId,
           restaurantName: subscription.metadata.restaurantName,
           displayOwnerName: ownerName,
           displayCustomerEmail: customerEmail,
           displayInvoiceStatus,
           displayLastInvoiceAt,
+          nextChargeAt,
           billingMode,
           payerChangeRequired,
           migrationAvailable:
@@ -840,6 +1020,29 @@ router.get(
         message:
           error?.message ||
           "Erreur lors de la préparation de la migration d'abonnement",
+      });
+    }
+  },
+);
+
+router.get(
+  "/admin/subscriptions/:subscriptionId/edit-preview",
+  async (req, res) => {
+    try {
+      const preview = await buildSubscriptionEditPreview({
+        subscriptionId: req.params.subscriptionId,
+      });
+
+      res.status(200).json({ preview: serializeEditPreview(preview) });
+    } catch (error) {
+      console.error(
+        "Erreur lors de la préparation de la configuration d'abonnement:",
+        error,
+      );
+      res.status(error?.statusCode || 500).json({
+        message:
+          error?.message ||
+          "Erreur lors de la préparation de la configuration d'abonnement",
       });
     }
   },
@@ -1016,14 +1219,8 @@ router.post("/admin/migrate-subscription-sepa", async (req, res) => {
 });
 
 router.post("/admin/update-subscription-payer-sepa", async (req, res) => {
-  const {
-    restaurantId,
-    paymentMethodId,
-    billingAddress,
-    phone,
-    language,
-    priceId,
-  } = req.body;
+  const { restaurantId, paymentMethodId, billingAddress, phone, language } =
+    req.body;
 
   try {
     if (!restaurantId) {
@@ -1066,34 +1263,12 @@ router.post("/admin/update-subscription-payer-sepa", async (req, res) => {
       },
     });
 
-    const currentSubscriptionItem =
-      preview.subscription.items?.data?.[0] || null;
-    const selectedPriceId = normalizeString(priceId);
-    const currentPriceId = normalizeString(currentSubscriptionItem?.price?.id);
-    const shouldSwitchPrice =
-      Boolean(selectedPriceId) &&
-      Boolean(currentSubscriptionItem?.id) &&
-      selectedPriceId !== currentPriceId;
-
     const updatedSubscription = await stripe.subscriptions.update(
       preview.subscription.id,
       {
         default_payment_method: paymentMethodId,
         billing_cycle_anchor: "now",
-        ...(shouldSwitchPrice
-          ? {
-              items: [
-                {
-                  id: currentSubscriptionItem.id,
-                  price: selectedPriceId,
-                  quantity: currentSubscriptionItem?.quantity || 1,
-                },
-              ],
-              proration_behavior: "none",
-            }
-          : {
-              proration_behavior: "none",
-            }),
+        proration_behavior: "none",
         metadata: buildSubscriptionPayerMetadata({
           metadata: {
             ...(preview.subscription.metadata || {}),
@@ -1119,6 +1294,82 @@ router.post("/admin/update-subscription-payer-sepa", async (req, res) => {
     console.error("Erreur lors du changement de payeur:", error);
     res.status(error?.statusCode || 500).json({
       message: error?.message || "Erreur lors du changement de payeur",
+    });
+  }
+});
+
+router.post("/admin/update-subscription-configuration", async (req, res) => {
+  const { subscriptionId, planPriceId, addonPriceIds } = req.body;
+
+  try {
+    if (!subscriptionId) {
+      return res.status(400).json({
+        message: "subscriptionId est requis pour mettre à jour l'abonnement.",
+      });
+    }
+
+    const subscription = await retrieveStripeSubscription(subscriptionId, {
+      expand: ["items.data.price", "latest_invoice"],
+    });
+
+    if (!subscription?.id) {
+      return res.status(404).json({
+        message: "Abonnement Stripe introuvable.",
+      });
+    }
+
+    const currentSummary = await buildSubscriptionSummary(subscription);
+    const selection = await resolveCatalogSelection({
+      planPriceId,
+      addonPriceIds,
+    });
+
+    if (
+      currentSummary.currency &&
+      selection.currency &&
+      currentSummary.currency !== selection.currency
+    ) {
+      return res.status(400).json({
+        message:
+          "Le plan et les modules doivent rester dans la même devise que l'abonnement existant.",
+      });
+    }
+
+    const items = buildSubscriptionItemUpdatePayload({
+      currentSummary,
+      selection,
+    });
+
+    const updatedSubscription = await stripe.subscriptions.update(
+      subscription.id,
+      {
+        items,
+        proration_behavior: "none",
+        metadata: {
+          ...(subscription.metadata || {}),
+          ...buildCatalogSelectionMetadata(selection),
+        },
+        expand: ["items.data.price", "latest_invoice"],
+      },
+    );
+
+    const updatedSummary = await buildSubscriptionSummary(updatedSubscription);
+
+    res.status(200).json({
+      message:
+        "La configuration de l'abonnement a été mise à jour pour la prochaine échéance.",
+      subscription: updatedSubscription,
+      summary: serializeSubscriptionSummary(updatedSummary),
+    });
+  } catch (error) {
+    console.error(
+      "Erreur lors de la mise à jour de la configuration d'abonnement:",
+      error,
+    );
+    res.status(error?.statusCode || 500).json({
+      message:
+        error?.message ||
+        "Erreur lors de la mise à jour de la configuration d'abonnement",
     });
   }
 });

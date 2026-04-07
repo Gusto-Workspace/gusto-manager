@@ -51,6 +51,10 @@ export default function ListSubscriptionsAdminComponent(props) {
     router.push(`/dashboard/admin/subscriptions/add`);
   }
 
+  function handleEditClick(subscriptionId) {
+    router.push(`/dashboard/admin/subscriptions/edit/${subscriptionId}`);
+  }
+
   function handleMigrationClick(subscriptionId) {
     router.push(`/dashboard/admin/subscriptions/migrate/${subscriptionId}`);
   }
@@ -212,10 +216,21 @@ export default function ListSubscriptionsAdminComponent(props) {
                   <span className="w-fit inline-flex items-center gap-2 rounded-full border border-darkBlue/10 bg-white/70 px-3 py-1 text-xs font-semibold text-darkBlue">
                     <Tag className="size-3.5 text-darkBlue/50" />
                     <span className="truncate">
-                      {sub.productName || "-"} — {sub.productAmount}{" "}
-                      {sub.productCurrency}
+                      {sub.plan?.name || sub.productName || "-"} —{" "}
+                      {sub.totalAmount ?? sub.productAmount}{" "}
+                      {sub.totalCurrency || sub.productCurrency}
                     </span>
                   </span>
+
+                  {sub.addonCount > 0 ? (
+                    <div className="rounded-xl border border-darkBlue/10 bg-white/60 px-3 py-2 text-xs text-darkBlue/65">
+                      Modules : {(sub.addonNames || []).join(", ")}
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-darkBlue/10 bg-white/60 px-3 py-2 text-xs text-darkBlue/45">
+                      Aucun module additionnel
+                    </div>
+                  )}
 
                   <div className="flex flex-col gap-2">
                     {st && (
@@ -276,7 +291,28 @@ export default function ListSubscriptionsAdminComponent(props) {
                         <p className="italic text-darkBlue/40">-</p>
                       </div>
                     )}
+
+                    {sub.nextChargeAt ? (
+                      <div className="flex items-start gap-2 text-sm text-darkBlue/80">
+                        <Calendar className="size-4 mt-0.5 text-darkBlue/40" />
+                        <p className="min-w-0 truncate">
+                          {t(
+                            "subscriptions.list.nextCharge",
+                            "Prochaine échéance",
+                          )}{" "}
+                          : {fmtStripeDate(sub.nextChargeAt)}
+                        </p>
+                      </div>
+                    ) : null}
                   </div>
+
+                  <button
+                    onClick={() => handleEditClick(sub.id)}
+                    className="mt-1 inline-flex items-center justify-center gap-2 rounded-xl border border-blue/20 bg-blue/10 px-3 py-2 text-sm font-semibold text-blue transition hover:bg-blue/15"
+                  >
+                    <Tag className="size-4" />
+                    Modifier l’abonnement
+                  </button>
 
                   {sub.migrationAvailable && (
                     <button

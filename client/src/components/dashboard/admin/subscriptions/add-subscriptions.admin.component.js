@@ -12,6 +12,11 @@ import { Elements } from "@stripe/react-stripe-js";
 
 // COMPONENTS
 import SepaMandateForm from "./sepa-mandate-form.admin.component";
+import {
+  computeCatalogTotal,
+  formatCatalogProductLabel,
+  splitSubscriptionCatalogProducts,
+} from "../_shared/utils/subscription-catalog.utils";
 
 // ICONS (lucide)
 import {
@@ -24,6 +29,7 @@ import {
   Loader2,
   ArrowRight,
   Hash,
+  Layers3,
 } from "lucide-react";
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLIC_KEY);
@@ -34,14 +40,19 @@ export default function AddSubscriptionsAdminComponent() {
   const { adminContext } = useContext(GlobalContext);
 
   const owners = useMemo(() => adminContext?.ownersList || [], [adminContext]);
-  const subscriptions = useMemo(
+  const subscriptionProducts = useMemo(
     () => adminContext?.subscriptionsList || [],
     [adminContext],
+  );
+  const { plans, addons } = useMemo(
+    () => splitSubscriptionCatalogProducts(subscriptionProducts),
+    [subscriptionProducts],
   );
 
   const [selectedOwnerId, setSelectedOwnerId] = useState("");
   const [selectedRestaurantId, setSelectedRestaurantId] = useState("");
-  const [selectedPriceId, setSelectedPriceId] = useState("");
+  const [selectedPlanPriceId, setSelectedPlanPriceId] = useState("");
+  const [selectedAddonPriceIds, setSelectedAddonPriceIds] = useState([]);
 
   const [restaurantData, setRestaurantData] = useState({});
   const [loading, setLoading] = useState(false);
@@ -69,16 +80,15 @@ export default function AddSubscriptionsAdminComponent() {
     [ownerRestaurants, selectedRestaurantId],
   );
 
-  const selectedSubscriptionLabel = useMemo(() => {
-    const s = subscriptions.find(
-      (x) => x.default_price?.id === selectedPriceId,
-    );
-    if (!s) return null;
-    const p = s.default_price;
-    const amount = p?.unit_amount ? p.unit_amount / 100 : null;
-    const currency = p?.currency ? p.currency.toUpperCase() : "";
-    return `${s.name}${amount != null ? ` — ${amount} ${currency}` : ""}`;
-  }, [subscriptions, selectedPriceId]);
+  const { selectedPlan, selectedAddons, totalAmount, currency } = useMemo(
+    () =>
+      computeCatalogTotal({
+        products: subscriptionProducts,
+        selectedPlanPriceId,
+        selectedAddonPriceIds,
+      }),
+    [subscriptionProducts, selectedPlanPriceId, selectedAddonPriceIds],
+  );
 
   function resetStripeFlow() {
     setMessage("");
@@ -93,7 +103,8 @@ export default function AddSubscriptionsAdminComponent() {
     const ownerId = e.target.value;
     setSelectedOwnerId(ownerId);
     setSelectedRestaurantId("");
-    setSelectedPriceId("");
+    setSelectedPlanPriceId("");
+    setSelectedAddonPriceIds([]);
     setRestaurantData({});
     resetStripeFlow();
   }
@@ -102,25 +113,39 @@ export default function AddSubscriptionsAdminComponent() {
     const restaurantId = e.target.value;
     setSelectedRestaurantId(restaurantId);
 
-    const r = ownerRestaurants.find((x) => x._id === restaurantId);
+    const restaurant = ownerRestaurants.find(
+      (entry) => entry._id === restaurantId,
+    );
     setRestaurantData({
-      address: r?.address,
-      phone: r?.phone,
-      language: r?.language || "fr",
-      name: r?.name || "",
+      address: restaurant?.address,
+      phone: restaurant?.phone,
+      language: restaurant?.language || "fr",
+      name: restaurant?.name || "",
     });
 
-    setSelectedPriceId("");
+    setSelectedPlanPriceId("");
+    setSelectedAddonPriceIds([]);
     resetStripeFlow();
   }
 
-  function handleSubscriptionChange(e) {
-    setSelectedPriceId(e.target.value);
+  function handlePlanChange(e) {
+    setSelectedPlanPriceId(e.target.value);
+    resetStripeFlow();
+  }
+
+  function handleAddonToggle(priceId) {
+    setSelectedAddonPriceIds((prev) => {
+      if (prev.includes(priceId)) {
+        return prev.filter((entry) => entry !== priceId);
+      }
+
+      return [...prev, priceId];
+    });
     resetStripeFlow();
   }
 
   async function createSetupIntent() {
-    if (!selectedOwner || !selectedPriceId || !selectedRestaurantId) {
+    if (!selectedOwner || !selectedPlanPriceId || !selectedRestaurantId) {
       setMessageType("error");
       setMessage(t("subscriptions.add.errors.select"));
       return;
@@ -131,13 +156,13 @@ export default function AddSubscriptionsAdminComponent() {
     setMessageType("info");
 
     try {
-      const res = await axios.post(
+      const response = await axios.post(
         `${process.env.NEXT_PUBLIC_API_URL}/admin/create-setup-intent`,
         { restaurantId: selectedRestaurantId },
       );
-      setClientSecret(res.data.clientSecret);
-    } catch (err) {
-      console.error(err);
+      setClientSecret(response.data.clientSecret);
+    } catch (error) {
+      console.error(error);
       setMessageType("error");
       setMessage("Erreur lors de la création du SetupIntent");
     } finally {
@@ -168,7 +193,8 @@ export default function AddSubscriptionsAdminComponent() {
       await axios.post(
         `${process.env.NEXT_PUBLIC_API_URL}/admin/create-subscription-sepa`,
         {
-          priceId: selectedPriceId,
+          planPriceId: selectedPlanPriceId,
+          addonPriceIds: selectedAddonPriceIds,
           paymentMethodId,
           billingAddress: restaurantData.address,
           phone: restaurantData.phone,
@@ -188,7 +214,7 @@ export default function AddSubscriptionsAdminComponent() {
       }, 3000);
     } catch (error) {
       const errorMsg =
-        t(error.response?.data?.message) ||
+        t(error?.response?.data?.message) ||
         t("subscriptions.add.errors.create");
       setMessageType("error");
       setMessage(errorMsg);
@@ -198,13 +224,18 @@ export default function AddSubscriptionsAdminComponent() {
     }
   }
 
-  // --- UI helpers
   const selectBaseCls =
     "mt-1 w-full rounded-xl border bg-white/70 px-3 py-2 text-sm outline-none transition focus:border-blue/40";
   const cardCls =
     "rounded-2xl bg-white/60 border border-darkBlue/10 shadow-sm p-4";
   const headerIconCls =
     "inline-flex size-9 items-center justify-center rounded-xl bg-darkBlue/5 border border-darkBlue/10";
+  const stepRowBase =
+    "rounded-2xl bg-white/60 border border-darkBlue/10 shadow-sm p-4";
+  const stepLeftIcon =
+    "inline-flex size-9 items-center justify-center rounded-xl bg-darkBlue/5 border border-darkBlue/10";
+  const stepCheck =
+    "inline-flex items-center gap-1 text-green text-sm font-semibold";
 
   const banner = message ? (
     <div
@@ -239,25 +270,17 @@ export default function AddSubscriptionsAdminComponent() {
     </div>
   ) : null;
 
-  const stepRowBase =
-    "rounded-2xl bg-white/60 border border-darkBlue/10 shadow-sm p-4";
-  const stepLeftIcon =
-    "inline-flex size-9 items-center justify-center rounded-xl bg-darkBlue/5 border border-darkBlue/10";
-  const stepCheck =
-    "inline-flex items-center gap-1 text-green text-sm font-semibold";
-
   const isStep1Done = !!clientSecret;
   const isStep2Done = !!paymentMethodId;
   const isStep3Done = !!subscriptionCreated;
 
   const step1Enabled =
-    !!selectedOwner && !!selectedRestaurantId && !!selectedPriceId;
+    !!selectedOwner && !!selectedRestaurantId && !!selectedPlanPriceId;
   const step2Enabled = isStep1Done;
   const step3Enabled = isStep2Done;
 
   return (
     <section className="flex flex-col gap-4">
-      {/* Header sticky */}
       <div className="sticky top-6 z-20 ml-16 mobile:ml-12 tablet:ml-0 px-4 pt-4 pb-3 bg-white/70 backdrop-blur border-b rounded-xl border-darkBlue/10">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
@@ -277,7 +300,6 @@ export default function AddSubscriptionsAdminComponent() {
       <div className="flex flex-col gap-4">
         {banner}
 
-        {/* Selects */}
         <div className="grid grid-cols-1 desktop:grid-cols-2 gap-3">
           <div className={cardCls}>
             <div className="flex items-center gap-2 mb-3">
@@ -307,9 +329,9 @@ export default function AddSubscriptionsAdminComponent() {
               <option value="" disabled>
                 -
               </option>
-              {owners.map((o) => (
-                <option key={o._id} value={o._id}>
-                  {o.firstname} {o.lastname}
+              {owners.map((owner) => (
+                <option key={owner._id} value={owner._id}>
+                  {owner.firstname} {owner.lastname}
                 </option>
               ))}
             </select>
@@ -343,9 +365,9 @@ export default function AddSubscriptionsAdminComponent() {
               <option value="" disabled>
                 -
               </option>
-              {ownerRestaurants.map((r) => (
-                <option key={r._id} value={r._id}>
-                  {r.name}
+              {ownerRestaurants.map((restaurant) => (
+                <option key={restaurant._id} value={restaurant._id}>
+                  {restaurant.name}
                 </option>
               ))}
             </select>
@@ -358,42 +380,156 @@ export default function AddSubscriptionsAdminComponent() {
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-darkBlue">
-                  {t("subscriptions.add.subscription")}
+                  Plan principal
                 </p>
                 <p className="text-xs text-darkBlue/50">
-                  Choisir dans la liste
+                  Choisir l’abonnement de base mensuel.
                 </p>
               </div>
             </div>
 
             <select
-              id="subscriptionSelect"
+              id="subscriptionPlanSelect"
               className={`${selectBaseCls} border-darkBlue/10`}
-              value={selectedPriceId}
-              onChange={handleSubscriptionChange}
+              value={selectedPlanPriceId}
+              onChange={handlePlanChange}
               disabled={!selectedRestaurantId || loading || redirecting}
             >
               <option value="" disabled>
                 -
               </option>
-              {subscriptions.map((s) => {
-                const p = s.default_price;
-                const amount = p?.unit_amount ? p.unit_amount / 100 : null;
-                const currency = p?.currency ? p.currency.toUpperCase() : "";
-                return (
-                  <option key={s.id} value={p?.id || ""} disabled={!p?.id}>
-                    {s.name}
-                    {amount != null ? ` — ${amount} ${currency}` : ""}
-                  </option>
-                );
-              })}
+              {plans.map((plan) => (
+                <option
+                  key={plan.id}
+                  value={plan?.default_price?.id || ""}
+                  disabled={!plan?.default_price?.id}
+                >
+                  {formatCatalogProductLabel(plan)}
+                </option>
+              ))}
             </select>
+          </div>
+
+          <div className={`${cardCls} desktop:col-span-2`}>
+            <div className="flex items-center gap-2 mb-3">
+              <div className={headerIconCls}>
+                <Layers3 className="size-4 text-darkBlue/70" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-darkBlue">
+                  Modules additionnels
+                </p>
+                <p className="text-xs text-darkBlue/50">
+                  Les modules cochés seront ajoutés au total mensuel.
+                </p>
+              </div>
+            </div>
+
+            {addons.length === 0 ? (
+              <div className="rounded-xl border border-darkBlue/10 bg-white/50 p-3 text-xs text-darkBlue/50">
+                Aucun module Stripe disponible dans le catalogue.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-2 mobile:grid-cols-2">
+                {addons.map((addon) => {
+                  const priceId = addon?.default_price?.id || "";
+                  const checked = selectedAddonPriceIds.includes(priceId);
+
+                  return (
+                    <label
+                      key={addon.id}
+                      className="flex items-start gap-3 rounded-xl border border-darkBlue/10 bg-white/60 px-3 py-3 hover:bg-darkBlue/5 transition cursor-pointer"
+                    >
+                      <input
+                        className="mt-0.5 size-4 accent-blue"
+                        type="checkbox"
+                        checked={checked}
+                        disabled={
+                          !selectedRestaurantId || loading || redirecting
+                        }
+                        onChange={() => handleAddonToggle(priceId)}
+                      />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold text-darkBlue">
+                          {addon.name}
+                        </span>
+                        <span className="block text-xs text-darkBlue/50">
+                          {formatCatalogProductLabel(addon)}
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className={`${cardCls} desktop:col-span-2`}>
+            <div className="flex items-center gap-2 mb-3">
+              <div className={headerIconCls}>
+                <Hash className="size-4 text-darkBlue/70" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-darkBlue">
+                  Récapitulatif mensuel
+                </p>
+                <p className="text-xs text-darkBlue/50">
+                  Le total facturé sur Stripe sera la somme du plan et des
+                  modules sélectionnés.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 desktop:grid-cols-[1.4fr_1fr]">
+              <div className="rounded-xl border border-darkBlue/10 bg-white/70 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-darkBlue/45">
+                  Plan
+                </p>
+                <p className="mt-1 text-sm font-semibold text-darkBlue">
+                  {selectedPlan ? selectedPlan.name : "Aucun plan sélectionné"}
+                </p>
+
+                <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-darkBlue/45">
+                  Modules
+                </p>
+                {selectedAddons.length === 0 ? (
+                  <p className="mt-1 text-sm text-darkBlue/50">
+                    Aucun module additionnel
+                  </p>
+                ) : (
+                  <ul className="mt-1 flex flex-col gap-1 text-sm text-darkBlue/80">
+                    {selectedAddons.map((addon) => (
+                      <li key={addon.id}>{addon.name}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-blue/20 bg-blue/10 p-4 flex flex-col justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-blue/70">
+                    Total mensuel
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold text-darkBlue">
+                    {totalAmount || 0} {currency || "EUR"}
+                  </p>
+                </div>
+
+                {selectedRestaurant ? (
+                  <p className="mt-4 text-xs text-darkBlue/55">
+                    Facturation pour {selectedRestaurant.name}
+                  </p>
+                ) : (
+                  <p className="mt-4 text-xs text-darkBlue/45">
+                    Sélectionner un restaurant pour poursuivre.
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* STEPS (persistants) */}
         <div className="flex flex-col gap-3">
-          {/* STEP 1 */}
           <div className={stepRowBase}>
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-start gap-3 min-w-0">
@@ -436,13 +572,12 @@ export default function AddSubscriptionsAdminComponent() {
 
             {!step1Enabled && !isStep1Done && (
               <div className="mt-3 text-xs text-darkBlue/50">
-                Sélectionner un propriétaire, un restaurant et un abonnement
-                pour activer l’étape 1.
+                Sélectionner un propriétaire, un restaurant et un plan pour
+                activer l’étape 1.
               </div>
             )}
           </div>
 
-          {/* STEP 2 */}
           <div className={stepRowBase}>
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-start gap-3 min-w-0">
@@ -462,35 +597,30 @@ export default function AddSubscriptionsAdminComponent() {
                 </span>
               ) : (
                 <span
-                  className={`
-          text-xs font-semibold
-          ${step2Enabled ? "text-darkBlue/60" : "text-darkBlue/30"}
-        `}
+                  className={`text-xs font-semibold ${
+                    step2Enabled ? "text-darkBlue/60" : "text-darkBlue/30"
+                  }`}
                 >
                   {step2Enabled ? "En attente" : "Verrouillé"}
                 </span>
               )}
             </div>
 
-            {/* Content step2 */}
-            <div className="">
-              {!step2Enabled ? (
-                <div className="rounded-xl border border-darkBlue/10 bg-white/50 p-3 text-xs text-darkBlue/50 mt-3">
-                  Terminer l’étape 1 pour déverrouiller la saisie IBAN.
-                </div>
-              ) : isStep2Done /* ✅ Rien à afficher quand c'est validé */ ? null : (
-                <Elements stripe={stripePromise} options={{ clientSecret }}>
-                  <SepaMandateForm
-                    clientSecret={clientSecret}
-                    handleSetupSuccess={handleSetupSuccess}
-                    paymentMethodId={paymentMethodId}
-                  />
-                </Elements>
-              )}
-            </div>
+            {!step2Enabled ? (
+              <div className="rounded-xl border border-darkBlue/10 bg-white/50 p-3 text-xs text-darkBlue/50 mt-3">
+                Terminer l’étape 1 pour déverrouiller la saisie IBAN.
+              </div>
+            ) : isStep2Done ? null : (
+              <Elements stripe={stripePromise} options={{ clientSecret }}>
+                <SepaMandateForm
+                  clientSecret={clientSecret}
+                  handleSetupSuccess={handleSetupSuccess}
+                  paymentMethodId={paymentMethodId}
+                />
+              </Elements>
+            )}
           </div>
 
-          {/* STEP 3 */}
           <div className={stepRowBase}>
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-start gap-3 min-w-0">
@@ -512,10 +642,9 @@ export default function AddSubscriptionsAdminComponent() {
                 </span>
               ) : (
                 <span
-                  className={`
-                    text-xs font-semibold
-                    ${step3Enabled ? "text-darkBlue/60" : "text-darkBlue/30"}
-                  `}
+                  className={`text-xs font-semibold ${
+                    step3Enabled ? "text-darkBlue/60" : "text-darkBlue/30"
+                  }`}
                 >
                   {step3Enabled ? "En attente" : "Verrouillé"}
                 </span>
