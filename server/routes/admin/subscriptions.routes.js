@@ -83,6 +83,11 @@ function toTimestamp(value) {
   return Math.floor(parsed);
 }
 
+function toInteger(value, fallback = 0) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 function getInvoiceLineSubscriptionId(line) {
   return normalizeString(
     line?.subscription ||
@@ -116,6 +121,10 @@ function isRecurringSubscriptionInvoiceLine({
     return false;
   }
 
+  if (normalizeString(line?.type) === "subscription") {
+    return true;
+  }
+
   const lineSubscriptionId = getInvoiceLineSubscriptionId(line);
   if (
     lineSubscriptionId &&
@@ -128,10 +137,84 @@ function isRecurringSubscriptionInvoiceLine({
   return Boolean(linePriceId && subscriptionPriceIds.has(linePriceId));
 }
 
+function getSubscriptionRecurring(sourceSubscription) {
+  return (
+    (sourceSubscription?.items?.data || [])
+      .map((item) => item?.price?.recurring || null)
+      .find(
+        (recurring) =>
+          normalizeString(recurring?.interval) &&
+          toInteger(recurring?.interval_count, 1) > 0,
+      ) || null
+  );
+}
+
+function addSingleRecurringInterval(baseTimestamp, recurring) {
+  const timestamp = toTimestamp(baseTimestamp);
+  if (!timestamp) return 0;
+
+  const interval = normalizeString(recurring?.interval);
+  const intervalCount = Math.max(1, toInteger(recurring?.interval_count, 1));
+  const date = new Date(timestamp * 1000);
+
+  if (interval === "day") {
+    date.setUTCDate(date.getUTCDate() + intervalCount);
+  } else if (interval === "week") {
+    date.setUTCDate(date.getUTCDate() + intervalCount * 7);
+  } else if (interval === "month") {
+    date.setUTCMonth(date.getUTCMonth() + intervalCount);
+  } else if (interval === "year") {
+    date.setUTCFullYear(date.getUTCFullYear() + intervalCount);
+  } else {
+    return 0;
+  }
+
+  const nextTimestamp = Math.floor(date.getTime() / 1000);
+  return nextTimestamp > timestamp ? nextTimestamp : 0;
+}
+
+function advanceRecurringTimestamp(baseTimestamp, recurring, minimumExclusive) {
+  let nextTimestamp = toTimestamp(baseTimestamp);
+  const threshold = toTimestamp(minimumExclusive);
+
+  if (!nextTimestamp) {
+    return 0;
+  }
+
+  for (let attempts = 0; attempts < 120; attempts += 1) {
+    if (nextTimestamp > threshold) {
+      return nextTimestamp;
+    }
+
+    const advancedTimestamp = addSingleRecurringInterval(
+      nextTimestamp,
+      recurring,
+    );
+
+    if (!advancedTimestamp || advancedTimestamp <= nextTimestamp) {
+      return 0;
+    }
+
+    nextTimestamp = advancedTimestamp;
+  }
+
+  return 0;
+}
+
+function subscriptionMayRenew(sourceSubscription) {
+  return new Set([
+    "active",
+    "trialing",
+    "past_due",
+    "unpaid",
+    "incomplete",
+  ]).has(normalizeString(sourceSubscription?.status));
+}
+
 async function deriveSubscriptionNextChargeAt(sourceSubscription) {
-  const defaultNextChargeAt =
-    toTimestamp(sourceSubscription?.current_period_end) ||
-    Math.floor(Date.now() / 1000);
+  const directNextChargeAt = toTimestamp(sourceSubscription?.current_period_end);
+  const recurring = getSubscriptionRecurring(sourceSubscription);
+  const now = Math.floor(Date.now() / 1000);
 
   const subscriptionPriceIds = new Set(
     (sourceSubscription?.items?.data || [])
@@ -139,26 +222,19 @@ async function deriveSubscriptionNextChargeAt(sourceSubscription) {
       .filter(Boolean),
   );
 
-  if (subscriptionPriceIds.size === 0) {
-    return defaultNextChargeAt;
-  }
-
   const invoices = await stripe.invoices.list({
     subscription: sourceSubscription.id,
     limit: 12,
     expand: ["data.lines.data.price"],
   });
 
-  const invoiceDerivedNextChargeAt = invoices.data.reduce(
+  const eligibleInvoices = (invoices?.data || []).filter((invoice) => {
+    const status = normalizeString(invoice?.status);
+    return status !== "void";
+  });
+
+  const invoiceDerivedNextChargeAt = eligibleInvoices.reduce(
     (maxPeriodEnd, invoice) => {
-      const isPaidInvoice =
-        normalizeString(invoice?.status) === "paid" ||
-        toTimestamp(invoice?.status_transitions?.paid_at) > 0;
-
-      if (!isPaidInvoice) {
-        return maxPeriodEnd;
-      }
-
       const invoicePeriodEnd = (invoice?.lines?.data || [])
         .filter((line) =>
           isRecurringSubscriptionInvoiceLine({
@@ -178,7 +254,38 @@ async function deriveSubscriptionNextChargeAt(sourceSubscription) {
     0,
   );
 
-  return Math.max(defaultNextChargeAt, invoiceDerivedNextChargeAt);
+  let invoiceCreatedDerivedNextChargeAt = 0;
+  let anchorDerivedNextChargeAt = 0;
+
+  if (recurring && subscriptionMayRenew(sourceSubscription)) {
+    const latestInvoiceCreatedAt = eligibleInvoices.reduce(
+      (maxCreatedAt, invoice) =>
+        Math.max(maxCreatedAt, toTimestamp(invoice?.created)),
+      0,
+    );
+
+    invoiceCreatedDerivedNextChargeAt = advanceRecurringTimestamp(
+      latestInvoiceCreatedAt,
+      recurring,
+      now,
+    );
+    anchorDerivedNextChargeAt = advanceRecurringTimestamp(
+      toTimestamp(sourceSubscription?.billing_cycle_anchor),
+      recurring,
+      now,
+    );
+  }
+
+  return Math.max(
+    directNextChargeAt,
+    invoiceDerivedNextChargeAt,
+    invoiceCreatedDerivedNextChargeAt,
+    anchorDerivedNextChargeAt,
+  );
+}
+
+async function resolveDisplayedNextChargeAt(subscription) {
+  return deriveSubscriptionNextChargeAt(subscription);
 }
 
 function isSubscriptionMigrationSafe({ subscription, latestInvoiceStatus }) {
@@ -516,7 +623,7 @@ async function buildSubscriptionEditPreview({ subscriptionId }) {
   const { restaurant, owner } =
     await loadRestaurantBillingContext(restaurantId);
   const summary = await buildSubscriptionSummary(subscription);
-  const nextChargeAt = await deriveSubscriptionNextChargeAt(subscription);
+  const nextChargeAt = await resolveDisplayedNextChargeAt(subscription);
 
   return {
     restaurant,
@@ -909,7 +1016,7 @@ router.get("/admin/all-subscriptions", authenticateToken, async (req, res) => {
     const formattedSubscriptions = await Promise.all(
       subscriptions.data.map(async (subscription) => {
         const summary = await buildSubscriptionSummary(subscription);
-        const nextChargeAt = await deriveSubscriptionNextChargeAt(subscription);
+        const nextChargeAt = await resolveDisplayedNextChargeAt(subscription);
         const restaurantId = normalizeString(
           subscription?.metadata?.restaurantId,
         );
