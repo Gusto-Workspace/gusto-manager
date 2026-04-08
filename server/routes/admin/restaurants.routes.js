@@ -3,7 +3,7 @@ const router = express.Router();
 const stripe = require("stripe")(process.env.STRIPE_API_SECRET_KEY);
 
 // MIDDLEWARE
-const authenticateToken = require("../../middleware/authentificate-token");
+const authenticateAdmin = require("../../middleware/authenticate-admin");
 
 // MODELS
 const RestaurantModel = require("../../models/restaurant.model");
@@ -19,6 +19,8 @@ const {
   encryptApiKey,
   decryptApiKey,
 } = require("../../services/encryption.service");
+
+router.use("/admin", authenticateAdmin);
 
 function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -119,7 +121,7 @@ router.get("/admin/restaurants/:id/stripe-key", async (req, res) => {
 });
 
 // GET ALL RESTAURANTS
-router.get("/admin/restaurants", authenticateToken, async (req, res) => {
+router.get("/admin/restaurants", async (req, res) => {
   try {
     const restaurants = await RestaurantModel.find().populate(
       "owner_id",

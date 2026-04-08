@@ -13,6 +13,7 @@ import { Elements } from "@stripe/react-stripe-js";
 
 // COMPONENTS
 import SepaMandateForm from "./sepa-mandate-form.admin.component";
+import { getAdminAuthConfig } from "../_shared/utils/admin-auth.utils";
 
 // ICONS
 import {
@@ -73,6 +74,7 @@ export default function ChangePayerSubscriptionAdminComponent() {
       try {
         const response = await axios.get(
           `${process.env.NEXT_PUBLIC_API_URL}/admin/restaurants/${restaurantId}/payer-change-preview`,
+          getAdminAuthConfig(),
         );
 
         const nextPreview = response.data.preview || null;
@@ -107,6 +109,7 @@ export default function ChangePayerSubscriptionAdminComponent() {
       const response = await axios.post(
         `${process.env.NEXT_PUBLIC_API_URL}/admin/create-setup-intent`,
         { restaurantId: preview.restaurant.id },
+        getAdminAuthConfig(),
       );
       setClientSecret(response.data.clientSecret);
     } catch (error) {
@@ -158,6 +161,7 @@ export default function ChangePayerSubscriptionAdminComponent() {
           phone: preview.restaurant.phone,
           language: preview.restaurant.language,
         },
+        getAdminAuthConfig(),
       );
 
       setUpdateDone(true);
@@ -241,7 +245,7 @@ export default function ChangePayerSubscriptionAdminComponent() {
   if (loadingPreview) {
     return (
       <section className="flex flex-col gap-4">
-        <div className="sticky top-6 z-20 ml-16 mobile:ml-12 tablet:ml-0 px-4 pt-4 pb-3 bg-white/70 backdrop-blur border-b rounded-xl border-darkBlue/10">
+        <div className="border-b border-darkBlue/10 bg-lightGrey px-4 py-4 pl-16 tablet:pl-4">
           <h1 className="text-lg font-semibold text-darkBlue">
             {t(
               "subscriptions.payerChange.loading",
@@ -267,7 +271,7 @@ export default function ChangePayerSubscriptionAdminComponent() {
 
   return (
     <section className="flex flex-col gap-4">
-      <div className="sticky top-6 z-20 ml-16 mobile:ml-12 tablet:ml-0 px-4 pt-4 pb-3 bg-white/70 backdrop-blur border-b rounded-xl border-darkBlue/10">
+      <div className="border-b border-darkBlue/10 bg-lightGrey px-4 py-4 pl-16 tablet:pl-4">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <h1 className="text-lg font-semibold text-darkBlue truncate">

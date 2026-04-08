@@ -5,6 +5,7 @@ import { useTranslation } from "next-i18next";
 
 import SimpleSkeletonComponent from "@/components/_shared/skeleton/simple-skeleton.component";
 import DoubleSkeletonComponent from "@/components/_shared/skeleton/double-skeleton.component";
+import PageHeaderAdminComponent from "../_shared/page-header.admin.component";
 
 import {
   Plus,
@@ -190,28 +191,20 @@ export default function ListDocumentsAdminComponent(props) {
 
   return (
     <section className="flex flex-col gap-4">
-      {/* Header sticky */}
-      <div className="sticky top-6 z-20 ml-16 mobile:ml-12 tablet:ml-0 px-4 pt-4 pb-3 bg-white/50 backdrop-blur border-b rounded-xl border-darkBlue/10">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="text-lg font-semibold text-darkBlue truncate">
-              Création documents
-            </h1>
-            <p className="text-xs text-darkBlue/50">
-              {documents.length}{" "}
-              {documents.length > 1 ? "documents" : "document"}
-            </p>
-          </div>
-
+      <PageHeaderAdminComponent
+        title="Création documents"
+        subtitle={`${documents.length} ${
+          documents.length > 1 ? "documents" : "document"
+        }`}
+        action={
           <button
             onClick={goToCreate}
-            className="inline-flex items-center gap-2 rounded-xl bg-blue px-3 py-2 text-white text-sm font-semibold shadow-sm hover:bg-blue/90 active:scale-[0.98] transition"
+            className="inline-flex size-11 items-center justify-center rounded-2xl border border-blue/10 bg-[linear-gradient(180deg,#5F94FF_0%,#3978FF_100%)] text-white shadow-[0_14px_30px_rgba(57,120,255,0.22)] transition hover:scale-[1.01] hover:shadow-[0_18px_34px_rgba(57,120,255,0.28)] active:scale-[0.98]"
           >
             <Plus className="size-4" />
-            <span className="hidden mobile:inline">Créer</span>
           </button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Content */}
       <div>

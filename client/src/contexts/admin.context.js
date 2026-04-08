@@ -6,6 +6,7 @@ import axios from "axios";
 
 // JWT
 import { jwtDecode } from "jwt-decode";
+import { getAdminAuthConfig } from "@/components/dashboard/admin/_shared/utils/admin-auth.utils";
 
 export default function AdminContext() {
   const router = useRouter();
@@ -14,6 +15,15 @@ export default function AdminContext() {
   const [subscriptionsList, setSubscriptionsList] = useState([]);
   const [restaurantsList, setRestaurantsList] = useState([]);
   const [ownersSubscriptionsList, setOwnersSubscriptionsList] = useState([]);
+  const [ownersSubscriptionsPagination, setOwnersSubscriptionsPagination] =
+    useState({
+      page: 1,
+      limit: 20,
+      total: 0,
+      totalPages: 1,
+      hasPrevPage: false,
+      hasNextPage: false,
+    });
   const [ownersLoading, setOwnersLoading] = useState(true);
   const [subscriptionsLoading, setSubscriptionsLoading] = useState(true);
   const [restaurantsLoading, setRestaurantsLoading] = useState(true);
@@ -21,6 +31,9 @@ export default function AdminContext() {
     useState(true);
   const [documentsList, setDocumentsList] = useState([]);
   const [documentsLoading, setDocumentsLoading] = useState(true);
+  const [dashboardData, setDashboardData] = useState(null);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
+  const [dashboardError, setDashboardError] = useState("");
 
   const [isAuth, setIsAuth] = useState(false);
 
@@ -33,6 +46,7 @@ export default function AdminContext() {
     if (!token) {
       router.push("/dashboard/admin/login");
     } else {
+      setOwnersLoading(true);
       try {
         const decodedToken = jwtDecode(token);
 
@@ -58,7 +72,7 @@ export default function AdminContext() {
             );
             setOwnersLoading(false);
             localStorage.removeItem("admin-token");
-            router.push("/dashboard/login");
+            router.push("/dashboard/admin/login");
           });
       } catch (error) {
         setOwnersLoading(false);
@@ -69,8 +83,20 @@ export default function AdminContext() {
   }
 
   function fetchSubscriptionsList() {
+    const token = localStorage.getItem("admin-token");
+
+    if (!token) {
+      router.push("/dashboard/admin/login");
+      return;
+    }
+
+    setSubscriptionsLoading(true);
+
     axios
-      .get(`${process.env.NEXT_PUBLIC_API_URL}/admin/subscriptions`)
+      .get(
+        `${process.env.NEXT_PUBLIC_API_URL}/admin/subscriptions`,
+        getAdminAuthConfig(),
+      )
       .then((response) => {
         setSubscriptionsList(response.data.products);
         setSubscriptionsLoading(false);
@@ -87,12 +113,12 @@ export default function AdminContext() {
     if (!token) {
       router.push("/dashboard/admin/login");
     } else {
+      setRestaurantsLoading(true);
       axios
-        .get(`${process.env.NEXT_PUBLIC_API_URL}/admin/restaurants`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        })
+        .get(
+          `${process.env.NEXT_PUBLIC_API_URL}/admin/restaurants`,
+          getAdminAuthConfig(),
+        )
         .then((response) => {
           setRestaurantsList(response.data.restaurants);
           setRestaurantsLoading(false);
@@ -112,20 +138,36 @@ export default function AdminContext() {
     }
   }
 
-  function fetchOwnersSubscriptionsList() {
+  function fetchOwnersSubscriptionsList(options = {}) {
     const token = localStorage.getItem("admin-token");
+    const page = Number(options?.page || ownersSubscriptionsPagination.page || 1);
+    const limit = Number(
+      options?.limit || ownersSubscriptionsPagination.limit || 20,
+    );
 
     if (!token) {
       router.push("/dashboard/admin/login");
     } else {
+      setOwnersSubscriptionsLoading(true);
       axios
-        .get(`${process.env.NEXT_PUBLIC_API_URL}/admin/all-subscriptions`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        })
+        .get(
+          `${process.env.NEXT_PUBLIC_API_URL}/admin/all-subscriptions`,
+          getAdminAuthConfig({
+            params: { page, limit },
+          }),
+        )
         .then((response) => {
           setOwnersSubscriptionsList(response.data.subscriptions);
+          setOwnersSubscriptionsPagination(
+            response.data.pagination || {
+              page,
+              limit,
+              total: response.data.subscriptions?.length || 0,
+              totalPages: 1,
+              hasPrevPage: false,
+              hasNextPage: false,
+            },
+          );
           setOwnersSubscriptionsLoading(false);
         })
         .catch((error) => {
@@ -158,7 +200,7 @@ export default function AdminContext() {
     try {
       const response = await axios.get(
         `${process.env.NEXT_PUBLIC_API_URL}/admin/documents`,
-        { headers: { Authorization: `Bearer ${token}` } },
+        getAdminAuthConfig(),
       );
 
       setDocumentsList(response.data.documents);
@@ -171,6 +213,49 @@ export default function AdminContext() {
       }
     } finally {
       setDocumentsLoading(false);
+    }
+  }
+
+  async function fetchDashboard(options = {}) {
+    const token = localStorage.getItem("admin-token");
+    const force = options?.force === true;
+
+    if (!token) {
+      router.push("/dashboard/admin/login");
+      return null;
+    }
+
+    if (!force && dashboardData) {
+      setDashboardLoading(false);
+      return dashboardData;
+    }
+
+    setDashboardLoading(true);
+    setDashboardError("");
+
+    try {
+      const response = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/admin/dashboard`,
+        getAdminAuthConfig(),
+      );
+
+      const nextData = response.data || null;
+      setDashboardData(nextData);
+      return nextData;
+    } catch (error) {
+      if (error?.response?.status === 403) {
+        localStorage.removeItem("admin-token");
+        router.push("/dashboard/admin/login");
+        return null;
+      }
+
+      const message =
+        error?.response?.data?.message ||
+        "Erreur lors du chargement du dashboard admin.";
+      setDashboardError(message);
+      return null;
+    } finally {
+      setDashboardLoading(false);
     }
   }
 
@@ -234,6 +319,11 @@ export default function AdminContext() {
     setOwnersSubscriptionsList,
     ownersSubscriptionsList,
     ownersSubscriptionsLoading,
+    ownersSubscriptionsPagination,
+    fetchDashboard,
+    dashboardData,
+    dashboardLoading,
+    dashboardError,
     fetchDocumentsList,
     documentsList,
     setDocumentsList,

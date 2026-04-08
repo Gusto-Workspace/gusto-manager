@@ -9,7 +9,8 @@ const cloudinary = require("cloudinary").v2;
 const streamifier = require("streamifier");
 
 // MIDDLEWARE / MODELS
-const authenticateToken = require("../../middleware/authentificate-token");
+const authenticateAdmin = require("../../middleware/authenticate-admin");
+const authenticateToken = authenticateAdmin;
 const DocumentModel = require("../../models/document.model");
 
 // PDF RENDERERS
@@ -23,6 +24,8 @@ const {
 // ---------- MULTER ----------
 const storage = multer.memoryStorage();
 const upload = multer({ storage }); // pas utilisé pour l’instant
+
+router.use("/admin", authenticateAdmin);
 
 // ✅ dossier unique voulu
 const CLOUDINARY_DOCS_FOLDER = "Gusto_Workspace/admin/documents";

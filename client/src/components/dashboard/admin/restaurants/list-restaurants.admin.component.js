@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import axios from "axios";
 import { useTranslation } from "next-i18next";
+import { getAdminAuthConfig } from "../_shared/utils/admin-auth.utils";
+import PageHeaderAdminComponent from "../_shared/page-header.admin.component";
 
 // COMPONENTS
 import SimpleSkeletonComponent from "@/components/_shared/skeleton/simple-skeleton.component";
@@ -18,6 +20,8 @@ import {
   Mail,
   Loader2,
   AlertTriangle,
+  Search,
+  X,
 } from "lucide-react";
 
 function normalizeWebsiteUrl(input) {
@@ -46,17 +50,38 @@ export default function ListRestaurantsAdminComponent(props) {
 
   const [restaurantToDelete, setRestaurantToDelete] = useState(null);
   const [loadingDeleteId, setLoadingDeleteId] = useState(null);
+  const [search, setSearch] = useState("");
 
   const restaurants = useMemo(
     () => props.restaurants || [],
     [props.restaurants],
   );
+  const normalizedSearch = useMemo(
+    () =>
+      String(search || "")
+        .trim()
+        .toLowerCase(),
+    [search],
+  );
+  const filteredRestaurants = useMemo(() => {
+    if (!normalizedSearch) return restaurants;
+
+    return restaurants.filter((restaurant) => {
+      const haystack = [restaurant?.name, restaurant?.email, restaurant?.phone]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return haystack.includes(normalizedSearch);
+    });
+  }, [normalizedSearch, restaurants]);
 
   async function confirmDelete(restaurantId) {
     setLoadingDeleteId(restaurantId);
     try {
       await axios.delete(
         `${process.env.NEXT_PUBLIC_API_URL}/admin/restaurants/${restaurantId}`,
+        getAdminAuthConfig(),
       );
 
       props.setRestaurants((prev) =>
@@ -83,32 +108,49 @@ export default function ListRestaurantsAdminComponent(props) {
 
   return (
     <section className="flex flex-col gap-4">
-      {/* Header sticky */}
-      <div className="sticky top-6 z-20 ml-16 mobile:ml-12 tablet:ml-0 px-4 pt-4 pb-3 bg-white/70 backdrop-blur border-b rounded-xl border-darkBlue/10">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="text-lg font-semibold text-darkBlue truncate">
-              {t("nav.restaurants")}
-            </h1>
-            <p className="text-xs text-darkBlue/50">
-              {restaurants.length}{" "}
-              {restaurants.length > 1 ? "restaurants" : "restaurant"}
-            </p>
-          </div>
-
+      <PageHeaderAdminComponent
+        title={t("nav.restaurants")}
+        subtitle={`${filteredRestaurants.length} ${
+          filteredRestaurants.length > 1 ? "restaurants" : "restaurant"
+        }${normalizedSearch ? ` / ${restaurants.length}` : ""}`}
+        action={
           <button
             onClick={props.handleAddClick}
-            className="inline-flex items-center gap-2 rounded-xl bg-blue px-3 py-2 text-white text-sm font-semibold shadow-sm hover:bg-blue/90 active:scale-[0.98] transition"
+            className="inline-flex size-11 items-center justify-center rounded-2xl border border-blue/10 bg-[linear-gradient(180deg,#5F94FF_0%,#3978FF_100%)] text-white shadow-[0_14px_30px_rgba(57,120,255,0.22)] transition hover:scale-[1.01] hover:shadow-[0_18px_34px_rgba(57,120,255,0.28)] active:scale-[0.98]"
           >
             <Plus className="size-4" />
-            <span className="hidden mobile:inline">
-              {t("restaurants.form.add")}
-            </span>
           </button>
+        }
+      />
+
+      <div className="rounded-[22px] border border-darkBlue/10 bg-white/85 p-2 shadow-[0_12px_28px_rgba(19,30,54,0.04)] mobile:p-3">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-darkBlue/35" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t(
+              "restaurants.list.searchPlaceholder",
+              "Rechercher par nom, email ou téléphone",
+            )}
+            className="h-12 w-full rounded-[18px] border border-darkBlue/10 bg-lightGrey/60 px-10 pr-10 text-sm text-darkBlue outline-none transition placeholder:text-darkBlue/35 focus:border-blue/25 focus:bg-white"
+          />
+          {search ? (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              className="absolute right-2 top-1/2 inline-flex size-8 -translate-y-1/2 items-center justify-center rounded-full border border-darkBlue/10 bg-white text-darkBlue/55 transition hover:bg-darkBlue/5"
+              aria-label={t(
+                "restaurants.list.clearSearch",
+                "Réinitialiser la recherche",
+              )}
+            >
+              <X className="size-4" />
+            </button>
+          ) : null}
         </div>
       </div>
 
-      {/* Content */}
       <div>
         {props.loading ? (
           <div className="rounded-2xl bg-white/60 border border-darkBlue/10 shadow-sm p-5 flex flex-col gap-3">
@@ -125,9 +167,21 @@ export default function ListRestaurantsAdminComponent(props) {
               {t("restaurants.list.empty", "Aucun restaurant pour le moment.")}
             </p>
           </div>
+        ) : filteredRestaurants.length === 0 ? (
+          <div className="rounded-xl bg-white/60 border border-darkBlue/10 shadow-sm p-6 text-center">
+            <div className="mx-auto mb-3 size-11 rounded-2xl bg-darkBlue/5 flex items-center justify-center">
+              <Search className="size-5 text-darkBlue/60" />
+            </div>
+            <p className="text-sm text-darkBlue/70">
+              {t(
+                "restaurants.list.emptySearch",
+                "Aucun restaurant ne correspond à cette recherche.",
+              )}
+            </p>
+          </div>
         ) : (
           <ul className="grid grid-cols-1 gap-3 midTablet:grid-cols-2 desktop:grid-cols-3">
-            {restaurants.map((restaurant) => {
+            {filteredRestaurants.map((restaurant) => {
               const addr = formatAddress(restaurant.address);
               const owner = restaurant.owner_id || null;
 
@@ -146,7 +200,6 @@ export default function ListRestaurantsAdminComponent(props) {
                   key={restaurant._id}
                   className="relative group rounded-xl bg-white/60 border border-darkBlue/10 shadow-sm hover:shadow-md transition-shadow p-4 flex flex-col gap-3 overflow-hidden"
                 >
-                  {/* Title row */}
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <h2 className="text-base font-semibold text-darkBlue truncate">
@@ -176,7 +229,6 @@ export default function ListRestaurantsAdminComponent(props) {
                       )}
                     </div>
 
-                    {/* Quick actions */}
                     {!isConfirming && (
                       <div className="flex items-center gap-2">
                         <button
@@ -200,7 +252,6 @@ export default function ListRestaurantsAdminComponent(props) {
                     )}
                   </div>
 
-                  {/* Infos */}
                   <div className="flex flex-col gap-2">
                     <div className="flex items-start gap-2 text-sm text-darkBlue/80">
                       <MapPin className="size-4 mt-0.5 text-darkBlue/40" />

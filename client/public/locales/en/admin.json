@@ -9,6 +9,7 @@
   "buttons": {
     "logout": "Log Out",
     "loading": "Loading...",
+    "cancel": "Cancel",
     "delete": "Delete",
     "confirm": "Confirm"
   },
@@ -51,7 +52,10 @@
     "list": {
       "loading": "Loading restaurants...",
       "emptyList": "Restaurants not found.",
-      "noOwner": "No owner"
+      "noOwner": "No owner",
+      "searchPlaceholder": "Search by name, email, or phone",
+      "emptySearch": "No restaurant matches this search.",
+      "clearSearch": "Clear search"
     }
   },
   "owner": {
@@ -71,6 +75,9 @@
     "list": {
       "listRestaurants": "Restaurants list",
       "noRestaurant": "No restaurant",
+      "searchPlaceholder": "Search by name, email, or phone",
+      "emptySearch": "No owner matches this search.",
+      "clearSearch": "Clear search",
       "buttons": {
         "add": "Add",
         "cancel": "Cancel",
@@ -99,8 +106,38 @@
       "draft": "Draft",
       "unpaid": "Unpaid",
       "automatic": "Switch to automatic payment",
+      "edit": "Edit subscription",
+      "stop": "Stop subscription",
+      "stopNow": "Stop immediately",
+      "stopTitle": "Stop this subscription",
+      "stopAtPeriodEnd": "At the end of the current period",
+      "stopEffectiveDate": "Effective date",
+      "stopImmediate": "Immediately",
+      "stopImmediateHint": "The subscription will be stopped right away on Stripe.",
+      "stopConfirmPeriodEnd": "Schedule stop",
+      "scheduledStop": "Scheduled stop on",
+      "resumeScheduledStop": "Undo scheduled stop",
+      "restoreCancelError": "Error while undoing the scheduled stop.",
+      "cancelError": "Error while stopping the subscription.",
+      "showDetails": "Show subscription details",
       "showInvoices": "Show invoices",
       "hideInvoices": "Hide invoices",
+      "detailsTitle": "Subscription details",
+      "actionsTitle": "Actions",
+      "actionsHint": "Manage the subscription from this panel.",
+      "viewDetails": "Details",
+      "email": "Email",
+      "modules": "Add-ons",
+      "noAddons": "No additional add-ons",
+      "noAdditionalModules": "No additional add-ons",
+      "additionalModulesCount": "{{count}} additional add-on(s)",
+      "unavailable": "This subscription is no longer available in the list.",
+      "invoiceCount": "invoice",
+      "invoicesCount": "invoices",
+      "invoicesLazyHint": "Loaded on demand",
+      "previousPage": "Previous",
+      "nextPage": "Next",
+      "page": "Page",
       "date": "Date",
       "amount": "Amount",
       "status": "Status"

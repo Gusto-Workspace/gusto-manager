@@ -9,6 +9,7 @@
   "buttons": {
     "logout": "Déconnexion",
     "loading": "Chargement...",
+    "cancel": "Annuler",
     "delete": "Supprimer",
     "confirm": "Confirmer"
   },
@@ -50,7 +51,10 @@
     "list": {
       "loading": "Chargement des restaurants...",
       "emptyList": "Aucun restaurant trouvé.",
-      "noOwner": "Aucun propriéraire"
+      "noOwner": "Aucun propriéraire",
+      "searchPlaceholder": "Rechercher par nom, email ou téléphone",
+      "emptySearch": "Aucun restaurant ne correspond à cette recherche.",
+      "clearSearch": "Réinitialiser la recherche"
     }
   },
   "owner": {
@@ -70,6 +74,9 @@
     "list": {
       "listRestaurants": "Liste des restaurants",
       "noRestaurant": "Aucun restaurant",
+      "searchPlaceholder": "Rechercher par nom, email ou téléphone",
+      "emptySearch": "Aucun propriétaire ne correspond à cette recherche.",
+      "clearSearch": "Réinitialiser la recherche",
       "buttons": {
         "add": "Ajouter",
         "cancel": "Annuler",
@@ -98,8 +105,38 @@
       "draft": "Brouillon",
       "unpaid": "Non payée",
       "automatic": "Passer en mode de paiement automatique",
+      "edit": "Modifier l'abonnement",
+      "stop": "Arrêter l'abonnement",
+      "stopNow": "Arrêter immédiatement",
+      "stopTitle": "Arrêter cet abonnement",
+      "stopAtPeriodEnd": "À la fin de la période actuelle",
+      "stopEffectiveDate": "Date d'effet",
+      "stopImmediate": "Immédiatement",
+      "stopImmediateHint": "L'abonnement sera arrêté tout de suite sur Stripe.",
+      "stopConfirmPeriodEnd": "Programmer l'arrêt",
+      "scheduledStop": "Arrêt programmé le",
+      "resumeScheduledStop": "Annuler l'arrêt programmé",
+      "restoreCancelError": "Erreur lors de l'annulation de l'arrêt programmé.",
+      "cancelError": "Erreur lors de l'arrêt de l'abonnement.",
+      "showDetails": "Afficher le détail de l'abonnement",
       "showInvoices": "Afficher les factures",
       "hideInvoices": "Masquer les factures",
+      "detailsTitle": "Détail de l'abonnement",
+      "actionsTitle": "Actions",
+      "actionsHint": "Gérer l'abonnement depuis ce panneau.",
+      "viewDetails": "Détails",
+      "email": "Email",
+      "modules": "Modules",
+      "noAddons": "Aucun module additionnel",
+      "noAdditionalModules": "Aucun module supplémentaire",
+      "additionalModulesCount": "{{count}} module(s) supplémentaire(s)",
+      "unavailable": "Cet abonnement n'est plus disponible dans la liste.",
+      "invoiceCount": "facture",
+      "invoicesCount": "factures",
+      "invoicesLazyHint": "Chargement à la demande",
+      "previousPage": "Précédent",
+      "nextPage": "Suivant",
+      "page": "Page",
       "date": "Date",
       "amount": "Montant",
       "status": "État"

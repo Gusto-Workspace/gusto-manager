@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const stripe = require("stripe")(process.env.STRIPE_API_SECRET_KEY);
+const authenticateAdmin = require("../../middleware/authenticate-admin");
 
 // MODELS
 const OwnerModel = require("../../models/owner.model");
@@ -8,6 +9,8 @@ const RestaurantModel = require("../../models/restaurant.model");
 const {
   stripeCustomerUsedByAnyRestaurant,
 } = require("../../services/stripe-billing.service");
+
+router.use("/admin", authenticateAdmin);
 
 // OWNERS LIST
 router.get("/admin/owners", async (req, res) => {

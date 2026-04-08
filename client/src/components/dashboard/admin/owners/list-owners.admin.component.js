@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import axios from "axios";
 import { useTranslation } from "next-i18next";
+import { getAdminAuthConfig } from "../_shared/utils/admin-auth.utils";
+import PageHeaderAdminComponent from "../_shared/page-header.admin.component";
 
 // COMPONENTS
 import DoubleSkeletonComponent from "@/components/_shared/skeleton/double-skeleton.component";
@@ -11,13 +13,14 @@ import {
   Plus,
   Pencil,
   Trash2,
-  User,
   Mail,
   Phone,
   Calendar,
   Store,
   Loader2,
   AlertTriangle,
+  Search,
+  X,
 } from "lucide-react";
 
 export default function ListOwnersAdminComponent(props) {
@@ -25,8 +28,34 @@ export default function ListOwnersAdminComponent(props) {
 
   const [ownerToDelete, setOwnerToDelete] = useState(null);
   const [loadingDeleteId, setLoadingDeleteId] = useState(null);
+  const [search, setSearch] = useState("");
 
   const owners = useMemo(() => props.owners || [], [props.owners]);
+  const normalizedSearch = useMemo(
+    () =>
+      String(search || "")
+        .trim()
+        .toLowerCase(),
+    [search],
+  );
+  const filteredOwners = useMemo(() => {
+    if (!normalizedSearch) return owners;
+
+    return owners.filter((owner) => {
+      const haystack = [
+        owner?.firstname,
+        owner?.lastname,
+        `${owner?.firstname || ""} ${owner?.lastname || ""}`.trim(),
+        owner?.email,
+        owner?.phoneNumber,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return haystack.includes(normalizedSearch);
+    });
+  }, [normalizedSearch, owners]);
 
   async function confirmDelete(ownerId) {
     setLoadingDeleteId(ownerId);
@@ -34,6 +63,7 @@ export default function ListOwnersAdminComponent(props) {
     try {
       await axios.delete(
         `${process.env.NEXT_PUBLIC_API_URL}/admin/owners/${ownerId}`,
+        getAdminAuthConfig(),
       );
 
       props.setOwners((prev) => (prev || []).filter((o) => o._id !== ownerId));
@@ -54,30 +84,49 @@ export default function ListOwnersAdminComponent(props) {
 
   return (
     <section className="flex flex-col gap-4">
-      {/* Header sticky */}
-      <div className="sticky top-6 z-20 ml-16 mobile:ml-12 tablet:ml-0 px-4 pt-4 pb-3 bg-white/70 backdrop-blur border-b rounded-xl border-darkBlue/10">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="text-lg font-semibold text-darkBlue truncate">
-              {t("nav.owners")}
-            </h1>
-            <p className="text-xs text-darkBlue/50">
-              {owners.length}{" "}
-              {owners.length > 1 ? "propriétaires" : "propriétaire"}
-            </p>
-          </div>
-
+      <PageHeaderAdminComponent
+        title={t("nav.owners")}
+        subtitle={`${filteredOwners.length} ${
+          filteredOwners.length > 1 ? "propriétaires" : "propriétaire"
+        }${normalizedSearch ? ` / ${owners.length}` : ""}`}
+        action={
           <button
             onClick={props.handleAddClick}
-            className="inline-flex items-center gap-2 rounded-xl bg-blue px-3 py-2 text-white text-sm font-semibold shadow-sm hover:bg-blue/90 active:scale-[0.98] transition"
+            className="inline-flex size-11 items-center justify-center rounded-2xl border border-blue/10 bg-[linear-gradient(180deg,#5F94FF_0%,#3978FF_100%)] text-white shadow-[0_14px_30px_rgba(57,120,255,0.22)] transition hover:scale-[1.01] hover:shadow-[0_18px_34px_rgba(57,120,255,0.28)] active:scale-[0.98]"
           >
             <Plus className="size-4" />
-            <span className="hidden mobile:inline">{t("owner.form.add")}</span>
           </button>
+        }
+      />
+
+      <div className="rounded-[22px] border border-darkBlue/10 bg-white/85 p-2 shadow-[0_12px_28px_rgba(19,30,54,0.04)] mobile:p-3">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-darkBlue/35" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t(
+              "owners.list.searchPlaceholder",
+              "Rechercher par nom, email ou téléphone",
+            )}
+            className="h-12 w-full rounded-[18px] border border-darkBlue/10 bg-lightGrey/60 px-10 pr-10 text-sm text-darkBlue outline-none transition placeholder:text-darkBlue/35 focus:border-blue/25 focus:bg-white"
+          />
+          {search ? (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              className="absolute right-2 top-1/2 inline-flex size-8 -translate-y-1/2 items-center justify-center rounded-full border border-darkBlue/10 bg-white text-darkBlue/55 transition hover:bg-darkBlue/5"
+              aria-label={t(
+                "owners.list.clearSearch",
+                "Réinitialiser la recherche",
+              )}
+            >
+              <X className="size-4" />
+            </button>
+          ) : null}
         </div>
       </div>
 
-      {/* Content */}
       <div>
         {props?.loading ? (
           <div className="rounded-2xl bg-white/60 border border-darkBlue/10 shadow-sm p-5 flex flex-col gap-3">
@@ -94,9 +143,21 @@ export default function ListOwnersAdminComponent(props) {
               {t("owners.list.emptyList", "Aucun propriétaire pour le moment.")}
             </p>
           </div>
+        ) : filteredOwners.length === 0 ? (
+          <div className="rounded-xl bg-white/60 border border-darkBlue/10 shadow-sm p-6 text-center">
+            <div className="mx-auto mb-3 size-11 rounded-2xl bg-darkBlue/5 flex items-center justify-center">
+              <Search className="size-5 text-darkBlue/60" />
+            </div>
+            <p className="text-sm text-darkBlue/70">
+              {t(
+                "owners.list.emptySearch",
+                "Aucun propriétaire ne correspond à cette recherche.",
+              )}
+            </p>
+          </div>
         ) : (
           <ul className="grid grid-cols-1 gap-3 midTablet:grid-cols-2 desktop:grid-cols-3">
-            {owners.map((owner) => {
+            {filteredOwners.map((owner) => {
               const isConfirming = ownerToDelete === owner._id;
               const isDeleting = loadingDeleteId === owner._id;
 
@@ -110,7 +171,6 @@ export default function ListOwnersAdminComponent(props) {
                   key={owner?._id}
                   className="relative group rounded-xl bg-white/60 border border-darkBlue/10 shadow-sm hover:shadow-md transition-shadow p-4 flex flex-col gap-3 overflow-hidden"
                 >
-                  {/* Header row */}
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <h2 className="text-base font-semibold text-darkBlue truncate">
@@ -126,7 +186,6 @@ export default function ListOwnersAdminComponent(props) {
                       </p>
                     </div>
 
-                    {/* Quick actions */}
                     {!isConfirming && (
                       <div className="flex items-center gap-2">
                         <button
@@ -150,7 +209,6 @@ export default function ListOwnersAdminComponent(props) {
                     )}
                   </div>
 
-                  {/* Infos */}
                   <div className="flex flex-col gap-2">
                     <div className="flex items-start gap-2 text-sm text-darkBlue/80">
                       <Mail className="size-4 mt-0.5 text-darkBlue/40" />

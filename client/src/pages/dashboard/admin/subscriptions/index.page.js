@@ -42,8 +42,9 @@ export default function SubscriptionsPage(props) {
         <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 min-h-screen">
           <ListSubscriptionsAdminComponent
             loading={adminContext.ownersSubscriptionsLoading}
-            setOwnersSubscriptionsList={adminContext.setOwnersSubscriptionsList}
             ownersSubscriptionsList={adminContext.ownersSubscriptionsList}
+            pagination={adminContext.ownersSubscriptionsPagination}
+            refreshSubscriptions={adminContext.fetchOwnersSubscriptionsList}
           />
         </div>
       </div>

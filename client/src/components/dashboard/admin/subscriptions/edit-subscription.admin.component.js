@@ -11,6 +11,7 @@ import {
   formatCatalogProductLabel,
   splitSubscriptionCatalogProducts,
 } from "../_shared/utils/subscription-catalog.utils";
+import { getAdminAuthConfig } from "../_shared/utils/admin-auth.utils";
 
 import {
   ArrowLeft,
@@ -70,6 +71,7 @@ export default function EditSubscriptionAdminComponent() {
       try {
         const response = await axios.get(
           `${process.env.NEXT_PUBLIC_API_URL}/admin/subscriptions/${subscriptionId}/edit-preview`,
+          getAdminAuthConfig(),
         );
 
         const nextPreview = response.data.preview || null;
@@ -129,6 +131,7 @@ export default function EditSubscriptionAdminComponent() {
           planPriceId: selectedPlanPriceId,
           addonPriceIds: selectedAddonPriceIds,
         },
+        getAdminAuthConfig(),
       );
 
       setUpdateDone(true);
@@ -194,7 +197,7 @@ export default function EditSubscriptionAdminComponent() {
   if (loadingPreview) {
     return (
       <section className="flex flex-col gap-4">
-        <div className="sticky top-6 z-20 ml-16 mobile:ml-12 tablet:ml-0 px-4 pt-4 pb-3 bg-white/70 backdrop-blur border-b rounded-xl border-darkBlue/10">
+        <div className="border-b border-darkBlue/10 bg-lightGrey px-4 py-4 pl-16 tablet:pl-4">
           <h1 className="text-lg font-semibold text-darkBlue">
             Chargement de la configuration d'abonnement...
           </h1>
@@ -212,7 +215,7 @@ export default function EditSubscriptionAdminComponent() {
 
   return (
     <section className="flex flex-col gap-4">
-      <div className="sticky top-6 z-20 ml-16 mobile:ml-12 tablet:ml-0 px-4 pt-4 pb-3 bg-white/70 backdrop-blur border-b rounded-xl border-darkBlue/10">
+      <div className="border-b border-darkBlue/10 bg-lightGrey px-4 py-4 pl-16 tablet:pl-4">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <h1 className="text-lg font-semibold text-darkBlue truncate">

@@ -3,8 +3,11 @@ const router = express.Router();
 const stripe = require("stripe")(process.env.STRIPE_API_SECRET_KEY);
 
 // MIDDLEWARE
-const authenticateToken = require("../../middleware/authentificate-token");
+const authenticateAdmin = require("../../middleware/authenticate-admin");
 const RestaurantModel = require("../../models/restaurant.model");
+const {
+  listAllStripeSubscriptions,
+} = require("../../services/stripe-admin.service");
 const {
   ensureRestaurantStripeCustomer,
   customerIsDedicatedToRestaurant,
@@ -23,6 +26,8 @@ const {
   resolveCatalogSelection,
 } = require("../../services/stripe-subscription-catalog.service");
 
+router.use("/admin", authenticateAdmin);
+
 function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -38,6 +43,26 @@ function uniqueNonEmpty(values = []) {
   return Array.from(
     new Set(values.map((value) => normalizeString(value)).filter(Boolean)),
   );
+}
+
+function paginateArray(items = [], page = 1, limit = 20) {
+  const safeLimit = Math.max(1, toInteger(limit, 20));
+  const total = Array.isArray(items) ? items.length : 0;
+  const totalPages = Math.max(1, Math.ceil(total / safeLimit));
+  const safePage = Math.min(Math.max(1, toInteger(page, 1)), totalPages);
+  const start = (safePage - 1) * safeLimit;
+
+  return {
+    items: (items || []).slice(start, start + safeLimit),
+    pagination: {
+      page: safePage,
+      limit: safeLimit,
+      total,
+      totalPages,
+      hasPrevPage: safePage > 1,
+      hasNextPage: safePage < totalPages,
+    },
+  };
 }
 
 function serializeAddress(address = {}) {
@@ -212,7 +237,9 @@ function subscriptionMayRenew(sourceSubscription) {
 }
 
 async function deriveSubscriptionNextChargeAt(sourceSubscription) {
-  const directNextChargeAt = toTimestamp(sourceSubscription?.current_period_end);
+  const directNextChargeAt = toTimestamp(
+    sourceSubscription?.current_period_end,
+  );
   const recurring = getSubscriptionRecurring(sourceSubscription);
   const now = Math.floor(Date.now() / 1000);
 
@@ -963,17 +990,16 @@ router.post("/admin/create-subscription-sepa", async (req, res) => {
 // });
 
 // GET ALL SUBSCRIPTIONS FROM OWNERS
-router.get("/admin/all-subscriptions", authenticateToken, async (req, res) => {
+router.get("/admin/all-subscriptions", async (req, res) => {
   try {
-    const subscriptions = await stripe.subscriptions.list({
-      limit: 100,
+    const requestedPage = req.query.page;
+    const requestedLimit = req.query.limit;
+    const subscriptions = await listAllStripeSubscriptions({
       expand: ["data.items.data.price", "data.latest_invoice"],
     });
 
     const restaurantIds = uniqueNonEmpty(
-      subscriptions.data.map(
-        (subscription) => subscription?.metadata?.restaurantId,
-      ),
+      subscriptions.map((subscription) => subscription?.metadata?.restaurantId),
     );
     const restaurants = await RestaurantModel.find(
       { _id: { $in: restaurantIds } },
@@ -986,7 +1012,7 @@ router.get("/admin/all-subscriptions", authenticateToken, async (req, res) => {
     );
 
     const migratedFromSubscriptionIds = uniqueNonEmpty(
-      subscriptions.data.map(
+      subscriptions.map(
         (subscription) => subscription?.metadata?.migratedFromSubscriptionId,
       ),
     );
@@ -1001,7 +1027,7 @@ router.get("/admin/all-subscriptions", authenticateToken, async (req, res) => {
     const migratedFromSubscriptionById = new Map(migratedFromPairs);
 
     const customerIds = uniqueNonEmpty(
-      subscriptions.data.map((subscription) =>
+      subscriptions.map((subscription) =>
         toStripeCustomerId(subscription.customer),
       ),
     );
@@ -1014,7 +1040,7 @@ router.get("/admin/all-subscriptions", authenticateToken, async (req, res) => {
     const customerById = new Map(customerPairs);
 
     const formattedSubscriptions = await Promise.all(
-      subscriptions.data.map(async (subscription) => {
+      subscriptions.map(async (subscription) => {
         const summary = await buildSubscriptionSummary(subscription);
         const nextChargeAt = await resolveDisplayedNextChargeAt(subscription);
         const restaurantId = normalizeString(
@@ -1091,15 +1117,23 @@ router.get("/admin/all-subscriptions", authenticateToken, async (req, res) => {
           displayInvoiceStatus,
           displayLastInvoiceAt,
           nextChargeAt,
+          currentPeriodEnd: toTimestamp(subscription?.current_period_end),
+          cancelAtPeriodEnd: subscription?.cancel_at_period_end === true,
+          cancelAt: toTimestamp(subscription?.cancel_at),
+          canceledAt: toTimestamp(subscription?.canceled_at),
           billingMode,
           payerChangeRequired,
-          migrationAvailable:
-            Boolean(restaurantId) && billingMode === "legacy_customer",
         };
       }),
     );
 
-    res.status(200).json({ subscriptions: formattedSubscriptions });
+    const { items, pagination } = paginateArray(
+      formattedSubscriptions,
+      requestedPage,
+      requestedLimit,
+    );
+
+    res.status(200).json({ subscriptions: items, pagination });
   } catch (error) {
     console.error("Erreur lors de la récupération des abonnements:", error);
     res
@@ -1108,29 +1142,118 @@ router.get("/admin/all-subscriptions", authenticateToken, async (req, res) => {
   }
 });
 
-router.get(
-  "/admin/subscriptions/:subscriptionId/migration-preview",
-  async (req, res) => {
-    try {
-      const preview = await buildSubscriptionMigrationPreview({
-        sourceSubscriptionId: req.params.subscriptionId,
-        restaurantId: req.query.restaurantId,
-      });
+router.post("/admin/subscriptions/:subscriptionId/cancel", async (req, res) => {
+  const subscriptionId = normalizeString(req.params.subscriptionId);
+  const requestedMode = normalizeString(req.body?.mode);
+  const mode =
+    requestedMode === "period_end"
+      ? "period_end"
+      : requestedMode === "resume"
+        ? "resume"
+        : "immediate";
 
-      res.status(200).json({ preview: serializeMigrationPreview(preview) });
-    } catch (error) {
-      console.error(
-        "Erreur lors de la préparation de la migration d'abonnement:",
-        error,
-      );
-      res.status(error?.statusCode || 500).json({
-        message:
-          error?.message ||
-          "Erreur lors de la préparation de la migration d'abonnement",
+  try {
+    if (!subscriptionId) {
+      return res.status(400).json({
+        message: "subscriptionId est requis pour arrêter l'abonnement.",
       });
     }
-  },
-);
+
+    const subscription = await retrieveStripeSubscription(subscriptionId, {
+      expand: ["items.data.price", "latest_invoice"],
+    });
+
+    if (!subscription?.id) {
+      return res.status(404).json({
+        message: "Abonnement Stripe introuvable.",
+      });
+    }
+
+    let updatedSubscription = subscription;
+
+    if (mode === "resume") {
+      if (normalizeString(subscription?.status) === "canceled") {
+        return res.status(409).json({
+          message:
+            "Cet abonnement est déjà arrêté définitivement et ne peut pas être replanifié.",
+        });
+      }
+
+      if (subscription?.cancel_at_period_end !== true) {
+        return res.status(200).json({
+          message: "Aucun arrêt programmé n'est actif sur cet abonnement.",
+          cancellation: {
+            mode,
+            effectiveAt: 0,
+            cancelAtPeriodEnd: false,
+            status: subscription?.status || "",
+          },
+          subscription,
+        });
+      }
+
+      updatedSubscription = await stripe.subscriptions.update(subscription.id, {
+        cancel_at_period_end: false,
+        expand: ["items.data.price", "latest_invoice"],
+      });
+
+      return res.status(200).json({
+        message: "L'arrêt programmé de l'abonnement a été annulé.",
+        cancellation: {
+          mode,
+          effectiveAt: 0,
+          cancelAtPeriodEnd: updatedSubscription?.cancel_at_period_end === true,
+          status: updatedSubscription?.status || "",
+        },
+        subscription: updatedSubscription,
+      });
+    }
+
+    if (mode === "period_end") {
+      updatedSubscription = await stripe.subscriptions.update(subscription.id, {
+        cancel_at_period_end: true,
+        expand: ["items.data.price", "latest_invoice"],
+      });
+
+      return res.status(200).json({
+        message:
+          "L'arrêt de l'abonnement est programmé à la fin de la période.",
+        cancellation: {
+          mode,
+          effectiveAt:
+            toTimestamp(updatedSubscription?.current_period_end) ||
+            toTimestamp(updatedSubscription?.cancel_at),
+          cancelAtPeriodEnd: updatedSubscription?.cancel_at_period_end === true,
+          status: updatedSubscription?.status || "",
+        },
+        subscription: updatedSubscription,
+      });
+    }
+
+    updatedSubscription = await stripe.subscriptions.cancel(subscription.id, {
+      invoice_now: false,
+      prorate: false,
+    });
+
+    return res.status(200).json({
+      message: "L'abonnement a été arrêté immédiatement.",
+      cancellation: {
+        mode,
+        effectiveAt:
+          toTimestamp(updatedSubscription?.canceled_at) ||
+          Math.floor(Date.now() / 1000),
+        cancelAtPeriodEnd: false,
+        status: updatedSubscription?.status || "",
+      },
+      subscription: updatedSubscription,
+    });
+  } catch (error) {
+    console.error("Erreur lors de l'arrêt de l'abonnement:", error);
+    res.status(error?.statusCode || 500).json({
+      message: error?.message || "Erreur lors de l'arrêt de l'abonnement",
+    });
+  }
+});
 
 router.get(
   "/admin/subscriptions/:subscriptionId/edit-preview",
@@ -1177,153 +1300,6 @@ router.get(
     }
   },
 );
-
-router.post("/admin/migrate-subscription-sepa", async (req, res) => {
-  const {
-    sourceSubscriptionId,
-    restaurantId,
-    paymentMethodId,
-    billingAddress,
-    phone,
-    language,
-  } = req.body;
-
-  try {
-    if (!sourceSubscriptionId) {
-      return res
-        .status(400)
-        .json({ message: "sourceSubscriptionId est requis." });
-    }
-
-    if (!paymentMethodId) {
-      return res.status(400).json({
-        message: "paymentMethodId est requis pour migrer l'abonnement.",
-      });
-    }
-
-    const preview = await buildSubscriptionMigrationPreview({
-      sourceSubscriptionId,
-      restaurantId,
-    });
-
-    if (!preview.canMigrate) {
-      return res.status(409).json({
-        message:
-          preview.blockingReason ||
-          "Cette migration ne peut pas être exécutée automatiquement.",
-      });
-    }
-
-    const { stripeCustomerId: targetStripeCustomerId } =
-      await ensureRestaurantStripeCustomer({
-        restaurant: preview.restaurant,
-        owner: preview.owner,
-        billingAddress,
-        phone,
-        language,
-        createIfMissing: true,
-        syncExisting: true,
-      });
-
-    const existingDedicatedSubscription =
-      await findRestaurantSubscriptionOnCustomer({
-        stripeCustomerId: targetStripeCustomerId,
-        restaurantId: preview.restaurant._id,
-      });
-
-    if (existingDedicatedSubscription) {
-      return res.status(409).json({
-        message:
-          "Une migration est déjà en cours ou un abonnement dédié existe déjà pour ce restaurant.",
-      });
-    }
-
-    const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
-    if (
-      normalizeString(toStripeCustomerId(paymentMethod?.customer)) !==
-      normalizeString(targetStripeCustomerId)
-    ) {
-      return res.status(400).json({
-        message:
-          "Le mandat SEPA sélectionné n'est pas rattaché au client Stripe dédié du restaurant.",
-      });
-    }
-
-    await stripe.customers.update(targetStripeCustomerId, {
-      invoice_settings: {
-        default_payment_method: paymentMethodId,
-      },
-    });
-
-    const sourceItems = preview.sourceSubscription.items.data
-      .map((item) => ({
-        price: item?.price?.id,
-        quantity: item?.quantity || 1,
-      }))
-      .filter((item) => normalizeString(item.price));
-
-    if (sourceItems.length === 0) {
-      return res.status(400).json({
-        message: "Impossible de retrouver le tarif Stripe à migrer.",
-      });
-    }
-
-    const now = Math.floor(Date.now() / 1000);
-    const hasRemainingPeriod = Number(preview.nextChargeAt || 0) > now + 60;
-    const migrationTiming = hasRemainingPeriod
-      ? {
-          billing_cycle_anchor: preview.nextChargeAt,
-          proration_behavior: "none",
-        }
-      : {};
-
-    const migratedSubscription = await stripe.subscriptions.create({
-      customer: targetStripeCustomerId,
-      items: sourceItems,
-      default_payment_method: paymentMethodId,
-      collection_method: "charge_automatically",
-      ...migrationTiming,
-      metadata: buildSubscriptionPayerMetadata({
-        metadata: {
-          ...preview.sourceSubscription.metadata,
-          restaurantId: preview.restaurant._id.toString(),
-          restaurantName: preview.restaurant.name || "",
-          migratedFromSubscriptionId: preview.sourceSubscription.id,
-          migratedFromCustomerId: preview.sourceCustomerId,
-          migrationMode: "restaurant_customer",
-        },
-        owner: preview.owner,
-      }),
-      expand: ["latest_invoice.payment_intent", "items.data.price"],
-    });
-
-    await stripe.subscriptions.update(preview.sourceSubscription.id, {
-      metadata: {
-        ...preview.sourceSubscription.metadata,
-        migratedToSubscriptionId: migratedSubscription.id,
-        migratedToCustomerId: targetStripeCustomerId,
-        migrationState: "replaced",
-      },
-    });
-
-    await stripe.subscriptions.cancel(preview.sourceSubscription.id, {
-      invoice_now: false,
-      prorate: false,
-    });
-
-    res.status(201).json({
-      message: "L'abonnement a été migré vers un client Stripe dédié.",
-      subscription: migratedSubscription,
-      canceledSubscriptionId: preview.sourceSubscription.id,
-      nextChargeAt: hasRemainingPeriod ? preview.nextChargeAt : null,
-    });
-  } catch (error) {
-    console.error("Erreur lors de la migration de l'abonnement:", error);
-    res.status(error?.statusCode || 500).json({
-      message: error?.message || "Erreur lors de la migration de l'abonnement",
-    });
-  }
-});
 
 router.post("/admin/update-subscription-payer-sepa", async (req, res) => {
   const { restaurantId, paymentMethodId, billingAddress, phone, language } =

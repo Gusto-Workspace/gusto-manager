@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useContext, useEffect } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
 
@@ -6,8 +6,8 @@ import Head from "next/head";
 import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 
-// AXIOS
-import axios from "axios";
+// CONTEXT
+import { GlobalContext } from "@/contexts/global.context";
 
 // COMPONENTS
 import NavAdminComponent from "@/components/dashboard/admin/_shared/nav/nav.admin.component";
@@ -15,31 +15,22 @@ import DashboardAdminComponent from "@/components/dashboard/admin/dashboard/dash
 
 export default function AdminPage(props) {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
+  const { adminContext } = useContext(GlobalContext);
+  const { dashboardData, dashboardLoading, dashboardError, fetchDashboard } =
+    adminContext;
 
   useEffect(() => {
     const token = localStorage.getItem("admin-token");
 
     if (!token) {
       router.push("/dashboard/admin/login");
-    } else {
-      axios
-        .get(`${process.env.NEXT_PUBLIC_API_URL}/admin/dashboard`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        })
-        .then((response) => {
-          setLoading(false);
-        })
-        .catch((error) => {
-          if (error.response.status === 403) {
-            localStorage.removeItem("admin-token");
-            router.push("/dashboard/admin/login");
-          }
-        });
+      return;
     }
-  }, [router]);
+
+    if (!dashboardData && !dashboardLoading) {
+      fetchDashboard();
+    }
+  }, [dashboardData, dashboardLoading, fetchDashboard, router]);
 
   let title;
   let description;
@@ -63,7 +54,11 @@ export default function AdminPage(props) {
         <NavAdminComponent />
 
         <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 min-h-screen">
-          <DashboardAdminComponent />
+          <DashboardAdminComponent
+            loading={dashboardLoading}
+            data={dashboardData}
+            errorMessage={dashboardError}
+          />
         </div>
       </div>
     </>
