@@ -16,6 +16,39 @@ function toLocalDatetimeInputValue(date) {
   )}:${pad2(d.getMinutes())}`;
 }
 
+function toLocalDateInputValue(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function parseLocalDateInputValue(value, endOfDay = false) {
+  const [year, month, day] = String(value || "")
+    .split("-")
+    .map((part) => Number(part));
+
+  if (!year || !month || !day) return null;
+
+  return new Date(
+    year,
+    month - 1,
+    day,
+    endOfDay ? 23 : 0,
+    endOfDay ? 59 : 0,
+    endOfDay ? 59 : 0,
+    endOfDay ? 999 : 0,
+  );
+}
+
+function parseInputValue(value, allDay = false, endOfDay = false) {
+  if (!value) return null;
+  if (allDay) return parseLocalDateInputValue(value, endOfDay);
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+}
+
 function fmtShortFR(date) {
   const d = date instanceof Date ? date : new Date(date);
   if (Number.isNaN(d.getTime())) return "-";
@@ -26,6 +59,31 @@ function fmtShortFR(date) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function fmtDateOnlyFR(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleDateString("fr-FR", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+}
+
+function formatRangeLabel(range) {
+  if (!range?.allDay) {
+    return `${fmtShortFR(range?.startAt)} → ${fmtShortFR(range?.endAt)}`;
+  }
+
+  const startLabel = fmtDateOnlyFR(range?.startAt);
+  const endLabel = fmtDateOnlyFR(range?.endAt);
+
+  if (startLabel === endLabel) {
+    return `${startLabel} - Jour entier`;
+  }
+
+  return `${startLabel} → ${endLabel} - Jour entier`;
 }
 
 function isRangeActive(range) {
@@ -44,6 +102,7 @@ export default function RangesParametersComponent({
 }) {
   const [blockedStart, setBlockedStart] = useState("");
   const [blockedEnd, setBlockedEnd] = useState("");
+  const [blockedAllDay, setBlockedAllDay] = useState(false);
   const [blockedNote, setBlockedNote] = useState("");
   const [blockedError, setBlockedError] = useState("");
   const [blockedAdding, setBlockedAdding] = useState(false);
@@ -60,11 +119,42 @@ export default function RangesParametersComponent({
     setBlockedEnd((v) => v || toLocalDatetimeInputValue(plus2h));
   }, []);
 
-  function validateBlockedForm(startStr, endStr) {
+  function toggleBlockedAllDay(nextValue) {
+    if (nextValue === blockedAllDay) return;
+
+    const nextStart = parseInputValue(blockedStart, blockedAllDay, false);
+    const nextEnd = parseInputValue(blockedEnd, blockedAllDay, true);
+
+    if (nextValue) {
+      setBlockedStart(
+        nextStart
+          ? toLocalDateInputValue(nextStart)
+          : toLocalDateInputValue(new Date()),
+      );
+      setBlockedEnd(
+        nextEnd
+          ? toLocalDateInputValue(nextEnd)
+          : toLocalDateInputValue(new Date()),
+      );
+      setBlockedAllDay(true);
+      return;
+    }
+
+    const fallbackStart = nextStart || new Date();
+    const fallbackEnd =
+      nextEnd || new Date(fallbackStart.getTime() + 2 * 60 * 60 * 1000);
+
+    setBlockedStart(toLocalDatetimeInputValue(fallbackStart));
+    setBlockedEnd(toLocalDatetimeInputValue(fallbackEnd));
+    setBlockedAllDay(false);
+  }
+
+  function validateBlockedForm(startStr, endStr, allDay = false) {
     setBlockedError("");
     if (!startStr || !endStr) return "Veuillez renseigner un début et une fin.";
-    const start = new Date(startStr);
-    const end = new Date(endStr);
+    const start = parseInputValue(startStr, allDay, false);
+    const end = parseInputValue(endStr, allDay, true);
+    if (!start || !end) return "Dates invalides.";
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()))
       return "Dates invalides.";
     if (end <= start) return "La fin doit être après le début.";
@@ -72,7 +162,7 @@ export default function RangesParametersComponent({
   }
 
   async function addBlockedRange() {
-    const msg = validateBlockedForm(blockedStart, blockedEnd);
+    const msg = validateBlockedForm(blockedStart, blockedEnd, blockedAllDay);
     if (msg) {
       setBlockedError(msg);
       return;
@@ -84,12 +174,20 @@ export default function RangesParametersComponent({
 
       const token = localStorage.getItem("token");
       if (!restaurantId) return;
+      const startDate = parseInputValue(blockedStart, blockedAllDay, false);
+      const endDate = parseInputValue(blockedEnd, blockedAllDay, true);
+
+      if (!startDate || !endDate) {
+        setBlockedError("Dates invalides.");
+        return;
+      }
 
       const res = await axios.post(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/reservations/blocked-ranges`,
         {
-          startAt: new Date(blockedStart).toISOString(),
-          endAt: new Date(blockedEnd).toISOString(),
+          startAt: startDate.toISOString(),
+          endAt: endDate.toISOString(),
+          allDay: blockedAllDay,
           note: (blockedNote || "").trim(),
         },
         { headers: { Authorization: `Bearer ${token}` } },
@@ -154,11 +252,6 @@ export default function RangesParametersComponent({
 
   const inputBase =
     "h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 text-base outline-none transition placeholder:text-darkBlue/35 focus:border-blue/60 focus:ring-2 focus:ring-blue/20";
-  const selectBase =
-    "h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 text-base outline-none transition focus:border-blue/60 focus:ring-2 focus:ring-blue/20";
-
-  const chip =
-    "inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-3 py-2 text-xs text-darkBlue/60";
 
   return (
     <div className={card}>
@@ -195,11 +288,43 @@ export default function RangesParametersComponent({
 
         <div className={divider} />
 
+        <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3 mb-3">
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-darkBlue">Jour entier</p>
+            </div>
+
+            <button
+              type="button"
+              role="switch"
+              aria-checked={blockedAllDay}
+              aria-label="Activer le mode jour entier"
+              title="Activer le mode jour entier"
+              onClick={() => toggleBlockedAllDay(!blockedAllDay)}
+              className={toggleWrap}
+            >
+              <span
+                className={[
+                  toggleBase,
+                  blockedAllDay ? toggleOn : toggleOff,
+                ].join(" ")}
+              >
+                <span
+                  className={[
+                    toggleDot,
+                    blockedAllDay ? toggleDotOn : toggleDotOff,
+                  ].join(" ")}
+                />
+              </span>
+            </button>
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 midTablet:grid-cols-2 gap-3">
           <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3">
             <p className="text-sm font-semibold text-darkBlue">Début</p>
             <input
-              type="datetime-local"
+              type={blockedAllDay ? "date" : "datetime-local"}
               value={blockedStart}
               onChange={(e) => setBlockedStart(e.target.value)}
               className={inputBase}
@@ -209,9 +334,10 @@ export default function RangesParametersComponent({
           <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3">
             <p className="text-sm font-semibold text-darkBlue">Fin</p>
             <input
-              type="datetime-local"
+              type={blockedAllDay ? "date" : "datetime-local"}
               value={blockedEnd}
               onChange={(e) => setBlockedEnd(e.target.value)}
+              min={blockedStart || undefined}
               className={inputBase}
             />
           </div>
@@ -290,7 +416,7 @@ export default function RangesParametersComponent({
                           active ? "text-red" : "text-darkBlue",
                         ].join(" ")}
                       >
-                        {fmtShortFR(r.startAt)} → {fmtShortFR(r.endAt)}
+                        {formatRangeLabel(r)}
                       </p>
 
                       {r.note ? (
