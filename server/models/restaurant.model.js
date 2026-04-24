@@ -27,6 +27,7 @@ const blockedRangeSchema = new mongoose.Schema(
   {
     startAt: { type: Date, required: true },
     endAt: { type: Date, required: true },
+    allDay: { type: Boolean, default: false },
     note: { type: String, default: "" },
     createdAt: { type: Date, default: Date.now },
   },

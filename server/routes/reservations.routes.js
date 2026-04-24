@@ -2033,7 +2033,7 @@ router.post(
   authenticateToken,
   async (req, res) => {
     const restaurantId = req.params.id;
-    const { startAt, endAt, note } = req.body;
+    const { startAt, endAt, note, allDay } = req.body;
 
     try {
       if (!startAt || !endAt) {
@@ -2078,6 +2078,7 @@ router.post(
       restaurant.reservationsSettings.blocked_ranges.push({
         startAt: start,
         endAt: end,
+        allDay: Boolean(allDay),
         note: (note || "").toString(),
       });
 
