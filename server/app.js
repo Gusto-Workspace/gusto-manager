@@ -39,6 +39,7 @@ app.use(
       "https://gusto-manager.onrender.com", // Server
       "https://reservations-module.vercel.app", // module reservations test
       "https://alassiettebrive.com", // Client A l'Assiette
+      "https://les-capuccins-by-lily.vercel.app" // Client prez Capucins
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     credentials: true,
