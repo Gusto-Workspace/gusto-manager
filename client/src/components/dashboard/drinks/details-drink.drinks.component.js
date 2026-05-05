@@ -86,7 +86,7 @@ export default function DetailsDrinkComponent(props) {
           </div>
 
           <p
-            className="mt-1 w-full min-w-0 text-sm text-darkBlue/45"
+            className="w-full min-w-0 text-sm text-darkBlue/45"
             title={description}
           >
             <span className="block truncate">{description}</span>

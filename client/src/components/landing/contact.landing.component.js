@@ -13,10 +13,12 @@ export default function ContactLandingComponent() {
     handleSubmit,
     formState: { errors },
     reset,
+    watch,
   } = useForm();
 
   const [loading, setLoading] = useState(false);
   const [messageSent, setMessageSent] = useState(null);
+  const recontactConsent = watch("recontactConsent", false);
 
   function onSubmit(data) {
     setLoading(true);
@@ -133,18 +135,13 @@ export default function ContactLandingComponent() {
                     placeholder="Votre prénom et nom"
                     className={`w-full rounded-2xl border px-4 py-3.5 outline-none transition-all duration-200 placeholder:text-darkBlue/35 ${
                       errors.name
-                        ? "border-red-400 bg-red-50"
+                        ? "border-orange bg-dirtyWhite"
                         : "border-darkBlue/10 bg-dirtyWhite focus:border-darkBlue/25 focus:bg-white"
                     }`}
                     {...register("name", {
                       required: "Ce champ est requis.",
                     })}
                   />
-                  {errors.name && (
-                    <p className="mt-2 text-sm text-red-500">
-                      {errors.name.message}
-                    </p>
-                  )}
                 </div>
 
                 {/* TEL */}
@@ -161,18 +158,13 @@ export default function ContactLandingComponent() {
                     placeholder="Votre numéro de téléphone"
                     className={`w-full rounded-2xl border px-4 py-3.5 outline-none transition-all duration-200 placeholder:text-darkBlue/35 ${
                       errors.phone
-                        ? "border-red-400 bg-red-50"
+                        ? "border-orange bg-dirtyWhite"
                         : "border-darkBlue/10 bg-dirtyWhite focus:border-darkBlue/25 focus:bg-white"
                     }`}
                     {...register("phone", {
                       required: "Ce champ est requis.",
                     })}
                   />
-                  {errors.phone && (
-                    <p className="mt-2 text-sm text-red-500">
-                      {errors.phone.message}
-                    </p>
-                  )}
                 </div>
 
                 {/* EMAIL */}
@@ -189,7 +181,7 @@ export default function ContactLandingComponent() {
                     placeholder="Votre e-mail"
                     className={`w-full rounded-2xl border px-4 py-3.5 outline-none transition-all duration-200 placeholder:text-darkBlue/35 ${
                       errors.email
-                        ? "border-red-400 bg-red-50"
+                        ? "border-orange bg-dirtyWhite"
                         : "border-darkBlue/10 bg-dirtyWhite focus:border-darkBlue/25 focus:bg-white"
                     }`}
                     {...register("email", {
@@ -200,8 +192,8 @@ export default function ContactLandingComponent() {
                       },
                     })}
                   />
-                  {errors.email && (
-                    <p className="mt-2 text-sm text-red-500">
+                  {errors.email?.type === "pattern" && (
+                    <p className="mt-2 text-sm text-orange">
                       {errors.email.message}
                     </p>
                   )}
@@ -221,25 +213,50 @@ export default function ContactLandingComponent() {
                     placeholder="Parlez-nous de votre restaurant et de vos besoins"
                     className={`w-full resize-none rounded-2xl border px-4 py-3.5 outline-none transition-all duration-200 placeholder:text-darkBlue/35 ${
                       errors.message
-                        ? "border-red-400 bg-red-50"
+                        ? "border-orange bg-dirtyWhite"
                         : "border-darkBlue/10 bg-dirtyWhite focus:border-darkBlue/25 focus:bg-white"
                     }`}
                     {...register("message", {
                       required: "Ce champ est requis.",
                     })}
                   />
-                  {errors.message && (
-                    <p className="mt-2 text-sm text-red-500">
-                      {errors.message.message}
-                    </p>
-                  )}
+                </div>
+
+                {/* CONSENTEMENT */}
+                <div>
+                  <div
+                    className={`rounded-2xl border px-4 py-3.5 transition-all duration-200 ${
+                      errors.recontactConsent
+                        ? "border-orange bg-dirtyWhite"
+                        : "border-darkBlue/10 bg-dirtyWhite"
+                    }`}
+                  >
+                    <label
+                      htmlFor="recontactConsent"
+                      className="flex cursor-pointer items-start gap-3"
+                    >
+                      <input
+                        id="recontactConsent"
+                        type="checkbox"
+                        className="mt-1 h-4 w-4 rounded border-darkBlue/20 text-orange focus:ring-2 focus:ring-orange/30"
+                        {...register("recontactConsent", {
+                          required:
+                            "Vous devez accepter d'être recontacté pour envoyer votre demande.",
+                        })}
+                      />
+                      <span className="text-sm leading-relaxed text-darkBlue/85">
+                        J&apos;accepte d&apos;être recontacté dans le cadre de
+                        ma demande <span className="text-orange">*</span>
+                      </span>
+                    </label>
+                  </div>
                 </div>
 
                 {/* CTA */}
                 <div className="pt-2">
                   <button
                     type="submit"
-                    disabled={loading}
+                    disabled={loading || !recontactConsent}
                     className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-darkBlue px-6 py-4 text-base font-semibold text-white transition-all duration-300 hover:translate-y-[-1px] hover:bg-darkBlue/95 disabled:cursor-not-allowed disabled:opacity-70"
                   >
                     {loading ? (
