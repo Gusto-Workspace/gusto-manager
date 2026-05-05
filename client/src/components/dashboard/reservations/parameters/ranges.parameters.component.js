@@ -4,6 +4,8 @@ import axios from "axios";
 // ICONS
 import { Loader2, Plus, Trash2, Ban } from "lucide-react";
 
+const BLOCKED_RANGE_FALLBACK_DURATION_MS = 2 * 60 * 60 * 1000;
+
 function pad2(n) {
   return String(n).padStart(2, "0");
 }
@@ -47,6 +49,33 @@ function parseInputValue(value, allDay = false, endOfDay = false) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return null;
   return parsed;
+}
+
+function getAlignedBlockedEndValue({
+  startValue,
+  endValue,
+  allDay = false,
+  previousStartValue = "",
+}) {
+  const start = parseInputValue(startValue, allDay, false);
+  if (!start) return endValue;
+
+  const end = parseInputValue(endValue, allDay, true);
+  if (end && end >= start) return endValue;
+
+  if (allDay) {
+    return toLocalDateInputValue(start);
+  }
+
+  const previousStart = parseInputValue(previousStartValue, false, false);
+  const preservedDurationMs =
+    previousStart && end && end > previousStart
+      ? end.getTime() - previousStart.getTime()
+      : BLOCKED_RANGE_FALLBACK_DURATION_MS;
+
+  return toLocalDatetimeInputValue(
+    new Date(start.getTime() + preservedDurationMs),
+  );
 }
 
 function fmtShortFR(date) {
@@ -124,29 +153,62 @@ export default function RangesParametersComponent({
 
     const nextStart = parseInputValue(blockedStart, blockedAllDay, false);
     const nextEnd = parseInputValue(blockedEnd, blockedAllDay, true);
+    setBlockedError("");
 
     if (nextValue) {
-      setBlockedStart(
-        nextStart
-          ? toLocalDateInputValue(nextStart)
-          : toLocalDateInputValue(new Date()),
-      );
-      setBlockedEnd(
-        nextEnd
-          ? toLocalDateInputValue(nextEnd)
-          : toLocalDateInputValue(new Date()),
-      );
+      const nextStartValue = nextStart
+        ? toLocalDateInputValue(nextStart)
+        : toLocalDateInputValue(new Date());
+      const nextEndValue = getAlignedBlockedEndValue({
+        startValue: nextStartValue,
+        endValue: nextEnd ? toLocalDateInputValue(nextEnd) : "",
+        allDay: true,
+      });
+
+      setBlockedStart(nextStartValue);
+      setBlockedEnd(nextEndValue);
       setBlockedAllDay(true);
       return;
     }
 
     const fallbackStart = nextStart || new Date();
     const fallbackEnd =
-      nextEnd || new Date(fallbackStart.getTime() + 2 * 60 * 60 * 1000);
+      nextEnd ||
+      new Date(fallbackStart.getTime() + BLOCKED_RANGE_FALLBACK_DURATION_MS);
+    const nextStartValue = toLocalDatetimeInputValue(fallbackStart);
+    const nextEndValue = getAlignedBlockedEndValue({
+      startValue: nextStartValue,
+      endValue: toLocalDatetimeInputValue(fallbackEnd),
+      previousStartValue: nextStartValue,
+      allDay: false,
+    });
 
-    setBlockedStart(toLocalDatetimeInputValue(fallbackStart));
-    setBlockedEnd(toLocalDatetimeInputValue(fallbackEnd));
+    setBlockedStart(nextStartValue);
+    setBlockedEnd(nextEndValue);
     setBlockedAllDay(false);
+  }
+
+  function handleBlockedStartChange(nextValue) {
+    setBlockedError("");
+    setBlockedStart(nextValue);
+    setBlockedEnd((currentEnd) =>
+      getAlignedBlockedEndValue({
+        startValue: nextValue,
+        endValue: currentEnd,
+        previousStartValue: blockedStart,
+        allDay: blockedAllDay,
+      }),
+    );
+  }
+
+  function handleBlockedEndChange(nextValue) {
+    setBlockedError("");
+    setBlockedEnd(nextValue);
+  }
+
+  function handleBlockedNoteChange(nextValue) {
+    setBlockedError("");
+    setBlockedNote(nextValue);
   }
 
   function validateBlockedForm(startStr, endStr, allDay = false) {
@@ -326,7 +388,7 @@ export default function RangesParametersComponent({
             <input
               type={blockedAllDay ? "date" : "datetime-local"}
               value={blockedStart}
-              onChange={(e) => setBlockedStart(e.target.value)}
+              onChange={(e) => handleBlockedStartChange(e.target.value)}
               className={inputBase}
             />
           </div>
@@ -336,7 +398,7 @@ export default function RangesParametersComponent({
             <input
               type={blockedAllDay ? "date" : "datetime-local"}
               value={blockedEnd}
-              onChange={(e) => setBlockedEnd(e.target.value)}
+              onChange={(e) => handleBlockedEndChange(e.target.value)}
               min={blockedStart || undefined}
               className={inputBase}
             />
@@ -349,7 +411,7 @@ export default function RangesParametersComponent({
             <input
               type="text"
               value={blockedNote}
-              onChange={(e) => setBlockedNote(e.target.value)}
+              onChange={(e) => handleBlockedNoteChange(e.target.value)}
               placeholder="Ex: service complet, privatisation…"
               className={inputBase}
             />
