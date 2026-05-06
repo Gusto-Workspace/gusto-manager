@@ -28,6 +28,10 @@ import EmailsParametersComponent from "./parameters/emails.parameters.component"
 import SmartParametersComponent from "./parameters/smart.parameters.component";
 import FloorPlanParametersComponent from "./parameters/floor-plan.parameters.component";
 import BankHoldParametersComponent from "./parameters/bank-hold.parameters.component";
+import {
+  getSmartAvailabilitySetupState,
+  SMART_AVAILABILITY_SETUP_ERROR_MESSAGE,
+} from "./parameters/smart-availability.guard";
 import CatalogHeaderDashboardComponent from "../_shared/catalog-header.dashboard.component";
 import {
   areReservationEmailTemplatesEqual,
@@ -171,11 +175,25 @@ export default function ParametersReservationComponent(props) {
     lunch: false,
     dinner: false,
   });
+  const [smartAvailabilityError, setSmartAvailabilityError] = useState("");
 
   const blockedRanges = useMemo(() => {
     const r = props.restaurantData?.reservationsSettings?.blocked_ranges || [];
     return Array.isArray(r) ? r : [];
   }, [props.restaurantData?.reservationsSettings?.blocked_ranges]);
+
+  const smartAvailabilitySetup = useMemo(
+    () =>
+      getSmartAvailabilitySetupState({
+        tablesCatalog,
+        floorplanRooms:
+          props.restaurantData?.reservationsSettings?.floorplan?.rooms,
+      }),
+    [
+      tablesCatalog,
+      props.restaurantData?.reservationsSettings?.floorplan?.rooms,
+    ],
+  );
 
   async function fetchManualTablesToFix() {
     try {
@@ -535,6 +553,12 @@ export default function ParametersReservationComponent(props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manage_disponibilities]);
 
+  useEffect(() => {
+    if (smartAvailabilitySetup.canEnable || !manage_disponibilities) {
+      setSmartAvailabilityError("");
+    }
+  }, [smartAvailabilitySetup.canEnable, manage_disponibilities]);
+
   const subtitle = t("reservations:buttons.parameters", "Paramètres");
 
   // Pré-remplissage métier si vide
@@ -564,6 +588,21 @@ export default function ParametersReservationComponent(props) {
     try {
       const restaurantId = props.restaurantData?._id;
       if (!restaurantId) return false;
+
+      if (sectionKey === "smart") {
+        const manageNext = Boolean(manage_disponibilities);
+
+        if (manageNext && !smartAvailabilitySetup.canEnable) {
+          setSmartAvailabilityError(SMART_AVAILABILITY_SETUP_ERROR_MESSAGE);
+          setValue("manage_disponibilities", false, {
+            shouldDirty: false,
+            shouldTouch: false,
+          });
+          return false;
+        }
+
+        setSmartAvailabilityError("");
+      }
 
       const token = localStorage.getItem("token");
       const currentParams =
@@ -775,6 +814,21 @@ export default function ParametersReservationComponent(props) {
       setSaved(sectionKey, true);
       return true;
     } catch (error) {
+      if (sectionKey === "smart") {
+        const apiCode = String(error?.response?.data?.code || "").trim();
+
+        if (apiCode === "SMART_AVAILABILITY_SETUP_REQUIRED") {
+          setSmartAvailabilityError(
+            error?.response?.data?.message ||
+              SMART_AVAILABILITY_SETUP_ERROR_MESSAGE,
+          );
+          setValue("manage_disponibilities", false, {
+            shouldDirty: false,
+            shouldTouch: false,
+          });
+        }
+      }
+
       console.error("Erreur sauvegarde paramètres réservation :", error);
       return false;
     } finally {
@@ -884,6 +938,8 @@ export default function ParametersReservationComponent(props) {
         <SmartParametersComponent
           register={register}
           manage_disponibilities={manage_disponibilities}
+          smartAvailabilitySetup={smartAvailabilitySetup}
+          smartAvailabilityError={smartAvailabilityError}
           manualTablesNeedingAssignment={manualTablesNeedingAssignment}
           manualToFixLoading={manualToFixLoading}
           manualToFixError={manualToFixError}

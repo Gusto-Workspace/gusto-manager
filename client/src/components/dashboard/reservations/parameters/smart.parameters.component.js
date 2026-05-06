@@ -1,9 +1,12 @@
 import { useMemo, useState } from "react";
 import { CircleHelp, Wand2, X } from "lucide-react";
+import { SMART_AVAILABILITY_SETUP_ERROR_MESSAGE } from "./smart-availability.guard";
 
 export default function SmartParametersComponent({
   register,
   manage_disponibilities,
+  smartAvailabilitySetup,
+  smartAvailabilityError,
 
   // manual tables warning
   manualTablesNeedingAssignment,
@@ -49,6 +52,8 @@ export default function SmartParametersComponent({
     "absolute top-1/2 -translate-y-1/2 h-6 w-6 rounded-full bg-white shadow-sm transition";
   const toggleDotOn = "translate-x-7";
   const toggleDotOff = "translate-x-1";
+  const activationBlocked =
+    !manage_disponibilities && !smartAvailabilitySetup?.canEnable;
 
   function WarningCard({
     title,
@@ -137,7 +142,17 @@ export default function SmartParametersComponent({
           </div>
 
           <div className="flex items-center gap-3">
-            <label className={toggleWrap}>
+            <label
+              className={[
+                toggleWrap,
+                activationBlocked ? "cursor-not-allowed opacity-60" : "",
+              ].join(" ")}
+              title={
+                activationBlocked
+                  ? SMART_AVAILABILITY_SETUP_ERROR_MESSAGE
+                  : undefined
+              }
+            >
               <span
                 className={[
                   toggleBase,
@@ -148,6 +163,7 @@ export default function SmartParametersComponent({
                   type="checkbox"
                   className="sr-only"
                   id="manage_disponibilities"
+                  disabled={activationBlocked}
                   {...register("manage_disponibilities")}
                 />
                 <span
@@ -224,6 +240,14 @@ export default function SmartParametersComponent({
             </div>
 
             <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-4 py-4 text-sm text-darkBlue/80 mobile:px-5 mobile:py-5">
+              {(!smartAvailabilitySetup?.canEnable ||
+                smartAvailabilityError) && (
+                <p className="font-semibold text-darkBlue">
+                  {smartAvailabilityError ||
+                    "Pour activer la gestion intelligente, créez d’abord une salle, ajoutez au moins une table et placez-la sur le plan."}
+                </p>
+              )}
+
               <div className="space-y-2">
                 <p className="font-semibold text-darkBlue">
                   Quand elle est activée

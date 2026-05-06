@@ -725,6 +725,47 @@ function getActiveBlockedRangeEnd(parameters, now = new Date()) {
   return maxEnd; // Date | null
 }
 
+function getSmartAvailabilitySetupStatus(parameters = {}) {
+  const rooms = Array.isArray(parameters?.floorplan?.rooms)
+    ? parameters.floorplan.rooms
+    : [];
+  const tables = Array.isArray(parameters?.tables) ? parameters.tables : [];
+
+  const catalogTableIds = new Set(
+    tables.map((table) => String(table?._id || "").trim()).filter(Boolean),
+  );
+
+  const placedTableIds = new Set();
+  let roomsWithPlacedTables = 0;
+
+  rooms.forEach((room) => {
+    const objects = Array.isArray(room?.objects) ? room.objects : [];
+    let roomHasPlacedTable = false;
+
+    objects.forEach((obj) => {
+      if (obj?.type !== "table" || !obj?.tableRefId) return;
+
+      const tableRefId = String(obj.tableRefId || "").trim();
+      if (!tableRefId || !catalogTableIds.has(tableRefId)) return;
+
+      placedTableIds.add(tableRefId);
+      roomHasPlacedTable = true;
+    });
+
+    if (roomHasPlacedTable) {
+      roomsWithPlacedTables += 1;
+    }
+  });
+
+  return {
+    roomsCount: rooms.length,
+    tablesCount: tables.length,
+    placedTablesCount: placedTableIds.size,
+    roomsWithPlacedTables,
+    canEnable: rooms.length > 0 && tables.length > 0 && placedTableIds.size > 0,
+  };
+}
+
 function computePendingExpiresAt(restaurant, anchorDate = null) {
   const now = anchorDate instanceof Date ? anchorDate : new Date();
   const opening = restaurant?.opening_hours;
@@ -1965,7 +2006,7 @@ router.put(
           })
         : existing.email_templates || {};
 
-      restaurant.reservationsSettings = {
+      const nextReservationSettings = {
         ...existing,
         ...parameters,
         blocked_ranges: nextBlocked,
@@ -1973,11 +2014,28 @@ router.put(
         email_templates: nextEmailTemplates,
       };
 
-      await restaurant.save();
-
       const nextManage = Boolean(
-        restaurant?.reservationsSettings?.manage_disponibilities,
+        nextReservationSettings?.manage_disponibilities,
       );
+
+      if (!prevManage && nextManage) {
+        const setupStatus = getSmartAvailabilitySetupStatus(
+          nextReservationSettings,
+        );
+
+        if (!setupStatus.canEnable) {
+          return res.status(400).json({
+            code: "SMART_AVAILABILITY_SETUP_REQUIRED",
+            message:
+              "Créez d’abord une salle et placez au moins une table sur le plan avant d’activer la gestion intelligente.",
+            details: setupStatus,
+          });
+        }
+      }
+
+      restaurant.reservationsSettings = nextReservationSettings;
+
+      await restaurant.save();
 
       let manualTablesNeedingAssignment = 0;
       let unassignedReservationsNeedingAssignment = 0;
