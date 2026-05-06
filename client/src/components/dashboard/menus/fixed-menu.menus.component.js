@@ -91,7 +91,7 @@ export default function FixedMenuComponent(props) {
     const emptyFields = data.combinations.reduce((acc, combo, comboIndex) => {
       const emptyCategories = combo.categories.reduce(
         (catAcc, cat, catIndex) => {
-          if (!cat.value || cat.value === "") {
+          if (String(cat?.value || "").trim() === "") {
             catAcc.push(catIndex);
           }
           return catAcc;
@@ -123,7 +123,9 @@ export default function FixedMenuComponent(props) {
       name: data.name || "",
       description: data.description || "",
       combinations: data.combinations.map((combo) => ({
-        categories: combo.categories.map((cat) => cat.value),
+        categories: combo.categories.map((cat) =>
+          String(cat?.value || "").trim(),
+        ),
         price: parseFloat(combo.price),
         description: combo.description || "",
       })),
