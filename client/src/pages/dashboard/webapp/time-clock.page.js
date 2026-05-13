@@ -1,4 +1,4 @@
-import { useContext, useEffect } from "react";
+import { useContext, useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
 
@@ -10,10 +10,13 @@ import { GlobalContext } from "@/contexts/global.context";
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
 import SplashScreenWebAppComponent from "@/components/dashboard/webapp/_shared/splashscreen.webapp";
 import TimeClockKioskComponent from "@/components/dashboard/time-clock/kiosk.time-clock.component";
+import { getTimeClockOfflineBootstrap } from "@/components/dashboard/time-clock/time-clock.offline";
 
 export default function TimeClockWebAppPage() {
   const router = useRouter();
   const { restaurantContext } = useContext(GlobalContext);
+  const [clientReady, setClientReady] = useState(false);
+  const [offlineBootstrap, setOfflineBootstrap] = useState(null);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -29,6 +32,11 @@ export default function TimeClockWebAppPage() {
     }
   }, [router.asPath, router.isReady]);
 
+  useEffect(() => {
+    setOfflineBootstrap(getTimeClockOfflineBootstrap());
+    setClientReady(true);
+  }, []);
+
   let title;
 
   switch (i18n.language) {
@@ -39,7 +47,8 @@ export default function TimeClockWebAppPage() {
       title = "Gusto Manager";
   }
 
-  const restaurant = restaurantContext?.restaurantData;
+  const restaurant =
+    restaurantContext?.restaurantData || offlineBootstrap?.restaurant || null;
   const hasEmployeesModule = !!restaurant?.options?.employees;
   const handleSoftReturn = () =>
     restaurantContext?.resyncAfterForeground?.({ hard: false });
@@ -67,13 +76,15 @@ export default function TimeClockWebAppPage() {
       </Head>
 
       <div className="min-h-[100dvh] bg-lightGrey px-3 py-4 text-darkBlue midTablet:px-5 midTablet:py-5">
-        {!hasEmployeesModule ? (
+        {!clientReady ? (
+          <div className="min-h-[40dvh]" />
+        ) : !hasEmployeesModule ? (
           <NoAvailableComponent
             dataLoading={restaurantContext?.dataLoading}
             emptyText="Vous n'avez pas souscrit à cette option"
           />
         ) : (
-          <TimeClockKioskComponent />
+          <TimeClockKioskComponent offlineBootstrap={offlineBootstrap} />
         )}
       </div>
 

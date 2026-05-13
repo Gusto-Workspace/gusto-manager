@@ -49,6 +49,7 @@ const eventSchema = new mongoose.Schema(
       default: "employee",
     },
     actorId: { type: String, default: "" },
+    clientMutationId: { type: String, default: "" },
     signature: { type: signatureSchema, default: () => ({}) },
     source: {
       type: String,

@@ -61,15 +61,27 @@ function getSourceFromRequest(request) {
   return "kiosk";
 }
 
-function buildEvent({ action, now, signature, request }) {
+function normalizeClientMutationId(value) {
+  const mutationId = String(value || "").trim();
+  if (!mutationId) return "";
+  return mutationId.slice(0, 120);
+}
+
+function buildEvent({ action, now, signature, request, clientMutationId = "" }) {
   return {
     type: action,
     at: now,
     actorRole: request.user?.role === "owner" ? "owner" : "employee",
     actorId: String(request.user?.id || ""),
+    clientMutationId: normalizeClientMutationId(clientMutationId),
     signature,
     source: getSourceFromRequest(request),
   };
+}
+
+function getEffectiveActionTime(request) {
+  const occurredAt = parseDateTime(request.body?.occurredAt);
+  return occurredAt || new Date();
 }
 
 async function getAccessContext(request, restaurantId) {
@@ -265,6 +277,99 @@ async function getSummaryPayload({ employee, restaurantId, anchorDateKey }) {
   });
 }
 
+function toKioskStatePayload(summary) {
+  return {
+    employee: summary?.employee || null,
+    anchorDate: summary?.anchorDate || null,
+    state: summary?.state || {
+      situation: "off",
+      availableActions: [ACTIONS.CLOCK_IN],
+      activeSession: null,
+    },
+    day: summary?.day || null,
+    lastUpdatedAt: summary?.lastUpdatedAt || new Date().toISOString(),
+  };
+}
+
+async function buildKioskStatesPayload({
+  restaurantId,
+  employeeIds = [],
+  anchorDateKey,
+}) {
+  const targetIds = Array.from(
+    new Set(
+      (employeeIds || [])
+        .map((employeeId) => String(employeeId || "").trim())
+        .filter(Boolean),
+    ),
+  );
+
+  if (!targetIds.length) {
+    return {
+      anchorDate: anchorDateKey,
+      statesByEmployee: {},
+      lastUpdatedAt: new Date().toISOString(),
+    };
+  }
+
+  const overlapQuery = buildOverlapQuery(anchorDateKey, anchorDateKey);
+
+  const [employees, sessions] = await Promise.all([
+    EmployeeModel.find({ _id: { $in: targetIds } }).lean(),
+    TimeClockSessionModel.find({
+      restaurant: restaurantId,
+      employee: { $in: targetIds },
+      ...(overlapQuery || {}),
+    })
+      .sort({ clockInAt: 1 })
+      .lean(),
+  ]);
+
+  const sessionsByEmployee = new Map();
+
+  for (const session of sessions) {
+    const employeeId = String(session?.employee || "");
+    if (!employeeId) continue;
+
+    const current = sessionsByEmployee.get(employeeId) || [];
+    current.push(session);
+    sessionsByEmployee.set(employeeId, current);
+  }
+
+  const statesByEmployee = {};
+  const now = new Date();
+
+  for (const employee of employees) {
+    if (!employeeWorksInRestaurant(employee, restaurantId)) continue;
+
+    const employeeId = String(employee?._id || "");
+    const employeeSessions = sessionsByEmployee.get(employeeId) || [];
+    const activeSession =
+      [...employeeSessions]
+        .filter((session) => ["open", "on_break"].includes(session?.status))
+        .sort((left, right) => new Date(right.clockInAt) - new Date(left.clockInAt))[0] ||
+      null;
+
+    const summary = buildSummaryPayload({
+      employee,
+      restaurantId,
+      anchorDateKey,
+      monthSessions: employeeSessions,
+      recentSessions: [],
+      activeSession,
+      now,
+    });
+
+    statesByEmployee[employeeId] = toKioskStatePayload(summary);
+  }
+
+  return {
+    anchorDate: anchorDateKey,
+    statesByEmployee,
+    lastUpdatedAt: now.toISOString(),
+  };
+}
+
 router.post(
   "/restaurants/:restaurantId/time-clock/punch",
   authenticateToken,
@@ -272,6 +377,9 @@ router.post(
     try {
       const { restaurantId } = req.params;
       const { employeeId, action, businessDate } = req.body || {};
+      const clientMutationId = normalizeClientMutationId(
+        req.body?.clientMutationId,
+      );
 
       if (!employeeId) {
         return res.status(400).json({ message: "employeeId is required" });
@@ -297,15 +405,49 @@ router.post(
         return res.status(404).json({ message: "Employee not found" });
       }
 
+      const now = getEffectiveActionTime(req);
       const signature = normalizeSignaturePayload(
         req.body?.signature,
-        new Date(),
+        now,
       );
       if (!signature.hasSignature) {
         return res.status(400).json({ message: "Signature is required" });
       }
 
-      const now = new Date();
+      if (clientMutationId) {
+        const existingSession = await TimeClockSessionModel.findOne({
+          restaurant: restaurantId,
+          "events.clientMutationId": clientMutationId,
+        });
+
+        if (existingSession) {
+          const existingEmployee = await getTargetEmployee(
+            existingSession.employee,
+            restaurantId,
+          );
+
+          if (!existingEmployee) {
+            return res.status(404).json({ message: "Employee not found" });
+          }
+
+          const summary = await getSummaryPayload({
+            employee: existingEmployee,
+            restaurantId,
+            anchorDateKey:
+              existingSession.businessDate ||
+              (isValidDateKey(businessDate)
+                ? businessDate
+                : toLocalDateKey(now)),
+          });
+
+          return res.status(200).json({
+            sessionId: String(existingSession._id),
+            summary,
+            idempotentReplay: true,
+          });
+        }
+      }
+
       const activeSession = await TimeClockSessionModel.findOne({
         restaurant: restaurantId,
         employee: employeeId,
@@ -334,7 +476,15 @@ router.post(
           clockInAt: now,
           clockOutAt: null,
           breaks: [],
-          events: [buildEvent({ action, now, signature, request: req })],
+          events: [
+            buildEvent({
+              action,
+              now,
+              signature,
+              request: req,
+              clientMutationId,
+            }),
+          ],
           source: getSourceFromRequest(req),
           lastActionAt: now,
         });
@@ -345,6 +495,16 @@ router.post(
         if (!session) {
           return res.status(409).json({
             message: "Aucune session active pour ce salarie.",
+          });
+        }
+
+        const previousActionAt = parseDateTime(
+          session?.lastActionAt || session?.clockInAt,
+        );
+        if (previousActionAt && now < previousActionAt) {
+          return res.status(409).json({
+            message:
+              "Cet horaire est anterieur a la derniere action connue pour ce salarie.",
           });
         }
 
@@ -397,7 +557,13 @@ router.post(
         }
 
         session.events.push(
-          buildEvent({ action, now, signature, request: req }),
+          buildEvent({
+            action,
+            now,
+            signature,
+            request: req,
+            clientMutationId,
+          }),
         );
         session.lastActionAt = now;
         syncSessionTotals(session, now);
@@ -408,10 +574,13 @@ router.post(
         employeeId,
         restaurantId,
       );
+      const responseAnchorDateKey = isValidDateKey(businessDate)
+        ? businessDate
+        : toLocalDateKey(now);
       const summary = await getSummaryPayload({
         employee: refreshedEmployee,
         restaurantId,
-        anchorDateKey: session.businessDate || toLocalDateKey(now),
+        anchorDateKey: responseAnchorDateKey,
       });
 
       return res.status(action === ACTIONS.CLOCK_IN ? 201 : 200).json({
@@ -420,6 +589,43 @@ router.post(
       });
     } catch (error) {
       console.error("Error creating time-clock punch:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  },
+);
+
+router.get(
+  "/restaurants/:restaurantId/time-clock/kiosk/states",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { restaurantId } = req.params;
+      const anchorDateKey = isValidDateKey(req.query?.anchorDate)
+        ? String(req.query.anchorDate)
+        : toLocalDateKey(new Date());
+
+      const accessContext = await getAccessContext(req, restaurantId);
+      if (accessContext.error) {
+        return res
+          .status(accessContext.error.status)
+          .json({ message: accessContext.error.message });
+      }
+
+      const employeeIds = accessContext.currentEmployee && !accessContext.isManager
+        ? [String(accessContext.currentEmployee._id)]
+        : (accessContext.restaurant?.employees || []).map((employeeId) =>
+            String(employeeId),
+          );
+
+      const payload = await buildKioskStatesPayload({
+        restaurantId,
+        employeeIds,
+        anchorDateKey,
+      });
+
+      return res.json(payload);
+    } catch (error) {
+      console.error("Error fetching time-clock kiosk states:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   },
