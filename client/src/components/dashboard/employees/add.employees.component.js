@@ -409,26 +409,6 @@ export default function AddEmployeesComponent() {
           className="relative flex flex-col gap-3"
         >
           <div className="grid grid-cols-1 midTablet:grid-cols-3 gap-2">
-            {/* Nom */}
-            <div className="w-full">
-              <div className={fieldWrap}>
-                <label htmlFor="lastName" className={labelCls}>
-                  <User className="size-4" />
-                  {t("labels.lastname")}
-                </label>
-                <input
-                  id="lastName"
-                  type="text"
-                  {...register("lastName", { required: true })}
-                  className={
-                    errors.lastName && isSubmitted
-                      ? inputErrorCls
-                      : inputNormalCls
-                  }
-                />
-              </div>
-            </div>
-
             {/* Prénom */}
             <div className="w-full">
               <div className={fieldWrap}>
@@ -442,6 +422,26 @@ export default function AddEmployeesComponent() {
                   {...register("firstName", { required: true })}
                   className={
                     errors.firstName && isSubmitted
+                      ? inputErrorCls
+                      : inputNormalCls
+                  }
+                />
+              </div>
+            </div>
+
+            {/* Nom */}
+            <div className="w-full">
+              <div className={fieldWrap}>
+                <label htmlFor="lastName" className={labelCls}>
+                  <User className="size-4" />
+                  {t("labels.lastname")}
+                </label>
+                <input
+                  id="lastName"
+                  type="text"
+                  {...register("lastName", { required: true })}
+                  className={
+                    errors.lastName && isSubmitted
                       ? inputErrorCls
                       : inputNormalCls
                   }
