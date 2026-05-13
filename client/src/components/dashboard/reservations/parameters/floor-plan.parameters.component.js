@@ -7,6 +7,7 @@ import axios from "axios";
 import {
   Plus,
   Pencil,
+  Power,
   Trash2,
   ChevronLeft,
   Save,
@@ -46,7 +47,13 @@ function safeArr(a) {
   return Array.isArray(a) ? a : [];
 }
 
-function RoomRowSortable({ room, localCatalog, onEdit, onDelete }) {
+function RoomRowSortable({
+  room,
+  localCatalog,
+  onEdit,
+  onDelete,
+  onToggleEnabled,
+}) {
   const {
     attributes,
     listeners,
@@ -97,7 +104,13 @@ function RoomRowSortable({ room, localCatalog, onEdit, onDelete }) {
 
         <div className="min-w-0">
           <p className="font-semibold text-darkBlue truncate">{room.name}</p>
-          <p className="text-sm text-darkBlue/50">
+          <p
+            className={[
+              "text-sm",
+              room?.enabled === false ? "text-orange" : "text-darkBlue/50",
+            ].join(" ")}
+          >
+            {room?.enabled === false ? "Désactivée • " : ""}
             {tablesCount} table{tablesCount > 1 ? "s" : null} • {totalSeats}{" "}
             couverts
           </p>
@@ -105,6 +118,25 @@ function RoomRowSortable({ room, localCatalog, onEdit, onDelete }) {
       </div>
 
       <div className="shrink-0 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onToggleEnabled}
+          className={[
+            "inline-flex items-center justify-center size-10 rounded-2xl border transition",
+            room?.enabled === false
+              ? "border-green/20 bg-green/10 hover:bg-green/15"
+              : "border-orange/20 bg-orange/10 hover:bg-orange/15",
+          ].join(" ")}
+          title={room?.enabled === false ? "Activer" : "Désactiver"}
+          aria-label={room?.enabled === false ? "Activer" : "Désactiver"}
+        >
+          <Power
+            className={[
+              "size-4",
+              room?.enabled === false ? "text-green" : "text-orange",
+            ].join(" ")}
+          />
+        </button>
         <button
           type="button"
           onClick={onEdit}
@@ -331,7 +363,7 @@ export default function FloorPlanParametersComponent({
       );
 
       const nextRooms = safeArr(res.data?.rooms);
-      setRooms(nextRooms);
+      syncFloorplanPayload(res.data);
 
       const created = nextRooms[nextRooms.length - 1];
       if (created?._id) {
@@ -361,7 +393,7 @@ export default function FloorPlanParametersComponent({
         { headers: { Authorization: `Bearer ${token}` } },
       );
 
-      setRooms(safeArr(res.data?.rooms));
+      syncFloorplanPayload(res.data);
 
       if (String(activeRoomId) === String(roomToDelete)) {
         setMode("list");
@@ -395,6 +427,62 @@ export default function FloorPlanParametersComponent({
           "Impossible d’enregistrer l’ordre des salles.",
       );
       fetchRooms();
+    }
+  }
+
+  function syncFloorplanPayload(responseData) {
+    const nextRooms = safeArr(responseData?.rooms);
+    const nextTables = safeArr(responseData?.tables);
+    const nextReservationParameters =
+      responseData?.reservationParameters &&
+      typeof responseData.reservationParameters === "object"
+        ? responseData.reservationParameters
+        : null;
+
+    setRooms(nextRooms);
+    setLocalCatalog(nextTables);
+
+    if (typeof onTablesCatalogUpdated === "function") {
+      onTablesCatalogUpdated(nextTables);
+    }
+
+    if (typeof setRestaurantData === "function") {
+      setRestaurantData((prev) => {
+        if (!prev) return prev;
+
+        return {
+          ...prev,
+          reservationsSettings: nextReservationParameters
+            ? nextReservationParameters
+            : {
+                ...prev.reservationsSettings,
+                tables: nextTables,
+                floorplan: {
+                  ...prev.reservationsSettings?.floorplan,
+                  rooms: nextRooms,
+                },
+              },
+        };
+      });
+    }
+  }
+
+  async function toggleRoomEnabled(room) {
+    try {
+      setError("");
+      const nextEnabled = room?.enabled === false;
+      const res = await axios.put(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/floorplans/rooms/${room._id}`,
+        { enabled: nextEnabled },
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+
+      syncFloorplanPayload(res.data);
+    } catch (e) {
+      setError(
+        e?.response?.data?.message ||
+          "Impossible de modifier l’état de la salle.",
+      );
     }
   }
 
@@ -660,6 +748,7 @@ export default function FloorPlanParametersComponent({
                         key={String(r._id)}
                         room={r}
                         localCatalog={localCatalog}
+                        onToggleEnabled={() => toggleRoomEnabled(r)}
                         onEdit={() => {
                           resetFpUI();
                           setActiveRoomId(r._id);

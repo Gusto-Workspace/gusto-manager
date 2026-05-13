@@ -26,6 +26,10 @@ import {
   CalendarSvg,
   TableSvg,
 } from "../../../_shared/_svgs/_index";
+import {
+  buildFloorPlanRoomMetaByTableId,
+  getDisabledFloorPlanTableIds,
+} from "../../reservations/floor-plan.rooms.utils";
 
 // LUCIDE
 import { Loader2, Save, X, ChevronLeft } from "lucide-react";
@@ -370,6 +374,7 @@ function isConfiguredTableFreeFront({
 }
 
 function getEligibleSingleTablesFront({ parameters, singleSeatSizes = [] }) {
+  const disabledTableIds = getDisabledFloorPlanTableIds(parameters);
   const allowedSeats = new Set(
     (Array.isArray(singleSeatSizes) ? singleSeatSizes : [])
       .map((value) => Number(value))
@@ -377,13 +382,20 @@ function getEligibleSingleTablesFront({ parameters, singleSeatSizes = [] }) {
   );
   const pool = (
     Array.isArray(parameters?.tables) ? parameters.tables : []
-  ).filter((table) => allowedSeats.has(Number(table?.seats)));
+  ).filter(
+    (table) =>
+      allowedSeats.has(Number(table?.seats)) &&
+      !disabledTableIds.has(String(table?._id || "").trim()),
+  );
 
   return sortTablesByPriorityFront(pool).map(buildSingleTableOptionFront);
 }
 
 function getEligibleCombinedTablesFront({ parameters, requiredSize }) {
-  const tables = Array.isArray(parameters?.tables) ? parameters.tables : [];
+  const disabledTableIds = getDisabledFloorPlanTableIds(parameters);
+  const tables = (Array.isArray(parameters?.tables) ? parameters.tables : []).filter(
+    (table) => !disabledTableIds.has(String(table?._id || "").trim()),
+  );
   const catalogById = new Map(
     tables.map((table) => [String(table?._id || ""), table]),
   );
@@ -1270,39 +1282,25 @@ export default function AddReservationComponent(props) {
     ? [currentTableOption, ...(availableTables || [])]
     : availableTables || [];
 
-  const tableRoomMap = useMemo(() => {
-    const map = new Map();
-
-    const rooms =
-      props.restaurantData?.reservationsSettings?.floorplan?.rooms || [];
-
-    rooms.forEach((room) => {
-      const roomName = String(room?.name || "").trim();
-      const objects = Array.isArray(room?.objects) ? room.objects : [];
-
-      objects.forEach((obj) => {
-        if (obj?.type !== "table") return;
-        if (!obj?.tableRefId) return;
-
-        const key = String(obj.tableRefId);
-
-        // on garde la première salle trouvée pour cette table
-        if (!map.has(key)) {
-          map.set(key, roomName || "Salle sans nom");
-        }
-      });
-    });
-
-    return map;
+  const tableRoomMetaMap = useMemo(() => {
+    return buildFloorPlanRoomMetaByTableId(
+      props.restaurantData?.reservationsSettings?.floorplan?.rooms || [],
+    );
   }, [props.restaurantData?.reservationsSettings?.floorplan?.rooms]);
 
   const tablesForSelectWithRoom = useMemo(() => {
     return (tablesForSelect || []).map((table) => {
+      const roomEntries = getConfiguredTableIdsFront(table)
+        .map((id) => tableRoomMetaMap.get(String(id)))
+        .filter(Boolean);
+
       const roomNames = Array.from(
         new Set(
-          getConfiguredTableIdsFront(table)
-            .map((id) => tableRoomMap.get(String(id)))
-            .filter(Boolean),
+          roomEntries.map((entry) =>
+            entry?.enabled === false
+              ? `${entry.roomName} (désactivée)`
+              : entry.roomName,
+          ),
         ),
       );
 
@@ -1318,7 +1316,7 @@ export default function AddReservationComponent(props) {
         roomName,
       };
     });
-  }, [tablesForSelect, tableRoomMap]);
+  }, [tablesForSelect, tableRoomMetaMap]);
 
   const groupedTablesForSelect = useMemo(() => {
     const groupsMap = new Map();

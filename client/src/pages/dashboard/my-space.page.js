@@ -76,6 +76,7 @@ export default function MySpacePage(props) {
                 <PlanningMySpaceComponent
                   employeeId={employeeId}
                   restaurantId={restaurantId}
+                  openingHours={restaurantContext.restaurantData?.opening_hours}
                 />
 
                 <TimeClockMySpaceComponent restaurantId={restaurantId} />

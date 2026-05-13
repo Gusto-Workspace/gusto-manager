@@ -25,7 +25,9 @@ import {
   CalendarDays,
   Plus,
   Download,
+  UtensilsCrossed,
 } from "lucide-react";
+import { getShiftMealMeta } from "./planning-meals.utils";
 
 const DnDCalendar = withDragAndDrop(Calendar);
 
@@ -71,6 +73,17 @@ const formatEventTimeRange = (start, end) =>
   `${format(start, "HH:mm", { locale: frLocale })}-${format(end, "HH:mm", {
     locale: frLocale,
   })}`;
+
+const getEmptyDeleteModalData = () => ({
+  eventId: null,
+  employeeId: null,
+  title: "",
+  originalTitle: "",
+  start: null,
+  end: null,
+  leaveRequestId: null,
+  isLeave: false,
+});
 
 const pad2 = (value) => String(value).padStart(2, "0");
 
@@ -214,6 +227,7 @@ export default function PlanningEmployeesComponent() {
   }, []);
 
   const restaurantId = restaurantContext.restaurantData?._id;
+  const openingHours = restaurantContext.restaurantData?.opening_hours || [];
 
   // ─── États ─────────────────────────────────────────────────────────────────
   const [events, setEvents] = useState([]);
@@ -222,6 +236,7 @@ export default function PlanningEmployeesComponent() {
   const [view, setView] = useState(Views.WEEK);
   const [date, setDate] = useState(new Date());
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isUpdatingShiftTitle, setIsUpdatingShiftTitle] = useState(false);
   const [isPlanningExportOpen, setIsPlanningExportOpen] = useState(false);
   const [isPlanningExportLoading, setIsPlanningExportLoading] = useState(false);
   const [planningExportError, setPlanningExportError] = useState("");
@@ -240,15 +255,9 @@ export default function PlanningEmployeesComponent() {
 
   // Modale de suppression
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [deleteModalData, setDeleteModalData] = useState({
-    eventId: null,
-    employeeId: null,
-    title: "",
-    start: null,
-    end: null,
-    leaveRequestId: null,
-    isLeave: false,
-  });
+  const [deleteModalData, setDeleteModalData] = useState(
+    getEmptyDeleteModalData(),
+  );
 
   // ✅ détecter mobile (avant midTablet)
   const [isMobile, setIsMobile] = useState(false);
@@ -393,6 +402,12 @@ export default function PlanningEmployeesComponent() {
           endDate,
           isLeave,
         );
+        const mealMeta = getShiftMealMeta({
+          start: startDate,
+          end: endDate,
+          openingHours,
+          isLeave,
+        });
 
         return {
           id: String(s._id),
@@ -406,11 +421,14 @@ export default function PlanningEmployeesComponent() {
           resourceId: emp._id,
           leaveRequestId: s.leaveRequestId || null,
           isLeave,
+          hasMeal: mealMeta.hasMeal,
+          mealCount: mealMeta.mealCount,
+          mealPeriods: mealMeta.mealPeriods,
         };
       }),
     );
     setEvents(newEvents);
-  }, [allEmployees]);
+  }, [allEmployees, openingHours]);
 
   // ─── Couleurs par employé ──────────────────────────────────────────────────
   const colorPalette = [
@@ -554,6 +572,12 @@ export default function PlanningEmployeesComponent() {
           const end = new Date(s.end);
           const isLeave = isLeaveShiftRecord(s);
           const leaveDurationLabel = getFullDayLeaveLabel(start, end, isLeave);
+          const mealMeta = getShiftMealMeta({
+            start,
+            end,
+            openingHours,
+            isLeave,
+          });
 
           return {
             start,
@@ -561,6 +585,9 @@ export default function PlanningEmployeesComponent() {
             allDay: Boolean(leaveDurationLabel),
             leaveDurationLabel,
             isLeave,
+            hasMeal: mealMeta.hasMeal,
+            mealCount: mealMeta.mealCount,
+            mealPeriods: mealMeta.mealPeriods,
           };
         })(),
         id: String(s._id),
@@ -600,12 +627,62 @@ export default function PlanningEmployeesComponent() {
       eventId: event.id,
       employeeId: event.resourceId,
       title: event.shiftLabel || event.title.split(" - ")[1],
+      originalTitle: event.shiftLabel || event.title.split(" - ")[1],
       start: event.start,
       end: event.end,
       leaveRequestId: event.leaveRequestId || null,
       isLeave: !!event.isLeave,
     });
     setDeleteModalOpen(true);
+  }
+
+  async function handleUpdateShiftTitle() {
+    if (isUpdatingShiftTitle || deleteModalData.isLeave) return;
+
+    const { employeeId, eventId: shiftId } = deleteModalData;
+
+    if (!restaurantId || !employeeId || !shiftId) return;
+
+    const nextTitle = canonicalizeShiftTitle(deleteModalData.title);
+    const currentTitle = canonicalizeShiftTitle(deleteModalData.originalTitle);
+
+    if (nextTitle === currentTitle) return;
+
+    try {
+      setIsUpdatingShiftTitle(true);
+
+      const response = await axios.put(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}/shifts/${shiftId}`,
+        { title: nextTitle },
+      );
+
+      const updatedShifts = response.data?.shifts || [];
+
+      restaurantContext.setRestaurantData((prev) => {
+        if (!prev) return prev;
+
+        return {
+          ...prev,
+          employees: (prev.employees || []).map((employee) =>
+            String(employee._id) === String(employeeId)
+              ? { ...employee, shifts: updatedShifts }
+              : employee,
+          ),
+        };
+      });
+
+      handleCancelDelete();
+    } catch (err) {
+      console.error("Erreur modification intitulé shift :", err);
+      window.alert(
+        t(
+          "planning:errors.updateTitleFailed",
+          "Impossible de modifier l’intitulé du shift",
+        ),
+      );
+    } finally {
+      setIsUpdatingShiftTitle(false);
+    }
   }
 
   // ─── Confirmer suppression ─────────────────────────────────────────────────
@@ -680,15 +757,7 @@ export default function PlanningEmployeesComponent() {
 
   function handleCancelDelete() {
     setDeleteModalOpen(false);
-    setDeleteModalData({
-      eventId: null,
-      employeeId: null,
-      title: "",
-      start: null,
-      end: null,
-      leaveRequestId: null,
-      isLeave: false,
-    });
+    setDeleteModalData(getEmptyDeleteModalData());
   }
 
   async function handlePlanningExport(payload) {
@@ -734,19 +803,27 @@ export default function PlanningEmployeesComponent() {
     const compactLabel = selectedEmployeeId
       ? event.shiftLabel || event.employeeShortName || ""
       : [event.employeeShortName, event.shiftLabel].filter(Boolean).join(" · ");
+    const tooltipSuffix = event.hasMeal ? " • Repas" : "";
     const tooltip = event.allDay
-      ? event.title
+      ? `${event.title}${tooltipSuffix}`
       : event.title
-        ? `${event.title} : ${timeLabel}`
+        ? `${event.title} : ${timeLabel}${tooltipSuffix}`
         : timeLabel;
 
     if (event.allDay) {
       return (
         <div
-          className="truncate text-[11px] font-medium leading-tight"
+          className="flex items-start justify-between gap-2 overflow-hidden"
           title={tooltip}
         >
-          {event.title}
+          <span className="truncate text-[11px] font-medium leading-tight">
+            {event.title}
+          </span>
+          {event.hasMeal ? (
+            <span className="mt-[1px] inline-flex shrink-0 text-darkBlue/80">
+              <UtensilsCrossed className="size-3" />
+            </span>
+          ) : null}
         </div>
       );
     }
@@ -756,12 +833,19 @@ export default function PlanningEmployeesComponent() {
     if (useCompactLayout) {
       return (
         <div
-          className="flex h-full flex-col justify-start overflow-hidden whitespace-normal leading-[1.05]"
+          className="flex h-full items-start justify-between gap-2 overflow-hidden whitespace-normal leading-[1.05]"
           title={tooltip}
         >
-          {compactLabel ? (
-            <span className="truncate text-[11px] font-medium opacity-95">
-              {compactLabel}
+          <div className="min-w-0 flex-1">
+            {compactLabel ? (
+              <span className="truncate text-[11px] font-medium opacity-95">
+                {compactLabel}
+              </span>
+            ) : null}
+          </div>
+          {event.hasMeal ? (
+            <span className="mt-[1px] inline-flex shrink-0 text-white/90">
+              <UtensilsCrossed className="size-3" />
             </span>
           ) : null}
         </div>
@@ -770,12 +854,19 @@ export default function PlanningEmployeesComponent() {
 
     return (
       <div
-        className="flex h-full flex-col justify-start overflow-hidden whitespace-normal leading-tight"
+        className="flex h-full items-start justify-between gap-2 overflow-hidden whitespace-normal leading-tight"
         title={tooltip}
       >
-        {event.title ? (
-          <span className="truncate text-[11px] font-medium opacity-95">
-            {event.title}
+        <div className="min-w-0 flex-1">
+          {event.title ? (
+            <span className="truncate text-[11px] font-medium opacity-95">
+              {event.title}
+            </span>
+          ) : null}
+        </div>
+        {event.hasMeal ? (
+          <span className="mt-[1px] inline-flex shrink-0 text-white/90">
+            <UtensilsCrossed className="size-3" />
           </span>
         ) : null}
       </div>
@@ -1557,12 +1648,12 @@ export default function PlanningEmployeesComponent() {
         </div>
       )}
 
-      {/* ─── Modale Suppression Shift (inchangée) ─────────────────────────────── */}
+      {/* ─── Modale Shift ─────────────────────────────────────────────────────── */}
       {deleteModalOpen && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center px-4">
           <div
             onClick={() => {
-              if (isDeleting) return;
+              if (isDeleting || isUpdatingShiftTitle) return;
               handleCancelDelete();
             }}
             className="absolute inset-0 bg-black/25 backdrop-blur-[1px]"
@@ -1588,9 +1679,12 @@ export default function PlanningEmployeesComponent() {
 
             <div className="text-sm text-center text-darkBlue/80 flex flex-col gap-2">
               <p>
-                {t("planning:labels.deleteShift", "Supprimer ce shift")} :{" "}
+                {deleteModalData.isLeave
+                  ? t("planning:labels.deleteShift", "Supprimer ce shift")
+                  : "Modifier l’intitulé ou supprimer ce shift"}{" "}
+                :{" "}
                 <span className="font-medium text-darkBlue">
-                  {deleteModalData?.title}
+                  {deleteModalData?.originalTitle}
                 </span>
               </p>
 
@@ -1633,10 +1727,57 @@ export default function PlanningEmployeesComponent() {
               </p>
             </div>
 
+            {!deleteModalData.isLeave ? (
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium text-darkBlue">
+                  Intitulé du shift
+                </label>
+                <input
+                  type="text"
+                  value={deleteModalData.title}
+                  onChange={(e) =>
+                    setDeleteModalData((prev) => ({
+                      ...prev,
+                      title: e.target.value,
+                    }))
+                  }
+                  placeholder="Titre du shift"
+                  disabled={isDeleting || isUpdatingShiftTitle}
+                  className="
+                    w-full h-11 rounded-lg border border-darkBlue/20 bg-white/95
+                    px-3 text-base outline-none
+                    placeholder:text-darkBlue/40
+                    focus:border-darkBlue/50 focus:ring-1 focus:ring-darkBlue/20
+                    transition disabled:opacity-60
+                  "
+                />
+              </div>
+            ) : null}
+
             <div className="mt-2 flex justify-center gap-3">
+              {!deleteModalData.isLeave ? (
+                <button
+                  onClick={handleUpdateShiftTitle}
+                  disabled={
+                    isDeleting ||
+                    isUpdatingShiftTitle ||
+                    canonicalizeShiftTitle(deleteModalData.title) ===
+                      canonicalizeShiftTitle(deleteModalData.originalTitle)
+                  }
+                  className="
+                    inline-flex items-center justify-center
+                    rounded-xl bg-blue px-4 py-2.5
+                    text-sm font-medium text-white shadow
+                    hover:bg-blue/90 transition
+                    disabled:opacity-50 disabled:cursor-not-allowed
+                  "
+                >
+                  {isUpdatingShiftTitle ? "Enregistrement…" : "Enregistrer"}
+                </button>
+              ) : null}
               <button
                 onClick={handleConfirmDelete}
-                disabled={isDeleting}
+                disabled={isDeleting || isUpdatingShiftTitle}
                 className="
                   inline-flex items-center justify-center
                   rounded-xl bg-red px-4 py-2.5
@@ -1648,7 +1789,7 @@ export default function PlanningEmployeesComponent() {
               </button>
               <button
                 onClick={handleCancelDelete}
-                disabled={isDeleting}
+                disabled={isDeleting || isUpdatingShiftTitle}
                 className="
                   inline-flex items-center justify-center
                   rounded-xl bg-darkBlue/10 px-4 py-2.5

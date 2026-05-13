@@ -16,7 +16,8 @@ import axios from "axios";
 import { CalendarSvg } from "@/components/_shared/_svgs/calendar.svg";
 
 // ICONS
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, UtensilsCrossed } from "lucide-react";
+import { getShiftMealMeta } from "../employees/planning-meals.utils";
 
 const normalizeTitle = (value) =>
   (value || "")
@@ -131,7 +132,11 @@ const eventIntersectsRange = (event, bounds) => {
   return start < bounds.endExclusive && end >= bounds.start;
 };
 
-export default function PlanningMySpaceComponent({ employeeId, restaurantId }) {
+export default function PlanningMySpaceComponent({
+  employeeId,
+  restaurantId,
+  openingHours = [],
+}) {
   const { t } = useTranslation("myspace");
 
   const [events, setEvents] = useState([]);
@@ -207,6 +212,12 @@ export default function PlanningMySpaceComponent({ employeeId, restaurantId }) {
               endDate,
               isLeave,
             );
+            const mealMeta = getShiftMealMeta({
+              start: startDate,
+              end: endDate,
+              openingHours,
+              isLeave,
+            });
 
             return [
               {
@@ -217,6 +228,9 @@ export default function PlanningMySpaceComponent({ employeeId, restaurantId }) {
                 allDay: Boolean(leaveDurationLabel),
                 isLeave,
                 leaveDurationLabel,
+                hasMeal: mealMeta.hasMeal,
+                mealCount: mealMeta.mealCount,
+                mealPeriods: mealMeta.mealPeriods,
               },
             ];
           }),
@@ -225,25 +239,33 @@ export default function PlanningMySpaceComponent({ employeeId, restaurantId }) {
         console.error("Erreur fetch shifts :", err);
       }
     })();
-  }, [employeeId, restaurantId]);
+  }, [employeeId, openingHours, restaurantId]);
 
   const CustomEvent = ({ event }) => {
     const timeLabel = formatEventTimeRange(event.start, event.end);
+    const tooltipSuffix = event.hasMeal ? " • Repas" : "";
     const tooltip = event.allDay
       ? `${event.title || "Congés"}${
           event.leaveDurationLabel ? ` : ${event.leaveDurationLabel}` : ""
-        }`
+        }${tooltipSuffix}`
       : event.title
-        ? `${event.title} : ${timeLabel}`
+        ? `${event.title} : ${timeLabel}${tooltipSuffix}`
         : timeLabel;
 
     if (event.allDay) {
       return (
         <div
-          className="truncate text-[11px] font-medium leading-tight"
+          className="flex items-start justify-between gap-2 overflow-hidden"
           title={tooltip}
         >
-          {event.title || "Congés"}
+          <span className="truncate text-[11px] font-medium leading-tight">
+            {event.title || "Congés"}
+          </span>
+          {event.hasMeal ? (
+            <span className="mt-[1px] inline-flex shrink-0 text-darkBlue/80">
+              <UtensilsCrossed className="size-3" />
+            </span>
+          ) : null}
         </div>
       );
     }
@@ -253,12 +275,19 @@ export default function PlanningMySpaceComponent({ employeeId, restaurantId }) {
     if (useCompactLayout) {
       return (
         <div
-          className="flex h-full flex-col justify-start overflow-hidden whitespace-normal leading-[1.05]"
+          className="flex h-full items-start justify-between gap-2 overflow-hidden whitespace-normal leading-[1.05]"
           title={tooltip}
         >
-          {event.title ? (
-            <span className="truncate text-[11px] font-medium opacity-95">
-              {event.title}
+          <div className="min-w-0 flex-1">
+            {event.title ? (
+              <span className="truncate text-[11px] font-medium opacity-95">
+                {event.title}
+              </span>
+            ) : null}
+          </div>
+          {event.hasMeal ? (
+            <span className="mt-[1px] inline-flex shrink-0 text-white/90">
+              <UtensilsCrossed className="size-3" />
             </span>
           ) : null}
         </div>
@@ -267,12 +296,19 @@ export default function PlanningMySpaceComponent({ employeeId, restaurantId }) {
 
     return (
       <div
-        className="flex h-full flex-col justify-start overflow-hidden whitespace-normal leading-tight"
+        className="flex h-full items-start justify-between gap-2 overflow-hidden whitespace-normal leading-tight"
         title={tooltip}
       >
-        {event.title ? (
-          <span className="truncate text-[11px] font-medium opacity-95">
-            {event.title}
+        <div className="min-w-0 flex-1">
+          {event.title ? (
+            <span className="truncate text-[11px] font-medium opacity-95">
+              {event.title}
+            </span>
+          ) : null}
+        </div>
+        {event.hasMeal ? (
+          <span className="mt-[1px] inline-flex shrink-0 text-white/90">
+            <UtensilsCrossed className="size-3" />
           </span>
         ) : null}
       </div>

@@ -66,6 +66,46 @@ function normalizeTableIdList(values = []) {
   );
 }
 
+function isFloorplanRoomEnabled(room) {
+  return room?.enabled !== false;
+}
+
+function getFloorplanRooms(parameters = {}, { enabledOnly = false } = {}) {
+  const rooms = Array.isArray(parameters?.floorplan?.rooms)
+    ? parameters.floorplan.rooms
+    : [];
+
+  return enabledOnly ? rooms.filter(isFloorplanRoomEnabled) : rooms;
+}
+
+function getDisabledFloorplanTableIds(parameters = {}) {
+  const ids = new Set();
+  const rooms = getFloorplanRooms(parameters);
+
+  rooms.forEach((room) => {
+    if (isFloorplanRoomEnabled(room)) return;
+
+    const objects = Array.isArray(room?.objects) ? room.objects : [];
+    objects.forEach((obj) => {
+      if (obj?.type !== "table" || !obj?.tableRefId) return;
+      ids.add(String(obj.tableRefId || "").trim());
+    });
+  });
+
+  return ids;
+}
+
+function getEnabledCatalogTables(parameters = {}) {
+  const disabledTableIds = getDisabledFloorplanTableIds(parameters);
+  const tables = Array.isArray(parameters?.tables) ? parameters.tables : [];
+
+  if (!disabledTableIds.size) return tables;
+
+  return tables.filter(
+    (table) => !disabledTableIds.has(String(table?._id || "").trim()),
+  );
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -177,7 +217,7 @@ function getEligibleCombinedTables({
   requiredSize,
   channel = "dashboard",
 }) {
-  const tables = Array.isArray(parameters?.tables) ? parameters.tables : [];
+  const tables = getEnabledCatalogTables(parameters);
   const catalogById = new Map(
     tables.map((table) => [String(table?._id || ""), table]),
   );
@@ -336,7 +376,7 @@ function getCurrentConfiguredOptionFromCatalog({
   const currentIds = getConfiguredTableIds(currentTable);
   if (currentIds.length === 0) return null;
 
-  const tables = Array.isArray(parameters?.tables) ? parameters.tables : [];
+  const tables = getEnabledCatalogTables(parameters);
   const catalogById = new Map(
     tables.map((table) => [String(table?._id || ""), table]),
   );
@@ -674,7 +714,7 @@ function getEligibleTables({
   singleSeatSizes = [],
   channel = "dashboard",
 }) {
-  let pool = Array.isArray(parameters?.tables) ? parameters.tables : [];
+  let pool = getEnabledCatalogTables(parameters);
   const allowedSeats = new Set(
     (Array.isArray(singleSeatSizes) ? singleSeatSizes : [])
       .map((value) => Number(value))
@@ -726,9 +766,8 @@ function getActiveBlockedRangeEnd(parameters, now = new Date()) {
 }
 
 function getSmartAvailabilitySetupStatus(parameters = {}) {
-  const rooms = Array.isArray(parameters?.floorplan?.rooms)
-    ? parameters.floorplan.rooms
-    : [];
+  const rooms = getFloorplanRooms(parameters, { enabledOnly: true });
+  const allRooms = getFloorplanRooms(parameters);
   const tables = Array.isArray(parameters?.tables) ? parameters.tables : [];
 
   const catalogTableIds = new Set(
@@ -758,7 +797,8 @@ function getSmartAvailabilitySetupStatus(parameters = {}) {
   });
 
   return {
-    roomsCount: rooms.length,
+    roomsCount: allRooms.length,
+    activeRoomsCount: rooms.length,
     tablesCount: tables.length,
     placedTablesCount: placedTableIds.size,
     roomsWithPlacedTables,

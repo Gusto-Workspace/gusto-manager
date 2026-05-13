@@ -98,6 +98,7 @@ const floorplanObjectSchema = new mongoose.Schema(
 const floorplanRoomSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
+    enabled: { type: Boolean, default: true },
 
     canvas: {
       width: { type: Number, default: 2000 },
