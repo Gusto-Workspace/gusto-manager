@@ -639,7 +639,7 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
     `Prix de l’abonnement mensuel : ${euro(subPrice)} / mois (exonéré de TVA)`,
   );
   bullet(
-    `Durée d’engagement : ${engagementMonths} mois à compter de la date de souscription`,
+    `Durée d’engagement : ${engagementMonths} mois à compter du premier prélèvement effectif de l’abonnement`,
   );
   bullet(`${monthlyTotalLabel} : ${euro(monthlyTotal)} / mois`, { after: 0.6 });
 
@@ -687,7 +687,7 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
 
   sectionTitle(`${N_TERM}. Durée et Résiliation`);
   paragraph(
-    `Le présent contrat est conclu pour une durée ferme de ${engagementMonths} mois. Aucune résiliation anticipée n’est possible durant cette période. À l’issue de l’engagement, le Client peut résilier à tout moment par écrit. La résiliation prendra effet à la fin du mois en cours. En cas de résiliation anticipée non autorisée, le Prestataire se réserve le droit de facturer les mensualités restantes.`,
+    `Le présent contrat est conclu pour une durée ferme de ${engagementMonths} mois à compter du premier prélèvement effectif de l’abonnement. Aucune résiliation anticipée n’est possible durant cette période. À l’issue de l’engagement, le Client peut résilier à tout moment par écrit. La résiliation prendra effet à la fin du mois en cours. En cas de résiliation anticipée non autorisée, le Prestataire se réserve le droit de facturer les mensualités restantes.`,
     { size: 10, after: 0.8 },
   );
 
