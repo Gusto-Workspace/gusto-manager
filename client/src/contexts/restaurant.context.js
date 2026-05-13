@@ -341,6 +341,63 @@ export default function RestaurantContext() {
           });
         }
 
+        if (payload.type === "employee_updated" && payload.employee) {
+          const nextEmployee = payload.employee;
+          const employeeId = String(nextEmployee?._id || "");
+
+          if (employeeId) {
+            setRestaurantData((prev) => {
+              if (!prev) return prev;
+
+              const employees = Array.isArray(prev.employees)
+                ? prev.employees
+                : [];
+
+              if (
+                !employees.some(
+                  (employee) => String(employee?._id) === employeeId,
+                )
+              ) {
+                return prev;
+              }
+
+              return {
+                ...prev,
+                employees: employees.map((employee) =>
+                  String(employee?._id) === employeeId
+                    ? nextEmployee
+                    : employee,
+                ),
+              };
+            });
+
+            setUserConnected((prev) => {
+              if (!prev || String(prev.id) !== employeeId) return prev;
+              return {
+                ...prev,
+                firstname:
+                  nextEmployee.firstname !== undefined
+                    ? nextEmployee.firstname
+                    : prev.firstname,
+                lastname:
+                  nextEmployee.lastname !== undefined
+                    ? nextEmployee.lastname
+                    : prev.lastname,
+                email:
+                  nextEmployee.email !== undefined
+                    ? nextEmployee.email
+                    : prev.email,
+                phone:
+                  nextEmployee.phone !== undefined
+                    ? nextEmployee.phone
+                    : prev.phone,
+                profilePictureUrl:
+                  nextEmployee?.profilePicture?.url || prev.profilePictureUrl,
+              };
+            });
+          }
+        }
+
         if (payload.type === "reservation_created" && payload.reservation) {
           const r = payload.reservation;
 

@@ -6,6 +6,7 @@ import {
   Clock3,
   RefreshCw,
   Search,
+  X,
   Users,
 } from "lucide-react";
 
@@ -90,7 +91,9 @@ export default function TimeClockKioskComponent() {
   const availableEmployees = useMemo(() => {
     const baseList = canManageAllEmployees
       ? employees
-      : employees.filter((employee) => String(employee._id) === String(user?.id));
+      : employees.filter(
+          (employee) => String(employee._id) === String(user?.id),
+        );
 
     return baseList.map((employee) => {
       const snapshot = getEmployeeSnapshot(employee, restaurantId);
@@ -228,6 +231,12 @@ export default function TimeClockKioskComponent() {
     return () => window.clearInterval(timer);
   }, [summary?.state?.activeSession]);
 
+  useEffect(() => {
+    signaturePadRef.current?.clear?.();
+    setSignatureStrokes([]);
+    setSelectedAction("");
+  }, [selectedEmployeeId]);
+
   async function handleSubmit() {
     if (!restaurantId || !selectedEmployee || !selectedAction || saving) return;
 
@@ -300,8 +309,8 @@ export default function TimeClockKioskComponent() {
               Borne de pointage
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-white/75 midTablet:text-base">
-              Sélectionnez un salarié, choisissez l'action proposée, signez, puis
-              validez le pointage.
+              Sélectionnez un salarié, choisissez l'action proposée, signez,
+              puis validez le pointage.
             </p>
           </div>
 
@@ -362,13 +371,23 @@ export default function TimeClockKioskComponent() {
             <div className="relative mt-5">
               <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-darkBlue/35" />
               <input
-                type="search"
+                type="text"
                 inputMode="search"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Rechercher un salarié"
-                className="h-14 w-full rounded-[24px] border border-darkBlue/10 bg-lightGrey/45 pl-11 pr-4 text-base text-darkBlue outline-none transition focus:border-blue/35 focus:bg-white"
+                className="h-14 w-full rounded-[24px] border border-darkBlue/10 bg-lightGrey/45 pl-11 pr-12 text-base text-darkBlue outline-none transition focus:border-blue/35 focus:bg-white"
               />
+              {search ? (
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  className="absolute right-4 top-1/2 inline-flex size-6 -translate-y-1/2 items-center justify-center rounded-full text-darkBlue/45 transition hover:bg-darkBlue/5 hover:text-darkBlue"
+                  aria-label="Réinitialiser la recherche"
+                >
+                  <X className="size-4" />
+                </button>
+              ) : null}
             </div>
           ) : null}
 
@@ -472,14 +491,21 @@ export default function TimeClockKioskComponent() {
               </div>
 
               <div className="flex flex-wrap items-center gap-3 text-sm text-darkBlue/70">
-                <span>Aujourd'hui {formatMinutes(summary?.day?.totalWorkedMinutes || 0)}</span>
-                <span>Pauses {formatMinutes(summary?.day?.totalBreakMinutes || 0)}</span>
+                <span>
+                  Aujourd'hui{" "}
+                  {formatMinutes(summary?.day?.totalWorkedMinutes || 0)}
+                </span>
+                <span>
+                  Pauses {formatMinutes(summary?.day?.totalBreakMinutes || 0)}
+                </span>
               </div>
             </div>
           </div>
 
           <div className="mt-5">
-            <p className="text-sm font-medium text-darkBlue">Action à valider</p>
+            <p className="text-sm font-medium text-darkBlue">
+              Action à valider
+            </p>
 
             <div className="mt-3 grid gap-3 midTablet:grid-cols-2">
               {(summary?.state?.availableActions || []).map((action) => (
@@ -492,7 +518,9 @@ export default function TimeClockKioskComponent() {
                     getActionClasses(selectedAction === action),
                   ].join(" ")}
                 >
-                  <p className="font-medium">{getTimeClockActionLabel(action)}</p>
+                  <p className="font-medium">
+                    {getTimeClockActionLabel(action)}
+                  </p>
                   <p
                     className={[
                       "mt-2 text-sm",
@@ -514,7 +542,8 @@ export default function TimeClockKioskComponent() {
 
               {!(summary?.state?.availableActions || []).length ? (
                 <div className="rounded-[24px] border border-dashed border-darkBlue/15 bg-lightGrey/35 px-4 py-6 text-sm text-darkBlue/55 midTablet:col-span-2">
-                  Sélectionnez un salarié pour connaître les actions disponibles.
+                  Sélectionnez un salarié pour connaître les actions
+                  disponibles.
                 </div>
               ) : null}
             </div>
@@ -548,7 +577,10 @@ export default function TimeClockKioskComponent() {
             type="button"
             onClick={handleSubmit}
             disabled={
-              !selectedEmployee || !selectedAction || !signatureStrokes.length || saving
+              !selectedEmployee ||
+              !selectedAction ||
+              !signatureStrokes.length ||
+              saving
             }
             className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-[28px] bg-blue px-5 py-4 text-base font-medium text-white shadow-sm transition hover:bg-blue/90 disabled:cursor-not-allowed disabled:opacity-45"
           >

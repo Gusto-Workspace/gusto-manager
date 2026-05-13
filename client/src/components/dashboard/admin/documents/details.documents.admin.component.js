@@ -111,6 +111,8 @@ function preventWheelChange(e) {
   e.currentTarget.blur();
 }
 
+const TIME_CLOCK_TERMINAL_RENTAL_MONTHLY_PRICE = 12;
+
 export default function DetailsDocumentAdminPage(props) {
   const router = useRouter();
   const { adminContext } = useContext(GlobalContext);
@@ -154,6 +156,8 @@ export default function DetailsDocumentAdminPage(props) {
     offered: false,
     _lastPaidUnitPrice: 0,
   });
+  const [hasTimeClockTerminalRental, setHasTimeClockTerminalRental] =
+    useState(false);
 
   // ✅ paiement site vitrine : 1 / 2 / 3
   const [sitePaymentSplit, setSitePaymentSplit] = useState(1);
@@ -329,6 +333,11 @@ export default function DetailsDocumentAdminPage(props) {
         }
 
         if (wLine) setWebsiteLine(wLine);
+
+        setHasTimeClockTerminalRental(
+          d?.type === "CONTRACT" &&
+            Boolean(d?.timeClockTerminalRental?.enabled),
+        );
 
         // ✅ payment split
         setSitePaymentSplit(Number(d?.website?.paymentSplit || 1));
@@ -649,6 +658,10 @@ export default function DetailsDocumentAdminPage(props) {
               ? "Offert"
               : `${clampMin(normalizedWebsiteLine.unitPrice, 0)}€`
             : "",
+        };
+        payload.timeClockTerminalRental = {
+          enabled: Boolean(hasTimeClockTerminalRental),
+          priceMonthly: TIME_CLOCK_TERMINAL_RENTAL_MONTHLY_PRICE,
         };
       }
 
@@ -1164,10 +1177,39 @@ export default function DetailsDocumentAdminPage(props) {
                   </div>
                 ) : null}
 
+                {doc?.type === "CONTRACT" ? (
+                  <div className="mt-6 rounded-xl border border-darkBlue/10 bg-white p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-darkBlue">
+                          Location d&apos;un terminal de pointage
+                        </p>
+                        <p className="mt-1 text-xs text-darkBlue/60">
+                          {TIME_CLOCK_TERMINAL_RENTAL_MONTHLY_PRICE} € / mois
+                        </p>
+                      </div>
+
+                      <label className="inline-flex items-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm text-darkBlue/80">
+                        <input
+                          type="checkbox"
+                          disabled={isLocked}
+                          checked={hasTimeClockTerminalRental}
+                          onChange={(e) =>
+                            setHasTimeClockTerminalRental(e.target.checked)
+                          }
+                        />
+                        Activer
+                      </label>
+                    </div>
+                  </div>
+                ) : null}
+
                 {/* ✅ Lignes classiques */}
                 <div className="mt-6 rounded-xl border border-darkBlue/10 bg-white p-3">
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-semibold text-darkBlue">{doc?.type === "CONTRACT" ? "Autre" : "Prestations"}</p>
+                    <p className="text-sm font-semibold text-darkBlue">
+                      {doc?.type === "CONTRACT" ? "Autre" : "Prestations"}
+                    </p>
 
                     <button
                       onClick={addLine}
