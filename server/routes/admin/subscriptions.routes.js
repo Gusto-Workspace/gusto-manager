@@ -9,6 +9,7 @@ const {
   listAllStripeSubscriptions,
 } = require("../../services/stripe-admin.service");
 const {
+  clearStaleMigratedFromSubscriptionId,
   ensureRestaurantStripeCustomer,
   customerIsDedicatedToRestaurant,
   findRestaurantSubscription,
@@ -18,6 +19,7 @@ const {
   loadRestaurantBillingContext,
   retrieveStripeCustomer,
   retrieveStripeSubscription,
+  retrieveStripeSubscriptionOrNull,
 } = require("../../services/stripe-billing.service");
 const {
   buildCatalogSelectionMetadata,
@@ -1019,12 +1021,48 @@ router.get("/admin/all-subscriptions", async (req, res) => {
     const migratedFromPairs = await Promise.all(
       migratedFromSubscriptionIds.map(async (subscriptionId) => [
         subscriptionId,
-        await retrieveStripeSubscription(subscriptionId, {
+        await retrieveStripeSubscriptionOrNull(subscriptionId, {
           expand: ["latest_invoice"],
         }),
       ]),
     );
     const migratedFromSubscriptionById = new Map(migratedFromPairs);
+    const staleMigratedFromSubscriptionIds = new Set(
+      migratedFromPairs
+        .filter(([, migratedSubscription]) => !migratedSubscription)
+        .map(([subscriptionId]) => normalizeString(subscriptionId))
+        .filter(Boolean),
+    );
+
+    if (staleMigratedFromSubscriptionIds.size > 0) {
+      await Promise.all(
+        subscriptions.map(async (subscription) => {
+          const migratedFromSubscriptionId = normalizeString(
+            subscription?.metadata?.migratedFromSubscriptionId,
+          );
+
+          if (
+            !staleMigratedFromSubscriptionIds.has(migratedFromSubscriptionId)
+          ) {
+            return;
+          }
+
+          try {
+            await clearStaleMigratedFromSubscriptionId(subscription);
+            subscription.metadata = {
+              ...(subscription.metadata || {}),
+              migratedFromSubscriptionId: "",
+            };
+          } catch (error) {
+            console.warn(
+              "[stripe-subscription-cleanup] impossible de nettoyer migratedFromSubscriptionId",
+              subscription?.id,
+              error?.message || error,
+            );
+          }
+        }),
+      );
+    }
 
     const customerIds = uniqueNonEmpty(
       subscriptions.map((subscription) =>

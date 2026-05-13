@@ -47,6 +47,14 @@ const WebsiteSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const TimeClockTerminalRentalSchema = new mongoose.Schema(
+  {
+    enabled: { type: Boolean, default: false },
+    priceMonthly: { type: Number, default: 12 },
+  },
+  { _id: false },
+);
+
 // ✅ NEW subscription schema
 const SubscriptionSchema = new mongoose.Schema(
   {
@@ -109,6 +117,10 @@ const DocumentSchema = new mongoose.Schema(
 
     // Contrat
     website: { type: WebsiteSchema, default: () => ({}) },
+    timeClockTerminalRental: {
+      type: TimeClockTerminalRentalSchema,
+      default: () => ({}),
+    },
     placeOfSignature: { type: String, default: "" },
     subscription: { type: SubscriptionSchema, default: () => ({}) },
     engagementMonths: { type: Number, default: 12 },

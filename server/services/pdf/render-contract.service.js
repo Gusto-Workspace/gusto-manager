@@ -62,6 +62,12 @@ function computeSiteTotal(lines) {
 function computeMonthlyAmount(documentData) {
   const subPrice = toNumber(documentData?.subscription?.priceMonthly, 0);
   const mods = Array.isArray(documentData?.modules) ? documentData.modules : [];
+  const terminalRentalEnabled = Boolean(
+    documentData?.timeClockTerminalRental?.enabled,
+  );
+  const terminalRentalMonthly = terminalRentalEnabled
+    ? toNumber(documentData?.timeClockTerminalRental?.priceMonthly, 12)
+    : 0;
 
   const modsSum = mods.reduce((acc, m) => {
     if (!safeText(m?.name)) return acc;
@@ -69,7 +75,7 @@ function computeMonthlyAmount(documentData) {
     return acc + toNumber(m?.priceMonthly, 0);
   }, 0);
 
-  return subPrice + modsSum;
+  return subPrice + modsSum + terminalRentalMonthly;
 }
 
 function absIfExists(p) {
@@ -318,7 +324,7 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
     .text("Entre :", MARGIN, doc.y, { width: CONTENT_W, align: "left" });
 
   paragraph(
-    `${emitter?.title || "WebDev"}, Entreprise Individuelle, ci-après désigné « le Prestataire »,`,
+    `${emitter?.title || "WebDev"}, ci-après désigné « le Prestataire »,`,
     { size: 10, after: 0.1 },
   );
 
@@ -393,6 +399,12 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
     : [];
   const modules = rawModules.filter((m) => safeText(m?.name));
   const hasModules = modules.length > 0;
+  const hasTimeClockTerminalRental = Boolean(
+    documentData?.timeClockTerminalRental?.enabled,
+  );
+  const timeClockTerminalRentalMonthly = hasTimeClockTerminalRental
+    ? toNumber(documentData?.timeClockTerminalRental?.priceMonthly, 12)
+    : 0;
 
   // ✅ Numérotation dynamique selon sections présentes
   const N_WEBSITE = hasWebsite ? 2 : null;
@@ -402,10 +414,11 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
   const N_SUB = hasWebsite || hasPrestations ? 3 : 2;
 
   // Sections suivantes (4/5/6/7) dépendent de N_SUB
-  const N_USE = N_SUB + 1;
-  const N_TERM = N_SUB + 2;
-  const N_LIAB = N_SUB + 3;
-  const N_PRIV = N_SUB + 4;
+  const N_MATERIAL = hasTimeClockTerminalRental ? N_SUB + 1 : null;
+  const N_USE = N_SUB + (hasTimeClockTerminalRental ? 2 : 1);
+  const N_TERM = N_SUB + (hasTimeClockTerminalRental ? 3 : 2);
+  const N_LIAB = N_SUB + (hasTimeClockTerminalRental ? 4 : 3);
+  const N_PRIV = N_SUB + (hasTimeClockTerminalRental ? 5 : 4);
 
   // ✅ Sous-numérotation Abonnement (3.x / 2.x) dynamique selon présence modules
   let subIdx = 1;
@@ -434,6 +447,11 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
   bullet(
     "la fourniture d’un accès à un dashboard numérique de gestion de restaurant,",
   );
+  if (hasTimeClockTerminalRental) {
+    bullet(
+      "la mise à disposition d’un terminal de pointage loué au Client pour l’utilisation de la solution Gusto Manager,",
+    );
+  }
   bullet("ainsi que l’accès aux modules sélectionnés par le Client.");
   doc.moveDown(0.2);
 
@@ -613,6 +631,9 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
   const subPrice = toNumber(documentData?.subscription?.priceMonthly, 0);
   const engagementMonths = toNumber(documentData?.engagementMonths, 0) || "-";
   const monthlyTotal = computeMonthlyAmount(documentData);
+  const monthlyTotalLabel = hasTimeClockTerminalRental
+    ? "Montant mensuel total (abonnement + modules + location de matériel)"
+    : "Montant mensuel total (abonnement + modules)";
 
   bullet(
     `Prix de l’abonnement mensuel : ${euro(subPrice)} / mois (exonéré de TVA)`,
@@ -620,10 +641,7 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
   bullet(
     `Durée d’engagement : ${engagementMonths} mois à compter de la date de souscription`,
   );
-  bullet(
-    `Montant mensuel total (abonnement + modules) : ${euro(monthlyTotal)} / mois`,
-    { after: 0.6 },
-  );
+  bullet(`${monthlyTotalLabel} : ${euro(monthlyTotal)} / mois`, { after: 0.6 });
 
   paragraph("Modalités de paiement", { size: 10, after: 0.2 });
   bullet("Le paiement est effectué par prélèvement SEPA mensuel automatique");
@@ -631,6 +649,34 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
     "En cas de changement de moyen de paiement, le Client s’engage à en informer le Prestataire avant le prochain prélèvement",
     { after: 0.8 },
   );
+
+  if (hasTimeClockTerminalRental) {
+    sectionTitle(`${N_MATERIAL}. Location de matériel`);
+    paragraph(
+      "Le Prestataire met à disposition du Client un terminal de pointage de type tablette destiné exclusivement à l’utilisation de la solution Gusto Manager.",
+      { size: 10, after: 0.35 },
+    );
+    bullet(
+      `La location du terminal de pointage est facturée ${euro(timeClockTerminalRentalMonthly)} / mois tant que le Client utilise la solution Gusto Manager.`,
+      { after: 0.1 },
+    );
+    bullet(
+      "Le matériel demeure la propriété exclusive du Prestataire pendant toute la durée du contrat.",
+      { after: 0.1 },
+    );
+    bullet(
+      "Le Client s’engage à conserver le matériel en bon état, à l’utiliser conformément à sa destination et à le protéger contre toute perte, vol, casse, détérioration ou utilisation anormale.",
+      { after: 0.1 },
+    );
+    bullet(
+      "En cas de résiliation ou de cessation d’utilisation de la solution Gusto Manager, le Client devra restituer le terminal, ses accessoires et son chargeur au Prestataire dans un délai maximal de sept (7) jours calendaires.",
+      { after: 0.1 },
+    );
+    bullet(
+      "En cas de non-restitution, de perte, de vol, de casse, de dommage matériel, d’oxydation ou de toute dégradation rendant le terminal impropre à son usage normal, le Client devra rembourser intégralement au Prestataire le prix d’achat TTC ou de remplacement du matériel équivalent, accessoires compris, sur simple demande.",
+      { after: 0.8 },
+    );
+  }
 
   /* ---------------- 4 / 5 / 6 / 7 ---------------- */
   sectionTitle(`${N_USE}. Conditions d’Utilisation`);

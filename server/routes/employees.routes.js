@@ -81,6 +81,49 @@ function getOrCreateRestaurantProfile(employee, restaurantId) {
   return profile;
 }
 
+function syncEmployeeIdentityAcrossProfiles(employee, updates = {}) {
+  const profiles = Array.isArray(employee.restaurantProfiles)
+    ? employee.restaurantProfiles
+    : [];
+
+  if (updates.firstname !== undefined) {
+    employee.firstname = updates.firstname;
+  }
+
+  if (updates.lastname !== undefined) {
+    employee.lastname = updates.lastname;
+  }
+
+  profiles.forEach((profile) => {
+    profile.snapshot = profile.snapshot || {};
+
+    if (updates.firstname !== undefined) {
+      profile.snapshot.firstname = updates.firstname;
+    }
+
+    if (updates.lastname !== undefined) {
+      profile.snapshot.lastname = updates.lastname;
+    }
+  });
+}
+
+function broadcastEmployeeUpdate(employee) {
+  const restaurants = Array.isArray(employee?.restaurants)
+    ? employee.restaurants
+    : [];
+
+  if (!restaurants.length) return;
+
+  const payload = {
+    type: "employee_updated",
+    employee: employee?.toObject ? employee.toObject() : employee,
+  };
+
+  restaurants.forEach((restaurantId) => {
+    broadcastToRestaurant(String(restaurantId), payload);
+  });
+}
+
 async function getEmployeesAccessContext(request, restaurantId) {
   const restaurant = await RestaurantModel.findById(restaurantId).select(
     "name owner_id employees",
@@ -754,11 +797,13 @@ router.patch(
         profile.snapshot = {};
       }
 
-      // 🔥 Log temporaire pour voir ce qui arrive
-      // console.log("PATCH body ===>", req.body);
+      if (firstname !== undefined || lastname !== undefined) {
+        syncEmployeeIdentityAcrossProfiles(employee, {
+          firstname,
+          lastname,
+        });
+      }
 
-      if (firstname !== undefined) profile.snapshot.firstname = firstname;
-      if (lastname !== undefined) profile.snapshot.lastname = lastname;
       if (phone !== undefined) profile.snapshot.phone = phone;
       if (secuNumber !== undefined) profile.snapshot.secuNumber = secuNumber;
       if (address !== undefined) profile.snapshot.address = address;
@@ -784,6 +829,7 @@ router.patch(
       employee.markModified("restaurantProfiles");
 
       await employee.save();
+      broadcastEmployeeUpdate(employee);
 
       const updatedRestaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
@@ -1616,20 +1662,12 @@ router.put(
 
       // firstname
       if (firstname !== undefined) {
-        emp.firstname = firstname;
-        profiles.forEach((p) => {
-          p.snapshot = p.snapshot || {};
-          p.snapshot.firstname = firstname;
-        });
+        syncEmployeeIdentityAcrossProfiles(emp, { firstname });
       }
 
       // lastname
       if (lastname !== undefined) {
-        emp.lastname = lastname;
-        profiles.forEach((p) => {
-          p.snapshot = p.snapshot || {};
-          p.snapshot.lastname = lastname;
-        });
+        syncEmployeeIdentityAcrossProfiles(emp, { lastname });
       }
 
       // email
@@ -1691,6 +1729,7 @@ router.put(
       emp.markModified("restaurantProfiles");
 
       await emp.save();
+      broadcastEmployeeUpdate(emp);
 
       const jwt = require("jsonwebtoken");
       const payload = {

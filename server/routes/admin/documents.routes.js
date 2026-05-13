@@ -417,6 +417,22 @@ router.patch("/admin/documents/:id", authenticateToken, async (req, res) => {
       }
     }
 
+    if (body.timeClockTerminalRental !== undefined) {
+      const currentRental = doc.timeClockTerminalRental || {};
+      const nextPrice = Number(
+        body.timeClockTerminalRental?.priceMonthly ??
+          currentRental.priceMonthly ??
+          12,
+      );
+
+      doc.timeClockTerminalRental = {
+        ...currentRental,
+        enabled: Boolean(body.timeClockTerminalRental?.enabled),
+        priceMonthly:
+          Number.isFinite(nextPrice) && nextPrice > 0 ? nextPrice : 12,
+      };
+    }
+
     // ✅ Subscription object
     if (body.subscription !== undefined) {
       doc.subscription = {

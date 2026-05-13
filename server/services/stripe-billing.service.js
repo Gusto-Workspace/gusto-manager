@@ -104,6 +104,41 @@ async function retrieveStripeSubscription(subscriptionId, options = {}) {
   return stripe.subscriptions.retrieve(normalized, options);
 }
 
+function isStripeResourceMissingError(error) {
+  return (
+    error?.code === "resource_missing" ||
+    error?.statusCode === 404 ||
+    error?.raw?.code === "resource_missing"
+  );
+}
+
+async function retrieveStripeSubscriptionOrNull(subscriptionId, options = {}) {
+  try {
+    return await retrieveStripeSubscription(subscriptionId, options);
+  } catch (error) {
+    if (isStripeResourceMissingError(error)) {
+      return null;
+    }
+
+    throw error;
+  }
+}
+
+async function clearStaleMigratedFromSubscriptionId(subscriptionOrId) {
+  const subscriptionId =
+    typeof subscriptionOrId === "string"
+      ? normalizeString(subscriptionOrId)
+      : normalizeString(subscriptionOrId?.id);
+
+  if (!subscriptionId) return null;
+
+  return stripe.subscriptions.update(subscriptionId, {
+    metadata: {
+      migratedFromSubscriptionId: "",
+    },
+  });
+}
+
 function customerIsDedicatedToRestaurant(customer, restaurantId) {
   return (
     normalizeString(customer?.metadata?.restaurant_id) ===
@@ -355,17 +390,41 @@ async function listSubscriptionMigrationChain({
   const chain = [];
   const visited = new Set();
   let currentId = normalizeString(subscriptionId);
+  let previousSubscription = null;
 
   while (currentId && !visited.has(currentId) && chain.length < maxDepth) {
     visited.add(currentId);
 
-    const subscription = await retrieveStripeSubscription(currentId, {
+    const subscription = await retrieveStripeSubscriptionOrNull(currentId, {
       expand: ["latest_invoice"],
     });
 
-    if (!subscription) break;
+    if (!subscription) {
+      if (
+        previousSubscription &&
+        normalizeString(
+          previousSubscription?.metadata?.migratedFromSubscriptionId,
+        )
+      ) {
+        try {
+          await clearStaleMigratedFromSubscriptionId(previousSubscription);
+          previousSubscription.metadata = {
+            ...(previousSubscription.metadata || {}),
+            migratedFromSubscriptionId: "",
+          };
+        } catch (error) {
+          console.warn(
+            "[stripe-subscription-cleanup] impossible de nettoyer migratedFromSubscriptionId",
+            previousSubscription?.id,
+            error?.message || error,
+          );
+        }
+      }
+      break;
+    }
 
     chain.push(subscription);
+    previousSubscription = subscription;
     currentId = normalizeString(
       subscription?.metadata?.migratedFromSubscriptionId,
     );
@@ -452,8 +511,11 @@ module.exports = {
   listSubscriptionInvoicesHistory,
   listSubscriptionMigrationChain,
   loadRestaurantBillingContext,
+  clearStaleMigratedFromSubscriptionId,
+  isStripeResourceMissingError,
   retrieveStripeCustomer,
   retrieveStripeSubscription,
+  retrieveStripeSubscriptionOrNull,
   stripeCustomerUsedByAnyRestaurant,
   syncRestaurantStripeCustomer,
 };
