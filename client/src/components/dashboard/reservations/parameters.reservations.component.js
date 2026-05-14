@@ -38,23 +38,14 @@ import {
   buildReservationEmailTemplatesPayload,
   buildReservationEmailTemplatesState,
 } from "../../_shared/reservations/email-templates.reservations";
+import { getReservationStatusLabel } from "@/components/_shared/reservations/reservation-status.utils";
 
 // Helpers
 const statusLabel = (status) => {
   const s = String(status || "").trim();
   if (!s) return "";
-
-  const map = {
-    Pending: "En attente",
-    Confirmed: "Confirmée",
-    Active: "En cours",
-    Late: "En retard",
-    Finished: "Terminée",
-    Canceled: "Annulée",
-    NoShow: "No-show",
-  };
-
-  return map[s] || s;
+  if (s === "NoShow") return "No-show";
+  return getReservationStatusLabel(s);
 };
 
 function fmtShortFR(date) {

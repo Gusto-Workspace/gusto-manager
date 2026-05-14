@@ -64,10 +64,6 @@ function StatusLegend() {
     { label: "Libre", dot: "bg-white border-darkBlue/40" },
     { label: "Assignée", dot: "bg-blue/20 border-blue" },
     { label: "Occupée", dot: "bg-green/20 border-green" },
-    {
-      label: "Client en retard",
-      dot: "bg-[rgba(255,159,10,0.22)] border-[rgb(255,159,10)]",
-    },
     { label: "À libérer", dot: "bg-red/20 border-red" },
   ];
 

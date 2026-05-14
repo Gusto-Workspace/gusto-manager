@@ -44,14 +44,10 @@ export default function ConfirmModalReservationsComponent(props) {
     title = "Supprimer la réservation";
     content = `La réservation de ${name} sera supprimée définitivement. Cette action est irréversible.`;
     confirmLabel = props.isProcessing ? "Chargement..." : "Supprimer";
-  } else if (isConfirm) {
+  } else if (isConfirm || isActive) {
     title = "Confirmer la réservation";
     content = `La réservation de ${name} sera marquée comme confirmée. Cette action est irréversible.`;
     confirmLabel = props.isProcessing ? "Chargement..." : "Confirmer";
-  } else if (isActive) {
-    title = "Activer la réservation";
-    content = `La réservation de ${name} sera marquée comme “En cours”. Cette action est irréversible.`;
-    confirmLabel = props.isProcessing ? "Chargement..." : "Activer";
   } else if (isFinish) {
     title = "Terminer la réservation";
     content = `Les clients ont quitté la table et cette réservation sera terminée. Cette action est irréversible.`;

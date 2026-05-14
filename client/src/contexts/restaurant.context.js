@@ -1189,47 +1189,6 @@ export default function RestaurantContext() {
     return () => clearInterval(id);
   }, [restaurantData?._id, reservationsList]);
 
-  useEffect(() => {
-    if (!restaurantData) return;
-    const manageSmartAvailability = Boolean(
-      restaurantData?.reservationsSettings?.manage_disponibilities,
-    );
-    if (!manageSmartAvailability) return;
-
-    const checkLateReservations = () => {
-      const now = new Date();
-      const gracePeriod = 5 * 60000;
-      const reservations = reservationsList || [];
-
-      reservations.forEach((reservation) => {
-        if (reservation.status === "Confirmed") {
-          const reservationDate = new Date(reservation.reservationDate);
-          const [hours, minutes] = reservation.reservationTime.split(":");
-          reservationDate.setHours(
-            parseInt(hours, 10),
-            parseInt(minutes, 10),
-            0,
-            0,
-          );
-
-          const reservationDateWithGrace = new Date(
-            reservationDate.getTime() + gracePeriod,
-          );
-
-          if (now >= reservationDateWithGrace) autoUpdateToLate(reservation);
-        }
-      });
-    };
-
-    checkLateReservations();
-    const updateIntervalId = setInterval(checkLateReservations, 30000);
-    return () => clearInterval(updateIntervalId);
-  }, [
-    restaurantData?._id,
-    reservationsList,
-    restaurantData?.reservationsSettings?.manage_disponibilities,
-  ]);
-
   function getServiceBucketFromTime(reservationTime) {
     const [hh = "0"] = String(reservationTime || "00:00").split(":");
     return Number(hh) < 16 ? "lunch" : "dinner";
@@ -1250,10 +1209,6 @@ export default function RestaurantContext() {
 
   useEffect(() => {
     if (!restaurantData) return;
-
-    const manageSmartAvailability = Boolean(
-      restaurantData?.reservationsSettings?.manage_disponibilities,
-    );
     const autoFinishEnabled =
       restaurantData?.reservationsSettings?.auto_finish_reservations;
     if (!autoFinishEnabled) return;
@@ -1263,9 +1218,9 @@ export default function RestaurantContext() {
       const reservations = reservationsList || [];
 
       reservations.forEach((reservation) => {
-        const canAutoFinish = manageSmartAvailability
-          ? reservation.status === "Active"
-          : ["Confirmed", "Active"].includes(reservation.status);
+        const canAutoFinish = ["Confirmed", "Active", "Late"].includes(
+          reservation.status,
+        );
 
         if (!canAutoFinish) return;
 
@@ -1302,7 +1257,6 @@ export default function RestaurantContext() {
   }, [
     restaurantData?._id,
     reservationsList,
-    restaurantData?.reservationsSettings?.manage_disponibilities,
     restaurantData?.reservationsSettings?.auto_finish_reservations,
     restaurantData?.reservationsSettings?.table_occupancy_lunch_minutes,
     restaurantData?.reservationsSettings?.table_occupancy_dinner_minutes,
@@ -1333,39 +1287,6 @@ export default function RestaurantContext() {
       })
       .catch((error) => {
         console.error("Error auto-updating reservation to Finished:", error);
-      })
-      .finally(() => {
-        setAutoUpdatingReservations((prev) => prev.filter((x) => x !== id));
-      });
-  }
-
-  function autoUpdateToLate(reservation) {
-    if (!restaurantData?.reservationsSettings?.manage_disponibilities) return;
-
-    const id = String(reservation._id);
-
-    if (autoUpdatingReservations.includes(id)) return;
-    setAutoUpdatingReservations((prev) => [...prev, id]);
-
-    const token = localStorage.getItem("token");
-    axios
-      .put(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantData._id}/reservations/${reservation._id}/status`,
-        { status: "Late" },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        },
-      )
-      .then(async (response) => {
-        const restaurant = response?.data?.restaurant || null;
-        if (restaurant) setRestaurantData(restaurant);
-        await fetchReservationsList(token, restaurantData?._id);
-      })
-      .catch((error) => {
-        console.error("Error auto-updating reservation to Late:", error);
       })
       .finally(() => {
         setAutoUpdatingReservations((prev) => prev.filter((x) => x !== id));

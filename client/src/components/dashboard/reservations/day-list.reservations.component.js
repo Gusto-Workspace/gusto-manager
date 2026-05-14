@@ -56,8 +56,11 @@ export default function DayListReservationsComponent(props) {
     setActionError("");
     if (!reservation) return;
 
-    // ✅ interdit d'édit une canceled
-    if (actionType === "edit" && reservation.status === "Canceled") {
+    // ✅ interdit d'édit une réservation annulée / refusée
+    if (
+      actionType === "edit" &&
+      ["Canceled", "Rejected"].includes(reservation.status)
+    ) {
       setActionError(
         "Impossible de modifier une réservation annulée. Repasse-la en confirmée d’abord.",
       );

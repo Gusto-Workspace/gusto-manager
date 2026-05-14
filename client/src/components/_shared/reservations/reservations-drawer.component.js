@@ -10,6 +10,10 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { TableSvg, CommentarySvg } from "@/components/_shared/_svgs/_index";
+import {
+  getReservationStatusClassName,
+  getReservationStatusLabel,
+} from "./reservation-status.utils";
 
 const CLOSE_MS = 280;
 
@@ -280,50 +284,18 @@ export default function ReservationsDrawerComponent({
   const tableLabel =
     getReservationTableLabel(reservation, tablesCatalog) || "-";
 
-  const statusUi = useMemo(() => {
-    if (status === "AwaitingBankHold")
-      return {
-        cls: "bg-[#F59E0B1A] text-[#B45309] border-[#F59E0B66]",
-        label: "Empreinte en attente",
-      };
-    if (status === "Pending")
-      return {
-        cls: "bg-blue/10 text-blue border-blue/30",
-        label: "En attente",
-      };
-    if (status === "Confirmed")
-      return { cls: "bg-blue/15 text-blue border-blue/40", label: "Confirmée" };
-    if (status === "Active")
-      return {
-        cls: "bg-green/10 text-green border-green/30",
-        label: "En cours",
-      };
-    if (status === "Late")
-      return {
-        cls: "bg-[#FF914D22] text-[#B95E1C] border-[#FF914D66]",
-        label: "En retard",
-      };
-    if (status === "Finished")
-      return {
-        cls: "bg-darkBlue/5 text-darkBlue/70 border-darkBlue/20",
-        label: "Terminée",
-      };
-    if (status === "Canceled")
-      return { cls: "bg-red/10 text-red border-red/20", label: "Annulée" };
-    if (status === "Rejected")
-      return { cls: "bg-red/10 text-red border-red/20", label: "Refusée" };
-    return {
-      cls: "bg-darkBlue/5 text-darkBlue/70 border-darkBlue/20",
-      label: status || "-",
-    };
-  }, [status]);
+  const statusUi = useMemo(
+    () => ({
+      cls: getReservationStatusClassName(status),
+      label: getReservationStatusLabel(status),
+    }),
+    [status],
+  );
 
   const primaryAction = useMemo(() => {
     if (status === "Pending")
       return { type: "confirm", label: t?.("buttons.confirm") || "Confirmer" };
-    if (status === "Confirmed" || status === "Late")
-      return { type: "active", label: t?.("buttons.active") || "Activer" };
-    if (status === "Active")
+    if (["Confirmed", "Active", "Late"].includes(status))
       return { type: "finish", label: t?.("buttons.finish") || "Terminer" };
     return null;
   }, [status, t]);
@@ -699,7 +671,7 @@ export default function ReservationsDrawerComponent({
                 </button>
               ) : null}
 
-              {status === "Canceled" || status === "Rejected" ? (
+              {["Canceled", "Rejected"].includes(status) ? (
                 <>
                   <button
                     onClick={() => onAction?.(reservation, "restore_confirmed")}
@@ -727,20 +699,12 @@ export default function ReservationsDrawerComponent({
                   onClick={() =>
                     onAction?.(
                       reservation,
-                      status === "Pending"
-                        ? "reject"
-                        : status === "Active"
-                          ? "delete"
-                          : "cancel",
+                      status === "Pending" ? "reject" : "cancel",
                     )
                   }
                   className="w-full inline-flex items-center justify-center rounded-xl border border-red/20 bg-red/10 text-red hover:bg-red/15 transition px-4 py-3 text-sm font-semibold"
                 >
-                  {status === "Pending"
-                    ? "Refuser"
-                    : status === "Active"
-                      ? "Supprimer"
-                      : "Annuler"}
+                  {status === "Pending" ? "Refuser" : "Annuler"}
                 </button>
               )}
             </div>

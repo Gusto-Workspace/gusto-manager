@@ -138,7 +138,7 @@ export default function AutomationsParametersComponent({
 
             <div className="mt-3 text-xs text-darkBlue/55">
               {auto_finish_reservations
-                ? "Activé : une réservation “En cours” passera en “Terminée” après la durée définie ci-dessous (midi/soir)."
+                ? "Activé : une réservation confirmée passera automatiquement en “Terminée” après la durée définie ci-dessous (midi/soir)."
                 : "Désactivé : vous devez terminer la réservation manuellement."}
             </div>
           </div>

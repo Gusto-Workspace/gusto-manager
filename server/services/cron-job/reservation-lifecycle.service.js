@@ -10,7 +10,6 @@ const {
   buildReservationBankHoldStripeMetadata,
 } = require("../reservation-bank-hold-metadata.service");
 
-const LATE_GRACE_PERIOD_MS = 5 * 60 * 1000;
 const SHORT_LIVED_DELETE_MS = 10 * 60 * 1000;
 
 function buildReservationDateTime(reservationDateUTC, reservationTime) {
@@ -200,41 +199,13 @@ async function runReservationLifecycleCron() {
   const now = new Date();
   const restaurantCache = new Map();
 
-  const confirmedReservations = await ReservationModel.find({
-    status: "Confirmed",
+  const autoFinishReservations = await ReservationModel.find({
+    status: { $in: ["Confirmed", "Active", "Late"] },
   }).select(
     "_id restaurant_id customer numberOfGuests reservationDate reservationTime status activatedAt finishedAt reminder24hDueAt reminder24hSentAt reminder24hLockedAt",
   );
 
-  for (const reservation of confirmedReservations) {
-    const restaurant = await getRestaurantCached(
-      restaurantCache,
-      reservation.restaurant_id,
-    );
-    if (!restaurant) continue;
-
-    const reservationStart = buildReservationDateTime(
-      reservation.reservationDate,
-      reservation.reservationTime,
-    );
-    if (!reservationStart) continue;
-
-    if (now.getTime() >= reservationStart.getTime() + LATE_GRACE_PERIOD_MS) {
-      await transitionReservationStatus({
-        reservation,
-        nextStatus: "Late",
-        restaurantCache,
-      });
-    }
-  }
-
-  const activeLikeReservations = await ReservationModel.find({
-    status: { $in: ["Active", "Late"] },
-  }).select(
-    "_id restaurant_id customer numberOfGuests reservationDate reservationTime status activatedAt finishedAt reminder24hDueAt reminder24hSentAt reminder24hLockedAt",
-  );
-
-  for (const reservation of activeLikeReservations) {
+  for (const reservation of autoFinishReservations) {
     const restaurant = await getRestaurantCached(
       restaurantCache,
       reservation.restaurant_id,

@@ -2203,7 +2203,7 @@ router.put(
           return res.status(400).json({
             code: "SMART_AVAILABILITY_SETUP_REQUIRED",
             message:
-              "Créez d’abord une salle et placez au moins une table sur le plan avant d’activer la gestion intelligente.",
+              "Créez d’abord une salle et placez au moins une table sur le plan avant d’activer le placement automatique.",
             details: setupStatus,
           });
         }
@@ -3588,10 +3588,15 @@ router.put(
     const { status } = req.body;
 
     try {
-      const nextStatus = String(status || "").trim();
-      if (!nextStatus) {
+      const requestedStatus = String(status || "").trim();
+      if (!requestedStatus) {
         return res.status(400).json({ message: "status manquant." });
       }
+
+      const nextStatus =
+        requestedStatus === "Active" || requestedStatus === "Late"
+          ? "Confirmed"
+          : requestedStatus;
 
       // whitelist des statuts si tu veux sécuriser
       const ALLOWED = new Set([
@@ -3687,7 +3692,10 @@ router.put(
         let tableReassigned = false;
         let tableChange = null;
 
-        if (mustCheckTable && parameters.manage_disponibilities) {
+        const hasConfiguredTable =
+          String(reservation?.table?.source || "") === "configured";
+
+        if (mustCheckTable && (parameters.manage_disponibilities || hasConfiguredTable)) {
           const singleSeatSizes = getEligibleSingleTableSeatSizesFromGuests(
             reservation.numberOfGuests,
           );
@@ -3775,6 +3783,14 @@ router.put(
               : null);
 
           if (!currentOption) {
+            if (!parameters.manage_disponibilities) {
+              return res.status(409).json({
+                code: "TABLE_UNAVAILABLE",
+                message:
+                  "La table attribuée n’est plus disponible pour ce créneau.",
+              });
+            }
+
             const newTable = availableOptions[0] || null;
             if (!newTable) {
               return res.status(409).json({
@@ -4088,34 +4104,19 @@ router.put(
         }
       }
 
-      // ---------------------
-      // ✅ Grace logic
-      // ---------------------
-      const gracePeriod = 5 * 60000;
-
       const statusExplicit = Object.prototype.hasOwnProperty.call(
         updateData,
         "status",
       );
 
-      if (touchesDateTime && !statusExplicit) {
-        const base = buildReservationDateTime(candidateDate, candidateTime);
-        const reservationWithGrace = new Date(base.getTime() + gracePeriod);
-
-        const now = new Date();
-
-        if (existing.status === "Late" && now < reservationWithGrace) {
-          updateData.status = "Confirmed";
-          updateData.finishedAt = null;
-          updateData.activatedAt = null;
-        }
-
-        if (existing.status === "Confirmed" && now >= reservationWithGrace) {
-          updateData.status = "Late";
-          updateData.finishedAt = null;
-          // Late => activatedAt doit exister
-          updateData.activatedAt = existing.activatedAt || new Date();
-        }
+      if (
+        touchesDateTime &&
+        !statusExplicit &&
+        ["Active", "Late"].includes(String(existing.status || ""))
+      ) {
+        updateData.status = "Confirmed";
+        updateData.finishedAt = null;
+        updateData.activatedAt = null;
       }
 
       const touchesTableExplicitly = Object.prototype.hasOwnProperty.call(
@@ -4228,7 +4229,7 @@ router.put(
             ) {
               return res.status(400).json({
                 message:
-                  "La table est obligatoire quand la gestion intelligente est active.",
+                  "La table est obligatoire quand le placement automatique est actif.",
               });
             }
 

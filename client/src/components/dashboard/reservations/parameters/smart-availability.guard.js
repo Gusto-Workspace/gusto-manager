@@ -1,7 +1,7 @@
 import { getActiveFloorPlanRooms } from "../floor-plan.rooms.utils";
 
 export const SMART_AVAILABILITY_SETUP_ERROR_MESSAGE =
-  "Créez d’abord une salle et placez au moins une table sur le plan avant d’activer la gestion intelligente.";
+  "Créez d’abord une salle et placez au moins une table sur le plan avant d’activer le placement automatique.";
 
 export function getSmartAvailabilitySetupState({
   tablesCatalog = [],
