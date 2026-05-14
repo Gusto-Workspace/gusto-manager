@@ -513,7 +513,7 @@ export default function AddEmployeesComponent() {
                 <input
                   id="dateOnPost"
                   type="date"
-                  {...register("dateOnPost", { required: true })}
+                  {...register("dateOnPost")}
                   className={
                     errors.dateOnPost && isSubmitted
                       ? inputErrorCls

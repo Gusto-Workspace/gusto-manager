@@ -745,6 +745,10 @@ export default function FloorPlanCanvasReservationsComponent({
   selectedTableState,
   onSelectTable,
   shouldResetView,
+  selectionMode = false,
+  selectableConfiguredTableIds = [],
+  selectedConfiguredTableIds = [],
+  onSelectConfiguredTable = null,
 }) {
   const wrapRef = useRef(null);
   const stageRef = useRef(null);
@@ -823,6 +827,20 @@ export default function FloorPlanCanvasReservationsComponent({
     }
     return map;
   }, [catalog]);
+  const selectableConfiguredTableIdSet = useMemo(() => {
+    return new Set(
+      safeArr(selectableConfiguredTableIds)
+        .map((id) => String(id || "").trim())
+        .filter(Boolean),
+    );
+  }, [selectableConfiguredTableIds]);
+  const selectedConfiguredTableIdSet = useMemo(() => {
+    return new Set(
+      safeArr(selectedConfiguredTableIds)
+        .map((id) => String(id || "").trim())
+        .filter(Boolean),
+    );
+  }, [selectedConfiguredTableIds]);
 
   const reservationsByTableId = useMemo(() => {
     const map = new Map();
@@ -1407,7 +1425,27 @@ export default function FloorPlanCanvasReservationsComponent({
   function handleCanvasTap(e) {
     if (suppressTableSelectRef.current) return;
     if (e?.target !== e?.target?.getStage?.()) return;
+
+    if (selectionMode) {
+      onSelectConfiguredTable?.("", null);
+    }
+
     onSelectTable?.(null);
+  }
+
+  function handleSelectableTableInteraction(nextState) {
+    if (!nextState?.ref?._id) return;
+
+    const configuredTableId = String(nextState.ref._id || "").trim();
+
+    if (selectionMode) {
+      if (!selectableConfiguredTableIdSet.has(configuredTableId)) return;
+      onSelectConfiguredTable?.(configuredTableId, null);
+      onSelectTable?.(null);
+      return;
+    }
+
+    handleTableSelection(nextState);
   }
 
   useLayoutEffect(() => {
@@ -1752,10 +1790,17 @@ export default function FloorPlanCanvasReservationsComponent({
     const conflictingReservation = ui.conflictingReservation || null;
     const displayReservation = ui.displayReservation || null;
     const tableStatus = ui.tableStatus || "free";
+    const configuredTableId = String(ref?._id || "").trim();
 
     const theme = statusTheme(tableStatus);
-    const isSelected =
-      String(selectedTableState?.object?.id || "") === String(obj.id);
+    const isSelectableInSelectionMode = selectionMode
+      ? selectableConfiguredTableIdSet.has(configuredTableId)
+      : true;
+    const isSelected = selectionMode
+      ? selectedConfiguredTableIdSet.has(configuredTableId)
+      : String(selectedTableState?.object?.id || "") === String(obj.id);
+    const tableOpacity =
+      selectionMode && !isSelectableInSelectionMode ? 0.55 : 1;
 
     const chairR = 7;
     const chairOffset = 5;
@@ -1813,8 +1858,9 @@ export default function FloorPlanCanvasReservationsComponent({
         key={obj.id}
         x={Number(obj.x || 0)}
         y={Number(obj.y || 0)}
+        opacity={tableOpacity}
         onClick={() =>
-          handleTableSelection({
+          handleSelectableTableInteraction({
             object: obj,
             ref,
             reservation: displayReservation,
@@ -1827,7 +1873,7 @@ export default function FloorPlanCanvasReservationsComponent({
           })
         }
         onTap={() =>
-          handleTableSelection({
+          handleSelectableTableInteraction({
             object: obj,
             ref,
             reservation: displayReservation,
@@ -1939,6 +1985,7 @@ export default function FloorPlanCanvasReservationsComponent({
   }
 
   const tooltipData = useMemo(() => {
+    if (selectionMode) return null;
     if (!selectedTableState?.object || !stageSize.w || !stageSize.h)
       return null;
 
@@ -1996,6 +2043,7 @@ export default function FloorPlanCanvasReservationsComponent({
     };
   }, [
     selectedTableState,
+    selectionMode,
     pos,
     scale,
     stageSize.w,

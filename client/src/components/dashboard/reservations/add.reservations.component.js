@@ -31,13 +31,16 @@ import {
 } from "../../_shared/_svgs/_index";
 
 // LUCIDE
-import { Loader2, Save, X } from "lucide-react";
+import { Loader2, Save, X, List } from "lucide-react";
 
 import CatalogHeaderDashboardComponent from "../_shared/catalog-header.dashboard.component";
+import FloorPlanSelectorReservationsComponent from "./floor-plan-selector.reservations.component";
 import {
   buildFloorPlanRoomMetaByTableId,
   getDisabledFloorPlanTableIds,
 } from "./floor-plan.rooms.utils";
+
+const OTHER_TABLE_OPTION_VALUE = "__other_table__";
 
 /* ---------------------------------------
    ✅ Simple Modal (inline)
@@ -92,6 +95,10 @@ function InfoModal({ open, title, message, confirmLabel = "OK", onClose }) {
 function getServiceBucketFromTime(reservationTime) {
   const [hh = "0"] = String(reservationTime || "00:00").split(":");
   return Number(hh) < 16 ? "lunch" : "dinner";
+}
+
+function safeArr(value) {
+  return Array.isArray(value) ? value : [];
 }
 
 function getOccupancyMinutesFront(parameters, reservationTime) {
@@ -619,6 +626,33 @@ export default function AddReservationComponent(props) {
   const subtitle = isEditing
     ? t("buttons.edit", "Modifier une réservation")
     : t("buttons.add", "Ajouter une réservation");
+  const reservationParameters = props.restaurantData?.reservationsSettings || {};
+  const catalogTables = safeArr(reservationParameters?.tables);
+  const activeFloorPlanRooms = safeArr(
+    reservationParameters?.floorplan?.rooms,
+  ).filter((room) => room?.enabled !== false);
+  const catalogTableIds = useMemo(() => {
+    return new Set(
+      catalogTables
+        .map((table) => String(table?._id || "").trim())
+        .filter(Boolean),
+    );
+  }, [catalogTables]);
+  const roomsWithPlacedTables = useMemo(() => {
+    return activeFloorPlanRooms.filter((room) =>
+      safeArr(room?.objects).some(
+        (obj) =>
+          obj?.type === "table" &&
+          catalogTableIds.has(String(obj?.tableRefId || "").trim()),
+      ),
+    );
+  }, [activeFloorPlanRooms, catalogTableIds]);
+  const showFloorPlanSelector = roomsWithPlacedTables.length > 0;
+  const structuredTableAssignmentEnabled = manageDisponibilities
+    ? catalogTables.length > 0
+    : showFloorPlanSelector;
+  const allowManualTableFallbackOption =
+    structuredTableAssignmentEnabled && !manageDisponibilities;
 
   const [reservationData, setReservationData] = useState({
     reservationDate: new Date(),
@@ -642,6 +676,10 @@ export default function AddReservationComponent(props) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasUserChangedSlot, setHasUserChangedSlot] = useState(false);
   const [hasUserChangedTable, setHasUserChangedTable] = useState(false);
+  const [tableInputMode, setTableInputMode] = useState(
+    structuredTableAssignmentEnabled ? "configured" : "manual",
+  );
+  const [tableSelectionInfo, setTableSelectionInfo] = useState("");
 
   // ✅ Modal states
   const [modalOpen, setModalOpen] = useState(false);
@@ -672,15 +710,22 @@ export default function AddReservationComponent(props) {
     const r = props.reservation;
 
     let tableValue = "";
+    let nextTableInputMode = structuredTableAssignmentEnabled
+      ? "configured"
+      : "manual";
 
-    if (manageDisponibilities) {
-      if (r?.table?.source === "configured") {
-        tableValue = getConfiguredTableSelectionKeyFront(r.table);
-      } else if (r?.table?.source === "manual") {
-        tableValue = String(r?.table?.name || "").trim();
-      }
-    } else {
+    if (
+      structuredTableAssignmentEnabled &&
+      r?.table?.source === "configured"
+    ) {
+      tableValue = getConfiguredTableSelectionKeyFront(r.table);
+      nextTableInputMode = "configured";
+    } else if (r?.table?.source === "configured") {
       tableValue = String(r?.table?.name || "").trim();
+      nextTableInputMode = "manual";
+    } else if (r?.table?.source === "manual") {
+      tableValue = String(r?.table?.name || "").trim();
+      nextTableInputMode = "manual";
     }
 
     setReservationData({
@@ -697,13 +742,24 @@ export default function AddReservationComponent(props) {
       table: tableValue,
       requestBankHold: false,
     });
+    setTableInputMode(nextTableInputMode);
+    setTableSelectionInfo("");
     setHasUserChangedSlot(false);
     setHasUserChangedTable(false);
   }, [
     props.reservation,
-    manageDisponibilities,
+    structuredTableAssignmentEnabled,
     props.restaurantData?.reservationsSettings?.tables,
   ]);
+
+  useEffect(() => {
+    if (props.reservation) return;
+
+    setTableInputMode((prev) => {
+      if (!structuredTableAssignmentEnabled) return "manual";
+      return prev === "manual" ? "manual" : "configured";
+    });
+  }, [props.reservation, structuredTableAssignmentEnabled]);
 
   useEffect(() => {
     if (
@@ -838,7 +894,7 @@ export default function AddReservationComponent(props) {
   useEffect(() => {
     const parameters = props.restaurantData.reservationsSettings;
 
-    if (!parameters.manage_disponibilities) {
+    if (!structuredTableAssignmentEnabled) {
       setAvailableTables([]);
       return;
     }
@@ -932,57 +988,80 @@ export default function AddReservationComponent(props) {
     props.reservation,
     reservations,
     props.restaurantData?.reservationsSettings,
+    structuredTableAssignmentEnabled,
   ]);
 
   useEffect(() => {
     const parameters = props.restaurantData?.reservationsSettings;
-    if (!parameters?.manage_disponibilities) return;
-
     const hasPickedSlot =
       Boolean(reservationData.numberOfGuests) &&
       Boolean(reservationData.reservationDate) &&
       Boolean(reservationData.reservationTime);
 
-    // Si pas de slot => on vide la table
+    if (!structuredTableAssignmentEnabled) return;
+    if (tableInputMode === "manual") return;
+
     if (!hasPickedSlot) {
-      if (reservationData.table) {
+      if (parameters?.manage_disponibilities && reservationData.table) {
         setReservationData((p) => ({ ...p, table: "" }));
       }
       return;
     }
 
-    if (isEditing && !hasUserChangedSlot && reservationData.table) return;
+    if (parameters?.manage_disponibilities) {
+      if (isEditing && !hasUserChangedSlot && reservationData.table) return;
 
-    // Si aucune table dispo
-    if (!availableTables || availableTables.length === 0) {
-      if (!isEditing && reservationData.table) {
-        setReservationData((p) => ({ ...p, table: "" }));
+      if (!availableTables || availableTables.length === 0) {
+        if (!isEditing && reservationData.table) {
+          setReservationData((p) => ({ ...p, table: "" }));
+        }
+        return;
       }
-      // en édition, on peut garder la table affichée même si plus dispo
-      // (le backend tranchera au submit, ou tu peux afficher un message)
+
+      const current = String(reservationData.table || "");
+      const stillValid = availableTables.some((t) => String(t._id) === current);
+
+      if (current && stillValid) return;
+
+      const nextId = String(availableTables[0]._id);
+      if (current !== nextId) {
+        setReservationData((p) => ({ ...p, table: nextId }));
+      }
       return;
     }
 
     const current = String(reservationData.table || "");
+    if (!current) return;
+
     const stillValid = availableTables.some((t) => String(t._id) === current);
-
-    // si encore valide, ne rien faire
-    if (current && stillValid) return;
-
-    // ✅ sinon auto-assign
-    const nextId = String(availableTables[0]._id);
-    if (current !== nextId) {
-      setReservationData((p) => ({ ...p, table: nextId }));
+    if (stillValid) {
+      if (tableSelectionInfo) {
+        setTableSelectionInfo("");
+      }
+      return;
     }
+
+    if (isEditing && !hasUserChangedSlot && !hasUserChangedTable) {
+      return;
+    }
+
+    setReservationData((prev) => ({ ...prev, table: "" }));
+    setTableSelectionInfo(
+      "La table précédemment sélectionnée n’est plus disponible pour ce créneau. Choisissez-en une autre ou laissez le champ vide.",
+    );
   }, [
     availableTables,
     isEditing,
     hasUserChangedSlot,
+    hasUserChangedTable,
     reservationData.numberOfGuests,
     reservationData.reservationDate,
     reservationData.reservationTime,
     reservationData.table,
     props.restaurantData?.reservationsSettings,
+    structuredTableAssignmentEnabled,
+    tableInputMode,
+    tableSelectionInfo,
   ]);
 
   function generateTimeOptions(openTime, closeTime, interval) {
@@ -1012,8 +1091,15 @@ export default function AddReservationComponent(props) {
       ...prevData,
       reservationDate: selectedDate,
       reservationTime: "",
-      table: isEditing ? prevData.table : "",
+      table:
+        structuredTableAssignmentEnabled && tableInputMode !== "manual"
+          ? ""
+          : prevData.table,
     }));
+    if (structuredTableAssignmentEnabled && tableInputMode !== "manual") {
+      setHasUserChangedTable(true);
+      setTableSelectionInfo("");
+    }
   }
 
   function disableClosedDays({ date, view }) {
@@ -1034,12 +1120,61 @@ export default function AddReservationComponent(props) {
 
     if (name === "numberOfGuests") setHasUserChangedSlot(true);
 
-    if (name === "table") setHasUserChangedTable(true);
+    if (name === "table") {
+      setHasUserChangedTable(true);
+      setTableSelectionInfo("");
+    }
 
     setReservationData((prevData) => ({
       ...prevData,
       [name]: type === "checkbox" ? checked : value,
-      ...(name === "numberOfGuests" ? { reservationTime: "", table: "" } : {}),
+      ...(name === "numberOfGuests"
+        ? {
+            reservationTime: "",
+            table:
+              structuredTableAssignmentEnabled && tableInputMode !== "manual"
+                ? ""
+                : prevData.table,
+          }
+        : {}),
+    }));
+  }
+
+  function handleStructuredTableChange(e) {
+    const nextValue = String(e.target.value || "");
+
+    if (nextValue === OTHER_TABLE_OPTION_VALUE) {
+      setTableInputMode("manual");
+      setHasUserChangedTable(true);
+      setTableSelectionInfo("");
+      setReservationData((prevData) => ({
+        ...prevData,
+        table: "",
+      }));
+      return;
+    }
+
+    setTableInputMode("configured");
+    setHasUserChangedTable(true);
+    setTableSelectionInfo("");
+    setReservationData((prevData) => ({
+      ...prevData,
+      table: nextValue,
+    }));
+  }
+
+  function handleManualTableChange(e) {
+    setTableInputMode("manual");
+    handleInputChange(e);
+  }
+
+  function handleBackToTableList() {
+    setTableInputMode("configured");
+    setHasUserChangedTable(true);
+    setTableSelectionInfo("");
+    setReservationData((prevData) => ({
+      ...prevData,
+      table: "",
     }));
   }
 
@@ -1067,7 +1202,7 @@ export default function AddReservationComponent(props) {
     const updatedData = { ...reservationData };
 
     // auto => prend la 1ère table dispo côté front (mais backend recheck)
-    if (!isEditing && !updatedData.table) {
+    if (!isEditing && manageDisponibilities && !updatedData.table) {
       updatedData.table = availableTables?.[0]?._id
         ? String(availableTables[0]._id)
         : null;
@@ -1081,6 +1216,18 @@ export default function AddReservationComponent(props) {
 
     let slotChanged = hasUserChangedSlot;
     let tableChanged = hasUserChangedTable;
+
+    const tableModeForPayload = !structuredTableAssignmentEnabled
+      ? String(updatedData.table || "").trim()
+        ? "manual"
+        : "empty"
+      : tableInputMode === "manual"
+        ? String(updatedData.table || "").trim()
+          ? "manual"
+          : "empty"
+        : String(updatedData.table || "").trim()
+          ? "configured"
+          : "empty";
 
     if (
       manageDisponibilities &&
@@ -1114,6 +1261,7 @@ export default function AddReservationComponent(props) {
         customerPhone: updatedData.customerPhone,
         commentary: updatedData.commentary,
         table: updatedData.table,
+        tableMode: tableModeForPayload,
       };
     } else {
       // slot modifié => payload complet
@@ -1127,6 +1275,7 @@ export default function AddReservationComponent(props) {
         customerPhone: updatedData.customerPhone,
         commentary: updatedData.commentary,
         table: updatedData.table,
+        tableMode: tableModeForPayload,
       };
 
       if (!isEditing) {
@@ -1235,8 +1384,17 @@ export default function AddReservationComponent(props) {
     setReservationData((prevData) => ({
       ...prevData,
       reservationTime,
-      table: isEditing ? prevData.table : "",
+      table:
+        structuredTableAssignmentEnabled && tableInputMode !== "manual"
+          ? isEditing
+            ? prevData.table
+            : ""
+          : prevData.table,
     }));
+
+    if (structuredTableAssignmentEnabled && tableInputMode !== "manual") {
+      setTableSelectionInfo("");
+    }
   }
 
   const canPickTime = Boolean(reservationData.numberOfGuests);
@@ -1257,7 +1415,14 @@ export default function AddReservationComponent(props) {
     Boolean(reservationData.reservationTime);
 
   const currentTableOption = useMemo(() => {
-    if (!isEditing || !manageDisponibilities || hasUserChangedSlot) return null;
+    if (
+      !isEditing ||
+      !structuredTableAssignmentEnabled ||
+      tableInputMode === "manual" ||
+      hasUserChangedSlot
+    ) {
+      return null;
+    }
 
     const selectionKey = String(reservationData.table || "");
     if (!selectionKey) return null;
@@ -1278,7 +1443,8 @@ export default function AddReservationComponent(props) {
     };
   }, [
     isEditing,
-    manageDisponibilities,
+    structuredTableAssignmentEnabled,
+    tableInputMode,
     hasUserChangedSlot,
     props.reservation,
     availableTables,
@@ -1619,41 +1785,68 @@ export default function AddReservationComponent(props) {
                   {t("labels.add.table")}
                 </label>
 
-                {manageDisponibilities ? (
-                  <select
-                    id="table"
-                    name="table"
-                    value={reservationData.table}
-                    onChange={handleInputChange}
-                    required={Boolean(hasPickedSlot && manageDisponibilities)}
-                    className="h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 text-base outline-none transition focus:border-blue/60 focus:ring-2 focus:ring-blue/20"
-                  >
-                    {!hasPickedSlot ? (
-                      <option value="" disabled>
-                        Choisissez d’abord un créneau
+                {structuredTableAssignmentEnabled ? (
+                  tableInputMode === "manual" ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        id="table"
+                        name="table"
+                        value={reservationData.table}
+                        onChange={handleManualTableChange}
+                        placeholder="Saisir une table temporaire"
+                        required={Boolean(manageDisponibilities)}
+                        className="h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 text-base outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-2 focus:ring-blue/20"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={handleBackToTableList}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-darkBlue/10 bg-white/80 text-darkBlue/60 transition hover:bg-darkBlue/5 hover:text-darkBlue"
+                        aria-label="Choisir dans la liste"
+                        title="Choisir dans la liste"
+                      >
+                        <List className="size-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <select
+                      id="table"
+                      name="table"
+                      value={reservationData.table}
+                      onChange={handleStructuredTableChange}
+                      required={Boolean(hasPickedSlot && manageDisponibilities)}
+                      className="h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 text-base outline-none transition focus:border-blue/60 focus:ring-2 focus:ring-blue/20"
+                    >
+                      <option value="">
+                        {manageDisponibilities
+                          ? "Sélectionner une table"
+                          : "Aucune table attribuée"}
                       </option>
-                    ) : tablesForSelect.length === 0 ? (
-                      <option value="" disabled>
-                        Aucune table disponible
-                      </option>
-                    ) : (
-                      groupedTablesForSelect.map((group) => (
-                        <optgroup key={group.label} label={group.label}>
-                          {group.tables.map((table) => (
-                            <option key={table._id} value={table._id}>
-                              {table.name
-                                ? `${table.name} · ${table.seats} places${
-                                    table.kind === "combo"
-                                      ? " (combinaison)"
-                                      : ""
-                                  }`
-                                : `Table de ${table.seats} places`}
-                            </option>
-                          ))}
-                        </optgroup>
-                      ))
-                    )}
-                  </select>
+
+                      {hasPickedSlot && tablesForSelect.length > 0
+                        ? groupedTablesForSelect.map((group) => (
+                            <optgroup key={group.label} label={group.label}>
+                              {group.tables.map((table) => (
+                                <option key={table._id} value={table._id}>
+                                  {table.name
+                                    ? `${table.name} · ${table.seats} places${
+                                        table.kind === "combo"
+                                          ? " (combinaison)"
+                                          : ""
+                                      }`
+                                    : `Table de ${table.seats} places`}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))
+                        : null}
+
+                      {allowManualTableFallbackOption ? (
+                        <option value={OTHER_TABLE_OPTION_VALUE}>Autre</option>
+                      ) : null}
+                    </select>
+                  )
                 ) : (
                   <input
                     type="text"
@@ -1664,9 +1857,40 @@ export default function AddReservationComponent(props) {
                     className="h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 text-base outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-2 focus:ring-blue/20"
                   />
                 )}
+
+                {tableSelectionInfo ? (
+                  <p className="text-sm text-orange">{tableSelectionInfo}</p>
+                ) : structuredTableAssignmentEnabled && !hasPickedSlot ? (
+                  <p className="text-sm text-darkBlue/60">
+                    Choisissez un créneau pour voir les tables disponibles.
+                  </p>
+                ) : null}
               </div>
             </div>
           </div>
+
+          {showFloorPlanSelector ? (
+            <FloorPlanSelectorReservationsComponent
+              reservationParameters={reservationParameters}
+              tablesCatalog={catalogTables}
+              reservations={reservations}
+              selectedDate={reservationData.reservationDate}
+              selectedTime={reservationData.reservationTime}
+              availableTables={tablesForSelect}
+              selectedTableValue={
+                tableInputMode === "manual" ? "" : reservationData.table
+              }
+              onSelectTableValue={(nextValue) => {
+                setTableInputMode("configured");
+                setHasUserChangedTable(true);
+                setTableSelectionInfo("");
+                setReservationData((prevData) => ({
+                  ...prevData,
+                  table: nextValue,
+                }));
+              }}
+            />
+          ) : null}
 
           {!isEditing && bankHoldFeatureEnabled && (
             <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-4">

@@ -123,17 +123,17 @@ function RoomRowSortable({
           onClick={onToggleEnabled}
           className={[
             "inline-flex items-center justify-center size-10 rounded-2xl border transition",
-            room?.enabled === false
+            room?.enabled === true
               ? "border-green/20 bg-green/10 hover:bg-green/15"
               : "border-orange/20 bg-orange/10 hover:bg-orange/15",
           ].join(" ")}
-          title={room?.enabled === false ? "Activer" : "Désactiver"}
-          aria-label={room?.enabled === false ? "Activer" : "Désactiver"}
+          title={room?.enabled === true ? "Activer" : "Désactiver"}
+          aria-label={room?.enabled === true ? "Activer" : "Désactiver"}
         >
           <Power
             className={[
               "size-4",
-              room?.enabled === false ? "text-green" : "text-orange",
+              room?.enabled === true ? "text-green" : "text-orange",
             ].join(" ")}
           />
         </button>

@@ -118,19 +118,13 @@ export default function FloorPlanDrawerReservationsComponent({
 
   const tablesCatalog = restaurantData?.reservationsSettings?.tables || [];
   const reservationParameters = restaurantData?.reservationsSettings || {};
-  const manageSmartAvailability = Boolean(
-    reservationParameters?.manage_disponibilities,
-  );
 
   const contextDate = selectedDay || new Date();
   const contextDateKey = dateKeyOf(contextDate);
   const isDayContext = Boolean(selectedDay);
 
   const isTodayContext = isSameDay(contextDate, new Date());
-  const showLiveToggle =
-    manageSmartAvailability && (!isDayContext || isTodayContext);
-  const effectiveLiveMode = manageSmartAvailability ? liveMode : false;
-  const effectiveSelectedTime = manageSmartAvailability ? selectedTime : "";
+  const showLiveToggle = !isDayContext || isTodayContext;
 
   const [isTabletUp, setIsTabletUp] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -194,10 +188,7 @@ export default function FloorPlanDrawerReservationsComponent({
       setSelectedTableState(null);
       setShouldResetView(true);
 
-      if (!manageSmartAvailability) {
-        setLiveMode(false);
-        setSelectedTime("");
-      } else if (isDayContext) {
+      if (isDayContext) {
         if (!isTodayContext) {
           setLiveMode(false);
           setSelectedTime(timeOptions[0] || "");
@@ -422,7 +413,6 @@ export default function FloorPlanDrawerReservationsComponent({
     isDayContext,
     isTodayContext,
     timeOptions,
-    manageSmartAvailability,
   ]);
 
   useEffect(() => {
@@ -433,13 +423,6 @@ export default function FloorPlanDrawerReservationsComponent({
   useEffect(() => {
     if (!open) return;
     if (!isDayContext) return;
-    if (!manageSmartAvailability) {
-      if (selectedTime !== "") {
-        setSelectedTime("");
-      }
-      return;
-    }
-
     if (liveMode) {
       if (selectedTime !== "") {
         setSelectedTime("");
@@ -459,7 +442,6 @@ export default function FloorPlanDrawerReservationsComponent({
     liveMode,
     timeOptions,
     selectedTime,
-    manageSmartAvailability,
   ]);
 
   useEffect(() => {
@@ -688,7 +670,7 @@ export default function FloorPlanDrawerReservationsComponent({
                 ) : null}
               </div>
 
-              {manageSmartAvailability && isDayContext && !liveMode ? (
+              {isDayContext && !liveMode ? (
                 <div className="rounded-[22px] border border-darkBlue/10 bg-white/70 px-4 py-3">
                   <div className="flex items-center gap-2">
                     <Clock3 className="size-4 text-darkBlue/55" />
@@ -762,8 +744,8 @@ export default function FloorPlanDrawerReservationsComponent({
                 tablesCatalog={tablesCatalog}
                 reservationParameters={reservationParameters}
                 selectedDate={contextDate}
-                selectedTime={effectiveSelectedTime}
-                liveMode={effectiveLiveMode}
+                selectedTime={selectedTime}
+                liveMode={liveMode}
                 selectedTableState={selectedTableState}
                 onSelectTable={setSelectedTableState}
                 shouldResetView={shouldResetView}
