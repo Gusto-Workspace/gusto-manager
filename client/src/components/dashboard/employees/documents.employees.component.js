@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import axios from "axios";
 // SVG
 import { DeleteSvg, DownloadSvg } from "@/components/_shared/_svgs/_index";
 
@@ -63,6 +64,31 @@ export default function DocumentsEmployeeComponent(props) {
 
   const currentDocuments = props.currentDocuments || [];
   const baseUrl = props.baseUrl;
+
+  async function handleDownloadDocument(doc) {
+    if (!doc?.public_id || !baseUrl) return;
+
+    try {
+      const response = await axios.get(
+        `${baseUrl}/documents/${encodeURIComponent(doc.public_id)}/download`,
+        {
+          responseType: "blob",
+        },
+      );
+
+      const blob = new Blob([response.data]);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = doc.filename || doc.title || "document";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Erreur téléchargement document :", error);
+    }
+  }
 
   return (
     <section className={sectionCls}>
@@ -207,10 +233,9 @@ export default function DocumentsEmployeeComponent(props) {
 
                 <div className="mt-2 flex items-center justify-between gap-2">
                   {/* Télécharger */}
-                  <a
-                    href={`${baseUrl}/documents/${encodeURIComponent(
-                      doc.public_id
-                    )}/download`}
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadDocument(doc)}
                     className="inline-flex items-center justify-center rounded-full bg-[#4ead7a99] hover:bg-[#4ead7a] p-2 transition-colors duration-200"
                     title={t("Télécharger")}
                   >
@@ -220,7 +245,7 @@ export default function DocumentsEmployeeComponent(props) {
                       strokeColor="white"
                       fillColor="white"
                     />
-                  </a>
+                  </button>
 
                   {/* Supprimer */}
                   <button

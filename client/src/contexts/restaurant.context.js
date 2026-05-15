@@ -703,59 +703,79 @@ export default function RestaurantContext() {
   // ---------------------------
   // Fetch restaurant data
   // ---------------------------
-  function fetchRestaurantData(token, restaurantId) {
+  async function fetchRestaurantData(token, restaurantId) {
     setDataLoading(true);
 
-    axios
-      .get(
-        `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${restaurantId}`,
-        { headers: { Authorization: `Bearer ${token}` } },
-      )
-      .then(async (response) => {
-        const restaurant = response.data.restaurant;
-        const rid = String(restaurant._id);
+    let role = null;
+    try {
+      role = jwtDecode(token)?.role || null;
+    } catch {}
 
-        let role = null;
-        try {
-          role = jwtDecode(token)?.role || null;
-        } catch {}
+    try {
+      setNotifications([]);
+      setNotificationsNextCursor(null);
+      setNotificationsNextCursorByModule({
+        all: null,
+        reservations: null,
+        gift_cards: null,
+        employees: null,
+      });
+      setNotificationsLoading(false);
 
-        setNotifications([]);
-        setNotificationsNextCursor(null);
-        setNotificationsNextCursorByModule({
-          all: null,
-          reservations: null,
-          gift_cards: null,
-          employees: null,
-        });
-        setNotificationsLoading(false);
+      if (role === "employee") {
+        const response = await axios.get(
+          `${process.env.NEXT_PUBLIC_API_URL}/employees/me`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
 
-        setRestaurantData(restaurant);
+        const { restaurant, restaurants } = response.data || {};
+        setRestaurantsList(restaurants || []);
+        setRestaurantData(restaurant || null);
         await syncRestaurantReservations(restaurant, token);
 
-        // ✅ NEW: counts depuis l'API (owner)
-        if (role === "owner") {
-          await fetchUnreadCounts(token, rid);
+        if (restaurant?._id) {
+          await fetchUnreadCounts(token, String(restaurant._id));
         } else {
-          // employés: pas de pastilles
           setUnreadCounts({
             total: 0,
             byModule: { reservations: 0, gift_cards: 0, employees: 0 },
           });
         }
 
-        setDataLoading(false);
-      })
-      .catch((error) => {
-        if (error.response?.status === 403) handleInvalidToken();
-        else {
-          console.error(
-            "Erreur lors de la récupération des données du restaurant:",
-            error,
-          );
-          setDataLoading(false);
-        }
-      });
+        return;
+      }
+
+      const response = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${restaurantId}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+
+      const restaurant = response.data.restaurant;
+      const rid = String(restaurant._id);
+
+      setRestaurantData(restaurant);
+      await syncRestaurantReservations(restaurant, token);
+
+      if (role === "owner") {
+        await fetchUnreadCounts(token, rid);
+      } else {
+        setUnreadCounts({
+          total: 0,
+          byModule: { reservations: 0, gift_cards: 0, employees: 0 },
+        });
+      }
+    } catch (error) {
+      if (error.response?.status === 403) {
+        handleInvalidToken();
+      } else {
+        console.error(
+          "Erreur lors de la récupération des données du restaurant:",
+          error,
+        );
+      }
+    } finally {
+      setDataLoading(false);
+    }
   }
 
   function fetchRestaurantsList() {

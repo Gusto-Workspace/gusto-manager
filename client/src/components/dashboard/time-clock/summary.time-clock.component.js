@@ -10,8 +10,10 @@ import {
   LogOut,
   PenLine,
   Pencil,
+  Plus,
   RefreshCw,
   SquareArrowOutUpRight,
+  Trash2,
 } from "lucide-react";
 
 import SignaturePreviewTimeClockComponent from "./signature-preview.time-clock.component";
@@ -120,6 +122,17 @@ function toDateTimeInputValue(value) {
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}T${pad2(
     date.getHours(),
   )}:${pad2(date.getMinutes())}`;
+}
+
+function createEditableBreak(item = {}, fallbackEnd = null) {
+  return {
+    id:
+      item?.id ||
+      item?._id ||
+      `break-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    startAt: toDateTimeInputValue(item?.startAt),
+    endAt: toDateTimeInputValue(item?.endAt || fallbackEnd),
+  };
 }
 
 function formatCompactDateKey(value) {
@@ -537,6 +550,9 @@ export default function TimeClockSummaryComponent({
       clockInAt: toDateTimeInputValue(session.clockInAt),
       clockOutAt: toDateTimeInputValue(session.clockOutAt || new Date()),
       reason: "",
+      breaks: (session?.breaks || []).map((item) =>
+        createEditableBreak(item, session.clockOutAt || new Date()),
+      ),
     });
   }
 
@@ -559,6 +575,62 @@ export default function TimeClockSummaryComponent({
       return;
     }
 
+    const nextBreaks = [];
+    const orderedBreaks = [...(sessionEditModal.breaks || [])].sort((left, right) =>
+      String(left?.startAt || "").localeCompare(String(right?.startAt || "")),
+    );
+    let previousBreakEnd = null;
+
+    for (const currentBreak of orderedBreaks) {
+      if (!currentBreak?.startAt || !currentBreak?.endAt) {
+        setSessionEditError(
+          "Chaque pause ajoutée doit avoir une heure de début et une heure de fin.",
+        );
+        return;
+      }
+
+      const startAt = new Date(currentBreak.startAt);
+      const endAt = new Date(currentBreak.endAt);
+
+      if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime())) {
+        setSessionEditError("Les horaires de pause sont invalides.");
+        return;
+      }
+
+      if (endAt <= startAt) {
+        setSessionEditError(
+          "Chaque pause doit se terminer après son heure de début.",
+        );
+        return;
+      }
+
+      if (startAt < new Date(sessionEditModal.clockInAt)) {
+        setSessionEditError(
+          "Une pause ne peut pas commencer avant l'entrée du service.",
+        );
+        return;
+      }
+
+      if (endAt > new Date(sessionEditModal.clockOutAt)) {
+        setSessionEditError(
+          "Une pause ne peut pas se terminer après la sortie du service.",
+        );
+        return;
+      }
+
+      if (previousBreakEnd && startAt < previousBreakEnd) {
+        setSessionEditError("Les pauses se chevauchent.");
+        return;
+      }
+
+      previousBreakEnd = endAt;
+      nextBreaks.push({
+        id: currentBreak.id,
+        startAt: startAt.toISOString(),
+        endAt: endAt.toISOString(),
+      });
+    }
+
     setSavingSessionEdit(true);
     setSessionEditError("");
 
@@ -568,6 +640,7 @@ export default function TimeClockSummaryComponent({
         {
           clockInAt: new Date(sessionEditModal.clockInAt).toISOString(),
           clockOutAt: new Date(sessionEditModal.clockOutAt).toISOString(),
+          breaks: nextBreaks,
           reason: sessionEditModal.reason,
           anchorDate,
         },
@@ -856,6 +929,125 @@ export default function TimeClockSummaryComponent({
                   />
                 </label>
               </div>
+
+              <section className="rounded-[26px] border border-darkBlue/10 bg-lightGrey/35 px-4 py-4">
+                <div className="flex flex-col gap-3 midTablet:flex-row midTablet:items-center midTablet:justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-darkBlue">Pauses</p>
+                    <p className="mt-1 text-xs text-darkBlue/55">
+                      Les pauses corrigées sont prises en compte dans les totaux et les exports.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSessionEditModal((current) => ({
+                        ...current,
+                        breaks: [
+                          ...(current?.breaks || []),
+                          createEditableBreak(),
+                        ],
+                      }))
+                    }
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-darkBlue/10 bg-white px-4 text-sm font-medium text-darkBlue transition hover:bg-darkBlue/5"
+                    disabled={savingSessionEdit}
+                  >
+                    <Plus className="size-4" />
+                    Ajouter une pause
+                  </button>
+                </div>
+
+                {(sessionEditModal.breaks || []).length ? (
+                  <div className="mt-4 flex flex-col gap-3">
+                    {(sessionEditModal.breaks || []).map((item, index) => (
+                      <div
+                        key={item.id}
+                        className="rounded-2xl border border-darkBlue/10 bg-white px-4 py-4"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-sm font-medium text-darkBlue">
+                            Pause {index + 1}
+                          </p>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSessionEditModal((current) => ({
+                                ...current,
+                                breaks: (current?.breaks || []).filter(
+                                  (breakItem) => breakItem.id !== item.id,
+                                ),
+                              }))
+                            }
+                            className="inline-flex size-10 items-center justify-center rounded-2xl border border-red/15 bg-red/5 text-red transition hover:bg-red/10"
+                            disabled={savingSessionEdit}
+                            aria-label={`Supprimer la pause ${index + 1}`}
+                          >
+                            <Trash2 className="size-4" />
+                          </button>
+                        </div>
+
+                        <div className="mt-3 grid gap-3 midTablet:grid-cols-2">
+                          <label className="flex flex-col gap-2">
+                            <span className="text-sm font-medium text-darkBlue">
+                              Début de pause
+                            </span>
+                            <input
+                              type="datetime-local"
+                              value={item.startAt}
+                              onChange={(inputEvent) =>
+                                setSessionEditModal((current) => ({
+                                  ...current,
+                                  breaks: (current?.breaks || []).map(
+                                    (breakItem) =>
+                                      breakItem.id === item.id
+                                        ? {
+                                            ...breakItem,
+                                            startAt: inputEvent.target.value,
+                                          }
+                                        : breakItem,
+                                  ),
+                                }))
+                              }
+                              className="h-12 rounded-2xl border border-darkBlue/10 bg-lightGrey/35 px-4 text-sm text-darkBlue outline-none"
+                            />
+                          </label>
+
+                          <label className="flex flex-col gap-2">
+                            <span className="text-sm font-medium text-darkBlue">
+                              Fin de pause
+                            </span>
+                            <input
+                              type="datetime-local"
+                              value={item.endAt}
+                              onChange={(inputEvent) =>
+                                setSessionEditModal((current) => ({
+                                  ...current,
+                                  breaks: (current?.breaks || []).map(
+                                    (breakItem) =>
+                                      breakItem.id === item.id
+                                        ? {
+                                            ...breakItem,
+                                            endAt: inputEvent.target.value,
+                                          }
+                                        : breakItem,
+                                  ),
+                                }))
+                              }
+                              className="h-12 rounded-2xl border border-darkBlue/10 bg-lightGrey/35 px-4 text-sm text-darkBlue outline-none"
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-4 text-sm text-darkBlue/55">
+                    Aucune pause corrigée sur ce service.
+                  </p>
+                )}
+              </section>
 
               <label className="flex flex-col gap-2">
                 <span className="text-sm font-medium text-darkBlue">

@@ -9,6 +9,9 @@ const TimeClockSessionModel = require("../models/time-clock-session.model");
 const {
   buildTimeClockExportPdf,
 } = require("../services/pdf/render-time-clock-export.service");
+const {
+  buildWorkbookBuffer,
+} = require("../services/excel/render-time-clock-export-workbook.service");
 
 const {
   ACTIONS,
@@ -86,7 +89,7 @@ function getEffectiveActionTime(request) {
 
 async function getAccessContext(request, restaurantId) {
   const restaurant = await RestaurantModel.findById(restaurantId).select(
-    "name owner_id employees",
+    "name owner_id employees opening_hours",
   );
 
   if (!restaurant) {
@@ -142,6 +145,35 @@ function parseDateTime(value) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+function parseManualBreaks(value) {
+  let source = value;
+
+  if (typeof source === "string") {
+    try {
+      source = JSON.parse(source);
+    } catch {
+      source = [];
+    }
+  }
+
+  if (!Array.isArray(source)) return [];
+
+  return source
+    .map((item, index) => ({
+      id: String(item?.id || "").trim(),
+      startAt: parseDateTime(item?.startAt),
+      endAt: parseDateTime(item?.endAt),
+      index,
+    }))
+    .sort((left, right) => {
+      const leftValue = left.startAt ? left.startAt.getTime() : Number.MAX_SAFE_INTEGER;
+      const rightValue = right.startAt
+        ? right.startAt.getTime()
+        : Number.MAX_SAFE_INTEGER;
+      return leftValue - rightValue || left.index - right.index;
+    });
+}
+
 function toFilenamePart(value) {
   return String(value || "restaurant")
     .toLowerCase()
@@ -152,7 +184,90 @@ function toFilenamePart(value) {
     .slice(0, 60);
 }
 
-function validateManualSessionEdit(session, nextClockInAt, nextClockOutAt) {
+function resolveSelectedEmployeeIds(requestedEmployeeIds = [], fallbackEmployeeIds = []) {
+  return Array.from(
+    new Set(
+      (requestedEmployeeIds.length ? requestedEmployeeIds : fallbackEmployeeIds).map(
+        (value) => String(value),
+      ),
+    ),
+  );
+}
+
+async function buildEmployeeExportReports({
+  restaurantId,
+  from,
+  to,
+  selectedEmployeeIds = [],
+  openingHours = [],
+}) {
+  const employees = await EmployeeModel.find({
+    _id: { $in: selectedEmployeeIds },
+    restaurants: restaurantId,
+  }).lean();
+
+  if (!employees.length) {
+    return { error: { status: 404, message: "Employees not found" } };
+  }
+
+  const overlapQuery = buildOverlapQuery(from, to);
+  const sessions = await TimeClockSessionModel.find({
+    restaurant: restaurantId,
+    employee: { $in: employees.map((employee) => employee._id) },
+    ...(overlapQuery || {}),
+  })
+    .sort({ employee: 1, clockInAt: 1 })
+    .lean();
+
+  const sessionsByEmployeeId = new Map();
+  for (const session of sessions) {
+    const key = String(session.employee);
+    if (!sessionsByEmployeeId.has(key)) {
+      sessionsByEmployeeId.set(key, []);
+    }
+    sessionsByEmployeeId.get(key).push(session);
+  }
+
+  const employeeOrder = new Map(
+    selectedEmployeeIds.map((id, index) => [String(id), index]),
+  );
+  const orderedEmployees = [...employees].sort((left, right) => {
+    const leftOrder = employeeOrder.get(String(left._id));
+    const rightOrder = employeeOrder.get(String(right._id));
+
+    if (Number.isFinite(leftOrder) && Number.isFinite(rightOrder)) {
+      return leftOrder - rightOrder;
+    }
+
+    return String(left._id).localeCompare(String(right._id));
+  });
+
+  return {
+    reports: orderedEmployees.map((employee) => {
+      const summary = buildEmployeeRangeSummary({
+        employee,
+        restaurantId,
+        startDate: from,
+        endDate: to,
+        sessions: sessionsByEmployeeId.get(String(employee._id)) || [],
+        openingHours,
+      });
+
+      return {
+        ...summary,
+        rawEmployee: employee,
+        profile: findRestaurantProfile(employee, restaurantId) || {},
+      };
+    }),
+  };
+}
+
+function validateManualSessionEdit(
+  session,
+  nextClockInAt,
+  nextClockOutAt,
+  breaks = [],
+) {
   if (!nextClockInAt || !nextClockOutAt) {
     return "Les horaires d'entree et de sortie sont requis.";
   }
@@ -161,45 +276,70 @@ function validateManualSessionEdit(session, nextClockInAt, nextClockOutAt) {
     return "L'horaire de sortie doit etre apres l'horaire d'entree.";
   }
 
-  for (const currentBreak of session?.breaks || []) {
-    const breakStart = currentBreak?.startAt
-      ? new Date(currentBreak.startAt)
-      : null;
-    const breakEnd = currentBreak?.endAt ? new Date(currentBreak.endAt) : null;
+  let previousBreakEnd = null;
 
-    if (breakStart && breakStart < nextClockInAt) {
-      return "L'horaire d'entree ne peut pas etre place apres le debut d'une pause.";
+  for (const currentBreak of breaks) {
+    if (!currentBreak?.startAt || !currentBreak?.endAt) {
+      return "Chaque pause doit avoir une heure de debut et une heure de fin.";
     }
 
-    if (breakStart && breakStart > nextClockOutAt) {
-      return "L'horaire de sortie ne peut pas etre place avant une pause enregistree.";
+    if (currentBreak.endAt <= currentBreak.startAt) {
+      return "Chaque pause doit se terminer apres son heure de debut.";
     }
 
-    if (breakEnd && breakEnd > nextClockOutAt) {
-      return "L'horaire de sortie ne peut pas etre place avant la fin d'une pause enregistree.";
+    if (currentBreak.startAt < nextClockInAt) {
+      return "Une pause ne peut pas commencer avant l'entree du service.";
     }
+
+    if (currentBreak.endAt > nextClockOutAt) {
+      return "Une pause ne peut pas se terminer apres la sortie du service.";
+    }
+
+    if (previousBreakEnd && currentBreak.startAt < previousBreakEnd) {
+      return "Les pauses se chevauchent. Corrigez leur ordre ou leurs horaires.";
+    }
+
+    previousBreakEnd = currentBreak.endAt;
   }
 
   return null;
 }
 
-function closeOpenBreaksForManualEdit(session, nextClockOutAt) {
-  for (const currentBreak of session?.breaks || []) {
-    if (!currentBreak?.startAt || currentBreak?.endAt) continue;
+function buildManualBreaksPayload(session, parsedBreaks = []) {
+  const existingBreaksById = new Map(
+    (session?.breaks || [])
+      .filter((currentBreak) => currentBreak?._id)
+      .map((currentBreak) => [String(currentBreak._id), currentBreak]),
+  );
 
-    const breakStart = new Date(currentBreak.startAt);
-    if (Number.isNaN(breakStart.getTime()) || breakStart >= nextClockOutAt) {
-      return "Impossible de fermer automatiquement une pause ouverte apres l'horaire de sortie.";
-    }
+  return parsedBreaks.map((item) => {
+    const existingBreak = item.id ? existingBreaksById.get(item.id) : null;
+    const startAt = new Date(item.startAt);
+    const endAt = new Date(item.endAt);
+    const sameTimes =
+      existingBreak &&
+      new Date(existingBreak.startAt).getTime() === startAt.getTime() &&
+      new Date(existingBreak.endAt).getTime() === endAt.getTime();
 
-    currentBreak.endAt = nextClockOutAt;
-    currentBreak.durationMinutes = diffMinutes(
-      currentBreak.startAt,
-      nextClockOutAt,
-    );
-  }
+    return {
+      ...(existingBreak?._id ? { _id: existingBreak._id } : {}),
+      startAt,
+      endAt,
+      durationMinutes: diffMinutes(startAt, endAt),
+      startSignature: sameTimes ? existingBreak.startSignature || {} : {},
+      endSignature: sameTimes ? existingBreak.endSignature || {} : {},
+    };
+  });
+}
 
-  return null;
+function serializeAdjustmentBreaks(breaks = []) {
+  return (breaks || []).map((item) => ({
+    startAt: item?.startAt || null,
+    endAt: item?.endAt || null,
+    durationMinutes: Number(
+      item?.durationMinutes || diffMinutes(item?.startAt, item?.endAt),
+    ),
+  }));
 }
 
 function sessionOverlapsDateRange(session, startDateKey, endDateKey) {
@@ -218,7 +358,12 @@ function sessionOverlapsDateRange(session, startDateKey, endDateKey) {
   );
 }
 
-async function getSummaryPayload({ employee, restaurantId, anchorDateKey }) {
+async function getSummaryPayload({
+  employee,
+  restaurantId,
+  anchorDateKey,
+  openingHours = [],
+}) {
   const monthRange = getMonthRangeFromDateKey(anchorDateKey);
   const overlapQuery = buildOverlapQuery(
     monthRange.startDate,
@@ -274,6 +419,7 @@ async function getSummaryPayload({ employee, restaurantId, anchorDateKey }) {
     monthSessions: monthList,
     recentSessions,
     activeSession,
+    openingHours,
   });
 }
 
@@ -295,6 +441,7 @@ async function buildKioskStatesPayload({
   restaurantId,
   employeeIds = [],
   anchorDateKey,
+  openingHours = [],
 }) {
   const targetIds = Array.from(
     new Set(
@@ -358,6 +505,7 @@ async function buildKioskStatesPayload({
       recentSessions: [],
       activeSession,
       now,
+      openingHours,
     });
 
     statesByEmployee[employeeId] = toKioskStatePayload(summary);
@@ -438,6 +586,7 @@ router.post(
               (isValidDateKey(businessDate)
                 ? businessDate
                 : toLocalDateKey(now)),
+            openingHours: accessContext.restaurant?.opening_hours || [],
           });
 
           return res.status(200).json({
@@ -581,6 +730,7 @@ router.post(
         employee: refreshedEmployee,
         restaurantId,
         anchorDateKey: responseAnchorDateKey,
+        openingHours: accessContext.restaurant?.opening_hours || [],
       });
 
       return res.status(action === ACTIONS.CLOCK_IN ? 201 : 200).json({
@@ -621,6 +771,7 @@ router.get(
         restaurantId,
         employeeIds,
         anchorDateKey,
+        openingHours: accessContext.restaurant?.opening_hours || [],
       });
 
       return res.json(payload);
@@ -661,6 +812,7 @@ router.get(
         employee,
         restaurantId,
         anchorDateKey,
+        openingHours: accessContext.restaurant?.opening_hours || [],
       });
 
       return res.json(summary);
@@ -701,6 +853,7 @@ router.get(
         employee,
         restaurantId,
         anchorDateKey,
+        openingHours: accessContext.restaurant?.opening_hours || [],
       });
 
       return res.json(summary);
@@ -745,30 +898,36 @@ router.patch(
 
       const nextClockInAt = parseDateTime(req.body?.clockInAt);
       const nextClockOutAt = parseDateTime(req.body?.clockOutAt);
+      const nextBreaksInput =
+        req.body?.breaks === undefined
+          ? parseManualBreaks(
+              (session.breaks || []).map((currentBreak) => ({
+                id: currentBreak?._id ? String(currentBreak._id) : "",
+                startAt: currentBreak?.startAt,
+                endAt: currentBreak?.endAt,
+              })),
+            )
+          : parseManualBreaks(req.body?.breaks);
       const reason = String(req.body?.reason || "").trim();
 
       const validationError = validateManualSessionEdit(
         session,
         nextClockInAt,
         nextClockOutAt,
+        nextBreaksInput,
       );
       if (validationError) {
         return res.status(400).json({ message: validationError });
       }
 
-      const closeBreakError = closeOpenBreaksForManualEdit(
-        session,
-        nextClockOutAt,
-      );
-      if (closeBreakError) {
-        return res.status(400).json({ message: closeBreakError });
-      }
-
       const previousClockInAt = session.clockInAt;
       const previousClockOutAt = session.clockOutAt;
+      const previousBreaks = serializeAdjustmentBreaks(session.breaks || []);
+      const nextBreaks = buildManualBreaksPayload(session, nextBreaksInput);
 
       session.clockInAt = nextClockInAt;
       session.clockOutAt = nextClockOutAt;
+      session.breaks = nextBreaks;
       session.businessDate = toLocalDateKey(nextClockInAt);
       session.status = "closed";
       session.employeeSnapshot = getEmployeeSnapshot(employee, restaurantId);
@@ -782,6 +941,8 @@ router.patch(
         previousClockOutAt,
         clockInAt: nextClockInAt,
         clockOutAt: nextClockOutAt,
+        previousBreaks,
+        breaks: serializeAdjustmentBreaks(nextBreaks),
       });
 
       syncSessionTotals(session, new Date());
@@ -795,6 +956,7 @@ router.patch(
         employee,
         restaurantId,
         anchorDateKey,
+        openingHours: accessContext.restaurant?.opening_hours || [],
       });
 
       return res.json({
@@ -839,78 +1001,39 @@ router.post(
       const requestedEmployeeIds = Array.isArray(req.body?.employeeIds)
         ? req.body.employeeIds.map((value) => String(value))
         : [];
-
-      const fallbackEmployeeIds = (
-        accessContext.restaurant?.employees || []
-      ).map((value) => String(value));
-      const selectedEmployeeIds = Array.from(
-        new Set(
-          requestedEmployeeIds.length
-            ? requestedEmployeeIds
-            : fallbackEmployeeIds,
-        ),
+      const fallbackEmployeeIds = (accessContext.restaurant?.employees || []).map(
+        (value) => String(value),
+      );
+      const selectedEmployeeIds = resolveSelectedEmployeeIds(
+        requestedEmployeeIds,
+        fallbackEmployeeIds,
       );
 
       if (!selectedEmployeeIds.length) {
         return res.status(400).json({ message: "Aucun salarie selectionne." });
       }
 
-      const employees = await EmployeeModel.find({
-        _id: { $in: selectedEmployeeIds },
-        restaurants: restaurantId,
-      }).lean();
-
-      if (!employees.length) {
-        return res.status(404).json({ message: "Employees not found" });
-      }
-
-      const overlapQuery = buildOverlapQuery(from, to);
-      const sessions = await TimeClockSessionModel.find({
-        restaurant: restaurantId,
-        employee: { $in: employees.map((employee) => employee._id) },
-        ...(overlapQuery || {}),
-      })
-        .sort({ employee: 1, clockInAt: 1 })
-        .lean();
-
-      const sessionsByEmployeeId = new Map();
-      for (const session of sessions) {
-        const key = String(session.employee);
-        if (!sessionsByEmployeeId.has(key)) {
-          sessionsByEmployeeId.set(key, []);
-        }
-        sessionsByEmployeeId.get(key).push(session);
-      }
-
-      const employeeOrder = new Map(
-        selectedEmployeeIds.map((id, index) => [String(id), index]),
-      );
-      const orderedEmployees = [...employees].sort((left, right) => {
-        const leftOrder = employeeOrder.get(String(left._id));
-        const rightOrder = employeeOrder.get(String(right._id));
-
-        if (Number.isFinite(leftOrder) && Number.isFinite(rightOrder)) {
-          return leftOrder - rightOrder;
-        }
-
-        return String(left._id).localeCompare(String(right._id));
+      const exportData = await buildEmployeeExportReports({
+        restaurantId,
+        from,
+        to,
+        selectedEmployeeIds,
+        openingHours: accessContext.restaurant?.opening_hours || [],
       });
-
-      const reports = orderedEmployees.map((employee) =>
-        buildEmployeeRangeSummary({
-          employee,
-          restaurantId,
-          startDate: from,
-          endDate: to,
-          sessions: sessionsByEmployeeId.get(String(employee._id)) || [],
-        }),
-      );
+      if (exportData.error) {
+        return res
+          .status(exportData.error.status)
+          .json({ message: exportData.error.message });
+      }
 
       const pdfBuffer = await buildTimeClockExportPdf({
         restaurantName: accessContext.restaurant?.name || "Restaurant",
         startDate: from,
         endDate: to,
-        employees: reports,
+        employees: exportData.reports.map((report) => ({
+          employee: report.employee,
+          range: report.range,
+        })),
       });
 
       const safeRestaurantName = toFilenamePart(accessContext.restaurant?.name);
@@ -923,6 +1046,87 @@ router.post(
       return res.send(pdfBuffer);
     } catch (error) {
       console.error("Error exporting time-clock pdf:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  },
+);
+
+router.post(
+  "/restaurants/:restaurantId/time-clock/export/excel",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { restaurantId } = req.params;
+      const from = isValidDateKey(req.body?.from)
+        ? String(req.body.from)
+        : null;
+      const to = isValidDateKey(req.body?.to) ? String(req.body.to) : null;
+
+      if (!from || !to || from > to) {
+        return res.status(400).json({
+          message: "Les dates de debut et de fin sont invalides.",
+        });
+      }
+
+      const accessContext = await getAccessContext(req, restaurantId);
+      if (accessContext.error) {
+        return res
+          .status(accessContext.error.status)
+          .json({ message: accessContext.error.message });
+      }
+
+      if (!accessContext.isManager) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const requestedEmployeeIds = Array.isArray(req.body?.employeeIds)
+        ? req.body.employeeIds.map((value) => String(value))
+        : [];
+      const fallbackEmployeeIds = (accessContext.restaurant?.employees || []).map(
+        (value) => String(value),
+      );
+      const selectedEmployeeIds = resolveSelectedEmployeeIds(
+        requestedEmployeeIds,
+        fallbackEmployeeIds,
+      );
+
+      if (!selectedEmployeeIds.length) {
+        return res.status(400).json({ message: "Aucun salarie selectionne." });
+      }
+
+      const exportData = await buildEmployeeExportReports({
+        restaurantId,
+        from,
+        to,
+        selectedEmployeeIds,
+        openingHours: accessContext.restaurant?.opening_hours || [],
+      });
+      if (exportData.error) {
+        return res
+          .status(exportData.error.status)
+          .json({ message: exportData.error.message });
+      }
+
+      const workbookBuffer = buildWorkbookBuffer({
+        restaurantName: accessContext.restaurant?.name || "Restaurant",
+        startDate: from,
+        endDate: to,
+        reports: exportData.reports,
+      });
+
+      const safeRestaurantName = toFilenamePart(accessContext.restaurant?.name);
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      );
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="heures-${safeRestaurantName}-${from}-au-${to}.xlsx"`,
+      );
+
+      return res.send(workbookBuffer);
+    } catch (error) {
+      console.error("Error exporting time-clock workbook:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   },

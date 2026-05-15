@@ -209,8 +209,9 @@ export default function FormLoginComponent() {
   }
 
   const hasRestaurantsToSelect =
-    restaurantContext?.restaurantsList &&
-    restaurantContext.restaurantsList.length > 0;
+    Boolean(tempToken) &&
+    Array.isArray(restaurantContext?.restaurantsList) &&
+    restaurantContext.restaurantsList.length > 1;
 
   return (
     <section className="relative mx-4 bg-white/15 flex flex-col rounded-lg p-4 midTablet:p-12 drop-shadow-sm w-[500px]">

@@ -40,7 +40,10 @@ router.post("/admin/login", async (req, res) => {
 // ----------------- CONNEXION OWNER + EMPLOYEE -----------------
 
 router.post("/user/login", async (req, res) => {
-  const { email, password } = req.body;
+  const email = String(req.body?.email || "")
+    .trim()
+    .toLowerCase();
+  const password = req.body?.password;
 
   try {
     // OWNER
@@ -69,7 +72,7 @@ router.post("/user/login", async (req, res) => {
     }
 
     // EMPLOYEE
-    const employee = await EmployeeModel.findOne({ email });
+    const employee = await EmployeeModel.findOne({ email }).select("+password");
     if (!employee) {
       return res.status(401).json({ message: "errors.incorrect" });
     }

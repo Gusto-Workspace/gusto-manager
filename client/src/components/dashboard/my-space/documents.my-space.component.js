@@ -33,6 +33,33 @@ export default function DocumentsMySpaceComponent({
   const truncate = (name) =>
     name.length > 20 ? `${name.slice(0, 17)}…` : name;
 
+  async function handleDownloadDocument(doc) {
+    if (!doc?.public_id || !employeeId || !restaurantId) return;
+
+    try {
+      const response = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}/documents/${encodeURIComponent(
+          doc.public_id,
+        )}/download`,
+        {
+          responseType: "blob",
+        },
+      );
+
+      const blob = new Blob([response.data]);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = doc.filename || doc.title || "document";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Erreur téléchargement document :", error);
+    }
+  }
+
   return (
     <section className="flex flex-col gap-6">
       <div className="flex justify-between">
@@ -62,10 +89,9 @@ export default function DocumentsMySpaceComponent({
 
                 <div className="flex w-full justify-between">
                   <div className="w-full flex flex-col items-center">
-                    <a
-                      href={`${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}/documents/${encodeURIComponent(
-                        doc.public_id,
-                      )}/download`}
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadDocument(doc)}
                       className="inline-flex items-center justify-center bg-[#4ead7a99] hover:bg-[#4ead7a] p-2 rounded-full transition-colors duration-300"
                     >
                       <DownloadSvg
@@ -74,7 +100,7 @@ export default function DocumentsMySpaceComponent({
                         strokeColor="white"
                         fillColor="white"
                       />
-                    </a>
+                    </button>
                   </div>
                 </div>
               </li>

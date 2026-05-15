@@ -5,10 +5,11 @@ export default function ExportRangeModalComponent({
   open = false,
   title = "Exporter",
   description = "",
-  confirmLabel = "Exporter le PDF",
+  confirmLabel = "Telecharger",
   employees = [],
   initialFrom = "",
   initialTo = "",
+  initialFormat = "pdf",
   loading = false,
   submitError = "",
   onClose,
@@ -21,6 +22,7 @@ export default function ExportRangeModalComponent({
 
   const [from, setFrom] = useState(initialFrom || "");
   const [to, setTo] = useState(initialTo || "");
+  const [format, setFormat] = useState(initialFormat || "pdf");
   const [selectedIds, setSelectedIds] = useState(employeeIds);
   const [error, setError] = useState("");
 
@@ -29,9 +31,10 @@ export default function ExportRangeModalComponent({
 
     setFrom(initialFrom || "");
     setTo(initialTo || "");
+    setFormat(initialFormat || "pdf");
     setSelectedIds(employeeIds);
     setError("");
-  }, [employeeIds, initialFrom, initialTo, open]);
+  }, [employeeIds, initialFormat, initialFrom, initialTo, open]);
 
   const allSelected =
     employeeIds.length > 0 && selectedIds.length === employeeIds.length;
@@ -65,6 +68,7 @@ export default function ExportRangeModalComponent({
     await onConfirm?.({
       from,
       to,
+      format,
       employeeIds: selectedIds,
     });
   }
@@ -93,7 +97,7 @@ export default function ExportRangeModalComponent({
           <div className="min-w-0">
             <div className="inline-flex items-center gap-2 rounded-full border border-blue/10 bg-blue/5 px-3 py-1 text-xs font-medium uppercase tracking-[0.14em] text-blue">
               <Download className="size-3.5" />
-              PDF
+              {format === "excel" ? "EXCEL" : "PDF"}
             </div>
 
             <h3
@@ -148,6 +152,47 @@ export default function ExportRangeModalComponent({
               />
             </label>
           </div>
+
+          <section className="rounded-[28px] border border-darkBlue/10 bg-lightGrey/35 p-4">
+            <p className="text-sm font-medium text-darkBlue">Format</p>
+            <div className="mt-3 grid gap-3 midTablet:grid-cols-2">
+              {[
+                {
+                  id: "pdf",
+                  label: "PDF",
+                  hint: "Synthese lisible et rapide a partager.",
+                },
+                {
+                  id: "excel",
+                  label: "Excel",
+                  hint: "Classeur compatible Excel avec details, absences et soldes.",
+                },
+              ].map((option) => {
+                const active = format === option.id;
+
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => setFormat(option.id)}
+                    className={[
+                      "rounded-2xl border px-4 py-4 text-left transition",
+                      active
+                        ? "border-blue/25 bg-blue/5"
+                        : "border-darkBlue/10 bg-white hover:bg-darkBlue/5",
+                    ].join(" ")}
+                  >
+                    <span className="block text-sm font-semibold text-darkBlue">
+                      {option.label}
+                    </span>
+                    <span className="mt-1 block text-xs text-darkBlue/55">
+                      {option.hint}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
 
           <section className="rounded-[28px] border border-darkBlue/10 bg-lightGrey/35 p-4">
             <div className="flex flex-col gap-3 midTablet:flex-row midTablet:items-center midTablet:justify-between">
@@ -239,7 +284,7 @@ export default function ExportRangeModalComponent({
               ) : (
                 <Download className="size-4" />
               )}
-              {confirmLabel}
+              {`${confirmLabel} ${format === "excel" ? "Excel" : "PDF"}`}
             </button>
           </div>
         </form>

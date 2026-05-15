@@ -7,6 +7,7 @@ import "@/styles/custom/_index.scss";
 import { useContext, useEffect, useMemo } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
+import axios from "axios";
 
 // I18N
 import { appWithTranslation } from "next-i18next";
@@ -154,6 +155,33 @@ function App({ Component, pageProps }) {
       );
     };
   }, [router]);
+
+  useEffect(() => {
+    const interceptorId = axios.interceptors.request.use((config) => {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      const targetUrl = String(config?.url || "");
+      const isApiRequest = apiUrl && targetUrl.startsWith(apiUrl);
+
+      if (!isApiRequest) return config;
+
+      const token =
+        typeof window !== "undefined" ? localStorage.getItem("token") : null;
+
+      if (!token || config?.headers?.Authorization) return config;
+
+      return {
+        ...config,
+        headers: {
+          ...(config.headers || {}),
+          Authorization: `Bearer ${token}`,
+        },
+      };
+    });
+
+    return () => {
+      axios.interceptors.request.eject(interceptorId);
+    };
+  }, []);
 
   return (
     <>

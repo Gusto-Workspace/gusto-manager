@@ -31,10 +31,10 @@ export default function DaysOffEmployeesComponent() {
     const employees = allEmployees;
     if (!employees.length) return;
 
-    const alreadyHaveLeave = employees.some(
-      (e) => Array.isArray(e.leaveRequests) && e.leaveRequests.length > 0,
+    const alreadyHydrated = employees.every((e) =>
+      Array.isArray(e.leaveRequests),
     );
-    if (alreadyHaveLeave) return;
+    if (alreadyHydrated) return;
 
     let canceled = false;
 

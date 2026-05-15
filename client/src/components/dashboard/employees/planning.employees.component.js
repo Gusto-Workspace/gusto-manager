@@ -313,10 +313,8 @@ export default function PlanningEmployeesComponent() {
     const employees = restaurantContext.restaurantData?.employees || [];
     if (!employees.length) return;
 
-    const alreadyHaveShifts = employees.some(
-      (e) => Array.isArray(e.shifts) && e.shifts.length > 0,
-    );
-    if (alreadyHaveShifts) return;
+    const alreadyHydrated = employees.every((e) => Array.isArray(e.shifts));
+    if (alreadyHydrated) return;
 
     let canceled = false;
 
@@ -760,15 +758,21 @@ export default function PlanningEmployeesComponent() {
     setDeleteModalData(getEmptyDeleteModalData());
   }
 
-  async function handlePlanningExport(payload) {
-    if (!restaurantId) return;
+async function handlePlanningExport(payload) {
+  if (!restaurantId) return;
 
-    setIsPlanningExportLoading(true);
-    setPlanningExportError("");
+  setIsPlanningExportLoading(true);
+  setPlanningExportError("");
 
-    try {
+  try {
+      const isExcel = payload?.format === "excel";
+      const endpoint = isExcel ? "excel" : "pdf";
+      const mimeType = isExcel
+        ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        : "application/pdf";
+      const extension = isExcel ? "xlsx" : "pdf";
       const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/planning/export/pdf`,
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/planning/export/${endpoint}`,
         payload,
         {
           ...getAuthConfig(),
@@ -776,11 +780,11 @@ export default function PlanningEmployeesComponent() {
         },
       );
 
-      const blob = new Blob([response.data], { type: "application/pdf" });
+      const blob = new Blob([response.data], { type: mimeType });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `planning-salaries-${payload.from}-au-${payload.to}.pdf`;
+      link.download = `planning-salaries-${payload.from}-au-${payload.to}.${extension}`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -800,9 +804,8 @@ export default function PlanningEmployeesComponent() {
 
   const CustomEvent = ({ event }) => {
     const timeLabel = formatEventTimeRange(event.start, event.end);
-    const compactLabel = selectedEmployeeId
-      ? event.shiftLabel || event.employeeShortName || ""
-      : [event.employeeShortName, event.shiftLabel].filter(Boolean).join(" · ");
+    const nameLine = selectedEmployeeId ? "" : event.employeeShortName || "";
+    const shiftLine = event.shiftLabel || "";
     const tooltipSuffix = event.hasMeal ? " • Repas" : "";
     const tooltip = event.allDay
       ? `${event.title}${tooltipSuffix}`
@@ -837,9 +840,14 @@ export default function PlanningEmployeesComponent() {
           title={tooltip}
         >
           <div className="min-w-0 flex-1">
-            {compactLabel ? (
-              <span className="truncate text-[11px] font-medium opacity-95">
-                {compactLabel}
+            {nameLine ? (
+              <span className="block truncate text-[11px] font-medium opacity-95">
+                {nameLine}
+              </span>
+            ) : null}
+            {shiftLine ? (
+              <span className="block truncate text-[10px] opacity-90">
+                {shiftLine}
               </span>
             ) : null}
           </div>
@@ -858,8 +866,17 @@ export default function PlanningEmployeesComponent() {
         title={tooltip}
       >
         <div className="min-w-0 flex-1">
-          {event.title ? (
-            <span className="truncate text-[11px] font-medium opacity-95">
+          {event.employeeShortName ? (
+            <span className="block truncate text-[11px] font-medium opacity-95">
+              {event.employeeShortName}
+            </span>
+          ) : null}
+          {event.shiftLabel ? (
+            <span className="block truncate text-[10px] opacity-90">
+              {event.shiftLabel}
+            </span>
+          ) : event.title ? (
+            <span className="block truncate text-[11px] font-medium opacity-95">
               {event.title}
             </span>
           ) : null}
@@ -1806,8 +1823,8 @@ export default function PlanningEmployeesComponent() {
 
       <ExportRangeModalComponent
         open={isPlanningExportOpen}
-        title="Exporter le planning salariés"
-        description="Choisissez une période et les salariés à inclure dans le PDF planning."
+        title="Exporter le planning des salariés"
+        description="Choisissez une période, les salariés à inclure et le format de sortie."
         confirmLabel="Exporter le planning"
         employees={exportEmployees}
         initialFrom={exportDateRange.from}
