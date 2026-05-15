@@ -1,5 +1,6 @@
 const express = require("express");
 const router = express.Router();
+const mongoose = require("mongoose");
 const SibApiV3Sdk = require("sib-api-v3-sdk");
 const cloudinary = require("cloudinary").v2;
 const multer = require("multer");
@@ -230,6 +231,42 @@ function getPlanningShiftTitle(value) {
 function parseShiftDate(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function toObjectIdOrNull(value) {
+  return mongoose.Types.ObjectId.isValid(value)
+    ? new mongoose.Types.ObjectId(value)
+    : null;
+}
+
+function getRestaurantProfileProjection(restaurantId) {
+  return {
+    restaurantProfiles: {
+      $elemMatch: { restaurant: restaurantId },
+    },
+  };
+}
+
+async function ensureRestaurantProfileExists(employeeId, restaurantId) {
+  await EmployeeModel.updateOne(
+    {
+      _id: employeeId,
+      restaurants: restaurantId,
+      "restaurantProfiles.restaurant": { $ne: restaurantId },
+    },
+    {
+      $push: {
+        restaurantProfiles: {
+          restaurant: restaurantId,
+          options: {},
+          documents: [],
+          shifts: [],
+          leaveRequests: [],
+          snapshot: {},
+        },
+      },
+    },
+  );
 }
 
 function isStartOfDay(value) {
@@ -1188,42 +1225,84 @@ router.get(
 router.post(
   "/restaurants/:restaurantId/employees/:employeeId/shifts",
   async (req, res) => {
-    const { restaurantId, employeeId } = req.params;
-    const {
-      title,
-      start,
-      end,
-      isLeave = false,
-      leaveRequestId = null,
-    } = req.body;
+    try {
+      const { restaurantId, employeeId } = req.params;
+      const {
+        title,
+        start,
+        end,
+        isLeave = false,
+        leaveRequestId = null,
+      } = req.body;
 
-    const emp = await EmployeeModel.findById(employeeId);
-    if (!emp || !employeeWorksInRestaurant(emp, restaurantId)) {
-      return res.status(404).json({ message: "Employé non trouvé" });
+      const parsedStart = parseShiftDate(start);
+      const parsedEnd = parseShiftDate(end);
+
+      if (!parsedStart || !parsedEnd || parsedEnd <= parsedStart) {
+        return res.status(400).json({ message: "Dates de shift invalides" });
+      }
+
+      const restaurantObjectId = toObjectIdOrNull(restaurantId);
+      const employeeObjectId = toObjectIdOrNull(employeeId);
+      const leaveRequestObjectId =
+        leaveRequestId != null ? toObjectIdOrNull(leaveRequestId) : null;
+
+      if (
+        !restaurantObjectId ||
+        !employeeObjectId ||
+        (leaveRequestId != null && !leaveRequestObjectId)
+      ) {
+        return res.status(400).json({ message: "Identifiant invalide" });
+      }
+
+      await ensureRestaurantProfileExists(employeeObjectId, restaurantObjectId);
+
+      const shiftId = new mongoose.Types.ObjectId();
+      const leaveShift =
+        isLeave === true || leaveRequestObjectId != null || isLeaveShift({ title });
+
+      const updatedEmployee = await EmployeeModel.findOneAndUpdate(
+        {
+          _id: employeeObjectId,
+          restaurants: restaurantObjectId,
+          "restaurantProfiles.restaurant": restaurantObjectId,
+        },
+        {
+          $push: {
+            "restaurantProfiles.$.shifts": {
+              _id: shiftId,
+              title: leaveShift ? "" : normalizePlanningTitle(title),
+              start: parsedStart,
+              end: parsedEnd,
+              isLeave: leaveShift,
+              leaveRequestId: leaveRequestObjectId,
+            },
+          },
+        },
+        {
+          new: true,
+          projection: getRestaurantProfileProjection(restaurantObjectId),
+          runValidators: true,
+        },
+      );
+
+      if (!updatedEmployee) {
+        return res.status(404).json({ message: "Employé non trouvé" });
+      }
+
+      const profile = findRestaurantProfile(updatedEmployee, restaurantId);
+      const created =
+        profile?.shifts?.id?.(shiftId) ||
+        profile?.shifts?.find((shift) => String(shift._id) === String(shiftId));
+
+      return res.status(201).json({
+        shift: created || null,
+        shifts: profile?.shifts || [],
+      });
+    } catch (err) {
+      console.error("Erreur création shift:", err);
+      return res.status(500).json({ message: "Internal server error" });
     }
-
-    const parsedStart = parseShiftDate(start);
-    const parsedEnd = parseShiftDate(end);
-
-    if (!parsedStart || !parsedEnd || parsedEnd <= parsedStart) {
-      return res.status(400).json({ message: "Dates de shift invalides" });
-    }
-
-    const profile = getOrCreateRestaurantProfile(emp, restaurantId);
-    const leaveShift =
-      isLeave === true || leaveRequestId != null || isLeaveShift({ title });
-
-    profile.shifts.push({
-      title: leaveShift ? "" : normalizePlanningTitle(title),
-      start: parsedStart,
-      end: parsedEnd,
-      isLeave: leaveShift,
-      leaveRequestId: leaveRequestId || null,
-    });
-
-    await emp.save();
-    const created = profile.shifts[profile.shifts.length - 1];
-    return res.status(201).json({ shift: created, shifts: profile.shifts });
   },
 );
 
@@ -1231,51 +1310,131 @@ router.post(
 router.put(
   "/restaurants/:restaurantId/employees/:employeeId/shifts/:shiftId",
   async (req, res) => {
-    const { restaurantId, employeeId, shiftId } = req.params;
-    const { title, start, end, isLeave, leaveRequestId } = req.body;
+    try {
+      const { restaurantId, employeeId, shiftId } = req.params;
+      const { title, start, end, isLeave, leaveRequestId } = req.body;
 
-    const emp = await EmployeeModel.findById(employeeId);
-    if (!emp || !employeeWorksInRestaurant(emp, restaurantId)) {
-      return res.status(404).json({ message: "Employé non trouvé" });
-    }
+      const restaurantObjectId = toObjectIdOrNull(restaurantId);
+      const employeeObjectId = toObjectIdOrNull(employeeId);
+      const shiftObjectId = toObjectIdOrNull(shiftId);
+      const leaveRequestObjectId =
+        leaveRequestId !== undefined && leaveRequestId !== null
+          ? toObjectIdOrNull(leaveRequestId)
+          : null;
 
-    const profile = getOrCreateRestaurantProfile(emp, restaurantId);
-    const shift = profile.shifts.id(shiftId);
-    if (!shift) return res.status(404).json({ message: "Shift non trouvé" });
+      if (
+        !restaurantObjectId ||
+        !employeeObjectId ||
+        !shiftObjectId ||
+        (leaveRequestId !== undefined &&
+          leaveRequestId !== null &&
+          !leaveRequestObjectId)
+      ) {
+        return res.status(400).json({ message: "Identifiant invalide" });
+      }
 
-    if (title !== undefined) shift.title = normalizePlanningTitle(title);
-    if (start !== undefined) {
-      const parsedStart = parseShiftDate(start);
-      if (!parsedStart) {
+      const currentEmployee = await EmployeeModel.findOne(
+        {
+          _id: employeeObjectId,
+          restaurants: restaurantObjectId,
+          restaurantProfiles: {
+            $elemMatch: {
+              restaurant: restaurantObjectId,
+              "shifts._id": shiftObjectId,
+            },
+          },
+        },
+        getRestaurantProfileProjection(restaurantObjectId),
+      );
+
+      if (!currentEmployee) {
+        return res.status(404).json({ message: "Shift non trouvé" });
+      }
+
+      const currentProfile = findRestaurantProfile(currentEmployee, restaurantId);
+      const currentShift = currentProfile?.shifts?.id?.(shiftObjectId);
+
+      if (!currentShift) {
+        return res.status(404).json({ message: "Shift non trouvé" });
+      }
+
+      const nextStart =
+        start !== undefined ? parseShiftDate(start) : new Date(currentShift.start);
+      if (!nextStart) {
         return res.status(400).json({ message: "Date de début invalide" });
       }
-      shift.start = parsedStart;
-    }
-    if (end !== undefined) {
-      const parsedEnd = parseShiftDate(end);
-      if (!parsedEnd) {
+
+      const nextEnd =
+        end !== undefined ? parseShiftDate(end) : new Date(currentShift.end);
+      if (!nextEnd) {
         return res.status(400).json({ message: "Date de fin invalide" });
       }
-      shift.end = parsedEnd;
-    }
-    if (leaveRequestId !== undefined) {
-      shift.leaveRequestId = leaveRequestId || null;
-    }
-    if (isLeave !== undefined) {
-      shift.isLeave = isLeave === true;
-    }
 
-    if (shift.end <= shift.start) {
-      return res.status(400).json({ message: "Dates de shift invalides" });
-    }
+      if (nextEnd <= nextStart) {
+        return res.status(400).json({ message: "Dates de shift invalides" });
+      }
 
-    if (isLeaveShift(shift)) {
-      shift.isLeave = true;
-      shift.title = "";
-    }
+      const nextLeaveRequestId =
+        leaveRequestId !== undefined
+          ? leaveRequestObjectId
+          : currentShift.leaveRequestId || null;
+      const nextIsLeave = isLeave !== undefined ? isLeave === true : currentShift.isLeave;
+      const nextTitle =
+        title !== undefined
+          ? normalizePlanningTitle(title)
+          : normalizePlanningTitle(currentShift.title);
+      const leaveShift = isLeaveShift({
+        title: nextTitle,
+        isLeave: nextIsLeave,
+        leaveRequestId: nextLeaveRequestId,
+      });
 
-    await emp.save();
-    return res.json({ shift, shifts: profile.shifts });
+      const updatedEmployee = await EmployeeModel.findOneAndUpdate(
+        {
+          _id: employeeObjectId,
+          restaurants: restaurantObjectId,
+          restaurantProfiles: {
+            $elemMatch: {
+              restaurant: restaurantObjectId,
+              "shifts._id": shiftObjectId,
+            },
+          },
+        },
+        {
+          $set: {
+            "restaurantProfiles.$[profile].shifts.$[shift].title": leaveShift
+              ? ""
+              : nextTitle,
+            "restaurantProfiles.$[profile].shifts.$[shift].start": nextStart,
+            "restaurantProfiles.$[profile].shifts.$[shift].end": nextEnd,
+            "restaurantProfiles.$[profile].shifts.$[shift].isLeave": leaveShift,
+            "restaurantProfiles.$[profile].shifts.$[shift].leaveRequestId":
+              nextLeaveRequestId,
+          },
+        },
+        {
+          arrayFilters: [
+            { "profile.restaurant": restaurantObjectId },
+            { "shift._id": shiftObjectId },
+          ],
+          new: true,
+          projection: getRestaurantProfileProjection(restaurantObjectId),
+          runValidators: true,
+        },
+      );
+
+      if (!updatedEmployee) {
+        return res.status(404).json({ message: "Shift non trouvé" });
+      }
+
+      const profile = findRestaurantProfile(updatedEmployee, restaurantId);
+      const shift = profile?.shifts?.id?.(shiftObjectId);
+
+      return res.json({ shift: shift || null, shifts: profile?.shifts || [] });
+    } catch (err) {
+      console.error("Erreur modification shift:", err);
+      return res.status(500).json({ message: "Internal server error" });
+    }
   },
 );
 
@@ -1283,20 +1442,52 @@ router.put(
 router.delete(
   "/restaurants/:restaurantId/employees/:employeeId/shifts/:shiftId",
   async (req, res) => {
-    const { restaurantId, employeeId, shiftId } = req.params;
+    try {
+      const { restaurantId, employeeId, shiftId } = req.params;
 
-    const emp = await EmployeeModel.findById(employeeId);
-    if (!emp || !employeeWorksInRestaurant(emp, restaurantId)) {
-      return res.status(404).json({ message: "Employé non trouvé" });
+      const restaurantObjectId = toObjectIdOrNull(restaurantId);
+      const employeeObjectId = toObjectIdOrNull(employeeId);
+      const shiftObjectId = toObjectIdOrNull(shiftId);
+
+      if (!restaurantObjectId || !employeeObjectId || !shiftObjectId) {
+        return res.status(400).json({ message: "Identifiant invalide" });
+      }
+
+      const updatedEmployee = await EmployeeModel.findOneAndUpdate(
+        {
+          _id: employeeObjectId,
+          restaurants: restaurantObjectId,
+          restaurantProfiles: {
+            $elemMatch: {
+              restaurant: restaurantObjectId,
+              "shifts._id": shiftObjectId,
+            },
+          },
+        },
+        {
+          $pull: {
+            "restaurantProfiles.$[profile].shifts": {
+              _id: shiftObjectId,
+            },
+          },
+        },
+        {
+          arrayFilters: [{ "profile.restaurant": restaurantObjectId }],
+          new: true,
+          projection: getRestaurantProfileProjection(restaurantObjectId),
+        },
+      );
+
+      if (!updatedEmployee) {
+        return res.status(404).json({ message: "Shift non trouvé" });
+      }
+
+      const profile = findRestaurantProfile(updatedEmployee, restaurantId);
+      return res.json({ shifts: profile?.shifts || [] });
+    } catch (err) {
+      console.error("Erreur suppression shift:", err);
+      return res.status(500).json({ message: "Internal server error" });
     }
-
-    const profile = getOrCreateRestaurantProfile(emp, restaurantId);
-    const shift = profile.shifts.id(shiftId);
-    if (!shift) return res.status(404).json({ message: "Shift non trouvé" });
-
-    shift.deleteOne();
-    await emp.save();
-    return res.json({ shifts: profile.shifts });
   },
 );
 
