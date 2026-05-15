@@ -74,6 +74,40 @@ const formatEventTimeRange = (start, end) =>
     locale: frLocale,
   })}`;
 
+const formatConflictDateTime = (value) => {
+  if (!value) return "";
+
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  return format(date, "dd/MM/yyyy 'à' HH:mm", { locale: frLocale });
+};
+
+const formatConflictRange = (start, end) => {
+  const parsedStart = start instanceof Date ? start : new Date(start);
+  const parsedEnd = end instanceof Date ? end : new Date(end);
+
+  if (
+    Number.isNaN(parsedStart.getTime()) ||
+    Number.isNaN(parsedEnd.getTime())
+  ) {
+    return "";
+  }
+
+  const sameDay = parsedStart.toDateString() === parsedEnd.toDateString();
+  if (sameDay) {
+    return `${format(parsedStart, "dd/MM/yyyy", {
+      locale: frLocale,
+    })} de ${format(parsedStart, "HH:mm", {
+      locale: frLocale,
+    })} à ${format(parsedEnd, "HH:mm", { locale: frLocale })}`;
+  }
+
+  return `du ${formatConflictDateTime(parsedStart)} au ${formatConflictDateTime(
+    parsedEnd,
+  )}`;
+};
+
 const getEmptyDeleteModalData = () => ({
   eventId: null,
   employeeId: null,
@@ -83,6 +117,17 @@ const getEmptyDeleteModalData = () => ({
   end: null,
   leaveRequestId: null,
   isLeave: false,
+});
+
+const getEmptyShiftConflictModalData = () => ({
+  isOpen: false,
+  employeeId: null,
+  message: "",
+  conflictType: "",
+  conflict: null,
+  attemptedStart: null,
+  attemptedEnd: null,
+  attemptedTitle: "",
 });
 
 const pad2 = (value) => String(value).padStart(2, "0");
@@ -252,6 +297,9 @@ export default function PlanningEmployeesComponent() {
     isFullDayLeave: false,
   });
   const [modalEmployeeQuery, setModalEmployeeQuery] = useState("");
+  const [shiftConflictModalData, setShiftConflictModalData] = useState(
+    getEmptyShiftConflictModalData(),
+  );
 
   // Modale de suppression
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -514,6 +562,10 @@ export default function PlanningEmployeesComponent() {
     setModalOpen(true);
   }
 
+  function closeShiftConflictModal() {
+    setShiftConflictModalData(getEmptyShiftConflictModalData());
+  }
+
   // ─── Valider l’ajout de shift ──────────────────────────────────────────────
   async function handleConfirmShift() {
     const { employeeId, start, end, title, isLeave, isFullDayLeave } =
@@ -597,13 +649,42 @@ export default function PlanningEmployeesComponent() {
       }));
       const other = events.filter((ev) => ev.resourceId !== employeeId);
       setEvents([...other, ...updatedEvents]);
+      setModalOpen(false);
+      setModalData({
+        employeeId: null,
+        start: null,
+        end: null,
+        title: "",
+        isLeave: false,
+        isFullDayLeave: false,
+      });
+      setModalEmployeeQuery("");
     } catch (err) {
       console.error("Erreur ajout shift :", err);
+
+      if (
+        err?.response?.status === 409 &&
+        err?.response?.data?.conflictType
+      ) {
+        setShiftConflictModalData({
+          isOpen: true,
+          employeeId,
+          message:
+            err?.response?.data?.message ||
+            "Impossible d’ajouter ce créneau sur cette période.",
+          conflictType: err?.response?.data?.conflictType || "",
+          conflict: err?.response?.data?.conflict || null,
+          attemptedStart: normalizedStart,
+          attemptedEnd: normalizedEnd,
+          attemptedTitle: safeTitle,
+        });
+        return;
+      }
+
       window.alert(
         t("planning:errors.addFailed", "Impossible d’ajouter le shift"),
       );
     }
-    setModalOpen(false);
   }
 
   function handleCancelShift() {
@@ -617,6 +698,7 @@ export default function PlanningEmployeesComponent() {
       isFullDayLeave: false,
     });
     setModalEmployeeQuery("");
+    closeShiftConflictModal();
   }
 
   // ─── Clic = modale suppression ─────────────────────────────────────────────
@@ -1659,6 +1741,113 @@ async function handlePlanningExport(payload) {
                 "
               >
                 {t("buttons.cancel", "Annuler")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {shiftConflictModalData.isOpen && (
+        <div className="fixed inset-0 z-[130] flex items-center justify-center px-4">
+          <div
+            onClick={closeShiftConflictModal}
+            className="absolute inset-0 bg-black/30 backdrop-blur-[1px]"
+          />
+
+          <div
+            className="
+              relative z-[1] w-full max-w-[460px]
+              rounded-2xl border border-darkBlue/10 bg-white/95
+              px-5 py-6 tablet:px-6 tablet:py-7
+              shadow-[0_22px_55px_rgba(19,30,54,0.20)]
+              flex flex-col gap-4
+            "
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-col gap-1">
+                <h3 className="text-lg font-semibold text-darkBlue">
+                  {shiftConflictModalData.conflictType === "leave_overlap"
+                    ? "Créneau impossible pendant un congé"
+                    : "Créneau déjà occupé"}
+                </h3>
+                <p className="text-sm text-darkBlue/70">
+                  {shiftConflictModalData.message}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeShiftConflictModal}
+                className="inline-flex size-10 items-center justify-center rounded-2xl border border-darkBlue/10 bg-white text-darkBlue/60 transition hover:bg-darkBlue/5"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+
+            <div className="rounded-2xl border border-darkBlue/10 bg-lightGrey/35 px-4 py-4 text-sm text-darkBlue/80">
+              <p className="font-medium text-darkBlue">
+                {(() => {
+                  const employee = allEmployees.find(
+                    (item) =>
+                      String(item._id) ===
+                      String(shiftConflictModalData.employeeId),
+                  );
+                  return employee
+                    ? `${employee.firstname} ${employee.lastname}`
+                    : "Employé concerné";
+                })()}
+              </p>
+
+              <p className="mt-2">
+                <span className="font-medium text-darkBlue">Créneau saisi :</span>{" "}
+                {formatConflictRange(
+                  shiftConflictModalData.attemptedStart,
+                  shiftConflictModalData.attemptedEnd,
+                )}
+              </p>
+
+              {shiftConflictModalData.attemptedTitle ? (
+                <p className="mt-1">
+                  <span className="font-medium text-darkBlue">Intitulé :</span>{" "}
+                  {shiftConflictModalData.attemptedTitle}
+                </p>
+              ) : null}
+            </div>
+
+            {shiftConflictModalData.conflict ? (
+              <div className="rounded-2xl border border-orange/20 bg-orange/5 px-4 py-4 text-sm text-darkBlue/80">
+                <p className="font-medium text-darkBlue">
+                  {shiftConflictModalData.conflict?.isLeave
+                    ? "Période déjà occupée par un congé"
+                    : "Créneau déjà présent sur cette période"}
+                </p>
+                <p className="mt-2">
+                  <span className="font-medium text-darkBlue">Élément bloquant :</span>{" "}
+                  {shiftConflictModalData.conflict?.title || "Créneau existant"}
+                </p>
+                <p className="mt-1">
+                  <span className="font-medium text-darkBlue">Période :</span>{" "}
+                  {formatConflictRange(
+                    shiftConflictModalData.conflict?.start,
+                    shiftConflictModalData.conflict?.end,
+                  )}
+                </p>
+              </div>
+            ) : null}
+
+            <p className="text-sm text-darkBlue/70">
+              {shiftConflictModalData.conflictType === "leave_overlap"
+                ? "Il faut d’abord modifier ou supprimer le congé concerné avant d’ajouter un shift sur cette plage."
+                : "Il faut d’abord modifier ou supprimer le créneau existant avant d’en créer un nouveau sur la même plage."}
+            </p>
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={closeShiftConflictModal}
+                className="inline-flex items-center justify-center rounded-xl bg-blue px-4 py-2.5 text-sm font-medium text-white shadow transition hover:bg-blue/90"
+              >
+                Compris
               </button>
             </div>
           </div>

@@ -1594,8 +1594,15 @@ router.post(
       const currentProfile = findRestaurantProfile(currentEmployee, restaurantId);
       const conflict = findShiftConflict(currentProfile, parsedStart, parsedEnd);
       if (conflict) {
+        const serializedConflict = serializeShiftConflict(conflict);
         return res.status(409).json({
-          message: "Ce créneau chevauche déjà un shift ou une absence existante.",
+          message: serializedConflict.isLeave
+            ? "Impossible d'ajouter ce shift car un congé existe déjà sur cette période."
+            : "Impossible d'ajouter ce shift car un autre créneau existe déjà sur cette période.",
+          conflictType: serializedConflict.isLeave
+            ? "leave_overlap"
+            : "shift_overlap",
+          conflict: serializedConflict,
         });
       }
 
@@ -1748,8 +1755,15 @@ router.put(
         excludeShiftId: shiftObjectId,
       });
       if (overlap) {
+        const serializedConflict = serializeShiftConflict(overlap);
         return res.status(409).json({
-          message: "Ce créneau chevauche déjà un shift ou une absence existante.",
+          message: serializedConflict.isLeave
+            ? "Impossible de modifier ce shift car un congé existe déjà sur cette période."
+            : "Impossible de modifier ce shift car un autre créneau existe déjà sur cette période.",
+          conflictType: serializedConflict.isLeave
+            ? "leave_overlap"
+            : "shift_overlap",
+          conflict: serializedConflict,
         });
       }
 
