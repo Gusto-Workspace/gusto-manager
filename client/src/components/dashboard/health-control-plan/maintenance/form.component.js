@@ -350,7 +350,6 @@ export default function MaintenanceForm({
       const { data: saved } = await axios.put(
         url,
         { note: noteDraft },
-        {}
       );
 
       setValue("history", saved?.history || [], { shouldDirty: false });
@@ -374,8 +373,7 @@ export default function MaintenanceForm({
     try {
       setDeletingIdx(idx);
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/maintenance/${initial._id}/history/${idx}`;
-      const { data: saved } = await axios.delete(url, {
-      });
+      const { data: saved } = await axios.delete(url);
 
       setValue("history", saved?.history || [], { shouldDirty: false });
       window.dispatchEvent(

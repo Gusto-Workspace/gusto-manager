@@ -282,7 +282,6 @@ export default function WasteEntriesList({
       setDeleteLoading(true);
       await axios.delete(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/waste-entries/${deleteTarget._id}`,
-        {}
       );
 
       setItems((prev) => prev.filter((x) => x._id !== deleteTarget._id));

@@ -88,7 +88,7 @@ export default function ExportRangeModalComponent({
           if (loading) return;
           onClose?.();
         }}
-        className="absolute inset-0 bg-black/25 backdrop-blur-[2px]"
+        className="absolute inset-0 bg-black/25 backdrop-blur-sm"
         aria-label="Fermer"
       />
 

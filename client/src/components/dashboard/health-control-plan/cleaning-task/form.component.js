@@ -181,7 +181,6 @@ export default function CleaningTaskForm({
       const { data: saved } = await axios.put(
         url,
         { note: noteDraft },
-        {}
       );
 
       setValue("history", saved?.history || [], { shouldDirty: false });
@@ -210,8 +209,7 @@ export default function CleaningTaskForm({
     try {
       setDeletingIdx(idx);
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/cleaning-tasks/${initial._id}/history/${idx}`;
-      const { data: saved } = await axios.delete(url, {
-      });
+      const { data: saved } = await axios.delete(url);
 
       setValue("history", saved?.history || [], { shouldDirty: false });
       window.dispatchEvent(

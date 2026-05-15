@@ -89,7 +89,6 @@ export default function DayListReservationsComponent(props) {
         await axios.put(
           `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${rid}/reservations/${reservation._id}/status`,
           { status: "Confirmed" },
-          {},
         );
 
         // ✅ succès -> on peut fermer (SSE met à jour)

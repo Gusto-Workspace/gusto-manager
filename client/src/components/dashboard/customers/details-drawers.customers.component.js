@@ -387,7 +387,6 @@ export default function DetailsDrawerCustomersComponent({
           email: form.email,
           phone: form.phone,
         },
-        {},
       );
 
       const updated = data?.customer;
@@ -425,7 +424,6 @@ export default function DetailsDrawerCustomersComponent({
       const { data } = await axios.put(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/customers/${customerId}`,
         { notes: noteDraft },
-        {},
       );
 
       const updated = data?.customer;

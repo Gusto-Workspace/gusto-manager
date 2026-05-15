@@ -362,7 +362,6 @@ export default function MaintenanceList({
       setDeleteLoading(true);
       await axios.delete(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/maintenance/${deleteTarget._id}`,
-        {}
       );
 
       setItems((prev) => prev.filter((x) => x._id !== deleteTarget._id));
@@ -394,11 +393,7 @@ export default function MaintenanceList({
   async function markDone(item) {
     try {
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/maintenance/${item._id}/mark-done`;
-      const { data: saved } = await axios.post(
-        url,
-        {},
-        {}
-      );
+      const { data: saved } = await axios.post(url, {});
       window.dispatchEvent(
         new CustomEvent("maintenance:upsert", { detail: { doc: saved } })
       );
