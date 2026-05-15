@@ -59,7 +59,6 @@ export default function FridgeTemperaturePage() {
       try {
         const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/fridges`;
         const { data } = await axios.get(url, {
-          headers: { Authorization: `Bearer ${token}` },
           params: { active: 1 }, // n’affiche que les actives dans les tableaux
         });
         const items = (data?.items || []).sort((a, b) =>

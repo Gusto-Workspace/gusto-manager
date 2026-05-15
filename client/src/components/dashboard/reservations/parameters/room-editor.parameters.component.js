@@ -1363,7 +1363,7 @@ export default function RoomEditorComponent({
 
       const res = await axios.get(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/floorplans/rooms`,
-        { headers: { Authorization: `Bearer ${token}` } },
+        {},
       );
 
       const nextReservationParameters =
@@ -1584,7 +1584,7 @@ export default function RoomEditorComponent({
           onlineBookable: newTableOnlineBookable,
           bookingPriority: Number(newTableBookingPriority || 0),
         },
-        { headers: { Authorization: `Bearer ${token}` } },
+        {},
       );
 
       const savedTables = Array.isArray(res.data?.tables)
@@ -1653,7 +1653,7 @@ export default function RoomEditorComponent({
           bookingPriority: Number(editTableBookingPriority || 0),
           combinableWith: normalizeIdList(editTableCombinableWith),
         },
-        { headers: { Authorization: `Bearer ${token}` } },
+        {},
       );
 
       applyCatalogAndTableBlocks(
@@ -1710,7 +1710,7 @@ export default function RoomEditorComponent({
           endAt: endDate.toISOString(),
           note,
         },
-        { headers: { Authorization: `Bearer ${token}` } },
+        {},
       );
 
       const nextParameters =
@@ -1751,7 +1751,7 @@ export default function RoomEditorComponent({
 
       const res = await axios.delete(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/reservations/table-blocked-ranges/${rangeId}`,
-        { headers: { Authorization: `Bearer ${token}` } },
+        {},
       );
 
       const nextParameters =
@@ -1795,7 +1795,7 @@ export default function RoomEditorComponent({
 
       const res = await axios.delete(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/floorplans/catalog/tables/${activeCatalogId}`,
-        { headers: { Authorization: `Bearer ${token}` } },
+        {},
       );
 
       const savedTables = Array.isArray(res.data?.tables)
@@ -2086,7 +2086,7 @@ export default function RoomEditorComponent({
       const res = await axios.put(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/floorplans/rooms/${room._id}`,
         payload,
-        { headers: { Authorization: `Bearer ${token}` } },
+        {},
       );
 
       const nextRoom = res.data?.room;

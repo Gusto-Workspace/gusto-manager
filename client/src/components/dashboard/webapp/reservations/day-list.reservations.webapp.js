@@ -90,7 +90,7 @@ export default function DayListReservationsWebapp(props) {
         await axios.put(
           `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${rid}/reservations/${reservation._id}/status`,
           { status: "Confirmed" },
-          { headers: { Authorization: `Bearer ${token}` } },
+          {},
         );
 
         // ✅ succès -> on peut fermer (SSE met à jour)

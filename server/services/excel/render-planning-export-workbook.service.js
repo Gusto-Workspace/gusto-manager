@@ -32,6 +32,22 @@ function formatDateKey(value) {
   }).format(date);
 }
 
+function formatDateTime(value) {
+  if (!value) return "";
+
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  return new Intl.DateTimeFormat("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(date);
+}
+
 function minutesToHours(value) {
   const hours = Number(value || 0) / 60;
   return Math.round(hours * 100) / 100;
@@ -181,6 +197,52 @@ function normalizeCell(value) {
   return { value: value ?? "", type: "String" };
 }
 
+function getCellDisplayValue(cell) {
+  const normalized = normalizeCell(cell);
+  return String(normalized.value ?? "");
+}
+
+function computeColumnWidths(sheet) {
+  const widthByColumn = [];
+  const metadataRow = [
+    "Restaurant",
+    sheet.restaurantName,
+    "Periode",
+    `${formatDateKey(sheet.startDate)} au ${formatDateKey(sheet.endDate)}`,
+    "Genere le",
+    formatDateTime(sheet.generatedAt),
+  ];
+  const allRows = [[sheet.title], metadataRow, [], sheet.headers, ...safeArr(sheet.rows)];
+
+  allRows.forEach((row) => {
+    safeArr(row).forEach((cell, index) => {
+      const longestLine = getCellDisplayValue(cell)
+        .split(/\r?\n/u)
+        .reduce((max, line) => Math.max(max, line.length), 0);
+
+      widthByColumn[index] = Math.max(widthByColumn[index] || 0, longestLine);
+    });
+  });
+
+  return widthByColumn.map((length, index) => ({
+    index: index + 1,
+    width: Math.max(8, Math.min(60, Number(length || 0) + 2)),
+  }));
+}
+
+function renderColumnsXml(columnWidths = []) {
+  if (!Array.isArray(columnWidths) || !columnWidths.length) return "";
+
+  const columns = columnWidths
+    .map(
+      ({ index, width }) =>
+        `<col min="${index}" max="${index}" width="${width}" bestFit="1" customWidth="1"/>`,
+    )
+    .join("");
+
+  return `<cols>${columns}</cols>`;
+}
+
 function renderCellXml(cell, rowIndex, columnIndex, styleIndex = 0) {
   const normalized = normalizeCell(cell);
   const ref = `${columnNumberToLetters(columnIndex)}${rowIndex}`;
@@ -208,31 +270,20 @@ function renderRowXml(cells = [], rowIndex, styleIndex = 0) {
 function renderWorksheetXml(sheet) {
   const rows = [];
   let rowIndex = 1;
+  const metadataRow = [
+    "Restaurant",
+    sheet.restaurantName,
+    "Periode",
+    `${formatDateKey(sheet.startDate)} au ${formatDateKey(sheet.endDate)}`,
+    "Genere le",
+    formatDateTime(sheet.generatedAt),
+  ];
+  const columnsXml = renderColumnsXml(computeColumnWidths(sheet));
 
   rows.push(renderRowXml([sheet.title], rowIndex, 2));
   rowIndex += 1;
 
-  rows.push(
-    renderRowXml(
-      [
-        "Restaurant",
-        sheet.restaurantName,
-        "Periode",
-        `${formatDateKey(sheet.startDate)} au ${formatDateKey(sheet.endDate)}`,
-        "Genere le",
-        new Intl.DateTimeFormat("fr-FR", {
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-          hourCycle: "h23",
-        }).format(sheet.generatedAt),
-      ],
-      rowIndex,
-      0,
-    ),
-  );
+  rows.push(renderRowXml(metadataRow, rowIndex, 0));
   rowIndex += 1;
 
   rows.push(renderRowXml([], rowIndex));
@@ -252,6 +303,7 @@ function renderWorksheetXml(sheet) {
     <sheetView workbookViewId="0"/>
   </sheetViews>
   <sheetFormatPr defaultRowHeight="15"/>
+  ${columnsXml}
   <sheetData>
     ${rows.join("")}
   </sheetData>

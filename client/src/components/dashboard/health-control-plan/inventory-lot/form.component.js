@@ -286,7 +286,6 @@ export default function InventoryLotForm({
       try {
         const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-reception-deliveries`;
         const { data } = await axios.get(url, {
-          headers: { Authorization: `Bearer ${token}` },
           params: { page, limit: 25 },
         });
 
@@ -371,7 +370,6 @@ export default function InventoryLotForm({
         }
         const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/reception-deliveries/${receptionId}`;
         const { data } = await axios.get(url, {
-          headers: { Authorization: `Bearer ${token}` },
           validateStatus: (s) => s >= 200 && s < 300,
         });
 
@@ -599,7 +597,6 @@ export default function InventoryLotForm({
     const method = initial?._id ? "put" : "post";
 
     const { data: saved } = await axios[method](url, payload, {
-      headers: { Authorization: `Bearer ${token}` },
     });
 
     reset(buildFormDefaults(null));

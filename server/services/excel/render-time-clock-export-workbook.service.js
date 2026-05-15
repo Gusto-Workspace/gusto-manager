@@ -40,6 +40,17 @@ function formatDateTime(value) {
   }).format(date);
 }
 
+function toLocalDateKey(value) {
+  if (!value) return "";
+
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate(),
+  ).padStart(2, "0")}`;
+}
+
 function formatTime(value) {
   if (!value) return "";
 
@@ -113,14 +124,23 @@ function getContractualLabel(employment = {}) {
   return `${value} ${unit}`.trim();
 }
 
+function getContractualUnitLabel(employment = {}) {
+  if (!employment?.contractualUnit) return "";
+  return "heures";
+}
+
+function getPrimaryEstablishmentLabel(employment = {}, restaurantName = "") {
+  return employment?.primaryEstablishment || restaurantName || "";
+}
+
 function getLeaveTypeLabel(leaveRequest = {}) {
   switch (String(leaveRequest?.type || "").trim()) {
     case "morning":
-      return "Conges matin";
+      return "Conge paye matin";
     case "afternoon":
-      return "Conges apres-midi";
+      return "Conge paye apres-midi";
     default:
-      return "Conges";
+      return "Conge paye";
   }
 }
 
@@ -202,6 +222,90 @@ function computeLeaveDays(leaveRequest = {}) {
   }
 
   return days;
+}
+
+function getYearBounds(year) {
+  return {
+    start: new Date(`${year}-01-01T00:00:00`),
+    end: new Date(`${year}-12-31T23:59:59.999`),
+  };
+}
+
+function getIsoWeekNumber(value) {
+  const date = value instanceof Date ? new Date(value.getTime()) : new Date(value);
+  if (Number.isNaN(date.getTime())) return 0;
+
+  const utcDate = new Date(
+    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()),
+  );
+  const day = utcDate.getUTCDay() || 7;
+  utcDate.setUTCDate(utcDate.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(utcDate.getUTCFullYear(), 0, 1));
+
+  return Math.ceil(((utcDate - yearStart) / 86400000 + 1) / 7);
+}
+
+function addDays(date, amount) {
+  const next = new Date(date.getTime());
+  next.setDate(next.getDate() + amount);
+  return next;
+}
+
+function getEasterDate(year) {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+
+  return new Date(year, month - 1, day, 12, 0, 0, 0);
+}
+
+function isFrenchPublicHoliday(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  const day = date.getDate();
+  const easter = getEasterDate(year);
+
+  const movable = [
+    addDays(easter, 1),
+    addDays(easter, 39),
+    addDays(easter, 50),
+  ];
+
+  if (
+    [
+      [0, 1],
+      [4, 1],
+      [4, 8],
+      [6, 14],
+      [7, 15],
+      [10, 1],
+      [10, 11],
+      [11, 25],
+    ].some(([targetMonth, targetDay]) => month === targetMonth && day === targetDay)
+  ) {
+    return true;
+  }
+
+  return movable.some(
+    (holiday) =>
+      holiday.getFullYear() === year &&
+      holiday.getMonth() === month &&
+      holiday.getDate() === day,
+  );
 }
 
 function eachDayBetween(startValue, endValue, iteratee) {
@@ -331,6 +435,290 @@ function computeLeaveStats(report = {}, bounds) {
   );
 }
 
+function clipInterval(startValue, endValue, boundsStart, boundsEnd) {
+  const start = new Date(startValue);
+  const end = new Date(endValue);
+  const clipStart =
+    boundsStart instanceof Date ? boundsStart : new Date(boundsStart);
+  const clipEnd = boundsEnd instanceof Date ? boundsEnd : new Date(boundsEnd);
+
+  if (
+    Number.isNaN(start.getTime()) ||
+    Number.isNaN(end.getTime()) ||
+    Number.isNaN(clipStart.getTime()) ||
+    Number.isNaN(clipEnd.getTime())
+  ) {
+    return null;
+  }
+
+  const nextStart = new Date(Math.max(start.getTime(), clipStart.getTime()));
+  const nextEnd = new Date(Math.min(end.getTime(), clipEnd.getTime()));
+
+  if (nextEnd <= nextStart) return null;
+
+  return {
+    start: nextStart,
+    end: nextEnd,
+    minutes: diffMinutes(nextStart, nextEnd),
+  };
+}
+
+function sumIntervalMinutes(intervals = []) {
+  return safeArr(intervals).reduce(
+    (total, interval) => total + diffMinutes(interval?.start, interval?.end),
+    0,
+  );
+}
+
+function getSessionWorkIntervalsForDay(session = {}) {
+  const dayStart = session?.dayTotals?.startAt || session?.clockInAt;
+  const dayEnd = session?.dayTotals?.endAt || session?.clockOutAt;
+  const sessionStart = new Date(dayStart);
+  const sessionEnd = new Date(dayEnd);
+
+  if (
+    Number.isNaN(sessionStart.getTime()) ||
+    Number.isNaN(sessionEnd.getTime()) ||
+    sessionEnd <= sessionStart
+  ) {
+    return [];
+  }
+
+  const relevantBreaks = safeArr(session?.breaks)
+    .map((item) => clipInterval(item?.startAt, item?.endAt, sessionStart, sessionEnd))
+    .filter(Boolean)
+    .sort((left, right) => left.start - right.start);
+
+  const intervals = [];
+  let cursor = new Date(sessionStart.getTime());
+
+  relevantBreaks.forEach((currentBreak) => {
+    if (currentBreak.start > cursor) {
+      intervals.push({
+        start: new Date(cursor.getTime()),
+        end: new Date(currentBreak.start.getTime()),
+      });
+    }
+
+    if (currentBreak.end > cursor) {
+      cursor = new Date(currentBreak.end.getTime());
+    }
+  });
+
+  if (cursor < sessionEnd) {
+    intervals.push({
+      start: new Date(cursor.getTime()),
+      end: new Date(sessionEnd.getTime()),
+    });
+  }
+
+  return intervals;
+}
+
+function computeSpecialMinutesForSessionDay(session = {}, dateKey = "") {
+  const intervals = getSessionWorkIntervalsForDay(session);
+  const dayStart = new Date(`${dateKey}T00:00:00`);
+  const dayMorningEnd = new Date(`${dateKey}T07:00:00`);
+  const dayNightStart = new Date(`${dateKey}T22:00:00`);
+  const nextDayStart = new Date(`${dateKey}T00:00:00`);
+  nextDayStart.setDate(nextDayStart.getDate() + 1);
+
+  const nightMinutes = intervals.reduce((total, interval) => {
+    const earlyNight = clipInterval(interval.start, interval.end, dayStart, dayMorningEnd);
+    const lateNight = clipInterval(
+      interval.start,
+      interval.end,
+      dayNightStart,
+      nextDayStart,
+    );
+
+    return total + (earlyNight?.minutes || 0) + (lateNight?.minutes || 0);
+  }, 0);
+
+  const sundayMinutes = dayStart.getDay() === 0 ? sumIntervalMinutes(intervals) : 0;
+  const holidayMinutes = isFrenchPublicHoliday(dayStart)
+    ? sumIntervalMinutes(intervals)
+    : 0;
+
+  return {
+    holidayMinutes,
+    nightMinutes,
+    sundayMinutes,
+  };
+}
+
+function isLeaveShift(shift = {}) {
+  return Boolean(shift?.isLeave || shift?.leaveRequestId);
+}
+
+function overlapsInterval(startA, endA, startB, endB) {
+  const leftStart = new Date(startA);
+  const leftEnd = new Date(endA);
+  const rightStart = new Date(startB);
+  const rightEnd = new Date(endB);
+
+  if (
+    Number.isNaN(leftStart.getTime()) ||
+    Number.isNaN(leftEnd.getTime()) ||
+    Number.isNaN(rightStart.getTime()) ||
+    Number.isNaN(rightEnd.getTime())
+  ) {
+    return false;
+  }
+
+  return leftStart < rightEnd && leftEnd > rightStart;
+}
+
+function buildDaySessionsMap(range = {}) {
+  return new Map(
+    safeArr(range?.days).map((day) => [String(day?.date || ""), safeArr(day?.sessions)]),
+  );
+}
+
+function getDailyShiftDayValue(durationMinutes) {
+  if (Number(durationMinutes || 0) >= 6 * 60) return 1;
+  if (Number(durationMinutes || 0) > 0) return 0.5;
+  return 0;
+}
+
+function buildShiftAttendanceInsights(report = {}, bounds) {
+  const profile = report?.profile || {};
+  const approvedLeaves = safeArr(profile?.leaveRequests).filter(
+    (leaveRequest) =>
+      leaveRequest?.status === "approved" &&
+      overlapsRange(leaveRequest.start, leaveRequest.end, bounds),
+  );
+  const sessionsByDate = buildDaySessionsMap(report?.range || {});
+  const tardiness = [];
+  const unjustifiedAbsences = [];
+
+  safeArr(profile?.shifts)
+    .filter((shift) => !isLeaveShift(shift))
+    .forEach((shift) => {
+      const shiftStart = new Date(shift.start);
+      const shiftEnd = new Date(shift.end);
+
+      if (
+        Number.isNaN(shiftStart.getTime()) ||
+        Number.isNaN(shiftEnd.getTime()) ||
+        !overlapsRange(shiftStart, shiftEnd, bounds)
+      ) {
+        return;
+      }
+
+      const coveredByLeave = approvedLeaves.some((leaveRequest) =>
+        overlapsInterval(shiftStart, shiftEnd, leaveRequest.start, leaveRequest.end),
+      );
+      if (coveredByLeave) return;
+
+      const dateKey = toLocalDateKey(shiftStart);
+      const daySessions = sessionsByDate.get(dateKey) || [];
+      const overlappingSessions = daySessions.filter((session) =>
+        overlapsInterval(
+          session?.dayTotals?.startAt || session?.clockInAt,
+          session?.dayTotals?.endAt || session?.clockOutAt,
+          shiftStart,
+          shiftEnd,
+        ),
+      );
+
+      if (!overlappingSessions.length) {
+        unjustifiedAbsences.push({
+          title: shift?.title || report?.employee?.post || "Service prévu",
+          start: shiftStart,
+          end: shiftEnd,
+          durationMinutes: diffMinutes(shiftStart, shiftEnd),
+          days: getDailyShiftDayValue(diffMinutes(shiftStart, shiftEnd)),
+        });
+        return;
+      }
+
+      const actualStart = overlappingSessions
+        .map((session) => new Date(session?.dayTotals?.startAt || session?.clockInAt))
+        .filter((value) => !Number.isNaN(value.getTime()))
+        .sort((left, right) => left - right)[0];
+
+      if (actualStart && actualStart > shiftStart) {
+        tardiness.push({
+          title: shift?.title || report?.employee?.post || "Service prévu",
+          start: shiftStart,
+          end: actualStart,
+          durationMinutes: diffMinutes(shiftStart, actualStart),
+        });
+      }
+    });
+
+  return {
+    tardiness,
+    unjustifiedAbsences,
+  };
+}
+
+function buildLeaveDetailRows(report = {}, leaveRequest = {}, employment = {}, bounds, restaurantName) {
+  const rows = [];
+  const boundedLeave = clampLeaveRequestToBounds(leaveRequest, bounds);
+  if (!boundedLeave) return rows;
+
+  eachDayBetween(boundedLeave.start, boundedLeave.end, (day) => {
+    const dateKey = toLocalDateKey(day);
+    const dayStart = new Date(`${dateKey}T00:00:00`);
+    const dayEnd = new Date(`${dateKey}T23:59:00`);
+    const dayLeaveSegment = clipInterval(
+      boundedLeave.start,
+      boundedLeave.end,
+      dayStart,
+      new Date(`${dateKey}T23:59:59.999`),
+    );
+    const currentBounds = {
+      start: dayStart,
+      end: dayEnd,
+    };
+    const leaveHoursMinutes = computeLeaveMinutes(
+      {
+        ...leaveRequest,
+        start: dayStart,
+        end: dayEnd,
+      },
+      employment,
+      currentBounds,
+    );
+    rows.push([
+      report?.employee?.firstname || "",
+      report?.employee?.lastname || "",
+      employment.payrollCode || "",
+      employment.contractType || "",
+      Number(employment?.contractualValue || 0) || "",
+      getContractualUnitLabel(employment),
+      getPrimaryEstablishmentLabel(employment, restaurantName),
+      toIntegerCell(getIsoWeekNumber(day)),
+      formatDateKey(dateKey),
+      "Absence",
+      getLeaveTypeLabel(leaveRequest),
+      getPrimaryEstablishmentLabel(employment, restaurantName),
+      formatTime(dayLeaveSegment?.start || dayStart),
+      formatTime(dayLeaveSegment?.end || dayEnd),
+      toNumberCell(0),
+      toNumberCell(0),
+      "Conges approuves",
+      toNumberCell(0),
+      toNumberCell(0),
+      toNumberCell(minutesToHours(leaveHoursMinutes)),
+      toNumberCell(0),
+      toNumberCell(0),
+      "",
+      "",
+      toNumberCell(0),
+      toNumberCell(0),
+      toNumberCell(0),
+      toNumberCell(0),
+      toNumberCell(0),
+      toIntegerCell(0),
+    ]);
+  });
+
+  return rows;
+}
+
 function buildSummaryRows(reports = [], bounds) {
   return reports.map((report) => {
     const employment = report?.profile?.employment || {};
@@ -347,6 +735,13 @@ function buildSummaryRows(reports = [], bounds) {
       Number(range.totalWorkedMinutes || 0) - contractualMinutes,
     );
     const leaveStats = computeLeaveStats(report, bounds);
+    const attendanceInsights = buildShiftAttendanceInsights(report, bounds);
+    const absenceMinutes =
+      Number(leaveStats.totalLeaveMinutes || 0) +
+      attendanceInsights.unjustifiedAbsences.reduce(
+        (total, item) => total + Number(item?.durationMinutes || 0),
+        0,
+      );
 
     return [
       report?.employee?.firstname || "",
@@ -357,7 +752,7 @@ function buildSummaryRows(reports = [], bounds) {
       toNumberCell(minutesToHours(contractualMinutes)),
       toNumberCell(minutesToHours(range.totalWorkedMinutes || 0)),
       toNumberCell(minutesToHours(overtimeMinutes)),
-      toNumberCell(minutesToHours(leaveStats.totalLeaveMinutes || 0)),
+      toNumberCell(minutesToHours(absenceMinutes)),
       toNumberCell(leaveStats.totalLeaveDays || 0),
       toNumberCell(minutesToHours(range.totalBreakMinutes || 0)),
       toNumberCell(minutesToHours(range.totalGrossMinutes || 0)),
@@ -369,40 +764,72 @@ function buildSummaryRows(reports = [], bounds) {
   });
 }
 
-function buildDetailRows(reports = [], bounds) {
+function buildDetailRows(reports = [], bounds, restaurantName = "") {
   const rows = [];
 
   reports.forEach((report) => {
     const employment = report?.profile?.employment || {};
     const leaveRequests = safeArr(report?.profile?.leaveRequests);
+    const attendanceInsights = buildShiftAttendanceInsights(report, bounds);
 
     safeArr(report?.range?.days).forEach((day) => {
       safeArr(day?.sessions).forEach((session) => {
         const startAt = session?.dayTotals?.startAt || session?.clockInAt;
         const endAt = session?.dayTotals?.endAt || session?.clockOutAt;
+        const workedDate = new Date(`${day?.date}T12:00:00`);
+        const dayWorkedValue = safeArr(day?.sessions).length
+          ? 1 / safeArr(day?.sessions).length
+          : 0;
+        const specialMinutes = computeSpecialMinutesForSessionDay(
+          session,
+          day?.date,
+        );
+        const overlappingTardiness = attendanceInsights.tardiness
+          .filter((item) =>
+            overlapsInterval(
+              item?.start,
+              item?.end,
+              startAt,
+              endAt,
+            ),
+          )
+          .reduce((total, item) => total + Number(item?.durationMinutes || 0), 0);
 
         rows.push([
           report?.employee?.firstname || "",
           report?.employee?.lastname || "",
+          employment.payrollCode || "",
           employment.contractType || "",
-          getContractualLabel(employment),
+          Number(employment?.contractualValue || 0) || "",
+          getContractualUnitLabel(employment),
+          getPrimaryEstablishmentLabel(employment, restaurantName),
+          toIntegerCell(getIsoWeekNumber(workedDate)),
           formatDateKey(day?.date),
           "Travail",
           report?.employee?.post || "",
+          getPrimaryEstablishmentLabel(employment, restaurantName),
           formatTime(startAt),
           formatTime(endAt),
           toNumberCell(minutesToHours(session?.dayTotals?.breakMinutes || 0)),
+          toNumberCell(minutesToHours(overlappingTardiness)),
+          session?.isManuallyEdited ? "Corrige" : "",
           toNumberCell(minutesToHours(session?.dayTotals?.workedMinutes || 0)),
-          toIntegerCell(session?.dayTotals?.mealCount || 0),
+          toNumberCell(dayWorkedValue),
+          toNumberCell(0),
+          toNumberCell(0),
+          toNumberCell(0),
+          "",
+          "",
+          toNumberCell(minutesToHours(specialMinutes.holidayMinutes || 0)),
+          toNumberCell(minutesToHours(specialMinutes.nightMinutes || 0)),
+          toNumberCell(minutesToHours(specialMinutes.sundayMinutes || 0)),
           toNumberCell(
             session?.dayTotals?.mealCount > 0
               ? Number(session?.mealAllowance?.amount || 0)
               : 0,
           ),
-          session?.dayTotals?.mealCount > 0
-            ? getMealPeriodLabel(session?.mealAllowance?.periods)
-            : "",
-          session?.isManuallyEdited ? "Corrige" : "Pointeuse",
+          toIntegerCell(session?.dayTotals?.mealCount || 0),
+          toIntegerCell(session?.dayTotals?.mealCount || 0),
         ]);
       });
     });
@@ -414,35 +841,60 @@ function buildDetailRows(reports = [], bounds) {
           overlapsRange(leaveRequest.start, leaveRequest.end, bounds),
       )
       .forEach((leaveRequest) => {
-        const leaveMinutes = computeLeaveMinutes(
-          leaveRequest,
-          employment,
-          bounds,
+        rows.push(
+          ...buildLeaveDetailRows(
+            report,
+            leaveRequest,
+            employment,
+            bounds,
+            restaurantName,
+          ),
         );
-        rows.push([
-          report?.employee?.firstname || "",
-          report?.employee?.lastname || "",
-          employment.contractType || "",
-          getContractualLabel(employment),
-          formatDateTime(leaveRequest.start).slice(0, 10),
-          "Absence",
-          getLeaveTypeLabel(leaveRequest),
-          formatTime(leaveRequest.start),
-          formatTime(leaveRequest.end),
-          toNumberCell(0),
-          toNumberCell(minutesToHours(leaveMinutes)),
-          toIntegerCell(0),
-          toNumberCell(0),
-          "",
-          "Conges approuves",
-        ]);
       });
+
+    attendanceInsights.unjustifiedAbsences.forEach((absence) => {
+      const absenceDate = toLocalDateKey(absence?.start);
+      const absenceDay = new Date(`${absenceDate}T12:00:00`);
+
+      rows.push([
+        report?.employee?.firstname || "",
+        report?.employee?.lastname || "",
+        employment.payrollCode || "",
+        employment.contractType || "",
+        Number(employment?.contractualValue || 0) || "",
+        getContractualUnitLabel(employment),
+        getPrimaryEstablishmentLabel(employment, restaurantName),
+        toIntegerCell(getIsoWeekNumber(absenceDay)),
+        formatDateKey(absenceDate),
+        "Absence",
+        "Absence injustifiee",
+        getPrimaryEstablishmentLabel(employment, restaurantName),
+        formatTime(absence?.start),
+        formatTime(absence?.end),
+        toNumberCell(0),
+        toNumberCell(0),
+        absence?.title || "",
+        toNumberCell(0),
+        toNumberCell(0),
+        toNumberCell(0),
+        toNumberCell(0),
+        toNumberCell(minutesToHours(absence?.durationMinutes || 0)),
+        "",
+        "",
+        toNumberCell(0),
+        toNumberCell(0),
+        toNumberCell(0),
+        toNumberCell(0),
+        toNumberCell(0),
+        toIntegerCell(0),
+      ]);
+    });
   });
 
   return rows.sort((left, right) => {
     const nameCompare = `${left[1]} ${left[0]}`.localeCompare(`${right[1]} ${right[0]}`);
     if (nameCompare !== 0) return nameCompare;
-    return String(left[4] || "").localeCompare(String(right[4] || ""));
+    return String(left[8] || "").localeCompare(String(right[8] || ""));
   });
 }
 
@@ -450,6 +902,9 @@ function buildLeaveRows(reports = [], bounds) {
   const rows = [];
 
   reports.forEach((report) => {
+    const employment = report?.profile?.employment || {};
+    const attendanceInsights = buildShiftAttendanceInsights(report, bounds);
+
     safeArr(report?.profile?.leaveRequests)
       .filter(
         (leaveRequest) =>
@@ -463,9 +918,10 @@ function buildLeaveRows(reports = [], bounds) {
         rows.push([
           report?.employee?.lastname || "",
           report?.employee?.firstname || "",
+          employment.payrollCode || "",
           getLeaveTypeLabel(boundedLeave),
-          formatDateTime(boundedLeave.start),
-          formatDateTime(boundedLeave.end),
+          formatDateKey(toLocalDateKey(boundedLeave.start)),
+          formatDateKey(toLocalDateKey(boundedLeave.end)),
           toNumberCell(
             minutesToHours(
               computeLeaveMinutes(boundedLeave, report?.profile?.employment || {}, bounds),
@@ -474,25 +930,83 @@ function buildLeaveRows(reports = [], bounds) {
           toNumberCell(computeLeaveDays(boundedLeave)),
         ]);
       });
+
+    attendanceInsights.tardiness.forEach((item) => {
+      rows.push([
+        report?.employee?.lastname || "",
+        report?.employee?.firstname || "",
+        employment.payrollCode || "",
+        "Retard",
+        formatDateKey(toLocalDateKey(item?.start)),
+        formatDateKey(toLocalDateKey(item?.end || item?.start)),
+        toNumberCell(minutesToHours(item?.durationMinutes || 0)),
+        toNumberCell(1),
+      ]);
+    });
+
+    attendanceInsights.unjustifiedAbsences.forEach((item) => {
+      rows.push([
+        report?.employee?.lastname || "",
+        report?.employee?.firstname || "",
+        employment.payrollCode || "",
+        "Absence injustifiee",
+        formatDateKey(toLocalDateKey(item?.start)),
+        formatDateKey(toLocalDateKey(item?.end || item?.start)),
+        toNumberCell(minutesToHours(item?.durationMinutes || 0)),
+        toNumberCell(item?.days || 0),
+      ]);
+    });
   });
 
   return rows.sort((left, right) => {
     const nameCompare = `${left[0]} ${left[1]}`.localeCompare(`${right[0]} ${right[1]}`);
     if (nameCompare !== 0) return nameCompare;
-    return String(left[3] || "").localeCompare(String(right[3] || ""));
+    return String(left[4] || "").localeCompare(String(right[4] || ""));
   });
 }
 
-function buildLeaveBalanceRows(reports = []) {
+function computeApprovedLeaveDaysForYear(report = {}, year) {
+  const bounds = getYearBounds(year);
+
+  return safeArr(report?.profile?.leaveRequests)
+    .filter(
+      (leaveRequest) =>
+        leaveRequest?.status === "approved" &&
+        overlapsRange(leaveRequest.start, leaveRequest.end, bounds),
+    )
+    .reduce((total, leaveRequest) => {
+      const boundedLeave = clampLeaveRequestToBounds(leaveRequest, bounds);
+      if (!boundedLeave) return total;
+      return total + computeLeaveDays(boundedLeave);
+    }, 0);
+}
+
+function buildLeaveBalanceRows(reports = [], referenceYear) {
   return reports.map((report) => {
     const employment = report?.profile?.employment || {};
+    const previousYear = Number(referenceYear || new Date().getFullYear()) - 1;
+    const currentYear = Number(referenceYear || new Date().getFullYear());
+    const previousAcquired = Number(employment.leaveBalancePreviousYear || 0);
+    const currentAcquired = Number(employment.leaveBalanceCurrentYear || 0);
+    const previousTaken = computeApprovedLeaveDaysForYear(report, previousYear);
+    const currentTaken = computeApprovedLeaveDaysForYear(report, currentYear);
+    const previousBalance = Math.max(0, previousAcquired - previousTaken);
+    const currentBalance = Math.max(0, currentAcquired - currentTaken);
+    const availableBalance =
+      Number(employment.leaveBalanceAvailable || 0) ||
+      previousBalance + currentBalance;
 
     return [
       report?.employee?.lastname || "",
       report?.employee?.firstname || "",
-      toNumberCell(employment.leaveBalancePreviousYear || 0),
-      toNumberCell(employment.leaveBalanceCurrentYear || 0),
-      toNumberCell(employment.leaveBalanceAvailable || 0),
+      employment.payrollCode || "",
+      toNumberCell(previousAcquired),
+      toNumberCell(previousTaken),
+      toNumberCell(previousBalance),
+      toNumberCell(currentAcquired),
+      toNumberCell(currentTaken),
+      toNumberCell(currentBalance),
+      toNumberCell(availableBalance),
     ];
   });
 }
@@ -523,6 +1037,7 @@ function buildWorkbookDefinition({
   generatedAt = new Date(),
 }) {
   const bounds = getDateBounds(startDate, endDate);
+  const referenceYear = new Date(`${endDate}T12:00:00`).getFullYear();
 
   return [
     {
@@ -570,21 +1085,36 @@ function buildWorkbookDefinition({
       headers: [
         "Prenom",
         "Nom",
+        "Matricule de paie",
         "Type de contrat",
         "Temps contractuel",
+        "Heures / jours",
+        "Etablissement principal",
+        "N semaine",
         "Date",
         "Travail / Absence",
         "Nom du poste / type d'absence",
+        "Shift / absence effectue a",
         "Debut",
         "Fin",
         "Pause (h)",
-        "Heures (h)",
+        "Retard (h)",
+        "Note",
+        "Heures travaillees (h)",
+        "Jours travailles (j)",
+        "Absences indemnisees employeur (h)",
+        "Absences indemnisees tiers (h)",
+        "Absences non indemnisees (h)",
+        "Avenant (type)",
+        "Avenant (h)",
+        "Heures jour ferie (h)",
+        "Heures de nuit (22:00-07:00)",
+        "Heures dimanche (h)",
+        "Montant repas pris (EUR)",
+        "Avantages nature",
         "Repas dus",
-        "Montant repas (EUR)",
-        "Periodes repas",
-        "Source",
       ],
-      rows: buildDetailRows(reports, bounds),
+      rows: buildDetailRows(reports, bounds, restaurantName),
     },
     {
       name: "Absences Employes",
@@ -592,6 +1122,7 @@ function buildWorkbookDefinition({
       headers: [
         "Nom",
         "Prenom",
+        "Matricule de paie",
         "Type absence",
         "Date de debut",
         "Date de fin",
@@ -603,8 +1134,19 @@ function buildWorkbookDefinition({
     {
       name: "Solde Conges",
       title: "Solde conges",
-      headers: ["Nom", "Prenom", "N-1", "N", "Conges disponibles"],
-      rows: buildLeaveBalanceRows(reports),
+      headers: [
+        "Nom",
+        "Prenom",
+        "Matricule de paie",
+        "N-1 : Conges payes acquis",
+        "N-1 : Conges payes poses",
+        "N-1 : Solde de conges payes",
+        "N : Conges payes acquis",
+        "N : Conges payes poses",
+        "N : Solde des conges payes",
+        "Conges disponibles",
+      ],
+      rows: buildLeaveBalanceRows(reports, referenceYear),
     },
   ].map((sheet) => ({
     ...sheet,
@@ -639,6 +1181,52 @@ function normalizeCell(value) {
   return { value: value ?? "", type: "String" };
 }
 
+function getCellDisplayValue(cell) {
+  const normalized = normalizeCell(cell);
+  return String(normalized.value ?? "");
+}
+
+function computeColumnWidths(sheet) {
+  const widthByColumn = [];
+  const metadataRow = [
+    "Restaurant",
+    sheet.restaurantName,
+    "Periode",
+    `${formatDateKey(sheet.startDate)} au ${formatDateKey(sheet.endDate)}`,
+    "Genere le",
+    formatDateTime(sheet.generatedAt),
+  ];
+  const allRows = [[sheet.title], metadataRow, [], sheet.headers, ...safeArr(sheet.rows)];
+
+  allRows.forEach((row) => {
+    safeArr(row).forEach((cell, index) => {
+      const longestLine = getCellDisplayValue(cell)
+        .split(/\r?\n/u)
+        .reduce((max, line) => Math.max(max, line.length), 0);
+
+      widthByColumn[index] = Math.max(widthByColumn[index] || 0, longestLine);
+    });
+  });
+
+  return widthByColumn.map((length, index) => ({
+    index: index + 1,
+    width: Math.max(8, Math.min(60, Number(length || 0) + 2)),
+  }));
+}
+
+function renderColumnsXml(columnWidths = []) {
+  if (!Array.isArray(columnWidths) || !columnWidths.length) return "";
+
+  const columns = columnWidths
+    .map(
+      ({ index, width }) =>
+        `<col min="${index}" max="${index}" width="${width}" bestFit="1" customWidth="1"/>`,
+    )
+    .join("");
+
+  return `<cols>${columns}</cols>`;
+}
+
 function renderCellXml(cell, rowIndex, columnIndex, styleIndex = 0) {
   const normalized = normalizeCell(cell);
   const ref = `${columnNumberToLetters(columnIndex)}${rowIndex}`;
@@ -666,24 +1254,20 @@ function renderRowXml(cells = [], rowIndex, styleIndex = 0) {
 function renderWorksheetXml(sheet) {
   const rows = [];
   let rowIndex = 1;
+  const metadataRow = [
+    "Restaurant",
+    sheet.restaurantName,
+    "Periode",
+    `${formatDateKey(sheet.startDate)} au ${formatDateKey(sheet.endDate)}`,
+    "Genere le",
+    formatDateTime(sheet.generatedAt),
+  ];
+  const columnsXml = renderColumnsXml(computeColumnWidths(sheet));
 
   rows.push(renderRowXml([sheet.title], rowIndex, 2));
   rowIndex += 1;
 
-  rows.push(
-    renderRowXml(
-      [
-        "Restaurant",
-        sheet.restaurantName,
-        "Periode",
-        `${formatDateKey(sheet.startDate)} au ${formatDateKey(sheet.endDate)}`,
-        "Genere le",
-        formatDateTime(sheet.generatedAt),
-      ],
-      rowIndex,
-      0,
-    ),
-  );
+  rows.push(renderRowXml(metadataRow, rowIndex, 0));
   rowIndex += 1;
 
   rows.push(renderRowXml([], rowIndex));
@@ -703,6 +1287,7 @@ function renderWorksheetXml(sheet) {
     <sheetView workbookViewId="0"/>
   </sheetViews>
   <sheetFormatPr defaultRowHeight="15"/>
+  ${columnsXml}
   <sheetData>
     ${rows.join("")}
   </sheetData>

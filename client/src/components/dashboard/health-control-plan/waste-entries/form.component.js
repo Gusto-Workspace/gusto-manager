@@ -177,7 +177,6 @@ export default function WasteEntriesForm({
 
     const { data: saved } = await axios[method](url, formData, {
       headers: {
-        Authorization: `Bearer ${token}`,
         "Content-Type": "multipart/form-data",
       },
     });

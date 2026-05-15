@@ -158,7 +158,6 @@ export default function CalibrationList({
       const { data } = await axios.get(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-calibrations`,
         {
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
           params,
         }
       );
@@ -282,7 +281,7 @@ export default function CalibrationList({
       setDeleteLoading(true);
       await axios.delete(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/calibrations/${deleteTarget._id}`,
-        { headers: { Authorization: `Bearer ${token}` } }
+        {}
       );
 
       setItems((prev) => prev.filter((x) => x._id !== deleteTarget._id));

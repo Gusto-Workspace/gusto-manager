@@ -10,6 +10,7 @@ const streamifier = require("streamifier");
 
 // MIDDLEWARE / MODELS
 const authenticateAdmin = require("../../middleware/authenticate-admin");
+const { requireAdminRole } = require("../../middleware/authenticate-admin");
 const authenticateToken = authenticateAdmin;
 const DocumentModel = require("../../models/document.model");
 
@@ -232,7 +233,7 @@ router.get("/admin/documents/:id", authenticateToken, async (req, res) => {
 });
 
 // ---------- CREATE DRAFT ----------
-router.post("/admin/documents", authenticateToken, async (req, res) => {
+router.post("/admin/documents", authenticateToken, requireAdminRole, async (req, res) => {
   try {
     const { type, party } = req.body;
 
@@ -266,7 +267,7 @@ router.post("/admin/documents", authenticateToken, async (req, res) => {
 });
 
 // ---------- UPDATE ----------
-router.patch("/admin/documents/:id", authenticateToken, async (req, res) => {
+router.patch("/admin/documents/:id", authenticateToken, requireAdminRole, async (req, res) => {
   try {
     const doc = await DocumentModel.findById(req.params.id);
     if (!doc) return res.status(404).json({ message: "Document introuvable" });
@@ -470,7 +471,7 @@ router.patch("/admin/documents/:id", authenticateToken, async (req, res) => {
 });
 
 // ---------- DELETE (✅ Cloudinary + Mongo) ----------
-router.delete("/admin/documents/:id", authenticateToken, async (req, res) => {
+router.delete("/admin/documents/:id", authenticateToken, requireAdminRole, async (req, res) => {
   try {
     const doc = await DocumentModel.findById(req.params.id);
     if (!doc) return res.status(404).json({ message: "Document introuvable" });
@@ -534,6 +535,7 @@ router.get(
 router.post(
   "/admin/documents/:id/send",
   authenticateToken,
+  requireAdminRole,
   async (req, res) => {
     try {
       const doc = await DocumentModel.findById(req.params.id);
@@ -717,6 +719,7 @@ router.post(
 router.post(
   "/admin/documents/:id/resend",
   authenticateToken,
+  requireAdminRole,
   async (req, res) => {
     try {
       const doc = await DocumentModel.findById(req.params.id);

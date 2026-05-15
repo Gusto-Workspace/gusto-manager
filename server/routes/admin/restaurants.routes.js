@@ -4,6 +4,7 @@ const stripe = require("stripe")(process.env.STRIPE_API_SECRET_KEY);
 
 // MIDDLEWARE
 const authenticateAdmin = require("../../middleware/authenticate-admin");
+const { requireAdminRole } = require("../../middleware/authenticate-admin");
 
 // MODELS
 const RestaurantModel = require("../../models/restaurant.model");
@@ -93,7 +94,7 @@ async function assertRestaurantTransferBillingIsSafe(restaurant) {
 }
 
 // GET STRIPE KEY FOR A SPECIFIC RESTAURANT
-router.get("/admin/restaurants/:id/stripe-key", async (req, res) => {
+router.get("/admin/restaurants/:id/stripe-key", requireAdminRole, async (req, res) => {
   const restaurantId = req.params.id;
 
   try {
@@ -136,7 +137,7 @@ router.get("/admin/restaurants", async (req, res) => {
 });
 
 // ADD RESTAURANT
-router.post("/admin/add-restaurant", async (req, res) => {
+router.post("/admin/add-restaurant", requireAdminRole, async (req, res) => {
   const { restaurantData, ownerData, existingOwnerId, stripeSecretKey } =
     req.body;
 
@@ -257,7 +258,7 @@ router.post("/admin/add-restaurant", async (req, res) => {
 });
 
 // UPDATE RESTAURANT
-router.put("/admin/restaurants/:id", async (req, res) => {
+router.put("/admin/restaurants/:id", requireAdminRole, async (req, res) => {
   const { restaurantData, ownerData, existingOwnerId, stripeSecretKey } =
     req.body;
 
@@ -507,7 +508,7 @@ router.put("/admin/restaurants/:id", async (req, res) => {
 });
 
 // DELETE RESTAURANT
-router.delete("/admin/restaurants/:id", async (req, res) => {
+router.delete("/admin/restaurants/:id", requireAdminRole, async (req, res) => {
   try {
     // Trouver le restaurant à supprimer
     const restaurant = await RestaurantModel.findById(req.params.id);

@@ -875,7 +875,7 @@ async function handlePlanningExport(payload) {
             <span className="block truncate text-[10px] opacity-90">
               {event.shiftLabel}
             </span>
-          ) : event.title ? (
+          ) : !event.employeeShortName && event.title ? (
             <span className="block truncate text-[11px] font-medium opacity-95">
               {event.title}
             </span>
@@ -1028,7 +1028,7 @@ async function handlePlanningExport(payload) {
                 setIsPlanningExportOpen(true);
               }}
               className="hidden midTablet:inline-flex
-      inline-flex items-center gap-2
+       items-center gap-2
       rounded-2xl border border-darkBlue/10 bg-white/70
       px-4 py-2 text-sm font-semibold text-darkBlue
       hover:bg-darkBlue/5 transition
@@ -1044,7 +1044,7 @@ async function handlePlanningExport(payload) {
               type="button"
               onClick={openManualAdd}
               className="hidden midTablet:inline-flex
-      inline-flex items-center gap-2
+       items-center gap-2
       rounded-2xl bg-white text-blue
       px-4 py-2 text-sm font-semibold border border-blue
       shadow-sm hover:bg-darkBlue/5 active:scale-[0.98] transition
@@ -1066,7 +1066,7 @@ async function handlePlanningExport(payload) {
                 router.push("/dashboard/employees/planning/days-off")
               }
               className="hidden midTablet:inline-flex
-      inline-flex items-center gap-2
+       items-center gap-2
       rounded-2xl border border-darkBlue/10 bg-white/70
       px-4 py-2 text-sm font-semibold text-darkBlue
       hover:bg-darkBlue/5 transition

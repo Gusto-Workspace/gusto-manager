@@ -4,16 +4,46 @@ import "@/styles/tailwind.css";
 import "@/styles/custom/_index.scss";
 
 // REACT
-import { useContext, useEffect, useMemo } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
 import axios from "axios";
+import { jwtDecode } from "jwt-decode";
 
 // I18N
 import { appWithTranslation } from "next-i18next";
 
 // CONTEXT
 import { GlobalContext, GlobalProvider } from "@/contexts/global.context";
+
+function ensureAxiosApiAuthInterceptor() {
+  if (typeof window === "undefined") return;
+  if (window.__gustoApiAuthInterceptorId != null) return;
+
+  window.__gustoApiAuthInterceptorId = axios.interceptors.request.use(
+    (config) => {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      const targetUrl = String(config?.url || "");
+      const isApiRequest = apiUrl && targetUrl.startsWith(apiUrl);
+
+      if (!isApiRequest) return config;
+
+      const token = localStorage.getItem("token");
+
+      if (!token || config?.headers?.Authorization) return config;
+
+      return {
+        ...config,
+        headers: {
+          ...(config.headers || {}),
+          Authorization: `Bearer ${token}`,
+        },
+      };
+    },
+  );
+}
+
+ensureAxiosApiAuthInterceptor();
 
 function WebAppNotificationBadgeSync() {
   const router = useRouter();
@@ -69,6 +99,53 @@ function WebAppNotificationBadgeSync() {
   }, [badgeCount, restaurantContext?.dataLoading, targetModule]);
 
   return null;
+}
+
+function OwnerOnlyWebAppGuard({ children }) {
+  const router = useRouter();
+  const [accessState, setAccessState] = useState("idle");
+
+  useEffect(() => {
+    if (!router.isReady) return;
+
+    const isWebAppRoute = (router.pathname || "").startsWith("/dashboard/webapp");
+    if (!isWebAppRoute) {
+      setAccessState("allowed");
+      return;
+    }
+
+    if (typeof window === "undefined") {
+      setAccessState("blocked");
+      return;
+    }
+
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setAccessState("allowed");
+      return;
+    }
+
+    try {
+      const decoded = jwtDecode(token);
+      if (decoded?.role === "employee") {
+        setAccessState("blocked");
+        router.replace("/dashboard/my-space");
+        return;
+      }
+    } catch (error) {
+      console.warn("Invalid dashboard token for webapp guard", error);
+    }
+
+    setAccessState("allowed");
+  }, [router.isReady, router.pathname, router]);
+
+  if ((router.pathname || "").startsWith("/dashboard/webapp")) {
+    if (!router.isReady || accessState !== "allowed") {
+      return null;
+    }
+  }
+
+  return children;
 }
 
 function App({ Component, pageProps }) {
@@ -156,33 +233,6 @@ function App({ Component, pageProps }) {
     };
   }, [router]);
 
-  useEffect(() => {
-    const interceptorId = axios.interceptors.request.use((config) => {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-      const targetUrl = String(config?.url || "");
-      const isApiRequest = apiUrl && targetUrl.startsWith(apiUrl);
-
-      if (!isApiRequest) return config;
-
-      const token =
-        typeof window !== "undefined" ? localStorage.getItem("token") : null;
-
-      if (!token || config?.headers?.Authorization) return config;
-
-      return {
-        ...config,
-        headers: {
-          ...(config.headers || {}),
-          Authorization: `Bearer ${token}`,
-        },
-      };
-    });
-
-    return () => {
-      axios.interceptors.request.eject(interceptorId);
-    };
-  }, []);
-
   return (
     <>
       <Head>
@@ -195,7 +245,9 @@ function App({ Component, pageProps }) {
 
       <GlobalProvider>
         <WebAppNotificationBadgeSync />
-        <Component {...pageProps} />
+        <OwnerOnlyWebAppGuard>
+          <Component {...pageProps} />
+        </OwnerOnlyWebAppGuard>
       </GlobalProvider>
     </>
   );

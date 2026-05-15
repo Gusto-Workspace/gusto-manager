@@ -139,7 +139,6 @@ export default function RecallList({
       const { data } = await axios.get(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-recalls`,
         {
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
           params,
         }
       );
@@ -249,7 +248,7 @@ export default function RecallList({
       setDeleteLoading(true);
       await axios.delete(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/recalls/${deleteTarget._id}`,
-        { headers: { Authorization: `Bearer ${token}` } }
+        {}
       );
       setItems((prev) => prev.filter((x) => x._id !== deleteTarget._id));
       onDeleted?.(deleteTarget);

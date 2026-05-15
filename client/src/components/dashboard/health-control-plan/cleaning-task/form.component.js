@@ -159,7 +159,6 @@ export default function CleaningTaskForm({
     const method = initial?._id ? "put" : "post";
 
     const { data: saved } = await axios[method](url, payload, {
-      headers: { Authorization: `Bearer ${token}` },
     });
 
     window.dispatchEvent(
@@ -182,7 +181,7 @@ export default function CleaningTaskForm({
       const { data: saved } = await axios.put(
         url,
         { note: noteDraft },
-        { headers: { Authorization: `Bearer ${token}` } }
+        {}
       );
 
       setValue("history", saved?.history || [], { shouldDirty: false });
@@ -212,7 +211,6 @@ export default function CleaningTaskForm({
       setDeletingIdx(idx);
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/cleaning-tasks/${initial._id}/history/${idx}`;
       const { data: saved } = await axios.delete(url, {
-        headers: { Authorization: `Bearer ${token}` },
       });
 
       setValue("history", saved?.history || [], { shouldDirty: false });

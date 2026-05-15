@@ -341,6 +341,78 @@ export default function RestaurantContext() {
           });
         }
 
+        if (payload.type === "leave_request_updated") {
+          setRestaurantData((prev) => {
+            if (!prev) return prev;
+
+            const employeeId = String(payload.employeeId || "");
+            const leaveRequest = payload.leaveRequest;
+            const nextShifts = Array.isArray(payload.shifts)
+              ? payload.shifts
+              : null;
+
+            return {
+              ...prev,
+              employees: (prev.employees || []).map((employee) => {
+                if (String(employee?._id) !== employeeId) {
+                  return employee;
+                }
+
+                const currentLeaveRequests = Array.isArray(employee.leaveRequests)
+                  ? employee.leaveRequests
+                  : [];
+                const hasLeaveRequest = currentLeaveRequests.some(
+                  (request) =>
+                    String(request?._id) === String(leaveRequest?._id),
+                );
+
+                return {
+                  ...employee,
+                  leaveRequests: hasLeaveRequest
+                    ? currentLeaveRequests.map((request) =>
+                        String(request?._id) === String(leaveRequest?._id)
+                          ? { ...request, ...leaveRequest }
+                          : request,
+                      )
+                    : leaveRequest
+                      ? [...currentLeaveRequests, leaveRequest]
+                      : currentLeaveRequests,
+                  shifts: nextShifts || employee.shifts || [],
+                };
+              }),
+            };
+          });
+        }
+
+        if (payload.type === "leave_request_deleted") {
+          setRestaurantData((prev) => {
+            if (!prev) return prev;
+
+            const employeeId = String(payload.employeeId || "");
+            const leaveRequestId = String(payload.leaveRequestId || "");
+            const nextShifts = Array.isArray(payload.shifts)
+              ? payload.shifts
+              : null;
+
+            return {
+              ...prev,
+              employees: (prev.employees || []).map((employee) => {
+                if (String(employee?._id) !== employeeId) {
+                  return employee;
+                }
+
+                return {
+                  ...employee,
+                  leaveRequests: (employee.leaveRequests || []).filter(
+                    (request) => String(request?._id) !== leaveRequestId,
+                  ),
+                  shifts: nextShifts || employee.shifts || [],
+                };
+              }),
+            };
+          });
+        }
+
         if (payload.type === "employee_updated" && payload.employee) {
           const nextEmployee = payload.employee;
           const employeeId = String(nextEmployee?._id || "");

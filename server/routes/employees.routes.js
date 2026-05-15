@@ -239,13 +239,13 @@ function rangesOverlap(startA, endA, startB, endB) {
   return startA < endB && endA > startB;
 }
 
-function findShiftConflict(
+function findShiftConflicts(
   profile,
   start,
   end,
   { excludeShiftId = null, excludeLeaveRequestId = null } = {},
 ) {
-  return (profile?.shifts || []).find((shift) => {
+  return (profile?.shifts || []).filter((shift) => {
     if (excludeShiftId && String(shift?._id) === String(excludeShiftId)) {
       return false;
     }
@@ -264,6 +264,10 @@ function findShiftConflict(
 
     return rangesOverlap(start, end, currentStart, currentEnd);
   });
+}
+
+function findShiftConflict(profile, start, end, options = {}) {
+  return findShiftConflicts(profile, start, end, options)[0] || null;
 }
 
 function findActiveLeaveRequestConflict(
@@ -366,6 +370,20 @@ function isLeaveShift(value) {
 function getPlanningShiftTitle(value) {
   if (isLeaveShift(value)) return "Congés";
   return normalizePlanningTitle(value?.title);
+}
+
+function serializeShiftConflict(shift) {
+  const leaveShift = isLeaveShift(shift);
+
+  return {
+    _id: shift?._id || null,
+    title: getPlanningShiftTitle(shift),
+    start: shift?.start || null,
+    end: shift?.end || null,
+    isLeave: leaveShift,
+    leaveRequestId: shift?.leaveRequestId || null,
+    canDelete: !leaveShift,
+  };
 }
 
 function parseShiftDate(value) {
@@ -2179,7 +2197,7 @@ router.put(
   async (req, res) => {
     try {
       const { restaurantId, employeeId, reqId } = req.params;
-      const { status } = req.body;
+      const { status, resolveConflict } = req.body;
       if (!["pending", "approved", "rejected", "canceled"].includes(status)) {
         return res.status(400).json({ message: "status invalide" });
       }
@@ -2221,14 +2239,47 @@ router.put(
       }
 
       if (status === "approved") {
-        const overlap = findShiftConflict(profile, new Date(lr.start), new Date(lr.end), {
-          excludeLeaveRequestId: lr._id,
-        });
-        if (overlap) {
-          return res.status(409).json({
-            message:
-              "Impossible d'approuver ce congé car il chevauche un shift existant.",
-          });
+        const overlappingShifts = findShiftConflicts(
+          profile,
+          new Date(lr.start),
+          new Date(lr.end),
+          {
+            excludeLeaveRequestId: lr._id,
+          },
+        );
+
+        if (overlappingShifts.length) {
+          const serializedConflicts = overlappingShifts.map(serializeShiftConflict);
+          const canResolveByDeletion = serializedConflicts.every(
+            (shift) => shift.canDelete === true,
+          );
+
+          if (resolveConflict === "delete_conflicting_shifts") {
+            if (!canResolveByDeletion) {
+              return res.status(409).json({
+                message:
+                  "Impossible d'approuver ce congé car il chevauche une absence ou un créneau non supprimable.",
+                conflictType: "shift_overlap",
+                canResolveByDeletion: false,
+                conflictShifts: serializedConflicts,
+              });
+            }
+
+            const conflictingShiftIds = new Set(
+              overlappingShifts.map((shift) => String(shift?._id)),
+            );
+            profile.shifts = (profile.shifts || []).filter(
+              (shift) => !conflictingShiftIds.has(String(shift?._id)),
+            );
+          } else {
+            return res.status(409).json({
+              message:
+                "Impossible d'approuver ce congé car il chevauche un shift existant.",
+              conflictType: "shift_overlap",
+              canResolveByDeletion,
+              conflictShifts: serializedConflicts,
+            });
+          }
         }
       }
 
@@ -2257,6 +2308,12 @@ router.put(
       }
 
       await emp.save();
+      broadcastToRestaurant(String(restaurantId), {
+        type: "leave_request_updated",
+        employeeId: String(emp._id),
+        leaveRequest: lr?.toObject ? lr.toObject() : { ...lr },
+        shifts: profile.shifts || [],
+      });
       return res.json({
         leaveRequest: lr,
         shifts: profile.shifts,
@@ -2308,6 +2365,12 @@ router.delete(
 
       lr.deleteOne();
       await emp.save();
+      broadcastToRestaurant(String(restaurantId), {
+        type: "leave_request_deleted",
+        employeeId: String(emp._id),
+        leaveRequestId: String(reqId),
+        shifts: profile.shifts || [],
+      });
 
       return res.json({
         leaveRequests: profile.leaveRequests,

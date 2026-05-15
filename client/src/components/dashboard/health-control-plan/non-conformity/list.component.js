@@ -180,7 +180,6 @@ export default function NonConformityList({
 
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-non-conformities`;
       const { data } = await axios.get(url, {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         params,
       });
 
@@ -311,7 +310,6 @@ export default function NonConformityList({
       setDeleteLoading(true);
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/non-conformities/${deleteTarget._id}`;
       await axios.delete(url, {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
 
       setItems((prev) =>

@@ -478,7 +478,6 @@ export default function TrainingForm({
     const method = isEdit ? "put" : "post";
 
     const { data: saved } = await axios[method](url, payload, {
-      headers: { Authorization: `Bearer ${token}` },
     });
 
     window.dispatchEvent(

@@ -249,7 +249,6 @@ export default function ReceptionDeliveryForm({
       while (page <= pages && page <= maxPages) {
         const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-reception-deliveries`;
         const { data } = await axios.get(url, {
-          headers: { Authorization: `Bearer ${token}` },
           params: { page, limit },
         });
 
@@ -520,7 +519,6 @@ export default function ReceptionDeliveryForm({
 
     const { data: saved } = await axios[method](url, formData, {
       headers: {
-        Authorization: `Bearer ${token}`,
         "Content-Type": "multipart/form-data",
       },
     });

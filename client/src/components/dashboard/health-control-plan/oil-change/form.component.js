@@ -123,7 +123,6 @@ export default function OilChangeForm({
     const method = initial?._id ? "put" : "post";
 
     const { data: saved } = await axios[method](url, payload, {
-      headers: { Authorization: `Bearer ${token}` },
     });
 
     window.dispatchEvent(
@@ -335,7 +334,6 @@ export default function OilChangeForm({
       try {
         const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-oil-changes`;
         const { data } = await axios.get(url, {
-          headers: { Authorization: `Bearer ${token}` },
           params: { page, limit: 50 },
         });
 

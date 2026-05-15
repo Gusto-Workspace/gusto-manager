@@ -13,7 +13,22 @@ import {
   User,
   CheckCircle2,
   XCircle,
+  AlertTriangle,
+  Trash2,
+  Clock3,
 } from "lucide-react";
+
+function getEmptyApprovalConflictModal() {
+  return {
+    open: false,
+    employeeId: null,
+    reqId: null,
+    employeeName: "",
+    message: "",
+    canResolveByDeletion: false,
+    conflictShifts: [],
+  };
+}
 
 export default function DaysOffEmployeesComponent() {
   const { t } = useTranslation("employees");
@@ -104,6 +119,11 @@ export default function DaysOffEmployeesComponent() {
 
   // 5) Aplatir leurs demandes
   const [requests, setRequests] = useState([]);
+  const [approvalConflictModal, setApprovalConflictModal] = useState(
+    getEmptyApprovalConflictModal(),
+  );
+  const [resolvingApprovalConflict, setResolvingApprovalConflict] =
+    useState(false);
   useEffect(() => {
     const objectIdToDate = (oid) =>
       new Date(parseInt(String(oid).substring(0, 8), 16) * 1000);
@@ -148,45 +168,131 @@ export default function DaysOffEmployeesComponent() {
     return `${totalDays} ${totalDays > 1 ? "jours" : "jour"}`;
   }
 
+  function applyLeaveRequestUpdate(empId, reqId, leaveRequest, shifts = []) {
+    setRequests((currentRequests) =>
+      currentRequests.map((request) =>
+        String(request._id) === String(reqId) &&
+        String(request.employee?._id) === String(empId)
+          ? { ...request, ...leaveRequest }
+          : request,
+      ),
+    );
+
+    restaurantContext.setRestaurantData((prev) => {
+      if (!prev) return prev;
+
+      return {
+        ...prev,
+        employees: (prev.employees || []).map((employee) =>
+          String(employee._id) === String(empId)
+            ? {
+                ...employee,
+                leaveRequests: (employee.leaveRequests || []).map((item) =>
+                  String(item._id) === String(reqId)
+                    ? { ...item, ...leaveRequest }
+                    : item,
+                ),
+                shifts: shifts || [],
+              }
+            : employee,
+        ),
+      };
+    });
+  }
+
   // 8) Mise à jour instantanée du statut
-  async function updateStatus(empId, reqId, status) {
+  async function updateStatus(
+    empId,
+    reqId,
+    status,
+    { resolveConflict = null } = {},
+  ) {
     try {
       if (!restaurantId) {
         window.alert("Restaurant introuvable");
         return;
       }
 
+      const currentRequest = requests.find(
+        (request) =>
+          String(request._id) === String(reqId) &&
+          String(request.employee?._id) === String(empId),
+      );
+
       const { data } = await axios.put(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${empId}/leave-requests/${reqId}`,
-        { status },
-      );
-      // data = { leaveRequest, shifts }
-
-      // 1) Mettre à jour la liste aplanie locale
-      setRequests((rs) =>
-        rs.map((r) =>
-          r._id === reqId && r.employee._id === empId ? { ...r, status } : r,
-        ),
+        {
+          status,
+          ...(resolveConflict ? { resolveConflict } : {}),
+        },
       );
 
-      // 2) Mettre à jour le contexte global (pour le planning)
-      restaurantContext.setRestaurantData((prev) => ({
-        ...prev,
-        employees: (prev?.employees || []).map((e) =>
-          e._id === empId
-            ? {
-                ...e,
-                leaveRequests: (e.leaveRequests || []).map((lr) =>
-                  String(lr._id) === String(reqId) ? { ...lr, status } : lr,
-                ),
-                shifts: data.shifts || [],
-              }
-            : e,
-        ),
-      }));
+      applyLeaveRequestUpdate(
+        empId,
+        reqId,
+        data.leaveRequest || { ...(currentRequest || {}), status },
+        data.shifts || [],
+      );
+
+      setApprovalConflictModal(getEmptyApprovalConflictModal());
     } catch (err) {
       console.error("Erreur update leave request:", err);
-      window.alert(t("daysOff.errorUpdate", "Impossible de mettre à jour"));
+      const responseData = err?.response?.data || {};
+
+      if (
+        status === "approved" &&
+        err?.response?.status === 409 &&
+        responseData?.conflictType === "shift_overlap" &&
+        Array.isArray(responseData?.conflictShifts)
+      ) {
+        const currentRequest = requests.find(
+          (request) =>
+            String(request._id) === String(reqId) &&
+            String(request.employee?._id) === String(empId),
+        );
+
+        setApprovalConflictModal({
+          open: true,
+          employeeId: empId,
+          reqId,
+          employeeName: currentRequest?.employee
+            ? `${currentRequest.employee.firstname} ${currentRequest.employee.lastname}`
+            : "",
+          message:
+            responseData?.message ||
+            "Impossible d'approuver ce congé car il chevauche un shift existant.",
+          canResolveByDeletion: responseData?.canResolveByDeletion === true,
+          conflictShifts: responseData?.conflictShifts || [],
+        });
+        return;
+      }
+
+      window.alert(
+        responseData?.message ||
+          t("daysOff.errorUpdate", "Impossible de mettre à jour"),
+      );
+    }
+  }
+
+  async function handleResolveApprovalConflict() {
+    if (
+      resolvingApprovalConflict ||
+      !approvalConflictModal.employeeId ||
+      !approvalConflictModal.reqId
+    ) {
+      return;
+    }
+
+    try {
+      setResolvingApprovalConflict(true);
+      await updateStatus(
+        approvalConflictModal.employeeId,
+        approvalConflictModal.reqId,
+        "approved",
+        { resolveConflict: "delete_conflicting_shifts" },
+      );
+    } finally {
+      setResolvingApprovalConflict(false);
     }
   }
 
@@ -202,189 +308,322 @@ export default function DaysOffEmployeesComponent() {
     "rounded-2xl bg-white/60 border border-darkBlue/10 shadow-sm p-2 midTablet:p-3";
 
   return (
-    <section className="flex flex-col gap-6 min-w-0">
-      {/* ─── En-tête ─────────────────────────────────────────────── */}
-      <CatalogHeaderDashboardComponent
-        icon={
-          <EmployeesSvg
-            width={30}
-            height={30}
-            fillColor="#131E3690"
-            className="min-w-[30px]"
-          />
-        }
-        title={t("titles.main")}
-        onTitleClick={() => router.push("/dashboard/employees")}
-        onBack={() => router.push("/dashboard/employees/planning")}
-        subtitleItems={[
-          {
-            label: t("titles.planning"),
-            onClick: () => router.push("/dashboard/employees/planning"),
-          },
-          { label: t("titles.daysOff") },
-        ]}
-      />
+    <>
+      <section className="flex flex-col gap-6 min-w-0">
+        {/* ─── En-tête ─────────────────────────────────────────────── */}
+        <CatalogHeaderDashboardComponent
+          icon={
+            <EmployeesSvg
+              width={30}
+              height={30}
+              fillColor="#131E3690"
+              className="min-w-[30px]"
+            />
+          }
+          title={t("titles.main")}
+          onTitleClick={() => router.push("/dashboard/employees")}
+          onBack={() => router.push("/dashboard/employees/planning")}
+          subtitleItems={[
+            {
+              label: t("titles.planning"),
+              onClick: () => router.push("/dashboard/employees/planning"),
+            },
+            { label: t("titles.daysOff") },
+          ]}
+        />
 
-      <p className="text-xs text-darkBlue/60 max-w-xl">
-        {t(
-          "daysOff.helper",
-          "Visualisez et gérez les demandes de congés des employés, par statut.",
-        )}
-      </p>
+        <p className="text-xs text-darkBlue/60 max-w-xl">
+          {t(
+            "daysOff.helper",
+            "Visualisez et gérez les demandes de congés des employés, par statut.",
+          )}
+        </p>
 
-      {/* ─── Barre de recherche ───────────────────────────────────── */}
-      <div className={`midTablet:w-[380px]`}>
-        <div className="relative">
-          <input
-            type="text"
-            placeholder={t(
-              "placeholders.searchEmployee",
-              "Rechercher un employé",
+        {/* ─── Barre de recherche ───────────────────────────────────── */}
+        <div className={`midTablet:w-[380px]`}>
+          <div className="relative">
+            <input
+              type="text"
+              placeholder={t(
+                "placeholders.searchEmployee",
+                "Rechercher un employé",
+              )}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full h-10 rounded-lg border border-darkBlue/20 bg-white/90 px-3 pr-9 text-base outline-none transition placeholder:text-darkBlue/40 focus:border-darkBlue/50"
+            />
+            {!searchTerm && (
+              <Search className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/30" />
             )}
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full h-10 rounded-lg border border-darkBlue/20 bg-white/90 px-3 pr-9 text-base outline-none transition placeholder:text-darkBlue/40 focus:border-darkBlue/50"
-          />
-          {!searchTerm && (
-            <Search className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/30" />
-          )}
-          {searchTerm && (
-            <button
-              type="button"
-              onClick={() => setSearchTerm("")}
-              className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 bg-black/20 text-white rounded-full flex items-center justify-center text-xs hover:bg-black/40 transition"
-            >
-              ×
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* ─── Sections par statut ──────────────────────────────────── */}
-      {["pending", "approved", "rejected", "canceled"].map((status) => (
-        <div key={status} className="flex flex-col gap-3">
-          {/* Titre de section avec ligne */}
-          <div className="relative mb-1">
-            <hr className="text-darkBlue/10 absolute h-[1px] w-full left-0 top-1/2 -translate-y-1/2 z-10" />
-            <div className="relative z-20 flex justify-center">
-              <span className="inline-flex items-center gap-2 rounded-full bg-lightGrey px-4 py-1 text-xs font-semibold uppercase tracking-wide text-darkBlue/80 shadow-sm">
-                {status === "pending" && (
-                  <CalendarDays className="size-3.5 text-amber-500" />
-                )}
-                {status === "approved" && (
-                  <CheckCircle2 className="size-3.5 text-emerald-500" />
-                )}
-                {status === "rejected" && (
-                  <XCircle className="size-3.5 text-red-500" />
-                )}
-                {status === "canceled" && (
-                  <XCircle className="size-3.5 text-slate-500" />
-                )}
-                <span>{statusLabels[status]}</span>
-                <span className="text-[11px] opacity-60">
-                  ({grouped[status].length})
-                </span>
-              </span>
-            </div>
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 bg-black/20 text-white rounded-full flex items-center justify-center text-xs hover:bg-black/40 transition"
+              >
+                ×
+              </button>
+            )}
           </div>
+        </div>
 
-          {grouped[status].length === 0 ? (
-            <div className={`${sectionCard} midTablet:w-1/2 mx-auto`}>
-              <p className="italic text-center text-sm text-darkBlue/60">
-                {t("daysOff.noRequestsStatus", "Aucune demande")}
-              </p>
+        {/* ─── Sections par statut ──────────────────────────────────── */}
+        {["pending", "approved", "rejected", "canceled"].map((status) => (
+          <div key={status} className="flex flex-col gap-3">
+            {/* Titre de section avec ligne */}
+            <div className="relative mb-1">
+              <hr className="text-darkBlue/10 absolute h-[1px] w-full left-0 top-1/2 -translate-y-1/2 z-10" />
+              <div className="relative z-20 flex justify-center">
+                <span className="inline-flex items-center gap-2 rounded-full bg-lightGrey px-4 py-1 text-xs font-semibold uppercase tracking-wide text-darkBlue/80 shadow-sm">
+                  {status === "pending" && (
+                    <CalendarDays className="size-3.5 text-amber-500" />
+                  )}
+                  {status === "approved" && (
+                    <CheckCircle2 className="size-3.5 text-emerald-500" />
+                  )}
+                  {status === "rejected" && (
+                    <XCircle className="size-3.5 text-red-500" />
+                  )}
+                  {status === "canceled" && (
+                    <XCircle className="size-3.5 text-slate-500" />
+                  )}
+                  <span>{statusLabels[status]}</span>
+                  <span className="text-[11px] opacity-60">
+                    ({grouped[status].length})
+                  </span>
+                </span>
+              </div>
             </div>
-          ) : (
-            <ul className="grid grid-cols-1 midTablet:grid-cols-2 gap-3">
-              {grouped[status].map((req) => {
-                const start = new Date(req.start);
-                const end = new Date(req.end);
 
-                return (
-                  <li
-                    key={req._id}
-                    className={`${sectionCard} flex flex-col gap-3 midTablet:flex-row midTablet:items-center justify-between`}
-                  >
-                    {/* Infos employé + dates */}
-                    <div className="flex flex-col gap-1 text-center midTablet:text-left">
-                      <div className="flex items-center justify-center midTablet:justify-start gap-2">
-                        <User className="size-4 text-darkBlue/70" />
-                        <span className="font-medium text-darkBlue">
-                          {req.employee.firstname} {req.employee.lastname}
-                        </span>
-                      </div>
+            {grouped[status].length === 0 ? (
+              <div className={`${sectionCard} midTablet:w-1/2 mx-auto`}>
+                <p className="italic text-center text-sm text-darkBlue/60">
+                  {t("daysOff.noRequestsStatus", "Aucune demande")}
+                </p>
+              </div>
+            ) : (
+              <ul className="grid grid-cols-1 midTablet:grid-cols-2 gap-3">
+                {grouped[status].map((req) => {
+                  const start = new Date(req.start);
+                  const end = new Date(req.end);
 
-                      <div className="text-sm flex flex-col gap-1 items-center midTablet:items-start text-darkBlue/80">
-                        <span className="inline-flex items-center gap-1">
-                          <CalendarDays className="size-3.5 text-darkBlue/60" />
-                          <strong>
-                            {format(start, "dd/MM/yyyy", { locale: frLocale })}
-                          </strong>
-                          <span>–</span>
-                          <strong>
-                            {format(end, "dd/MM/yyyy", { locale: frLocale })}
-                          </strong>
-                        </span>
-                        <span className="text-xs text-darkBlue/60">
-                          ({formatDays(req)})
-                        </span>
-                      </div>
+                  return (
+                    <li
+                      key={req._id}
+                      className={`${sectionCard} flex flex-col gap-3 midTablet:flex-row midTablet:items-center justify-between`}
+                    >
+                      {/* Infos employé + dates */}
+                      <div className="flex flex-col gap-1 text-center midTablet:text-left">
+                        <div className="flex items-center justify-center midTablet:justify-start gap-2">
+                          <User className="size-4 text-darkBlue/70" />
+                          <span className="font-medium text-darkBlue">
+                            {req.employee.firstname} {req.employee.lastname}
+                          </span>
+                        </div>
 
-                      <div className="text-[11px] text-darkBlue/50">
-                        {t("daysOff.requestedAt", "Demandé le")}{" "}
-                        {format(
-                          req.createdAt
-                            ? new Date(req.createdAt)
-                            : new Date(
-                                parseInt(String(req._id).substring(0, 8), 16) *
-                                  1000,
-                              ),
-                          "dd/MM/yyyy HH:mm",
-                          { locale: frLocale },
-                        )}
-                      </div>
-                    </div>
+                        <div className="text-sm flex flex-col gap-1 items-center midTablet:items-start text-darkBlue/80">
+                          <span className="inline-flex items-center gap-1">
+                            <CalendarDays className="size-3.5 text-darkBlue/60" />
+                            <strong>
+                              {format(start, "dd/MM/yyyy", {
+                                locale: frLocale,
+                              })}
+                            </strong>
+                            <span>–</span>
+                            <strong>
+                              {format(end, "dd/MM/yyyy", {
+                                locale: frLocale,
+                              })}
+                            </strong>
+                          </span>
+                          <span className="text-xs text-darkBlue/60">
+                            ({formatDays(req)})
+                          </span>
+                        </div>
 
-                    {/* Statut / actions */}
-                    {status === "pending" && (
-                      <div className="flex flex-col items-center midTablet:items-end gap-2">
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              updateStatus(
-                                req.employee._id,
-                                req._id,
-                                "approved",
-                              )
-                            }
-                            className="inline-flex items-center gap-2 rounded-lg bg-green px-3 py-1.5 text-xs font-medium text-white shadow hover:opacity-90 transition"
-                          >
-                            <CheckCircle2 className="size-5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              updateStatus(
-                                req.employee._id,
-                                req._id,
-                                "rejected",
-                              )
-                            }
-                            className="inline-flex items-center gap-2 rounded-lg bg-red px-3 py-1.5 text-xs font-medium text-white shadow hover:opacity-90 transition"
-                          >
-                            <XCircle className="size-5" />
-                          </button>
+                        <div className="text-[11px] text-darkBlue/50">
+                          {t("daysOff.requestedAt", "Demandé le")}{" "}
+                          {format(
+                            req.createdAt
+                              ? new Date(req.createdAt)
+                              : new Date(
+                                  parseInt(String(req._id).substring(0, 8), 16) *
+                                    1000,
+                                ),
+                            "dd/MM/yyyy HH:mm",
+                            { locale: frLocale },
+                          )}
                         </div>
                       </div>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+
+                      {/* Statut / actions */}
+                      {status === "pending" && (
+                        <div className="flex flex-col items-center midTablet:items-end gap-2">
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateStatus(
+                                  req.employee._id,
+                                  req._id,
+                                  "approved",
+                                )
+                              }
+                              className="inline-flex items-center gap-2 rounded-lg bg-green px-3 py-1.5 text-xs font-medium text-white shadow hover:opacity-90 transition"
+                            >
+                              <CheckCircle2 className="size-5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateStatus(
+                                  req.employee._id,
+                                  req._id,
+                                  "rejected",
+                                )
+                              }
+                              className="inline-flex items-center gap-2 rounded-lg bg-red px-3 py-1.5 text-xs font-medium text-white shadow hover:opacity-90 transition"
+                            >
+                              <XCircle className="size-5" />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        ))}
+      </section>
+
+      {approvalConflictModal.open ? (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-darkBlue/55 p-4">
+          <div className="w-full max-w-[680px] rounded-[28px] border border-darkBlue/10 bg-white shadow-[0_24px_80px_rgba(19,30,54,0.28)]">
+            <div className="flex items-start justify-between gap-4 border-b border-darkBlue/10 px-5 py-5 midTablet:px-6">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 inline-flex size-11 items-center justify-center rounded-2xl bg-amber-100 text-amber-600">
+                  <AlertTriangle className="size-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-darkBlue">
+                    Conflit de planning
+                  </h3>
+                  <p className="mt-1 text-sm text-darkBlue/60">
+                    {approvalConflictModal.employeeName
+                      ? `Le congé de ${approvalConflictModal.employeeName} chevauche des créneaux existants.`
+                      : "Ce congé chevauche des créneaux existants."}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  !resolvingApprovalConflict &&
+                  setApprovalConflictModal(getEmptyApprovalConflictModal())
+                }
+                className="inline-flex size-10 items-center justify-center rounded-2xl border border-darkBlue/10 bg-white text-darkBlue/60 transition hover:bg-darkBlue/5"
+                disabled={resolvingApprovalConflict}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="flex max-h-[70vh] flex-col gap-4 overflow-y-auto px-5 py-5 midTablet:px-6">
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                {approvalConflictModal.message}
+              </div>
+
+              <div className="flex flex-col gap-3">
+                {(approvalConflictModal.conflictShifts || []).map((shift) => (
+                  <div
+                    key={String(shift._id)}
+                    className="rounded-2xl border border-darkBlue/10 bg-lightGrey/35 px-4 py-4"
+                  >
+                    <div className="flex flex-col gap-2 midTablet:flex-row midTablet:items-center midTablet:justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-darkBlue">
+                          {shift.title || "Service sans intitulé"}
+                        </p>
+                        <p className="mt-1 inline-flex items-center gap-1 text-sm text-darkBlue/65">
+                          <Clock3 className="size-3.5" />
+                          {format(new Date(shift.start), "dd/MM/yyyy HH:mm", {
+                            locale: frLocale,
+                          })}
+                          <span>–</span>
+                          {format(new Date(shift.end), "dd/MM/yyyy HH:mm", {
+                            locale: frLocale,
+                          })}
+                        </p>
+                      </div>
+
+                      <span
+                        className={`inline-flex items-center rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${
+                          shift.canDelete
+                            ? "bg-red/10 text-red"
+                            : "bg-darkBlue/10 text-darkBlue/70"
+                        }`}
+                      >
+                        {shift.canDelete
+                          ? "Supprimable"
+                          : "Conflit non supprimable"}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {!approvalConflictModal.canResolveByDeletion ? (
+                <p className="text-sm text-darkBlue/65">
+                  Au moins un conflit correspond à une absence ou à un créneau
+                  protégé. Le congé ne peut pas être approuvé en suppression
+                  forcée.
+                </p>
+              ) : null}
+            </div>
+
+            <div className="flex flex-col gap-2 border-t border-darkBlue/10 px-5 py-4 midTablet:flex-row midTablet:justify-end midTablet:px-6">
+              <button
+                type="button"
+                onClick={() =>
+                  setApprovalConflictModal(getEmptyApprovalConflictModal())
+                }
+                className="h-12 rounded-2xl border border-darkBlue/10 bg-white px-5 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5"
+                disabled={resolvingApprovalConflict}
+              >
+                Fermer
+              </button>
+
+              <button
+                type="button"
+                onClick={() => router.push("/dashboard/employees/planning")}
+                className="h-12 rounded-2xl border border-darkBlue/10 bg-lightGrey px-5 text-sm font-semibold text-darkBlue transition hover:bg-lightGrey/80"
+                disabled={resolvingApprovalConflict}
+              >
+                Voir le planning
+              </button>
+
+              {approvalConflictModal.canResolveByDeletion ? (
+                <button
+                  type="button"
+                  onClick={handleResolveApprovalConflict}
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-red px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-red/90 disabled:opacity-60"
+                  disabled={resolvingApprovalConflict}
+                >
+                  {resolvingApprovalConflict ? (
+                    <span className="size-4 rounded-full border-2 border-white/35 border-t-white animate-spin" />
+                  ) : (
+                    <Trash2 className="size-4" />
+                  )}
+                  Supprimer les créneaux et approuver
+                </button>
+              ) : null}
+            </div>
+          </div>
         </div>
-      ))}
-    </section>
+      ) : null}
+    </>
   );
 }

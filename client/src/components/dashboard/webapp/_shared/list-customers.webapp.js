@@ -418,7 +418,7 @@ export default function ListCustomersReservationsWebapp({
     try {
       await axios.delete(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/customers/${deleteTarget._id}`,
-        { headers: { Authorization: `Bearer ${token}` } },
+        {},
       );
 
       setConfirmOpen(false);

@@ -51,9 +51,6 @@ export default function SubscriptionPage(props) {
     axios
       .get(`${process.env.NEXT_PUBLIC_API_URL}/restaurant-subscription`, {
         params: { restaurantId },
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
       })
       .then((response) => {
         setSubscriptionData(response.data.subscription || {});

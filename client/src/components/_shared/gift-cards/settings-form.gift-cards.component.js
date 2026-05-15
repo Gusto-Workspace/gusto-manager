@@ -165,7 +165,7 @@ export function useGiftCardSettingsController() {
       const response = await axios.put(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/gifts/settings`,
         payload,
-        token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
+        undefined,
       );
 
       restaurantContext?.setRestaurantData?.(response.data.restaurant);

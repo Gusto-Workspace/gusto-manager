@@ -142,7 +142,6 @@ export default function MicrobiologyList({
 
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-microbiology`;
       const { data } = await axios.get(url, {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         params,
       });
 
@@ -271,7 +270,6 @@ export default function MicrobiologyList({
       setDeleteLoading(true);
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/microbiology/${deleteTarget._id}`;
       await axios.delete(url, {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
 
       setItems((prev) =>

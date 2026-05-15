@@ -4,6 +4,7 @@ const stripe = require("stripe")(process.env.STRIPE_API_SECRET_KEY);
 
 // MIDDLEWARE
 const authenticateAdmin = require("../../middleware/authenticate-admin");
+const { requireAdminRole } = require("../../middleware/authenticate-admin");
 const RestaurantModel = require("../../models/restaurant.model");
 const {
   listAllStripeSubscriptions,
@@ -804,7 +805,7 @@ router.get("/admin/subscriptions", async (req, res) => {
 });
 
 // CREATE SETUP INTENT FOR SEPA
-router.post("/admin/create-setup-intent", async (req, res) => {
+router.post("/admin/create-setup-intent", requireAdminRole, async (req, res) => {
   const { stripeCustomerId, restaurantId } = req.body;
 
   try {
@@ -843,7 +844,7 @@ router.post("/admin/create-setup-intent", async (req, res) => {
 });
 
 // CREATE A SUBSCRIPTION FOR A RESTAURANT VIA SEPA
-router.post("/admin/create-subscription-sepa", async (req, res) => {
+router.post("/admin/create-subscription-sepa", requireAdminRole, async (req, res) => {
   const {
     stripeCustomerId,
     priceId,
@@ -1180,7 +1181,7 @@ router.get("/admin/all-subscriptions", async (req, res) => {
   }
 });
 
-router.post("/admin/subscriptions/:subscriptionId/cancel", async (req, res) => {
+router.post("/admin/subscriptions/:subscriptionId/cancel", requireAdminRole, async (req, res) => {
   const subscriptionId = normalizeString(req.params.subscriptionId);
   const requestedMode = normalizeString(req.body?.mode);
   const mode =
@@ -1295,6 +1296,7 @@ router.post("/admin/subscriptions/:subscriptionId/cancel", async (req, res) => {
 
 router.get(
   "/admin/subscriptions/:subscriptionId/edit-preview",
+  requireAdminRole,
   async (req, res) => {
     try {
       const preview = await buildSubscriptionEditPreview({
@@ -1318,6 +1320,7 @@ router.get(
 
 router.get(
   "/admin/restaurants/:restaurantId/payer-change-preview",
+  requireAdminRole,
   async (req, res) => {
     try {
       const preview = await buildSubscriptionPayerChangePreview({
@@ -1339,7 +1342,7 @@ router.get(
   },
 );
 
-router.post("/admin/update-subscription-payer-sepa", async (req, res) => {
+router.post("/admin/update-subscription-payer-sepa", requireAdminRole, async (req, res) => {
   const { restaurantId, paymentMethodId, billingAddress, phone, language } =
     req.body;
 
@@ -1419,7 +1422,7 @@ router.post("/admin/update-subscription-payer-sepa", async (req, res) => {
   }
 });
 
-router.post("/admin/update-subscription-configuration", async (req, res) => {
+router.post("/admin/update-subscription-configuration", requireAdminRole, async (req, res) => {
   const { subscriptionId, planPriceId, addonPriceIds } = req.body;
 
   try {

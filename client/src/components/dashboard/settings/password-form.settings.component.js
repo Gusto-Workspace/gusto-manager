@@ -61,7 +61,6 @@ export default function PasswordFormSettingsComponent() {
 
     axios
       .put(endpoint, payload, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
       })
       .then(() => {
         setPasswordSuccess("Modifications effectuées");

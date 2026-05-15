@@ -156,7 +156,6 @@ export default function SupplierCertificateList({
 
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-supplier-certificates`;
       const { data } = await axios.get(url, {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         params,
       });
 
@@ -281,7 +280,6 @@ export default function SupplierCertificateList({
       setDeleteLoading(true);
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/supplier-certificates/${deleteTarget._id}`;
       await axios.delete(url, {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
 
       setItems((prev) =>
