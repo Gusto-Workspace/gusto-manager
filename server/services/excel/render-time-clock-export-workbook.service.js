@@ -51,6 +51,18 @@ function toLocalDateKey(value) {
   ).padStart(2, "0")}`;
 }
 
+function toUtcDateKey(value) {
+  if (!value) return "";
+
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(
+    2,
+    "0",
+  )}-${String(date.getUTCDate()).padStart(2, "0")}`;
+}
+
 function formatTime(value) {
   if (!value) return "";
 
@@ -213,8 +225,114 @@ function countCalendarDays(startValue, endValue) {
   return count;
 }
 
+function countDateKeysBetween(startKey, endKey) {
+  if (!startKey || !endKey) return 0;
+
+  const start = new Date(`${startKey}T12:00:00`);
+  const end = new Date(`${endKey}T12:00:00`);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
+    return 0;
+  }
+
+  let count = 0;
+  const cursor = new Date(start.getTime());
+
+  while (cursor <= end) {
+    count += 1;
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return count;
+}
+
+function buildDateKeysBetween(startKey, endKey) {
+  if (!startKey || !endKey) return [];
+
+  const start = new Date(`${startKey}T12:00:00`);
+  const end = new Date(`${endKey}T12:00:00`);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
+    return [];
+  }
+
+  const keys = [];
+  const cursor = new Date(start.getTime());
+
+  while (cursor <= end) {
+    keys.push(
+      `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(
+        2,
+        "0",
+      )}-${String(cursor.getDate()).padStart(2, "0")}`,
+    );
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return keys;
+}
+
+function getLeaveDateKeys(leaveRequest = {}) {
+  const localStartKey = toLocalDateKey(leaveRequest.start);
+  const localEndKey = toLocalDateKey(leaveRequest.end);
+  const utcStartKey = toUtcDateKey(leaveRequest.start);
+  const utcEndKey = toUtcDateKey(leaveRequest.end);
+
+  const localCount = countDateKeysBetween(localStartKey, localEndKey);
+  const utcCount = countDateKeysBetween(utcStartKey, utcEndKey);
+
+  const useUtc =
+    utcCount > 0 &&
+    (localCount === 0 || utcCount < localCount);
+
+  const startKey = useUtc ? utcStartKey : localStartKey;
+  const endKey = useUtc ? utcEndKey : localEndKey;
+
+  return {
+    mode: useUtc ? "utc" : "local",
+    startKey,
+    endKey,
+    keys: buildDateKeysBetween(startKey, endKey),
+  };
+}
+
+function getDayBoundsForDateKey(dateKey = "", mode = "local") {
+  if (!dateKey) return null;
+
+  if (mode === "utc") {
+    const [year, month, day] = String(dateKey)
+      .split("-")
+      .map((part) => Number(part));
+    if (!year || !month || !day) return null;
+
+    return {
+      start: new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0)),
+      end: new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999)),
+    };
+  }
+
+  return {
+    start: new Date(`${dateKey}T00:00:00`),
+    end: new Date(`${dateKey}T23:59:59.999`),
+  };
+}
+
+function getLeaveDisplayTimesForDateKey(dateKey = "", leaveRequest = {}) {
+  if (!dateKey) return { start: "", end: "" };
+
+  if (leaveRequest?.type === "morning") {
+    return { start: "00:00", end: "12:00" };
+  }
+
+  if (leaveRequest?.type === "afternoon") {
+    return { start: "12:00", end: "23:59" };
+  }
+
+  return { start: "00:00", end: "23:59" };
+}
+
 function computeLeaveDays(leaveRequest = {}) {
-  const days = countCalendarDays(leaveRequest.start, leaveRequest.end);
+  const days = getLeaveDateKeys(leaveRequest).keys.length;
   if (!days) return 0;
 
   if (leaveRequest.type === "morning" || leaveRequest.type === "afternoon") {
@@ -267,6 +385,22 @@ function getIsoWeekNumber(value) {
   const yearStart = new Date(Date.UTC(utcDate.getUTCFullYear(), 0, 1));
 
   return Math.ceil(((utcDate - yearStart) / 86400000 + 1) / 7);
+}
+
+function getIsoWeekId(value) {
+  const date = value instanceof Date ? new Date(value.getTime()) : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const utcDate = new Date(
+    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()),
+  );
+  const day = utcDate.getUTCDay() || 7;
+  utcDate.setUTCDate(utcDate.getUTCDate() + 4 - day);
+
+  return `${utcDate.getUTCFullYear()}-W${String(getIsoWeekNumber(date)).padStart(
+    2,
+    "0",
+  )}`;
 }
 
 function addDays(date, amount) {
@@ -425,7 +559,7 @@ function computeLeaveMinutes(leaveRequest = {}, employment = {}, bounds) {
   }
 
   let total = 0;
-  eachDayBetween(boundedLeave.start, boundedLeave.end, (day) => {
+  getLeaveDateKeys(boundedLeave).keys.forEach(() => {
     const dailyMinutes = getLeaveReferenceMinutesForDay(employment);
     total +=
       boundedLeave.type === "morning" || boundedLeave.type === "afternoon"
@@ -462,6 +596,39 @@ function computeLeaveStats(report = {}, bounds) {
       totalLeaveMinutes: 0,
     },
   );
+}
+
+function computeOvertimeMinutes(report = {}, bounds) {
+  const weeklyHours = getWeeklyContractualHours(report?.profile?.employment || {});
+  if (!weeklyHours || !bounds) return 0;
+
+  const weekMap = new Map();
+
+  eachDayBetween(bounds.start, bounds.end, (day) => {
+    const dateKey = toLocalDateKey(day);
+    const weekId = getIsoWeekId(day);
+    const daySummary = safeArr(report?.range?.days).find(
+      (item) => String(item?.date || "") === dateKey,
+    );
+
+    if (!weekMap.has(weekId)) {
+      weekMap.set(weekId, {
+        daysInRange: 0,
+        workedMinutes: 0,
+      });
+    }
+
+    const weekEntry = weekMap.get(weekId);
+    weekEntry.daysInRange += 1;
+    weekEntry.workedMinutes += Number(daySummary?.totalWorkedMinutes || 0);
+  });
+
+  return Array.from(weekMap.values()).reduce((total, weekEntry) => {
+    const expectedMinutes =
+      weeklyHours * 60 * (Number(weekEntry?.daysInRange || 0) / 7);
+
+    return total + Math.max(0, Number(weekEntry?.workedMinutes || 0) - expectedMinutes);
+  }, 0);
 }
 
 function clipInterval(startValue, endValue, boundsStart, boundsEnd) {
@@ -688,29 +855,27 @@ function buildLeaveDetailRows(report = {}, leaveRequest = {}, employment = {}, b
   const boundedLeave = clampLeaveRequestToBounds(leaveRequest, bounds);
   if (!boundedLeave) return rows;
 
-  eachDayBetween(boundedLeave.start, boundedLeave.end, (day) => {
-    const dateKey = toLocalDateKey(day);
-    const dayStart = new Date(`${dateKey}T00:00:00`);
-    const dayEnd = new Date(`${dateKey}T23:59:00`);
-    const dayLeaveSegment = clipInterval(
-      boundedLeave.start,
-      boundedLeave.end,
-      dayStart,
-      new Date(`${dateKey}T23:59:59.999`),
-    );
+  const leaveDateKeys = getLeaveDateKeys(boundedLeave);
+
+  leaveDateKeys.keys.forEach((dateKey) => {
+    const dayBounds = getDayBoundsForDateKey(dateKey, leaveDateKeys.mode);
+    if (!dayBounds) return;
+
     const currentBounds = {
-      start: dayStart,
-      end: dayEnd,
+      start: dayBounds.start,
+      end: dayBounds.end,
     };
     const leaveHoursMinutes = computeLeaveMinutes(
       {
         ...leaveRequest,
-        start: dayStart,
-        end: dayEnd,
+        start: dayBounds.start,
+        end: dayBounds.end,
       },
       employment,
       currentBounds,
     );
+    const displayTimes = getLeaveDisplayTimesForDateKey(dateKey, leaveRequest);
+
     rows.push([
       report?.employee?.firstname || "",
       report?.employee?.lastname || "",
@@ -719,13 +884,13 @@ function buildLeaveDetailRows(report = {}, leaveRequest = {}, employment = {}, b
       Number(employment?.contractualValue || 0) || "",
       getContractualUnitLabel(employment),
       getPrimaryEstablishmentLabel(employment, restaurantName),
-      toIntegerCell(getIsoWeekNumber(day)),
+      toIntegerCell(getIsoWeekNumber(new Date(`${dateKey}T12:00:00`))),
       formatDateKey(dateKey),
       "Absence",
       getLeaveTypeLabel(leaveRequest),
       getPrimaryEstablishmentLabel(employment, restaurantName),
-      formatTime(dayLeaveSegment?.start || dayStart),
-      formatTime(dayLeaveSegment?.end || dayEnd),
+      displayTimes.start,
+      displayTimes.end,
       toNumberCell(0),
       toNumberCell(0),
       "Conges approuves",
@@ -759,10 +924,7 @@ function buildSummaryRows(reports = [], bounds) {
       bounds,
       employment,
     );
-    const overtimeMinutes = Math.max(
-      0,
-      Number(range.totalWorkedMinutes || 0) - contractualMinutes,
-    );
+    const overtimeMinutes = computeOvertimeMinutes(report, bounds);
     const leaveStats = computeLeaveStats(report, bounds);
     const attendanceInsights = buildShiftAttendanceInsights(report, bounds);
     const absenceMinutes =
@@ -943,14 +1105,15 @@ function buildLeaveRows(reports = [], bounds) {
       .forEach((leaveRequest) => {
         const boundedLeave = clampLeaveRequestToBounds(leaveRequest, bounds);
         if (!boundedLeave) return;
+        const leaveDateKeys = getLeaveDateKeys(boundedLeave);
 
         rows.push([
           report?.employee?.lastname || "",
           report?.employee?.firstname || "",
           employment.payrollCode || "",
           getLeaveTypeLabel(boundedLeave),
-          formatDateKey(toLocalDateKey(boundedLeave.start)),
-          formatDateKey(toLocalDateKey(boundedLeave.end)),
+          formatDateKey(leaveDateKeys.startKey),
+          formatDateKey(leaveDateKeys.endKey),
           toNumberCell(
             minutesToHours(
               computeLeaveMinutes(boundedLeave, report?.profile?.employment || {}, bounds),
