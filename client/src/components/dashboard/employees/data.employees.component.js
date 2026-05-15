@@ -29,7 +29,6 @@ const CONTRACT_TYPE_OPTIONS = [
 ];
 
 const CONTRACT_UNIT_OPTIONS = [
-  { value: "", label: "Périodicité" },
   { value: "week", label: "h / semaine" },
   { value: "month", label: "h / mois" },
 ];
@@ -283,6 +282,9 @@ export default function DataEmployeesComponent(props) {
                     disabled={isSavingDetails}
                     className={inputNormal}
                   >
+                    <option value="" disabled hidden>
+                      Sélectionner
+                    </option>
                     {CONTRACT_UNIT_OPTIONS.map((option) => (
                       <option
                         key={option.value || "empty"}

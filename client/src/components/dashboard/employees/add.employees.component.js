@@ -74,7 +74,6 @@ const CONTRACT_TYPE_OPTIONS = [
 ];
 
 const CONTRACT_UNIT_OPTIONS = [
-  { value: "", label: "Périodicité" },
   { value: "week", label: "h / semaine" },
   { value: "month", label: "h / mois" },
 ];
@@ -605,13 +604,16 @@ export default function AddEmployeesComponent() {
               <div className={fieldWrap}>
                 <label htmlFor="contractualUnit" className={labelCls}>
                   <CalendarDays className="size-4" />
-                  Périodicité contractuelle
+                  Base du temps contractuel
                 </label>
                 <select
                   id="contractualUnit"
                   {...register("contractualUnit")}
                   className={inputNormalCls}
                 >
+                  <option value="" disabled hidden>
+                    Sélectionner
+                  </option>
                   {CONTRACT_UNIT_OPTIONS.map((option) => (
                     <option key={option.value || "empty"} value={option.value}>
                       {option.label}

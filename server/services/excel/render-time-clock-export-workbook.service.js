@@ -231,6 +231,30 @@ function getYearBounds(year) {
   };
 }
 
+function getWeeklyContractualHours(employment = {}) {
+  const value = Number(employment?.contractualValue || 0);
+  const unit = String(employment?.contractualUnit || "").trim().toLowerCase();
+
+  if (!value) return 0;
+
+  if (unit === "week") return value;
+  if (unit === "month") return (value * 12) / 52;
+
+  return 0;
+}
+
+function getMonthlyContractualHours(employment = {}) {
+  const value = Number(employment?.contractualValue || 0);
+  const unit = String(employment?.contractualUnit || "").trim().toLowerCase();
+
+  if (!value) return 0;
+
+  if (unit === "week") return (value * 52) / 12;
+  if (unit === "month") return value;
+
+  return 0;
+}
+
 function getIsoWeekNumber(value) {
   const date = value instanceof Date ? new Date(value.getTime()) : new Date(value);
   if (Number.isNaN(date.getTime())) return 0;
@@ -325,26 +349,31 @@ function eachDayBetween(startValue, endValue, iteratee) {
   }
 }
 
-function getContractualMinutesForDay(dayValue, employment = {}) {
-  const value = Number(employment?.contractualValue || 0);
-  const unit = String(employment?.contractualUnit || "").trim().toLowerCase();
+function getMonthlyProratedContractualMinutesForDay(dayValue, employment = {}) {
+  const monthlyHours = getMonthlyContractualHours(employment);
+  const date = dayValue instanceof Date ? dayValue : new Date(dayValue);
 
-  if (!value) return 0;
+  if (!monthlyHours || Number.isNaN(date.getTime())) return 0;
 
-  if (unit === "week") {
-    return Math.round((value * 60) / 7);
+  const daysInMonth = new Date(
+    date.getFullYear(),
+    date.getMonth() + 1,
+    0,
+  ).getDate();
+  if (!daysInMonth) return 0;
+
+  return (monthlyHours * 60) / daysInMonth;
+}
+
+function getLeaveReferenceMinutesForDay(employment = {}) {
+  const weeklyHours = getWeeklyContractualHours(employment);
+  if (weeklyHours) {
+    return (weeklyHours * 60) / 6;
   }
 
-  if (unit === "month") {
-    const date = dayValue instanceof Date ? dayValue : new Date(dayValue);
-    if (Number.isNaN(date.getTime())) return 0;
-    const daysInMonth = new Date(
-      date.getFullYear(),
-      date.getMonth() + 1,
-      0,
-    ).getDate();
-    if (!daysInMonth) return 0;
-    return Math.round((value * 60) / daysInMonth);
+  const monthlyHours = getMonthlyContractualHours(employment);
+  if (monthlyHours) {
+    return (monthlyHours * 60) / 26;
   }
 
   return 0;
@@ -355,7 +384,7 @@ function computeContractualExpectedMinutes(bounds, employment = {}) {
 
   let total = 0;
   eachDayBetween(bounds.start, bounds.end, (day) => {
-    total += getContractualMinutesForDay(day, employment);
+    total += getMonthlyProratedContractualMinutesForDay(day, employment);
   });
   return total;
 }
@@ -397,10 +426,10 @@ function computeLeaveMinutes(leaveRequest = {}, employment = {}, bounds) {
 
   let total = 0;
   eachDayBetween(boundedLeave.start, boundedLeave.end, (day) => {
-    const dailyMinutes = getContractualMinutesForDay(day, employment);
+    const dailyMinutes = getLeaveReferenceMinutesForDay(employment);
     total +=
       boundedLeave.type === "morning" || boundedLeave.type === "afternoon"
-        ? Math.round(dailyMinutes / 2)
+        ? dailyMinutes / 2
         : dailyMinutes;
   });
 
