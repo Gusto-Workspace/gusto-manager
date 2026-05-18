@@ -95,7 +95,7 @@ export default function FormAdminComponent() {
           className="bg-black text-white rounded-full py-2 px-12 hover:bg-opacity-70 w-fit mt-6"
           disabled={loading}
         >
-          {loading ? "Chargement..." : "Se connetcer"}
+          {loading ? "Chargement..." : "Se connecter"}
         </button>
       </form>
     </section>
