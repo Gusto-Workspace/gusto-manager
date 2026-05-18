@@ -47,6 +47,37 @@ function toDateInputValue(value) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function getImportedEmployment(employee) {
+  const profiles = Array.isArray(employee?.restaurantProfiles)
+    ? employee.restaurantProfiles
+    : [];
+  const firstEmployment = profiles.find((profile) => profile?.employment)?.employment;
+
+  return {
+    contractType: firstEmployment?.contractType || "",
+    contractualValue:
+      firstEmployment?.contractualValue || firstEmployment?.contractualValue === 0
+        ? String(firstEmployment.contractualValue || "")
+        : "",
+    contractualUnit: firstEmployment?.contractualUnit || "",
+  };
+}
+
+const CONTRACT_TYPE_OPTIONS = [
+  { value: "", label: "Type de contrat" },
+  { value: "CDI", label: "CDI" },
+  { value: "CDD", label: "CDD" },
+  { value: "Extra", label: "Extra" },
+  { value: "Intérim", label: "Intérim" },
+  { value: "Alternance", label: "Alternance" },
+  { value: "Stage", label: "Stage" },
+];
+
+const CONTRACT_UNIT_OPTIONS = [
+  { value: "week", label: "h / semaine" },
+  { value: "month", label: "h / mois" },
+];
+
 export default function AddEmployeesComponent() {
   const { t } = useTranslation("employees");
   const { restaurantContext } = useContext(GlobalContext);
@@ -151,6 +182,8 @@ export default function AddEmployeesComponent() {
     setImportError("");
     setImportLoadingId(employeeId);
 
+    const employment = getImportedEmployment(selected);
+
     reset({
       lastName: selected.lastname || "",
       firstName: selected.firstname || "",
@@ -161,6 +194,9 @@ export default function AddEmployeesComponent() {
       secuNumber: selected.secuNumber || "",
       address: selected.address || "",
       emergencyContact: selected.emergencyContact || "",
+      contractType: employment.contractType,
+      contractualValue: employment.contractualValue,
+      contractualUnit: employment.contractualUnit,
     });
 
     setShowImportModal(false);
@@ -181,6 +217,9 @@ export default function AddEmployeesComponent() {
     formData.append("secuNumber", data.secuNumber || "");
     formData.append("address", data.address || "");
     formData.append("emergencyContact", data.emergencyContact || "");
+    formData.append("contractType", data.contractType || "");
+    formData.append("contractualValue", data.contractualValue || "");
+    formData.append("contractualUnit", data.contractualUnit || "");
 
     setIsSaving(true);
     try {
@@ -513,13 +552,74 @@ export default function AddEmployeesComponent() {
                 <input
                   id="dateOnPost"
                   type="date"
-                  {...register("dateOnPost", { required: true })}
+                  {...register("dateOnPost")}
                   className={
                     errors.dateOnPost && isSubmitted
                       ? inputErrorCls
                       : inputNormalCls
                   }
                 />
+              </div>
+            </div>
+
+            <div className="w-full">
+              <div className={fieldWrap}>
+                <label htmlFor="contractType" className={labelCls}>
+                  <Briefcase className="size-4" />
+                  Type de contrat
+                </label>
+                <select
+                  id="contractType"
+                  {...register("contractType")}
+                  className={inputNormalCls}
+                >
+                  {CONTRACT_TYPE_OPTIONS.map((option) => (
+                    <option key={option.value || "empty"} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="w-full">
+              <div className={fieldWrap}>
+                <label htmlFor="contractualValue" className={labelCls}>
+                  <CalendarDays className="size-4" />
+                  Temps contractuel
+                </label>
+                <input
+                  id="contractualValue"
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  {...register("contractualValue")}
+                  className={inputNormalCls}
+                  placeholder="Ex. 35"
+                />
+              </div>
+            </div>
+
+            <div className="w-full">
+              <div className={fieldWrap}>
+                <label htmlFor="contractualUnit" className={labelCls}>
+                  <CalendarDays className="size-4" />
+                  Base du temps contractuel
+                </label>
+                <select
+                  id="contractualUnit"
+                  {...register("contractualUnit")}
+                  className={inputNormalCls}
+                >
+                  <option value="" disabled hidden>
+                    Sélectionner
+                  </option>
+                  {CONTRACT_UNIT_OPTIONS.map((option) => (
+                    <option key={option.value || "empty"} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 

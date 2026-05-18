@@ -157,7 +157,6 @@ export default function ServiceTemperatureForm({
       try {
         const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-recipe-batches`;
         const { data } = await axios.get(url, {
-          headers: { Authorization: `Bearer ${token}` },
           params: { q, limit: 8, page: 1 },
         });
         if (cancel) return;

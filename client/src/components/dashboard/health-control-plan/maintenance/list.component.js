@@ -242,7 +242,6 @@ export default function MaintenanceList({
       const { data } = await axios.get(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-maintenance`,
         {
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
           params,
         }
       );
@@ -363,7 +362,6 @@ export default function MaintenanceList({
       setDeleteLoading(true);
       await axios.delete(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/maintenance/${deleteTarget._id}`,
-        { headers: { Authorization: `Bearer ${token}` } }
       );
 
       setItems((prev) => prev.filter((x) => x._id !== deleteTarget._id));
@@ -395,11 +393,7 @@ export default function MaintenanceList({
   async function markDone(item) {
     try {
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/maintenance/${item._id}/mark-done`;
-      const { data: saved } = await axios.post(
-        url,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const { data: saved } = await axios.post(url, {});
       window.dispatchEvent(
         new CustomEvent("maintenance:upsert", { detail: { doc: saved } })
       );

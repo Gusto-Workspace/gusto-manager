@@ -283,7 +283,6 @@ export default function DetailsDrawerCustomersComponent({
         const { data } = await axios.get(
           `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/customers/${customerId}`,
           {
-            headers: { Authorization: `Bearer ${token}` },
             params: {
               resaPage: 1,
               resaLimit: 40,
@@ -388,7 +387,6 @@ export default function DetailsDrawerCustomersComponent({
           email: form.email,
           phone: form.phone,
         },
-        { headers: { Authorization: `Bearer ${token}` } },
       );
 
       const updated = data?.customer;
@@ -426,7 +424,6 @@ export default function DetailsDrawerCustomersComponent({
       const { data } = await axios.put(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/customers/${customerId}`,
         { notes: noteDraft },
-        { headers: { Authorization: `Bearer ${token}` } },
       );
 
       const updated = data?.customer;

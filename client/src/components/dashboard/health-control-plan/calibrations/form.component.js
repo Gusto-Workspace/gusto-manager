@@ -106,7 +106,7 @@ export default function CalibrationsForm({
     const { data: saved } = await axios[method](url, {
       ...payload,
       _id: undefined,
-    }, { headers: { Authorization: `Bearer ${token}` } });
+    });
 
     window.dispatchEvent(
       new CustomEvent("calibrations:upsert", { detail: { doc: saved } })

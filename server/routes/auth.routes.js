@@ -13,20 +13,28 @@ const RestaurantModel = require("../models/restaurant.model");
 // JWT
 const JWT_SECRET = process.env.JWT_SECRET;
 
+function normalizeEmail(email) {
+  return String(email || "")
+    .trim()
+    .toLowerCase();
+}
+
 // ----------------- CONNEXION ADMIN -----------------
 
 router.post("/admin/login", async (req, res) => {
-  const { email, password } = req.body;
+  const email = normalizeEmail(req.body?.email);
+  const password = req.body?.password;
+  const invalidCredentialsMessage = "Identifiants non reconnus";
 
   try {
     const admin = await AdminModel.findOne({ email });
     if (!admin) {
-      return res.status(404).json({ message: "Admin not found" });
+      return res.status(401).json({ message: invalidCredentialsMessage });
     }
 
     const isMatch = await bcrypt.compare(password, admin.password);
     if (!isMatch) {
-      return res.status(401).json({ message: "Invalid credentials" });
+      return res.status(401).json({ message: invalidCredentialsMessage });
     }
 
     const token = jwt.sign({ id: admin._id, role: admin.role }, JWT_SECRET);
@@ -40,7 +48,10 @@ router.post("/admin/login", async (req, res) => {
 // ----------------- CONNEXION OWNER + EMPLOYEE -----------------
 
 router.post("/user/login", async (req, res) => {
-  const { email, password } = req.body;
+  const email = String(req.body?.email || "")
+    .trim()
+    .toLowerCase();
+  const password = req.body?.password;
 
   try {
     // OWNER
@@ -69,7 +80,7 @@ router.post("/user/login", async (req, res) => {
     }
 
     // EMPLOYEE
-    const employee = await EmployeeModel.findOne({ email });
+    const employee = await EmployeeModel.findOne({ email }).select("+password");
     if (!employee) {
       return res.status(401).json({ message: "errors.incorrect" });
     }
@@ -197,8 +208,12 @@ function sendTransactionalEmail({ to, subject, htmlContent }) {
   return api.sendTransacEmail(mail);
 }
 
+async function findAdminByEmail(email) {
+  return AdminModel.findOne({ email: normalizeEmail(email) });
+}
+
 async function findUserByEmail(email) {
-  const normalized = (email || "").trim().toLowerCase();
+  const normalized = normalizeEmail(email);
   const [owner, employee] = await Promise.all([
     OwnerModel.findOne({ email: normalized }),
     EmployeeModel.findOne({ email: normalized }),
@@ -206,14 +221,89 @@ async function findUserByEmail(email) {
   return owner || employee || null;
 }
 
+function buildResetCodeEmailHtml(code) {
+  return `<p>Votre code de réinitialisation est : <strong>${code}</strong></p>`;
+}
+
+function generateResetCode() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+// ----------------- FORGOT PASSWORD ADMIN -----------------
+
+router.post("/admin/send-reset-code", async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    const admin = await findAdminByEmail(email);
+    if (!admin) return res.status(404).json({ message: "Email non trouvé" });
+
+    const code = generateResetCode();
+    admin.resetCode = code;
+    admin.resetCodeExpires = new Date(Date.now() + 10 * 60 * 1000);
+    await admin.save();
+
+    await sendTransactionalEmail({
+      to: [{ email: admin.email, name: admin.role || "Administrateur" }],
+      subject: "Votre code de réinitialisation de mot de passe administrateur",
+      htmlContent: buildResetCodeEmailHtml(code),
+    });
+
+    return res.json({ message: "Code envoyé par email" });
+  } catch (error) {
+    console.error("admin/send-reset-code:", error);
+    return res.status(500).json({ message: "Erreur serveur" });
+  }
+});
+
+router.post("/admin/verify-reset-code", async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    const { code } = req.body;
+    const admin = await findAdminByEmail(email);
+    if (!admin) return res.status(404).json({ message: "Email non trouvé" });
+
+    if (admin.resetCode !== code || new Date() > admin.resetCodeExpires) {
+      return res.status(400).json({ message: "Code invalide ou expiré" });
+    }
+
+    return res.json({ message: "Code valide" });
+  } catch (error) {
+    console.error("admin/verify-reset-code:", error);
+    return res.status(500).json({ message: "Erreur serveur" });
+  }
+});
+
+router.put("/admin/reset-password", async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    const { code, newPassword } = req.body;
+    const admin = await findAdminByEmail(email);
+    if (!admin) return res.status(404).json({ message: "Email non trouvé" });
+
+    if (admin.resetCode !== code || new Date() > admin.resetCodeExpires) {
+      return res.status(400).json({ message: "Code invalide ou expiré" });
+    }
+
+    admin.password = newPassword;
+    admin.resetCode = undefined;
+    admin.resetCodeExpires = undefined;
+    await admin.save();
+
+    return res.json({ message: "Mot de passe mis à jour avec succès" });
+  } catch (error) {
+    console.error("admin/reset-password:", error);
+    return res.status(500).json({ message: "Erreur serveur" });
+  }
+});
+
 // 1) envoyer le code
 router.post("/auth/send-reset-code", async (req, res) => {
   try {
-    const email = (req.body.email || "").trim().toLowerCase();
+    const email = normalizeEmail(req.body?.email);
     const user = await findUserByEmail(email);
     if (!user) return res.status(404).json({ message: "Email non trouvé" });
 
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const code = generateResetCode();
     user.resetCode = code;
     user.resetCodeExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 min
     await user.save();
@@ -221,7 +311,7 @@ router.post("/auth/send-reset-code", async (req, res) => {
     await sendTransactionalEmail({
       to: [{ email: user.email, name: user.firstname || "Utilisateur" }],
       subject: "Votre code de réinitialisation de mot de passe",
-      htmlContent: `<p>Votre code de réinitialisation est : <strong>${code}</strong></p>`,
+      htmlContent: buildResetCodeEmailHtml(code),
     });
 
     return res.json({ message: "Code envoyé par email" });
@@ -234,7 +324,7 @@ router.post("/auth/send-reset-code", async (req, res) => {
 // 2) vérifier le code
 router.post("/auth/verify-reset-code", async (req, res) => {
   try {
-    const email = (req.body.email || "").trim().toLowerCase();
+    const email = normalizeEmail(req.body?.email);
     const { code } = req.body;
     const user = await findUserByEmail(email);
     if (!user) return res.status(404).json({ message: "Email non trouvé" });
@@ -252,7 +342,7 @@ router.post("/auth/verify-reset-code", async (req, res) => {
 // 3) réinitialiser le mot de passe
 router.put("/auth/reset-password", async (req, res) => {
   try {
-    const email = (req.body.email || "").trim().toLowerCase();
+    const email = normalizeEmail(req.body?.email);
     const { code, newPassword } = req.body;
     const user = await findUserByEmail(email);
     if (!user) return res.status(404).json({ message: "Email non trouvé" });

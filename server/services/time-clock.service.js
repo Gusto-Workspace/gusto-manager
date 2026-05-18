@@ -5,6 +5,8 @@ const ACTIONS = {
   CLOCK_OUT: "clock_out",
 };
 
+const { computeMealAllowance } = require("./meal-allowance.service");
+
 function pad2(value) {
   return String(value).padStart(2, "0");
 }
@@ -441,7 +443,11 @@ function serializeBreak(item, now = new Date()) {
 
 function serializeSession(
   session,
-  { now = new Date(), referenceDateKey = toLocalDateKey(now) } = {},
+  {
+    now = new Date(),
+    referenceDateKey = toLocalDateKey(now),
+    openingHours = [],
+  } = {},
 ) {
   const metrics = computeSessionMetrics(session, { now, referenceDateKey });
   const events = [...(session?.events || [])]
@@ -451,6 +457,13 @@ function serializeSession(
   const breaks = [...(session?.breaks || [])]
     .sort((left, right) => new Date(left.startAt) - new Date(right.startAt))
     .map((item) => serializeBreak(item, now));
+
+  const mealAllowance = computeMealAllowance({
+    start: session?.clockInAt,
+    end: session?.clockOutAt || now,
+    openingHours,
+    explicit: session?.mealAllowance,
+  });
 
   return {
     id: session?._id ? String(session._id) : null,
@@ -466,6 +479,7 @@ function serializeSession(
       breakMinutes: metrics.breakMinutes,
       workedMinutes: metrics.workedMinutes,
     },
+    mealAllowance,
     anomalies: metrics.anomalies,
     breaks,
     events,
@@ -481,6 +495,16 @@ function serializeSession(
         previousClockOutAt: adjustment?.previousClockOutAt || null,
         clockInAt: adjustment?.clockInAt || null,
         clockOutAt: adjustment?.clockOutAt || null,
+        previousBreaks: (adjustment?.previousBreaks || []).map((item) => ({
+          startAt: item?.startAt || null,
+          endAt: item?.endAt || null,
+          durationMinutes: Number(item?.durationMinutes || 0),
+        })),
+        breaks: (adjustment?.breaks || []).map((item) => ({
+          startAt: item?.startAt || null,
+          endAt: item?.endAt || null,
+          durationMinutes: Number(item?.durationMinutes || 0),
+        })),
       })),
     isManuallyEdited: Array.isArray(session?.adjustments)
       ? session.adjustments.length > 0
@@ -496,6 +520,7 @@ function buildEmptyDaySummary(dateKey) {
     totalGrossMinutes: 0,
     totalBreakMinutes: 0,
     totalWorkedMinutes: 0,
+    mealCount: 0,
     sessionCount: 0,
     sessionIds: [],
     anomalies: [],
@@ -515,6 +540,12 @@ function buildSessionEntryForDay(
       grossMinutes: dayShare?.grossMinutes || 0,
       breakMinutes: dayShare?.breakMinutes || 0,
       workedMinutes: dayShare?.workedMinutes || 0,
+      mealCount:
+        dayShare?.date ===
+        (serializedSession?.businessDate ||
+          toLocalDateKey(serializedSession?.clockInAt))
+          ? Number(serializedSession?.mealAllowance?.count || 0)
+          : 0,
     },
     spansMultipleDays,
     isPartialForDay:
@@ -533,6 +564,7 @@ function finalizeDaySummary(day) {
     totalGrossMinutes: Number(day?.totalGrossMinutes || 0),
     totalBreakMinutes: Number(day?.totalBreakMinutes || 0),
     totalWorkedMinutes: Number(day?.totalWorkedMinutes || 0),
+    mealCount: Number(day?.mealCount || 0),
     sessionCount: sessionIds.length,
     anomalies: Array.isArray(day?.anomalies) ? day.anomalies : [],
   };
@@ -540,12 +572,20 @@ function finalizeDaySummary(day) {
 
 function groupSessionsByDay(
   sessions,
-  { now = new Date(), referenceDateKey = toLocalDateKey(now) } = {},
+  {
+    now = new Date(),
+    referenceDateKey = toLocalDateKey(now),
+    openingHours = [],
+  } = {},
 ) {
   const dayMap = new Map();
 
   for (const session of sessions || []) {
-    const serialized = serializeSession(session, { now, referenceDateKey });
+    const serialized = serializeSession(session, {
+      now,
+      referenceDateKey,
+      openingHours,
+    });
     const breakdown = computeSessionDayBreakdown(session, { now });
     const dayShares = breakdown.days.length
       ? breakdown.days
@@ -572,6 +612,12 @@ function groupSessionsByDay(
       current.totalGrossMinutes += dayShare.grossMinutes || 0;
       current.totalBreakMinutes += dayShare.breakMinutes || 0;
       current.totalWorkedMinutes += dayShare.workedMinutes || 0;
+      if (
+        key ===
+        (serialized.businessDate || toLocalDateKey(serialized.clockInAt))
+      ) {
+        current.mealCount += Number(serialized?.mealAllowance?.count || 0);
+      }
 
       if (serialized.id && !current.sessionIds.includes(serialized.id)) {
         current.sessionIds.push(serialized.id);
@@ -628,6 +674,7 @@ function buildRangeSummary(dayMap, startDate, endDate) {
       (total, item) => total + item.totalWorkedMinutes,
       0,
     ),
+    totalMealCount: days.reduce((total, item) => total + item.mealCount, 0),
     totalSessions: sessionIds.size,
     anomalies: Array.from(
       new Set(days.flatMap((item) => item.anomalies || [])),
@@ -659,11 +706,16 @@ function buildSummaryPayload({
   recentSessions = [],
   activeSession = null,
   now = new Date(),
+  openingHours = [],
 }) {
   const referenceDateKey = anchorDateKey || toLocalDateKey(now);
   const weekRange = getWeekRangeFromDateKey(referenceDateKey);
   const monthRange = getMonthRangeFromDateKey(referenceDateKey);
-  const dayMap = groupSessionsByDay(monthSessions, { now, referenceDateKey });
+  const dayMap = groupSessionsByDay(monthSessions, {
+    now,
+    referenceDateKey,
+    openingHours,
+  });
   const day = finalizeDaySummary(
     dayMap.get(referenceDateKey) || buildEmptyDaySummary(referenceDateKey),
   );
@@ -675,14 +727,14 @@ function buildSummaryPayload({
       situation: getSessionSituation(activeSession),
       availableActions: getAvailableActions(activeSession),
       activeSession: activeSession
-        ? serializeSession(activeSession, { now, referenceDateKey })
+        ? serializeSession(activeSession, { now, referenceDateKey, openingHours })
         : null,
     },
     day,
     week: buildRangeSummary(dayMap, weekRange.startDate, weekRange.endDate),
     month: buildRangeSummary(dayMap, monthRange.startDate, monthRange.endDate),
     history: (recentSessions || []).map((session) =>
-      serializeSession(session, { now, referenceDateKey }),
+      serializeSession(session, { now, referenceDateKey, openingHours }),
     ),
     lastUpdatedAt: now.toISOString(),
   };
@@ -695,9 +747,14 @@ function buildEmployeeRangeSummary({
   endDate,
   sessions = [],
   now = new Date(),
+  openingHours = [],
 }) {
   const referenceDateKey = startDate || toLocalDateKey(now);
-  const dayMap = groupSessionsByDay(sessions, { now, referenceDateKey });
+  const dayMap = groupSessionsByDay(sessions, {
+    now,
+    referenceDateKey,
+    openingHours,
+  });
 
   return {
     employee: getEmployeeDisplay(employee, restaurantId),

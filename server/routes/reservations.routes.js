@@ -66,6 +66,46 @@ function normalizeTableIdList(values = []) {
   );
 }
 
+function isFloorplanRoomEnabled(room) {
+  return room?.enabled !== false;
+}
+
+function getFloorplanRooms(parameters = {}, { enabledOnly = false } = {}) {
+  const rooms = Array.isArray(parameters?.floorplan?.rooms)
+    ? parameters.floorplan.rooms
+    : [];
+
+  return enabledOnly ? rooms.filter(isFloorplanRoomEnabled) : rooms;
+}
+
+function getDisabledFloorplanTableIds(parameters = {}) {
+  const ids = new Set();
+  const rooms = getFloorplanRooms(parameters);
+
+  rooms.forEach((room) => {
+    if (isFloorplanRoomEnabled(room)) return;
+
+    const objects = Array.isArray(room?.objects) ? room.objects : [];
+    objects.forEach((obj) => {
+      if (obj?.type !== "table" || !obj?.tableRefId) return;
+      ids.add(String(obj.tableRefId || "").trim());
+    });
+  });
+
+  return ids;
+}
+
+function getEnabledCatalogTables(parameters = {}) {
+  const disabledTableIds = getDisabledFloorplanTableIds(parameters);
+  const tables = Array.isArray(parameters?.tables) ? parameters.tables : [];
+
+  if (!disabledTableIds.size) return tables;
+
+  return tables.filter(
+    (table) => !disabledTableIds.has(String(table?._id || "").trim()),
+  );
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -109,6 +149,22 @@ function parseConfiguredTableSelection(value) {
 
   return {
     key: buildCombinedTableSelectionKey([raw]),
+  };
+}
+
+function buildConfiguredTableLikeFromSelectionKey(selectionKey) {
+  const normalizedKey = String(selectionKey || "").trim();
+  if (!normalizedKey) return null;
+
+  if (normalizedKey.startsWith("combo:")) {
+    return {
+      tableIds: normalizedKey.slice(6).split("+"),
+    };
+  }
+
+  return {
+    _id: normalizedKey,
+    tableIds: [normalizedKey],
   };
 }
 
@@ -177,7 +233,7 @@ function getEligibleCombinedTables({
   requiredSize,
   channel = "dashboard",
 }) {
-  const tables = Array.isArray(parameters?.tables) ? parameters.tables : [];
+  const tables = getEnabledCatalogTables(parameters);
   const catalogById = new Map(
     tables.map((table) => [String(table?._id || ""), table]),
   );
@@ -336,7 +392,7 @@ function getCurrentConfiguredOptionFromCatalog({
   const currentIds = getConfiguredTableIds(currentTable);
   if (currentIds.length === 0) return null;
 
-  const tables = Array.isArray(parameters?.tables) ? parameters.tables : [];
+  const tables = getEnabledCatalogTables(parameters);
   const catalogById = new Map(
     tables.map((table) => [String(table?._id || ""), table]),
   );
@@ -674,7 +730,7 @@ function getEligibleTables({
   singleSeatSizes = [],
   channel = "dashboard",
 }) {
-  let pool = Array.isArray(parameters?.tables) ? parameters.tables : [];
+  let pool = getEnabledCatalogTables(parameters);
   const allowedSeats = new Set(
     (Array.isArray(singleSeatSizes) ? singleSeatSizes : [])
       .map((value) => Number(value))
@@ -698,6 +754,126 @@ function buildAssignedTablePayload(tableDef) {
     name: String(tableDef?.name || "").trim(),
     seats: Number(tableDef?.seats || 0),
     source: "configured",
+  };
+}
+
+function normalizeDashboardTableInput({
+  table,
+  tableMode,
+  manageDisponibilities = false,
+}) {
+  const rawMode = String(tableMode || "").trim().toLowerCase();
+  const rawValue = String(table || "").trim();
+
+  if (rawMode === "empty") {
+    return { mode: "empty", value: "" };
+  }
+
+  if (rawMode === "manual") {
+    return {
+      mode: rawValue ? "manual" : "empty",
+      value: rawValue,
+    };
+  }
+
+  if (rawMode === "configured") {
+    const selection = parseConfiguredTableSelection(rawValue);
+    return selection
+      ? { mode: "configured", value: selection.key }
+      : { mode: "empty", value: "" };
+  }
+
+  if (!rawValue || rawValue === "auto") {
+    return { mode: "empty", value: "" };
+  }
+
+  if (manageDisponibilities) {
+    const selection = parseConfiguredTableSelection(rawValue);
+    return selection
+      ? { mode: "configured", value: selection.key }
+      : { mode: "empty", value: "" };
+  }
+
+  return { mode: "manual", value: rawValue };
+}
+
+async function getConfiguredTableAvailabilityForCandidate({
+  restaurantId,
+  parameters,
+  reservationDateUTC,
+  reservationTime,
+  numberOfGuests,
+  reservationIdToExclude = null,
+  channel = "dashboard",
+}) {
+  const singleSeatSizes =
+    getEligibleSingleTableSeatSizesFromGuests(numberOfGuests);
+  const comboSeatSize = getRequiredCombinedTableSizeFromGuests(numberOfGuests);
+  const formattedDate = format(reservationDateUTC, "yyyy-MM-dd");
+  const candidateStart = minutesFromHHmm(reservationTime);
+  const durCandidate = getOccupancyMinutes(parameters, reservationTime);
+  const candidateEnd = candidateStart + durCandidate;
+  const candidateDateTime = buildReservationDateTime(
+    reservationDateUTC,
+    reservationTime,
+  );
+  const blockedTableIds = getBlockedTableIdsForDateTime(
+    parameters,
+    candidateDateTime,
+    getReservationOccupancyMs(parameters, reservationTime),
+  );
+
+  const dayStart = new Date(`${formattedDate}T00:00:00.000Z`);
+  const dayEnd = new Date(`${formattedDate}T23:59:59.999Z`);
+
+  const query = {
+    restaurant_id: restaurantId,
+    reservationDate: { $gte: dayStart, $lte: dayEnd },
+    status: { $in: BLOCKING_STATUSES },
+  };
+
+  if (reservationIdToExclude) {
+    query._id = { $ne: reservationIdToExclude };
+  }
+
+  const dayReservations = await ReservationModel.find(query)
+    .select("status reservationTime pendingExpiresAt table bankHold")
+    .lean();
+
+  const blockingReservations = dayReservations.filter(isBlockingReservation);
+
+  const overlaps = (reservation) => {
+    const reservationStart = minutesFromHHmm(reservation.reservationTime);
+    const reservationDuration = getOccupancyMinutes(
+      parameters,
+      reservation.reservationTime,
+    );
+    const reservationEnd = reservationStart + reservationDuration;
+
+    if (durCandidate > 0 && reservationDuration > 0) {
+      return (
+        candidateStart < reservationEnd && candidateEnd > reservationStart
+      );
+    }
+
+    return String(reservation.reservationTime).slice(0, 5) === reservationTime;
+  };
+
+  return {
+    ...getAvailableConfiguredTableOptions({
+      parameters,
+      singleSeatSizes,
+      comboSeatSize,
+      channel,
+      blockingReservations,
+      overlaps,
+      blockedTableIds,
+    }),
+    blockingReservations,
+    overlaps,
+    blockedTableIds,
+    singleSeatSizes,
+    comboSeatSize,
   };
 }
 
@@ -726,9 +902,8 @@ function getActiveBlockedRangeEnd(parameters, now = new Date()) {
 }
 
 function getSmartAvailabilitySetupStatus(parameters = {}) {
-  const rooms = Array.isArray(parameters?.floorplan?.rooms)
-    ? parameters.floorplan.rooms
-    : [];
+  const rooms = getFloorplanRooms(parameters, { enabledOnly: true });
+  const allRooms = getFloorplanRooms(parameters);
   const tables = Array.isArray(parameters?.tables) ? parameters.tables : [];
 
   const catalogTableIds = new Set(
@@ -758,7 +933,8 @@ function getSmartAvailabilitySetupStatus(parameters = {}) {
   });
 
   return {
-    roomsCount: rooms.length,
+    roomsCount: allRooms.length,
+    activeRoomsCount: rooms.length,
     tablesCount: tables.length,
     placedTablesCount: placedTableIds.size,
     roomsWithPlacedTables,
@@ -2027,7 +2203,7 @@ router.put(
           return res.status(400).json({
             code: "SMART_AVAILABILITY_SETUP_REQUIRED",
             message:
-              "Créez d’abord une salle et placez au moins une table sur le plan avant d’activer la gestion intelligente.",
+              "Créez d’abord une salle et placez au moins une table sur le plan avant d’activer le placement automatique.",
             details: setupStatus,
           });
         }
@@ -3067,60 +3243,53 @@ router.post(
         }
 
         let assignedTable = null;
+        const normalizedTableInput = normalizeDashboardTableInput({
+          table: reservationData.table,
+          tableMode: reservationData.tableMode,
+          manageDisponibilities: Boolean(parameters.manage_disponibilities),
+        });
 
-        if (parameters.manage_disponibilities) {
-          const singleSeatSizes =
-            getEligibleSingleTableSeatSizesFromGuests(normalizedGuests);
-          const comboSeatSize =
-            getRequiredCombinedTableSizeFromGuests(normalizedGuests);
-          const formattedDate = format(normalizedDay, "yyyy-MM-dd");
-          const candidateStart = minutesFromHHmm(normalizedTime);
-          const durCandidate = getOccupancyMinutes(parameters, normalizedTime);
-          const candidateEnd = candidateStart + durCandidate;
-          const blockedTableIds = getBlockedTableIdsForDateTime(
-            parameters,
-            candidateDT,
-            occupancyMs,
-          );
-
-          const dayStart = new Date(`${formattedDate}T00:00:00.000Z`);
-          const dayEnd = new Date(`${formattedDate}T23:59:59.999Z`);
-
-          const dayReservations = await ReservationModel.find({
-            restaurant_id: restaurantId,
-            reservationDate: { $gte: dayStart, $lte: dayEnd },
-            status: { $in: BLOCKING_STATUSES },
-          })
-            .select("status reservationTime pendingExpiresAt table bankHold")
-            .lean();
-
-          const blockingReservations = dayReservations.filter(
-            isBlockingReservation,
-          );
-
-          const overlaps = (r) => {
-            const rStart = minutesFromHHmm(r.reservationTime);
-            const rDur = getOccupancyMinutes(parameters, r.reservationTime);
-            const rEnd = rStart + rDur;
-
-            if (durCandidate > 0 && rDur > 0) {
-              return candidateStart < rEnd && candidateEnd > rStart;
-            }
-            return String(r.reservationTime).slice(0, 5) === normalizedTime;
+        if (normalizedTableInput.mode === "manual") {
+          const requiredSize = requiredTableSizeFromGuests(normalizedGuests);
+          assignedTable = {
+            name: normalizedTableInput.value,
+            seats: requiredSize || 2,
+            source: "manual",
           };
+        } else if (normalizedTableInput.mode === "configured") {
+          const availableConfig =
+            await getConfiguredTableAvailabilityForCandidate({
+              restaurantId,
+              parameters,
+              reservationDateUTC: normalizedDay,
+              reservationTime: normalizedTime,
+              numberOfGuests: normalizedGuests,
+            });
 
-          const availableConfig = getAvailableConfiguredTableOptions({
-            parameters,
-            singleSeatSizes,
-            comboSeatSize,
-            channel: "dashboard",
-            blockingReservations,
-            overlaps,
-            blockedTableIds,
-          });
-          const availableOptions = availableConfig.options;
+          const wanted = findConfiguredOptionBySelectionKey(
+            availableConfig.options,
+            normalizedTableInput.value,
+          );
 
-          if (!availableOptions.length) {
+          if (!wanted) {
+            return res.status(409).json({
+              message: "La table sélectionnée n'est plus disponible.",
+            });
+          }
+
+          assignedTable = buildAssignedTablePayload(wanted);
+        } else if (parameters.manage_disponibilities) {
+          const availableConfig =
+            await getConfiguredTableAvailabilityForCandidate({
+              restaurantId,
+              parameters,
+              reservationDateUTC: normalizedDay,
+              reservationTime: normalizedTime,
+              numberOfGuests: normalizedGuests,
+            });
+          const free = availableConfig.options[0] || null;
+
+          if (!free) {
             return res.status(409).json({
               code: "NO_TABLE_AVAILABLE",
               message:
@@ -3128,44 +3297,7 @@ router.post(
             });
           }
 
-          const wants = reservationData.table;
-
-          if (wants && wants !== "auto") {
-            const requestedSelection = parseConfiguredTableSelection(wants);
-            const wanted = findConfiguredOptionBySelectionKey(
-              availableOptions,
-              requestedSelection?.key,
-            );
-            if (!wanted) {
-              return res.status(409).json({
-                message: "La table sélectionnée n'est plus disponible.",
-              });
-            }
-
-            assignedTable = buildAssignedTablePayload(wanted);
-          } else {
-            const free = availableOptions[0] || null;
-            if (!free) {
-              return res.status(409).json({
-                code: "NO_TABLE_AVAILABLE",
-                message:
-                  "Aucune table n’est disponible pour ce créneau. Contactez le client.",
-              });
-            }
-            assignedTable = buildAssignedTablePayload(free);
-          }
-        } else {
-          const name = (reservationData.table || "").toString().trim();
-          if (name) {
-            const requiredSize = requiredTableSizeFromGuests(normalizedGuests);
-            assignedTable = {
-              name,
-              seats: requiredSize || 2,
-              source: "manual",
-            };
-          } else {
-            assignedTable = null;
-          }
+          assignedTable = buildAssignedTablePayload(free);
         }
 
         const customerFirstName = cleanNamePart(
@@ -3456,10 +3588,15 @@ router.put(
     const { status } = req.body;
 
     try {
-      const nextStatus = String(status || "").trim();
-      if (!nextStatus) {
+      const requestedStatus = String(status || "").trim();
+      if (!requestedStatus) {
         return res.status(400).json({ message: "status manquant." });
       }
+
+      const nextStatus =
+        requestedStatus === "Active" || requestedStatus === "Late"
+          ? "Confirmed"
+          : requestedStatus;
 
       // whitelist des statuts si tu veux sécuriser
       const ALLOWED = new Set([
@@ -3555,7 +3692,10 @@ router.put(
         let tableReassigned = false;
         let tableChange = null;
 
-        if (mustCheckTable && parameters.manage_disponibilities) {
+        const hasConfiguredTable =
+          String(reservation?.table?.source || "") === "configured";
+
+        if (mustCheckTable && (parameters.manage_disponibilities || hasConfiguredTable)) {
           const singleSeatSizes = getEligibleSingleTableSeatSizesFromGuests(
             reservation.numberOfGuests,
           );
@@ -3643,6 +3783,14 @@ router.put(
               : null);
 
           if (!currentOption) {
+            if (!parameters.manage_disponibilities) {
+              return res.status(409).json({
+                code: "TABLE_UNAVAILABLE",
+                message:
+                  "La table attribuée n’est plus disponible pour ce créneau.",
+              });
+            }
+
             const newTable = availableOptions[0] || null;
             if (!newTable) {
               return res.status(409).json({
@@ -3956,37 +4104,19 @@ router.put(
         }
       }
 
-      // ---------------------
-      // ✅ Grace logic
-      // ---------------------
-      const gracePeriod = 5 * 60000;
-      const manageSmartAvailability = Boolean(
-        parameters?.manage_disponibilities,
-      );
-
       const statusExplicit = Object.prototype.hasOwnProperty.call(
         updateData,
         "status",
       );
 
-      if (manageSmartAvailability && touchesDateTime && !statusExplicit) {
-        const base = buildReservationDateTime(candidateDate, candidateTime);
-        const reservationWithGrace = new Date(base.getTime() + gracePeriod);
-
-        const now = new Date();
-
-        if (existing.status === "Late" && now < reservationWithGrace) {
-          updateData.status = "Confirmed";
-          updateData.finishedAt = null;
-          updateData.activatedAt = null;
-        }
-
-        if (existing.status === "Confirmed" && now >= reservationWithGrace) {
-          updateData.status = "Late";
-          updateData.finishedAt = null;
-          // Late => activatedAt doit exister
-          updateData.activatedAt = existing.activatedAt || new Date();
-        }
+      if (
+        touchesDateTime &&
+        !statusExplicit &&
+        ["Active", "Late"].includes(String(existing.status || ""))
+      ) {
+        updateData.status = "Confirmed";
+        updateData.finishedAt = null;
+        updateData.activatedAt = null;
       }
 
       const touchesTableExplicitly = Object.prototype.hasOwnProperty.call(
@@ -4012,99 +4142,44 @@ router.put(
       const candidateStatus = String(updateData.status ?? existing.status);
 
       const mustBlockSlot = BLOCKING_STATUSES.includes(candidateStatus);
+      const normalizedDashboardTableInput = touchesTableExplicitly
+        ? normalizeDashboardTableInput({
+            table: updateData.table,
+            tableMode: updateData.tableMode,
+            manageDisponibilities: Boolean(parameters.manage_disponibilities),
+          })
+        : null;
+      if (Object.prototype.hasOwnProperty.call(updateData, "tableMode")) {
+        delete updateData.tableMode;
+      }
+      const shouldValidateConfiguredSelection =
+        mustBlockSlot &&
+        shouldCheckTables &&
+        ((!touchesTableExplicitly &&
+          Boolean(parameters.manage_disponibilities)) ||
+          normalizedDashboardTableInput?.mode === "configured" ||
+          (Boolean(parameters.manage_disponibilities) &&
+            normalizedDashboardTableInput?.mode === "empty"));
       let dayLock = null;
 
       try {
-        if (
-          parameters.manage_disponibilities &&
-          mustBlockSlot &&
-          shouldCheckTables
-        ) {
+        if (shouldValidateConfiguredSelection) {
           dayLock = await acquireReservationDayLock({
             restaurantId,
             reservationDateUTC: candidateDate,
           });
         }
 
-        if (
-          parameters.manage_disponibilities &&
-          mustBlockSlot &&
-          shouldCheckTables
-        ) {
-          const singleSeatSizes =
-            getEligibleSingleTableSeatSizesFromGuests(candidateGuests);
-          const comboSeatSize =
-            getRequiredCombinedTableSizeFromGuests(candidateGuests);
-
-          const formattedDate = format(candidateDate, "yyyy-MM-dd");
-
-          const candidateStart = minutesFromHHmm(candidateTime);
-          const durCandidate = getOccupancyMinutes(parameters, candidateTime);
-          const candidateEnd = candidateStart + durCandidate;
-          const candidateDateTime = buildReservationDateTime(
-            candidateDate,
-            candidateTime,
-          );
-          const blockedTableIds = getBlockedTableIdsForDateTime(
-            parameters,
-            candidateDateTime,
-            candidateOccupancyMs,
-          );
-
-          const dayStart = new Date(`${formattedDate}T00:00:00.000Z`);
-          const dayEnd = new Date(`${formattedDate}T23:59:59.999Z`);
-
-          const dayReservations = await ReservationModel.find({
-            restaurant_id: restaurantId,
-            reservationDate: { $gte: dayStart, $lte: dayEnd },
-            status: { $in: BLOCKING_STATUSES },
-            _id: { $ne: reservationId },
-          })
-            .select("status reservationTime pendingExpiresAt table bankHold")
-            .lean();
-
-          const blockingReservations = dayReservations.filter(
-            isBlockingReservation,
-          );
-
-          const overlaps = (r) => {
-            const rStart = minutesFromHHmm(r.reservationTime);
-            const rDur = getOccupancyMinutes(parameters, r.reservationTime);
-            const rEnd = rStart + rDur;
-
-            if (durCandidate > 0 && rDur > 0)
-              return candidateStart < rEnd && candidateEnd > rStart;
-
-            return String(r.reservationTime).slice(0, 5) === candidateTime;
-          };
-
-          // table demandée: updateData.table (string id) / "auto" / null / undefined
-          let requestedTableId = Object.prototype.hasOwnProperty.call(
-            updateData,
-            "table",
-          )
-            ? updateData.table
-            : undefined;
-
-          if (requestedTableId === "") requestedTableId = null;
-          if (requestedTableId === "auto") requestedTableId = undefined;
-
-          if (requestedTableId === null) {
-            return res.status(400).json({
-              message:
-                "La table est obligatoire quand la gestion intelligente est active.",
+        if (shouldValidateConfiguredSelection) {
+          const availableConfig =
+            await getConfiguredTableAvailabilityForCandidate({
+              restaurantId,
+              parameters,
+              reservationDateUTC: candidateDate,
+              reservationTime: candidateTime,
+              numberOfGuests: candidateGuests,
+              reservationIdToExclude: reservationId,
             });
-          }
-
-          const availableConfig = getAvailableConfiguredTableOptions({
-            parameters,
-            singleSeatSizes,
-            comboSeatSize,
-            channel: "dashboard",
-            blockingReservations,
-            overlaps,
-            blockedTableIds,
-          });
           const availableOptions = availableConfig.options;
           const currentSelectionKey = getConfiguredTableSelectionKey(
             existing?.table,
@@ -4112,17 +4187,17 @@ router.put(
           const currentCatalogOption = getCurrentConfiguredOptionFromCatalog({
             parameters,
             currentTable: existing?.table,
-            singleSeatSizes,
-            comboSeatSize,
+            singleSeatSizes: availableConfig.singleSeatSizes,
+            comboSeatSize: availableConfig.comboSeatSize,
             channel: "dashboard",
           });
           const currentOption =
             currentCatalogOption &&
             isConfiguredTableFree({
               tableDef: currentCatalogOption,
-              blockingReservations,
-              overlaps,
-              blockedTableIds,
+              blockingReservations: availableConfig.blockingReservations,
+              overlaps: availableConfig.overlaps,
+              blockedTableIds: availableConfig.blockedTableIds,
             })
               ? currentCatalogOption
               : null;
@@ -4131,23 +4206,33 @@ router.put(
             updateData.table = buildAssignedTablePayload(tableDef);
           };
 
-          if (typeof requestedTableId === "string") {
-            const requestedSelection =
-              parseConfiguredTableSelection(requestedTableId);
+          if (normalizedDashboardTableInput?.mode === "configured") {
             const wanted =
-              requestedSelection?.key === currentSelectionKey
+              normalizedDashboardTableInput.value === currentSelectionKey
                 ? currentOption
                 : findConfiguredOptionBySelectionKey(
                     availableOptions,
-                    requestedSelection?.key,
+                    normalizedDashboardTableInput.value,
                   );
-            if (!wanted)
+
+            if (!wanted) {
               return res.status(409).json({
                 message: "La table sélectionnée n'est plus disponible.",
               });
+            }
 
             assignWanted(wanted);
           } else {
+            if (
+              touchesTableExplicitly &&
+              normalizedDashboardTableInput?.mode === "empty"
+            ) {
+              return res.status(400).json({
+                message:
+                  "La table est obligatoire quand le placement automatique est actif.",
+              });
+            }
+
             const currentEligible =
               findConfiguredOptionBySelectionKey(
                 availableOptions,
@@ -4176,18 +4261,38 @@ router.put(
             }
           }
         } else {
-          // ✅ mode manuel : on stocke le nom saisi à la main (si présent)
           if (Object.prototype.hasOwnProperty.call(updateData, "table")) {
-            const name = (updateData.table || "").toString().trim();
-            if (!name) {
-              updateData.table = null;
-            } else {
+            if (normalizedDashboardTableInput?.mode === "manual") {
               const requiredSize = requiredTableSizeFromGuests(candidateGuests);
               updateData.table = {
-                name,
+                name: normalizedDashboardTableInput.value,
                 seats: requiredSize || 2,
                 source: "manual",
               };
+            } else if (normalizedDashboardTableInput?.mode === "configured") {
+              const requestedTable =
+                buildConfiguredTableLikeFromSelectionKey(
+                  normalizedDashboardTableInput.value,
+                );
+              const wanted = getCurrentConfiguredOptionFromCatalog({
+                parameters,
+                currentTable: requestedTable,
+                singleSeatSizes:
+                  getEligibleSingleTableSeatSizesFromGuests(candidateGuests),
+                comboSeatSize:
+                  getRequiredCombinedTableSizeFromGuests(candidateGuests),
+                channel: "dashboard",
+              });
+
+              if (!wanted) {
+                return res.status(409).json({
+                  message: "La table sélectionnée n'est plus disponible.",
+                });
+              }
+
+              updateData.table = buildAssignedTablePayload(wanted);
+            } else {
+              updateData.table = null;
             }
           }
         }

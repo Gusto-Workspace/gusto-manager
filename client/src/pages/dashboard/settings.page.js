@@ -39,7 +39,7 @@ export default function SettingsPage(props) {
         : `${process.env.NEXT_PUBLIC_API_URL}/employees/me`;
 
     axios
-      .get(url, { headers: { Authorization: `Bearer ${token}` } })
+      .get(url)
       .then((response) => {
         if (role === "owner") {
           setUserData(response.data.owner);

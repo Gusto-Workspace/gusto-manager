@@ -326,7 +326,6 @@ export default function MaintenanceForm({
 
     const { data: saved } = await axios[method](url, formData, {
       headers: {
-        Authorization: `Bearer ${token}`,
         "Content-Type": "multipart/form-data",
       },
     });
@@ -351,7 +350,6 @@ export default function MaintenanceForm({
       const { data: saved } = await axios.put(
         url,
         { note: noteDraft },
-        { headers: { Authorization: `Bearer ${token}` } }
       );
 
       setValue("history", saved?.history || [], { shouldDirty: false });
@@ -375,9 +373,7 @@ export default function MaintenanceForm({
     try {
       setDeletingIdx(idx);
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/maintenance/${initial._id}/history/${idx}`;
-      const { data: saved } = await axios.delete(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const { data: saved } = await axios.delete(url);
 
       setValue("history", saved?.history || [], { shouldDirty: false });
       window.dispatchEvent(

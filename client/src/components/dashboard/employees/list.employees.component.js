@@ -30,6 +30,25 @@ function getCurrentMonthRange() {
   };
 }
 
+async function getExportErrorMessage(error, fallbackMessage) {
+  const responseData = error?.response?.data;
+
+  if (typeof responseData?.message === "string" && responseData.message.trim()) {
+    return responseData.message;
+  }
+
+  if (responseData instanceof Blob) {
+    try {
+      const parsed = JSON.parse(await responseData.text());
+      if (typeof parsed?.message === "string" && parsed.message.trim()) {
+        return parsed.message;
+      }
+    } catch {}
+  }
+
+  return fallbackMessage;
+}
+
 export default function ListEmployeesComponent() {
   const { t } = useTranslation("employees");
   const { restaurantContext } = useContext(GlobalContext);
@@ -137,8 +156,15 @@ export default function ListEmployeesComponent() {
     setHoursExportError("");
 
     try {
+      const format = payload?.format === "excel" ? "excel" : "pdf";
+      const endpoint = format === "excel" ? "excel" : "pdf";
+      const extension = format === "excel" ? "xlsx" : "pdf";
+      const fallbackMimeType =
+        format === "excel"
+          ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          : "application/pdf";
       const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/time-clock/export/pdf`,
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/time-clock/export/${endpoint}`,
         payload,
         {
           ...getAuthConfig(),
@@ -146,11 +172,13 @@ export default function ListEmployeesComponent() {
         },
       );
 
-      const blob = new Blob([response.data], { type: "application/pdf" });
+      const blob = new Blob([response.data], {
+        type: response.headers?.["content-type"] || fallbackMimeType,
+      });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `heures-salaries-${payload.from}-au-${payload.to}.pdf`;
+      link.download = `heures-salaries-${payload.from}-au-${payload.to}.${extension}`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -160,8 +188,12 @@ export default function ListEmployeesComponent() {
     } catch (error) {
       console.error("Erreur export heures salariés :", error);
       setHoursExportError(
-        error?.response?.data?.message ||
-          "Impossible de générer l'export PDF pour le moment.",
+        await getExportErrorMessage(
+          error,
+          `Impossible de generer l'export ${
+            payload?.format === "excel" ? "Excel" : "PDF"
+          } pour le moment.`,
+        ),
       );
     } finally {
       setIsHoursExportLoading(false);
@@ -183,9 +215,9 @@ export default function ListEmployeesComponent() {
         />
 
         {/* Mobile webapp actions row */}
-        <div className="flex items-center justify-between gap-3 midTablet:hidden">
+        <div className="flex flex-col mobile:flex-row items-center justify-between gap-3 midTablet:hidden">
           {/* Search */}
-          <div className="relative flex-1 min-w-0">
+          <div className="relative flex-1 w-full mobile:flex-0">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40" />
             <input
               ref={searchRef}
@@ -258,7 +290,7 @@ export default function ListEmployeesComponent() {
 
         {/* Desktop/tablet layout (tu gardes ton layout existant) */}
         <div className="hidden midTablet:flex justify-between flex-wrap gap-4">
-          <div className="relative midTablet:w-[350px]">
+          <div className="relative midTablet:w-[250px]">
             <input
               type="text"
               placeholder={t(
@@ -279,7 +311,7 @@ export default function ListEmployeesComponent() {
             )}
           </div>
 
-          <div className="flex flex-wrap gap-4">
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={() => {
                 setHoursExportError("");
@@ -315,7 +347,7 @@ export default function ListEmployeesComponent() {
       </div>
 
       {/* Grille d’employés */}
-      <div className="my-6 grid grid-cols-2 midTablet:grid-cols-3 tablet:grid-cols-3 desktop:grid-cols-4 ultraWild:grid-cols-5 gap-2 midTablet:gap-4">
+      <div className="my-6 grid grid-cols-2 midTablet:grid-cols-3 tablet:grid-cols-3 desktop:grid-cols-4 ultraWild:grid-cols-5 gap-2 gap-y-8 midTablet:gap-4">
         {filtered.map((emp) => (
           <CardEmployeesComponent
             key={emp._id}
@@ -450,9 +482,9 @@ export default function ListEmployeesComponent() {
 
       <ExportRangeModalComponent
         open={isHoursExportOpen}
-        title="Exporter les heures salariés"
-        description="Choisissez une période et les salariés à inclure dans le PDF."
-        confirmLabel="Exporter les heures"
+        title="Exporter les heures des salariés"
+        description="Choisissez une periode, les salaries a inclure et le format d'export."
+        confirmLabel="Telecharger"
         employees={exportEmployees}
         initialFrom={defaultExportRange.from}
         initialTo={defaultExportRange.to}

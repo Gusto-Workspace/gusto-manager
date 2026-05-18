@@ -341,6 +341,78 @@ export default function RestaurantContext() {
           });
         }
 
+        if (payload.type === "leave_request_updated") {
+          setRestaurantData((prev) => {
+            if (!prev) return prev;
+
+            const employeeId = String(payload.employeeId || "");
+            const leaveRequest = payload.leaveRequest;
+            const nextShifts = Array.isArray(payload.shifts)
+              ? payload.shifts
+              : null;
+
+            return {
+              ...prev,
+              employees: (prev.employees || []).map((employee) => {
+                if (String(employee?._id) !== employeeId) {
+                  return employee;
+                }
+
+                const currentLeaveRequests = Array.isArray(employee.leaveRequests)
+                  ? employee.leaveRequests
+                  : [];
+                const hasLeaveRequest = currentLeaveRequests.some(
+                  (request) =>
+                    String(request?._id) === String(leaveRequest?._id),
+                );
+
+                return {
+                  ...employee,
+                  leaveRequests: hasLeaveRequest
+                    ? currentLeaveRequests.map((request) =>
+                        String(request?._id) === String(leaveRequest?._id)
+                          ? { ...request, ...leaveRequest }
+                          : request,
+                      )
+                    : leaveRequest
+                      ? [...currentLeaveRequests, leaveRequest]
+                      : currentLeaveRequests,
+                  shifts: nextShifts || employee.shifts || [],
+                };
+              }),
+            };
+          });
+        }
+
+        if (payload.type === "leave_request_deleted") {
+          setRestaurantData((prev) => {
+            if (!prev) return prev;
+
+            const employeeId = String(payload.employeeId || "");
+            const leaveRequestId = String(payload.leaveRequestId || "");
+            const nextShifts = Array.isArray(payload.shifts)
+              ? payload.shifts
+              : null;
+
+            return {
+              ...prev,
+              employees: (prev.employees || []).map((employee) => {
+                if (String(employee?._id) !== employeeId) {
+                  return employee;
+                }
+
+                return {
+                  ...employee,
+                  leaveRequests: (employee.leaveRequests || []).filter(
+                    (request) => String(request?._id) !== leaveRequestId,
+                  ),
+                  shifts: nextShifts || employee.shifts || [],
+                };
+              }),
+            };
+          });
+        }
+
         if (payload.type === "employee_updated" && payload.employee) {
           const nextEmployee = payload.employee;
           const employeeId = String(nextEmployee?._id || "");
@@ -443,7 +515,7 @@ export default function RestaurantContext() {
 
         if (payload.type === "notification_read") {
           const id = String(payload.notificationId);
-          const module = payload.module;
+          const moduleKey = payload.module;
 
           setNotifications((prev) =>
             prev.map((n) =>
@@ -455,7 +527,7 @@ export default function RestaurantContext() {
 
           setUnreadCounts((prev) => {
             const nextBy = { ...prev.byModule };
-            if (module && nextBy[module] > 0) nextBy[module] -= 1;
+            if (moduleKey && nextBy[moduleKey] > 0) nextBy[moduleKey] -= 1;
 
             const total =
               nextBy.reservations + nextBy.gift_cards + nextBy.employees;
@@ -703,59 +775,79 @@ export default function RestaurantContext() {
   // ---------------------------
   // Fetch restaurant data
   // ---------------------------
-  function fetchRestaurantData(token, restaurantId) {
+  async function fetchRestaurantData(token, restaurantId) {
     setDataLoading(true);
 
-    axios
-      .get(
-        `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${restaurantId}`,
-        { headers: { Authorization: `Bearer ${token}` } },
-      )
-      .then(async (response) => {
-        const restaurant = response.data.restaurant;
-        const rid = String(restaurant._id);
+    let role = null;
+    try {
+      role = jwtDecode(token)?.role || null;
+    } catch {}
 
-        let role = null;
-        try {
-          role = jwtDecode(token)?.role || null;
-        } catch {}
+    try {
+      setNotifications([]);
+      setNotificationsNextCursor(null);
+      setNotificationsNextCursorByModule({
+        all: null,
+        reservations: null,
+        gift_cards: null,
+        employees: null,
+      });
+      setNotificationsLoading(false);
 
-        setNotifications([]);
-        setNotificationsNextCursor(null);
-        setNotificationsNextCursorByModule({
-          all: null,
-          reservations: null,
-          gift_cards: null,
-          employees: null,
-        });
-        setNotificationsLoading(false);
+      if (role === "employee") {
+        const response = await axios.get(
+          `${process.env.NEXT_PUBLIC_API_URL}/employees/me`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
 
-        setRestaurantData(restaurant);
+        const { restaurant, restaurants } = response.data || {};
+        setRestaurantsList(restaurants || []);
+        setRestaurantData(restaurant || null);
         await syncRestaurantReservations(restaurant, token);
 
-        // ✅ NEW: counts depuis l'API (owner)
-        if (role === "owner") {
-          await fetchUnreadCounts(token, rid);
+        if (restaurant?._id) {
+          await fetchUnreadCounts(token, String(restaurant._id));
         } else {
-          // employés: pas de pastilles
           setUnreadCounts({
             total: 0,
             byModule: { reservations: 0, gift_cards: 0, employees: 0 },
           });
         }
 
-        setDataLoading(false);
-      })
-      .catch((error) => {
-        if (error.response?.status === 403) handleInvalidToken();
-        else {
-          console.error(
-            "Erreur lors de la récupération des données du restaurant:",
-            error,
-          );
-          setDataLoading(false);
-        }
-      });
+        return;
+      }
+
+      const response = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${restaurantId}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+
+      const restaurant = response.data.restaurant;
+      const rid = String(restaurant._id);
+
+      setRestaurantData(restaurant);
+      await syncRestaurantReservations(restaurant, token);
+
+      if (role === "owner") {
+        await fetchUnreadCounts(token, rid);
+      } else {
+        setUnreadCounts({
+          total: 0,
+          byModule: { reservations: 0, gift_cards: 0, employees: 0 },
+        });
+      }
+    } catch (error) {
+      if (error.response?.status === 403) {
+        handleInvalidToken();
+      } else {
+        console.error(
+          "Erreur lors de la récupération des données du restaurant:",
+          error,
+        );
+      }
+    } finally {
+      setDataLoading(false);
+    }
   }
 
   function fetchRestaurantsList() {
@@ -1189,47 +1281,6 @@ export default function RestaurantContext() {
     return () => clearInterval(id);
   }, [restaurantData?._id, reservationsList]);
 
-  useEffect(() => {
-    if (!restaurantData) return;
-    const manageSmartAvailability = Boolean(
-      restaurantData?.reservationsSettings?.manage_disponibilities,
-    );
-    if (!manageSmartAvailability) return;
-
-    const checkLateReservations = () => {
-      const now = new Date();
-      const gracePeriod = 5 * 60000;
-      const reservations = reservationsList || [];
-
-      reservations.forEach((reservation) => {
-        if (reservation.status === "Confirmed") {
-          const reservationDate = new Date(reservation.reservationDate);
-          const [hours, minutes] = reservation.reservationTime.split(":");
-          reservationDate.setHours(
-            parseInt(hours, 10),
-            parseInt(minutes, 10),
-            0,
-            0,
-          );
-
-          const reservationDateWithGrace = new Date(
-            reservationDate.getTime() + gracePeriod,
-          );
-
-          if (now >= reservationDateWithGrace) autoUpdateToLate(reservation);
-        }
-      });
-    };
-
-    checkLateReservations();
-    const updateIntervalId = setInterval(checkLateReservations, 30000);
-    return () => clearInterval(updateIntervalId);
-  }, [
-    restaurantData?._id,
-    reservationsList,
-    restaurantData?.reservationsSettings?.manage_disponibilities,
-  ]);
-
   function getServiceBucketFromTime(reservationTime) {
     const [hh = "0"] = String(reservationTime || "00:00").split(":");
     return Number(hh) < 16 ? "lunch" : "dinner";
@@ -1250,10 +1301,6 @@ export default function RestaurantContext() {
 
   useEffect(() => {
     if (!restaurantData) return;
-
-    const manageSmartAvailability = Boolean(
-      restaurantData?.reservationsSettings?.manage_disponibilities,
-    );
     const autoFinishEnabled =
       restaurantData?.reservationsSettings?.auto_finish_reservations;
     if (!autoFinishEnabled) return;
@@ -1263,9 +1310,9 @@ export default function RestaurantContext() {
       const reservations = reservationsList || [];
 
       reservations.forEach((reservation) => {
-        const canAutoFinish = manageSmartAvailability
-          ? reservation.status === "Active"
-          : ["Confirmed", "Active"].includes(reservation.status);
+        const canAutoFinish = ["Confirmed", "Active", "Late"].includes(
+          reservation.status,
+        );
 
         if (!canAutoFinish) return;
 
@@ -1302,7 +1349,6 @@ export default function RestaurantContext() {
   }, [
     restaurantData?._id,
     reservationsList,
-    restaurantData?.reservationsSettings?.manage_disponibilities,
     restaurantData?.reservationsSettings?.auto_finish_reservations,
     restaurantData?.reservationsSettings?.table_occupancy_lunch_minutes,
     restaurantData?.reservationsSettings?.table_occupancy_dinner_minutes,
@@ -1333,39 +1379,6 @@ export default function RestaurantContext() {
       })
       .catch((error) => {
         console.error("Error auto-updating reservation to Finished:", error);
-      })
-      .finally(() => {
-        setAutoUpdatingReservations((prev) => prev.filter((x) => x !== id));
-      });
-  }
-
-  function autoUpdateToLate(reservation) {
-    if (!restaurantData?.reservationsSettings?.manage_disponibilities) return;
-
-    const id = String(reservation._id);
-
-    if (autoUpdatingReservations.includes(id)) return;
-    setAutoUpdatingReservations((prev) => [...prev, id]);
-
-    const token = localStorage.getItem("token");
-    axios
-      .put(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantData._id}/reservations/${reservation._id}/status`,
-        { status: "Late" },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        },
-      )
-      .then(async (response) => {
-        const restaurant = response?.data?.restaurant || null;
-        if (restaurant) setRestaurantData(restaurant);
-        await fetchReservationsList(token, restaurantData?._id);
-      })
-      .catch((error) => {
-        console.error("Error auto-updating reservation to Late:", error);
       })
       .finally(() => {
         setAutoUpdatingReservations((prev) => prev.filter((x) => x !== id));

@@ -8,7 +8,7 @@ export default function NoAvailableComponent({ dataLoading }) {
           <LoaderIcon className="size-8 animate-spin" />
         </p>
       ) : (
-        <p className="italic">Vous n'avez pas souscrit à cette option</p>
+        <p className="italic">Vous n&apos;avez pas souscrit à cette option</p>
       )}
     </div>
   );

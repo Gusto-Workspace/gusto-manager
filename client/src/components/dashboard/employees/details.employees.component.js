@@ -30,6 +30,7 @@ const DEFAULT_OPTIONS = {
   reservations: false,
   take_away: false,
   employees: false,
+  customers: false,
   health_control_plan: false,
 };
 
@@ -86,6 +87,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     reservations: t("nav.reservations", { ns: "common" }),
     take_away: t("nav.takeAway", { ns: "common" }),
     employees: t("nav.employees", { ns: "common" }),
+    customers: t("nav.customers", { ns: "common" }),
     health_control_plan: t("nav.health", { ns: "common" }),
   };
 
@@ -125,6 +127,13 @@ export default function DetailsEmployeesComponent({ employeeId }) {
       address: snapshot.address ?? found.address ?? "",
       emergencyContact:
         snapshot.emergencyContact ?? found.emergencyContact ?? "",
+      contractType: profile?.employment?.contractType ?? "",
+      contractualValue:
+        profile?.employment?.contractualValue ||
+        profile?.employment?.contractualValue === 0
+          ? String(profile?.employment?.contractualValue || "")
+          : "",
+      contractualUnit: profile?.employment?.contractualUnit ?? "",
     });
 
     // --- Initialisation des options avec fallback DEFAULT_OPTIONS ---
@@ -326,6 +335,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     ) || null;
 
   const currentSnapshot = currentProfile?.snapshot || {};
+  const currentEmployment = currentProfile?.employment || {};
   const currentDocuments = currentProfile?.documents || [];
   const currentOptions = watchOptions("options") || {};
 
@@ -354,6 +364,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
         isSavingDetails={isSavingDetails}
         employee={employee}
         currentSnapshot={currentSnapshot}
+        currentEmployment={currentEmployment}
         previewUrl={previewUrl}
         fileInputRef={fileInputRef}
         handleFileSelect={handleFileSelect}

@@ -1,5 +1,14 @@
 const mongoose = require("mongoose");
 
+function normalizeTimeClockSourceValue(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+
+  if (normalized === "manager") return "manager";
+  if (normalized === "employee") return "employee";
+
+  return "kiosk";
+}
+
 const signaturePointSchema = new mongoose.Schema(
   {
     x: { type: Number, required: true, min: 0, max: 1 },
@@ -35,6 +44,15 @@ const breakSchema = new mongoose.Schema(
   { _id: true },
 );
 
+const adjustmentBreakSchema = new mongoose.Schema(
+  {
+    startAt: { type: Date, default: null },
+    endAt: { type: Date, default: null },
+    durationMinutes: { type: Number, default: 0 },
+  },
+  { _id: false },
+);
+
 const eventSchema = new mongoose.Schema(
   {
     type: {
@@ -49,6 +67,7 @@ const eventSchema = new mongoose.Schema(
       default: "employee",
     },
     actorId: { type: String, default: "" },
+    clientMutationId: { type: String, default: "" },
     signature: { type: signatureSchema, default: () => ({}) },
     source: {
       type: String,
@@ -73,6 +92,8 @@ const adjustmentSchema = new mongoose.Schema(
     previousClockOutAt: { type: Date, default: null },
     clockInAt: { type: Date, default: null },
     clockOutAt: { type: Date, default: null },
+    previousBreaks: { type: [adjustmentBreakSchema], default: [] },
+    breaks: { type: [adjustmentBreakSchema], default: [] },
   },
   { _id: true },
 );
@@ -92,6 +113,16 @@ const totalsSchema = new mongoose.Schema(
     workedMinutes: { type: Number, default: 0 },
     breakMinutes: { type: Number, default: 0 },
     grossMinutes: { type: Number, default: 0 },
+  },
+  { _id: false },
+);
+
+const mealAllowanceSchema = new mongoose.Schema(
+  {
+    count: { type: Number, default: 0, min: 0 },
+    amount: { type: Number, default: 0, min: 0 },
+    periods: { type: [String], default: [] },
+    source: { type: String, default: "" },
   },
   { _id: false },
 );
@@ -124,6 +155,7 @@ const timeClockSessionSchema = new mongoose.Schema(
     events: { type: [eventSchema], default: [] },
     adjustments: { type: [adjustmentSchema], default: [] },
     totals: { type: totalsSchema, default: () => ({}) },
+    mealAllowance: { type: mealAllowanceSchema, default: () => ({}) },
     source: {
       type: String,
       enum: ["kiosk", "manager", "employee"],
@@ -146,6 +178,11 @@ timeClockSessionSchema.index({
   employee: 1,
   status: 1,
   clockInAt: -1,
+});
+
+timeClockSessionSchema.pre("validate", function (next) {
+  this.source = normalizeTimeClockSourceValue(this.source);
+  next();
 });
 
 module.exports =

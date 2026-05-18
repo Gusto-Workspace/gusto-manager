@@ -58,7 +58,10 @@ export default function DayListReservationsWebapp(props) {
     if (!reservation) return;
 
     // ✅ interdit d'édit une canceled
-    if (actionType === "edit" && reservation.status === "Canceled") {
+    if (
+      actionType === "edit" &&
+      ["Canceled", "Rejected"].includes(reservation.status)
+    ) {
       setActionError(
         "Impossible de modifier une réservation annulée. Repasse-la en confirmée d’abord.",
       );
@@ -87,7 +90,6 @@ export default function DayListReservationsWebapp(props) {
         await axios.put(
           `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${rid}/reservations/${reservation._id}/status`,
           { status: "Confirmed" },
-          { headers: { Authorization: `Bearer ${token}` } },
         );
 
         // ✅ succès -> on peut fermer (SSE met à jour)

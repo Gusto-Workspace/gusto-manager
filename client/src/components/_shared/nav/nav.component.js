@@ -17,26 +17,13 @@ import { GlobalContext } from "@/contexts/global.context";
 
 // NAV ITEMS DATA
 import { navItemsData } from "@/_assets/data/_index.data";
+import {
+  DASHBOARD_HREF_OPTION_KEYS,
+  getEmployeeDashboardOptions,
+} from "@/_assets/utils/dashboard-access";
 
 // ICONS
 import * as icons from "@/components/_shared/_svgs/_index";
-
-const HREF_TO_OPTION_KEY = {
-  "/dashboard/my-space": "my-space",
-  "/dashboard": "dashboard",
-  "/dashboard/restaurant": "restaurant",
-  "/dashboard/dishes": "dishes",
-  "/dashboard/menus": "menus",
-  "/dashboard/drinks": "drinks",
-  "/dashboard/wines": "wines",
-  "/dashboard/news": "news",
-  "/dashboard/employees": "employees",
-  "/dashboard/gift-cards": "gift_card",
-  "/dashboard/reservations": "reservations",
-  "/dashboard/take-away": "take_away",
-  "/dashboard/health-control-plan": "health_control_plan",
-  "/dashboard/customers": "customers",
-};
 
 export default function NavComponent() {
   const { t } = useTranslation("common");
@@ -149,25 +136,10 @@ export default function NavComponent() {
     const role = restaurantContext.userConnected?.role;
     if (role !== "employee") return null;
 
-    const restaurantId = restaurantContext.restaurantData?._id;
-    const employeeId = restaurantContext.userConnected?.id;
-    if (!restaurantId || !employeeId) {
-      return restaurantContext.userConnected?.options || null;
-    }
-
-    const employees = restaurantContext.restaurantData?.employees || [];
-    const me = employees.find(
-      (e) =>
-        String(e._id) === String(employeeId) ||
-        String(e.id) === String(employeeId),
+    return getEmployeeDashboardOptions(
+      restaurantContext.restaurantData,
+      restaurantContext.userConnected,
     );
-
-    const profiles = me?.restaurantProfiles || [];
-    const profile = profiles.find(
-      (p) => String(p.restaurant) === String(restaurantId),
-    );
-
-    return profile?.options || restaurantContext.userConnected?.options || null;
   }, [restaurantContext.userConnected, restaurantContext.restaurantData]);
 
   // Détermine si une route est activée selon rôle + options
@@ -181,7 +153,7 @@ export default function NavComponent() {
         return role === "employee";
       }
 
-      const optionKey = HREF_TO_OPTION_KEY[itemHref];
+      const optionKey = DASHBOARD_HREF_OPTION_KEYS[itemHref];
 
       if (role === "owner") {
         if (itemHref === "/dashboard" || itemHref === "/dashboard/restaurant") {
@@ -216,7 +188,7 @@ export default function NavComponent() {
     }));
 
     items = items.filter((item) => {
-      const optionKey = HREF_TO_OPTION_KEY[item.href];
+      const optionKey = DASHBOARD_HREF_OPTION_KEYS[item.href];
       return !hiddenOptionKeys.has(optionKey);
     });
 

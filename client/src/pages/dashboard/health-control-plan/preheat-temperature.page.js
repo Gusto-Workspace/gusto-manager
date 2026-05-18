@@ -51,7 +51,6 @@ export default function PreheatTemperaturePage(props) {
       try {
         const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/cooking-equipments`;
         const { data } = await axios.get(url, {
-          headers: { Authorization: `Bearer ${token}` },
           params: { active: 1 },
         });
         const items = (data?.items || []).sort((a, b) =>

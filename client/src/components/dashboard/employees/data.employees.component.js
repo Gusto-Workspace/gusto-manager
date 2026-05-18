@@ -18,12 +18,39 @@ import {
   Loader2,
 } from "lucide-react";
 
+const CONTRACT_TYPE_OPTIONS = [
+  { value: "", label: "Type de contrat" },
+  { value: "CDI", label: "CDI" },
+  { value: "CDD", label: "CDD" },
+  { value: "Extra", label: "Extra" },
+  { value: "Intérim", label: "Intérim" },
+  { value: "Alternance", label: "Alternance" },
+  { value: "Stage", label: "Stage" },
+];
+
+const CONTRACT_UNIT_OPTIONS = [
+  { value: "week", label: "h / semaine" },
+  { value: "month", label: "h / mois" },
+];
+
+function formatContractualLabel(employment = {}) {
+  const value = employment?.contractualValue;
+  const unit = employment?.contractualUnit || "";
+
+  if (!value && !unit) return "—";
+  if (!unit) return `${value || 0} h`;
+  if (unit === "week") return `${value || 0} h / semaine`;
+  if (unit === "month") return `${value || 0} h / mois`;
+  return `${value || 0} ${unit}`.trim();
+}
+
 export default function DataEmployeesComponent(props) {
   const { t } = useTranslation("employees");
 
   const {
     employee,
     currentSnapshot,
+    currentEmployment,
     isEditing,
     setIsEditing,
     handleDetailsSubmit,
@@ -47,6 +74,15 @@ export default function DataEmployeesComponent(props) {
       currentSnapshot?.emergencyContact ?? employee?.emergencyContact ?? "",
     post: currentSnapshot?.post ?? employee?.post ?? "",
     dateOnPost: currentSnapshot?.dateOnPost ?? employee?.dateOnPost ?? null,
+    contractType: currentEmployment?.contractType ?? employee?.employment?.contractType ?? "",
+    contractualValue:
+      currentEmployment?.contractualValue ??
+      employee?.employment?.contractualValue ??
+      "",
+    contractualUnit:
+      currentEmployment?.contractualUnit ??
+      employee?.employment?.contractualUnit ??
+      "",
   };
 
   // format date pour l'affichage (en lecture seule)
@@ -191,8 +227,84 @@ export default function DataEmployeesComponent(props) {
             )}
           </div>
 
-          {/* Autres champs dans une grille */}
+            {/* Autres champs dans une grille */}
           <div className="grid grid-cols-1 mobile:grid-cols-2 gap-3">
+            <div className={cardWrap}>
+              <div className={labelCls}>
+                <Briefcase className="size-4" />
+                Type de contrat
+              </div>
+
+              {isEditing ? (
+                <select
+                  {...regDetails("contractType")}
+                  defaultValue={merged.contractType || ""}
+                  disabled={isSavingDetails}
+                  className={inputNormal}
+                >
+                  {CONTRACT_TYPE_OPTIONS.map((option) => (
+                    <option key={option.value || "empty"} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <p className={valueCls}>{merged.contractType || "—"}</p>
+              )}
+            </div>
+
+            <div className={cardWrap}>
+              <div className={labelCls}>
+                <CalendarDays className="size-4" />
+                Temps contractuel
+              </div>
+
+              {isEditing ? (
+                <div className="flex flex-col gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    {...regDetails("contractualValue")}
+                    defaultValue={
+                      merged.contractualValue || merged.contractualValue === 0
+                        ? String(merged.contractualValue || "")
+                        : ""
+                    }
+                    disabled={isSavingDetails}
+                    className={inputNormal}
+                    placeholder="Ex. 35"
+                  />
+
+                  <select
+                    {...regDetails("contractualUnit")}
+                    defaultValue={merged.contractualUnit || ""}
+                    disabled={isSavingDetails}
+                    className={inputNormal}
+                  >
+                    <option value="" disabled hidden>
+                      Sélectionner
+                    </option>
+                    {CONTRACT_UNIT_OPTIONS.map((option) => (
+                      <option
+                        key={option.value || "empty"}
+                        value={option.value}
+                      >
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <p className={valueCls}>
+                  {formatContractualLabel({
+                    contractualValue: merged.contractualValue,
+                    contractualUnit: merged.contractualUnit,
+                  })}
+                </p>
+              )}
+            </div>
+
             {fields.map((f) => {
               const isRequired = f.required;
 

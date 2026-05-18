@@ -337,6 +337,10 @@ async function buildTimeClockExportPdf({
       (total, item) => total + Number(item?.range?.totalSessions || 0),
       0,
     );
+    const globalMeals = employees.reduce(
+      (total, item) => total + Number(item?.range?.totalMealCount || 0),
+      0,
+    );
 
     doc
       .font("Helvetica-Bold")
@@ -379,7 +383,7 @@ async function buildTimeClockExportPdf({
     const summaryBoxY = doc.y;
     const summaryBoxX = doc.page.margins.left;
     const summaryBoxWidth = 250;
-    const summaryBoxHeight = 100;
+    const summaryBoxHeight = 116;
     doc
       .roundedRect(
         summaryBoxX,
@@ -409,7 +413,8 @@ async function buildTimeClockExportPdf({
         summaryBoxX + 14,
         summaryBoxY + 62,
       )
-      .text(`Services: ${globalSessions}`, summaryBoxX + 14, summaryBoxY + 78);
+      .text(`Services: ${globalSessions}`, summaryBoxX + 14, summaryBoxY + 78)
+      .text(`Repas: ${globalMeals}`, summaryBoxX + 14, summaryBoxY + 94);
 
     doc.x = doc.page.margins.left;
     doc.y = summaryBoxY + summaryBoxHeight + 18;
@@ -471,7 +476,8 @@ async function buildTimeClockExportPdf({
           `Temps brut: ${formatMinutes(range.totalGrossMinutes)}`,
           doc.page.margins.left,
         )
-        .text(`Services: ${range.totalSessions || 0}`, doc.page.margins.left);
+        .text(`Services: ${range.totalSessions || 0}`, doc.page.margins.left)
+        .text(`Repas: ${range.totalMealCount || 0}`, doc.page.margins.left);
 
       if ((range.anomalies || []).length) {
         doc.moveDown(0.4);
@@ -523,15 +529,16 @@ async function buildTimeClockExportPdf({
           formatMinutes(day.totalWorkedMinutes),
           formatMinutes(day.totalBreakMinutes),
           formatMinutes(day.totalGrossMinutes),
+          String(day.mealCount || 0),
           formatAnomalies(day.anomalies || []),
         ];
       });
 
       drawTable(
         doc,
-        ["Jour", "Services", "Net", "Pauses", "Brut", "Anomalies"],
+        ["Jour", "Services", "Net", "Pauses", "Brut", "Repas", "Anomalies"],
         rows,
-        [88, 180, 58, 58, 58, 74],
+        [80, 168, 54, 54, 54, 42, 78],
       );
     });
 

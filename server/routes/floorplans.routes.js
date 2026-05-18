@@ -183,6 +183,7 @@ router.post(
 
       restaurant.reservationsSettings.floorplan.rooms.push({
         name,
+        enabled: true,
         canvas: { width: 2000, height: 2000, gridSize: 50 },
         objects: [],
       });
@@ -199,6 +200,8 @@ router.post(
         rooms: getRooms(restaurant),
         enabled: Boolean(restaurant.reservationsSettings.floorplan.enabled),
         version: Number(restaurant.reservationsSettings.floorplan.version || 1),
+        tables: restaurant?.reservationsSettings?.tables || [],
+        reservationParameters: restaurant?.reservationsSettings || {},
       });
     } catch (e) {
       return res.status(500).json({ message: "Erreur serveur (POST room)." });
@@ -632,6 +635,10 @@ router.put(
       // ✅ name (uniquement si envoyé)
       if (req.body?.name !== undefined) {
         room.name = safeString(req.body.name, room.name);
+      }
+
+      if (req.body?.enabled !== undefined) {
+        room.enabled = req.body.enabled !== false;
       }
 
       // ✅ canvas (uniquement si envoyé)

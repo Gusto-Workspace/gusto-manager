@@ -1,5 +1,7 @@
+import { getActiveFloorPlanRooms } from "../floor-plan.rooms.utils";
+
 export const SMART_AVAILABILITY_SETUP_ERROR_MESSAGE =
-  "Créez d’abord une salle et placez au moins une table sur le plan avant d’activer la gestion intelligente.";
+  "Créez d’abord une salle et placez au moins une table sur le plan avant d’activer le placement automatique.";
 
 export function getSmartAvailabilitySetupState({
   tablesCatalog = [],
@@ -7,6 +9,7 @@ export function getSmartAvailabilitySetupState({
 } = {}) {
   const safeTables = Array.isArray(tablesCatalog) ? tablesCatalog : [];
   const safeRooms = Array.isArray(floorplanRooms) ? floorplanRooms : [];
+  const activeRooms = getActiveFloorPlanRooms(safeRooms);
 
   const catalogTableIds = new Set(
     safeTables.map((table) => String(table?._id || "").trim()).filter(Boolean),
@@ -15,7 +18,7 @@ export function getSmartAvailabilitySetupState({
   const placedTableIds = new Set();
   let roomsWithPlacedTables = 0;
 
-  safeRooms.forEach((room) => {
+  activeRooms.forEach((room) => {
     const objects = Array.isArray(room?.objects) ? room.objects : [];
     let roomHasPlacedTable = false;
 
@@ -36,10 +39,13 @@ export function getSmartAvailabilitySetupState({
 
   return {
     roomsCount: safeRooms.length,
+    activeRoomsCount: activeRooms.length,
     tablesCount: safeTables.length,
     placedTablesCount: placedTableIds.size,
     roomsWithPlacedTables,
     canEnable:
-      safeRooms.length > 0 && safeTables.length > 0 && placedTableIds.size > 0,
+      activeRooms.length > 0 &&
+      safeTables.length > 0 &&
+      placedTableIds.size > 0,
   };
 }

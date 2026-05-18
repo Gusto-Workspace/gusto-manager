@@ -3,8 +3,9 @@ const stripe = require("stripe")(process.env.STRIPE_API_SECRET_KEY);
 async function listAllStripeSubscriptions(options = {}) {
   const subscriptions = [];
   let startingAfter = null;
+  let hasMore = true;
 
-  while (true) {
+  while (hasMore) {
     const response = await stripe.subscriptions.list({
       limit: 100,
       ...options,
@@ -12,12 +13,10 @@ async function listAllStripeSubscriptions(options = {}) {
     });
 
     subscriptions.push(...(response?.data || []));
-
-    if (!response?.has_more || !response?.data?.length) {
-      break;
-    }
-
-    startingAfter = response.data[response.data.length - 1].id;
+    hasMore = Boolean(response?.has_more && response?.data?.length);
+    startingAfter = hasMore
+      ? response.data[response.data.length - 1].id
+      : null;
   }
 
   return subscriptions;
@@ -26,8 +25,9 @@ async function listAllStripeSubscriptions(options = {}) {
 async function listAllStripeInvoices(options = {}) {
   const invoices = [];
   let startingAfter = null;
+  let hasMore = true;
 
-  while (true) {
+  while (hasMore) {
     const response = await stripe.invoices.list({
       limit: 100,
       ...options,
@@ -35,12 +35,10 @@ async function listAllStripeInvoices(options = {}) {
     });
 
     invoices.push(...(response?.data || []));
-
-    if (!response?.has_more || !response?.data?.length) {
-      break;
-    }
-
-    startingAfter = response.data[response.data.length - 1].id;
+    hasMore = Boolean(response?.has_more && response?.data?.length);
+    startingAfter = hasMore
+      ? response.data[response.data.length - 1].id
+      : null;
   }
 
   return invoices;

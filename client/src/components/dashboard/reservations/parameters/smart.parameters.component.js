@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { CircleHelp, Wand2, X } from "lucide-react";
+import { useMemo } from "react";
+import { Wand2 } from "lucide-react";
 import { SMART_AVAILABILITY_SETUP_ERROR_MESSAGE } from "./smart-availability.guard";
 
 export default function SmartParametersComponent({
@@ -8,14 +8,12 @@ export default function SmartParametersComponent({
   smartAvailabilitySetup,
   smartAvailabilityError,
 
-  // manual tables warning
   manualTablesNeedingAssignment,
   manualToFixLoading,
   manualToFixError,
   manualToFix,
   fetchManualTablesToFix,
 
-  // unassigned reservations warning
   unassignedReservationsNeedingAssignment,
   unassignedToFixLoading,
   unassignedToFixError,
@@ -25,8 +23,6 @@ export default function SmartParametersComponent({
   fmtShortFR,
   statusLabel,
 }) {
-  const [isInfoOpen, setIsInfoOpen] = useState(false);
-
   const safeManualToFix = useMemo(() => {
     return Array.isArray(manualToFix) ? manualToFix : [];
   }, [manualToFix]);
@@ -40,8 +36,6 @@ export default function SmartParametersComponent({
   const sectionTitle =
     "text-base font-semibold text-darkBlue flex items-center gap-2";
   const hint = "text-sm text-darkBlue/60";
-  const infoButton =
-    "mt-2 inline-flex items-center gap-2 text-sm font-semibold text-blue hover:text-blue/80 transition";
 
   const toggleWrap = "inline-flex items-center gap-2 select-none";
   const toggleBase =
@@ -105,7 +99,7 @@ export default function SmartParametersComponent({
                 <p className="text-xs text-darkBlue/60">
                   {r.numberOfGuests ? `${r.numberOfGuests} pers.` : ""}
                   {showTableName && r.tableName
-                    ? ` • Table: ${r.tableName}`
+                    ? ` • Table : ${r.tableName}`
                     : ""}
                   {r.status ? ` • ${statusLabel(r.status)}` : ""}
                 </p>
@@ -124,21 +118,19 @@ export default function SmartParametersComponent({
           <div className="min-w-0">
             <p className={sectionTitle}>
               <Wand2 className="size-4 shrink-0 opacity-60" />
-              Gestion intelligente des réservations
+              Placement automatique
             </p>
-            <p className={hint}>
-              A activer si vous voulez que Gusto attribue les tables
-              automatiquement, affiche le plan de salle en temps reel et fasse
-              evoluer certains statuts sans action manuelle.
-            </p>
-            <button
-              type="button"
-              onClick={() => setIsInfoOpen(true)}
-              className={infoButton}
-            >
-              <CircleHelp className="size-4 shrink-0" />
-              Comprendre le fonctionnement
-            </button>
+            <div className="mt-2 space-y-2">
+              <p className={hint}>
+                Activez cette option si vous voulez que Gusto attribue
+                automatiquement les tables compatibles aux réservations.
+              </p>
+              <p className={hint}>
+                Le plan de salle reste utilisable sans cette option, mais
+                l’attribution se fait alors manuellement depuis la liste ou en
+                cliquant sur une table disponible.
+              </p>
+            </div>
           </div>
 
           <div className="flex items-center gap-3">
@@ -177,10 +169,17 @@ export default function SmartParametersComponent({
           </div>
         </div>
 
+        {(!smartAvailabilitySetup?.canEnable || smartAvailabilityError) &&
+        activationBlocked ? (
+          <p className="mt-3 text-sm font-semibold text-darkBlue">
+            {smartAvailabilityError || SMART_AVAILABILITY_SETUP_ERROR_MESSAGE}
+          </p>
+        ) : null}
+
         <WarningCard
           title="Attention : tables saisies manuellement"
           description={
-            "Des tables avaient été saisies manuellement quand la gestion intelligente n’était pas activée.\nVeuillez assigner une table configurée dans les réservations concernées."
+            "Des tables avaient été saisies manuellement avant l’activation du placement automatique.\nVeuillez assigner une table configurée dans les réservations concernées."
           }
           count={manualTablesNeedingAssignment}
           buttonLabel="Voir les réservations à corriger"
@@ -194,7 +193,7 @@ export default function SmartParametersComponent({
         <WarningCard
           title="Attention : réservations sans table"
           description={
-            "Certaines réservations ont été créées sans table (gestion intelligente désactivée au moment de la création).\nVeuillez assigner une table à ces réservations."
+            "Certaines réservations ont été créées sans table avant l’activation du placement automatique.\nVeuillez assigner une table à ces réservations."
           }
           count={unassignedReservationsNeedingAssignment}
           buttonLabel="Voir les réservations sans table"
@@ -205,105 +204,6 @@ export default function SmartParametersComponent({
           showTableName={false}
         />
       </div>
-
-      {isInfoOpen ? (
-        <div
-          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/35 p-2 mobile:p-3"
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setIsInfoOpen(false)}
-        >
-          <div
-            className="flex w-full max-w-[560px] max-h-[calc(100svh-1rem)] mobile:max-h-[calc(100svh-1.5rem)] flex-col overflow-hidden rounded-3xl border border-darkBlue/10 bg-white shadow-[0_24px_80px_rgba(19,30,54,0.18)]"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex shrink-0 items-start justify-between gap-4 border-b border-darkBlue/10 px-4 py-4 mobile:px-5">
-              <div>
-                <p className="text-lg font-semibold text-darkBlue">
-                  Gestion intelligente des réservations
-                </p>
-                <p className="mt-1 text-sm text-darkBlue/60">
-                  Quand cette option est active, Gusto gère automatiquement une
-                  partie du service autour du plan de salle et des statuts de
-                  réservation.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setIsInfoOpen(false)}
-                className="inline-flex size-10 shrink-0 items-center justify-center rounded-full border border-darkBlue/10 bg-white p-0 hover:bg-darkBlue/5 transition"
-                aria-label="Fermer"
-              >
-                <X className="size-4 text-darkBlue/70" />
-              </button>
-            </div>
-
-            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-4 py-4 text-sm text-darkBlue/80 mobile:px-5 mobile:py-5">
-              {(!smartAvailabilitySetup?.canEnable ||
-                smartAvailabilityError) && (
-                <p className="font-semibold text-darkBlue">
-                  {smartAvailabilityError ||
-                    "Pour activer la gestion intelligente, créez d’abord une salle, ajoutez au moins une table et placez-la sur le plan."}
-                </p>
-              )}
-
-              <div className="space-y-2">
-                <p className="font-semibold text-darkBlue">
-                  Quand elle est activée
-                </p>
-                <ul className="list-disc space-y-2 pl-5">
-                  <li>
-                    chaque réservation peut être attribuée automatiquement à une
-                    table compatible selon le nombre de couverts et les
-                    disponibilités;
-                  </li>
-                  <li>
-                    le plan de salle peut être consulté en temps réel ou par
-                    créneau pour voir quelles tables sont libres, assignées,
-                    occupées ou à libérer;
-                  </li>
-                  <li>
-                    une réservation confirmée passe automatiquement en retard si
-                    l&apos;heure est dépassée et que le client n&apos;a pas
-                    encore été installé;
-                  </li>
-                  <li>
-                    si l&apos;option de fin automatique est aussi activée, la
-                    réservation passe ensuite en terminée à la fin du temps
-                    d&apos;occupation prévu.
-                  </li>
-                </ul>
-              </div>
-
-              <div className="space-y-2">
-                <p className="font-semibold text-darkBlue">
-                  Quand elle est désactivée
-                </p>
-                <ul className="list-disc space-y-2 pl-5">
-                  <li>
-                    les réservations ne sont plus attribuées automatiquement aux
-                    tables;
-                  </li>
-                  <li>
-                    le plan de salle ne propose plus le mode temps réel ni les
-                    créneaux automatiques;
-                  </li>
-                  <li>
-                    une réservation confirmée ne passe plus automatiquement en
-                    retard;
-                  </li>
-                  <li>
-                    elle reste confirmée jusqu&apos;à une action manuelle, ou
-                    passe en terminée seulement si l&apos;option de fin
-                    automatique est activée.
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

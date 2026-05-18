@@ -62,22 +62,8 @@ export default function CalendarMonthReservationsComponent(props) {
                 )}
               </div>
               <div className="mt-2 space-y-1">
-                {[
-                  "Pending",
-                  "Confirmed",
-                  "Active",
-                  "Late",
-                  "Finished",
-                  "CanceledGroup",
-                ].map((s) => {
-                  const value =
-                    s === "Pending"
-                      ? (displayByStatus.Pending || 0) +
-                        (displayByStatus.AwaitingBankHold || 0)
-                      : s === "CanceledGroup"
-                        ? (displayByStatus.Canceled || 0) +
-                          (displayByStatus.Rejected || 0)
-                        : displayByStatus[s] || 0;
+                {["Pending", "Confirmed", "Finished", "Canceled"].map((s) => {
+                  const value = displayByStatus[s] || 0;
 
                   const pct = displayTotal
                     ? Math.round((value / displayTotal) * 100)
@@ -93,17 +79,15 @@ export default function CalendarMonthReservationsComponent(props) {
                         style={{
                           width: `${pct}%`,
                           backgroundColor:
-                            s === "Late"
-                              ? "#FF914D"
-                              : s === "Active"
+                            s === "Confirmed"
+                              ? "#3b82f6"
+                              : s === "Finished"
                                 ? "#22c55e"
-                                : s === "Confirmed"
-                                  ? "#3b82f6"
-                                  : s === "Pending"
-                                    ? "#93c5fd"
-                                    : s === "CanceledGroup"
-                                      ? "#ff7664"
-                                      : "#cbd5e1",
+                                : s === "Pending"
+                                  ? "#93c5fd"
+                                  : s === "Canceled"
+                                    ? "#ff7664"
+                                    : "#cbd5e1",
                         }}
                       />
                     </div>

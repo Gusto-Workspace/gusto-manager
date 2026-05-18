@@ -1,6 +1,14 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 
+function normalizeShiftSourceValue(shift = {}) {
+  if (shift?.leaveRequestId || shift?.isLeave === true) {
+    return "leave_request";
+  }
+
+  return "manual";
+}
+
 // Sous-schéma pour les options d'accès (par restaurant)
 const optionsSchema = new mongoose.Schema(
   {
@@ -15,6 +23,7 @@ const optionsSchema = new mongoose.Schema(
     reservations: { type: Boolean, default: false },
     take_away: { type: Boolean, default: false },
     employees: { type: Boolean, default: false },
+    customers: { type: Boolean, default: false },
     health_control_plan: { type: Boolean, default: false },
   },
   { _id: false },
@@ -36,6 +45,13 @@ const shiftSchema = new mongoose.Schema({
   end: { type: Date, required: true },
   isLeave: { type: Boolean, default: false },
   leaveRequestId: { type: mongoose.Schema.Types.ObjectId, default: null },
+  source: {
+    type: String,
+    enum: ["manual", "leave_request"],
+    default: "manual",
+  },
+  mealCount: { type: Number, default: 0, min: 0 },
+  mealPeriods: { type: [String], default: [] },
 });
 
 const leaveRequestSchema = new mongoose.Schema(
@@ -74,6 +90,20 @@ const employeeSnapshotSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const employmentSchema = new mongoose.Schema(
+  {
+    payrollCode: { type: String, default: "" },
+    contractType: { type: String, default: "" },
+    contractualValue: { type: Number, default: 0 },
+    contractualUnit: { type: String, default: "" },
+    primaryEstablishment: { type: String, default: "" },
+    leaveBalanceAvailable: { type: Number, default: 0 },
+    leaveBalanceCurrentYear: { type: Number, default: 0 },
+    leaveBalancePreviousYear: { type: Number, default: 0 },
+  },
+  { _id: false },
+);
+
 /**
  * Données spécifiques à un restaurant pour un employé :
  * - options (droits d'accès)
@@ -93,6 +123,7 @@ const restaurantProfileSchema = new mongoose.Schema(
     shifts: { type: [shiftSchema], default: [] },
     leaveRequests: { type: [leaveRequestSchema], default: [] },
     snapshot: { type: employeeSnapshotSchema, default: {} },
+    employment: { type: employmentSchema, default: {} },
   },
   { _id: true },
 );
@@ -102,7 +133,7 @@ const employeeSchema = new mongoose.Schema({
   firstname: { type: String, required: true },
   lastname: { type: String, required: true },
   email: { type: String }, // normalisé côté routes
-  password: { type: String },
+  password: { type: String, select: false },
   phone: { type: String, required: true },
   secuNumber: { type: String },
   address: { type: String },
@@ -159,6 +190,21 @@ employeeSchema.pre("save", async function (next) {
   } catch (err) {
     next(err);
   }
+});
+
+employeeSchema.pre("validate", function (next) {
+  const profiles = Array.isArray(this.restaurantProfiles)
+    ? this.restaurantProfiles
+    : [];
+
+  profiles.forEach((profile) => {
+    const shifts = Array.isArray(profile?.shifts) ? profile.shifts : [];
+    shifts.forEach((shift) => {
+      shift.source = normalizeShiftSourceValue(shift);
+    });
+  });
+
+  next();
 });
 
 // Méthode de comparaison de mot de passe

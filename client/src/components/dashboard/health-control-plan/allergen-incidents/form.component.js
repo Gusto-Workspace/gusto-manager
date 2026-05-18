@@ -544,7 +544,6 @@ export default function AllergenIncidentForm({
     const method = initial?._id ? "put" : "post";
 
     const { data: saved } = await axios[method](url, payload, {
-      headers: { Authorization: `Bearer ${token}` },
     });
 
     window.dispatchEvent(

@@ -195,7 +195,6 @@ export default function RecipeBatchesForm({
       }
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/inventory-lots-select`;
       const { data } = await axios.get(url, {
-        headers: { Authorization: `Bearer ${token}` },
         params: { limit: 300 },
       });
       if (isMountedRef.current)
@@ -506,7 +505,6 @@ export default function RecipeBatchesForm({
     const method = initial?._id ? "put" : "post";
 
     const { data: saved } = await axios[method](url, payload, {
-      headers: { Authorization: `Bearer ${token}` },
     });
 
     // Répercuter immédiatement les restants

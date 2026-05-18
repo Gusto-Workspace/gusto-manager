@@ -21,6 +21,9 @@ const {
 const {
   buildSubscriptionSummary,
 } = require("../services/stripe-subscription-catalog.service");
+const {
+  decorateRestaurantEmployees,
+} = require("../services/employee-serialization.service");
 
 // Ajoute le restaurant dans employee.restaurants s'il n'y est pas déjà
 function ensureEmployeeRestaurantLink(employee, restaurantId) {
@@ -55,6 +58,7 @@ function getOrCreateRestaurantProfile(employee, restaurantId) {
       documents: [],
       shifts: [],
       leaveRequests: [],
+      employment: {},
       snapshot: {
         firstname: employee.firstname || "",
         lastname: employee.lastname || "",
@@ -101,7 +105,11 @@ function findRestaurantProfile(employee, restaurantId) {
 
 // GET ALL OWNER RESTAURANTS
 router.get("/owner/restaurants", authenticateToken, async (req, res) => {
-  const ownerId = req.query.ownerId;
+  if (req.user?.role !== "owner") {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+
+  const ownerId = req.user.id;
 
   try {
     const restaurants = await RestaurantModel.find(
@@ -197,7 +205,21 @@ router.get("/owner/restaurants/:id", authenticateToken, async (req, res) => {
       return res.status(404).json({ message: "Restaurant not found" });
     }
 
-    res.status(200).json({ restaurant });
+    if (req.user?.role !== "owner") {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    if (String(restaurant.owner_id?._id || restaurant.owner_id) !== String(req.user.id)) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    const decoratedRestaurant = decorateRestaurantEmployees(
+      restaurant,
+      id,
+      restaurant.employees || [],
+    );
+
+    res.status(200).json({ restaurant: decoratedRestaurant });
   } catch (error) {
     console.error("Erreur lors de la récupération du restaurant:", error);
     res.status(500).json({ message: "Erreur interne du serveur" });
@@ -433,12 +455,13 @@ router.get("/restaurants/:id/visits/monthly", async (req, res) => {
 });
 
 // ----------------- OWNER : LISTE DES EMPLOYÉS EXISTANTS -----------------
-router.get("/owner/employees", async (req, res) => {
+router.get("/owner/employees", authenticateToken, async (req, res) => {
   try {
-    const ownerId = req.query.ownerId;
-    if (!ownerId) {
-      return res.status(400).json({ message: "ownerId is required" });
+    if (req.user?.role !== "owner") {
+      return res.status(403).json({ message: "Forbidden" });
     }
+
+    const ownerId = req.user.id;
 
     // Tous les restos du propriétaire
     const restaurants = await RestaurantModel.find(
@@ -473,7 +496,10 @@ router.get("/owner/employees", async (req, res) => {
 });
 
 // ----------------- IMPORT EMPLOYÉ EXISTANT DANS UN RESTO -----------------
-router.post("/restaurants/:restaurantId/employees/import", async (req, res) => {
+router.post(
+  "/restaurants/:restaurantId/employees/import",
+  authenticateToken,
+  async (req, res) => {
   try {
     const { restaurantId } = req.params;
     const { employeeId } = req.body;
@@ -481,6 +507,14 @@ router.post("/restaurants/:restaurantId/employees/import", async (req, res) => {
     const restaurant = await RestaurantModel.findById(restaurantId);
     if (!restaurant) {
       return res.status(404).json({ message: "Restaurant not found" });
+    }
+
+    if (req.user?.role !== "owner") {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    if (String(restaurant.owner_id) !== String(req.user.id)) {
+      return res.status(403).json({ message: "Forbidden" });
     }
 
     const employee = await EmployeeModel.findById(employeeId);
@@ -517,11 +551,18 @@ router.post("/restaurants/:restaurantId/employees/import", async (req, res) => {
       .populate("menus")
       .populate("employees");
 
-    return res.json({ restaurant: updatedRestaurant });
+    const decoratedRestaurant = decorateRestaurantEmployees(
+      updatedRestaurant,
+      restaurantId,
+      updatedRestaurant?.employees || [],
+    );
+
+    return res.json({ restaurant: decoratedRestaurant });
   } catch (e) {
     console.error("Error importing employee:", e);
     return res.status(500).json({ message: "Internal server error" });
   }
-});
+  },
+);
 
 module.exports = router;

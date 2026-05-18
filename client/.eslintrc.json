@@ -1,0 +1,25 @@
+{
+  "root": true,
+  "extends": ["next/core-web-vitals"],
+  "env": {
+    "browser": true,
+    "node": true,
+    "es2022": true
+  },
+  "parserOptions": {
+    "ecmaVersion": "latest",
+    "sourceType": "module",
+    "ecmaFeatures": {
+      "jsx": true
+    }
+  },
+  "ignorePatterns": [
+    ".next/",
+    "node_modules/",
+    "public/sw.js",
+    "public/workbox-*.js"
+  ],
+  "rules": {
+    "no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }]
+  }
+}

@@ -4,6 +4,7 @@ import { useContext, useMemo, useState } from "react";
 
 // AXIOS
 import axios from "axios";
+import { jwtDecode } from "jwt-decode";
 
 // I18N
 import { useTranslation } from "next-i18next";
@@ -39,6 +40,17 @@ export default function FormLoginComponent() {
   const [showPassword, setShowPassword] = useState(false);
 
   const { restaurantContext } = useContext(GlobalContext);
+
+  function applyAuthToken(nextToken) {
+    localStorage.setItem("token", nextToken);
+
+    try {
+      const decoded = jwtDecode(nextToken);
+      restaurantContext.setUserConnected(decoded || null);
+    } catch {
+      restaurantContext.setUserConnected(null);
+    }
+  }
 
   function getSafeRedirect(router) {
     const r = router.query.redirect;
@@ -89,8 +101,12 @@ export default function FormLoginComponent() {
   );
 
   function goAfterLogin(role) {
-    const fallback = role === "employee" ? "/dashboard/my-space" : "/dashboard";
-    router.replace(redirectTo || fallback);
+    if (role === "employee") {
+      router.replace("/dashboard/my-space");
+      return;
+    }
+
+    router.replace(redirectTo || "/dashboard");
   }
 
   async function onSubmit(data) {
@@ -130,7 +146,7 @@ export default function FormLoginComponent() {
           return;
         }
 
-        localStorage.setItem("token", token);
+        applyAuthToken(token);
         restaurantContext.setIsAuth(true);
         goAfterLogin("owner");
         return;
@@ -156,13 +172,13 @@ export default function FormLoginComponent() {
           return;
         }
 
-        localStorage.setItem("token", token);
+        applyAuthToken(token);
         restaurantContext.setIsAuth(true);
         goAfterLogin("employee");
         return;
       }
 
-      localStorage.setItem("token", token);
+      applyAuthToken(token);
       restaurantContext.setIsAuth(true);
       router.replace(redirectTo || "/dashboard");
     } catch (error) {
@@ -194,7 +210,7 @@ export default function FormLoginComponent() {
       );
 
       const newToken = data.token;
-      localStorage.setItem("token", newToken);
+      applyAuthToken(newToken);
 
       // ✅ fetch data resto puis redirection
       await restaurantContext.fetchRestaurantData(newToken, restaurantId);
@@ -209,8 +225,9 @@ export default function FormLoginComponent() {
   }
 
   const hasRestaurantsToSelect =
-    restaurantContext?.restaurantsList &&
-    restaurantContext.restaurantsList.length > 0;
+    Boolean(tempToken) &&
+    Array.isArray(restaurantContext?.restaurantsList) &&
+    restaurantContext.restaurantsList.length > 1;
 
   return (
     <section className="relative mx-4 bg-white/15 flex flex-col rounded-lg p-4 midTablet:p-12 drop-shadow-sm w-[500px]">

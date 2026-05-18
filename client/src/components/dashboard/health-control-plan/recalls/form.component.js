@@ -270,7 +270,6 @@ export default function RecallForm({
 
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/recalls/select/inventory-lots`;
       const { data } = await axios.get(url, {
-        headers: { Authorization: `Bearer ${token}` },
         params: { q, limit: 12, status: "in_stock" },
         signal: ctrl.signal,
       });
@@ -452,7 +451,6 @@ export default function RecallForm({
       try {
         const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/inventory-lots/${curLotId}`;
         const { data: lot } = await axios.get(url, {
-          headers: { Authorization: `Bearer ${token}` },
         });
         if (canceled || !lot) return;
 
@@ -573,7 +571,6 @@ export default function RecallForm({
 
     const { data: saved } = await axios[method](url, formData, {
       headers: {
-        Authorization: `Bearer ${token}`,
         "Content-Type": "multipart/form-data",
       },
     });

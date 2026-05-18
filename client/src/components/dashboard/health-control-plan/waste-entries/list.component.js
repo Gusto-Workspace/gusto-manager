@@ -160,7 +160,6 @@ export default function WasteEntriesList({
       const { data } = await axios.get(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-waste-entries`,
         {
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
           params,
         }
       );
@@ -283,7 +282,6 @@ export default function WasteEntriesList({
       setDeleteLoading(true);
       await axios.delete(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/waste-entries/${deleteTarget._id}`,
-        { headers: { Authorization: `Bearer ${token}` } }
       );
 
       setItems((prev) => prev.filter((x) => x._id !== deleteTarget._id));
@@ -346,7 +344,7 @@ export default function WasteEntriesList({
         </div>
 
         <div className={fieldWrap}>
-          <label className={labelCls}>Méthode d'élimination</label>
+          <label className={labelCls}>Méthode d&apos;élimination</label>
           <select
             value={method}
             onChange={(e) => setMethod(e.target.value)}

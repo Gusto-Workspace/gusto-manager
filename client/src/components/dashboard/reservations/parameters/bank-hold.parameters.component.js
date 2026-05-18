@@ -138,7 +138,7 @@ export default function BankHoldParametersComponent({
                   <Info className="mt-0.5 size-4 shrink-0 text-blue" />
                   <p>
                     Pour activer l’empreinte bancaire, veuillez contacter le
-                    service client afin de configurer l'option.
+                    service client afin de configurer l&apos;option.
                   </p>
                 </div>
               </div>

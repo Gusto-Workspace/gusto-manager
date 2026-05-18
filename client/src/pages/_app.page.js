@@ -4,15 +4,51 @@ import "@/styles/tailwind.css";
 import "@/styles/custom/_index.scss";
 
 // REACT
-import { useContext, useEffect, useMemo } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
+import axios from "axios";
+import { jwtDecode } from "jwt-decode";
 
 // I18N
 import { appWithTranslation } from "next-i18next";
 
 // CONTEXT
 import { GlobalContext, GlobalProvider } from "@/contexts/global.context";
+import {
+  getDashboardOptionKeyFromPath,
+  isEmployeeDashboardRouteAllowed,
+  normalizeDashboardPath,
+} from "@/_assets/utils/dashboard-access";
+
+function ensureAxiosApiAuthInterceptor() {
+  if (typeof window === "undefined") return;
+  if (window.__gustoApiAuthInterceptorId != null) return;
+
+  window.__gustoApiAuthInterceptorId = axios.interceptors.request.use(
+    (config) => {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      const targetUrl = String(config?.url || "");
+      const isApiRequest = apiUrl && targetUrl.startsWith(apiUrl);
+
+      if (!isApiRequest) return config;
+
+      const token = localStorage.getItem("token");
+
+      if (!token || config?.headers?.Authorization) return config;
+
+      return {
+        ...config,
+        headers: {
+          ...(config.headers || {}),
+          Authorization: `Bearer ${token}`,
+        },
+      };
+    },
+  );
+}
+
+ensureAxiosApiAuthInterceptor();
 
 function WebAppNotificationBadgeSync() {
   const router = useRouter();
@@ -68,6 +104,123 @@ function WebAppNotificationBadgeSync() {
   }, [badgeCount, restaurantContext?.dataLoading, targetModule]);
 
   return null;
+}
+
+function OwnerOnlyWebAppGuard({ children }) {
+  const router = useRouter();
+  const [accessState, setAccessState] = useState("idle");
+
+  useEffect(() => {
+    if (!router.isReady) return;
+
+    const isWebAppRoute = (router.pathname || "").startsWith("/dashboard/webapp");
+    if (!isWebAppRoute) {
+      setAccessState("allowed");
+      return;
+    }
+
+    if (typeof window === "undefined") {
+      setAccessState("blocked");
+      return;
+    }
+
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setAccessState("allowed");
+      return;
+    }
+
+    try {
+      const decoded = jwtDecode(token);
+      if (decoded?.role === "employee") {
+        setAccessState("blocked");
+        router.replace("/dashboard/my-space");
+        return;
+      }
+    } catch (error) {
+      console.warn("Invalid dashboard token for webapp guard", error);
+    }
+
+    setAccessState("allowed");
+  }, [router.isReady, router.pathname, router]);
+
+  if ((router.pathname || "").startsWith("/dashboard/webapp")) {
+    if (!router.isReady || accessState !== "allowed") {
+      return null;
+    }
+  }
+
+  return children;
+}
+
+function EmployeeDashboardAccessGuard({ children }) {
+  const router = useRouter();
+  const { restaurantContext } = useContext(GlobalContext);
+
+  const authRole = useMemo(() => {
+    if (typeof window === "undefined") {
+      return restaurantContext.userConnected?.role || null;
+    }
+
+    const token = localStorage.getItem("token");
+    if (!token) return restaurantContext.userConnected?.role || null;
+
+    try {
+      return jwtDecode(token)?.role || null;
+    } catch {
+      return restaurantContext.userConnected?.role || null;
+    }
+  }, [restaurantContext.userConnected?.role]);
+
+  const currentPath = useMemo(
+    () => normalizeDashboardPath(router.pathname || router.asPath || ""),
+    [router.asPath, router.pathname],
+  );
+
+  const requiredOptionKey = useMemo(
+    () => getDashboardOptionKeyFromPath(currentPath),
+    [currentPath],
+  );
+
+  const isEmployee = authRole === "employee";
+  const isProtectedEmployeeRoute =
+    isEmployee &&
+    !!requiredOptionKey &&
+    currentPath !== "/dashboard/my-space";
+
+  const employeeHasRouteAccess = isProtectedEmployeeRoute
+    ? !restaurantContext.dataLoading &&
+      isEmployeeDashboardRouteAllowed(currentPath, {
+        restaurantData: restaurantContext.restaurantData,
+        userConnected: restaurantContext.userConnected,
+      })
+    : true;
+
+  useEffect(() => {
+    if (!router.isReady) return;
+    if (!isProtectedEmployeeRoute) return;
+    if (restaurantContext.dataLoading) return;
+    if (employeeHasRouteAccess) return;
+
+    router.replace("/dashboard/my-space");
+  }, [
+    employeeHasRouteAccess,
+    isProtectedEmployeeRoute,
+    restaurantContext.dataLoading,
+    router,
+    router.isReady,
+  ]);
+
+  if (
+    isProtectedEmployeeRoute &&
+    (!router.isReady ||
+      restaurantContext.dataLoading ||
+      !employeeHasRouteAccess)
+  ) {
+    return null;
+  }
+
+  return children;
 }
 
 function App({ Component, pageProps }) {
@@ -167,7 +320,11 @@ function App({ Component, pageProps }) {
 
       <GlobalProvider>
         <WebAppNotificationBadgeSync />
-        <Component {...pageProps} />
+        <OwnerOnlyWebAppGuard>
+          <EmployeeDashboardAccessGuard>
+            <Component {...pageProps} />
+          </EmployeeDashboardAccessGuard>
+        </OwnerOnlyWebAppGuard>
       </GlobalProvider>
     </>
   );

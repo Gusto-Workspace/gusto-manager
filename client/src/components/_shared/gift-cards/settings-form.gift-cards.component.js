@@ -129,9 +129,6 @@ export function useGiftCardSettingsController() {
   async function saveSettings(sectionKey) {
     if (!restaurantId || savingSection) return;
 
-    const token =
-      typeof window !== "undefined" ? localStorage.getItem("token") : null;
-
     try {
       setSavingSection(sectionKey || "validity");
       setErrorMessage("");
@@ -165,7 +162,6 @@ export function useGiftCardSettingsController() {
       const response = await axios.put(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/gifts/settings`,
         payload,
-        token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
       );
 
       restaurantContext?.setRestaurantData?.(response.data.restaurant);

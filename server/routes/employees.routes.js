@@ -1,5 +1,6 @@
 const express = require("express");
 const router = express.Router();
+const mongoose = require("mongoose");
 const SibApiV3Sdk = require("sib-api-v3-sdk");
 const cloudinary = require("cloudinary").v2;
 const multer = require("multer");
@@ -28,6 +29,13 @@ const {
   buildPlanningExportPdf,
 } = require("../services/pdf/render-planning-export.service");
 const {
+  buildWorkbookBuffer: buildPlanningWorkbookBuffer,
+} = require("../services/excel/render-planning-export-workbook.service");
+const {
+  decorateEmployeeForRestaurant,
+  decorateRestaurantEmployees,
+} = require("../services/employee-serialization.service");
+const {
   diffMinutes,
   toLocalDateKey,
 } = require("../services/time-clock.service");
@@ -36,6 +44,37 @@ const {
 
 function normalizeEmail(email) {
   return (email || "").trim().toLowerCase();
+}
+
+function normalizeContractType(value) {
+  return String(value || "").trim();
+}
+
+function normalizeContractualUnit(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+
+  if (["week", "weekly", "semaine", "hebdo", "hebdomadaire"].includes(normalized)) {
+    return "week";
+  }
+
+  if (["month", "monthly", "mois", "mensuel", "mensuelle"].includes(normalized)) {
+    return "month";
+  }
+
+  return "";
+}
+
+function normalizeContractualValue(value) {
+  if (value === undefined || value === null || value === "") {
+    return 0;
+  }
+
+  const numeric = Number(String(value).replace(",", "."));
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    return 0;
+  }
+
+  return Math.round(numeric * 100) / 100;
 }
 
 function employeeWorksInRestaurant(employee, restaurantId) {
@@ -74,6 +113,7 @@ function getOrCreateRestaurantProfile(employee, restaurantId) {
       shifts: [],
       leaveRequests: [],
       snapshot: {},
+      employment: {},
     });
     profile =
       employee.restaurantProfiles[employee.restaurantProfiles.length - 1];
@@ -161,6 +201,111 @@ async function getEmployeesAccessContext(request, restaurantId) {
   return { error: { status: 403, message: "Forbidden" } };
 }
 
+function canAccessEmployeeTarget(accessContext, employeeId) {
+  if (!accessContext?.currentEmployee) return true;
+  if (accessContext?.isManager) return true;
+
+  return String(accessContext.currentEmployee._id) === String(employeeId);
+}
+
+async function getEmployeeRouteAccess(
+  request,
+  restaurantId,
+  employeeId,
+  { managerOnly = false, allowSelf = true } = {},
+) {
+  const accessContext = await getEmployeesAccessContext(request, restaurantId);
+  if (accessContext.error) return accessContext;
+
+  if (managerOnly && !accessContext.isManager) {
+    return { error: { status: 403, message: "Forbidden" } };
+  }
+
+  if (!managerOnly && request.user?.role === "employee" && !accessContext.isManager) {
+    if (!allowSelf || !canAccessEmployeeTarget(accessContext, employeeId)) {
+      return { error: { status: 403, message: "Forbidden" } };
+    }
+  }
+
+  return accessContext;
+}
+
+function toValidDate(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function rangesOverlap(startA, endA, startB, endB) {
+  return startA < endB && endA > startB;
+}
+
+function findShiftConflicts(
+  profile,
+  start,
+  end,
+  { excludeShiftId = null, excludeLeaveRequestId = null } = {},
+) {
+  return (profile?.shifts || []).filter((shift) => {
+    if (excludeShiftId && String(shift?._id) === String(excludeShiftId)) {
+      return false;
+    }
+
+    if (
+      excludeLeaveRequestId &&
+      shift?.leaveRequestId &&
+      String(shift.leaveRequestId) === String(excludeLeaveRequestId)
+    ) {
+      return false;
+    }
+
+    const currentStart = toValidDate(shift?.start);
+    const currentEnd = toValidDate(shift?.end);
+    if (!currentStart || !currentEnd || currentEnd <= currentStart) return false;
+
+    return rangesOverlap(start, end, currentStart, currentEnd);
+  });
+}
+
+function findShiftConflict(profile, start, end, options = {}) {
+  return findShiftConflicts(profile, start, end, options)[0] || null;
+}
+
+function findActiveLeaveRequestConflict(
+  profile,
+  start,
+  end,
+  { excludeReqId = null } = {},
+) {
+  return (profile?.leaveRequests || []).find((leaveRequest) => {
+    if (excludeReqId && String(leaveRequest?._id) === String(excludeReqId)) {
+      return false;
+    }
+
+    if (!["pending", "approved"].includes(leaveRequest?.status)) return false;
+
+    const currentStart = toValidDate(leaveRequest?.start);
+    const currentEnd = toValidDate(leaveRequest?.end);
+    if (!currentStart || !currentEnd || currentEnd <= currentStart) return false;
+
+    return rangesOverlap(start, end, currentStart, currentEnd);
+  });
+}
+
+async function buildDecoratedRestaurant(restaurantId) {
+  const restaurant = await RestaurantModel.findById(restaurantId)
+    .populate("owner_id", "firstname")
+    .populate("menus")
+    .populate("employees");
+
+  if (!restaurant) return null;
+
+  return decorateRestaurantEmployees(
+    restaurant,
+    restaurantId,
+    restaurant.employees || [],
+  );
+}
+
 function toFilenamePart(value) {
   return String(value || "restaurant")
     .toLowerCase()
@@ -227,9 +372,59 @@ function getPlanningShiftTitle(value) {
   return normalizePlanningTitle(value?.title);
 }
 
+function serializeShiftConflict(shift) {
+  const leaveShift = isLeaveShift(shift);
+
+  return {
+    _id: shift?._id || null,
+    title: getPlanningShiftTitle(shift),
+    start: shift?.start || null,
+    end: shift?.end || null,
+    isLeave: leaveShift,
+    leaveRequestId: shift?.leaveRequestId || null,
+    canDelete: !leaveShift,
+  };
+}
+
 function parseShiftDate(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function toObjectIdOrNull(value) {
+  return mongoose.Types.ObjectId.isValid(value)
+    ? new mongoose.Types.ObjectId(value)
+    : null;
+}
+
+function getRestaurantProfileProjection(restaurantId) {
+  return {
+    restaurantProfiles: {
+      $elemMatch: { restaurant: restaurantId },
+    },
+  };
+}
+
+async function ensureRestaurantProfileExists(employeeId, restaurantId) {
+  await EmployeeModel.updateOne(
+    {
+      _id: employeeId,
+      restaurants: restaurantId,
+      "restaurantProfiles.restaurant": { $ne: restaurantId },
+    },
+    {
+      $push: {
+        restaurantProfiles: {
+          restaurant: restaurantId,
+          options: {},
+          documents: [],
+          shifts: [],
+          leaveRequests: [],
+          snapshot: {},
+        },
+      },
+    },
+  );
 }
 
 function isStartOfDay(value) {
@@ -428,6 +623,8 @@ cloudinary.config({
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
+router.use("/restaurants/:restaurantId/employees", authenticateToken);
+
 const uploadFromBuffer = (buffer, folder) => {
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
@@ -498,15 +695,10 @@ function generatePassword() {
 // ---------- ADD / IMPORT EMPLOYEE (SNAPSHOT + MULTI-RESTOS) ----------
 
 router.post(
-  "/restaurants/:id/employees",
+  "/restaurants/:restaurantId/employees",
   upload.single("profilePicture"),
   async (req, res) => {
-    const restaurantId = req.params.id;
-
-    const restaurant = await RestaurantModel.findById(restaurantId);
-    if (!restaurant) {
-      return res.status(404).json({ message: "Restaurant not found" });
-    }
+    const restaurantId = req.params.restaurantId;
 
     const {
       lastName,
@@ -518,11 +710,29 @@ router.post(
       phone,
       post,
       dateOnPost,
+      contractType,
+      contractualValue,
+      contractualUnit,
     } = req.body;
 
     const normalizedEmail = normalizeEmail(email);
+    const normalizedEmployment = {
+      contractType: normalizeContractType(contractType),
+      contractualValue: normalizeContractualValue(contractualValue),
+      contractualUnit: normalizeContractualUnit(contractualUnit),
+    };
 
     try {
+      const accessContext = await getEmployeeRouteAccess(req, restaurantId, null, {
+        managerOnly: true,
+      });
+      if (accessContext.error) {
+        return res
+          .status(accessContext.error.status)
+          .json({ message: accessContext.error.message });
+      }
+
+      const restaurant = accessContext.restaurant;
       let profilePicture = null;
       if (req.file) {
         const cloudinaryResponse = await uploadFromBuffer(
@@ -538,9 +748,18 @@ router.post(
       // 1) Vérifier si un employé existe déjà avec cet email
       let existingEmployee = null;
       if (normalizedEmail) {
-        existingEmployee = await EmployeeModel.findOne({
-          email: normalizedEmail,
-        });
+        const [employeeDuplicate, ownerDuplicate] = await Promise.all([
+          EmployeeModel.findOne({ email: normalizedEmail }),
+          OwnerModel.findOne({ email: normalizedEmail }),
+        ]);
+
+        if (ownerDuplicate) {
+          return res.status(409).json({
+            message: "L'adresse mail est déjà utilisée par un autre compte.",
+          });
+        }
+
+        existingEmployee = employeeDuplicate;
       }
 
       // ---------- CAS 1 : NOUVEL EMPLOYÉ ----------
@@ -577,6 +796,7 @@ router.post(
                 post,
                 dateOnPost: dateOnPost ? new Date(dateOnPost) : undefined,
               },
+              employment: normalizedEmployment,
             },
           ],
         });
@@ -617,10 +837,7 @@ router.post(
             );
         }
 
-        const updatedRestaurant = await RestaurantModel.findById(restaurantId)
-          .populate("owner_id", "firstname")
-          .populate("menus")
-          .populate("employees");
+        const updatedRestaurant = await buildDecoratedRestaurant(restaurantId);
 
         return res.status(201).json({ restaurant: updatedRestaurant });
       }
@@ -675,6 +892,7 @@ router.post(
       if (!profile.snapshot) {
         profile.snapshot = {};
       }
+      profile.employment = profile.employment || {};
 
       // Snapshot = données figées pour CE restaurant
       profile.snapshot.firstname =
@@ -722,6 +940,11 @@ router.post(
           ? new Date(dateOnPost)
           : existingEmployee.dateOnPost || profile.snapshot.dateOnPost;
 
+      profile.employment.contractType = normalizedEmployment.contractType;
+      profile.employment.contractualValue =
+        normalizedEmployment.contractualValue;
+      profile.employment.contractualUnit = normalizedEmployment.contractualUnit;
+
       // ✅ Important : indiquer à Mongoose que restaurantProfiles a changé
       existingEmployee.markModified("restaurantProfiles");
 
@@ -736,10 +959,7 @@ router.post(
         await restaurant.save();
       }
 
-      const updatedRestaurant = await RestaurantModel.findById(restaurantId)
-        .populate("owner_id", "firstname")
-        .populate("menus")
-        .populate("employees");
+      const updatedRestaurant = await buildDecoratedRestaurant(restaurantId);
 
       return res.status(200).json({ restaurant: updatedRestaurant });
     } catch (error) {
@@ -768,7 +988,22 @@ router.patch(
         post,
         dateOnPost,
         options,
+        contractType,
+        contractualValue,
+        contractualUnit,
       } = req.body;
+
+      const accessContext = await getEmployeeRouteAccess(
+        req,
+        restaurantId,
+        employeeId,
+        { managerOnly: true },
+      );
+      if (accessContext.error) {
+        return res
+          .status(accessContext.error.status)
+          .json({ message: accessContext.error.message });
+      }
 
       const employee = await EmployeeModel.findById(employeeId);
       if (!employee || !employeeWorksInRestaurant(employee, restaurantId)) {
@@ -796,6 +1031,7 @@ router.patch(
       if (!profile.snapshot) {
         profile.snapshot = {};
       }
+      profile.employment = profile.employment || {};
 
       if (firstname !== undefined || lastname !== undefined) {
         syncEmployeeIdentityAcrossProfiles(employee, {
@@ -804,13 +1040,28 @@ router.patch(
         });
       }
 
-      if (phone !== undefined) profile.snapshot.phone = phone;
-      if (secuNumber !== undefined) profile.snapshot.secuNumber = secuNumber;
-      if (address !== undefined) profile.snapshot.address = address;
-      if (emergencyContact !== undefined)
+      if (phone !== undefined) {
+        employee.phone = phone;
+        profile.snapshot.phone = phone;
+      }
+      if (secuNumber !== undefined) {
+        employee.secuNumber = secuNumber;
+        profile.snapshot.secuNumber = secuNumber;
+      }
+      if (address !== undefined) {
+        employee.address = address;
+        profile.snapshot.address = address;
+      }
+      if (emergencyContact !== undefined) {
+        employee.emergencyContact = emergencyContact;
         profile.snapshot.emergencyContact = emergencyContact;
-      if (post !== undefined) profile.snapshot.post = post;
+      }
+      if (post !== undefined) {
+        employee.post = post;
+        profile.snapshot.post = post;
+      }
       if (dateOnPost !== undefined) {
+        employee.dateOnPost = dateOnPost ? new Date(dateOnPost) : undefined;
         profile.snapshot.dateOnPost = dateOnPost
           ? new Date(dateOnPost)
           : undefined;
@@ -818,11 +1069,46 @@ router.patch(
 
       const normalizedEmail = normalizeEmail(email);
       if (email !== undefined) {
-        profile.snapshot.email = normalizedEmail;
+        if (normalizedEmail && normalizedEmail !== employee.email) {
+          const [employeeDuplicate, ownerDuplicate] = await Promise.all([
+            EmployeeModel.findOne({
+              email: normalizedEmail,
+              _id: { $ne: employee._id },
+            }),
+            OwnerModel.findOne({ email: normalizedEmail }),
+          ]);
+
+          if (employeeDuplicate || ownerDuplicate) {
+            return res
+              .status(409)
+              .json({ message: "L'adresse mail est déjà utilisée" });
+          }
+        }
+
+        employee.email = normalizedEmail;
+        for (const restaurantProfile of employee.restaurantProfiles || []) {
+          restaurantProfile.snapshot = restaurantProfile.snapshot || {};
+          restaurantProfile.snapshot.email = normalizedEmail;
+        }
       }
 
       if (options !== undefined) {
-        profile.options = options;
+        profile.options =
+          typeof options === "string" ? JSON.parse(options) : options;
+      }
+
+      if (contractType !== undefined) {
+        profile.employment.contractType = normalizeContractType(contractType);
+      }
+
+      if (contractualValue !== undefined) {
+        profile.employment.contractualValue =
+          normalizeContractualValue(contractualValue);
+      }
+
+      if (contractualUnit !== undefined) {
+        profile.employment.contractualUnit =
+          normalizeContractualUnit(contractualUnit);
       }
 
       // ✅ Important : forcer mongoose à considérer restaurantProfiles comme modifié
@@ -831,10 +1117,7 @@ router.patch(
       await employee.save();
       broadcastEmployeeUpdate(employee);
 
-      const updatedRestaurant = await RestaurantModel.findById(restaurantId)
-        .populate("owner_id", "firstname")
-        .populate("menus")
-        .populate("employees");
+      const updatedRestaurant = await buildDecoratedRestaurant(restaurantId);
 
       res.status(200).json({ restaurant: updatedRestaurant });
     } catch (error) {
@@ -853,6 +1136,18 @@ router.post(
   async (req, res) => {
     try {
       const { restaurantId, employeeId } = req.params;
+
+      const accessContext = await getEmployeeRouteAccess(
+        req,
+        restaurantId,
+        employeeId,
+        { managerOnly: true },
+      );
+      if (accessContext.error) {
+        return res
+          .status(accessContext.error.status)
+          .json({ message: accessContext.error.message });
+      }
 
       const employee = await EmployeeModel.findById(employeeId);
       if (!employee || !employeeWorksInRestaurant(employee, restaurantId)) {
@@ -876,7 +1171,7 @@ router.post(
         const basename = path.basename(file.originalname, ext);
         const safeName = basename
           .replace(/\s+/g, "_")
-          .replace(/[^a-zA-Z0-9_\-]/g, "");
+          .replace(/[^a-zA-Z0-9_-]/g, "");
 
         const folder = `Gusto_Workspace/restaurants/${restaurantId}/employees/docs`;
 
@@ -906,8 +1201,7 @@ router.post(
 
       await employee.save();
 
-      const updatedRestaurant =
-        await RestaurantModel.findById(restaurantId).populate("employees");
+      const updatedRestaurant = await buildDecoratedRestaurant(restaurantId);
 
       return res.json({ restaurant: updatedRestaurant });
     } catch (err) {
@@ -923,6 +1217,17 @@ router.get(
   async (req, res) => {
     try {
       const { restaurantId, employeeId } = req.params;
+
+      const accessContext = await getEmployeeRouteAccess(
+        req,
+        restaurantId,
+        employeeId,
+      );
+      if (accessContext.error) {
+        return res
+          .status(accessContext.error.status)
+          .json({ message: accessContext.error.message });
+      }
 
       const employee = await EmployeeModel.findById(employeeId).lean();
       if (!employee || !employeeWorksInRestaurant(employee, restaurantId)) {
@@ -947,6 +1252,18 @@ router.get(
   async (req, res) => {
     try {
       const { restaurantId, employeeId, public_id } = req.params;
+
+      const accessContext = await getEmployeeRouteAccess(
+        req,
+        restaurantId,
+        employeeId,
+      );
+      if (accessContext.error) {
+        return res
+          .status(accessContext.error.status)
+          .json({ message: accessContext.error.message });
+      }
+
       const emp = await EmployeeModel.findById(employeeId);
       if (!emp || !employeeWorksInRestaurant(emp, restaurantId)) {
         return res.status(404).json({ message: "Employee not found" });
@@ -987,6 +1304,18 @@ router.delete(
     const { restaurantId, employeeId, public_id } = req.params;
 
     try {
+      const accessContext = await getEmployeeRouteAccess(
+        req,
+        restaurantId,
+        employeeId,
+        { managerOnly: true },
+      );
+      if (accessContext.error) {
+        return res
+          .status(accessContext.error.status)
+          .json({ message: accessContext.error.message });
+      }
+
       const employee = await EmployeeModel.findById(employeeId);
       if (!employee || !employeeWorksInRestaurant(employee, restaurantId)) {
         return res.status(404).json({ message: "Employee not found" });
@@ -1007,10 +1336,7 @@ router.delete(
 
       await employee.save();
 
-      const updatedRestaurant = await RestaurantModel.findById(restaurantId)
-        .populate("owner_id", "firstname")
-        .populate("menus")
-        .populate("employees");
+      const updatedRestaurant = await buildDecoratedRestaurant(restaurantId);
 
       return res.json({ restaurant: updatedRestaurant });
     } catch (err) {
@@ -1028,6 +1354,18 @@ router.delete(
   async (req, res) => {
     try {
       const { restaurantId, employeeId } = req.params;
+
+      const accessContext = await getEmployeeRouteAccess(
+        req,
+        restaurantId,
+        employeeId,
+        { managerOnly: true },
+      );
+      if (accessContext.error) {
+        return res
+          .status(accessContext.error.status)
+          .json({ message: accessContext.error.message });
+      }
 
       const restaurant =
         await RestaurantModel.findById(restaurantId).populate("employees");
@@ -1126,8 +1464,7 @@ router.delete(
         } catch (err) {
           const httpCode = err?.http_code || err?.error?.http_code;
 
-          if (httpCode === 404) {
-          } else {
+          if (httpCode !== 404) {
             console.warn(
               `Erreur lors de la suppression du dossier Cloudinary de l'employé ${employeeId} :`,
               err?.error?.message || err?.message || err,
@@ -1140,10 +1477,7 @@ router.delete(
         await employee.save();
       }
 
-      const updatedRestaurant = await RestaurantModel.findById(restaurantId)
-        .populate("owner_id", "firstname")
-        .populate("menus")
-        .populate("employees");
+      const updatedRestaurant = await buildDecoratedRestaurant(restaurantId);
 
       if (!updatedRestaurant) {
         return res
@@ -1167,6 +1501,18 @@ router.get(
   async (req, res) => {
     try {
       const { restaurantId, employeeId } = req.params;
+
+      const accessContext = await getEmployeeRouteAccess(
+        req,
+        restaurantId,
+        employeeId,
+      );
+      if (accessContext.error) {
+        return res
+          .status(accessContext.error.status)
+          .json({ message: accessContext.error.message });
+      }
+
       const employee = await EmployeeModel.findById(employeeId).lean();
       if (!employee || !employeeWorksInRestaurant(employee, restaurantId)) {
         return res.status(404).json({ message: "Employé non trouvé" });
@@ -1188,42 +1534,124 @@ router.get(
 router.post(
   "/restaurants/:restaurantId/employees/:employeeId/shifts",
   async (req, res) => {
-    const { restaurantId, employeeId } = req.params;
-    const {
-      title,
-      start,
-      end,
-      isLeave = false,
-      leaveRequestId = null,
-    } = req.body;
+    try {
+      const { restaurantId, employeeId } = req.params;
+      const {
+        title,
+        start,
+        end,
+        isLeave = false,
+        leaveRequestId = null,
+      } = req.body;
 
-    const emp = await EmployeeModel.findById(employeeId);
-    if (!emp || !employeeWorksInRestaurant(emp, restaurantId)) {
-      return res.status(404).json({ message: "Employé non trouvé" });
+      const accessContext = await getEmployeeRouteAccess(
+        req,
+        restaurantId,
+        employeeId,
+        { managerOnly: true },
+      );
+      if (accessContext.error) {
+        return res
+          .status(accessContext.error.status)
+          .json({ message: accessContext.error.message });
+      }
+
+      const parsedStart = parseShiftDate(start);
+      const parsedEnd = parseShiftDate(end);
+
+      if (!parsedStart || !parsedEnd || parsedEnd <= parsedStart) {
+        return res.status(400).json({ message: "Dates de shift invalides" });
+      }
+
+      const restaurantObjectId = toObjectIdOrNull(restaurantId);
+      const employeeObjectId = toObjectIdOrNull(employeeId);
+      const leaveRequestObjectId =
+        leaveRequestId != null ? toObjectIdOrNull(leaveRequestId) : null;
+
+      if (
+        !restaurantObjectId ||
+        !employeeObjectId ||
+        (leaveRequestId != null && !leaveRequestObjectId)
+      ) {
+        return res.status(400).json({ message: "Identifiant invalide" });
+      }
+
+      await ensureRestaurantProfileExists(employeeObjectId, restaurantObjectId);
+
+      const currentEmployee = await EmployeeModel.findOne(
+        {
+          _id: employeeObjectId,
+          restaurants: restaurantObjectId,
+        },
+        getRestaurantProfileProjection(restaurantObjectId),
+      );
+
+      if (!currentEmployee) {
+        return res.status(404).json({ message: "Employé non trouvé" });
+      }
+
+      const currentProfile = findRestaurantProfile(currentEmployee, restaurantId);
+      const conflict = findShiftConflict(currentProfile, parsedStart, parsedEnd);
+      if (conflict) {
+        const serializedConflict = serializeShiftConflict(conflict);
+        return res.status(409).json({
+          message: serializedConflict.isLeave
+            ? "Impossible d'ajouter ce shift car un congé existe déjà sur cette période."
+            : "Impossible d'ajouter ce shift car un autre créneau existe déjà sur cette période.",
+          conflictType: serializedConflict.isLeave
+            ? "leave_overlap"
+            : "shift_overlap",
+          conflict: serializedConflict,
+        });
+      }
+
+      const shiftId = new mongoose.Types.ObjectId();
+      const leaveShift =
+        isLeave === true || leaveRequestObjectId != null || isLeaveShift({ title });
+
+      const updatedEmployee = await EmployeeModel.findOneAndUpdate(
+        {
+          _id: employeeObjectId,
+          restaurants: restaurantObjectId,
+          "restaurantProfiles.restaurant": restaurantObjectId,
+        },
+        {
+          $push: {
+            "restaurantProfiles.$.shifts": {
+              _id: shiftId,
+              title: leaveShift ? "" : normalizePlanningTitle(title),
+              start: parsedStart,
+              end: parsedEnd,
+              isLeave: leaveShift,
+              leaveRequestId: leaveRequestObjectId,
+              source: "manual",
+            },
+          },
+        },
+        {
+          new: true,
+          projection: getRestaurantProfileProjection(restaurantObjectId),
+          runValidators: true,
+        },
+      );
+
+      if (!updatedEmployee) {
+        return res.status(404).json({ message: "Employé non trouvé" });
+      }
+
+      const profile = findRestaurantProfile(updatedEmployee, restaurantId);
+      const created =
+        profile?.shifts?.id?.(shiftId) ||
+        profile?.shifts?.find((shift) => String(shift._id) === String(shiftId));
+
+      return res.status(201).json({
+        shift: created || null,
+        shifts: profile?.shifts || [],
+      });
+    } catch (err) {
+      console.error("Erreur création shift:", err);
+      return res.status(500).json({ message: "Internal server error" });
     }
-
-    const parsedStart = parseShiftDate(start);
-    const parsedEnd = parseShiftDate(end);
-
-    if (!parsedStart || !parsedEnd || parsedEnd <= parsedStart) {
-      return res.status(400).json({ message: "Dates de shift invalides" });
-    }
-
-    const profile = getOrCreateRestaurantProfile(emp, restaurantId);
-    const leaveShift =
-      isLeave === true || leaveRequestId != null || isLeaveShift({ title });
-
-    profile.shifts.push({
-      title: leaveShift ? "" : normalizePlanningTitle(title),
-      start: parsedStart,
-      end: parsedEnd,
-      isLeave: leaveShift,
-      leaveRequestId: leaveRequestId || null,
-    });
-
-    await emp.save();
-    const created = profile.shifts[profile.shifts.length - 1];
-    return res.status(201).json({ shift: created, shifts: profile.shifts });
   },
 );
 
@@ -1231,51 +1659,159 @@ router.post(
 router.put(
   "/restaurants/:restaurantId/employees/:employeeId/shifts/:shiftId",
   async (req, res) => {
-    const { restaurantId, employeeId, shiftId } = req.params;
-    const { title, start, end, isLeave, leaveRequestId } = req.body;
+    try {
+      const { restaurantId, employeeId, shiftId } = req.params;
+      const { title, start, end, isLeave, leaveRequestId } = req.body;
 
-    const emp = await EmployeeModel.findById(employeeId);
-    if (!emp || !employeeWorksInRestaurant(emp, restaurantId)) {
-      return res.status(404).json({ message: "Employé non trouvé" });
-    }
+      const accessContext = await getEmployeeRouteAccess(
+        req,
+        restaurantId,
+        employeeId,
+        { managerOnly: true },
+      );
+      if (accessContext.error) {
+        return res
+          .status(accessContext.error.status)
+          .json({ message: accessContext.error.message });
+      }
 
-    const profile = getOrCreateRestaurantProfile(emp, restaurantId);
-    const shift = profile.shifts.id(shiftId);
-    if (!shift) return res.status(404).json({ message: "Shift non trouvé" });
+      const restaurantObjectId = toObjectIdOrNull(restaurantId);
+      const employeeObjectId = toObjectIdOrNull(employeeId);
+      const shiftObjectId = toObjectIdOrNull(shiftId);
+      const leaveRequestObjectId =
+        leaveRequestId !== undefined && leaveRequestId !== null
+          ? toObjectIdOrNull(leaveRequestId)
+          : null;
 
-    if (title !== undefined) shift.title = normalizePlanningTitle(title);
-    if (start !== undefined) {
-      const parsedStart = parseShiftDate(start);
-      if (!parsedStart) {
+      if (
+        !restaurantObjectId ||
+        !employeeObjectId ||
+        !shiftObjectId ||
+        (leaveRequestId !== undefined &&
+          leaveRequestId !== null &&
+          !leaveRequestObjectId)
+      ) {
+        return res.status(400).json({ message: "Identifiant invalide" });
+      }
+
+      const currentEmployee = await EmployeeModel.findOne(
+        {
+          _id: employeeObjectId,
+          restaurants: restaurantObjectId,
+          restaurantProfiles: {
+            $elemMatch: {
+              restaurant: restaurantObjectId,
+              "shifts._id": shiftObjectId,
+            },
+          },
+        },
+        getRestaurantProfileProjection(restaurantObjectId),
+      );
+
+      if (!currentEmployee) {
+        return res.status(404).json({ message: "Shift non trouvé" });
+      }
+
+      const currentProfile = findRestaurantProfile(currentEmployee, restaurantId);
+      const currentShift = currentProfile?.shifts?.id?.(shiftObjectId);
+
+      if (!currentShift) {
+        return res.status(404).json({ message: "Shift non trouvé" });
+      }
+
+      const nextStart =
+        start !== undefined ? parseShiftDate(start) : new Date(currentShift.start);
+      if (!nextStart) {
         return res.status(400).json({ message: "Date de début invalide" });
       }
-      shift.start = parsedStart;
-    }
-    if (end !== undefined) {
-      const parsedEnd = parseShiftDate(end);
-      if (!parsedEnd) {
+
+      const nextEnd =
+        end !== undefined ? parseShiftDate(end) : new Date(currentShift.end);
+      if (!nextEnd) {
         return res.status(400).json({ message: "Date de fin invalide" });
       }
-      shift.end = parsedEnd;
-    }
-    if (leaveRequestId !== undefined) {
-      shift.leaveRequestId = leaveRequestId || null;
-    }
-    if (isLeave !== undefined) {
-      shift.isLeave = isLeave === true;
-    }
 
-    if (shift.end <= shift.start) {
-      return res.status(400).json({ message: "Dates de shift invalides" });
-    }
+      if (nextEnd <= nextStart) {
+        return res.status(400).json({ message: "Dates de shift invalides" });
+      }
 
-    if (isLeaveShift(shift)) {
-      shift.isLeave = true;
-      shift.title = "";
-    }
+      const nextLeaveRequestId =
+        leaveRequestId !== undefined
+          ? leaveRequestObjectId
+          : currentShift.leaveRequestId || null;
+      const nextIsLeave = isLeave !== undefined ? isLeave === true : currentShift.isLeave;
+      const nextTitle =
+        title !== undefined
+          ? normalizePlanningTitle(title)
+          : normalizePlanningTitle(currentShift.title);
+      const leaveShift = isLeaveShift({
+        title: nextTitle,
+        isLeave: nextIsLeave,
+        leaveRequestId: nextLeaveRequestId,
+      });
 
-    await emp.save();
-    return res.json({ shift, shifts: profile.shifts });
+      const overlap = findShiftConflict(currentProfile, nextStart, nextEnd, {
+        excludeShiftId: shiftObjectId,
+      });
+      if (overlap) {
+        const serializedConflict = serializeShiftConflict(overlap);
+        return res.status(409).json({
+          message: serializedConflict.isLeave
+            ? "Impossible de modifier ce shift car un congé existe déjà sur cette période."
+            : "Impossible de modifier ce shift car un autre créneau existe déjà sur cette période.",
+          conflictType: serializedConflict.isLeave
+            ? "leave_overlap"
+            : "shift_overlap",
+          conflict: serializedConflict,
+        });
+      }
+
+      const updatedEmployee = await EmployeeModel.findOneAndUpdate(
+        {
+          _id: employeeObjectId,
+          restaurants: restaurantObjectId,
+          restaurantProfiles: {
+            $elemMatch: {
+              restaurant: restaurantObjectId,
+              "shifts._id": shiftObjectId,
+            },
+          },
+        },
+        {
+          $set: {
+            "restaurantProfiles.$[profile].shifts.$[shift].title": leaveShift
+              ? ""
+              : nextTitle,
+            "restaurantProfiles.$[profile].shifts.$[shift].start": nextStart,
+            "restaurantProfiles.$[profile].shifts.$[shift].end": nextEnd,
+            "restaurantProfiles.$[profile].shifts.$[shift].isLeave": leaveShift,
+            "restaurantProfiles.$[profile].shifts.$[shift].leaveRequestId":
+              nextLeaveRequestId,
+          },
+        },
+        {
+          arrayFilters: [
+            { "profile.restaurant": restaurantObjectId },
+            { "shift._id": shiftObjectId },
+          ],
+          new: true,
+          projection: getRestaurantProfileProjection(restaurantObjectId),
+          runValidators: true,
+        },
+      );
+
+      if (!updatedEmployee) {
+        return res.status(404).json({ message: "Shift non trouvé" });
+      }
+
+      const profile = findRestaurantProfile(updatedEmployee, restaurantId);
+      const shift = profile?.shifts?.id?.(shiftObjectId);
+
+      return res.json({ shift: shift || null, shifts: profile?.shifts || [] });
+    } catch (err) {
+      console.error("Erreur modification shift:", err);
+      return res.status(500).json({ message: "Internal server error" });
+    }
   },
 );
 
@@ -1283,20 +1819,64 @@ router.put(
 router.delete(
   "/restaurants/:restaurantId/employees/:employeeId/shifts/:shiftId",
   async (req, res) => {
-    const { restaurantId, employeeId, shiftId } = req.params;
+    try {
+      const { restaurantId, employeeId, shiftId } = req.params;
 
-    const emp = await EmployeeModel.findById(employeeId);
-    if (!emp || !employeeWorksInRestaurant(emp, restaurantId)) {
-      return res.status(404).json({ message: "Employé non trouvé" });
+      const accessContext = await getEmployeeRouteAccess(
+        req,
+        restaurantId,
+        employeeId,
+        { managerOnly: true },
+      );
+      if (accessContext.error) {
+        return res
+          .status(accessContext.error.status)
+          .json({ message: accessContext.error.message });
+      }
+
+      const restaurantObjectId = toObjectIdOrNull(restaurantId);
+      const employeeObjectId = toObjectIdOrNull(employeeId);
+      const shiftObjectId = toObjectIdOrNull(shiftId);
+
+      if (!restaurantObjectId || !employeeObjectId || !shiftObjectId) {
+        return res.status(400).json({ message: "Identifiant invalide" });
+      }
+
+      const updatedEmployee = await EmployeeModel.findOneAndUpdate(
+        {
+          _id: employeeObjectId,
+          restaurants: restaurantObjectId,
+          restaurantProfiles: {
+            $elemMatch: {
+              restaurant: restaurantObjectId,
+              "shifts._id": shiftObjectId,
+            },
+          },
+        },
+        {
+          $pull: {
+            "restaurantProfiles.$[profile].shifts": {
+              _id: shiftObjectId,
+            },
+          },
+        },
+        {
+          arrayFilters: [{ "profile.restaurant": restaurantObjectId }],
+          new: true,
+          projection: getRestaurantProfileProjection(restaurantObjectId),
+        },
+      );
+
+      if (!updatedEmployee) {
+        return res.status(404).json({ message: "Shift non trouvé" });
+      }
+
+      const profile = findRestaurantProfile(updatedEmployee, restaurantId);
+      return res.json({ shifts: profile?.shifts || [] });
+    } catch (err) {
+      console.error("Erreur suppression shift:", err);
+      return res.status(500).json({ message: "Internal server error" });
     }
-
-    const profile = getOrCreateRestaurantProfile(emp, restaurantId);
-    const shift = profile.shifts.id(shiftId);
-    if (!shift) return res.status(404).json({ message: "Shift non trouvé" });
-
-    shift.deleteOne();
-    await emp.save();
-    return res.json({ shifts: profile.shifts });
   },
 );
 
@@ -1398,6 +1978,107 @@ router.post(
   },
 );
 
+router.post(
+  "/restaurants/:restaurantId/employees/planning/export/excel",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { restaurantId } = req.params;
+      const from = /^\d{4}-\d{2}-\d{2}$/.test(String(req.body?.from || ""))
+        ? String(req.body.from)
+        : null;
+      const to = /^\d{4}-\d{2}-\d{2}$/.test(String(req.body?.to || ""))
+        ? String(req.body.to)
+        : null;
+      const bounds = from && to ? getDateRangeBounds(from, to) : null;
+
+      if (!bounds) {
+        return res.status(400).json({
+          message: "Les dates de debut et de fin sont invalides.",
+        });
+      }
+
+      const accessContext = await getEmployeesAccessContext(req, restaurantId);
+      if (accessContext.error) {
+        return res
+          .status(accessContext.error.status)
+          .json({ message: accessContext.error.message });
+      }
+
+      if (!accessContext.isManager) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const requestedEmployeeIds = Array.isArray(req.body?.employeeIds)
+        ? req.body.employeeIds.map((value) => String(value))
+        : [];
+      const fallbackEmployeeIds = (
+        accessContext.restaurant?.employees || []
+      ).map((value) => String(value));
+      const selectedEmployeeIds = Array.from(
+        new Set(
+          requestedEmployeeIds.length
+            ? requestedEmployeeIds
+            : fallbackEmployeeIds,
+        ),
+      );
+
+      if (!selectedEmployeeIds.length) {
+        return res.status(400).json({ message: "Aucun salarie selectionne." });
+      }
+
+      const employees = await EmployeeModel.find({
+        _id: { $in: selectedEmployeeIds },
+        restaurants: restaurantId,
+      }).lean();
+
+      if (!employees.length) {
+        return res.status(404).json({ message: "Employees not found" });
+      }
+
+      const employeeOrder = new Map(
+        selectedEmployeeIds.map((id, index) => [String(id), index]),
+      );
+      const orderedEmployees = [...employees].sort((left, right) => {
+        const leftOrder = employeeOrder.get(String(left._id));
+        const rightOrder = employeeOrder.get(String(right._id));
+
+        if (Number.isFinite(leftOrder) && Number.isFinite(rightOrder)) {
+          return leftOrder - rightOrder;
+        }
+
+        return String(left._id).localeCompare(String(right._id));
+      });
+
+      const payload = orderedEmployees.map((employee) =>
+        buildPlanningExportEmployee(employee, restaurantId, bounds),
+      );
+
+      const workbookBuffer = buildPlanningWorkbookBuffer({
+        restaurantName: accessContext.restaurant?.name || "Restaurant",
+        startDate: from,
+        endDate: to,
+        employees: payload,
+      });
+
+      const safeRestaurantName = toFilenamePart(accessContext.restaurant?.name);
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      );
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="planning-${safeRestaurantName}-${from}-au-${to}.xlsx"`,
+      );
+
+      return res.send(workbookBuffer);
+    } catch (error) {
+      console.error("Error exporting planning workbook:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  },
+);
+
 // ---------- DEMANDES DE CONGÉS (par restaurant) ----------
 
 // CREATE LEAVE-REQUEST
@@ -1407,8 +2088,26 @@ router.post(
     try {
       const { restaurantId, employeeId } = req.params;
       const { start, end, type } = req.body;
+
+      const accessContext = await getEmployeeRouteAccess(
+        req,
+        restaurantId,
+        employeeId,
+      );
+      if (accessContext.error) {
+        return res
+          .status(accessContext.error.status)
+          .json({ message: accessContext.error.message });
+      }
+
       if (!start || !end) {
         return res.status(400).json({ message: "start et end sont requis" });
+      }
+
+      const parsedStart = toValidDate(start);
+      const parsedEnd = toValidDate(end);
+      if (!parsedStart || !parsedEnd || parsedEnd <= parsedStart) {
+        return res.status(400).json({ message: "Dates de congé invalides" });
       }
 
       const emp = await EmployeeModel.findById(employeeId);
@@ -1417,10 +2116,20 @@ router.post(
       }
 
       const profile = getOrCreateRestaurantProfile(emp, restaurantId);
+      const activeConflict = findActiveLeaveRequestConflict(
+        profile,
+        parsedStart,
+        parsedEnd,
+      );
+      if (activeConflict) {
+        return res.status(409).json({
+          message: "Une demande de congé existe déjà sur cette période.",
+        });
+      }
 
       profile.leaveRequests.push({
-        start: new Date(start),
-        end: new Date(end),
+        start: parsedStart,
+        end: parsedEnd,
         type: ["full", "morning", "afternoon"].includes(type) ? type : "full",
         createdAt: new Date(),
         status: "pending",
@@ -1466,6 +2175,18 @@ router.get(
   async (req, res) => {
     try {
       const { restaurantId, employeeId } = req.params;
+
+      const accessContext = await getEmployeeRouteAccess(
+        req,
+        restaurantId,
+        employeeId,
+      );
+      if (accessContext.error) {
+        return res
+          .status(accessContext.error.status)
+          .json({ message: accessContext.error.message });
+      }
+
       const emp = await EmployeeModel.findById(employeeId).lean();
       if (!emp || !employeeWorksInRestaurant(emp, restaurantId)) {
         return res.status(404).json({ message: "Employee not found" });
@@ -1487,49 +2208,133 @@ router.get(
 router.put(
   "/restaurants/:restaurantId/employees/:employeeId/leave-requests/:reqId",
   async (req, res) => {
-    const { restaurantId, employeeId, reqId } = req.params;
-    const { status } = req.body;
-    if (!["pending", "approved", "rejected", "canceled"].includes(status)) {
-      return res.status(400).json({ message: "status invalide" });
-    }
-
-    const emp = await EmployeeModel.findById(employeeId);
-    if (!emp || !employeeWorksInRestaurant(emp, restaurantId)) {
-      return res.status(404).json({ message: "Employee not found" });
-    }
-
-    const profile = getOrCreateRestaurantProfile(emp, restaurantId);
-    const lr = profile.leaveRequests.id(reqId);
-    if (!lr) return res.status(404).json({ message: "Request not found" });
-
-    lr.status = status;
-
-    if (status === "approved") {
-      const already = profile.shifts.some(
-        (s) => String(s.leaveRequestId) === String(lr._id),
-      );
-      if (!already) {
-        profile.shifts.push({
-          title: "",
-          start: lr.start,
-          end: lr.end,
-          isLeave: true,
-          leaveRequestId: lr._id,
-        });
+    try {
+      const { restaurantId, employeeId, reqId } = req.params;
+      const { status, resolveConflict } = req.body;
+      if (!["pending", "approved", "rejected", "canceled"].includes(status)) {
+        return res.status(400).json({ message: "status invalide" });
       }
-    }
 
-    if (status === "canceled") {
-      profile.shifts = profile.shifts.filter(
-        (s) => String(s.leaveRequestId) !== String(lr._id),
+      const accessContext = await getEmployeeRouteAccess(
+        req,
+        restaurantId,
+        employeeId,
       );
-    }
+      if (accessContext.error) {
+        return res
+          .status(accessContext.error.status)
+          .json({ message: accessContext.error.message });
+      }
 
-    await emp.save();
-    return res.json({
-      leaveRequest: lr,
-      shifts: profile.shifts,
-    });
+      const emp = await EmployeeModel.findById(employeeId);
+      if (!emp || !employeeWorksInRestaurant(emp, restaurantId)) {
+        return res.status(404).json({ message: "Employee not found" });
+      }
+
+      const profile = getOrCreateRestaurantProfile(emp, restaurantId);
+      const lr = profile.leaveRequests.id(reqId);
+      if (!lr) return res.status(404).json({ message: "Request not found" });
+
+      const isSelf =
+        String(accessContext.currentEmployee?._id || "") === String(employeeId);
+
+      if (!accessContext.isManager) {
+        if (!isSelf || status !== "canceled") {
+          return res.status(403).json({ message: "Forbidden" });
+        }
+
+        if (lr.status !== "pending") {
+          return res.status(409).json({
+            message:
+              "Seules les demandes en attente peuvent être annulées par le salarié.",
+          });
+        }
+      }
+
+      if (status === "approved") {
+        const overlappingShifts = findShiftConflicts(
+          profile,
+          new Date(lr.start),
+          new Date(lr.end),
+          {
+            excludeLeaveRequestId: lr._id,
+          },
+        );
+
+        if (overlappingShifts.length) {
+          const serializedConflicts = overlappingShifts.map(serializeShiftConflict);
+          const canResolveByDeletion = serializedConflicts.every(
+            (shift) => shift.canDelete === true,
+          );
+
+          if (resolveConflict === "delete_conflicting_shifts") {
+            if (!canResolveByDeletion) {
+              return res.status(409).json({
+                message:
+                  "Impossible d'approuver ce congé car il chevauche une absence ou un créneau non supprimable.",
+                conflictType: "shift_overlap",
+                canResolveByDeletion: false,
+                conflictShifts: serializedConflicts,
+              });
+            }
+
+            const conflictingShiftIds = new Set(
+              overlappingShifts.map((shift) => String(shift?._id)),
+            );
+            profile.shifts = (profile.shifts || []).filter(
+              (shift) => !conflictingShiftIds.has(String(shift?._id)),
+            );
+          } else {
+            return res.status(409).json({
+              message:
+                "Impossible d'approuver ce congé car il chevauche un shift existant.",
+              conflictType: "shift_overlap",
+              canResolveByDeletion,
+              conflictShifts: serializedConflicts,
+            });
+          }
+        }
+      }
+
+      lr.status = status;
+
+      if (status === "approved") {
+        const already = profile.shifts.some(
+          (s) => String(s.leaveRequestId) === String(lr._id),
+        );
+        if (!already) {
+          profile.shifts.push({
+            title: "",
+            start: lr.start,
+            end: lr.end,
+            isLeave: true,
+            leaveRequestId: lr._id,
+            source: "leave_request",
+          });
+        }
+      }
+
+      if (status === "rejected" || status === "canceled") {
+        profile.shifts = profile.shifts.filter(
+          (s) => String(s.leaveRequestId) !== String(lr._id),
+        );
+      }
+
+      await emp.save();
+      broadcastToRestaurant(String(restaurantId), {
+        type: "leave_request_updated",
+        employeeId: String(emp._id),
+        leaveRequest: lr?.toObject ? lr.toObject() : { ...lr },
+        shifts: profile.shifts || [],
+      });
+      return res.json({
+        leaveRequest: lr,
+        shifts: profile.shifts,
+      });
+    } catch (error) {
+      console.error("Erreur update leave request:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
   },
 );
 
@@ -1537,28 +2342,57 @@ router.put(
 router.delete(
   "/restaurants/:restaurantId/employees/:employeeId/leave-requests/:reqId",
   async (req, res) => {
-    const { restaurantId, employeeId, reqId } = req.params;
+    try {
+      const { restaurantId, employeeId, reqId } = req.params;
 
-    const emp = await EmployeeModel.findById(employeeId);
-    if (!emp || !employeeWorksInRestaurant(emp, restaurantId)) {
-      return res.status(404).json({ message: "Employee not found" });
+      const accessContext = await getEmployeeRouteAccess(
+        req,
+        restaurantId,
+        employeeId,
+      );
+      if (accessContext.error) {
+        return res
+          .status(accessContext.error.status)
+          .json({ message: accessContext.error.message });
+      }
+
+      const emp = await EmployeeModel.findById(employeeId);
+      if (!emp || !employeeWorksInRestaurant(emp, restaurantId)) {
+        return res.status(404).json({ message: "Employee not found" });
+      }
+
+      const profile = getOrCreateRestaurantProfile(emp, restaurantId);
+      const lr = profile.leaveRequests.id(reqId);
+      if (!lr) return res.status(404).json({ message: "Request not found" });
+
+      const isSelf =
+        String(accessContext.currentEmployee?._id || "") === String(employeeId);
+
+      if (!accessContext.isManager && (!isSelf || lr.status !== "pending")) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      profile.shifts = profile.shifts.filter(
+        (s) => String(s.leaveRequestId) !== String(reqId),
+      );
+
+      lr.deleteOne();
+      await emp.save();
+      broadcastToRestaurant(String(restaurantId), {
+        type: "leave_request_deleted",
+        employeeId: String(emp._id),
+        leaveRequestId: String(reqId),
+        shifts: profile.shifts || [],
+      });
+
+      return res.json({
+        leaveRequests: profile.leaveRequests,
+        shifts: profile.shifts,
+      });
+    } catch (error) {
+      console.error("Erreur delete leave request:", error);
+      return res.status(500).json({ message: "Internal server error" });
     }
-
-    const profile = getOrCreateRestaurantProfile(emp, restaurantId);
-    const lr = profile.leaveRequests.id(reqId);
-    if (!lr) return res.status(404).json({ message: "Request not found" });
-
-    profile.shifts = profile.shifts.filter(
-      (s) => String(s.leaveRequestId) !== String(reqId),
-    );
-
-    lr.deleteOne();
-    await emp.save();
-
-    return res.json({
-      leaveRequests: profile.leaveRequests,
-      shifts: profile.shifts,
-    });
   },
 );
 
@@ -1570,7 +2404,7 @@ router.get("/employees/me", authenticateToken, async (req, res) => {
       return res.status(403).json({ message: "Forbidden" });
     }
 
-    const emp = await EmployeeModel.findById(req.user.id).select("-password");
+    const emp = await EmployeeModel.findById(req.user.id);
     if (!emp) return res.status(404).json({ message: "Employee not found" });
 
     // 1) Tous les restos où il travaille
@@ -1590,7 +2424,6 @@ router.get("/employees/me", authenticateToken, async (req, res) => {
       await refreshGiftCardLifecycle(restaurantIdFromToken);
       restaurant = await RestaurantModel.findById(restaurantIdFromToken)
         .populate("owner_id", "firstname")
-        .populate("employees")
         .populate("menus");
 
       currentProfile = findRestaurantProfile(emp, restaurantIdFromToken);
@@ -1602,15 +2435,38 @@ router.get("/employees/me", authenticateToken, async (req, res) => {
       await refreshGiftCardLifecycle(firstId);
       restaurant = await RestaurantModel.findById(firstId)
         .populate("owner_id", "firstname")
-        .populate("employees")
         .populate("menus");
 
       currentProfile = findRestaurantProfile(emp, firstId);
     }
 
+    let decoratedRestaurant = null;
+    let decoratedEmployee = emp.toObject();
+
+    if (restaurant?._id) {
+      const coworkerIds = Array.isArray(restaurant.employees)
+        ? restaurant.employees
+        : [];
+      const coworkers = await EmployeeModel.find({
+        _id: { $in: coworkerIds },
+        restaurants: restaurant._id,
+      })
+        .select("firstname lastname post profilePicture restaurantProfiles restaurants")
+        .lean();
+
+      decoratedRestaurant = decorateRestaurantEmployees(
+        restaurant,
+        restaurant._id,
+        coworkers,
+        { safe: true },
+      );
+      decoratedEmployee = decorateEmployeeForRestaurant(emp, restaurant._id) || emp.toObject();
+      currentProfile = findRestaurantProfile(decoratedEmployee, restaurant._id);
+    }
+
     return res.json({
-      employee: emp,
-      restaurant,
+      employee: decoratedEmployee,
+      restaurant: decoratedRestaurant,
       currentProfile,
       restaurants,
     });
@@ -1766,7 +2622,7 @@ router.put(
       }
       const { currentPassword, newPassword } = req.body;
 
-      const emp = await EmployeeModel.findById(req.user.id);
+      const emp = await EmployeeModel.findById(req.user.id).select("+password");
       if (!emp) return res.status(404).json({ message: "Employee not found" });
 
       const ok = await emp.comparePassword(currentPassword, emp.password);
@@ -1786,9 +2642,24 @@ router.put(
 
 // ---------- TRAINING SESSIONS (global, pas par resto) ----------
 
-router.get("/employees/:employeeId/training-sessions", async (req, res) => {
+router.get("/employees/:employeeId/training-sessions", authenticateToken, async (req, res) => {
   try {
     const { employeeId } = req.params;
+
+    if (req.user?.role === "employee" && String(req.user.id) !== String(employeeId)) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    if (req.user?.role === "owner") {
+      const ownsEmployee = await RestaurantModel.exists({
+        owner_id: req.user.id,
+        employees: employeeId,
+      });
+
+      if (!ownsEmployee) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+    }
 
     const page = Math.max(parseInt(req.query.page || "1", 10), 1);
     const limit = Math.min(

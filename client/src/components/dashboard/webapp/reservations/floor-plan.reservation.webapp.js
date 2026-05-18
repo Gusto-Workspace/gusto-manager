@@ -3,6 +3,10 @@ import axios from "axios";
 import dynamic from "next/dynamic";
 import { Menu, Clock3, Loader2 } from "lucide-react";
 import SidebarReservationsWebapp from "../_shared/sidebar.webapp";
+import {
+  getActiveFloorPlanRooms,
+  getDefaultActiveFloorPlanRoomId,
+} from "../../reservations/floor-plan.rooms.utils";
 
 const FloorPlanCanvasReservationsComponent = dynamic(
   () => import("../../reservations/floor-plan-canvas.reservations.component"),
@@ -41,7 +45,7 @@ function getInitialFloorPlanState(restaurantId) {
 
   const rooms = safeArr(cached?.rooms);
   const floorPlanEnabled = Boolean(cached?.enabled);
-  const activeRoomId = rooms.length ? String(rooms[0]._id) : "";
+  const activeRoomId = getDefaultActiveFloorPlanRoomId(rooms);
 
   return {
     rooms,
@@ -56,10 +60,6 @@ function StatusLegend() {
     { label: "Libre", dot: "bg-white border-darkBlue/40" },
     { label: "Assignée", dot: "bg-blue/20 border-blue" },
     { label: "Occupée", dot: "bg-green/20 border-green" },
-    {
-      label: "Client en retard",
-      dot: "bg-[rgba(255,159,10,0.22)] border-[rgb(255,159,10)]",
-    },
     { label: "À libérer", dot: "bg-red/20 border-red" },
   ];
 
@@ -139,11 +139,14 @@ export default function FloorPlanReservationsWebapp({
     return uniq.sort((a, b) => a.localeCompare(b));
   }, [dayReservations]);
 
+  const activeRooms = useMemo(() => getActiveFloorPlanRooms(rooms), [rooms]);
+
   const activeRoom = useMemo(() => {
     return (
-      safeArr(rooms).find((r) => String(r._id) === String(activeRoomId)) || null
+      activeRooms.find((room) => String(room._id) === String(activeRoomId)) ||
+      null
     );
-  }, [rooms, activeRoomId]);
+  }, [activeRooms, activeRoomId]);
 
   useEffect(() => {
     const initial = getInitialFloorPlanState(restaurantId);
@@ -191,10 +194,13 @@ export default function FloorPlanReservationsWebapp({
         setFloorPlanEnabled(nextEnabled);
 
         setActiveRoomId((prev) => {
-          if (!nextRooms.length) return "";
+          const nextActiveRooms = getActiveFloorPlanRooms(nextRooms);
+          if (!nextActiveRooms.length) return "";
 
-          const exists = nextRooms.some((r) => String(r._id) === String(prev));
-          return exists ? prev : String(nextRooms[0]._id);
+          const exists = nextActiveRooms.some(
+            (room) => String(room._id) === String(prev),
+          );
+          return exists ? prev : String(nextActiveRooms[0]._id);
         });
 
         setRoomsResolved(true);
@@ -304,7 +310,7 @@ export default function FloorPlanReservationsWebapp({
               onChange={(e) => setActiveRoomId(e.target.value)}
               className="w-full h-11 rounded-2xl border border-darkBlue/10 bg-white px-3 text-sm text-darkBlue outline-none"
             >
-              {safeArr(rooms).map((room) => (
+              {activeRooms.map((room) => (
                 <option key={room._id} value={room._id}>
                   {room.name}
                 </option>
@@ -388,7 +394,7 @@ export default function FloorPlanReservationsWebapp({
           <div className="min-h-[520px] rounded-[28px] border border-red/20 bg-[#667085] flex items-center justify-center px-6 text-center text-red">
             {error}
           </div>
-        ) : !floorPlanEnabled || !rooms.length ? (
+        ) : !floorPlanEnabled || !activeRooms.length ? (
           <div className="min-h-[520px] rounded-[28px] border border-darkBlue/10 bg-[#667085] flex items-center justify-center px-6 text-center text-lightGrey">
             Aucun plan de salle disponible pour le moment.
           </div>

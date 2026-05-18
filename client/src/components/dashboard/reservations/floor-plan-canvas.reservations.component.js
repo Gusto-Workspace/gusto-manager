@@ -11,6 +11,7 @@ import {
   Circle,
 } from "react-konva";
 import { RotateCcw } from "lucide-react";
+import { getReservationStatusLabel } from "@/components/_shared/reservations/reservation-status.utils";
 
 function safeArr(a) {
   return Array.isArray(a) ? a : [];
@@ -312,8 +313,7 @@ function getTableStatus({
   if (currentReservation) {
     const currentStatus = currentReservation?.status;
 
-    // 1) Seules les résas réellement passées en cours sont "occupées"
-    if (currentStatus === "Active") {
+    if (["Confirmed", "Active", "Late"].includes(currentStatus)) {
       // une autre résa devrait déjà être sur cette table
       if (
         conflictingReservation &&
@@ -337,38 +337,11 @@ function getTableStatus({
 
       return "occupied";
     }
-
-    // 2) Un client en retard reste en retard
-    if (currentStatus === "Late") {
-      if (
-        conflictingReservation &&
-        !areSameReservation(conflictingReservation, currentReservation)
-      ) {
-        return "to_release";
-      }
-
-      if (
-        nextReservation &&
-        !areSameReservation(nextReservation, currentReservation)
-      ) {
-        const nextStart = minutesFromHHmm(nextReservation?.reservationTime);
-        const minutesBeforeNext = nextStart - refMinute;
-
-        if (minutesBeforeNext <= 15) {
-          return "to_release";
-        }
-      }
-
-      return "late";
-    }
-
-    // 3) AwaitingBankHold / Confirmed / Pending ne deviennent jamais occupées automatiquement
-    if (["AwaitingBankHold", "Confirmed", "Pending"].includes(currentStatus)) {
+    if (["AwaitingBankHold", "Pending"].includes(currentStatus)) {
       return "assigned";
     }
   }
 
-  // 4) Sinon, on regarde la prochaine résa future
   if (nextReservation) {
     const nextStart = minutesFromHHmm(nextReservation?.reservationTime);
     const remainingMinutes = nextStart - refMinute;
@@ -391,11 +364,6 @@ function statusTheme(status) {
       return {
         fill: "rgba(42, 136, 90, 0.22)",
         stroke: "rgba(56, 161, 105, 0.95)",
-      };
-    case "late":
-      return {
-        fill: "rgba(255, 159, 10, 0.22)",
-        stroke: "rgba(255, 159, 10, 0.98)",
       };
     case "assigned":
       return {
@@ -464,7 +432,7 @@ function getBlockedTableIdsMap(parameters, referenceDate, selectedTime) {
 function getVisualTableState({ tableStatus, ref, blockedTableIds }) {
   const refId = String(ref?._id || "");
 
-  if (["occupied", "late", "assigned", "to_release"].includes(tableStatus)) {
+  if (["occupied", "assigned", "to_release"].includes(tableStatus)) {
     return tableStatus;
   }
 
@@ -720,18 +688,8 @@ const INITIAL_VIEW_PADDING_MOBILE = 16;
 const INITIAL_VIEW_PADDING_DESKTOP = 12;
 
 function reservationStatusLabel(status) {
-  const map = {
-    AwaitingBankHold: "Empreinte en attente",
-    Pending: "En attente",
-    Confirmed: "Confirmée",
-    Active: "Installée",
-    Late: "En retard",
-    Finished: "Terminée",
-    Canceled: "Annulée",
-    Rejected: "Refusée",
-    NoShow: "No show",
-  };
-  return map[status] || status || "-";
+  if (status === "NoShow") return "No show";
+  return getReservationStatusLabel(status);
 }
 
 export default function FloorPlanCanvasReservationsComponent({
@@ -745,6 +703,10 @@ export default function FloorPlanCanvasReservationsComponent({
   selectedTableState,
   onSelectTable,
   shouldResetView,
+  selectionMode = false,
+  selectableConfiguredTableIds = [],
+  selectedConfiguredTableIds = [],
+  onSelectConfiguredTable = null,
 }) {
   const wrapRef = useRef(null);
   const stageRef = useRef(null);
@@ -823,6 +785,20 @@ export default function FloorPlanCanvasReservationsComponent({
     }
     return map;
   }, [catalog]);
+  const selectableConfiguredTableIdSet = useMemo(() => {
+    return new Set(
+      safeArr(selectableConfiguredTableIds)
+        .map((id) => String(id || "").trim())
+        .filter(Boolean),
+    );
+  }, [selectableConfiguredTableIds]);
+  const selectedConfiguredTableIdSet = useMemo(() => {
+    return new Set(
+      safeArr(selectedConfiguredTableIds)
+        .map((id) => String(id || "").trim())
+        .filter(Boolean),
+    );
+  }, [selectedConfiguredTableIds]);
 
   const reservationsByTableId = useMemo(() => {
     const map = new Map();
@@ -1407,7 +1383,27 @@ export default function FloorPlanCanvasReservationsComponent({
   function handleCanvasTap(e) {
     if (suppressTableSelectRef.current) return;
     if (e?.target !== e?.target?.getStage?.()) return;
+
+    if (selectionMode) {
+      onSelectConfiguredTable?.("", null);
+    }
+
     onSelectTable?.(null);
+  }
+
+  function handleSelectableTableInteraction(nextState) {
+    if (!nextState?.ref?._id) return;
+
+    const configuredTableId = String(nextState.ref._id || "").trim();
+
+    if (selectionMode) {
+      if (!selectableConfiguredTableIdSet.has(configuredTableId)) return;
+      onSelectConfiguredTable?.(configuredTableId, null);
+      onSelectTable?.(null);
+      return;
+    }
+
+    handleTableSelection(nextState);
   }
 
   useLayoutEffect(() => {
@@ -1752,10 +1748,17 @@ export default function FloorPlanCanvasReservationsComponent({
     const conflictingReservation = ui.conflictingReservation || null;
     const displayReservation = ui.displayReservation || null;
     const tableStatus = ui.tableStatus || "free";
+    const configuredTableId = String(ref?._id || "").trim();
 
     const theme = statusTheme(tableStatus);
-    const isSelected =
-      String(selectedTableState?.object?.id || "") === String(obj.id);
+    const isSelectableInSelectionMode = selectionMode
+      ? selectableConfiguredTableIdSet.has(configuredTableId)
+      : true;
+    const isSelected = selectionMode
+      ? selectedConfiguredTableIdSet.has(configuredTableId)
+      : String(selectedTableState?.object?.id || "") === String(obj.id);
+    const tableOpacity =
+      selectionMode && !isSelectableInSelectionMode ? 0.55 : 1;
 
     const chairR = 7;
     const chairOffset = 5;
@@ -1813,8 +1816,9 @@ export default function FloorPlanCanvasReservationsComponent({
         key={obj.id}
         x={Number(obj.x || 0)}
         y={Number(obj.y || 0)}
+        opacity={tableOpacity}
         onClick={() =>
-          handleTableSelection({
+          handleSelectableTableInteraction({
             object: obj,
             ref,
             reservation: displayReservation,
@@ -1827,7 +1831,7 @@ export default function FloorPlanCanvasReservationsComponent({
           })
         }
         onTap={() =>
-          handleTableSelection({
+          handleSelectableTableInteraction({
             object: obj,
             ref,
             reservation: displayReservation,
@@ -1939,6 +1943,7 @@ export default function FloorPlanCanvasReservationsComponent({
   }
 
   const tooltipData = useMemo(() => {
+    if (selectionMode) return null;
     if (!selectedTableState?.object || !stageSize.w || !stageSize.h)
       return null;
 
@@ -1996,6 +2001,7 @@ export default function FloorPlanCanvasReservationsComponent({
     };
   }, [
     selectedTableState,
+    selectionMode,
     pos,
     scale,
     stageSize.w,
@@ -2077,13 +2083,7 @@ export default function FloorPlanCanvasReservationsComponent({
             <div className="flex flex-wrap gap-2">
               {tooltipData.tableStatus === "occupied" ? (
                 <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium bg-green/15 text-green border border-green/20">
-                  Table occupée
-                </span>
-              ) : null}
-
-              {tooltipData.tableStatus === "late" ? (
-                <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium  text-[rgb(255,159,10)] border bg-[rgba(255,159,10,0.22)] border-[rgb(255,159,10)]">
-                  Client en retard
+                  Occupée
                 </span>
               ) : null}
 

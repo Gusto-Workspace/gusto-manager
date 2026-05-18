@@ -251,7 +251,7 @@ export default function BottomSheetChangeRestaurantComponent(props) {
         className={`
           absolute inset-0
           bg-black/35
-          backdrop-blur-[2px]
+          backdrop-blur-sm
           transition-opacity duration-150
           ${isVisible ? "opacity-100" : "opacity-0"}
         `}

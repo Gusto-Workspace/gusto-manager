@@ -79,7 +79,6 @@ export default function PreheatTemperatureForm({
     const method = initial?._id ? "put" : "post";
 
     const { data: saved } = await axios[method](url, payload, {
-      headers: { Authorization: `Bearer ${token}` },
     });
 
     reset(buildDefaults(null));

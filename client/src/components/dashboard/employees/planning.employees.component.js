@@ -25,7 +25,9 @@ import {
   CalendarDays,
   Plus,
   Download,
+  UtensilsCrossed,
 } from "lucide-react";
+import { getShiftMealMeta } from "./planning-meals.utils";
 
 const DnDCalendar = withDragAndDrop(Calendar);
 
@@ -71,6 +73,62 @@ const formatEventTimeRange = (start, end) =>
   `${format(start, "HH:mm", { locale: frLocale })}-${format(end, "HH:mm", {
     locale: frLocale,
   })}`;
+
+const formatConflictDateTime = (value) => {
+  if (!value) return "";
+
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  return format(date, "dd/MM/yyyy 'à' HH:mm", { locale: frLocale });
+};
+
+const formatConflictRange = (start, end) => {
+  const parsedStart = start instanceof Date ? start : new Date(start);
+  const parsedEnd = end instanceof Date ? end : new Date(end);
+
+  if (
+    Number.isNaN(parsedStart.getTime()) ||
+    Number.isNaN(parsedEnd.getTime())
+  ) {
+    return "";
+  }
+
+  const sameDay = parsedStart.toDateString() === parsedEnd.toDateString();
+  if (sameDay) {
+    return `${format(parsedStart, "dd/MM/yyyy", {
+      locale: frLocale,
+    })} de ${format(parsedStart, "HH:mm", {
+      locale: frLocale,
+    })} à ${format(parsedEnd, "HH:mm", { locale: frLocale })}`;
+  }
+
+  return `du ${formatConflictDateTime(parsedStart)} au ${formatConflictDateTime(
+    parsedEnd,
+  )}`;
+};
+
+const getEmptyDeleteModalData = () => ({
+  eventId: null,
+  employeeId: null,
+  title: "",
+  originalTitle: "",
+  start: null,
+  end: null,
+  leaveRequestId: null,
+  isLeave: false,
+});
+
+const getEmptyShiftConflictModalData = () => ({
+  isOpen: false,
+  employeeId: null,
+  message: "",
+  conflictType: "",
+  conflict: null,
+  attemptedStart: null,
+  attemptedEnd: null,
+  attemptedTitle: "",
+});
 
 const pad2 = (value) => String(value).padStart(2, "0");
 
@@ -214,6 +272,7 @@ export default function PlanningEmployeesComponent() {
   }, []);
 
   const restaurantId = restaurantContext.restaurantData?._id;
+  const openingHours = restaurantContext.restaurantData?.opening_hours || [];
 
   // ─── États ─────────────────────────────────────────────────────────────────
   const [events, setEvents] = useState([]);
@@ -222,6 +281,7 @@ export default function PlanningEmployeesComponent() {
   const [view, setView] = useState(Views.WEEK);
   const [date, setDate] = useState(new Date());
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isUpdatingShiftTitle, setIsUpdatingShiftTitle] = useState(false);
   const [isPlanningExportOpen, setIsPlanningExportOpen] = useState(false);
   const [isPlanningExportLoading, setIsPlanningExportLoading] = useState(false);
   const [planningExportError, setPlanningExportError] = useState("");
@@ -237,18 +297,15 @@ export default function PlanningEmployeesComponent() {
     isFullDayLeave: false,
   });
   const [modalEmployeeQuery, setModalEmployeeQuery] = useState("");
+  const [shiftConflictModalData, setShiftConflictModalData] = useState(
+    getEmptyShiftConflictModalData(),
+  );
 
   // Modale de suppression
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [deleteModalData, setDeleteModalData] = useState({
-    eventId: null,
-    employeeId: null,
-    title: "",
-    start: null,
-    end: null,
-    leaveRequestId: null,
-    isLeave: false,
-  });
+  const [deleteModalData, setDeleteModalData] = useState(
+    getEmptyDeleteModalData(),
+  );
 
   // ✅ détecter mobile (avant midTablet)
   const [isMobile, setIsMobile] = useState(false);
@@ -304,10 +361,8 @@ export default function PlanningEmployeesComponent() {
     const employees = restaurantContext.restaurantData?.employees || [];
     if (!employees.length) return;
 
-    const alreadyHaveShifts = employees.some(
-      (e) => Array.isArray(e.shifts) && e.shifts.length > 0,
-    );
-    if (alreadyHaveShifts) return;
+    const alreadyHydrated = employees.every((e) => Array.isArray(e.shifts));
+    if (alreadyHydrated) return;
 
     let canceled = false;
 
@@ -393,6 +448,12 @@ export default function PlanningEmployeesComponent() {
           endDate,
           isLeave,
         );
+        const mealMeta = getShiftMealMeta({
+          start: startDate,
+          end: endDate,
+          openingHours,
+          isLeave,
+        });
 
         return {
           id: String(s._id),
@@ -406,11 +467,14 @@ export default function PlanningEmployeesComponent() {
           resourceId: emp._id,
           leaveRequestId: s.leaveRequestId || null,
           isLeave,
+          hasMeal: mealMeta.hasMeal,
+          mealCount: mealMeta.mealCount,
+          mealPeriods: mealMeta.mealPeriods,
         };
       }),
     );
     setEvents(newEvents);
-  }, [allEmployees]);
+  }, [allEmployees, openingHours]);
 
   // ─── Couleurs par employé ──────────────────────────────────────────────────
   const colorPalette = [
@@ -498,6 +562,10 @@ export default function PlanningEmployeesComponent() {
     setModalOpen(true);
   }
 
+  function closeShiftConflictModal() {
+    setShiftConflictModalData(getEmptyShiftConflictModalData());
+  }
+
   // ─── Valider l’ajout de shift ──────────────────────────────────────────────
   async function handleConfirmShift() {
     const { employeeId, start, end, title, isLeave, isFullDayLeave } =
@@ -554,6 +622,12 @@ export default function PlanningEmployeesComponent() {
           const end = new Date(s.end);
           const isLeave = isLeaveShiftRecord(s);
           const leaveDurationLabel = getFullDayLeaveLabel(start, end, isLeave);
+          const mealMeta = getShiftMealMeta({
+            start,
+            end,
+            openingHours,
+            isLeave,
+          });
 
           return {
             start,
@@ -561,6 +635,9 @@ export default function PlanningEmployeesComponent() {
             allDay: Boolean(leaveDurationLabel),
             leaveDurationLabel,
             isLeave,
+            hasMeal: mealMeta.hasMeal,
+            mealCount: mealMeta.mealCount,
+            mealPeriods: mealMeta.mealPeriods,
           };
         })(),
         id: String(s._id),
@@ -572,13 +649,42 @@ export default function PlanningEmployeesComponent() {
       }));
       const other = events.filter((ev) => ev.resourceId !== employeeId);
       setEvents([...other, ...updatedEvents]);
+      setModalOpen(false);
+      setModalData({
+        employeeId: null,
+        start: null,
+        end: null,
+        title: "",
+        isLeave: false,
+        isFullDayLeave: false,
+      });
+      setModalEmployeeQuery("");
     } catch (err) {
       console.error("Erreur ajout shift :", err);
+
+      if (
+        err?.response?.status === 409 &&
+        err?.response?.data?.conflictType
+      ) {
+        setShiftConflictModalData({
+          isOpen: true,
+          employeeId,
+          message:
+            err?.response?.data?.message ||
+            "Impossible d’ajouter ce créneau sur cette période.",
+          conflictType: err?.response?.data?.conflictType || "",
+          conflict: err?.response?.data?.conflict || null,
+          attemptedStart: normalizedStart,
+          attemptedEnd: normalizedEnd,
+          attemptedTitle: safeTitle,
+        });
+        return;
+      }
+
       window.alert(
         t("planning:errors.addFailed", "Impossible d’ajouter le shift"),
       );
     }
-    setModalOpen(false);
   }
 
   function handleCancelShift() {
@@ -592,6 +698,7 @@ export default function PlanningEmployeesComponent() {
       isFullDayLeave: false,
     });
     setModalEmployeeQuery("");
+    closeShiftConflictModal();
   }
 
   // ─── Clic = modale suppression ─────────────────────────────────────────────
@@ -600,12 +707,62 @@ export default function PlanningEmployeesComponent() {
       eventId: event.id,
       employeeId: event.resourceId,
       title: event.shiftLabel || event.title.split(" - ")[1],
+      originalTitle: event.shiftLabel || event.title.split(" - ")[1],
       start: event.start,
       end: event.end,
       leaveRequestId: event.leaveRequestId || null,
       isLeave: !!event.isLeave,
     });
     setDeleteModalOpen(true);
+  }
+
+  async function handleUpdateShiftTitle() {
+    if (isUpdatingShiftTitle || deleteModalData.isLeave) return;
+
+    const { employeeId, eventId: shiftId } = deleteModalData;
+
+    if (!restaurantId || !employeeId || !shiftId) return;
+
+    const nextTitle = canonicalizeShiftTitle(deleteModalData.title);
+    const currentTitle = canonicalizeShiftTitle(deleteModalData.originalTitle);
+
+    if (nextTitle === currentTitle) return;
+
+    try {
+      setIsUpdatingShiftTitle(true);
+
+      const response = await axios.put(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}/shifts/${shiftId}`,
+        { title: nextTitle },
+      );
+
+      const updatedShifts = response.data?.shifts || [];
+
+      restaurantContext.setRestaurantData((prev) => {
+        if (!prev) return prev;
+
+        return {
+          ...prev,
+          employees: (prev.employees || []).map((employee) =>
+            String(employee._id) === String(employeeId)
+              ? { ...employee, shifts: updatedShifts }
+              : employee,
+          ),
+        };
+      });
+
+      handleCancelDelete();
+    } catch (err) {
+      console.error("Erreur modification intitulé shift :", err);
+      window.alert(
+        t(
+          "planning:errors.updateTitleFailed",
+          "Impossible de modifier l’intitulé du shift",
+        ),
+      );
+    } finally {
+      setIsUpdatingShiftTitle(false);
+    }
   }
 
   // ─── Confirmer suppression ─────────────────────────────────────────────────
@@ -680,26 +837,24 @@ export default function PlanningEmployeesComponent() {
 
   function handleCancelDelete() {
     setDeleteModalOpen(false);
-    setDeleteModalData({
-      eventId: null,
-      employeeId: null,
-      title: "",
-      start: null,
-      end: null,
-      leaveRequestId: null,
-      isLeave: false,
-    });
+    setDeleteModalData(getEmptyDeleteModalData());
   }
 
-  async function handlePlanningExport(payload) {
-    if (!restaurantId) return;
+async function handlePlanningExport(payload) {
+  if (!restaurantId) return;
 
-    setIsPlanningExportLoading(true);
-    setPlanningExportError("");
+  setIsPlanningExportLoading(true);
+  setPlanningExportError("");
 
-    try {
+  try {
+      const isExcel = payload?.format === "excel";
+      const endpoint = isExcel ? "excel" : "pdf";
+      const mimeType = isExcel
+        ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        : "application/pdf";
+      const extension = isExcel ? "xlsx" : "pdf";
       const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/planning/export/pdf`,
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/planning/export/${endpoint}`,
         payload,
         {
           ...getAuthConfig(),
@@ -707,11 +862,11 @@ export default function PlanningEmployeesComponent() {
         },
       );
 
-      const blob = new Blob([response.data], { type: "application/pdf" });
+      const blob = new Blob([response.data], { type: mimeType });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `planning-salaries-${payload.from}-au-${payload.to}.pdf`;
+      link.download = `planning-salaries-${payload.from}-au-${payload.to}.${extension}`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -731,22 +886,29 @@ export default function PlanningEmployeesComponent() {
 
   const CustomEvent = ({ event }) => {
     const timeLabel = formatEventTimeRange(event.start, event.end);
-    const compactLabel = selectedEmployeeId
-      ? event.shiftLabel || event.employeeShortName || ""
-      : [event.employeeShortName, event.shiftLabel].filter(Boolean).join(" · ");
+    const nameLine = selectedEmployeeId ? "" : event.employeeShortName || "";
+    const shiftLine = event.shiftLabel || "";
+    const tooltipSuffix = event.hasMeal ? " • Repas" : "";
     const tooltip = event.allDay
-      ? event.title
+      ? `${event.title}${tooltipSuffix}`
       : event.title
-        ? `${event.title} : ${timeLabel}`
+        ? `${event.title} : ${timeLabel}${tooltipSuffix}`
         : timeLabel;
 
     if (event.allDay) {
       return (
         <div
-          className="truncate text-[11px] font-medium leading-tight"
+          className="flex items-start justify-between gap-2 overflow-hidden"
           title={tooltip}
         >
-          {event.title}
+          <span className="truncate text-[11px] font-medium leading-tight">
+            {event.title}
+          </span>
+          {event.hasMeal ? (
+            <span className="mt-[1px] inline-flex shrink-0 text-darkBlue/80">
+              <UtensilsCrossed className="size-3" />
+            </span>
+          ) : null}
         </div>
       );
     }
@@ -756,12 +918,24 @@ export default function PlanningEmployeesComponent() {
     if (useCompactLayout) {
       return (
         <div
-          className="flex h-full flex-col justify-start overflow-hidden whitespace-normal leading-[1.05]"
+          className="flex h-full items-start justify-between gap-2 overflow-hidden whitespace-normal leading-[1.05]"
           title={tooltip}
         >
-          {compactLabel ? (
-            <span className="truncate text-[11px] font-medium opacity-95">
-              {compactLabel}
+          <div className="min-w-0 flex-1">
+            {nameLine ? (
+              <span className="block truncate text-[11px] font-medium opacity-95">
+                {nameLine}
+              </span>
+            ) : null}
+            {shiftLine ? (
+              <span className="block truncate text-[10px] opacity-90">
+                {shiftLine}
+              </span>
+            ) : null}
+          </div>
+          {event.hasMeal ? (
+            <span className="mt-[1px] inline-flex shrink-0 text-white/90">
+              <UtensilsCrossed className="size-3" />
             </span>
           ) : null}
         </div>
@@ -770,12 +944,28 @@ export default function PlanningEmployeesComponent() {
 
     return (
       <div
-        className="flex h-full flex-col justify-start overflow-hidden whitespace-normal leading-tight"
+        className="flex h-full items-start justify-between gap-2 overflow-hidden whitespace-normal leading-tight"
         title={tooltip}
       >
-        {event.title ? (
-          <span className="truncate text-[11px] font-medium opacity-95">
-            {event.title}
+        <div className="min-w-0 flex-1">
+          {event.employeeShortName ? (
+            <span className="block truncate text-[11px] font-medium opacity-95">
+              {event.employeeShortName}
+            </span>
+          ) : null}
+          {event.shiftLabel ? (
+            <span className="block truncate text-[10px] opacity-90">
+              {event.shiftLabel}
+            </span>
+          ) : !event.employeeShortName && event.title ? (
+            <span className="block truncate text-[11px] font-medium opacity-95">
+              {event.title}
+            </span>
+          ) : null}
+        </div>
+        {event.hasMeal ? (
+          <span className="mt-[1px] inline-flex shrink-0 text-white/90">
+            <UtensilsCrossed className="size-3" />
           </span>
         ) : null}
       </div>
@@ -920,7 +1110,7 @@ export default function PlanningEmployeesComponent() {
                 setIsPlanningExportOpen(true);
               }}
               className="hidden midTablet:inline-flex
-      inline-flex items-center gap-2
+       items-center gap-2
       rounded-2xl border border-darkBlue/10 bg-white/70
       px-4 py-2 text-sm font-semibold text-darkBlue
       hover:bg-darkBlue/5 transition
@@ -936,7 +1126,7 @@ export default function PlanningEmployeesComponent() {
               type="button"
               onClick={openManualAdd}
               className="hidden midTablet:inline-flex
-      inline-flex items-center gap-2
+       items-center gap-2
       rounded-2xl bg-white text-blue
       px-4 py-2 text-sm font-semibold border border-blue
       shadow-sm hover:bg-darkBlue/5 active:scale-[0.98] transition
@@ -958,7 +1148,7 @@ export default function PlanningEmployeesComponent() {
                 router.push("/dashboard/employees/planning/days-off")
               }
               className="hidden midTablet:inline-flex
-      inline-flex items-center gap-2
+       items-center gap-2
       rounded-2xl border border-darkBlue/10 bg-white/70
       px-4 py-2 text-sm font-semibold text-darkBlue
       hover:bg-darkBlue/5 transition
@@ -1557,12 +1747,119 @@ export default function PlanningEmployeesComponent() {
         </div>
       )}
 
-      {/* ─── Modale Suppression Shift (inchangée) ─────────────────────────────── */}
+      {shiftConflictModalData.isOpen && (
+        <div className="fixed inset-0 z-[130] flex items-center justify-center px-4">
+          <div
+            onClick={closeShiftConflictModal}
+            className="absolute inset-0 bg-black/30 backdrop-blur-[1px]"
+          />
+
+          <div
+            className="
+              relative z-[1] w-full max-w-[460px]
+              rounded-2xl border border-darkBlue/10 bg-white/95
+              px-5 py-6 tablet:px-6 tablet:py-7
+              shadow-[0_22px_55px_rgba(19,30,54,0.20)]
+              flex flex-col gap-4
+            "
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-col gap-1">
+                <h3 className="text-lg font-semibold text-darkBlue">
+                  {shiftConflictModalData.conflictType === "leave_overlap"
+                    ? "Créneau impossible pendant un congé"
+                    : "Créneau déjà occupé"}
+                </h3>
+                <p className="text-sm text-darkBlue/70">
+                  {shiftConflictModalData.message}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeShiftConflictModal}
+                className="inline-flex size-10 items-center justify-center rounded-2xl border border-darkBlue/10 bg-white text-darkBlue/60 transition hover:bg-darkBlue/5"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+
+            <div className="rounded-2xl border border-darkBlue/10 bg-lightGrey/35 px-4 py-4 text-sm text-darkBlue/80">
+              <p className="font-medium text-darkBlue">
+                {(() => {
+                  const employee = allEmployees.find(
+                    (item) =>
+                      String(item._id) ===
+                      String(shiftConflictModalData.employeeId),
+                  );
+                  return employee
+                    ? `${employee.firstname} ${employee.lastname}`
+                    : "Employé concerné";
+                })()}
+              </p>
+
+              <p className="mt-2">
+                <span className="font-medium text-darkBlue">Créneau saisi :</span>{" "}
+                {formatConflictRange(
+                  shiftConflictModalData.attemptedStart,
+                  shiftConflictModalData.attemptedEnd,
+                )}
+              </p>
+
+              {shiftConflictModalData.attemptedTitle ? (
+                <p className="mt-1">
+                  <span className="font-medium text-darkBlue">Intitulé :</span>{" "}
+                  {shiftConflictModalData.attemptedTitle}
+                </p>
+              ) : null}
+            </div>
+
+            {shiftConflictModalData.conflict ? (
+              <div className="rounded-2xl border border-orange/20 bg-orange/5 px-4 py-4 text-sm text-darkBlue/80">
+                <p className="font-medium text-darkBlue">
+                  {shiftConflictModalData.conflict?.isLeave
+                    ? "Période déjà occupée par un congé"
+                    : "Créneau déjà présent sur cette période"}
+                </p>
+                <p className="mt-2">
+                  <span className="font-medium text-darkBlue">Élément bloquant :</span>{" "}
+                  {shiftConflictModalData.conflict?.title || "Créneau existant"}
+                </p>
+                <p className="mt-1">
+                  <span className="font-medium text-darkBlue">Période :</span>{" "}
+                  {formatConflictRange(
+                    shiftConflictModalData.conflict?.start,
+                    shiftConflictModalData.conflict?.end,
+                  )}
+                </p>
+              </div>
+            ) : null}
+
+            <p className="text-sm text-darkBlue/70">
+              {shiftConflictModalData.conflictType === "leave_overlap"
+                ? "Il faut d’abord modifier ou supprimer le congé concerné avant d’ajouter un shift sur cette plage."
+                : "Il faut d’abord modifier ou supprimer le créneau existant avant d’en créer un nouveau sur la même plage."}
+            </p>
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={closeShiftConflictModal}
+                className="inline-flex items-center justify-center rounded-xl bg-blue px-4 py-2.5 text-sm font-medium text-white shadow transition hover:bg-blue/90"
+              >
+                Compris
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Modale Shift ─────────────────────────────────────────────────────── */}
       {deleteModalOpen && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center px-4">
           <div
             onClick={() => {
-              if (isDeleting) return;
+              if (isDeleting || isUpdatingShiftTitle) return;
               handleCancelDelete();
             }}
             className="absolute inset-0 bg-black/25 backdrop-blur-[1px]"
@@ -1588,9 +1885,12 @@ export default function PlanningEmployeesComponent() {
 
             <div className="text-sm text-center text-darkBlue/80 flex flex-col gap-2">
               <p>
-                {t("planning:labels.deleteShift", "Supprimer ce shift")} :{" "}
+                {deleteModalData.isLeave
+                  ? t("planning:labels.deleteShift", "Supprimer ce shift")
+                  : "Modifier l’intitulé ou supprimer ce shift"}{" "}
+                :{" "}
                 <span className="font-medium text-darkBlue">
-                  {deleteModalData?.title}
+                  {deleteModalData?.originalTitle}
                 </span>
               </p>
 
@@ -1633,10 +1933,57 @@ export default function PlanningEmployeesComponent() {
               </p>
             </div>
 
+            {!deleteModalData.isLeave ? (
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium text-darkBlue">
+                  Intitulé du shift
+                </label>
+                <input
+                  type="text"
+                  value={deleteModalData.title}
+                  onChange={(e) =>
+                    setDeleteModalData((prev) => ({
+                      ...prev,
+                      title: e.target.value,
+                    }))
+                  }
+                  placeholder="Titre du shift"
+                  disabled={isDeleting || isUpdatingShiftTitle}
+                  className="
+                    w-full h-11 rounded-lg border border-darkBlue/20 bg-white/95
+                    px-3 text-base outline-none
+                    placeholder:text-darkBlue/40
+                    focus:border-darkBlue/50 focus:ring-1 focus:ring-darkBlue/20
+                    transition disabled:opacity-60
+                  "
+                />
+              </div>
+            ) : null}
+
             <div className="mt-2 flex justify-center gap-3">
+              {!deleteModalData.isLeave ? (
+                <button
+                  onClick={handleUpdateShiftTitle}
+                  disabled={
+                    isDeleting ||
+                    isUpdatingShiftTitle ||
+                    canonicalizeShiftTitle(deleteModalData.title) ===
+                      canonicalizeShiftTitle(deleteModalData.originalTitle)
+                  }
+                  className="
+                    inline-flex items-center justify-center
+                    rounded-xl bg-blue px-4 py-2.5
+                    text-sm font-medium text-white shadow
+                    hover:bg-blue/90 transition
+                    disabled:opacity-50 disabled:cursor-not-allowed
+                  "
+                >
+                  {isUpdatingShiftTitle ? "Enregistrement…" : "Enregistrer"}
+                </button>
+              ) : null}
               <button
                 onClick={handleConfirmDelete}
-                disabled={isDeleting}
+                disabled={isDeleting || isUpdatingShiftTitle}
                 className="
                   inline-flex items-center justify-center
                   rounded-xl bg-red px-4 py-2.5
@@ -1648,7 +1995,7 @@ export default function PlanningEmployeesComponent() {
               </button>
               <button
                 onClick={handleCancelDelete}
-                disabled={isDeleting}
+                disabled={isDeleting || isUpdatingShiftTitle}
                 className="
                   inline-flex items-center justify-center
                   rounded-xl bg-darkBlue/10 px-4 py-2.5
@@ -1665,8 +2012,8 @@ export default function PlanningEmployeesComponent() {
 
       <ExportRangeModalComponent
         open={isPlanningExportOpen}
-        title="Exporter le planning salariés"
-        description="Choisissez une période et les salariés à inclure dans le PDF planning."
+        title="Exporter le planning des salariés"
+        description="Choisissez une période, les salariés à inclure et le format de sortie."
         confirmLabel="Exporter le planning"
         employees={exportEmployees}
         initialFrom={exportDateRange.from}

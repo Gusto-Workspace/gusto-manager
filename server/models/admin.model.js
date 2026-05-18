@@ -6,6 +6,8 @@ const bcrypt = require("bcryptjs");
 const adminSchema = new mongoose.Schema({
   email: String,
   password: String, // Mot de passe haché
+  resetCode: String,
+  resetCodeExpires: Date,
   role: { type: String, default: "admin" },
   created_at: { type: Date, default: Date.now },
 });

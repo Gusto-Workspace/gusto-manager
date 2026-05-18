@@ -14,6 +14,12 @@ import CalendarMonthReservationsComponent from "./calendar-month.reservations.co
 import DayToolbarReservationsComponent from "./day-toolbar.reservations.component";
 import DayListReservationsComponent from "./day-list.reservations.component";
 import FloorPlanDrawerReservationsComponent from "./floor-plan-drawer.reservations.component";
+import {
+  RESERVATION_DISPLAY_STATUS_KEYS,
+  createReservationDisplayStatusBuckets,
+  createReservationDisplayStatusCounter,
+  getReservationDisplayStatus,
+} from "@/components/_shared/reservations/reservation-status.utils";
 
 export default function ListReservationsComponent(props) {
   const { t } = useTranslation("reservations");
@@ -58,28 +64,15 @@ export default function ListReservationsComponent(props) {
     }, 400);
   }, []);
 
-  const statusList = [
-    "AwaitingBankHold",
-    "Pending",
-    "Confirmed",
-    "Active",
-    "Late",
-    "Finished",
-    "Canceled",
-    "Rejected",
-  ];
+  const statusList = RESERVATION_DISPLAY_STATUS_KEYS;
   const dayStatusTabs = ["All", ...statusList];
 
   const statusTranslations = {
     All: t("list.status.all", "Toutes"),
-    AwaitingBankHold: t("Empreinte en attente"),
-    Pending: t("list.status.pending"),
-    Confirmed: t("list.status.confirmed"),
-    Active: t("list.status.active"),
-    Late: t("list.status.late"),
-    Finished: t("list.status.finished"),
-    Canceled: t("list.status.canceled", "Annulée"),
-    Rejected: t("list.status.rejected", "Refusée"),
+    Pending: t("list.status.pending", "En attente"),
+    Confirmed: t("list.status.confirmed", "Confirmées"),
+    Finished: t("list.status.finished", "Terminées"),
+    Canceled: t("list.status.canceled", "Annulées"),
   };
 
   /* =========================================================
@@ -194,32 +187,14 @@ export default function ListReservationsComponent(props) {
         dayAgg[key] = {
           date: new Date(dt),
           total: 0,
-          byStatus: {
-            AwaitingBankHold: 0,
-            Pending: 0,
-            Confirmed: 0,
-            Active: 0,
-            Late: 0,
-            Finished: 0,
-            Canceled: 0,
-            Rejected: 0,
-          },
+          byStatus: createReservationDisplayStatusCounter(),
           matchTotal: 0,
-          matchByStatus: {
-            AwaitingBankHold: 0,
-            Pending: 0,
-            Confirmed: 0,
-            Active: 0,
-            Late: 0,
-            Finished: 0,
-            Canceled: 0,
-            Rejected: 0,
-          },
+          matchByStatus: createReservationDisplayStatusCounter(),
         };
       }
 
       dayAgg[key].total += 1;
-      const s = r.status === "Rejected" ? "Canceled" : r.status; // regroupe Rejected dans Canceled
+      const s = getReservationDisplayStatus(r.status);
       if (dayAgg[key].byStatus[s] != null) {
         dayAgg[key].byStatus[s] += 1;
       }
@@ -231,7 +206,7 @@ export default function ListReservationsComponent(props) {
         if (hay.includes(term)) {
           dayAgg[key].matchTotal += 1;
 
-          const ms = r.status === "Rejected" ? "Canceled" : r.status; // même logique que byStatus
+          const ms = getReservationDisplayStatus(r.status);
           if (dayAgg[key].matchByStatus[ms] != null) {
             dayAgg[key].matchByStatus[ms] += 1;
           }
@@ -265,27 +240,10 @@ export default function ListReservationsComponent(props) {
         key: k,
         inMonth,
         total: agg?.total || 0,
-        byStatus: agg?.byStatus || {
-          AwaitingBankHold: 0,
-          Pending: 0,
-          Confirmed: 0,
-          Active: 0,
-          Late: 0,
-          Finished: 0,
-          Canceled: 0,
-          Rejected: 0,
-        },
+        byStatus: agg?.byStatus || createReservationDisplayStatusCounter(),
         matchTotal: agg?.matchTotal || 0,
-        matchByStatus: agg?.matchByStatus || {
-          AwaitingBankHold: 0,
-          Pending: 0,
-          Confirmed: 0,
-          Active: 0,
-          Late: 0,
-          Finished: 0,
-          Canceled: 0,
-          Rejected: 0,
-        },
+        matchByStatus:
+          agg?.matchByStatus || createReservationDisplayStatusCounter(),
       });
     }
     return days;
@@ -300,25 +258,11 @@ export default function ListReservationsComponent(props) {
       return {
         byStatus: {
           All: [],
-          AwaitingBankHold: [],
-          Pending: [],
-          Confirmed: [],
-          Active: [],
-          Late: [],
-          Finished: [],
-          Canceled: [],
-          Rejected: [],
+          ...createReservationDisplayStatusBuckets(),
         },
         counts: {
           All: 0,
-          AwaitingBankHold: 0,
-          Pending: 0,
-          Confirmed: 0,
-          Active: 0,
-          Late: 0,
-          Finished: 0,
-          Canceled: 0,
-          Rejected: 0,
+          ...createReservationDisplayStatusCounter(),
         },
       };
     }
@@ -348,18 +292,12 @@ export default function ListReservationsComponent(props) {
 
     const by = {
       All: filteredSorted.slice(),
-      AwaitingBankHold: [],
-      Pending: [],
-      Confirmed: [],
-      Active: [],
-      Late: [],
-      Finished: [],
-      Canceled: [],
-      Rejected: [],
+      ...createReservationDisplayStatusBuckets(),
     };
 
     filteredSorted.forEach((r) => {
-      if (by[r.status]) by[r.status].push(r);
+      const displayStatus = getReservationDisplayStatus(r.status);
+      if (by[displayStatus]) by[displayStatus].push(r);
     });
 
     const counts = Object.fromEntries(
@@ -582,11 +520,6 @@ export default function ListReservationsComponent(props) {
       return;
     }
 
-    if (actionType === "active") {
-      updateReservationStatus("Active");
-      return;
-    }
-
     if (actionType === "confirm") {
       updateReservationStatus("Confirmed");
       return;
@@ -678,15 +611,7 @@ export default function ListReservationsComponent(props) {
     setSearchTerm(event.target.value);
   }
 
-  const calendarStatusList = [
-    "AwaitingBankHold",
-    "Pending",
-    "Confirmed",
-    "Active",
-    "Late",
-    "Finished",
-    "Canceled",
-  ];
+  const calendarStatusList = statusList;
 
   return (
     <section className="flex flex-col gap-6">

@@ -157,7 +157,6 @@ export default function HealthMeasuresForm({
 
     const { data: saved } = await axios[method](url, formData, {
       headers: {
-        Authorization: `Bearer ${token}`,
         "Content-Type": "multipart/form-data",
       },
     });

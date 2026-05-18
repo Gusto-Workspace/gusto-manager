@@ -1,6 +1,7 @@
 import Head from "next/head";
 import { useEffect } from "react";
 import { useRouter } from "next/router";
+import { jwtDecode } from "jwt-decode";
 import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import FormLoginComponent from "@/components/dashboard/login/form.login.component";
@@ -35,7 +36,15 @@ export default function LoginPage() {
     const token = localStorage.getItem("token");
     if (!token) return;
 
-    const to = getSafeRedirect(router) || "/dashboard";
+    let to = getSafeRedirect(router) || "/dashboard";
+
+    try {
+      const decoded = jwtDecode(token);
+      if (decoded?.role === "employee") {
+        to = "/dashboard/my-space";
+      }
+    } catch (_error) {}
+
     router.replace(to);
   }, [router.isReady, router.query.redirect]);
 

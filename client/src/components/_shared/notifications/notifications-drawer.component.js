@@ -6,7 +6,6 @@ import {
   Bell,
   CalendarClock,
   CalendarCheck2,
-  CalendarX2,
   Gift,
   Users,
   MessageSquareText,
@@ -14,6 +13,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { getNotificationTargetPath } from "@/_assets/utils/notification-targets";
+import { getReservationDisplayStatus } from "@/components/_shared/reservations/reservation-status.utils";
 
 const CLOSE_MS = 280;
 const PAGE_SIZE = 30;
@@ -60,12 +60,11 @@ function getReservationStatus(n) {
 
 function titleForNotification(n) {
   if (n?.module === "reservations") {
-    const st = getReservationStatus(n);
+    const st = getReservationDisplayStatus(getReservationStatus(n));
     if (st === "Pending") return "Nouvelle réservation en attente";
-    if (st === "Confirmed") return "Nouvelle réservation confirmée";
-    if (st === "Late") return "Réservation en retard";
-    if (st === "Active") return "Réservation en cours";
+    if (st === "Confirmed") return "Réservation confirmée";
     if (st === "Finished") return "Réservation terminée";
+    if (st === "Canceled") return "Réservation annulée";
     return "Nouvelle réservation";
   }
 
@@ -78,10 +77,9 @@ function titleForNotification(n) {
 
 function IconForNotification({ n }) {
   if (n?.module === "reservations") {
-    const st = getReservationStatus(n);
+    const st = getReservationDisplayStatus(getReservationStatus(n));
     if (st === "Pending") return <CalendarClock className="size-4" />;
     if (st === "Confirmed") return <CalendarCheck2 className="size-4" />;
-    if (st === "Late") return <CalendarX2 className="size-4" />;
     return <CalendarCheck2 className="size-4" />;
   }
 

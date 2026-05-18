@@ -2,6 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import dynamic from "next/dynamic";
 import { X, Clock3, Loader2, LayoutGrid } from "lucide-react";
+import {
+  getActiveFloorPlanRooms,
+  getDefaultActiveFloorPlanRoomId,
+} from "./floor-plan.rooms.utils";
 
 const CLOSE_MS = 240;
 const OPEN_MS = 240;
@@ -40,18 +44,13 @@ function isSameDay(a, b) {
   );
 }
 
-function getDefaultRoomId(rooms) {
-  const arr = safeArr(rooms);
-  return arr.length ? String(arr[0]._id) : "";
-}
-
 function getInitialDrawerState(restaurantId) {
   const cacheKey = restaurantId ? String(restaurantId) : "";
   const cached = cacheKey ? FLOOR_PLAN_ROOMS_CACHE.get(cacheKey) : null;
 
   const rooms = safeArr(cached?.rooms);
   const floorPlanEnabled = Boolean(cached?.enabled);
-  const activeRoomId = getDefaultRoomId(rooms);
+  const activeRoomId = getDefaultActiveFloorPlanRoomId(rooms);
 
   return {
     rooms,
@@ -65,10 +64,6 @@ function StatusLegend() {
     { label: "Libre", dot: "bg-white border-darkBlue/40" },
     { label: "Assignée", dot: "bg-blue/20 border-blue" },
     { label: "Occupée", dot: "bg-green/20 border-green" },
-    {
-      label: "Client en retard",
-      dot: "bg-[rgba(255,159,10,0.22)] border-[rgb(255,159,10)]",
-    },
     { label: "À libérer", dot: "bg-red/20 border-red" },
   ];
 
@@ -119,19 +114,13 @@ export default function FloorPlanDrawerReservationsComponent({
 
   const tablesCatalog = restaurantData?.reservationsSettings?.tables || [];
   const reservationParameters = restaurantData?.reservationsSettings || {};
-  const manageSmartAvailability = Boolean(
-    reservationParameters?.manage_disponibilities,
-  );
 
   const contextDate = selectedDay || new Date();
   const contextDateKey = dateKeyOf(contextDate);
   const isDayContext = Boolean(selectedDay);
 
   const isTodayContext = isSameDay(contextDate, new Date());
-  const showLiveToggle =
-    manageSmartAvailability && (!isDayContext || isTodayContext);
-  const effectiveLiveMode = manageSmartAvailability ? liveMode : false;
-  const effectiveSelectedTime = manageSmartAvailability ? selectedTime : "";
+  const showLiveToggle = !isDayContext || isTodayContext;
 
   const [isTabletUp, setIsTabletUp] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -189,16 +178,13 @@ export default function FloorPlanDrawerReservationsComponent({
     setDragY(0);
 
     closeTimerRef.current = window.setTimeout(() => {
-      const defaultRoomId = getDefaultRoomId(rooms);
+      const defaultRoomId = getDefaultActiveFloorPlanRoomId(rooms);
 
       setActiveRoomId(defaultRoomId);
       setSelectedTableState(null);
       setShouldResetView(true);
 
-      if (!manageSmartAvailability) {
-        setLiveMode(false);
-        setSelectedTime("");
-      } else if (isDayContext) {
+      if (isDayContext) {
         if (!isTodayContext) {
           setLiveMode(false);
           setSelectedTime(timeOptions[0] || "");
@@ -239,11 +225,14 @@ export default function FloorPlanDrawerReservationsComponent({
     return uniq.sort((a, b) => a.localeCompare(b));
   }, [dayReservations]);
 
+  const activeRooms = useMemo(() => getActiveFloorPlanRooms(rooms), [rooms]);
+
   const activeRoom = useMemo(() => {
     return (
-      safeArr(rooms).find((r) => String(r._id) === String(activeRoomId)) || null
+      activeRooms.find((room) => String(room._id) === String(activeRoomId)) ||
+      null
     );
-  }, [rooms, activeRoomId]);
+  }, [activeRooms, activeRoomId]);
 
   useEffect(() => {
     import("./floor-plan-canvas.reservations.component");
@@ -254,7 +243,7 @@ export default function FloorPlanDrawerReservationsComponent({
     setRooms(nextState.rooms);
     setFloorPlanEnabled(nextState.floorPlanEnabled);
     setActiveRoomId((prev) => {
-      const hasPrev = safeArr(nextState.rooms).some(
+      const hasPrev = getActiveFloorPlanRooms(nextState.rooms).some(
         (room) => String(room._id) === String(prev),
       );
       return hasPrev ? prev : nextState.activeRoomId;
@@ -334,8 +323,11 @@ export default function FloorPlanDrawerReservationsComponent({
       setFloorPlanEnabled(Boolean(cached.enabled));
       setError("");
       setActiveRoomId((prev) => {
-        const exists = cachedRooms.some((r) => String(r._id) === String(prev));
-        return exists ? prev : getDefaultRoomId(cachedRooms);
+        const activeCachedRooms = getActiveFloorPlanRooms(cachedRooms);
+        const exists = activeCachedRooms.some(
+          (room) => String(room._id) === String(prev),
+        );
+        return exists ? prev : getDefaultActiveFloorPlanRoomId(cachedRooms);
       });
     }
 
@@ -365,8 +357,11 @@ export default function FloorPlanDrawerReservationsComponent({
         setRooms(nextRooms);
         setFloorPlanEnabled(nextEnabled);
         setActiveRoomId((prev) => {
-          const exists = nextRooms.some((r) => String(r._id) === String(prev));
-          return exists ? prev : getDefaultRoomId(nextRooms);
+          const nextActiveRooms = getActiveFloorPlanRooms(nextRooms);
+          const exists = nextActiveRooms.some(
+            (room) => String(room._id) === String(prev),
+          );
+          return exists ? prev : getDefaultActiveFloorPlanRoomId(nextRooms);
         });
       } catch (e) {
         if (!cached) {
@@ -414,7 +409,6 @@ export default function FloorPlanDrawerReservationsComponent({
     isDayContext,
     isTodayContext,
     timeOptions,
-    manageSmartAvailability,
   ]);
 
   useEffect(() => {
@@ -425,13 +419,6 @@ export default function FloorPlanDrawerReservationsComponent({
   useEffect(() => {
     if (!open) return;
     if (!isDayContext) return;
-    if (!manageSmartAvailability) {
-      if (selectedTime !== "") {
-        setSelectedTime("");
-      }
-      return;
-    }
-
     if (liveMode) {
       if (selectedTime !== "") {
         setSelectedTime("");
@@ -451,7 +438,6 @@ export default function FloorPlanDrawerReservationsComponent({
     liveMode,
     timeOptions,
     selectedTime,
-    manageSmartAvailability,
   ]);
 
   useEffect(() => {
@@ -646,7 +632,7 @@ export default function FloorPlanDrawerReservationsComponent({
                     onChange={(e) => setActiveRoomId(e.target.value)}
                     className="w-full h-11 rounded-2xl border border-darkBlue/10 bg-white px-3 text-sm text-darkBlue outline-none"
                   >
-                    {safeArr(rooms).map((room) => (
+                    {activeRooms.map((room) => (
                       <option key={room._id} value={room._id}>
                         {room.name}
                       </option>
@@ -680,7 +666,7 @@ export default function FloorPlanDrawerReservationsComponent({
                 ) : null}
               </div>
 
-              {manageSmartAvailability && isDayContext && !liveMode ? (
+              {isDayContext && !liveMode ? (
                 <div className="rounded-[22px] border border-darkBlue/10 bg-white/70 px-4 py-3">
                   <div className="flex items-center gap-2">
                     <Clock3 className="size-4 text-darkBlue/55" />
@@ -732,7 +718,7 @@ export default function FloorPlanDrawerReservationsComponent({
               <div className="min-h-[520px] rounded-[28px] border border-red/20 bg-[#667085] flex items-center justify-center px-6 text-center text-red">
                 {error}
               </div>
-            ) : !floorPlanEnabled || !rooms.length ? (
+            ) : !floorPlanEnabled || !activeRooms.length ? (
               <div className="min-h-[520px] rounded-[28px] border border-darkBlue/10 bg-[#667085] flex items-center justify-center px-6 text-center text-lightGrey">
                 Aucun plan de salle disponible pour le moment.
               </div>
@@ -754,8 +740,8 @@ export default function FloorPlanDrawerReservationsComponent({
                 tablesCatalog={tablesCatalog}
                 reservationParameters={reservationParameters}
                 selectedDate={contextDate}
-                selectedTime={effectiveSelectedTime}
-                liveMode={effectiveLiveMode}
+                selectedTime={selectedTime}
+                liveMode={liveMode}
                 selectedTableState={selectedTableState}
                 onSelectTable={setSelectedTableState}
                 shouldResetView={shouldResetView}

@@ -6,7 +6,7 @@ export default function CallToActionLandingComponent() {
           Une gestion simplifiée pour une meilleure rentabilité
         </h2>
         <p className="text-xl mb-8 max-w-2xl mx-auto">
-          Commencez dès aujourd'hui et découvrez comment Gusto Manager peut
+          Commencez dès aujourd&apos;hui et découvrez comment Gusto Manager peut
           simplifier votre quotidien.
         </p>
         <div className="flex flex-col tablet:flex-row gap-4 justify-center">
