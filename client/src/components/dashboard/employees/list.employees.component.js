@@ -215,9 +215,9 @@ export default function ListEmployeesComponent() {
         />
 
         {/* Mobile webapp actions row */}
-        <div className="flex items-center justify-between gap-3 midTablet:hidden">
+        <div className="flex flex-col mobile:flex-row items-center justify-between gap-3 midTablet:hidden">
           {/* Search */}
-          <div className="relative flex-1 min-w-0">
+          <div className="relative flex-1 w-full mobile:flex-0">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40" />
             <input
               ref={searchRef}
@@ -290,7 +290,7 @@ export default function ListEmployeesComponent() {
 
         {/* Desktop/tablet layout (tu gardes ton layout existant) */}
         <div className="hidden midTablet:flex justify-between flex-wrap gap-4">
-          <div className="relative midTablet:w-[350px]">
+          <div className="relative midTablet:w-[250px]">
             <input
               type="text"
               placeholder={t(
@@ -311,7 +311,7 @@ export default function ListEmployeesComponent() {
             )}
           </div>
 
-          <div className="flex flex-wrap gap-4">
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={() => {
                 setHoursExportError("");
@@ -347,7 +347,7 @@ export default function ListEmployeesComponent() {
       </div>
 
       {/* Grille d’employés */}
-      <div className="my-6 grid grid-cols-2 midTablet:grid-cols-3 tablet:grid-cols-3 desktop:grid-cols-4 ultraWild:grid-cols-5 gap-2 midTablet:gap-4">
+      <div className="my-6 grid grid-cols-2 midTablet:grid-cols-3 tablet:grid-cols-3 desktop:grid-cols-4 ultraWild:grid-cols-5 gap-2 gap-y-8 midTablet:gap-4">
         {filtered.map((emp) => (
           <CardEmployeesComponent
             key={emp._id}
