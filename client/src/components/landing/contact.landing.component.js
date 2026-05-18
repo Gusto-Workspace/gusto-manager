@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 // REACT HOOK FORM
 import { useForm } from "react-hook-form";
@@ -6,6 +6,42 @@ import { useForm } from "react-hook-form";
 // ICONS
 import { Check, Loader2 } from "lucide-react";
 import axios from "axios";
+
+const MIN_NAME_LENGTH = 4;
+const MIN_MESSAGE_LENGTH = 20;
+const MIN_MESSAGE_WORDS = 3;
+const MIN_PHONE_DIGITS = 8;
+const MAX_PHONE_DIGITS = 15;
+
+function countWords(value) {
+  return String(value || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+}
+
+function countLetters(value) {
+  return (String(value || "").match(/[\p{L}]/gu) || []).length;
+}
+
+function hasCredibleFullName(value) {
+  const normalizedValue = String(value || "").replace(/\s+/g, " ").trim();
+  const nameParts = normalizedValue
+    .split(" ")
+    .filter((part) => countLetters(part) > 0);
+
+  return (
+    normalizedValue.length >= MIN_NAME_LENGTH &&
+    countLetters(normalizedValue) >= 4 &&
+    nameParts.length >= 2
+  );
+}
+
+function hasValidPhoneLength(value) {
+  const digits = String(value || "").replace(/\D/g, "");
+
+  return digits.length >= MIN_PHONE_DIGITS && digits.length <= MAX_PHONE_DIGITS;
+}
 
 export default function ContactLandingComponent() {
   const {
@@ -18,6 +54,7 @@ export default function ContactLandingComponent() {
 
   const [loading, setLoading] = useState(false);
   const [messageSent, setMessageSent] = useState(null);
+  const formStartedAtRef = useRef(Date.now());
   const recontactConsent = watch("recontactConsent", false);
 
   function onSubmit(data) {
@@ -25,7 +62,10 @@ export default function ContactLandingComponent() {
     setMessageSent(null);
 
     axios
-      .post("/api/contact-form-email", data)
+      .post("/api/contact-form-email", {
+        ...data,
+        formStartedAt: formStartedAtRef.current,
+      })
       .then((response) => {
         if (response.status === 200) {
           setMessageSent(true);
@@ -121,6 +161,20 @@ export default function ContactLandingComponent() {
               )}
 
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+                <div
+                  className="absolute left-[-5000px] top-auto h-px w-px overflow-hidden"
+                  aria-hidden="true"
+                >
+                  <label htmlFor="companyWebsite">Site web</label>
+                  <input
+                    id="companyWebsite"
+                    type="text"
+                    tabIndex={-1}
+                    autoComplete="off"
+                    {...register("companyWebsite")}
+                  />
+                </div>
+
                 {/* NOM */}
                 <div>
                   <label
@@ -133,6 +187,8 @@ export default function ContactLandingComponent() {
                     id="name"
                     type="text"
                     placeholder="Votre prénom et nom"
+                    autoComplete="name"
+                    maxLength={120}
                     className={`w-full rounded-2xl border px-4 py-3.5 outline-none transition-all duration-200 placeholder:text-darkBlue/35 ${
                       errors.name
                         ? "border-orange bg-dirtyWhite"
@@ -140,8 +196,16 @@ export default function ContactLandingComponent() {
                     }`}
                     {...register("name", {
                       required: "Ce champ est requis.",
+                      validate: (value) =>
+                        hasCredibleFullName(value) ||
+                        "Merci d’indiquer votre prénom et votre nom.",
                     })}
                   />
+                  {errors.name?.message && (
+                    <p className="mt-2 text-sm text-orange">
+                      {errors.name.message}
+                    </p>
+                  )}
                 </div>
 
                 {/* TEL */}
@@ -156,6 +220,8 @@ export default function ContactLandingComponent() {
                     id="phone"
                     type="tel"
                     placeholder="Votre numéro de téléphone"
+                    autoComplete="tel"
+                    maxLength={25}
                     className={`w-full rounded-2xl border px-4 py-3.5 outline-none transition-all duration-200 placeholder:text-darkBlue/35 ${
                       errors.phone
                         ? "border-orange bg-dirtyWhite"
@@ -163,8 +229,16 @@ export default function ContactLandingComponent() {
                     }`}
                     {...register("phone", {
                       required: "Ce champ est requis.",
+                      validate: (value) =>
+                        hasValidPhoneLength(value) ||
+                        "Merci d’indiquer un numéro de téléphone valide.",
                     })}
                   />
+                  {errors.phone?.message && (
+                    <p className="mt-2 text-sm text-orange">
+                      {errors.phone.message}
+                    </p>
+                  )}
                 </div>
 
                 {/* EMAIL */}
@@ -179,6 +253,8 @@ export default function ContactLandingComponent() {
                     id="email"
                     type="email"
                     placeholder="Votre e-mail"
+                    autoComplete="email"
+                    maxLength={254}
                     className={`w-full rounded-2xl border px-4 py-3.5 outline-none transition-all duration-200 placeholder:text-darkBlue/35 ${
                       errors.email
                         ? "border-orange bg-dirtyWhite"
@@ -192,7 +268,7 @@ export default function ContactLandingComponent() {
                       },
                     })}
                   />
-                  {errors.email?.type === "pattern" && (
+                  {errors.email?.message && (
                     <p className="mt-2 text-sm text-orange">
                       {errors.email.message}
                     </p>
@@ -211,6 +287,7 @@ export default function ContactLandingComponent() {
                     id="message"
                     rows={5}
                     placeholder="Parlez-nous de votre restaurant et de vos besoins"
+                    maxLength={2000}
                     className={`w-full resize-none rounded-2xl border px-4 py-3.5 outline-none transition-all duration-200 placeholder:text-darkBlue/35 ${
                       errors.message
                         ? "border-orange bg-dirtyWhite"
@@ -218,8 +295,21 @@ export default function ContactLandingComponent() {
                     }`}
                     {...register("message", {
                       required: "Ce champ est requis.",
+                      minLength: {
+                        value: MIN_MESSAGE_LENGTH,
+                        message:
+                          "Votre message doit contenir au moins 20 caractères.",
+                      },
+                      validate: (value) =>
+                        countWords(value) >= MIN_MESSAGE_WORDS ||
+                        "Merci de préciser un peu plus votre demande.",
                     })}
                   />
+                  {errors.message?.message && (
+                    <p className="mt-2 text-sm text-orange">
+                      {errors.message.message}
+                    </p>
+                  )}
                 </div>
 
                 {/* CONSENTEMENT */}
@@ -250,6 +340,11 @@ export default function ContactLandingComponent() {
                       </span>
                     </label>
                   </div>
+                  {errors.recontactConsent?.message && (
+                    <p className="mt-2 text-sm text-orange">
+                      {errors.recontactConsent.message}
+                    </p>
+                  )}
                 </div>
 
                 {/* CTA */}
