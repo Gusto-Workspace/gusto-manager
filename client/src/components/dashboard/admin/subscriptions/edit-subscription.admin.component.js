@@ -199,14 +199,14 @@ export default function EditSubscriptionAdminComponent() {
       <section className="flex flex-col gap-4">
         <div className="border-b border-darkBlue/10 bg-lightGrey px-4 py-4 pl-16 tablet:pl-4">
           <h1 className="text-lg font-semibold text-darkBlue">
-            Chargement de la configuration d'abonnement...
+            Chargement de la configuration d&apos;abonnement...
           </h1>
         </div>
 
         <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-6 shadow-sm">
           <div className="flex items-center gap-3 text-darkBlue/70">
             <Loader2 className="size-5 animate-spin" />
-            <span>Chargement de la configuration d'abonnement...</span>
+            <span>Chargement de la configuration d&apos;abonnement...</span>
           </div>
         </div>
       </section>
@@ -222,7 +222,7 @@ export default function EditSubscriptionAdminComponent() {
               Modifier un abonnement
             </h1>
             <p className="text-xs text-darkBlue/50">
-              Les changements de plan et de modules s'appliqueront à la
+              Les changements de plan et de modules s&apos;appliqueront à la
               prochaine échéance, sans prorata immédiat.
             </p>
           </div>
@@ -347,9 +347,9 @@ export default function EditSubscriptionAdminComponent() {
 
               {currentPlanMissingFromCatalog && (
                 <div className="mt-3 rounded-xl border border-orange/20 bg-orange/10 p-3 text-xs text-orange">
-                  Le plan actuellement associé à cet abonnement n'est pas dans
+                  Le plan actuellement associé à cet abonnement n&apos;est pas dans
                   le catalogue actif. Choisis un plan ci-dessus avant
-                  d'enregistrer.
+                  d&apos;enregistrer.
                 </div>
               )}
 
@@ -412,7 +412,7 @@ export default function EditSubscriptionAdminComponent() {
                   Total à la prochaine échéance
                 </p>
                 <p className="text-xs text-darkBlue/50">
-                  Aucun montant n'est facturé immédiatement.
+                  Aucun montant n&apos;est facturé immédiatement.
                 </p>
               </div>
             </div>

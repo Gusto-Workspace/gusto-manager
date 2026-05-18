@@ -876,7 +876,7 @@ export default function TimeClockSummaryComponent({
                   Modifier un service
                 </h4>
                 <p className="text-sm text-darkBlue/60">
-                  Ajustez l'entrée et la sortie pour corriger une journée.
+                  Ajustez l&apos;entrée et la sortie pour corriger une journée.
                 </p>
               </div>
 
@@ -898,7 +898,7 @@ export default function TimeClockSummaryComponent({
                 <div className="grid gap-4 midTablet:grid-cols-2">
                   <label className="flex flex-col gap-2">
                     <span className="text-sm font-medium text-darkBlue">
-                      Heure d'entrée
+                      Heure d&apos;entrée
                     </span>
                     <input
                       type="datetime-local"

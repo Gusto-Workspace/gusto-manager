@@ -743,7 +743,9 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
         align: "center",
         valign: "center",
       });
-    } catch {}
+    } catch (_error) {
+      // Ignore unreadable provider signature assets and keep rendering the PDF.
+    }
   } else {
     doc
       .fontSize(9)
@@ -761,7 +763,9 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
         align: "center",
         valign: "center",
       });
-    } catch {}
+    } catch (_error) {
+      // Ignore invalid signature buffers and fall back to the placeholder text.
+    }
   } else {
     doc
       .fontSize(9)

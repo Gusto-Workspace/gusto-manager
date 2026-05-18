@@ -55,7 +55,7 @@ export default function FormAdminComponent() {
 
   return (
     <section className="bg-white flex flex-col justify-center items-center gap-8 rounded-xl p-12 w-[500px]">
-      <h1 className="text-4xl">Gusto</h1>
+      <h1 className="text-4xl">Administrateur</h1>
       <form
         onSubmit={handleSubmit(onSubmit)}
         className="w-full flex flex-col items-center gap-4"
@@ -74,20 +74,28 @@ export default function FormAdminComponent() {
           <input
             id="password"
             type="password"
-            placeholder="Password"
+            placeholder="Mot de passe"
             className={`border rounded-lg p-2 w-full ${errors.password ? "border-red" : ""}`}
             {...register("password", { required: "Password is required" })}
           />
         </div>
 
-        {errorMessage && <p className="text-red-500">{errorMessage}</p>}
+        <button
+          type="button"
+          onClick={() => router.push("/dashboard/admin/login/forgot-password")}
+          className="w-full text-left text-xs italic text-darkBlue/70"
+        >
+          Mot de passe oublié ?
+        </button>
+
+        {errorMessage && <p className="text-red">{errorMessage}</p>}
 
         <button
           type="submit"
           className="bg-black text-white rounded-full py-2 px-12 hover:bg-opacity-70 w-fit mt-6"
           disabled={loading}
         >
-          {loading ? "Loading..." : "Login"}
+          {loading ? "Chargement..." : "Se connetcer"}
         </button>
       </form>
     </section>

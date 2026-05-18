@@ -22,7 +22,9 @@ function broadcastToRestaurant(restaurantId, payload) {
   for (const res of set) {
     try {
       res.write(line);
-    } catch {}
+    } catch (_error) {
+      // Ignore broken SSE connections; cleanup happens on close events.
+    }
   }
 }
 
@@ -55,7 +57,9 @@ function mountSseRoute(appOrRouter, opts = {}) {
     const keepAlive = setInterval(() => {
       try {
         res.write(":\n\n");
-      } catch {}
+      } catch (_error) {
+        // Ignore keep-alive write failures for clients that are disconnecting.
+      }
     }, heartbeatMs);
 
     addClient(restaurantId, res);
@@ -65,7 +69,9 @@ function mountSseRoute(appOrRouter, opts = {}) {
       removeClient(restaurantId, res);
       try {
         res.end();
-      } catch {}
+      } catch (_error) {
+        // Ignore end failures on already-closed responses.
+      }
     });
   });
 }

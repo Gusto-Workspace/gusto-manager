@@ -78,7 +78,7 @@ function safePublicIdFromFilename(originalname) {
   const basename = path.basename(originalname, ext);
   const safeBase = basename
     .replace(/\s+/g, "_")
-    .replace(/[^a-zA-Z0-9_\-]/g, "");
+    .replace(/[^a-zA-Z0-9_-]/g, "");
   // Optionnel : ajoute un timestamp pour éviter les collisions
   const stamp = Date.now();
   return `${safeBase}_${stamp}`;

@@ -665,7 +665,7 @@ export default function TimeClockKioskComponent({ offlineBootstrap = null }) {
               Borne de pointage
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-white/75 midTablet:text-base">
-              Sélectionnez un salarié, choisissez l'action proposée, signez,
+              Sélectionnez un salarié, choisissez l&apos;action proposée, signez,
               puis validez le pointage.
             </p>
           </div>
@@ -833,7 +833,7 @@ export default function TimeClockKioskComponent({ offlineBootstrap = null }) {
 
               <div className="flex flex-wrap items-center gap-3 text-sm text-darkBlue/70">
                 <span>
-                  Aujourd'hui{" "}
+                  Aujourd&apos;hui{" "}
                   {formatMinutes(summary?.day?.totalWorkedMinutes || 0)}
                 </span>
                 <span>

@@ -323,7 +323,9 @@ router.post(
             "profilePicture.url"
           );
           avatarUrl = emp?.profilePicture?.url || undefined;
-        } catch {}
+        } catch (_error) {
+          // Ignore avatar lookup failures to keep the activity feed resilient.
+        }
       }
       const currentUser = { ...currentUserRaw, avatarUrl };
 

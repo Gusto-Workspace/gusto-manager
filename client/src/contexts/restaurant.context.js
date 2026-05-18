@@ -515,7 +515,7 @@ export default function RestaurantContext() {
 
         if (payload.type === "notification_read") {
           const id = String(payload.notificationId);
-          const module = payload.module;
+          const moduleKey = payload.module;
 
           setNotifications((prev) =>
             prev.map((n) =>
@@ -527,7 +527,7 @@ export default function RestaurantContext() {
 
           setUnreadCounts((prev) => {
             const nextBy = { ...prev.byModule };
-            if (module && nextBy[module] > 0) nextBy[module] -= 1;
+            if (moduleKey && nextBy[moduleKey] > 0) nextBy[moduleKey] -= 1;
 
             const total =
               nextBy.reservations + nextBy.gift_cards + nextBy.employees;

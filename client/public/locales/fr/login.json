@@ -21,7 +21,7 @@
     },
     "errors": {
       "incorrect": "Identifants non reconnus, merci de vérifier vos informations",
-      "server": "Erreur interne, connexion impossible. Essayez plus tard ou contacter le service client",
+      "server": "Erreur interne, connexion impossible. Essayez plus tard ou contactez le service client",
       "passwords": "Les mots de passe ne correspondent pas",
       "invalid": "Code incorrect ou expiré",
       "code": "Erreur lors de l'envoi du code",

@@ -344,7 +344,7 @@ export default function WasteEntriesList({
         </div>
 
         <div className={fieldWrap}>
-          <label className={labelCls}>Méthode d'élimination</label>
+          <label className={labelCls}>Méthode d&apos;élimination</label>
           <select
             value={method}
             onChange={(e) => setMethod(e.target.value)}

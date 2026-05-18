@@ -31,12 +31,12 @@ export function getNotificationTargetPath(
   { pathname = "" } = {},
 ) {
   const preferWebapp = String(pathname || "").startsWith("/dashboard/webapp/");
-  const module = String(notification?.module || "");
+  const notificationModule = String(notification?.module || "");
   const type = String(notification?.type || "");
   const meta = notification?.meta || {};
   const data = notification?.data || {};
 
-  if (module === "reservations") {
+  if (notificationModule === "reservations") {
     const reservationId =
       meta?.reservationId || data?._id || data?.reservationId;
     const day = toDateKey(meta?.reservationDate || data?.reservationDate);
@@ -50,7 +50,7 @@ export function getNotificationTargetPath(
     });
   }
 
-  if (module === "gift_cards") {
+  if (notificationModule === "gift_cards") {
     const purchaseId = meta?.purchaseId || data?._id || data?.purchaseId;
     const basePath = preferWebapp
       ? "/dashboard/webapp/gift-cards"
@@ -61,7 +61,10 @@ export function getNotificationTargetPath(
     });
   }
 
-  if (module === "employees" && type === "leave_request_created") {
+  if (
+    notificationModule === "employees" &&
+    type === "leave_request_created"
+  ) {
     return buildPath("/dashboard/employees/planning/days-off", {
       employeeId: meta?.employeeId || data?.employeeId,
     });

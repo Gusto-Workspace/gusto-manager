@@ -677,7 +677,7 @@ export default function ReservationsDrawerComponent({
                     onClick={() => onAction?.(reservation, "restore_confirmed")}
                     className="w-full inline-flex items-center justify-center rounded-xl bg-blue px-4 py-3 text-white text-sm font-semibold shadow-sm hover:bg-blue/90 active:scale-[0.98] transition"
                   >
-                    Repasser en "Confirmée"
+                    Repasser en &quot;Confirmée&quot;
                   </button>
 
                   <button

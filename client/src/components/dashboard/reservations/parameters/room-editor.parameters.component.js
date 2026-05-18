@@ -3754,7 +3754,7 @@ export default function RoomEditorComponent({
                       />
                       <span className="text-xs text-darkBlue/55">
                         Plus la valeur est haute, plus la table est prioritaire
-                        dans l'assignation.
+                        dans l&apos;assignation.
                       </span>
                     </label>
 
@@ -3865,7 +3865,7 @@ export default function RoomEditorComponent({
                   </p>
                   <p className="mt-1 text-xs text-darkBlue/55">
                     Ajoutez une plage pour sortir temporairement cette table de
-                    l'assignation.
+                    l&apos;assignation.
                   </p>
 
                   <div className="mt-4 grid grid-cols-1 gap-3">

@@ -1171,7 +1171,7 @@ router.post(
         const basename = path.basename(file.originalname, ext);
         const safeName = basename
           .replace(/\s+/g, "_")
-          .replace(/[^a-zA-Z0-9_\-]/g, "");
+          .replace(/[^a-zA-Z0-9_-]/g, "");
 
         const folder = `Gusto_Workspace/restaurants/${restaurantId}/employees/docs`;
 
@@ -1464,8 +1464,7 @@ router.delete(
         } catch (err) {
           const httpCode = err?.http_code || err?.error?.http_code;
 
-          if (httpCode === 404) {
-          } else {
+          if (httpCode !== 404) {
             console.warn(
               `Erreur lors de la suppression du dossier Cloudinary de l'employé ${employeeId} :`,
               err?.error?.message || err?.message || err,

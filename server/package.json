@@ -6,6 +6,10 @@
   "scripts": {
     "dev": "nodemon",
     "start": "node app.js",
+    "lint": "../client/node_modules/.bin/eslint . --ext .js",
+    "lint:fix": "../client/node_modules/.bin/eslint . --ext .js --fix",
+    "lint:files": "../client/node_modules/.bin/eslint",
+    "lint:files:fix": "../client/node_modules/.bin/eslint --fix",
     "import:customers:xlsx": "node utils/script/importCustomersFromXlsx.script.js",
     "customers:recompute-tags": "node utils/script/recomputeCustomerTags.script.js"
   },

@@ -15,6 +15,11 @@ import { appWithTranslation } from "next-i18next";
 
 // CONTEXT
 import { GlobalContext, GlobalProvider } from "@/contexts/global.context";
+import {
+  getDashboardOptionKeyFromPath,
+  isEmployeeDashboardRouteAllowed,
+  normalizeDashboardPath,
+} from "@/_assets/utils/dashboard-access";
 
 function ensureAxiosApiAuthInterceptor() {
   if (typeof window === "undefined") return;
@@ -148,6 +153,76 @@ function OwnerOnlyWebAppGuard({ children }) {
   return children;
 }
 
+function EmployeeDashboardAccessGuard({ children }) {
+  const router = useRouter();
+  const { restaurantContext } = useContext(GlobalContext);
+
+  const authRole = useMemo(() => {
+    if (typeof window === "undefined") {
+      return restaurantContext.userConnected?.role || null;
+    }
+
+    const token = localStorage.getItem("token");
+    if (!token) return restaurantContext.userConnected?.role || null;
+
+    try {
+      return jwtDecode(token)?.role || null;
+    } catch {
+      return restaurantContext.userConnected?.role || null;
+    }
+  }, [restaurantContext.userConnected?.role]);
+
+  const currentPath = useMemo(
+    () => normalizeDashboardPath(router.pathname || router.asPath || ""),
+    [router.asPath, router.pathname],
+  );
+
+  const requiredOptionKey = useMemo(
+    () => getDashboardOptionKeyFromPath(currentPath),
+    [currentPath],
+  );
+
+  const isEmployee = authRole === "employee";
+  const isProtectedEmployeeRoute =
+    isEmployee &&
+    !!requiredOptionKey &&
+    currentPath !== "/dashboard/my-space";
+
+  const employeeHasRouteAccess = isProtectedEmployeeRoute
+    ? !restaurantContext.dataLoading &&
+      isEmployeeDashboardRouteAllowed(currentPath, {
+        restaurantData: restaurantContext.restaurantData,
+        userConnected: restaurantContext.userConnected,
+      })
+    : true;
+
+  useEffect(() => {
+    if (!router.isReady) return;
+    if (!isProtectedEmployeeRoute) return;
+    if (restaurantContext.dataLoading) return;
+    if (employeeHasRouteAccess) return;
+
+    router.replace("/dashboard/my-space");
+  }, [
+    employeeHasRouteAccess,
+    isProtectedEmployeeRoute,
+    restaurantContext.dataLoading,
+    router,
+    router.isReady,
+  ]);
+
+  if (
+    isProtectedEmployeeRoute &&
+    (!router.isReady ||
+      restaurantContext.dataLoading ||
+      !employeeHasRouteAccess)
+  ) {
+    return null;
+  }
+
+  return children;
+}
+
 function App({ Component, pageProps }) {
   const router = useRouter();
 
@@ -246,7 +321,9 @@ function App({ Component, pageProps }) {
       <GlobalProvider>
         <WebAppNotificationBadgeSync />
         <OwnerOnlyWebAppGuard>
-          <Component {...pageProps} />
+          <EmployeeDashboardAccessGuard>
+            <Component {...pageProps} />
+          </EmployeeDashboardAccessGuard>
         </OwnerOnlyWebAppGuard>
       </GlobalProvider>
     </>

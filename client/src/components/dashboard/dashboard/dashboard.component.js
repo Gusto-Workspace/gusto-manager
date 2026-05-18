@@ -15,6 +15,10 @@ import TransactionsDashboardComponent from "./transactions.dashboard.component";
 import LastPayoutDashboardComponent from "./last-payout.dashboard.component";
 import MonthlyCounterVisits from "./montly-counter-visits.component";
 
+function EmptyChartComponent() {
+  return null;
+}
+
 export default function DashboardComponent(props) {
   //  ---- States pour les VISITES ----
   const [monthlyVisits, setMonthlyVisits] = useState([]);
@@ -260,7 +264,7 @@ export default function DashboardComponent(props) {
             let chartData = [];
             let ChartComp = DonutChartComponent;
             if (noDonut) {
-              ChartComp = () => null;
+              ChartComp = EmptyChartComponent;
               chartData = [];
             } else {
               chartData =
