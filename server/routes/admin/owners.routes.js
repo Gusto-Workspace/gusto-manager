@@ -97,7 +97,7 @@ router.put("/admin/owners/:id", requireAdminRole, async (req, res) => {
 });
 
 // ADD OWNER
-router.post("/admin/add-owner", requireAdminRole, async (req, res) => {
+router.post("/admin/add-owner", async (req, res) => {
   const { ownerData } = req.body;
 
   try {
