@@ -94,7 +94,7 @@ async function assertRestaurantTransferBillingIsSafe(restaurant) {
 }
 
 // GET STRIPE KEY FOR A SPECIFIC RESTAURANT
-router.get("/admin/restaurants/:id/stripe-key", requireAdminRole, async (req, res) => {
+router.get("/admin/restaurants/:id/stripe-key", async (req, res) => {
   const restaurantId = req.params.id;
 
   try {
@@ -137,7 +137,7 @@ router.get("/admin/restaurants", async (req, res) => {
 });
 
 // ADD RESTAURANT
-router.post("/admin/add-restaurant", requireAdminRole, async (req, res) => {
+router.post("/admin/add-restaurant", async (req, res) => {
   const { restaurantData, ownerData, existingOwnerId, stripeSecretKey } =
     req.body;
 
