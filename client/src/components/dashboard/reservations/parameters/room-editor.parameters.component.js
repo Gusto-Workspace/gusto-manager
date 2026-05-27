@@ -2662,14 +2662,23 @@ export default function RoomEditorComponent({
         left = 0,
         right = 0;
 
-      if (n <= 1) {
+      if (n <= 0) {
+        return [];
+      } else if (n <= 1) {
         right = 1;
       } else if (n <= 2) {
         left = 1;
         right = 1;
+      } else if (n === 3) {
+        top = 2;
+        bottom = 1;
       } else if (n <= 4) {
         top = 2;
         bottom = 2;
+      } else if (n === 5) {
+        top = 2;
+        bottom = 2;
+        left = 1;
       } else if (n <= 6) {
         top = 2;
         bottom = 2;

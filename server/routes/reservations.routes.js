@@ -283,6 +283,9 @@ function getAvailableConfiguredTableOptions({
   singleSeatSizes = [],
   comboSeatSize = 0,
   channel = "dashboard",
+  allowLargerSingleTables = false,
+  minimumSingleSeats = 0,
+  maximumSingleSeats = 0,
   blockingReservations,
   overlaps,
   blockedTableIds = new Set(),
@@ -291,6 +294,9 @@ function getAvailableConfiguredTableOptions({
     parameters,
     singleSeatSizes,
     channel,
+    allowLargerSingleTables,
+    minimumSingleSeats,
+    maximumSingleSeats,
   });
 
   const singleState = computeCapacityState({
@@ -388,6 +394,9 @@ function getCurrentConfiguredOptionFromCatalog({
   singleSeatSizes = [],
   comboSeatSize = 0,
   channel = "dashboard",
+  allowLargerSingleTables = false,
+  minimumSingleSeats = 0,
+  maximumSingleSeats = 0,
 }) {
   const currentIds = getConfiguredTableIds(currentTable);
   if (currentIds.length === 0) return null;
@@ -405,7 +414,17 @@ function getCurrentConfiguredOptionFromCatalog({
         .map((value) => Number(value))
         .filter((value) => Number.isFinite(value) && value > 0),
     );
-    if (!allowedSeats.has(Number(table?.seats))) return null;
+    const tableSeats = Number(table?.seats);
+    const minSeats = Number(minimumSingleSeats || 0);
+    const maxSeats = Number(maximumSingleSeats || 0);
+    const seatsMatch =
+      allowLargerSingleTables && Number.isFinite(minSeats) && minSeats > 0
+        ? tableSeats >= minSeats &&
+          (!Number.isFinite(maxSeats) ||
+            maxSeats <= 0 ||
+            tableSeats <= maxSeats)
+        : allowedSeats.has(tableSeats);
+    if (!seatsMatch) return null;
     if (channel === "public" && table?.onlineBookable === false) return null;
     return buildSingleTableOption(table);
   }
@@ -646,6 +665,21 @@ function getRequiredCombinedTableSizeFromGuests(n) {
   return requiredTableSizeFromGuests(g);
 }
 
+function getMinimumSingleTableSeatsFromGuests(n) {
+  const g = Number(n || 0);
+  if (!Number.isFinite(g) || g <= 0) return 0;
+  if (g <= 3) return g;
+  return g % 2 === 0 ? g - 1 : g;
+}
+
+function getMaximumSingleTableSeatsFromGuests(n) {
+  const g = Number(n || 0);
+  if (!Number.isFinite(g) || g <= 0) return 0;
+  if (g === 1) return 2;
+  if (g === 2) return 4;
+  return 0;
+}
+
 function normalizeBookingPriority(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
@@ -729,6 +763,9 @@ function getEligibleTables({
   parameters,
   singleSeatSizes = [],
   channel = "dashboard",
+  allowLargerSingleTables = false,
+  minimumSingleSeats = 0,
+  maximumSingleSeats = 0,
 }) {
   let pool = getEnabledCatalogTables(parameters);
   const allowedSeats = new Set(
@@ -737,7 +774,18 @@ function getEligibleTables({
       .filter((value) => Number.isFinite(value) && value > 0),
   );
 
-  pool = pool.filter((table) => allowedSeats.has(Number(table.seats)));
+  const minSeats = Number(minimumSingleSeats || 0);
+  const maxSeats = Number(maximumSingleSeats || 0);
+
+  pool = pool.filter((table) => {
+    const tableSeats = Number(table.seats);
+    return allowLargerSingleTables && Number.isFinite(minSeats) && minSeats > 0
+      ? tableSeats >= minSeats &&
+          (!Number.isFinite(maxSeats) ||
+            maxSeats <= 0 ||
+            tableSeats <= maxSeats)
+      : allowedSeats.has(tableSeats);
+  });
 
   if (channel === "public") {
     pool = pool.filter((table) => table?.onlineBookable !== false);
@@ -762,7 +810,9 @@ function normalizeDashboardTableInput({
   tableMode,
   manageDisponibilities = false,
 }) {
-  const rawMode = String(tableMode || "").trim().toLowerCase();
+  const rawMode = String(tableMode || "")
+    .trim()
+    .toLowerCase();
   const rawValue = String(table || "").trim();
 
   if (rawMode === "empty") {
@@ -805,9 +855,14 @@ async function getConfiguredTableAvailabilityForCandidate({
   numberOfGuests,
   reservationIdToExclude = null,
   channel = "dashboard",
+  allowLargerSingleTables = false,
 }) {
   const singleSeatSizes =
     getEligibleSingleTableSeatSizesFromGuests(numberOfGuests);
+  const minimumSingleSeats =
+    getMinimumSingleTableSeatsFromGuests(numberOfGuests);
+  const maximumSingleSeats =
+    getMaximumSingleTableSeatsFromGuests(numberOfGuests);
   const comboSeatSize = getRequiredCombinedTableSizeFromGuests(numberOfGuests);
   const formattedDate = format(reservationDateUTC, "yyyy-MM-dd");
   const candidateStart = minutesFromHHmm(reservationTime);
@@ -851,9 +906,7 @@ async function getConfiguredTableAvailabilityForCandidate({
     const reservationEnd = reservationStart + reservationDuration;
 
     if (durCandidate > 0 && reservationDuration > 0) {
-      return (
-        candidateStart < reservationEnd && candidateEnd > reservationStart
-      );
+      return candidateStart < reservationEnd && candidateEnd > reservationStart;
     }
 
     return String(reservation.reservationTime).slice(0, 5) === reservationTime;
@@ -865,6 +918,9 @@ async function getConfiguredTableAvailabilityForCandidate({
       singleSeatSizes,
       comboSeatSize,
       channel,
+      allowLargerSingleTables,
+      minimumSingleSeats,
+      maximumSingleSeats,
       blockingReservations,
       overlaps,
       blockedTableIds,
@@ -873,6 +929,8 @@ async function getConfiguredTableAvailabilityForCandidate({
     overlaps,
     blockedTableIds,
     singleSeatSizes,
+    minimumSingleSeats,
+    maximumSingleSeats,
     comboSeatSize,
   };
 }
@@ -3264,6 +3322,7 @@ router.post(
               reservationDateUTC: normalizedDay,
               reservationTime: normalizedTime,
               numberOfGuests: normalizedGuests,
+              allowLargerSingleTables: !parameters.manage_disponibilities,
             });
 
           const wanted = findConfiguredOptionBySelectionKey(
@@ -3695,8 +3754,17 @@ router.put(
         const hasConfiguredTable =
           String(reservation?.table?.source || "") === "configured";
 
-        if (mustCheckTable && (parameters.manage_disponibilities || hasConfiguredTable)) {
+        if (
+          mustCheckTable &&
+          (parameters.manage_disponibilities || hasConfiguredTable)
+        ) {
           const singleSeatSizes = getEligibleSingleTableSeatSizesFromGuests(
+            reservation.numberOfGuests,
+          );
+          const minimumSingleSeats = getMinimumSingleTableSeatsFromGuests(
+            reservation.numberOfGuests,
+          );
+          const maximumSingleSeats = getMaximumSingleTableSeatsFromGuests(
             reservation.numberOfGuests,
           );
           const comboSeatSize = getRequiredCombinedTableSizeFromGuests(
@@ -3766,6 +3834,9 @@ router.put(
             singleSeatSizes,
             comboSeatSize,
             channel: "dashboard",
+            allowLargerSingleTables: !parameters.manage_disponibilities,
+            minimumSingleSeats,
+            maximumSingleSeats,
           });
           const currentOption =
             findConfiguredOptionBySelectionKey(
@@ -4160,6 +4231,9 @@ router.put(
           normalizedDashboardTableInput?.mode === "configured" ||
           (Boolean(parameters.manage_disponibilities) &&
             normalizedDashboardTableInput?.mode === "empty"));
+      const allowLargerSingleTablesForManualSelection =
+        normalizedDashboardTableInput?.mode === "configured" &&
+        !parameters.manage_disponibilities;
       let dayLock = null;
 
       try {
@@ -4179,6 +4253,8 @@ router.put(
               reservationTime: candidateTime,
               numberOfGuests: candidateGuests,
               reservationIdToExclude: reservationId,
+              allowLargerSingleTables:
+                allowLargerSingleTablesForManualSelection,
             });
           const availableOptions = availableConfig.options;
           const currentSelectionKey = getConfiguredTableSelectionKey(
@@ -4190,6 +4266,9 @@ router.put(
             singleSeatSizes: availableConfig.singleSeatSizes,
             comboSeatSize: availableConfig.comboSeatSize,
             channel: "dashboard",
+            allowLargerSingleTables: !parameters.manage_disponibilities,
+            minimumSingleSeats: availableConfig.minimumSingleSeats,
+            maximumSingleSeats: availableConfig.maximumSingleSeats,
           });
           const currentOption =
             currentCatalogOption &&
@@ -4270,10 +4349,9 @@ router.put(
                 source: "manual",
               };
             } else if (normalizedDashboardTableInput?.mode === "configured") {
-              const requestedTable =
-                buildConfiguredTableLikeFromSelectionKey(
-                  normalizedDashboardTableInput.value,
-                );
+              const requestedTable = buildConfiguredTableLikeFromSelectionKey(
+                normalizedDashboardTableInput.value,
+              );
               const wanted = getCurrentConfiguredOptionFromCatalog({
                 parameters,
                 currentTable: requestedTable,
@@ -4282,6 +4360,11 @@ router.put(
                 comboSeatSize:
                   getRequiredCombinedTableSizeFromGuests(candidateGuests),
                 channel: "dashboard",
+                allowLargerSingleTables: !parameters.manage_disponibilities,
+                minimumSingleSeats:
+                  getMinimumSingleTableSeatsFromGuests(candidateGuests),
+                maximumSingleSeats:
+                  getMaximumSingleTableSeatsFromGuests(candidateGuests),
               });
 
               if (!wanted) {
