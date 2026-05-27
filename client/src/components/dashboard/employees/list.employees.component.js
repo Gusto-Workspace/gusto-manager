@@ -429,7 +429,7 @@ export default function ListEmployeesComponent() {
                     if (isLoadingDelete) return;
                     setIsDeleting(false);
                   }}
-                  className="shrink-0 inline-flex items-center justify-center size-10 rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition"
+                  className="shrink-0 inline-flex items-center justify-center size-10 rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition"
                   aria-label={t("buttons.close", "Fermer")}
                   title={t("buttons.close", "Fermer")}
                   disabled={isLoadingDelete}

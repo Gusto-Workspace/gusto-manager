@@ -403,13 +403,7 @@ export default function FloorPlanDrawerReservationsComponent({
       return hasPrev ? prev : timeOptions[0] || "";
     });
     setSelectedTableState(null);
-  }, [
-    open,
-    contextDateKey,
-    isDayContext,
-    isTodayContext,
-    timeOptions,
-  ]);
+  }, [open, contextDateKey, isDayContext, isTodayContext, timeOptions]);
 
   useEffect(() => {
     if (!open) return;
@@ -432,13 +426,7 @@ export default function FloorPlanDrawerReservationsComponent({
     if (!hasSelectedTime && firstTime) {
       setSelectedTime(firstTime);
     }
-  }, [
-    open,
-    isDayContext,
-    liveMode,
-    timeOptions,
-    selectedTime,
-  ]);
+  }, [open, isDayContext, liveMode, timeOptions, selectedTime]);
 
   useEffect(() => {
     setSelectedTableState(null);
@@ -611,7 +599,7 @@ export default function FloorPlanDrawerReservationsComponent({
                 <button
                   type="button"
                   onClick={closeWithAnimation}
-                  className="inline-flex items-center justify-center size-10 rounded-2xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition"
+                  className="inline-flex items-center justify-center size-10 rounded-full border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition"
                   aria-label="Fermer"
                   title="Fermer"
                 >

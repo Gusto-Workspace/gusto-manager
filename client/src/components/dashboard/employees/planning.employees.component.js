@@ -1849,7 +1849,7 @@ export default function PlanningEmployeesComponent() {
               <button
                 type="button"
                 onClick={closeShiftConflictModal}
-                className="inline-flex size-10 items-center justify-center rounded-2xl border border-darkBlue/10 bg-white text-darkBlue/60 transition hover:bg-darkBlue/5"
+                className="inline-flex size-10 items-center justify-center rounded-full border border-darkBlue/10 bg-white text-darkBlue/60 transition hover:bg-darkBlue/5"
               >
                 <X className="size-4" />
               </button>

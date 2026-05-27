@@ -447,8 +447,10 @@ export default function DaysOffEmployeesComponent() {
                             req.createdAt
                               ? new Date(req.createdAt)
                               : new Date(
-                                  parseInt(String(req._id).substring(0, 8), 16) *
-                                    1000,
+                                  parseInt(
+                                    String(req._id).substring(0, 8),
+                                    16,
+                                  ) * 1000,
                                 ),
                             "dd/MM/yyyy HH:mm",
                             { locale: frLocale },
@@ -524,7 +526,7 @@ export default function DaysOffEmployeesComponent() {
                   !resolvingApprovalConflict &&
                   setApprovalConflictModal(getEmptyApprovalConflictModal())
                 }
-                className="inline-flex size-10 items-center justify-center rounded-2xl border border-darkBlue/10 bg-white text-darkBlue/60 transition hover:bg-darkBlue/5"
+                className="inline-flex size-10 items-center justify-center rounded-full border border-darkBlue/10 bg-white text-darkBlue/60 transition hover:bg-darkBlue/5"
                 disabled={resolvingApprovalConflict}
               >
                 ×

@@ -3588,7 +3588,7 @@ export default function RoomEditorComponent({
               <button
                 type="button"
                 onClick={() => setCreateTableOpen(false)}
-                className="inline-flex items-center justify-center size-10 rounded-2xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition"
+                className="inline-flex items-center justify-center size-10 rounded-full border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition"
                 aria-label="Fermer"
               >
                 <X className="size-4 text-darkBlue/70" />
@@ -3701,7 +3701,7 @@ export default function RoomEditorComponent({
                 type="button"
                 onClick={() => setEditTableOpen(false)}
                 disabled={editTableLoading || editBlockLoading}
-                className="inline-flex items-center justify-center size-10 rounded-2xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition disabled:opacity-50"
+                className="inline-flex items-center justify-center size-10 rounded-full border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition disabled:opacity-50"
                 aria-label="Fermer"
               >
                 <X className="size-4 text-darkBlue/70" />
@@ -4047,7 +4047,7 @@ export default function RoomEditorComponent({
               <button
                 type="button"
                 onClick={() => setDeleteCatalogOpen(false)}
-                className="inline-flex items-center justify-center size-10 rounded-2xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition"
+                className="inline-flex items-center justify-center size-10 rounded-full border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition"
                 aria-label="Fermer"
               >
                 <X className="size-4 text-darkBlue/70" />

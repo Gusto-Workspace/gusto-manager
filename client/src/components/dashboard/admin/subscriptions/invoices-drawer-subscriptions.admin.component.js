@@ -322,7 +322,7 @@ export default function InvoicesDrawerSubscriptionsComponent({
 
               <button
                 onClick={closeWithAnimation}
-                className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2"
+                className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2"
                 aria-label={t("buttons.close", "Fermer")}
               >
                 <X className="size-4 text-darkBlue/70" />

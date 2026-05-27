@@ -576,8 +576,9 @@ export default function TimeClockSummaryComponent({
     }
 
     const nextBreaks = [];
-    const orderedBreaks = [...(sessionEditModal.breaks || [])].sort((left, right) =>
-      String(left?.startAt || "").localeCompare(String(right?.startAt || "")),
+    const orderedBreaks = [...(sessionEditModal.breaks || [])].sort(
+      (left, right) =>
+        String(left?.startAt || "").localeCompare(String(right?.startAt || "")),
     );
     let previousBreakEnd = null;
 
@@ -883,7 +884,7 @@ export default function TimeClockSummaryComponent({
               <button
                 type="button"
                 onClick={closeSessionEdit}
-                className="inline-flex size-10 items-center justify-center rounded-2xl border border-darkBlue/10 bg-white text-darkBlue/60 transition hover:bg-darkBlue/5"
+                className="inline-flex size-10 items-center justify-center rounded-full border border-darkBlue/10 bg-white text-darkBlue/60 transition hover:bg-darkBlue/5"
                 disabled={savingSessionEdit}
               >
                 ×
@@ -934,7 +935,9 @@ export default function TimeClockSummaryComponent({
                 <section className="rounded-[26px] border border-darkBlue/10 bg-lightGrey/35 px-4 py-4">
                   <div className="flex flex-col gap-3 midTablet:flex-row midTablet:items-center midTablet:justify-between">
                     <div>
-                      <p className="text-sm font-medium text-darkBlue">Pauses</p>
+                      <p className="text-sm font-medium text-darkBlue">
+                        Pauses
+                      </p>
                     </div>
 
                     <button
@@ -1123,7 +1126,7 @@ export default function TimeClockSummaryComponent({
               <button
                 type="button"
                 onClick={() => setSignatureModal(null)}
-                className="inline-flex size-10 items-center justify-center rounded-2xl border border-darkBlue/10 bg-white text-darkBlue/60 transition hover:bg-darkBlue/5"
+                className="inline-flex size-10 items-center justify-center rounded-full border border-darkBlue/10 bg-white text-darkBlue/60 transition hover:bg-darkBlue/5"
               >
                 ×
               </button>

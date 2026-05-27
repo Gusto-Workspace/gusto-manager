@@ -107,7 +107,7 @@ export default function ConfirmModalCustomersComponent({
           <button
             onClick={closeIfAllowed}
             disabled={isProcessing}
-            className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2 disabled:opacity-50"
+            className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2 disabled:opacity-50"
             aria-label="Fermer"
             type="button"
           >

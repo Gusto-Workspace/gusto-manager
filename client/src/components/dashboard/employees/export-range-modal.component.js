@@ -95,8 +95,8 @@ export default function ExportRangeModalComponent({
         aria-label="Fermer"
       />
 
-      <div className="relative w-full max-w-[760px] overflow-hidden rounded-[32px] border border-darkBlue/10 bg-white shadow-[0_24px_80px_rgba(19,30,54,0.22)]">
-        <div className="flex items-start justify-between gap-4 border-b border-darkBlue/10 px-5 py-5">
+      <div className="relative flex max-h-[calc(100dvh-24px)] w-full max-w-[760px] flex-col overflow-hidden rounded-[28px] border border-darkBlue/10 bg-white shadow-[0_24px_80px_rgba(19,30,54,0.22)] midTablet:max-h-[calc(100vh-48px)] midTablet:rounded-[32px]">
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-darkBlue/10 px-5 py-5">
           <div className="min-w-0">
             <div className="inline-flex items-center gap-2 rounded-full border border-blue/10 bg-blue/5 px-3 py-1 text-xs font-medium uppercase tracking-[0.14em] text-blue">
               <ActionIcon className="size-3.5" />
@@ -124,153 +124,157 @@ export default function ExportRangeModalComponent({
               if (loading) return;
               onClose?.();
             }}
-            className="inline-flex size-10 items-center justify-center rounded-2xl border border-darkBlue/10 bg-white text-darkBlue/60 transition hover:bg-darkBlue/5"
+            className="inline-flex size-10 shrink-0 items-center justify-center rounded-full border border-darkBlue/10 bg-white text-xl leading-none text-darkBlue/60 transition hover:bg-darkBlue/5"
             disabled={loading}
+            aria-label="Fermer"
+            title="Fermer"
           >
             ×
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-5 px-5 py-5">
-          <div className="grid gap-4 midTablet:grid-cols-2">
-            <label className="flex flex-col gap-2">
-              <span className="inline-flex items-center gap-2 text-sm font-medium text-darkBlue">
-                <CalendarDays className="size-4 text-blue" />
-                Du
-              </span>
-              <input
-                type="date"
-                value={from}
-                onChange={(event) => setFrom(event.target.value)}
-                className="h-12 rounded-2xl border border-darkBlue/10 bg-lightGrey/35 px-4 text-sm text-darkBlue outline-none"
-              />
-            </label>
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-5 py-5">
+            <div className="grid gap-4 midTablet:grid-cols-2">
+              <label className="flex flex-col gap-2">
+                <span className="inline-flex items-center gap-2 text-sm font-medium text-darkBlue">
+                  <CalendarDays className="size-4 text-blue" />
+                  Du
+                </span>
+                <input
+                  type="date"
+                  value={from}
+                  onChange={(event) => setFrom(event.target.value)}
+                  className="h-12 rounded-2xl border border-darkBlue/10 bg-lightGrey/35 px-4 text-sm text-darkBlue outline-none"
+                />
+              </label>
 
-            <label className="flex flex-col gap-2">
-              <span className="inline-flex items-center gap-2 text-sm font-medium text-darkBlue">
-                <CalendarDays className="size-4 text-blue" />
-                Au
-              </span>
-              <input
-                type="date"
-                value={to}
-                onChange={(event) => setTo(event.target.value)}
-                className="h-12 rounded-2xl border border-darkBlue/10 bg-lightGrey/35 px-4 text-sm text-darkBlue outline-none"
-              />
-            </label>
-          </div>
+              <label className="flex flex-col gap-2">
+                <span className="inline-flex items-center gap-2 text-sm font-medium text-darkBlue">
+                  <CalendarDays className="size-4 text-blue" />
+                  Au
+                </span>
+                <input
+                  type="date"
+                  value={to}
+                  onChange={(event) => setTo(event.target.value)}
+                  className="h-12 rounded-2xl border border-darkBlue/10 bg-lightGrey/35 px-4 text-sm text-darkBlue outline-none"
+                />
+              </label>
+            </div>
 
-          {showFormatPicker ? (
+            {showFormatPicker ? (
+              <section className="rounded-[28px] border border-darkBlue/10 bg-lightGrey/35 p-4">
+                <p className="text-sm font-medium text-darkBlue">Format</p>
+                <div className="mt-3 grid gap-3 midTablet:grid-cols-2">
+                  {[
+                    {
+                      id: "pdf",
+                      label: "PDF",
+                      hint: "Synthese lisible et rapide a partager.",
+                    },
+                    {
+                      id: "excel",
+                      label: "Excel",
+                      hint: "Classeur compatible Excel avec details, absences et soldes.",
+                    },
+                  ].map((option) => {
+                    const active = format === option.id;
+
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => setFormat(option.id)}
+                        className={[
+                          "rounded-2xl border px-4 py-4 text-left transition",
+                          active
+                            ? "border-blue/25 bg-blue/5"
+                            : "border-darkBlue/10 bg-white hover:bg-darkBlue/5",
+                        ].join(" ")}
+                      >
+                        <span className="block text-sm font-semibold text-darkBlue">
+                          {option.label}
+                        </span>
+                        <span className="mt-1 block text-xs text-darkBlue/55">
+                          {option.hint}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            ) : null}
+
             <section className="rounded-[28px] border border-darkBlue/10 bg-lightGrey/35 p-4">
-              <p className="text-sm font-medium text-darkBlue">Format</p>
-              <div className="mt-3 grid gap-3 midTablet:grid-cols-2">
-                {[
-                  {
-                    id: "pdf",
-                    label: "PDF",
-                    hint: "Synthese lisible et rapide a partager.",
-                  },
-                  {
-                    id: "excel",
-                    label: "Excel",
-                    hint: "Classeur compatible Excel avec details, absences et soldes.",
-                  },
-                ].map((option) => {
-                  const active = format === option.id;
+              <div className="flex flex-col gap-3 midTablet:flex-row midTablet:items-center midTablet:justify-between">
+                <div>
+                  <p className="inline-flex items-center gap-2 text-sm font-medium text-darkBlue">
+                    <Users className="size-4 text-blue" />
+                    Salariés
+                  </p>
+                  <p className="mt-1 text-xs text-darkBlue/55">
+                    {selectedIds.length} sélectionné
+                    {selectedIds.length > 1 ? "s" : ""} sur {employees.length}
+                  </p>
+                </div>
 
-                  return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      onClick={() => setFormat(option.id)}
-                      className={[
-                        "rounded-2xl border px-4 py-4 text-left transition",
-                        active
-                          ? "border-blue/25 bg-blue/5"
-                          : "border-darkBlue/10 bg-white hover:bg-darkBlue/5",
-                      ].join(" ")}
-                    >
-                      <span className="block text-sm font-semibold text-darkBlue">
-                        {option.label}
-                      </span>
-                      <span className="mt-1 block text-xs text-darkBlue/55">
-                        {option.hint}
-                      </span>
-                    </button>
-                  );
-                })}
+                <button
+                  type="button"
+                  onClick={toggleAll}
+                  className="inline-flex h-11 items-center justify-center rounded-2xl border border-darkBlue/10 bg-white px-4 text-sm font-medium text-darkBlue transition hover:bg-darkBlue/5"
+                >
+                  {allSelected ? "Tout désélectionner" : "Tout sélectionner"}
+                </button>
+              </div>
+
+              <div className="mt-4 max-h-[45dvh] overflow-y-auto pr-1 midTablet:max-h-[280px]">
+                <div className="grid gap-3">
+                  {employees.map((employee) => {
+                    const checked = selectedIds.includes(String(employee.id));
+
+                    return (
+                      <label
+                        key={employee.id}
+                        className={[
+                          "flex cursor-pointer items-start gap-3 rounded-2xl border px-4 py-3 transition",
+                          checked
+                            ? "border-blue/20 bg-blue/5"
+                            : "border-darkBlue/10 bg-white hover:bg-darkBlue/5",
+                        ].join(" ")}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleEmployee(String(employee.id))}
+                          className="mt-1 h-4 w-4 rounded border-darkBlue/20 text-blue focus:ring-blue"
+                        />
+
+                        <span className="min-w-0">
+                          <span className="block text-sm font-medium text-darkBlue">
+                            {employee.label}
+                          </span>
+                          {employee.subtitle ? (
+                            <span className="mt-1 block text-xs text-darkBlue/55">
+                              {employee.subtitle}
+                            </span>
+                          ) : null}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
             </section>
-          ) : null}
 
-          <section className="rounded-[28px] border border-darkBlue/10 bg-lightGrey/35 p-4">
-            <div className="flex flex-col gap-3 midTablet:flex-row midTablet:items-center midTablet:justify-between">
-              <div>
-                <p className="inline-flex items-center gap-2 text-sm font-medium text-darkBlue">
-                  <Users className="size-4 text-blue" />
-                  Salariés
-                </p>
-                <p className="mt-1 text-xs text-darkBlue/55">
-                  {selectedIds.length} sélectionné
-                  {selectedIds.length > 1 ? "s" : ""} sur {employees.length}
-                </p>
+            {error || submitError ? (
+              <div className="rounded-2xl border border-red/15 bg-red/5 px-4 py-3 text-sm text-red">
+                {error || submitError}
               </div>
+            ) : null}
+          </div>
 
-              <button
-                type="button"
-                onClick={toggleAll}
-                className="inline-flex h-11 items-center justify-center rounded-2xl border border-darkBlue/10 bg-white px-4 text-sm font-medium text-darkBlue transition hover:bg-darkBlue/5"
-              >
-                {allSelected ? "Tout désélectionner" : "Tout sélectionner"}
-              </button>
-            </div>
-
-            <div className="mt-4 max-h-[280px] overflow-y-auto pr-1">
-              <div className="grid gap-3">
-                {employees.map((employee) => {
-                  const checked = selectedIds.includes(String(employee.id));
-
-                  return (
-                    <label
-                      key={employee.id}
-                      className={[
-                        "flex cursor-pointer items-start gap-3 rounded-2xl border px-4 py-3 transition",
-                        checked
-                          ? "border-blue/20 bg-blue/5"
-                          : "border-darkBlue/10 bg-white hover:bg-darkBlue/5",
-                      ].join(" ")}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleEmployee(String(employee.id))}
-                        className="mt-1 h-4 w-4 rounded border-darkBlue/20 text-blue focus:ring-blue"
-                      />
-
-                      <span className="min-w-0">
-                        <span className="block text-sm font-medium text-darkBlue">
-                          {employee.label}
-                        </span>
-                        {employee.subtitle ? (
-                          <span className="mt-1 block text-xs text-darkBlue/55">
-                            {employee.subtitle}
-                          </span>
-                        ) : null}
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-          </section>
-
-          {error || submitError ? (
-            <div className="rounded-2xl border border-red/15 bg-red/5 px-4 py-3 text-sm text-red">
-              {error || submitError}
-            </div>
-          ) : null}
-
-          <div className="flex flex-col gap-2 midTablet:flex-row midTablet:justify-end">
+          <div className="flex shrink-0 flex-col gap-2 border-t border-darkBlue/10 bg-white px-5 py-4 midTablet:flex-row midTablet:justify-end">
             <button
               type="button"
               onClick={() => {
