@@ -250,6 +250,7 @@ router.delete(
         rooms: getRooms(restaurant),
         enabled: Boolean(restaurant.reservationsSettings.floorplan.enabled),
         version: Number(restaurant.reservationsSettings.floorplan.version || 1),
+        tables: restaurant?.reservationsSettings?.tables || [],
         reservationParameters: restaurant?.reservationsSettings || {},
       });
     } catch (e) {

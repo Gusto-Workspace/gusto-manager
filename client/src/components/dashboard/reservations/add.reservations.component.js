@@ -69,7 +69,7 @@ function InfoModal({ open, title, message, confirmLabel = "OK", onClose }) {
               <button
                 type="button"
                 onClick={onClose}
-                className="shrink-0 inline-flex items-center justify-center rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition p-2"
+                className="shrink-0 inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition p-2"
                 aria-label="Fermer"
               >
                 <X className="size-4 text-darkBlue/60" />
@@ -181,6 +181,21 @@ function getRequiredCombinedTableSizeFromGuestsFront(n) {
   const g = Number(n || 0);
   if (!Number.isFinite(g) || g <= 1) return 0;
   return requiredTableSizeFromGuestsFront(g);
+}
+
+function getMinimumSingleTableSeatsFromGuestsFront(n) {
+  const g = Number(n || 0);
+  if (!Number.isFinite(g) || g <= 0) return 0;
+  if (g <= 3) return g;
+  return g % 2 === 0 ? g - 1 : g;
+}
+
+function getMaximumSingleTableSeatsFromGuestsFront(n) {
+  const g = Number(n || 0);
+  if (!Number.isFinite(g) || g <= 0) return 0;
+  if (g === 1) return 2;
+  if (g === 2) return 4;
+  return 0;
 }
 
 function normalizeBookingPriorityFront(value) {
@@ -385,29 +400,44 @@ function isConfiguredTableFreeFront({
   });
 }
 
-function getEligibleSingleTablesFront({ parameters, singleSeatSizes = [] }) {
+function getEligibleSingleTablesFront({
+  parameters,
+  singleSeatSizes = [],
+  allowLargerSingleTables = false,
+  minimumSingleSeats = 0,
+  maximumSingleSeats = 0,
+}) {
   const disabledTableIds = getDisabledFloorPlanTableIds(parameters);
   const allowedSeats = new Set(
     (Array.isArray(singleSeatSizes) ? singleSeatSizes : [])
       .map((value) => Number(value))
       .filter((value) => Number.isFinite(value) && value > 0),
   );
+  const minSeats = Number(minimumSingleSeats || 0);
+  const maxSeats = Number(maximumSingleSeats || 0);
   const pool = (
     Array.isArray(parameters?.tables) ? parameters.tables : []
-  ).filter(
-    (table) =>
-      allowedSeats.has(Number(table?.seats)) &&
-      !disabledTableIds.has(String(table?._id || "").trim()),
-  );
+  ).filter((table) => {
+    const tableSeats = Number(table?.seats);
+    const seatsMatch =
+      allowLargerSingleTables && Number.isFinite(minSeats) && minSeats > 0
+        ? tableSeats >= minSeats &&
+          (!Number.isFinite(maxSeats) ||
+            maxSeats <= 0 ||
+            tableSeats <= maxSeats)
+        : allowedSeats.has(tableSeats);
+
+    return seatsMatch && !disabledTableIds.has(String(table?._id || "").trim());
+  });
 
   return sortTablesByPriorityFront(pool).map(buildSingleTableOptionFront);
 }
 
 function getEligibleCombinedTablesFront({ parameters, requiredSize }) {
   const disabledTableIds = getDisabledFloorPlanTableIds(parameters);
-  const tables = (Array.isArray(parameters?.tables) ? parameters.tables : []).filter(
-    (table) => !disabledTableIds.has(String(table?._id || "").trim()),
-  );
+  const tables = (
+    Array.isArray(parameters?.tables) ? parameters.tables : []
+  ).filter((table) => !disabledTableIds.has(String(table?._id || "").trim()));
   const catalogById = new Map(
     tables.map((table) => [String(table?._id || ""), table]),
   );
@@ -449,6 +479,9 @@ function getAvailableConfiguredTableOptionsFront({
   parameters,
   singleSeatSizes = [],
   comboSeatSize = 0,
+  allowLargerSingleTables = false,
+  minimumSingleSeats = 0,
+  maximumSingleSeats = 0,
   blockingReservations,
   overlaps,
   blockedTableIds = new Set(),
@@ -456,6 +489,9 @@ function getAvailableConfiguredTableOptionsFront({
   const singleOptions = getEligibleSingleTablesFront({
     parameters,
     singleSeatSizes,
+    allowLargerSingleTables,
+    minimumSingleSeats,
+    maximumSingleSeats,
   });
 
   const singleState = computeCapacityStateFront({
@@ -626,7 +662,8 @@ export default function AddReservationComponent(props) {
   const subtitle = isEditing
     ? t("buttons.edit", "Modifier une réservation")
     : t("buttons.add", "Ajouter une réservation");
-  const reservationParameters = props.restaurantData?.reservationsSettings || {};
+  const reservationParameters =
+    props.restaurantData?.reservationsSettings || {};
   const catalogTables = safeArr(reservationParameters?.tables);
   const activeFloorPlanRooms = safeArr(
     reservationParameters?.floorplan?.rooms,
@@ -714,10 +751,7 @@ export default function AddReservationComponent(props) {
       ? "configured"
       : "manual";
 
-    if (
-      structuredTableAssignmentEnabled &&
-      r?.table?.source === "configured"
-    ) {
+    if (structuredTableAssignmentEnabled && r?.table?.source === "configured") {
       tableValue = getConfiguredTableSelectionKeyFront(r.table);
       nextTableInputMode = "configured";
     } else if (r?.table?.source === "configured") {
@@ -912,6 +946,10 @@ export default function AddReservationComponent(props) {
     const singleSeatSizes =
       getEligibleSingleTableSeatSizesFromGuestsFront(guests);
     const comboSeatSize = getRequiredCombinedTableSizeFromGuestsFront(guests);
+    const minimumSingleSeats =
+      getMinimumSingleTableSeatsFromGuestsFront(guests);
+    const maximumSingleSeats =
+      getMaximumSingleTableSeatsFromGuestsFront(guests);
     if (!singleSeatSizes.length) {
       setAvailableTables([]);
       return;
@@ -974,6 +1012,9 @@ export default function AddReservationComponent(props) {
       parameters,
       singleSeatSizes,
       comboSeatSize,
+      allowLargerSingleTables: !parameters.manage_disponibilities,
+      minimumSingleSeats,
+      maximumSingleSeats,
       blockingReservations: dayBlocking,
       overlaps,
       blockedTableIds,

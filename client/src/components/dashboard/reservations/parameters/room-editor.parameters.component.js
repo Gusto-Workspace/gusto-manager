@@ -2662,14 +2662,23 @@ export default function RoomEditorComponent({
         left = 0,
         right = 0;
 
-      if (n <= 1) {
+      if (n <= 0) {
+        return [];
+      } else if (n <= 1) {
         right = 1;
       } else if (n <= 2) {
         left = 1;
         right = 1;
+      } else if (n === 3) {
+        top = 2;
+        bottom = 1;
       } else if (n <= 4) {
         top = 2;
         bottom = 2;
+      } else if (n === 5) {
+        top = 2;
+        bottom = 2;
+        left = 1;
       } else if (n <= 6) {
         top = 2;
         bottom = 2;
@@ -3579,7 +3588,7 @@ export default function RoomEditorComponent({
               <button
                 type="button"
                 onClick={() => setCreateTableOpen(false)}
-                className="inline-flex items-center justify-center size-10 rounded-2xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition"
+                className="inline-flex items-center justify-center size-10 rounded-full border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition"
                 aria-label="Fermer"
               >
                 <X className="size-4 text-darkBlue/70" />
@@ -3692,7 +3701,7 @@ export default function RoomEditorComponent({
                 type="button"
                 onClick={() => setEditTableOpen(false)}
                 disabled={editTableLoading || editBlockLoading}
-                className="inline-flex items-center justify-center size-10 rounded-2xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition disabled:opacity-50"
+                className="inline-flex items-center justify-center size-10 rounded-full border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition disabled:opacity-50"
                 aria-label="Fermer"
               >
                 <X className="size-4 text-darkBlue/70" />
@@ -4038,7 +4047,7 @@ export default function RoomEditorComponent({
               <button
                 type="button"
                 onClick={() => setDeleteCatalogOpen(false)}
-                className="inline-flex items-center justify-center size-10 rounded-2xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition"
+                className="inline-flex items-center justify-center size-10 rounded-full border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition"
                 aria-label="Fermer"
               >
                 <X className="size-4 text-darkBlue/70" />

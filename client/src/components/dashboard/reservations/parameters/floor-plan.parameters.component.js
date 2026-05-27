@@ -183,6 +183,8 @@ export default function FloorPlanParametersComponent({
   const [roomToDelete, setRoomToDelete] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
+  const [draftRoomId, setDraftRoomId] = useState(null);
+  const [discardingDraft, setDiscardingDraft] = useState(false);
 
   const initialRoomNameRef = useRef("");
   const [editorDirty, setEditorDirty] = useState(false);
@@ -291,6 +293,9 @@ export default function FloorPlanParametersComponent({
       initialRoomNameRef.current = String(roomName || "");
       setNameDirty(false);
       setFpSaved(true);
+      setDraftRoomId((prev) =>
+        String(prev || "") === String(activeRoomId || "") ? null : prev,
+      );
     } catch (e) {
     } finally {
       setFpSaving(false);
@@ -367,6 +372,7 @@ export default function FloorPlanParametersComponent({
 
       const created = nextRooms[nextRooms.length - 1];
       if (created?._id) {
+        setDraftRoomId(created._id);
         setActiveRoomId(created._id);
         setMode("edit");
         setShouldFocusName(true);
@@ -388,17 +394,16 @@ export default function FloorPlanParametersComponent({
       setDeleteLoading(true);
       setError("");
 
-      const res = await axios.delete(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/floorplans/rooms/${roomToDelete}`,
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
-
-      syncFloorplanPayload(res.data);
+      await deleteRoom(roomToDelete);
 
       if (String(activeRoomId) === String(roomToDelete)) {
         setMode("list");
         setActiveRoomId(null);
       }
+
+      setDraftRoomId((prev) =>
+        String(prev || "") === String(roomToDelete || "") ? null : prev,
+      );
 
       setConfirmOpen(false);
       setRoomToDelete(null);
@@ -408,6 +413,44 @@ export default function FloorPlanParametersComponent({
       );
     } finally {
       setDeleteLoading(false);
+    }
+  }
+
+  async function deleteRoom(roomId) {
+    const res = await axios.delete(
+      `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/floorplans/rooms/${roomId}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+
+    syncFloorplanPayload(res.data);
+    return res.data;
+  }
+
+  async function discardDraftRoom(roomId = activeRoomId) {
+    if (!roomId) return;
+
+    try {
+      setDiscardingDraft(true);
+      setError("");
+
+      await deleteRoom(roomId);
+
+      setLeaveConfirmOpen(false);
+      setDraftRoomId((prev) =>
+        String(prev || "") === String(roomId || "") ? null : prev,
+      );
+      setRoomName("");
+      setNameDirty(false);
+      setEditorDirty(false);
+      setActiveRoomId(null);
+      setMode("list");
+      resetFpUI();
+    } catch (e) {
+      setError(
+        e?.response?.data?.message || "Impossible d’abandonner la salle.",
+      );
+    } finally {
+      setDiscardingDraft(false);
     }
   }
 
@@ -432,12 +475,18 @@ export default function FloorPlanParametersComponent({
 
   function syncFloorplanPayload(responseData) {
     const nextRooms = safeArr(responseData?.rooms);
-    const nextTables = safeArr(responseData?.tables);
     const nextReservationParameters =
       responseData?.reservationParameters &&
       typeof responseData.reservationParameters === "object"
         ? responseData.reservationParameters
         : null;
+    const hasResponseTables = Array.isArray(responseData?.tables);
+    const hasReservationTables = Array.isArray(nextReservationParameters?.tables);
+    const nextTables = hasResponseTables
+      ? responseData.tables
+      : hasReservationTables
+        ? nextReservationParameters.tables
+        : localCatalog;
 
     setRooms(nextRooms);
     setLocalCatalog(nextTables);
@@ -515,28 +564,53 @@ export default function FloorPlanParametersComponent({
   const cardInner = "px-2 py-4 mobile:p-4 midTablet:p-6";
   const title = "text-base font-semibold text-darkBlue";
   const hint = "text-sm text-darkBlue/60";
+  const isActiveRoomDraft =
+    draftRoomId && String(draftRoomId) === String(activeRoomId || "");
 
   if (mode === "edit" && activeRoom) {
     return (
       <>
         <ConfirmModalParametersComponent
           open={leaveConfirmOpen}
-          title="Modifications non enregistrées"
-          message={
-            <span>
-              Vous avez des changements non sauvegardés.
-              <br />
-              Que souhaitez-vous faire ?
-            </span>
+          title={
+            isActiveRoomDraft
+              ? "Nouvelle salle non enregistrée"
+              : "Modifications non enregistrées"
           }
-          cancelLabel="Abandonner"
+          message={
+            isActiveRoomDraft ? (
+              <span>
+                Cette salle vient d&apos;être créée.
+                <br />
+                Sauvegardez pour la conserver ou abandonnez pour la supprimer.
+              </span>
+            ) : (
+              <span>
+                Vous avez des changements non sauvegardés.
+                <br />
+                Que souhaitez-vous faire ?
+              </span>
+            )
+          }
+          cancelLabel={
+            discardingDraft
+              ? "Suppression..."
+              : isActiveRoomDraft
+                ? "Supprimer"
+                : "Abandonner"
+          }
           confirmLabel={fpUI.saving ? "Enregistrement..." : "Sauvegarder"}
           onClose={() => {
-            if (fpUI.saving) return;
+            if (fpUI.saving || discardingDraft) return;
             setLeaveConfirmOpen(false);
           }}
-          onCancel={() => {
-            if (fpUI.saving) return;
+          onCancel={async () => {
+            if (fpUI.saving || discardingDraft) return;
+            if (isActiveRoomDraft) {
+              await discardDraftRoom();
+              return;
+            }
+
             setLeaveConfirmOpen(false);
             const original = String(initialRoomNameRef.current || "");
             setRoomName(original);
@@ -547,7 +621,7 @@ export default function FloorPlanParametersComponent({
             resetFpUI();
           }}
           onConfirm={async () => {
-            if (fpUI.saving) return;
+            if (fpUI.saving || discardingDraft) return;
 
             try {
               await handleSaveFloorplan();
@@ -564,11 +638,18 @@ export default function FloorPlanParametersComponent({
               <div className="flex items-center gap-3">
                 <button
                   type="button"
-                  onClick={() => {
-                    if (fpUI.dirty && !fpUI.saving) {
+                  onClick={async () => {
+                    if (fpUI.saving || discardingDraft) return;
+                    if (fpUI.dirty) {
                       setLeaveConfirmOpen(true);
                       return;
                     }
+
+                    if (isActiveRoomDraft) {
+                      await discardDraftRoom();
+                      return;
+                    }
+
                     setActiveRoomId(null);
                     setMode("list");
                     resetFpUI();

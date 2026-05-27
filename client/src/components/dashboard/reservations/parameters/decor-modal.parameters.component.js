@@ -37,7 +37,7 @@ export default function DecorModalParametersComponent({
           <button
             type="button"
             onClick={() => setDecorModalOpen(false)}
-            className="inline-flex items-center justify-center size-10 rounded-2xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition"
+            className="inline-flex items-center justify-center size-10 rounded-full border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition"
             aria-label="Fermer"
           >
             <X className="size-4 text-darkBlue/70" />
