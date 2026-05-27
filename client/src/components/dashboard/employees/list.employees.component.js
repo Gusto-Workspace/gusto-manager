@@ -280,48 +280,64 @@ export default function ListEmployeesComponent() {
         />
 
         {/* Mobile webapp actions row */}
-        <div className="flex items-center justify-end gap-2 midTablet:hidden">
+        <div className="grid grid-cols-2 gap-2 midTablet:hidden">
           <button
             type="button"
             onClick={() => {
               setHoursExportError("");
               setIsHoursExportOpen(true);
             }}
-            className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition p-4"
+            className="inline-flex min-w-0 items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-3 py-3 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5"
             aria-label="Exporter les heures"
             title="Exporter les heures"
           >
-            <Download className="size-4 text-darkBlue/70" />
+            <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-blue/15 text-blue">
+              <Download className="size-4" />
+            </span>
+            <span className="min-w-0 leading-tight">Exporter les heures</span>
           </button>
 
           <button
             type="button"
             onClick={openTimeClockInNewTab}
-            className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition p-4"
+            className="inline-flex min-w-0 items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-3 py-3 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5"
             aria-label="Ouvrir la pointeuse"
             title="Ouvrir la pointeuse"
           >
-            <Clock3 className="size-4 text-darkBlue/70" />
+            <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-blue/15 text-blue">
+              <Clock3 className="size-4" />
+            </span>
+            <span className="min-w-0 leading-tight">Ouvrir la pointeuse</span>
           </button>
 
           <button
             type="button"
             onClick={() => router.push("/dashboard/employees/planning")}
-            className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition p-4"
+            className="inline-flex min-w-0 items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-3 py-3 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5"
             aria-label={t("buttons.planning")}
             title={t("buttons.planning")}
           >
-            <Calendar className="size-4 text-darkBlue/70" />
+            <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-violet text-white">
+              <Calendar className="size-4" />
+            </span>
+            <span className="min-w-0 leading-tight">
+              {t("buttons.planning")}
+            </span>
           </button>
 
           <button
             type="button"
             onClick={() => router.push("/dashboard/employees/add")}
-            className="inline-flex items-center justify-center rounded-full bg-blue text-white shadow-sm hover:bg-blue/90 active:scale-[0.98] transition p-4"
+            className="inline-flex min-w-0 items-center gap-2 rounded-2xl border border-blue bg-white px-3 py-3 text-sm font-semibold text-blue shadow-sm transition hover:bg-darkBlue/5 active:scale-[0.98]"
             aria-label={t("buttons.addEmployee")}
             title={t("buttons.addEmployee")}
           >
-            <Plus className="size-4" />
+            <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-blue/15">
+              <Plus className="size-4" />
+            </span>
+            <span className="min-w-0 leading-tight">
+              {t("buttons.addEmployee")}
+            </span>
           </button>
         </div>
 

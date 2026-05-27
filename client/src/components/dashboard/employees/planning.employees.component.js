@@ -1169,6 +1169,24 @@ export default function PlanningEmployeesComponent() {
 
             <button
               type="button"
+              onClick={() =>
+                router.push("/dashboard/employees/planning/days-off")
+              }
+              className="hidden midTablet:inline-flex
+       items-center gap-2
+      rounded-2xl border border-darkBlue/10 bg-white/70
+      px-4 py-2 text-sm font-semibold text-darkBlue
+      hover:bg-darkBlue/5 transition
+    "
+            >
+              <span className="inline-flex items-center justify-center size-9 rounded-full bg-violet text-white">
+                <CalendarDays className="size-4" />
+              </span>
+              <span className="whitespace-nowrap">{t("titles.daysOff")}</span>
+            </button>
+
+            <button
+              type="button"
               onClick={openManualAdd}
               className="hidden midTablet:inline-flex
        items-center gap-2
@@ -1186,29 +1204,11 @@ export default function PlanningEmployeesComponent() {
                 {t("planning:buttons.addShift", "Ajouter un créneau")}
               </span>
             </button>
-
-            <button
-              type="button"
-              onClick={() =>
-                router.push("/dashboard/employees/planning/days-off")
-              }
-              className="hidden midTablet:inline-flex
-       items-center gap-2
-      rounded-2xl border border-darkBlue/10 bg-white/70
-      px-4 py-2 text-sm font-semibold text-darkBlue
-      hover:bg-darkBlue/5 transition
-    "
-            >
-              <span className="inline-flex items-center justify-center size-9 rounded-full bg-violet text-white">
-                <CalendarDays className="size-4" />
-              </span>
-              <span className="whitespace-nowrap">{t("titles.daysOff")}</span>
-            </button>
           </>
         }
       />
 
-      <div className="flex w-full items-stretch gap-2 midTablet:hidden">
+      <div className="grid w-full grid-cols-2 gap-2 midTablet:hidden">
         <button
           type="button"
           onClick={() => {
@@ -1225,7 +1225,7 @@ export default function PlanningEmployeesComponent() {
           <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15 text-blue shrink-0">
             <Download className="size-4" />
           </span>
-          <span className="truncate">Exporter</span>
+          <span className="min-w-0 leading-tight">Télécharger le planning</span>
         </button>
 
         <button
@@ -1244,14 +1244,14 @@ export default function PlanningEmployeesComponent() {
           <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15 text-blue shrink-0">
             <Send className="size-4" />
           </span>
-          <span className="truncate">Envoyer</span>
+          <span className="min-w-0 leading-tight">Envoyer le planning</span>
         </button>
 
         <button
           type="button"
           onClick={() => router.push("/dashboard/employees/planning/days-off")}
           className="
-      inline-flex flex-1 min-w-0 items-center gap-2
+      inline-flex min-w-0 items-center gap-2
       rounded-2xl border border-darkBlue/10 bg-white/70
       px-3 py-3 text-sm font-semibold text-darkBlue
       hover:bg-darkBlue/5 transition
@@ -1260,7 +1260,25 @@ export default function PlanningEmployeesComponent() {
           <span className="inline-flex items-center justify-center size-9 rounded-full bg-violet text-white shrink-0">
             <CalendarDays className="size-4" />
           </span>
-          <span className="truncate">{t("titles.daysOff")}</span>
+          <span className="min-w-0 leading-tight">{t("titles.daysOff")}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={openManualAdd}
+          className="
+      inline-flex min-w-0 items-center gap-2 rounded-2xl border border-blue bg-white
+      px-3 py-3 text-sm font-semibold text-blue shadow-sm transition hover:bg-darkBlue/5 active:scale-[0.98]
+    "
+          aria-label={t("planning:buttons.addShift", "Ajouter un créneau")}
+          title={t("planning:buttons.addShift", "Ajouter un créneau")}
+        >
+          <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15 shrink-0">
+            <Plus className="size-4" />
+          </span>
+          <span className="min-w-0 leading-tight">
+            {t("planning:buttons.addShift", "Ajouter un créneau")}
+          </span>
         </button>
       </div>
 
@@ -1297,7 +1315,7 @@ export default function PlanningEmployeesComponent() {
       <div className="midTablet:hidden">
         <div className="flex items-center gap-2">
           {/* Liste scrollable */}
-          <div className="flex-1 min-w-0 overflow-x-auto">
+          <div className="min-w-0 flex-1 overflow-x-auto">
             <div className="flex gap-2 py-1 px-px">
               {employees.map((emp) => {
                 const active = selectedEmployeeId === emp._id;
@@ -1329,17 +1347,6 @@ export default function PlanningEmployeesComponent() {
               })}
             </div>
           </div>
-
-          {/* Bouton + fixe (ne scrolle pas) */}
-          <button
-            type="button"
-            onClick={openManualAdd}
-            className="shrink-0 h-11 w-11 inline-flex items-center justify-center rounded-2xl bg-blue text-white shadow-sm hover:bg-blue/90 active:scale-[0.98] transition"
-            aria-label={t("planning:buttons.addShift", "Ajouter un créneau")}
-            title={t("planning:buttons.addShift", "Ajouter un créneau")}
-          >
-            <Plus className="size-5" />
-          </button>
         </div>
       </div>
 
