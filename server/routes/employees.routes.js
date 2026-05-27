@@ -46,18 +46,37 @@ function normalizeEmail(email) {
   return (email || "").trim().toLowerCase();
 }
 
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(String(email || "").trim());
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 function normalizeContractType(value) {
   return String(value || "").trim();
 }
 
 function normalizeContractualUnit(value) {
-  const normalized = String(value || "").trim().toLowerCase();
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
 
-  if (["week", "weekly", "semaine", "hebdo", "hebdomadaire"].includes(normalized)) {
+  if (
+    ["week", "weekly", "semaine", "hebdo", "hebdomadaire"].includes(normalized)
+  ) {
     return "week";
   }
 
-  if (["month", "monthly", "mois", "mensuel", "mensuelle"].includes(normalized)) {
+  if (
+    ["month", "monthly", "mois", "mensuel", "mensuelle"].includes(normalized)
+  ) {
     return "month";
   }
 
@@ -221,7 +240,11 @@ async function getEmployeeRouteAccess(
     return { error: { status: 403, message: "Forbidden" } };
   }
 
-  if (!managerOnly && request.user?.role === "employee" && !accessContext.isManager) {
+  if (
+    !managerOnly &&
+    request.user?.role === "employee" &&
+    !accessContext.isManager
+  ) {
     if (!allowSelf || !canAccessEmployeeTarget(accessContext, employeeId)) {
       return { error: { status: 403, message: "Forbidden" } };
     }
@@ -260,7 +283,8 @@ function findShiftConflicts(
 
     const currentStart = toValidDate(shift?.start);
     const currentEnd = toValidDate(shift?.end);
-    if (!currentStart || !currentEnd || currentEnd <= currentStart) return false;
+    if (!currentStart || !currentEnd || currentEnd <= currentStart)
+      return false;
 
     return rangesOverlap(start, end, currentStart, currentEnd);
   });
@@ -285,7 +309,8 @@ function findActiveLeaveRequestConflict(
 
     const currentStart = toValidDate(leaveRequest?.start);
     const currentEnd = toValidDate(leaveRequest?.end);
-    if (!currentStart || !currentEnd || currentEnd <= currentStart) return false;
+    if (!currentStart || !currentEnd || currentEnd <= currentStart)
+      return false;
 
     return rangesOverlap(start, end, currentStart, currentEnd);
   });
@@ -612,6 +637,154 @@ function buildPlanningExportEmployee(employee, restaurantId, bounds) {
   };
 }
 
+function formatPlanningEmailDuration(minutes) {
+  const total = Math.max(0, Number(minutes || 0));
+  const hours = Math.floor(total / 60);
+  const remaining = total % 60;
+
+  if (!hours && !remaining) return "0h";
+  if (!remaining) return `${hours}h`;
+  return `${hours}h${String(remaining).padStart(2, "0")}`;
+}
+
+function formatPlanningEmailDate(dateKey) {
+  const date = dateKeyToLocalStart(dateKey);
+  if (!date) return dateKey;
+
+  return new Intl.DateTimeFormat("fr-FR", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+  }).format(date);
+}
+
+function buildPlanningEmailDays(employeePlanning, bounds) {
+  const daysByDate = new Map(
+    (employeePlanning.days || []).map((day) => [day.date, day]),
+  );
+  const days = [];
+
+  for (
+    const cursor = new Date(bounds.start.getTime());
+    cursor < bounds.endExclusive;
+    cursor.setDate(cursor.getDate() + 1)
+  ) {
+    const dateKey = toLocalDateKey(cursor);
+    days.push(
+      daysByDate.get(dateKey) || {
+        date: dateKey,
+        shifts: [],
+        shiftCount: 0,
+        totalMinutes: 0,
+      },
+    );
+  }
+
+  return days;
+}
+
+function buildPlanningEmailHtml({
+  restaurantName,
+  employeeName,
+  firstName,
+  formattedFrom,
+  formattedTo,
+  employeePlanning,
+  bounds,
+}) {
+  const days = buildPlanningEmailDays(employeePlanning, bounds);
+  const rows = days
+    .map((day) => {
+      const shifts = day.shifts || [];
+      const shiftHtml = shifts.length
+        ? shifts
+            .map((shift, index) => {
+              const spacing = index > 0 ? "margin-top:10px;" : "";
+
+              if (shift.isLeave) {
+                return `<div style="display:inline-block;margin:0;${spacing}padding:4px 8px;border-radius:999px;background:#ede9fe;color:#5b3fd2;font-size:14px;font-weight:700;line-height:1.2;vertical-align:top;">${escapeHtml(
+                  shift.textLabel || shift.title || "Congés",
+                )}</div>`;
+              }
+
+              const title = shift.title ? ` - ${shift.title}` : "";
+              const duration = shift.durationMinutes
+                ? ` <span style="color:#6b7280;">(${formatPlanningEmailDuration(
+                    shift.durationMinutes,
+                  )})</span>`
+                : "";
+
+              return `<div style="margin:0;${spacing}padding:0;line-height:1.3;font-size:14px;white-space:nowrap;"><strong>${escapeHtml(
+                shift.startLabel || "",
+              )}&nbsp;-&nbsp;${escapeHtml(shift.endLabel || "")}</strong>${escapeHtml(
+                title,
+              )}${duration}</div>`;
+            })
+            .join("")
+        : '<span style="color:#8a90a3;font-size:14px;line-height:1.25;">Repos</span>';
+
+      return `
+        <tr>
+          <td style="padding:10px 8px;border-bottom:1px solid #edf0f7;vertical-align:top;font-size:14px;line-height:1.25;font-weight:700;color:#131E36;width:42%;">
+            ${escapeHtml(formatPlanningEmailDate(day.date))}
+          </td>
+          <td style="padding:10px 8px;border-bottom:1px solid #edf0f7;vertical-align:top;font-size:14px;line-height:1.25;color:#131E36;width:58%;">
+            ${shiftHtml}
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  return `
+    <div style="margin:0;padding:0;background:#f6f7fb;font-family:Arial,sans-serif;color:#131E36;">
+      <div style="max-width:640px;margin:0 auto;padding:16px 8px;">
+        <div style="background:#ffffff;border:1px solid #e6e9f2;border-radius:18px;overflow:hidden;">
+          <div style="padding:20px 18px;background:#131E36;color:#ffffff;">
+            <div style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;opacity:.8;">${escapeHtml(
+              restaurantName,
+            )}</div>
+            <h1 style="margin:8px 0 0;font-size:22px;line-height:1.25;">Votre planning</h1>
+            <p style="margin:8px 0 0;color:#dbe4ff;">Du ${escapeHtml(
+              formattedFrom,
+            )} au ${escapeHtml(formattedTo)}</p>
+          </div>
+
+          <div style="padding:18px 16px;">
+            <p style="margin:0 0 16px;font-size:16px;">Bonjour ${escapeHtml(
+              firstName || employeeName,
+            )},</p>
+            <p style="margin:0 0 16px;color:#4b5565;">Voici votre emploi du temps pour la période sélectionnée.</p>
+
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px;">
+              <div style="padding:9px 10px;border-radius:12px;background:#f4f7ff;border:1px solid #dbe6ff;">
+                <div style="font-size:12px;color:#64708a;">Créneaux</div>
+                <div style="font-size:18px;font-weight:800;">${Number(
+                  employeePlanning.totals?.shiftCount || 0,
+                )}</div>
+              </div>
+              <div style="padding:9px 10px;border-radius:12px;background:#f4f7ff;border:1px solid #dbe6ff;">
+                <div style="font-size:12px;color:#64708a;">Heures prévues</div>
+                <div style="font-size:18px;font-weight:800;">${escapeHtml(
+                  formatPlanningEmailDuration(
+                    employeePlanning.totals?.plannedMinutes,
+                  ),
+                )}</div>
+              </div>
+            </div>
+
+            <table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;table-layout:fixed;border:1px solid #edf0f7;border-radius:14px;overflow:hidden;">
+              <tbody>${rows}</tbody>
+            </table>
+
+            <p style="margin:22px 0 0;color:#6b7280;font-size:13px;">Bonne journée,<br/>L'équipe Gusto Manager</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 // ---------- CLOUDINARY / MULTER ----------
 
 cloudinary.config({
@@ -666,6 +839,11 @@ function sendTransactionalEmail(params) {
     sendSmtpEmail.to = params.to;
     sendSmtpEmail.subject = params.subject;
     sendSmtpEmail.htmlContent = params.htmlContent;
+    if (params.attachment) {
+      sendSmtpEmail.attachment = Array.isArray(params.attachment)
+        ? params.attachment
+        : [params.attachment];
+    }
 
     return apiInstance.sendTransacEmail(sendSmtpEmail);
   } catch (err) {
@@ -723,9 +901,14 @@ router.post(
     };
 
     try {
-      const accessContext = await getEmployeeRouteAccess(req, restaurantId, null, {
-        managerOnly: true,
-      });
+      const accessContext = await getEmployeeRouteAccess(
+        req,
+        restaurantId,
+        null,
+        {
+          managerOnly: true,
+        },
+      );
       if (accessContext.error) {
         return res
           .status(accessContext.error.status)
@@ -1590,8 +1773,15 @@ router.post(
         return res.status(404).json({ message: "Employé non trouvé" });
       }
 
-      const currentProfile = findRestaurantProfile(currentEmployee, restaurantId);
-      const conflict = findShiftConflict(currentProfile, parsedStart, parsedEnd);
+      const currentProfile = findRestaurantProfile(
+        currentEmployee,
+        restaurantId,
+      );
+      const conflict = findShiftConflict(
+        currentProfile,
+        parsedStart,
+        parsedEnd,
+      );
       if (conflict) {
         const serializedConflict = serializeShiftConflict(conflict);
         return res.status(409).json({
@@ -1607,7 +1797,9 @@ router.post(
 
       const shiftId = new mongoose.Types.ObjectId();
       const leaveShift =
-        isLeave === true || leaveRequestObjectId != null || isLeaveShift({ title });
+        isLeave === true ||
+        leaveRequestObjectId != null ||
+        isLeaveShift({ title });
 
       const updatedEmployee = await EmployeeModel.findOneAndUpdate(
         {
@@ -1712,7 +1904,10 @@ router.put(
         return res.status(404).json({ message: "Shift non trouvé" });
       }
 
-      const currentProfile = findRestaurantProfile(currentEmployee, restaurantId);
+      const currentProfile = findRestaurantProfile(
+        currentEmployee,
+        restaurantId,
+      );
       const currentShift = currentProfile?.shifts?.id?.(shiftObjectId);
 
       if (!currentShift) {
@@ -1720,7 +1915,9 @@ router.put(
       }
 
       const nextStart =
-        start !== undefined ? parseShiftDate(start) : new Date(currentShift.start);
+        start !== undefined
+          ? parseShiftDate(start)
+          : new Date(currentShift.start);
       if (!nextStart) {
         return res.status(400).json({ message: "Date de début invalide" });
       }
@@ -1739,7 +1936,8 @@ router.put(
         leaveRequestId !== undefined
           ? leaveRequestObjectId
           : currentShift.leaveRequestId || null;
-      const nextIsLeave = isLeave !== undefined ? isLeave === true : currentShift.isLeave;
+      const nextIsLeave =
+        isLeave !== undefined ? isLeave === true : currentShift.isLeave;
       const nextTitle =
         title !== undefined
           ? normalizePlanningTitle(title)
@@ -2079,6 +2277,169 @@ router.post(
   },
 );
 
+router.post(
+  "/restaurants/:restaurantId/employees/planning/send",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { restaurantId } = req.params;
+      const from = /^\d{4}-\d{2}-\d{2}$/.test(String(req.body?.from || ""))
+        ? String(req.body.from)
+        : null;
+      const to = /^\d{4}-\d{2}-\d{2}$/.test(String(req.body?.to || ""))
+        ? String(req.body.to)
+        : null;
+      const bounds = from && to ? getDateRangeBounds(from, to) : null;
+
+      if (!bounds) {
+        return res.status(400).json({
+          message: "Les dates de debut et de fin sont invalides.",
+        });
+      }
+
+      const accessContext = await getEmployeesAccessContext(req, restaurantId);
+      if (accessContext.error) {
+        return res
+          .status(accessContext.error.status)
+          .json({ message: accessContext.error.message });
+      }
+
+      if (!accessContext.isManager) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const requestedEmployeeIds = Array.isArray(req.body?.employeeIds)
+        ? req.body.employeeIds.map((value) => String(value))
+        : [];
+      const fallbackEmployeeIds = (
+        accessContext.restaurant?.employees || []
+      ).map((value) => String(value));
+      const selectedEmployeeIds = Array.from(
+        new Set(
+          requestedEmployeeIds.length
+            ? requestedEmployeeIds
+            : fallbackEmployeeIds,
+        ),
+      );
+
+      if (!selectedEmployeeIds.length) {
+        return res.status(400).json({ message: "Aucun salarie selectionne." });
+      }
+
+      const employees = await EmployeeModel.find({
+        _id: { $in: selectedEmployeeIds },
+        restaurants: restaurantId,
+      }).lean();
+
+      if (!employees.length) {
+        return res.status(404).json({ message: "Employees not found" });
+      }
+
+      const employeeOrder = new Map(
+        selectedEmployeeIds.map((id, index) => [String(id), index]),
+      );
+      const orderedEmployees = [...employees].sort((left, right) => {
+        const leftOrder = employeeOrder.get(String(left._id));
+        const rightOrder = employeeOrder.get(String(right._id));
+
+        if (Number.isFinite(leftOrder) && Number.isFinite(rightOrder)) {
+          return leftOrder - rightOrder;
+        }
+
+        return String(left._id).localeCompare(String(right._id));
+      });
+
+      const restaurantName = accessContext.restaurant?.name || "Restaurant";
+      const dateFormatter = new Intl.DateTimeFormat("fr-FR", {
+        day: "2-digit",
+        month: "long",
+        year: "numeric",
+      });
+      const formattedFrom = dateFormatter.format(bounds.start);
+      const formattedTo = dateFormatter.format(bounds.end);
+      const sent = [];
+      const skipped = [];
+      const failed = [];
+
+      for (const employee of orderedEmployees) {
+        const profile = findRestaurantProfile(employee, restaurantId);
+        const snapshot = profile?.snapshot || {};
+        const email = normalizeEmail(snapshot.email || employee.email);
+        const firstname = snapshot.firstname || employee.firstname || "";
+        const lastname = snapshot.lastname || employee.lastname || "";
+        const displayName = `${firstname} ${lastname}`.trim() || "Salarié";
+
+        if (!isValidEmail(email)) {
+          skipped.push({
+            employeeId: String(employee._id),
+            reason: "invalid_email",
+          });
+          continue;
+        }
+
+        const planningEmployee = buildPlanningExportEmployee(
+          employee,
+          restaurantId,
+          bounds,
+        );
+
+        try {
+          await sendTransactionalEmail({
+            to: [{ email, name: displayName }],
+            subject: `Votre planning du ${formattedFrom} au ${formattedTo} - ${restaurantName}`,
+            htmlContent: buildPlanningEmailHtml({
+              restaurantName,
+              employeeName: displayName,
+              firstName: firstname,
+              formattedFrom,
+              formattedTo,
+              employeePlanning: planningEmployee,
+              bounds,
+            }),
+          });
+          sent.push({ employeeId: String(employee._id), email });
+        } catch (error) {
+          console.error("Error sending planning email:", {
+            employeeId: String(employee._id),
+            email,
+            error: error?.response?.body || error?.message || error,
+          });
+          failed.push({ employeeId: String(employee._id), email });
+        }
+      }
+
+      if (!sent.length && failed.length) {
+        return res.status(502).json({
+          message: "Impossible d'envoyer le planning pour le moment.",
+          sentCount: sent.length,
+          skippedCount: skipped.length,
+          failedCount: failed.length,
+        });
+      }
+
+      if (!sent.length) {
+        return res.status(400).json({
+          message:
+            "Aucun salarié sélectionné ne possède une adresse email valide.",
+          sentCount: sent.length,
+          skippedCount: skipped.length,
+          failedCount: failed.length,
+        });
+      }
+
+      return res.json({
+        message: "Planning envoyé.",
+        sentCount: sent.length,
+        skippedCount: skipped.length,
+        failedCount: failed.length,
+      });
+    } catch (error) {
+      console.error("Error sending planning:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  },
+);
+
 // ---------- DEMANDES DE CONGÉS (par restaurant) ----------
 
 // CREATE LEAVE-REQUEST
@@ -2262,7 +2623,9 @@ router.put(
         );
 
         if (overlappingShifts.length) {
-          const serializedConflicts = overlappingShifts.map(serializeShiftConflict);
+          const serializedConflicts = overlappingShifts.map(
+            serializeShiftConflict,
+          );
           const canResolveByDeletion = serializedConflicts.every(
             (shift) => shift.canDelete === true,
           );
@@ -2451,7 +2814,9 @@ router.get("/employees/me", authenticateToken, async (req, res) => {
         _id: { $in: coworkerIds },
         restaurants: restaurant._id,
       })
-        .select("firstname lastname post profilePicture restaurantProfiles restaurants")
+        .select(
+          "firstname lastname post profilePicture restaurantProfiles restaurants",
+        )
         .lean();
 
       decoratedRestaurant = decorateRestaurantEmployees(
@@ -2460,7 +2825,8 @@ router.get("/employees/me", authenticateToken, async (req, res) => {
         coworkers,
         { safe: true },
       );
-      decoratedEmployee = decorateEmployeeForRestaurant(emp, restaurant._id) || emp.toObject();
+      decoratedEmployee =
+        decorateEmployeeForRestaurant(emp, restaurant._id) || emp.toObject();
       currentProfile = findRestaurantProfile(decoratedEmployee, restaurant._id);
     }
 
@@ -2642,69 +3008,78 @@ router.put(
 
 // ---------- TRAINING SESSIONS (global, pas par resto) ----------
 
-router.get("/employees/:employeeId/training-sessions", authenticateToken, async (req, res) => {
-  try {
-    const { employeeId } = req.params;
+router.get(
+  "/employees/:employeeId/training-sessions",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { employeeId } = req.params;
 
-    if (req.user?.role === "employee" && String(req.user.id) !== String(employeeId)) {
-      return res.status(403).json({ message: "Forbidden" });
-    }
-
-    if (req.user?.role === "owner") {
-      const ownsEmployee = await RestaurantModel.exists({
-        owner_id: req.user.id,
-        employees: employeeId,
-      });
-
-      if (!ownsEmployee) {
+      if (
+        req.user?.role === "employee" &&
+        String(req.user.id) !== String(employeeId)
+      ) {
         return res.status(403).json({ message: "Forbidden" });
       }
-    }
 
-    const page = Math.max(parseInt(req.query.page || "1", 10), 1);
-    const limit = Math.min(
-      Math.max(parseInt(req.query.limit || "50", 10), 1),
-      100,
-    );
-    const skip = (page - 1) * limit;
+      if (req.user?.role === "owner") {
+        const ownsEmployee = await RestaurantModel.exists({
+          owner_id: req.user.id,
+          employees: employeeId,
+        });
 
-    const emp = await EmployeeModel.findById(employeeId)
-      .select("trainingSessions")
-      .lean();
+        if (!ownsEmployee) {
+          return res.status(403).json({ message: "Forbidden" });
+        }
+      }
 
-    if (!emp) return res.status(404).json({ message: "Employee not found" });
-
-    const ids = Array.isArray(emp.trainingSessions) ? emp.trainingSessions : [];
-    const total = ids.length;
-
-    if (total === 0) {
-      return res.json({ trainingSessions: [], total, page, limit });
-    }
-
-    const items = await TrainingSession.find({ _id: { $in: ids } })
-      .sort({ date: -1, _id: -1 })
-      .skip(skip)
-      .limit(limit)
-      .lean();
-
-    const trainingSessions = items.map((s) => {
-      const me = (s.attendees || []).find(
-        (a) => String(a.employeeId) === String(employeeId),
+      const page = Math.max(parseInt(req.query.page || "1", 10), 1);
+      const limit = Math.min(
+        Math.max(parseInt(req.query.limit || "50", 10), 1),
+        100,
       );
-      return {
-        ...s,
-        myStatus: me?.status || "attended",
-        myNotes: me?.notes || "",
-        mySignedAt: me?.signedAt || null,
-        myCertificateUrl: me?.certificateUrl || null,
-      };
-    });
+      const skip = (page - 1) * limit;
 
-    return res.json({ trainingSessions, total, page, limit });
-  } catch (e) {
-    console.error("Error fetching training sessions:", e);
-    return res.status(500).json({ message: "Internal server error" });
-  }
-});
+      const emp = await EmployeeModel.findById(employeeId)
+        .select("trainingSessions")
+        .lean();
+
+      if (!emp) return res.status(404).json({ message: "Employee not found" });
+
+      const ids = Array.isArray(emp.trainingSessions)
+        ? emp.trainingSessions
+        : [];
+      const total = ids.length;
+
+      if (total === 0) {
+        return res.json({ trainingSessions: [], total, page, limit });
+      }
+
+      const items = await TrainingSession.find({ _id: { $in: ids } })
+        .sort({ date: -1, _id: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean();
+
+      const trainingSessions = items.map((s) => {
+        const me = (s.attendees || []).find(
+          (a) => String(a.employeeId) === String(employeeId),
+        );
+        return {
+          ...s,
+          myStatus: me?.status || "attended",
+          myNotes: me?.notes || "",
+          mySignedAt: me?.signedAt || null,
+          myCertificateUrl: me?.certificateUrl || null,
+        };
+      });
+
+      return res.json({ trainingSessions, total, page, limit });
+    } catch (e) {
+      console.error("Error fetching training sessions:", e);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  },
+);
 
 module.exports = router;

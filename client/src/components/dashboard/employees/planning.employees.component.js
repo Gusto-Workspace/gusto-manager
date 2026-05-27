@@ -25,6 +25,7 @@ import {
   CalendarDays,
   Plus,
   Download,
+  Send,
   UtensilsCrossed,
 } from "lucide-react";
 import { getShiftMealMeta } from "./planning-meals.utils";
@@ -285,6 +286,9 @@ export default function PlanningEmployeesComponent() {
   const [isPlanningExportOpen, setIsPlanningExportOpen] = useState(false);
   const [isPlanningExportLoading, setIsPlanningExportLoading] = useState(false);
   const [planningExportError, setPlanningExportError] = useState("");
+  const [isPlanningSendOpen, setIsPlanningSendOpen] = useState(false);
+  const [isPlanningSendLoading, setIsPlanningSendLoading] = useState(false);
+  const [planningSendError, setPlanningSendError] = useState("");
 
   // Modale d’ajout
   const [modalOpen, setModalOpen] = useState(false);
@@ -662,10 +666,7 @@ export default function PlanningEmployeesComponent() {
     } catch (err) {
       console.error("Erreur ajout shift :", err);
 
-      if (
-        err?.response?.status === 409 &&
-        err?.response?.data?.conflictType
-      ) {
+      if (err?.response?.status === 409 && err?.response?.data?.conflictType) {
         setShiftConflictModalData({
           isOpen: true,
           employeeId,
@@ -840,13 +841,13 @@ export default function PlanningEmployeesComponent() {
     setDeleteModalData(getEmptyDeleteModalData());
   }
 
-async function handlePlanningExport(payload) {
-  if (!restaurantId) return;
+  async function handlePlanningExport(payload) {
+    if (!restaurantId) return;
 
-  setIsPlanningExportLoading(true);
-  setPlanningExportError("");
+    setIsPlanningExportLoading(true);
+    setPlanningExportError("");
 
-  try {
+    try {
       const isExcel = payload?.format === "excel";
       const endpoint = isExcel ? "excel" : "pdf";
       const mimeType = isExcel
@@ -881,6 +882,31 @@ async function handlePlanningExport(payload) {
       );
     } finally {
       setIsPlanningExportLoading(false);
+    }
+  }
+
+  async function handlePlanningSend(payload) {
+    if (!restaurantId) return;
+
+    setIsPlanningSendLoading(true);
+    setPlanningSendError("");
+
+    try {
+      await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/planning/send`,
+        payload,
+        getAuthConfig(),
+      );
+
+      setIsPlanningSendOpen(false);
+    } catch (error) {
+      console.error("Erreur envoi planning salariés :", error);
+      setPlanningSendError(
+        error?.response?.data?.message ||
+          "Impossible d'envoyer le planning pour le moment.",
+      );
+    } finally {
+      setIsPlanningSendLoading(false);
     }
   }
 
@@ -1119,7 +1145,26 @@ async function handlePlanningExport(payload) {
               <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15 text-blue">
                 <Download className="size-4" />
               </span>
-              <span className="whitespace-nowrap">Exporter le planning</span>
+              <span className="whitespace-nowrap">Télécharger le planning</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setPlanningSendError("");
+                setIsPlanningSendOpen(true);
+              }}
+              className="hidden midTablet:inline-flex
+       items-center gap-2
+      rounded-2xl border border-darkBlue/10 bg-white/70
+      px-4 py-2 text-sm font-semibold text-darkBlue
+      hover:bg-darkBlue/5 transition
+    "
+            >
+              <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15 text-blue">
+                <Send className="size-4" />
+              </span>
+              <span className="whitespace-nowrap">Envoyer le planning</span>
             </button>
 
             <button
@@ -1174,13 +1219,32 @@ async function handlePlanningExport(payload) {
       inline-flex flex-1 min-w-0 items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70
       px-3 py-3 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5
     "
-          aria-label="Exporter le planning"
-          title="Exporter le planning"
+          aria-label="Télécharger le planning"
+          title="Télécharger le planning"
         >
           <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15 text-blue shrink-0">
             <Download className="size-4" />
           </span>
           <span className="truncate">Exporter</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setPlanningSendError("");
+            setIsPlanningSendOpen(true);
+          }}
+          className="
+      inline-flex flex-1 min-w-0 items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70
+      px-3 py-3 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5
+    "
+          aria-label="Envoyer le planning"
+          title="Envoyer le planning"
+        >
+          <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15 text-blue shrink-0">
+            <Send className="size-4" />
+          </span>
+          <span className="truncate">Envoyer</span>
         </button>
 
         <button
@@ -1799,7 +1863,9 @@ async function handlePlanningExport(payload) {
               </p>
 
               <p className="mt-2">
-                <span className="font-medium text-darkBlue">Créneau saisi :</span>{" "}
+                <span className="font-medium text-darkBlue">
+                  Créneau saisi :
+                </span>{" "}
                 {formatConflictRange(
                   shiftConflictModalData.attemptedStart,
                   shiftConflictModalData.attemptedEnd,
@@ -1822,7 +1888,9 @@ async function handlePlanningExport(payload) {
                     : "Créneau déjà présent sur cette période"}
                 </p>
                 <p className="mt-2">
-                  <span className="font-medium text-darkBlue">Élément bloquant :</span>{" "}
+                  <span className="font-medium text-darkBlue">
+                    Élément bloquant :
+                  </span>{" "}
                   {shiftConflictModalData.conflict?.title || "Créneau existant"}
                 </p>
                 <p className="mt-1">
@@ -2012,9 +2080,9 @@ async function handlePlanningExport(payload) {
 
       <ExportRangeModalComponent
         open={isPlanningExportOpen}
-        title="Exporter le planning des salariés"
+        title="Télécharger le planning des salariés"
         description="Choisissez une période, les salariés à inclure et le format de sortie."
-        confirmLabel="Exporter le planning"
+        confirmLabel="Télécharger le planning"
         employees={exportEmployees}
         initialFrom={exportDateRange.from}
         initialTo={exportDateRange.to}
@@ -2026,6 +2094,25 @@ async function handlePlanningExport(payload) {
           setPlanningExportError("");
         }}
         onConfirm={handlePlanningExport}
+      />
+
+      <ExportRangeModalComponent
+        open={isPlanningSendOpen}
+        title="Envoyer le planning aux salariés"
+        description="Choisissez une période et les salariés qui recevront leur planning individuel par email."
+        confirmLabel="Envoyer le planning"
+        mode="send"
+        employees={exportEmployees}
+        initialFrom={exportDateRange.from}
+        initialTo={exportDateRange.to}
+        loading={isPlanningSendLoading}
+        submitError={planningSendError}
+        onClose={() => {
+          if (isPlanningSendLoading) return;
+          setIsPlanningSendOpen(false);
+          setPlanningSendError("");
+        }}
+        onConfirm={handlePlanningSend}
       />
     </section>
   );

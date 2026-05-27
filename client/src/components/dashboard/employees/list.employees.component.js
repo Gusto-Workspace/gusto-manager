@@ -33,7 +33,10 @@ function getCurrentMonthRange() {
 async function getExportErrorMessage(error, fallbackMessage) {
   const responseData = error?.response?.data;
 
-  if (typeof responseData?.message === "string" && responseData.message.trim()) {
+  if (
+    typeof responseData?.message === "string" &&
+    responseData.message.trim()
+  ) {
     return responseData.message;
   }
 
@@ -212,137 +215,144 @@ export default function ListEmployeesComponent() {
           subtitle={`${totalEmployees} ${
             totalEmployees > 1 || totalEmployees === 0 ? "employés" : "employé"
           }`}
+          actions={
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setHoursExportError("");
+                  setIsHoursExportOpen(true);
+                }}
+                className="hidden midTablet:inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-4 py-2 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5"
+                aria-label="Exporter les heures"
+                title="Exporter les heures"
+              >
+                <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15 text-blue">
+                  <Download className="size-4" />
+                </span>
+                <span className="whitespace-nowrap">Exporter les heures</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={openTimeClockInNewTab}
+                className="hidden midTablet:inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-4 py-2 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5"
+                aria-label="Ouvrir la pointeuse"
+                title="Ouvrir la pointeuse"
+              >
+                <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15 text-blue">
+                  <Clock3 className="size-4" />
+                </span>
+                <span className="whitespace-nowrap">Ouvrir la pointeuse</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => router.push("/dashboard/employees/planning")}
+                className="hidden midTablet:inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-4 py-2 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5"
+                aria-label={t("buttons.planning")}
+                title={t("buttons.planning")}
+              >
+                <span className="inline-flex items-center justify-center size-9 rounded-full bg-violet text-white">
+                  <Calendar className="size-4" />
+                </span>
+                <span className="whitespace-nowrap">
+                  {t("buttons.planning")}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => router.push("/dashboard/employees/add")}
+                className="hidden midTablet:inline-flex items-center gap-2 rounded-2xl border border-blue bg-white px-4 py-2 text-sm font-semibold text-blue shadow-sm transition hover:bg-darkBlue/5 active:scale-[0.98]"
+                aria-label={t("buttons.addEmployee")}
+                title={t("buttons.addEmployee")}
+              >
+                <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15">
+                  <Plus className="size-4" />
+                </span>
+                <span className="whitespace-nowrap">
+                  {t("buttons.addEmployee")}
+                </span>
+              </button>
+            </>
+          }
         />
 
         {/* Mobile webapp actions row */}
-        <div className="flex flex-col mobile:flex-row items-center justify-between gap-3 midTablet:hidden">
-          {/* Search */}
-          <div className="relative flex-1 w-full mobile:flex-0">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40" />
-            <input
-              ref={searchRef}
-              type="text"
-              inputMode="search"
-              placeholder={t(
-                "placeholders.searchEmployee",
-                "Rechercher un employé",
-              )}
-              value={searchTerm}
-              onChange={handleSearchChange}
-              className={`h-12 w-full rounded-2xl border border-darkBlue/10 bg-white/70 ${
-                searchTerm ? "pr-12" : "pr-4"
-              } pl-9 text-base`}
-            />
-            {searchTerm && (
-              <button
-                onClick={clearSearch}
-                className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center size-9 rounded-2xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition"
-                aria-label={t("buttons.clear", "Effacer")}
-                title={t("buttons.clear", "Effacer")}
-              >
-                <X className="size-4 text-darkBlue/60" />
-              </button>
-            )}
-          </div>
+        <div className="flex items-center justify-end gap-2 midTablet:hidden">
+          <button
+            type="button"
+            onClick={() => {
+              setHoursExportError("");
+              setIsHoursExportOpen(true);
+            }}
+            className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition p-4"
+            aria-label="Exporter les heures"
+            title="Exporter les heures"
+          >
+            <Download className="size-4 text-darkBlue/70" />
+          </button>
 
-          {/* Buttons (style toolbar) */}
-          <div className="shrink-0 flex items-center gap-2">
-            <button
-              onClick={() => {
-                setHoursExportError("");
-                setIsHoursExportOpen(true);
-              }}
-              className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition p-4"
-              aria-label="Exporter les heures"
-              title="Exporter les heures"
-            >
-              <Download className="size-4 text-darkBlue/70" />
-            </button>
+          <button
+            type="button"
+            onClick={openTimeClockInNewTab}
+            className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition p-4"
+            aria-label="Ouvrir la pointeuse"
+            title="Ouvrir la pointeuse"
+          >
+            <Clock3 className="size-4 text-darkBlue/70" />
+          </button>
 
-            <button
-              onClick={openTimeClockInNewTab}
-              className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition p-4"
-              aria-label="Ouvrir la pointeuse"
-              title="Ouvrir la pointeuse"
-            >
-              <Clock3 className="size-4 text-darkBlue/70" />
-            </button>
+          <button
+            type="button"
+            onClick={() => router.push("/dashboard/employees/planning")}
+            className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition p-4"
+            aria-label={t("buttons.planning")}
+            title={t("buttons.planning")}
+          >
+            <Calendar className="size-4 text-darkBlue/70" />
+          </button>
 
-            <button
-              onClick={() => router.push("/dashboard/employees/planning")}
-              className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition p-4"
-              aria-label={t("buttons.planning")}
-              title={t("buttons.planning")}
-            >
-              <Calendar className="size-4 text-darkBlue/70" />
-            </button>
-
-            <button
-              onClick={() => router.push("/dashboard/employees/add")}
-              className="inline-flex items-center justify-center rounded-full bg-blue text-white shadow-sm hover:bg-blue/90 active:scale-[0.98] transition p-4"
-              aria-label={t("buttons.addEmployee")}
-              title={t("buttons.addEmployee")}
-            >
-              <Plus className="size-4" />
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => router.push("/dashboard/employees/add")}
+            className="inline-flex items-center justify-center rounded-full bg-blue text-white shadow-sm hover:bg-blue/90 active:scale-[0.98] transition p-4"
+            aria-label={t("buttons.addEmployee")}
+            title={t("buttons.addEmployee")}
+          >
+            <Plus className="size-4" />
+          </button>
         </div>
 
-        {/* Desktop/tablet layout (tu gardes ton layout existant) */}
-        <div className="hidden midTablet:flex justify-between flex-wrap gap-4">
-          <div className="relative midTablet:w-[250px]">
-            <input
-              type="text"
-              placeholder={t(
-                "placeholders.searchEmployee",
-                "Rechercher un employé",
-              )}
-              value={searchTerm}
-              onChange={handleSearchChange}
-              className="w-full p-2 pr-10 border border-[#131E3690] rounded-lg"
-            />
-            {searchTerm && (
-              <button
-                onClick={() => setSearchTerm("")}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 w-6 h-6 bg-black bg-opacity-30 text-white rounded-full flex items-center justify-center"
-              >
-                &times;
-              </button>
+        {/* Search */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40" />
+          <input
+            ref={searchRef}
+            type="text"
+            inputMode="search"
+            placeholder={t(
+              "placeholders.searchEmployee",
+              "Rechercher un employé",
             )}
-          </div>
-
-          <div className="flex flex-wrap gap-2">
+            value={searchTerm}
+            onChange={handleSearchChange}
+            className={`h-12 w-full rounded-2xl border border-darkBlue/10 bg-white/70 ${
+              searchTerm ? "pr-12" : "pr-4"
+            } pl-9 text-base`}
+          />
+          {searchTerm && (
             <button
-              onClick={() => {
-                setHoursExportError("");
-                setIsHoursExportOpen(true);
-              }}
-              className="bg-white px-6 py-2 rounded-lg text-darkBlue border border-darkBlue/10 h-fit"
+              type="button"
+              onClick={clearSearch}
+              className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center size-9 rounded-2xl border border-darkBlue/10 bg-white transition hover:bg-darkBlue/5"
+              aria-label={t("buttons.clear", "Effacer")}
+              title={t("buttons.clear", "Effacer")}
             >
-              Exporter les heures
+              <X className="size-4 text-darkBlue/60" />
             </button>
-
-            <button
-              onClick={openTimeClockInNewTab}
-              className="bg-white px-6 py-2 rounded-lg text-darkBlue border border-darkBlue/10 h-fit"
-            >
-              Ouvrir la pointeuse
-            </button>
-
-            <button
-              onClick={() => router.push("/dashboard/employees/planning")}
-              className="bg-blue px-6 py-2 rounded-lg text-white h-fit"
-            >
-              {t("buttons.planning")}
-            </button>
-
-            <button
-              onClick={() => router.push("/dashboard/employees/add")}
-              className="bg-blue px-6 py-2 rounded-lg text-white h-fit"
-            >
-              {t("buttons.addEmployee")}
-            </button>
-          </div>
+          )}
         </div>
       </div>
 
