@@ -224,13 +224,13 @@ export default function ListEmployeesComponent() {
                   setIsHoursExportOpen(true);
                 }}
                 className="hidden midTablet:inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-4 py-2 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5"
-                aria-label="Exporter les heures"
-                title="Exporter les heures"
+                aria-label="Télécharger les heures"
+                title="Télécharger les heures"
               >
                 <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15 text-blue">
                   <Download className="size-4" />
                 </span>
-                <span className="whitespace-nowrap">Exporter les heures</span>
+                <span className="whitespace-nowrap">Télécharger les heures</span>
               </button>
 
               <button
@@ -288,13 +288,13 @@ export default function ListEmployeesComponent() {
               setIsHoursExportOpen(true);
             }}
             className="inline-flex min-w-0 items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-3 py-3 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5"
-            aria-label="Exporter les heures"
-            title="Exporter les heures"
+            aria-label="Télécharger les heures"
+            title="Télécharger les heures"
           >
             <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-blue/15 text-blue">
               <Download className="size-4" />
             </span>
-            <span className="min-w-0 leading-tight">Exporter les heures</span>
+            <span className="min-w-0 leading-tight">Télécharger les heures</span>
           </button>
 
           <button
@@ -508,7 +508,7 @@ export default function ListEmployeesComponent() {
 
       <ExportRangeModalComponent
         open={isHoursExportOpen}
-        title="Exporter les heures des salariés"
+        title="Télécharger les heures des salariés"
         description="Choisissez une periode, les salaries a inclure et le format d'export."
         confirmLabel="Telecharger"
         employees={exportEmployees}
