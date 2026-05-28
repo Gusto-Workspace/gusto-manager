@@ -96,6 +96,10 @@ function sanitizeTakeAwaySettingsInput(input = {}) {
     ),
     defaultSlotMaxOrders: Math.max(1, Number(input.defaultSlotMaxOrders || 6)),
     minimumPickupOrder: normalizeMoney(input.minimumPickupOrder, 0),
+    completedOrderAutoDeleteDays: Math.max(
+      0,
+      Number(input.completedOrderAutoDeleteDays || 0),
+    ),
     slots: Array.isArray(input.slots)
       ? input.slots.map((day) => ({
           day: cleanString(day.day),
@@ -696,10 +700,30 @@ function broadcastOrder(restaurantId, order, type = "takeaway_order_updated") {
   });
 }
 
+async function cleanupCompletedTakeAwayOrders(restaurant) {
+  const days = Number(getSettings(restaurant)?.completedOrderAutoDeleteDays || 0);
+  if (!Number.isFinite(days) || days <= 0) return;
+
+  const before = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  await TakeAwayOrderModel.deleteMany({
+    restaurant_id: restaurant._id,
+    status: "completed",
+    $or: [
+      { completedAt: { $lte: before } },
+      { completedAt: null, updatedAt: { $lte: before } },
+    ],
+  });
+}
+
 async function createTakeAwayOrder({ restaurant, payload, source = "public" }) {
   const settings = getSettings(restaurant);
-  if (!restaurant?.options?.take_away || !settings.enabled) {
+  if (!restaurant?.options?.take_away) {
     const err = new Error("Module vente à emporter indisponible");
+    err.status = 403;
+    throw err;
+  }
+  if (source === "public" && !settings.enabled) {
+    const err = new Error("Commande en ligne indisponible");
     err.status = 403;
     throw err;
   }
@@ -810,15 +834,17 @@ async function createTakeAwayOrder({ restaurant, payload, source = "public" }) {
 
   broadcastOrder(restaurant._id, order, "takeaway_order_created");
 
-  try {
-    await createAndBroadcastNotification({
-      restaurantId: restaurant._id,
-      module: "take_away",
-      type: "takeaway_order_created",
-      data: order.toObject(),
-    });
-  } catch (error) {
-    console.error("take away notification error:", error?.message || error);
+  if (source === "public") {
+    try {
+      await createAndBroadcastNotification({
+        restaurantId: restaurant._id,
+        module: "take_away",
+        type: "takeaway_order_created",
+        data: order.toObject(),
+      });
+    } catch (error) {
+      console.error("take away notification error:", error?.message || error);
+    }
   }
 
   return order;
@@ -978,4 +1004,5 @@ module.exports = {
   confirmOrderPayment,
   updateOrderStatus,
   loadRestaurantForTakeAway,
+  cleanupCompletedTakeAwayOrders,
 };

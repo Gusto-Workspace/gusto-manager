@@ -1,12 +1,12 @@
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 
+import TakeAwayCatalogComponent from "@/components/dashboard/take-away/catalog.take-away.component";
 import TakeAwayPageShell from "@/components/dashboard/take-away/page-shell.take-away.component";
-import ListTakeAwayComponent from "@/components/dashboard/take-away/list.take-away.component";
 
-export default function TakeAwayPage() {
+export default function TakeAwayCatalogPage() {
   return (
     <TakeAwayPageShell>
-      <ListTakeAwayComponent />
+      <TakeAwayCatalogComponent />
     </TakeAwayPageShell>
   );
 }

@@ -6,7 +6,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Search,
-  SlidersHorizontal,
+  Settings,
   Plus,
   X,
   ChevronDown,

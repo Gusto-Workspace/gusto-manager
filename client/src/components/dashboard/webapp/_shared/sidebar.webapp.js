@@ -5,7 +5,7 @@ import {
   LayoutGrid,
   Users,
   X,
-  SlidersHorizontal,
+  Settings,
   ChevronRight,
   CreditCard,
   List,
@@ -63,7 +63,7 @@ export default function SidebarReservationsWebapp({
       },
       {
         label: "Paramètres",
-        icon: SlidersHorizontal,
+        icon: Settings,
         href: "/dashboard/webapp/reservations/parameters",
       },
     ],
@@ -86,7 +86,7 @@ export default function SidebarReservationsWebapp({
       },
       {
         label: "Paramètres",
-        icon: SlidersHorizontal,
+        icon: Settings,
         href: "/dashboard/webapp/gift-cards/parameters",
       },
     ],

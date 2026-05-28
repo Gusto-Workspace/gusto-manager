@@ -16,6 +16,7 @@ const {
   confirmOrderPayment,
   updateOrderStatus,
   loadRestaurantForTakeAway,
+  cleanupCompletedTakeAwayOrders,
 } = require("../services/take-away.service");
 
 function canAccessRestaurant(req, restaurant) {
@@ -207,6 +208,7 @@ router.get(
     try {
       const restaurant = await loadAuthorizedRestaurant(req, res);
       if (!restaurant) return;
+      await cleanupCompletedTakeAwayOrders(restaurant);
 
       const query = { restaurant_id: restaurant._id };
       if (req.query.status && req.query.status !== "all") {

@@ -1,7 +1,7 @@
 import CatalogHeaderDashboardComponent from "../_shared/catalog-header.dashboard.component";
 import {
   Plus,
-  SlidersHorizontal,
+  Settings,
   Search,
   LayoutGrid,
   X,
@@ -43,7 +43,7 @@ export default function DayToolbarReservationsComponent(props) {
               aria-label={t("buttons.parameters")}
               title={t("buttons.parameters")}
             >
-              <SlidersHorizontal className="size-4 text-darkBlue/70" />
+              <Settings className="size-4 text-darkBlue/70" />
             </button>
 
             <button

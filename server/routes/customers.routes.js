@@ -10,6 +10,7 @@ const authenticateToken = require("../middleware/authentificate-token");
 const RestaurantModel = require("../models/restaurant.model");
 const CustomerModel = require("../models/customer.model");
 const ReservationModel = require("../models/reservation.model");
+const TakeAwayOrderModel = require("../models/take-away-order.model");
 
 /* ---------------------------------------------------------
    Helpers
@@ -138,7 +139,7 @@ router.get(
         .skip(skip)
         .limit(limit)
         .select(
-          "firstName lastName email phone tags notes stats lastReservationAt lastGiftCardAt lastActivityAt createdAt updatedAt",
+          "firstName lastName email phone tags notes stats lastReservationAt lastGiftCardAt lastTakeAwayOrderAt lastActivityAt createdAt updatedAt",
         )
         .lean();
 
@@ -210,6 +211,11 @@ router.get(
         50,
         Math.max(5, toInt(req.query.giftLimit, 20)),
       );
+      const takeAwayPage = Math.max(1, toInt(req.query.takeAwayPage, 1));
+      const takeAwayLimit = Math.min(
+        50,
+        Math.max(5, toInt(req.query.takeAwayLimit, 20)),
+      );
 
       // ✅ Reservations history (collection)
       const resaFilter = {
@@ -238,6 +244,26 @@ router.get(
         giftLimit,
       );
 
+      const takeAwayFilter = {
+        restaurant_id: restaurantId,
+        customer: customerId,
+      };
+      const takeAwayTotal =
+        await TakeAwayOrderModel.countDocuments(takeAwayFilter);
+      const takeAwayTotalPages = Math.max(
+        1,
+        Math.ceil(takeAwayTotal / takeAwayLimit),
+      );
+      const takeAwaySafePage = Math.min(takeAwayPage, takeAwayTotalPages);
+      const takeAwayOrders = await TakeAwayOrderModel.find(takeAwayFilter)
+        .sort({ scheduledFor: -1, createdAt: -1 })
+        .skip((takeAwaySafePage - 1) * takeAwayLimit)
+        .limit(takeAwayLimit)
+        .select(
+          "orderNumber fulfillmentMode scheduledFor status paymentStatus total items createdAt",
+        )
+        .lean();
+
       return res.status(200).json({
         customer,
         history: {
@@ -257,6 +283,15 @@ router.get(
               limit: giftLimit,
               total: gift.total,
               totalPages: gift.totalPages,
+            },
+          },
+          takeAwayOrders: {
+            items: takeAwayOrders,
+            pagination: {
+              page: takeAwaySafePage,
+              limit: takeAwayLimit,
+              total: takeAwayTotal,
+              totalPages: takeAwayTotalPages,
             },
           },
         },
