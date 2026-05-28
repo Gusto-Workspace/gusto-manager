@@ -210,6 +210,127 @@ const reservationParametersSchema = new mongoose.Schema({
   table_blocked_ranges: { type: [tableBlockedRangeSchema], default: [] },
 });
 
+const takeAwaySlotSchema = new mongoose.Schema(
+  {
+    day: { type: String, required: true },
+    isClosed: { type: Boolean, default: false },
+    slots: [
+      {
+        start: { type: String, required: true },
+        end: { type: String, required: true },
+        intervalMinutes: { type: Number, min: 5, default: 15 },
+        maxOrders: { type: Number, min: 1, default: 6 },
+      },
+    ],
+  },
+  { _id: false },
+);
+
+const takeAwayDeliveryZoneSchema = new mongoose.Schema(
+  {
+    name: { type: String, default: "" },
+    zipCodes: { type: [String], default: [] },
+    fee: { type: Number, min: 0, default: 0 },
+    minimumOrder: { type: Number, min: 0, default: 0 },
+    estimatedMinutes: { type: Number, min: 0, default: 30 },
+    active: { type: Boolean, default: true },
+  },
+  { _id: true },
+);
+
+const takeAwayEmailTemplatesSchema = new mongoose.Schema(
+  {
+    confirmationSubject: {
+      type: String,
+      default: "Confirmation de votre commande",
+    },
+    confirmationBody: {
+      type: String,
+      default:
+        "Bonjour {{customerName}}, votre commande {{orderNumber}} chez {{restaurantName}} est confirmée pour {{scheduledFor}}.",
+    },
+  },
+  { _id: false },
+);
+
+const takeAwaySettingsSchema = new mongoose.Schema(
+  {
+    enabled: { type: Boolean, default: false },
+    pickupEnabled: { type: Boolean, default: true },
+    deliveryEnabled: { type: Boolean, default: false },
+    paymentPolicy: {
+      type: String,
+      enum: ["online_required", "on_site", "customer_choice"],
+      default: "on_site",
+    },
+    same_hours_as_restaurant: { type: Boolean, default: true },
+    slots: { type: [takeAwaySlotSchema], default: [] },
+    deliveryZones: { type: [takeAwayDeliveryZoneSchema], default: [] },
+    defaultSlotIntervalMinutes: { type: Number, min: 5, default: 15 },
+    defaultSlotMaxOrders: { type: Number, min: 1, default: 6 },
+    minimumPickupOrder: { type: Number, min: 0, default: 0 },
+    email_templates: {
+      type: takeAwayEmailTemplatesSchema,
+      default: () => ({}),
+    },
+  },
+  { _id: false },
+);
+
+const takeAwayOptionSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true },
+    price: { type: Number, min: 0, default: 0 },
+  },
+  { _id: true },
+);
+
+const takeAwayCatalogItemSchema = new mongoose.Schema(
+  {
+    sourceType: {
+      type: String,
+      enum: ["dish", "menu", "drink", "wine", "custom"],
+      default: "custom",
+      index: true,
+    },
+    sourceCategoryId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
+    sourceSubCategoryId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
+    sourceItemId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+      index: true,
+    },
+    sourceSnapshot: {
+      name: { type: String, default: "" },
+      description: { type: String, default: "" },
+      price: { type: Number, default: 0 },
+      categoryName: { type: String, default: "" },
+      subCategoryName: { type: String, default: "" },
+    },
+    name: { type: String, required: true, trim: true },
+    description: { type: String, default: "" },
+    categoryName: { type: String, default: "À emporter" },
+    price: { type: Number, min: 0, default: 0 },
+    active: { type: Boolean, default: true, index: true },
+    visible: { type: Boolean, default: true },
+    image: { type: String, default: "" },
+    imagePublicId: { type: String, default: "" },
+    sortOrder: { type: Number, default: 0 },
+    options: { type: [takeAwayOptionSchema], default: [] },
+    syncedWithSource: { type: Boolean, default: true },
+    sourceDeleted: { type: Boolean, default: false },
+    importedAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now },
+  },
+  { _id: true },
+);
+
 // Sous-schéma pour les options
 const optionsSchema = new mongoose.Schema(
   {
@@ -410,6 +531,8 @@ const restaurantSchema = new mongoose.Schema({
   giftCards: { type: [giftCardSchema], default: [] },
   purchasesGiftCards: { type: [giftCardPurchaseSchema], default: [] },
   giftCardSettings: { type: giftCardSettingsSchema, default: () => ({}) },
+  takeAwaySettings: { type: takeAwaySettingsSchema, default: () => ({}) },
+  takeAwayCatalog: { type: [takeAwayCatalogItemSchema], default: [] },
   options: { type: optionsSchema, default: {} },
   reservationsSettings: {
     type: reservationParametersSchema,

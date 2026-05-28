@@ -218,9 +218,90 @@ async function onGiftPurchased(customerId, purchaseSubdoc) {
   await recomputeCustomerTagsForId(customerId, now);
 }
 
+async function onTakeAwayOrderCreated(customerId, order) {
+  if (!customerId) return;
+
+  const now = new Date();
+
+  await CustomerModel.updateOne(
+    { _id: customerId },
+    {
+      $inc: { "stats.takeAwayOrdersTotal": 1 },
+      $set: {
+        lastTakeAwayOrderAt: order.createdAt || now,
+        lastActivityAt: now,
+      },
+      $push: {
+        lastTakeAwayOrders: {
+          $each: [
+            {
+              orderId: order._id,
+              orderNumber: order.orderNumber,
+              fulfillmentMode: order.fulfillmentMode,
+              scheduledFor: order.scheduledFor,
+              status: order.status,
+              paymentStatus: order.paymentStatus,
+              total: order.total,
+            },
+          ],
+          $slice: -30,
+        },
+      },
+    },
+  );
+
+  await recomputeCustomerTagsForId(customerId, now);
+}
+
+async function onTakeAwayOrderStatusChanged(
+  customerId,
+  order,
+  prevStatus,
+  nextStatus,
+) {
+  if (!customerId) return;
+
+  const inc = {};
+  if (
+    prevStatus !== "canceled" &&
+    prevStatus !== "rejected" &&
+    (nextStatus === "canceled" || nextStatus === "rejected")
+  ) {
+    inc["stats.takeAwayOrdersCanceled"] = 1;
+  }
+
+  const now = new Date();
+  const update = {
+    $set: { lastActivityAt: now },
+    $push: {
+      lastTakeAwayOrders: {
+        $each: [
+          {
+            orderId: order._id,
+            orderNumber: order.orderNumber,
+            fulfillmentMode: order.fulfillmentMode,
+            scheduledFor: order.scheduledFor,
+            status: nextStatus,
+            paymentStatus: order.paymentStatus,
+            total: order.total,
+          },
+        ],
+        $slice: -30,
+      },
+    },
+  };
+
+  if (Object.keys(inc).length) update.$inc = inc;
+
+  await CustomerModel.updateOne({ _id: customerId }, update);
+  await recomputeCustomerTagsForId(customerId, now);
+}
+
 module.exports = {
   upsertCustomer,
   onReservationCreated,
   onReservationStatusChanged,
   onGiftPurchased,
+  onTakeAwayOrderCreated,
+  onTakeAwayOrderStatusChanged,
 };

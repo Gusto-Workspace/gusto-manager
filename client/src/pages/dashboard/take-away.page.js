@@ -12,6 +12,7 @@ import { GlobalContext } from "@/contexts/global.context";
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
+import TakeAwayDashboardComponent from "@/components/dashboard/take-away/take-away-dashboard.component";
 
 export default function TakeAwayPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
@@ -81,7 +82,7 @@ export default function TakeAwayPage(props) {
                 dataLoading={restaurantContext.dataLoading}
                  />
             ) : (
-              <p>Vente à emporter</p>
+              <TakeAwayDashboardComponent />
             )}
           </div>
         </div>

@@ -7,6 +7,20 @@ import axios from "axios";
 // JWT
 import { jwtDecode } from "jwt-decode";
 
+const EMPTY_UNREAD_BY_MODULE = {
+  reservations: 0,
+  gift_cards: 0,
+  employees: 0,
+  take_away: 0,
+};
+
+function countUnreadTotal(byModule = {}) {
+  return Object.values(byModule).reduce(
+    (total, value) => total + (Number(value) || 0),
+    0,
+  );
+}
+
 export default function RestaurantContext() {
   const router = useRouter();
 
@@ -23,7 +37,7 @@ export default function RestaurantContext() {
 
   const [unreadCounts, setUnreadCounts] = useState({
     total: 0,
-    byModule: { reservations: 0, gift_cards: 0, employees: 0 },
+    byModule: EMPTY_UNREAD_BY_MODULE,
   });
 
   // ✅ Liste de notifications (pour le drawer)
@@ -35,6 +49,7 @@ export default function RestaurantContext() {
       reservations: null,
       gift_cards: null,
       employees: null,
+      take_away: null,
     });
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const lastNotificationsSyncRef = useRef(0);
@@ -146,6 +161,7 @@ export default function RestaurantContext() {
           reservations: data?.byModule?.reservations ?? 0,
           gift_cards: data?.byModule?.gift_cards ?? 0,
           employees: data?.byModule?.employees ?? 0,
+          take_away: data?.byModule?.take_away ?? 0,
         },
       });
     } catch (e) {
@@ -159,14 +175,12 @@ export default function RestaurantContext() {
 
     setUnreadCounts((prev) => {
       const nextBy = {
-        ...(prev?.byModule || { reservations: 0, gift_cards: 0, employees: 0 }),
+        ...EMPTY_UNREAD_BY_MODULE,
+        ...(prev?.byModule || {}),
       };
       nextBy[moduleKey] = (nextBy[moduleKey] || 0) + 1;
 
-      const total =
-        (nextBy.reservations || 0) +
-        (nextBy.gift_cards || 0) +
-        (nextBy.employees || 0);
+      const total = countUnreadTotal(nextBy);
 
       return { total, byModule: nextBy };
     });
@@ -526,11 +540,10 @@ export default function RestaurantContext() {
           );
 
           setUnreadCounts((prev) => {
-            const nextBy = { ...prev.byModule };
+            const nextBy = { ...EMPTY_UNREAD_BY_MODULE, ...prev.byModule };
             if (moduleKey && nextBy[moduleKey] > 0) nextBy[moduleKey] -= 1;
 
-            const total =
-              nextBy.reservations + nextBy.gift_cards + nextBy.employees;
+            const total = countUnreadTotal(nextBy);
             return { total, byModule: nextBy };
           });
         }
@@ -550,12 +563,15 @@ export default function RestaurantContext() {
             if (!mod) {
               return {
                 total: 0,
-                byModule: { reservations: 0, gift_cards: 0, employees: 0 },
+                byModule: EMPTY_UNREAD_BY_MODULE,
               };
             }
-            const nextBy = { ...prev.byModule, [mod]: 0 };
-            const total =
-              nextBy.reservations + nextBy.gift_cards + nextBy.employees;
+            const nextBy = {
+              ...EMPTY_UNREAD_BY_MODULE,
+              ...prev.byModule,
+              [mod]: 0,
+            };
+            const total = countUnreadTotal(nextBy);
             return { total, byModule: nextBy };
           });
         }
@@ -740,6 +756,7 @@ export default function RestaurantContext() {
       reservations: null,
       gift_cards: null,
       employees: null,
+      take_away: null,
     });
     setNotificationsLoading(false);
     setIsAuth(false);
@@ -752,7 +769,7 @@ export default function RestaurantContext() {
     // ✅ reset counts
     setUnreadCounts({
       total: 0,
-      byModule: { reservations: 0, gift_cards: 0, employees: 0 },
+      byModule: EMPTY_UNREAD_BY_MODULE,
     });
 
     const path = typeof window !== "undefined" ? window.location.pathname : "";
@@ -791,6 +808,7 @@ export default function RestaurantContext() {
         reservations: null,
         gift_cards: null,
         employees: null,
+        take_away: null,
       });
       setNotificationsLoading(false);
 
@@ -810,7 +828,7 @@ export default function RestaurantContext() {
         } else {
           setUnreadCounts({
             total: 0,
-            byModule: { reservations: 0, gift_cards: 0, employees: 0 },
+            byModule: EMPTY_UNREAD_BY_MODULE,
           });
         }
 
@@ -833,7 +851,7 @@ export default function RestaurantContext() {
       } else {
         setUnreadCounts({
           total: 0,
-          byModule: { reservations: 0, gift_cards: 0, employees: 0 },
+          byModule: EMPTY_UNREAD_BY_MODULE,
         });
       }
     } catch (error) {
@@ -945,7 +963,7 @@ export default function RestaurantContext() {
           } else {
             setUnreadCounts({
               total: 0,
-              byModule: { reservations: 0, gift_cards: 0, employees: 0 },
+              byModule: EMPTY_UNREAD_BY_MODULE,
             });
           }
 
@@ -957,6 +975,7 @@ export default function RestaurantContext() {
             reservations: null,
             gift_cards: null,
             employees: null,
+            take_away: null,
           });
           setNotificationsLoading(false);
 
@@ -1061,6 +1080,7 @@ export default function RestaurantContext() {
                 reservations: null,
                 gift_cards: null,
                 employees: null,
+                take_away: null,
               });
               setNotificationsLoading(false);
 
@@ -1070,7 +1090,7 @@ export default function RestaurantContext() {
               } else {
                 setUnreadCounts({
                   total: 0,
-                  byModule: { reservations: 0, gift_cards: 0, employees: 0 },
+                  byModule: EMPTY_UNREAD_BY_MODULE,
                 });
               }
 
@@ -1176,7 +1196,7 @@ export default function RestaurantContext() {
         } else {
           setUnreadCounts({
             total: 0,
-            byModule: { reservations: 0, gift_cards: 0, employees: 0 },
+            byModule: EMPTY_UNREAD_BY_MODULE,
           });
         }
       }
@@ -1427,7 +1447,7 @@ export default function RestaurantContext() {
 
     setUnreadCounts({
       total: 0,
-      byModule: { reservations: 0, gift_cards: 0, employees: 0 },
+      byModule: EMPTY_UNREAD_BY_MODULE,
     });
 
     setRestaurantData(null);
@@ -1440,6 +1460,7 @@ export default function RestaurantContext() {
       reservations: null,
       gift_cards: null,
       employees: null,
+      take_away: null,
     });
     setNotificationsLoading(false);
     setIsAuth(false);

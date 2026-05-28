@@ -407,6 +407,7 @@ export default function AddDishesComponent(props) {
               </label>
             </div>
           </div>
+
         </div>
 
         {/* Boutons bas de page */}

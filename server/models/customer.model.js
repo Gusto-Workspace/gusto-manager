@@ -39,10 +39,13 @@ const customerSchema = new mongoose.Schema(
       reservationsTotal: { type: Number, default: 0 },
       reservationsCanceled: { type: Number, default: 0 },
       giftCardsBought: { type: Number, default: 0 },
+      takeAwayOrdersTotal: { type: Number, default: 0 },
+      takeAwayOrdersCanceled: { type: Number, default: 0 },
     },
 
     lastReservationAt: { type: Date, default: null },
     lastGiftCardAt: { type: Date, default: null },
+    lastTakeAwayOrderAt: { type: Date, default: null },
     lastActivityAt: { type: Date, default: null },
 
     // ✅ mini-historique cappé pour ton drawer (rapide)
@@ -69,6 +72,24 @@ const customerSchema = new mongoose.Schema(
           created_at: { type: Date },
           amount: { type: Number },
           description: { type: String },
+        },
+      ],
+      default: [],
+    },
+
+    lastTakeAwayOrders: {
+      type: [
+        {
+          orderId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "TakeAwayOrder",
+          },
+          orderNumber: { type: String },
+          fulfillmentMode: { type: String },
+          scheduledFor: { type: Date },
+          status: { type: String },
+          paymentStatus: { type: String },
+          total: { type: Number },
         },
       ],
       default: [],
