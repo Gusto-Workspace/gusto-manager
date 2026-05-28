@@ -76,14 +76,6 @@ function formatTime(value) {
   }).format(date);
 }
 
-function formatRangeSheetName(startDate, endDate) {
-  const left = String(startDate || "").slice(5).split("-").reverse().join("-");
-  const right = String(endDate || "").slice(5).split("-").reverse().join("-");
-  const raw = [left, right].filter(Boolean).join(" au ");
-
-  return sanitizeWorksheetName(raw || "Periode");
-}
-
 function sanitizeWorksheetName(value) {
   const cleaned = String(value || "Feuille")
     .replace(/[\\/*?:[\]]/g, "-")
@@ -1221,19 +1213,19 @@ function buildWorkbookDefinition({
 
   return [
     {
-      name: formatRangeSheetName(startDate, endDate),
-      title: "Synthese heures salaries",
+      name: "Récapitulatif heures",
+      title: "Synthèse heures salariés",
       headers: [
-        "Prenom",
+        "Prénom",
         "Nom",
         "Poste",
         "Type de contrat",
         "Temps contractuel",
-        "Temps contractuel periode (h)",
-        "Heures travaillees (h)",
+        "Temps contractuel période (h)",
+        "Heures travaillées (h)",
         "Heures supp (h)",
         "Absences (h)",
-        "Conges (jours)",
+        "Congés (jours)",
         "Pause (h)",
         "Temps brut (h)",
         "Services",
@@ -1244,46 +1236,46 @@ function buildWorkbookDefinition({
       rows: buildSummaryRows(reports, bounds),
     },
     {
-      name: "Fiche employes",
-      title: "Fiche employes",
+      name: "Profils salariés",
+      title: "Profils salariés",
       headers: [
-        "Prenom",
+        "Prénom",
         "Nom",
         "Email",
-        "Telephone",
+        "Téléphone",
         "Poste",
         "Code paie",
         "Type de contrat",
         "Temps contractuel",
-        "Etablissement principal",
+        "Établissement principal",
       ],
       rows: buildEmployeeSheetRows(reports),
     },
     {
-      name: "Details",
-      title: "Details heures et absences",
+      name: "Pointages détaillés",
+      title: "Détails heures et absences",
       headers: [
-        "Prenom",
+        "Prénom",
         "Nom",
         "Matricule de paie",
         "Type de contrat",
         "Temps contractuel",
         "Heures / jours",
-        "Etablissement principal",
+        "Établissement principal",
         "N semaine",
         "Date",
         "Travail / Absence",
         "Nom du poste / type d'absence",
-        "Shift / absence effectue a",
-        "Debut",
+        "Shift / absence effectué à",
+        "Début",
         "Fin",
         "Pause (h)",
         "Retard (h)",
         "Note",
-        "Heures travaillees (h)",
-        "Jours travailles (j)",
-        "Absence / conge comptabilise (h)",
-        "Heures jour ferie (h)",
+        "Heures travaillées (h)",
+        "Jours travaillés (j)",
+        "Absence / congé comptabilisé (h)",
+        "Heures jour férié (h)",
         "Heures de nuit (22:00-07:00)",
         "Heures dimanche (h)",
         "Montant repas pris (EUR)",
@@ -1293,14 +1285,14 @@ function buildWorkbookDefinition({
       rows: buildDetailRows(reports, bounds, restaurantName),
     },
     {
-      name: "Absences Employes",
-      title: "Absences employes",
+      name: "Absences salariés",
+      title: "Absences salariés",
       headers: [
         "Nom",
-        "Prenom",
+        "Prénom",
         "Matricule de paie",
         "Type absence",
-        "Date de debut",
+        "Date de début",
         "Date de fin",
         "Nb heures",
         "Nb jours",
@@ -1308,19 +1300,19 @@ function buildWorkbookDefinition({
       rows: buildLeaveRows(reports, bounds),
     },
     {
-      name: "Solde Conges",
-      title: "Solde conges",
+      name: "Congés disponibles",
+      title: "Congés disponibles",
       headers: [
         "Nom",
-        "Prenom",
+        "Prénom",
         "Matricule de paie",
-        "N-1 : Conges payes acquis",
-        "N-1 : Conges payes poses",
-        "N-1 : Solde de conges payes",
-        "N : Conges payes acquis",
-        "N : Conges payes poses",
-        "N : Solde des conges payes",
-        "Conges disponibles",
+        "N-1 : Congés payés acquis",
+        "N-1 : Congés payés posés",
+        "N-1 : Solde de congés payés",
+        "N : Congés payés acquis",
+        "N : Congés payés posés",
+        "N : Solde des congés payés",
+        "Congés disponibles",
       ],
       rows: buildLeaveBalanceRows(reports, referenceYear),
     },
@@ -1367,9 +1359,9 @@ function computeColumnWidths(sheet) {
   const metadataRow = [
     "Restaurant",
     sheet.restaurantName,
-    "Periode",
+    "Période",
     `${formatDateKey(sheet.startDate)} au ${formatDateKey(sheet.endDate)}`,
-    "Genere le",
+    "Généré le",
     formatDateTime(sheet.generatedAt),
   ];
   const allRows = [[sheet.title], metadataRow, [], sheet.headers, ...safeArr(sheet.rows)];
@@ -1416,15 +1408,17 @@ function renderCellXml(cell, rowIndex, columnIndex, styleIndex = 0) {
 }
 
 function renderRowXml(cells = [], rowIndex, styleIndex = 0) {
+  const rowStyleAttrs = styleIndex === 1 ? ' ht="24" customHeight="1"' : "";
+
   if (!Array.isArray(cells) || !cells.length) {
-    return `<row r="${rowIndex}"/>`;
+    return `<row r="${rowIndex}"${rowStyleAttrs}/>`;
   }
 
   const renderedCells = cells
     .map((cell, index) => renderCellXml(cell, rowIndex, index + 1, styleIndex))
     .join("");
 
-  return `<row r="${rowIndex}">${renderedCells}</row>`;
+  return `<row r="${rowIndex}"${rowStyleAttrs}>${renderedCells}</row>`;
 }
 
 function renderWorksheetXml(sheet) {
@@ -1433,9 +1427,9 @@ function renderWorksheetXml(sheet) {
   const metadataRow = [
     "Restaurant",
     sheet.restaurantName,
-    "Periode",
+    "Période",
     `${formatDateKey(sheet.startDate)} au ${formatDateKey(sheet.endDate)}`,
-    "Genere le",
+    "Généré le",
     formatDateTime(sheet.generatedAt),
   ];
   const columnsXml = renderColumnsXml(computeColumnWidths(sheet));
@@ -1519,23 +1513,32 @@ function buildStylesXml() {
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <fonts count="3">
     <font><sz val="11"/><name val="Calibri"/></font>
-    <font><b/><sz val="11"/><name val="Calibri"/></font>
+    <font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Calibri"/></font>
     <font><b/><sz val="13"/><name val="Calibri"/></font>
   </fonts>
   <fills count="3">
     <fill><patternFill patternType="none"/></fill>
     <fill><patternFill patternType="gray125"/></fill>
-    <fill><patternFill patternType="solid"><fgColor rgb="FFE8EEF9"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF1F4E79"/><bgColor indexed="64"/></patternFill></fill>
   </fills>
-  <borders count="1">
+  <borders count="2">
     <border><left/><right/><top/><bottom/><diagonal/></border>
+    <border>
+      <left style="thin"><color rgb="FFD9EAF7"/></left>
+      <right style="thin"><color rgb="FFD9EAF7"/></right>
+      <top style="thin"><color rgb="FFD9EAF7"/></top>
+      <bottom style="thin"><color rgb="FFD9EAF7"/></bottom>
+      <diagonal/>
+    </border>
   </borders>
   <cellStyleXfs count="1">
     <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
   </cellStyleXfs>
   <cellXfs count="3">
     <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
-    <xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>
+    <xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
+      <alignment horizontal="center" vertical="center" wrapText="1"/>
+    </xf>
     <xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>
   </cellXfs>
   <cellStyles count="1">
