@@ -133,40 +133,40 @@ function buildWorkbookDefinition({
 
   return [
     {
-      name: "Planning synthese",
-      title: "Synthese planning salaries",
+      name: "Récapitulatif planning",
+      title: "Synthèse planning salariés",
       restaurantName,
       startDate,
       endDate,
       generatedAt,
       headers: [
-        "Prenom",
+        "Prénom",
         "Nom",
         "Poste",
-        "Jours planifies",
+        "Jours planifiés",
         "Services",
-        "Heures planifiees (h)",
-        "Jours avec conges",
+        "Heures planifiées (h)",
+        "Jours avec congés",
       ],
       rows: buildSummaryRows(employees),
     },
     {
-      name: "Planning details",
-      title: "Details planning salaries",
+      name: "Créneaux détaillés",
+      title: "Détails planning salariés",
       restaurantName,
       startDate,
       endDate,
       generatedAt,
       headers: [
-        "Prenom",
+        "Prénom",
         "Nom",
         "Poste",
         "Date",
         "Type",
-        "Intitule",
-        "Debut",
+        "Intitulé",
+        "Début",
         "Fin",
-        "Duree (h)",
+        "Durée (h)",
       ],
       rows: buildDetailRows(employees),
     },
@@ -207,9 +207,9 @@ function computeColumnWidths(sheet) {
   const metadataRow = [
     "Restaurant",
     sheet.restaurantName,
-    "Periode",
+    "Période",
     `${formatDateKey(sheet.startDate)} au ${formatDateKey(sheet.endDate)}`,
-    "Genere le",
+    "Généré le",
     formatDateTime(sheet.generatedAt),
   ];
   const allRows = [[sheet.title], metadataRow, [], sheet.headers, ...safeArr(sheet.rows)];
@@ -256,15 +256,17 @@ function renderCellXml(cell, rowIndex, columnIndex, styleIndex = 0) {
 }
 
 function renderRowXml(cells = [], rowIndex, styleIndex = 0) {
+  const rowStyleAttrs = styleIndex === 1 ? ' ht="24" customHeight="1"' : "";
+
   if (!Array.isArray(cells) || !cells.length) {
-    return `<row r="${rowIndex}"/>`;
+    return `<row r="${rowIndex}"${rowStyleAttrs}/>`;
   }
 
   const renderedCells = cells
     .map((cell, index) => renderCellXml(cell, rowIndex, index + 1, styleIndex))
     .join("");
 
-  return `<row r="${rowIndex}">${renderedCells}</row>`;
+  return `<row r="${rowIndex}"${rowStyleAttrs}>${renderedCells}</row>`;
 }
 
 function renderWorksheetXml(sheet) {
@@ -273,9 +275,9 @@ function renderWorksheetXml(sheet) {
   const metadataRow = [
     "Restaurant",
     sheet.restaurantName,
-    "Periode",
+    "Période",
     `${formatDateKey(sheet.startDate)} au ${formatDateKey(sheet.endDate)}`,
-    "Genere le",
+    "Généré le",
     formatDateTime(sheet.generatedAt),
   ];
   const columnsXml = renderColumnsXml(computeColumnWidths(sheet));
@@ -359,23 +361,32 @@ function buildStylesXml() {
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <fonts count="3">
     <font><sz val="11"/><name val="Calibri"/></font>
-    <font><b/><sz val="11"/><name val="Calibri"/></font>
+    <font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Calibri"/></font>
     <font><b/><sz val="13"/><name val="Calibri"/></font>
   </fonts>
   <fills count="3">
     <fill><patternFill patternType="none"/></fill>
     <fill><patternFill patternType="gray125"/></fill>
-    <fill><patternFill patternType="solid"><fgColor rgb="FFE8EEF9"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF1F4E79"/><bgColor indexed="64"/></patternFill></fill>
   </fills>
-  <borders count="1">
+  <borders count="2">
     <border><left/><right/><top/><bottom/><diagonal/></border>
+    <border>
+      <left style="thin"><color rgb="FFD9EAF7"/></left>
+      <right style="thin"><color rgb="FFD9EAF7"/></right>
+      <top style="thin"><color rgb="FFD9EAF7"/></top>
+      <bottom style="thin"><color rgb="FFD9EAF7"/></bottom>
+      <diagonal/>
+    </border>
   </borders>
   <cellStyleXfs count="1">
     <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
   </cellStyleXfs>
   <cellXfs count="3">
     <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
-    <xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>
+    <xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
+      <alignment horizontal="center" vertical="center" wrapText="1"/>
+    </xf>
     <xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>
   </cellXfs>
   <cellStyles count="1">
