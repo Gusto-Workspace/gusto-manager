@@ -1,0 +1,17 @@
+.gm-webapp-device-content {
+  display: block;
+}
+
+.gm-webapp-device-blocked {
+  display: none;
+}
+
+@media (min-width: 1024px) and (hover: hover) and (pointer: fine) {
+  .gm-webapp-device-content {
+    display: none;
+  }
+
+  .gm-webapp-device-blocked {
+    display: block;
+  }
+}

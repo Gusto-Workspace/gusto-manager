@@ -1614,7 +1614,7 @@ export default function AddReservationComponent(props) {
       />
 
       <section className="flex flex-col gap-4">
-        <div className="midTablet:hidden  bg-lightGrey">
+        <div className="bg-lightGrey">
           <div className="flex items-center justify-between gap-3 h-[50px]">
             <button
               onClick={() => router.push("/dashboard/webapp/reservations")}
