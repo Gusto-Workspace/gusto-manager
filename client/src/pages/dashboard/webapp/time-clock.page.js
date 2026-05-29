@@ -8,6 +8,7 @@ import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import { GlobalContext } from "@/contexts/global.context";
 
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
+import NotGoodDeviceWebAppComponent from "@/components/dashboard/webapp/_shared/not-good-device.webapp";
 import SplashScreenWebAppComponent from "@/components/dashboard/webapp/_shared/splashscreen.webapp";
 import TimeClockKioskComponent from "@/components/dashboard/time-clock/kiosk.time-clock.component";
 import { getTimeClockOfflineBootstrap } from "@/components/dashboard/time-clock/time-clock.offline";
@@ -75,7 +76,7 @@ export default function TimeClockWebAppPage() {
         <meta name="format-detection" content="telephone=no" />
       </Head>
 
-      <div className="min-h-[100dvh] bg-lightGrey px-3 py-4 text-darkBlue midTablet:px-5 midTablet:py-5">
+      <div className="gm-webapp-device-content min-h-[100dvh] bg-lightGrey px-3 py-4 text-darkBlue midTablet:px-5 midTablet:py-5">
         {!clientReady ? (
           <div className="min-h-[40dvh]" />
         ) : !hasEmployeesModule ? (
@@ -87,6 +88,8 @@ export default function TimeClockWebAppPage() {
           <TimeClockKioskComponent offlineBootstrap={offlineBootstrap} />
         )}
       </div>
+
+      <NotGoodDeviceWebAppComponent />
 
       <SplashScreenWebAppComponent
         loading={restaurantContext?.dataLoading}
@@ -104,7 +107,11 @@ export default function TimeClockWebAppPage() {
 export async function getStaticProps({ locale }) {
   return {
     props: {
-      ...(await serverSideTranslations(locale, ["common", "employees", "myspace"])),
+      ...(await serverSideTranslations(locale, [
+        "common",
+        "employees",
+        "myspace",
+      ])),
     },
   };
 }

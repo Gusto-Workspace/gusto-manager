@@ -48,8 +48,8 @@ export default function ParametersReservationsPage(props) {
         />
       </Head>
 
-      <div className="block midTablet:hidden">
-        <div className="tablet:ml-[270px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 h-[100dvh] overflow-y-auto overscroll-none hide-scrollbar">
+      <div className="gm-webapp-device-content">
+        <div className="bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 h-[100dvh] overflow-y-auto overscroll-none hide-scrollbar">
           {restaurantContext?.restaurantData?.options?.reservations ? (
             <ParametersReservationWebApp
               setRestaurantData={restaurantContext.setRestaurantData}

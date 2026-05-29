@@ -845,7 +845,7 @@ export default function ParametersReservationComponent(props) {
         title="Réservations"
       />
 
-      <div className="midTablet:hidden bg-lightGrey">
+      <div className="bg-lightGrey">
         <div className="h-[50px] flex items-center gap-3">
           <button
             onClick={openSidebar}
