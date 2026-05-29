@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { normalizeNamePart } = require("../services/name-normalization.service");
 
 function normEmail(v) {
   const s = String(v || "")
@@ -99,6 +100,8 @@ const customerSchema = new mongoose.Schema(
 );
 
 customerSchema.pre("save", function (next) {
+  this.firstName = normalizeNamePart(this.firstName);
+  this.lastName = normalizeNamePart(this.lastName);
   this.emailNorm = normEmail(this.email);
   this.phoneNorm = normPhone(this.phone);
   next();

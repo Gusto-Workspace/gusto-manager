@@ -1223,6 +1223,14 @@ export default function AddReservationComponent(props) {
     }
 
     if (
+      !String(reservationData.customerFirstName || "").trim() &&
+      !String(reservationData.customerLastName || "").trim()
+    ) {
+      setError("Renseignez au moins le prénom ou le nom du client.");
+      return;
+    }
+
+    if (
       shouldRequestBankHold &&
       !String(reservationData.customerEmail || "").trim()
     ) {
@@ -1761,7 +1769,6 @@ export default function AddReservationComponent(props) {
                     placeholder="Prénom"
                     value={reservationData.customerFirstName}
                     onChange={handleInputChange}
-                    required
                     className="h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 text-base outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-2 focus:ring-blue/20"
                   />
                   <input
@@ -1770,7 +1777,6 @@ export default function AddReservationComponent(props) {
                     placeholder="Nom"
                     value={reservationData.customerLastName}
                     onChange={handleInputChange}
-                    required
                     className="h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 text-base outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-2 focus:ring-blue/20"
                   />
                 </div>
