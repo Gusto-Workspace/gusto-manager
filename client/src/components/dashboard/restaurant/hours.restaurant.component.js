@@ -187,20 +187,22 @@ export default function HoursRestaurantComponent(props) {
       <div className="flex justify-between items-start w-full gap-6">
         <div className="text-balance">
           <h1 className="font-semibold text-lg text-darkBlue">
-            {props.reservations
-              ? t("hours.reservationsTitle", "Horaires des réservations")
-              : t("hours.openingTitle", "Horaires d'ouverture")}
+            {props.hoursTitle ||
+              (props.reservations
+                ? t("hours.reservationsTitle", "Horaires des réservations")
+                : t("hours.openingTitle", "Horaires d'ouverture"))}
           </h1>
           <p className="text-xs text-darkBlue/60 max-w-md">
-            {props.reservations
-              ? t(
-                  "hours.reservationsSubtitle",
-                  "Définissez les créneaux disponibles pour les réservations en ligne.",
-                )
-              : t(
-                  "hours.openingSubtitle",
-                  "Configurez les horaires affichés sur votre site et vos modules.",
-                )}
+            {props.hoursSubtitle ||
+              (props.reservations
+                ? t(
+                    "hours.reservationsSubtitle",
+                    "Définissez les créneaux disponibles pour les réservations en ligne.",
+                  )
+                : t(
+                    "hours.openingSubtitle",
+                    "Configurez les horaires affichés sur votre site et vos modules.",
+                  ))}
           </p>
         </div>
         <div className="flex items-center gap-2">

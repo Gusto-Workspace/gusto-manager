@@ -37,5 +37,5 @@ export const navItemsData = [
     label: "nav.customers",
     icon: "CustomerSvg",
   },
-  // { href: "/dashboard/take-away", label: "nav.takeAway", icon: "TakeAwaySvg" },
+  { href: "/dashboard/take-away", label: "nav.takeAway", icon: "TakeAwaySvg" },
 ];

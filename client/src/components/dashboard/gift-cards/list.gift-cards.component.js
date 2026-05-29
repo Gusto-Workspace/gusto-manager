@@ -15,7 +15,7 @@ import { useTranslation } from "next-i18next";
 
 // SVG
 import { GiftSvg } from "../../_shared/_svgs/_index";
-import { Plus, SlidersHorizontal } from "lucide-react";
+import { Plus, Settings } from "lucide-react";
 
 // DND
 import {
@@ -236,7 +236,7 @@ export default function ListGiftsComponent(props) {
             aria-label={t("buttons.parameters", "Paramètres")}
             title={t("buttons.parameters", "Paramètres")}
           >
-            <SlidersHorizontal className="size-4 text-darkBlue/70" />
+            <Settings className="size-4 text-darkBlue/70" />
           </button>
 
           <button

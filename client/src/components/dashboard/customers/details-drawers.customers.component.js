@@ -288,6 +288,8 @@ export default function DetailsDrawerCustomersComponent({
               resaLimit: 40,
               giftPage: 1,
               giftLimit: 40,
+              takeAwayPage: 1,
+              takeAwayLimit: 40,
             },
           },
         );
@@ -344,13 +346,24 @@ export default function DetailsDrawerCustomersComponent({
     );
   }, [baseCustomer]);
 
-  const reservations = details?.history?.reservations?.items || [];
-  const giftCards = details?.history?.giftCards?.items || [];
+  const reservations = useMemo(
+    () => details?.history?.reservations?.items || [],
+    [details?.history?.reservations?.items],
+  );
+  const giftCards = useMemo(
+    () => details?.history?.giftCards?.items || [],
+    [details?.history?.giftCards?.items],
+  );
+  const takeAwayOrders = useMemo(
+    () => details?.history?.takeAwayOrders?.items || [],
+    [details?.history?.takeAwayOrders?.items],
+  );
 
   const stats = baseCustomer?.stats || {};
   const reservationsTotal = stats.reservationsTotal ?? 0;
   const reservationsCanceled = stats.reservationsCanceled ?? 0;
   const giftCardsBought = stats.giftCardsBought ?? 0;
+  const takeAwayOrdersTotal = stats.takeAwayOrdersTotal ?? 0;
 
   const sortedReservations = useMemo(() => {
     return [...reservations].sort((a, b) => {
@@ -367,6 +380,14 @@ export default function DetailsDrawerCustomersComponent({
       return bd - ad;
     });
   }, [giftCards]);
+
+  const sortedTakeAwayOrders = useMemo(() => {
+    return [...takeAwayOrders].sort((a, b) => {
+      const ad = new Date(a?.scheduledFor || a?.createdAt || 0).getTime();
+      const bd = new Date(b?.scheduledFor || b?.createdAt || 0).getTime();
+      return bd - ad;
+    });
+  }, [takeAwayOrders]);
 
   const saveIdentity = async () => {
     if (!restaurantId || !customerId) return;
@@ -784,7 +805,7 @@ export default function DetailsDrawerCustomersComponent({
           </div>
 
           {/* Stats */}
-          <div className="mt-4 grid grid-cols-2 tablet:grid-cols-3 gap-3">
+          <div className="mt-4 grid grid-cols-2 tablet:grid-cols-4 gap-3">
             <div className="rounded-2xl bg-white/50 border border-darkBlue/10 shadow-sm p-4">
               <p className="text-[11px] text-darkBlue/50 flex items-center gap-2">
                 <Calendar className="size-4 text-darkBlue/40" />
@@ -805,13 +826,22 @@ export default function DetailsDrawerCustomersComponent({
               </p>
             </div>
 
-            <div className="rounded-2xl bg-white/50 border border-darkBlue/10 shadow-sm p-4 col-span-2 tablet:col-span-1">
+            <div className="rounded-2xl bg-white/50 border border-darkBlue/10 shadow-sm p-4">
               <p className="text-[11px] text-darkBlue/50 flex items-center gap-2">
                 <Gift className="size-4 text-darkBlue/40" />
                 Cartes cadeaux
               </p>
               <p className="mt-1 text-lg font-semibold text-darkBlue">
                 {giftCardsBought}
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-white/50 border border-darkBlue/10 shadow-sm p-4 col-span-2 tablet:col-span-1">
+              <p className="text-[11px] text-darkBlue/50 flex items-center gap-2">
+                <ClipboardList className="size-4 text-darkBlue/40" />À emporter
+              </p>
+              <p className="mt-1 text-lg font-semibold text-darkBlue">
+                {takeAwayOrdersTotal}
               </p>
             </div>
           </div>
@@ -884,6 +914,18 @@ export default function DetailsDrawerCustomersComponent({
               >
                 Cartes cadeaux ({giftCards.length})
               </button>
+
+              <button
+                className={`flex-1 px-4 py-3 text-xs font-semibold transition ${
+                  tab === "takeaway"
+                    ? "text-darkBlue bg-darkBlue/5"
+                    : "text-darkBlue/60 hover:bg-darkBlue/5"
+                }`}
+                onClick={() => setTab("takeaway")}
+                type="button"
+              >
+                Commandes à emporter ({takeAwayOrders.length})
+              </button>
             </div>
 
             <div className="p-4">
@@ -931,7 +973,7 @@ export default function DetailsDrawerCustomersComponent({
                     </p>
                   )}
                 </div>
-              ) : (
+              ) : tab === "giftcards" ? (
                 <div className="flex flex-col gap-2">
                   {sortedGiftCards.length ? (
                     sortedGiftCards.map((g) => {
@@ -966,6 +1008,59 @@ export default function DetailsDrawerCustomersComponent({
                   ) : (
                     <p className="text-sm text-darkBlue/60">
                       Aucun achat de carte cadeau.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {sortedTakeAwayOrders.length ? (
+                    sortedTakeAwayOrders.map((order) => {
+                      const count = (order.items || []).reduce(
+                        (sum, item) => sum + Number(item.quantity || 0),
+                        0,
+                      );
+                      return (
+                        <div
+                          key={String(order._id)}
+                          className="rounded-2xl border border-darkBlue/10 bg-white/50 px-4 py-3"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-darkBlue truncate">
+                                {order.orderNumber} —{" "}
+                                {fmtDate(order.scheduledFor)}
+                              </p>
+                              <p className="text-xs text-darkBlue/60 mt-0.5">
+                                {order.fulfillmentMode === "delivery"
+                                  ? "Livraison"
+                                  : "Retrait"}{" "}
+                                • {count} article{count > 1 ? "s" : ""}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-sm font-bold text-darkBlue">
+                                {fmtMoney(order.total)}
+                              </p>
+                              <span
+                                className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                                  order.status === "canceled" ||
+                                  order.status === "rejected"
+                                    ? "bg-red/10 text-red border-red/20"
+                                    : order.status === "completed"
+                                      ? "bg-green/10 text-green border-green/20"
+                                      : "bg-blue/10 text-blue border-blue/20"
+                                }`}
+                              >
+                                {order.status || "—"}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <p className="text-sm text-darkBlue/60">
+                      Aucune commande à emporter.
                     </p>
                   )}
                 </div>

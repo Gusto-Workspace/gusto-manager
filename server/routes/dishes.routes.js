@@ -298,6 +298,19 @@ router.delete("/restaurants/:restaurantId/dishes/:dishId", async (req, res) => {
       );
 
       if (dishIndex > -1) {
+        const catalogItem = (restaurant.takeAwayCatalog || []).find(
+          (item) =>
+            item.sourceType === "dish" &&
+            String(item.sourceItemId || "") ===
+              String(category.dishes[dishIndex]._id),
+        );
+        if (catalogItem) {
+          catalogItem.active = false;
+          catalogItem.visible = false;
+          catalogItem.sourceDeleted = true;
+          catalogItem.updatedAt = new Date();
+        }
+
         // Supprimer le plat trouvé avec splice
         category.dishes.splice(dishIndex, 1);
         dishFound = true;

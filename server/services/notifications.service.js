@@ -180,6 +180,25 @@ function buildNotificationContent({ type, data }) {
       };
     }
 
+    case "takeaway_order_created": {
+      const name = [data?.customerFirstName, data?.customerLastName]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+      const mode =
+        data?.fulfillmentMode === "delivery" ? "Livraison" : "Retrait";
+      const total =
+        typeof data?.total === "number" ? `${data.total.toFixed(2)}€` : "";
+
+      return {
+        title: "Nouvelle commande à emporter",
+        message: `${name || "Client"} • ${mode}${total ? ` • ${total}` : ""}`,
+        link: buildPath("/dashboard/take-away", {
+          orderId: data?._id || data?.orderId || null,
+        }),
+      };
+    }
+
     default:
       return { title: "Notification", message: "Nouvel événement", link: "" };
   }
@@ -203,6 +222,13 @@ function buildPushLink({
   if (module === "gift_cards") {
     return buildPath("/dashboard/webapp/gift-cards", {
       purchaseId: data?._id || data?.purchaseId || null,
+      notificationId,
+    });
+  }
+
+  if (module === "take_away") {
+    return buildPath("/dashboard/take-away", {
+      orderId: data?._id || data?.orderId || null,
       notificationId,
     });
   }
@@ -243,6 +269,16 @@ function buildNotificationMeta({ type, data }) {
         start: data?.start || null,
         end: data?.end || null,
         leaveType: data?.type || null,
+      };
+
+    case "takeaway_order_created":
+      return {
+        orderId: data?._id || data?.orderId || null,
+        orderNumber: data?.orderNumber || null,
+        fulfillmentMode: data?.fulfillmentMode || null,
+        status: data?.status || null,
+        paymentStatus: data?.paymentStatus || null,
+        total: data?.total ?? null,
       };
 
     default:

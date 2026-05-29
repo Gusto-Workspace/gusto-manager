@@ -10,7 +10,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Search,
-  SlidersHorizontal,
+  Settings,
   Plus,
   X,
   LayoutGrid,
@@ -81,7 +81,7 @@ export default function CalendarToolbarReservationsComponent(props) {
             aria-label={t("buttons.parameters")}
             title={t("buttons.parameters")}
           >
-            <SlidersHorizontal className="size-4 text-darkBlue/70" />
+            <Settings className="size-4 text-darkBlue/70" />
           </button>
 
           <button
