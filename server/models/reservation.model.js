@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { normalizeNamePart } = require("../services/name-normalization.service");
 
 const TableSchema = new mongoose.Schema(
   {
@@ -72,8 +73,8 @@ const ReservationSchema = new mongoose.Schema(
     },
 
     // ✅ NEW (split)
-    customerFirstName: { type: String, required: true, trim: true },
-    customerLastName: { type: String, required: true, trim: true },
+    customerFirstName: { type: String, default: "", trim: true },
+    customerLastName: { type: String, default: "", trim: true },
 
     customerEmail: { type: String, default: "", trim: true },
     customerPhone: { type: String, default: "", trim: true },
@@ -131,6 +132,20 @@ const ReservationSchema = new mongoose.Schema(
   },
   { timestamps: true },
 );
+
+ReservationSchema.pre("validate", function (next) {
+  this.customerFirstName = normalizeNamePart(this.customerFirstName);
+  this.customerLastName = normalizeNamePart(this.customerLastName);
+
+  if (!this.customerFirstName && !this.customerLastName) {
+    this.invalidate(
+      "customerFirstName",
+      "Un prénom ou un nom client est requis.",
+    );
+  }
+
+  next();
+});
 
 // ✅ Virtual compat (emails / notifs)
 ReservationSchema.virtual("customerName").get(function () {

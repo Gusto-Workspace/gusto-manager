@@ -38,6 +38,7 @@ const {
   onReservationCreated,
   onReservationStatusChanged,
 } = require("../services/customers.service");
+const { normalizeNamePart } = require("../services/name-normalization.service");
 
 // ENCRYPTION
 const { decryptApiKey } = require("../services/encryption.service");
@@ -1530,9 +1531,7 @@ async function notifyReservationAfterBankHoldFinalization(reservation) {
 }
 
 function cleanNamePart(v) {
-  return String(v || "")
-    .trim()
-    .replace(/\s+/g, " ");
+  return normalizeNamePart(v);
 }
 
 function getBankHoldConfig(parameters = {}) {
@@ -3366,9 +3365,9 @@ router.post(
           reservationData.customerLastName,
         );
 
-        if (!customerFirstName || !customerLastName) {
+        if (!customerFirstName && !customerLastName) {
           return res.status(400).json({
-            message: "customerFirstName et customerLastName sont requis.",
+            message: "Un prénom ou un nom client est requis.",
           });
         }
 
@@ -4090,6 +4089,14 @@ router.put(
         updateData,
         "numberOfGuests",
       );
+      const hasCustomerFirstName = Object.prototype.hasOwnProperty.call(
+        updateData,
+        "customerFirstName",
+      );
+      const hasCustomerLastName = Object.prototype.hasOwnProperty.call(
+        updateData,
+        "customerLastName",
+      );
 
       const nextDate = hasReservationDate
         ? normalizeReservationDayToUTC(updateData.reservationDate)
@@ -4159,6 +4166,28 @@ router.put(
       }
       if (hasNumberOfGuests) {
         updateData.numberOfGuests = candidateGuests;
+      }
+
+      if (hasCustomerFirstName || hasCustomerLastName) {
+        const nextCustomerFirstName = hasCustomerFirstName
+          ? cleanNamePart(updateData.customerFirstName)
+          : cleanNamePart(existing.customerFirstName);
+        const nextCustomerLastName = hasCustomerLastName
+          ? cleanNamePart(updateData.customerLastName)
+          : cleanNamePart(existing.customerLastName);
+
+        if (!nextCustomerFirstName && !nextCustomerLastName) {
+          return res.status(400).json({
+            message: "Un prénom ou un nom client est requis.",
+          });
+        }
+
+        if (hasCustomerFirstName) {
+          updateData.customerFirstName = nextCustomerFirstName;
+        }
+        if (hasCustomerLastName) {
+          updateData.customerLastName = nextCustomerLastName;
+        }
       }
 
       // ✅ pause check uniquement si date/heure changent

@@ -1,6 +1,10 @@
 // services/customers.service.js
 const CustomerModel = require("../models/customer.model");
 const { recomputeCustomerTagsForId } = require("./customer-tags.service");
+const {
+  cleanNamePart,
+  normalizeNamePart,
+} = require("./name-normalization.service");
 
 function normEmail(v) {
   const s = String(v || "")
@@ -16,12 +20,6 @@ function normPhone(v) {
   return out || null;
 }
 
-function cleanNamePart(v) {
-  return String(v || "")
-    .trim()
-    .replace(/\s+/g, " ");
-}
-
 // ✅ Upsert “identité” + complète first/last si vides (sans écraser)
 async function upsertCustomer({
   restaurantId,
@@ -33,8 +31,8 @@ async function upsertCustomer({
   const emailNorm = normEmail(email);
   const phoneNorm = normPhone(phone);
 
-  const fn = cleanNamePart(firstName);
-  const ln = cleanNamePart(lastName);
+  const fn = normalizeNamePart(firstName);
+  const ln = normalizeNamePart(lastName);
 
   // ⚠️ sans email ni tel => pas d'upsert (évite doublons)
   if (!emailNorm && !phoneNorm) return null;
@@ -83,9 +81,24 @@ async function upsertCustomer({
   // 2) ✅ Compléter uniquement si vide (sans écraser)
   const patch = {};
 
-  // prénom/nom
-  if (!cleanNamePart(doc.firstName) && fn) patch.firstName = fn;
-  if (!cleanNamePart(doc.lastName) && ln) patch.lastName = ln;
+  // prénom/nom: compléter si vide, sinon normaliser la valeur déjà stockée
+  const currentFirstName = cleanNamePart(doc.firstName);
+  const currentLastName = cleanNamePart(doc.lastName);
+  const normalizedCurrentFirstName = normalizeNamePart(currentFirstName);
+  const normalizedCurrentLastName = normalizeNamePart(currentLastName);
+
+  if (!currentFirstName && fn) patch.firstName = fn;
+  else if (
+    currentFirstName &&
+    normalizedCurrentFirstName !== currentFirstName
+  ) {
+    patch.firstName = normalizedCurrentFirstName;
+  }
+
+  if (!currentLastName && ln) patch.lastName = ln;
+  else if (currentLastName && normalizedCurrentLastName !== currentLastName) {
+    patch.lastName = normalizedCurrentLastName;
+  }
 
   // téléphone (compléter si vide uniquement)
   if (!normPhone(doc.phone) && phoneNorm) {
