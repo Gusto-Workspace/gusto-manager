@@ -1312,7 +1312,7 @@ export default function PlanningEmployeesComponent() {
       </div>
 
       {/* ================= Employees selector ================= */}
-      <div className="midTablet:hidden">
+      <div>
         <div className="flex items-center gap-2">
           {/* Liste scrollable */}
           <div className="min-w-0 flex-1 overflow-x-auto">
@@ -1330,7 +1330,7 @@ export default function PlanningEmployeesComponent() {
                       )
                     }
                     className={`
-        shrink-0 p-0 bg-transparent
+        shrink-0 min-w-[130px] p-0 bg-transparent
         rounded-xl transition
         ${active ? "ring-2 ring-blue" : "ring-1 ring-darkBlue/10"}
       `}
@@ -1348,30 +1348,6 @@ export default function PlanningEmployeesComponent() {
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Desktop : cards */}
-      <div className="hidden midTablet:block overflow-x-auto">
-        <ul className="flex gap-4 pt-2">
-          {employees.map((emp) => (
-            <li key={emp._id} className="min-w-[200px]">
-              <div
-                onClick={() =>
-                  setSelectedEmployeeId((prev) =>
-                    prev === emp._id ? null : emp._id,
-                  )
-                }
-                className={`cursor-pointer ${
-                  selectedEmployeeId === emp._id
-                    ? "border-2 border-blue"
-                    : "border-2 border-lightGrey"
-                } rounded-lg transition-colors py-4`}
-              >
-                <CardEmployeesComponent employee={emp} planning={true} />
-              </div>
-            </li>
-          ))}
-        </ul>
       </div>
 
       {/* ================= Calendar toolbar compact ================= */}

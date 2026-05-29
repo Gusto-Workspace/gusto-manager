@@ -53,9 +53,10 @@ export default function CardEmployeesComponent(props) {
         </div>
 
         {/* Texte */}
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 text-left">
           <div className="truncate text-sm font-semibold text-darkBlue">
-            {displayFirstname} {displayLastname?.[0] ? displayLastname[0] + "." : displayLastname}
+            {displayFirstname}{" "}
+            {displayLastname?.[0] ? displayLastname[0] + "." : displayLastname}
           </div>
           <div className="truncate text-[11px] text-darkBlue/50">
             {displayPost}
