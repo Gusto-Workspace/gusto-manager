@@ -23,12 +23,24 @@ function canAccessRestaurant(req, restaurant) {
   if (!restaurant || !req.user) return false;
 
   if (req.user.role === "owner") {
-    return String(restaurant.owner_id?._id || restaurant.owner_id) === String(req.user.id);
+    return (
+      String(restaurant.owner_id?._id || restaurant.owner_id) ===
+      String(req.user.id)
+    );
   }
 
   if (req.user.role === "employee") {
-    if (String(req.user.restaurantId || "") !== String(restaurant._id)) return false;
-    return req.user.options?.take_away === true;
+    if (String(req.user.restaurantId || "") !== String(restaurant._id))
+      return false;
+    if (req.user.options?.take_away === true) return true;
+
+    const employeeInRestaurant = restaurant.employees?.find(
+      (emp) => String(emp._id) === String(req.user.id),
+    );
+    const profile = employeeInRestaurant?.restaurantProfiles?.find(
+      (p) => String(p.restaurant) === String(restaurant._id),
+    );
+    return profile?.options?.take_away === true;
   }
 
   return false;
@@ -86,72 +98,81 @@ function handleError(res, error) {
   });
 }
 
-router.get("/restaurants/:restaurantId/take-away/public/catalog", async (req, res) => {
-  try {
-    const restaurant = await loadPublicRestaurant(req.params.restaurantId);
-    if (!restaurant) {
-      return res.status(404).json({ message: "Restaurant not found" });
-    }
+router.get(
+  "/restaurants/:restaurantId/take-away/public/catalog",
+  async (req, res) => {
+    try {
+      const restaurant = await loadPublicRestaurant(req.params.restaurantId);
+      if (!restaurant) {
+        return res.status(404).json({ message: "Restaurant not found" });
+      }
 
-    const settings = restaurant.takeAwaySettings || {};
-    if (!restaurant.options?.take_away || !settings.enabled) {
-      return res.status(403).json({ message: "Take-away unavailable" });
-    }
+      const settings = restaurant.takeAwaySettings || {};
+      if (!restaurant.options?.take_away || !settings.enabled) {
+        return res.status(403).json({ message: "Take-away unavailable" });
+      }
 
-    return res.status(200).json({
-      settings: {
-        pickupEnabled: settings.pickupEnabled !== false,
-        deliveryEnabled: settings.deliveryEnabled === true,
-        paymentPolicy: settings.paymentPolicy || "on_site",
-        minimumPickupOrder: settings.minimumPickupOrder || 0,
-        deliveryZones: (settings.deliveryZones || [])
-          .filter((zone) => zone.active !== false)
-          .map((zone) => ({
-            _id: String(zone._id),
-            name: zone.name,
-            zipCodes: zone.zipCodes || [],
-            fee: zone.fee || 0,
-            minimumOrder: zone.minimumOrder || 0,
-            estimatedMinutes: zone.estimatedMinutes || 30,
-          })),
-      },
-      catalog: serializePublicCatalog(restaurant),
-    });
-  } catch (error) {
-    return handleError(res, error);
-  }
-});
-
-router.get("/restaurants/:restaurantId/take-away/public/slots", async (req, res) => {
-  try {
-    const restaurant = await loadPublicRestaurant(req.params.restaurantId);
-    if (!restaurant) {
-      return res.status(404).json({ message: "Restaurant not found" });
+      return res.status(200).json({
+        settings: {
+          pickupEnabled: settings.pickupEnabled !== false,
+          deliveryEnabled: settings.deliveryEnabled === true,
+          paymentPolicy: settings.paymentPolicy || "on_site",
+          minimumPickupOrder: settings.minimumPickupOrder || 0,
+          deliveryZones: (settings.deliveryZones || [])
+            .filter((zone) => zone.active !== false)
+            .map((zone) => ({
+              _id: String(zone._id),
+              name: zone.name,
+              zipCodes: zone.zipCodes || [],
+              fee: zone.fee || 0,
+              minimumOrder: zone.minimumOrder || 0,
+              estimatedMinutes: zone.estimatedMinutes || 30,
+            })),
+        },
+        catalog: serializePublicCatalog(restaurant),
+      });
+    } catch (error) {
+      return handleError(res, error);
     }
-    const dateKey = String(req.query.date || "").trim();
-    const slots = await getAvailableSlots({ restaurant, dateKey });
-    return res.status(200).json({ slots });
-  } catch (error) {
-    return handleError(res, error);
-  }
-});
+  },
+);
 
-router.post("/restaurants/:restaurantId/take-away/public/orders", async (req, res) => {
-  try {
-    const restaurant = await loadPublicRestaurant(req.params.restaurantId);
-    if (!restaurant) {
-      return res.status(404).json({ message: "Restaurant not found" });
+router.get(
+  "/restaurants/:restaurantId/take-away/public/slots",
+  async (req, res) => {
+    try {
+      const restaurant = await loadPublicRestaurant(req.params.restaurantId);
+      if (!restaurant) {
+        return res.status(404).json({ message: "Restaurant not found" });
+      }
+      const dateKey = String(req.query.date || "").trim();
+      const slots = await getAvailableSlots({ restaurant, dateKey });
+      return res.status(200).json({ slots });
+    } catch (error) {
+      return handleError(res, error);
     }
-    const order = await createTakeAwayOrder({
-      restaurant,
-      payload: req.body || {},
-      source: "public",
-    });
-    return res.status(201).json({ order });
-  } catch (error) {
-    return handleError(res, error);
-  }
-});
+  },
+);
+
+router.post(
+  "/restaurants/:restaurantId/take-away/public/orders",
+  async (req, res) => {
+    try {
+      const restaurant = await loadPublicRestaurant(req.params.restaurantId);
+      if (!restaurant) {
+        return res.status(404).json({ message: "Restaurant not found" });
+      }
+      const order = await createTakeAwayOrder({
+        restaurant,
+        payload: req.body || {},
+        source: "public",
+      });
+      return res.status(201).json({ order });
+    } catch (error) {
+      return handleError(res, error);
+    }
+  },
+);
 
 router.post(
   "/restaurants/:restaurantId/take-away/public/orders/:orderId/payment-intent",
@@ -168,7 +189,10 @@ router.post(
       if (!order) {
         return res.status(404).json({ message: "Order not found" });
       }
-      const paymentIntent = await createOrderPaymentIntent({ restaurant, order });
+      const paymentIntent = await createOrderPaymentIntent({
+        restaurant,
+        order,
+      });
       return res.status(200).json({
         order,
         clientSecret: paymentIntent.client_secret,
@@ -218,11 +242,35 @@ router.get(
         query.fulfillmentMode = req.query.fulfillmentMode;
       }
       if (req.query.date) {
-        const [year, month, day] = String(req.query.date).split("-").map(Number);
+        const [year, month, day] = String(req.query.date)
+          .split("-")
+          .map(Number);
         const start = new Date(year, month - 1, day, 0, 0, 0, 0);
         const end = new Date(start);
         end.setDate(end.getDate() + 1);
         query.scheduledFor = { $gte: start, $lt: end };
+      } else if (req.query.dateFrom || req.query.dateTo) {
+        query.scheduledFor = {};
+        if (req.query.dateFrom) {
+          const [year, month, day] = String(req.query.dateFrom)
+            .split("-")
+            .map(Number);
+          query.scheduledFor.$gte = new Date(year, month - 1, day, 0, 0, 0, 0);
+        }
+        if (req.query.dateTo) {
+          const [year, month, day] = String(req.query.dateTo)
+            .split("-")
+            .map(Number);
+          query.scheduledFor.$lt = new Date(
+            year,
+            month - 1,
+            day + 1,
+            0,
+            0,
+            0,
+            0,
+          );
+        }
       }
 
       const orders = await TakeAwayOrderModel.find(query)
@@ -373,7 +421,10 @@ router.patch(
         return res.status(404).json({ message: "Catalog item not found" });
       }
 
-      Object.assign(item, normalizeCatalogItemInput({ ...item.toObject(), ...req.body }));
+      Object.assign(
+        item,
+        normalizeCatalogItemInput({ ...item.toObject(), ...req.body }),
+      );
       item.updatedAt = new Date();
       await restaurant.save();
 

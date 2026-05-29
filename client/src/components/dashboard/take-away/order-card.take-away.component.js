@@ -25,9 +25,6 @@ export default function TakeAwayOrderCardComponent({ order, onOpenDetails }) {
                     .filter(Boolean)
                     .join(" ") || order.orderNumber}
                 </p>
-                <p className="text-xs font-semibold text-darkBlue/45">
-                  {order.orderNumber}
-                </p>
               </div>
               <span
                 className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${getStatusTone(

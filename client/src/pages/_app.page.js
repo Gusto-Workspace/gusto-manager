@@ -113,7 +113,9 @@ function OwnerOnlyWebAppGuard({ children }) {
   useEffect(() => {
     if (!router.isReady) return;
 
-    const isWebAppRoute = (router.pathname || "").startsWith("/dashboard/webapp");
+    const isWebAppRoute = (router.pathname || "").startsWith(
+      "/dashboard/webapp",
+    );
     if (!isWebAppRoute) {
       setAccessState("allowed");
       return;
@@ -184,9 +186,7 @@ function EmployeeDashboardAccessGuard({ children }) {
 
   const isEmployee = authRole === "employee";
   const isProtectedEmployeeRoute =
-    isEmployee &&
-    !!requiredOptionKey &&
-    currentPath !== "/dashboard/my-space";
+    isEmployee && !!requiredOptionKey && currentPath !== "/dashboard/my-space";
 
   const employeeHasRouteAccess = isProtectedEmployeeRoute
     ? !restaurantContext.dataLoading &&
@@ -272,6 +272,46 @@ function App({ Component, pageProps }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!("serviceWorker" in navigator)) return;
+
+    if (process.env.NODE_ENV === "development") {
+      const reloadFlag = "gusto-dev-service-worker-cleared";
+
+      navigator.serviceWorker
+        .getRegistrations()
+        .then((registrations) => {
+          const hadServiceWorker =
+            registrations.length > 0 ||
+            Boolean(navigator.serviceWorker.controller);
+
+          return Promise.all(
+            registrations.map((registration) => registration.unregister()),
+          ).then(() => hadServiceWorker);
+        })
+        .then((hadServiceWorker) => {
+          if ("caches" in window) {
+            return caches
+              .keys()
+              .then((keys) =>
+                Promise.all(keys.map((key) => caches.delete(key))),
+              )
+              .then(() => hadServiceWorker);
+          }
+          return hadServiceWorker;
+        })
+        .then((hadServiceWorker) => {
+          if (!hadServiceWorker) return;
+          if (sessionStorage.getItem(reloadFlag)) return;
+          sessionStorage.setItem(reloadFlag, "1");
+          window.location.reload();
+        })
+        .catch((error) => {
+          console.warn(
+            "Unable to unregister development service worker",
+            error,
+          );
+        });
+      return;
+    }
 
     const handleServiceWorkerMessage = (event) => {
       const message = event?.data;

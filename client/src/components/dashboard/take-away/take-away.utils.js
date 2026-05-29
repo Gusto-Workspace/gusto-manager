@@ -28,14 +28,6 @@ export const NEXT_STATUS = {
   out_for_delivery: ["completed"],
 };
 
-export const SOURCE_LABELS = {
-  dish: "Plat",
-  drink: "Boisson",
-  wine: "Vin",
-  menu: "Menu",
-  custom: "Article dédié",
-};
-
 export const inputClass =
   "h-11 w-full rounded-xl border bg-white px-3 text-sm outline-none transition focus:border-blue/50 focus:ring-2 focus:ring-blue/15";
 
@@ -104,14 +96,27 @@ export function buildMonthGrid(currentMonth, orders, searchTerm = "") {
     currentMonth.getMonth(),
     1,
   );
+  const end = new Date(
+    currentMonth.getFullYear(),
+    currentMonth.getMonth() + 1,
+    0,
+  );
   const firstWeekday = (start.getDay() + 6) % 7;
+  const lastWeekday = end.getDay();
+  const trailing = (7 - ((lastWeekday + 6) % 7) - 1 + 7) % 7;
   const gridStart = new Date(start);
   gridStart.setDate(start.getDate() - firstWeekday);
+  const gridEnd = new Date(end);
+  gridEnd.setDate(end.getDate() + trailing);
 
   const q = normalizeForMatch(searchTerm);
-  return Array.from({ length: 42 }, (_, index) => {
-    const date = new Date(gridStart);
-    date.setDate(gridStart.getDate() + index);
+  const days = [];
+  for (
+    let cursor = new Date(gridStart);
+    cursor <= gridEnd;
+    cursor.setDate(cursor.getDate() + 1)
+  ) {
+    const date = new Date(cursor);
     const key = toDateKey(date);
     const dayOrders = orders.filter(
       (order) => toDateKey(order.scheduledFor) === key,
@@ -127,15 +132,16 @@ export function buildMonthGrid(currentMonth, orders, searchTerm = "") {
     matched.forEach((order) => {
       byStatus[order.status] = (byStatus[order.status] || 0) + 1;
     });
-    return {
+    days.push({
       key,
       date,
       inMonth: date.getMonth() === currentMonth.getMonth(),
       total: matched.length,
       byStatus,
       orders: matched,
-    };
-  });
+    });
+  }
+  return days;
 }
 
 export function getDeliveryZoneForm(zone = {}, index = 0) {

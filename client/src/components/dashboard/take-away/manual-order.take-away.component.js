@@ -34,6 +34,8 @@ export default function ManualTakeAwayOrderComponent({
   deliveryZones,
   loading,
   onCreate,
+  title = "Nouvelle commande",
+  variant = "panel",
 }) {
   const [manualOrder, setManualOrder] = useState(initialManualOrder);
   const [errors, setErrors] = useState({});
@@ -184,12 +186,17 @@ export default function ManualTakeAwayOrderComponent({
   }
 
   const itemTitle = manualOrder.items.length > 1 ? "Articles" : "Article";
+  const Wrapper = variant === "page" ? "div" : "aside";
+  const wrapperClass =
+    variant === "page"
+      ? "w-full rounded-3xl border border-darkBlue/10 bg-white/70 p-4 shadow-sm midTablet:p-6"
+      : "rounded-2xl border border-darkBlue/10 bg-white/70 p-4 shadow-sm";
 
   return (
-    <aside className="rounded-2xl border border-darkBlue/10 bg-white/70 p-4 shadow-sm">
+    <Wrapper className={wrapperClass}>
       <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold">
         <Plus className="size-5" />
-        Commande manuelle
+        {title}
       </h2>
       <div className="flex flex-col gap-4">
         <div className="grid gap-3 midTablet:grid-cols-2">
@@ -368,47 +375,43 @@ export default function ManualTakeAwayOrderComponent({
           {manualOrder.items.map((line, index) => (
             <div
               key={line.localId}
-              className="grid grid-cols-[1fr_92px_40px] items-end gap-2"
+              className="grid grid-cols-[1fr_92px_40px] items-center gap-2"
             >
-              <FormField label="Article">
-                <select
-                  className={fieldClass(errors.items && !line.catalogItemId)}
-                  value={line.catalogItemId}
-                  onChange={(e) =>
-                    updateManualLine(index, { catalogItemId: e.target.value })
-                  }
-                >
-                  <option value="">Sélectionner un article</option>
-                  {activeCatalogGroups.map((group) => (
-                    <optgroup key={group.name} label={group.name}>
-                      {group.items.map((item) => (
-                        <option key={item._id} value={item._id}>
-                          {item.name} • {toMoney(item.price)}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-              </FormField>
-              <FormField label="Qté">
-                <select
-                  className={fieldClass(false)}
-                  value={line.quantity}
-                  onChange={(e) =>
-                    updateManualLine(index, {
-                      quantity: Number(e.target.value || 1),
-                    })
-                  }
-                >
-                  {Array.from({ length: 20 }, (_, qty) => qty + 1).map(
-                    (qty) => (
-                      <option key={qty} value={qty}>
-                        {qty}
+              <select
+                aria-label="Article"
+                className={fieldClass(errors.items && !line.catalogItemId)}
+                value={line.catalogItemId}
+                onChange={(e) =>
+                  updateManualLine(index, { catalogItemId: e.target.value })
+                }
+              >
+                <option value="">Sélectionner un article</option>
+                {activeCatalogGroups.map((group) => (
+                  <optgroup key={group.name} label={group.name}>
+                    {group.items.map((item) => (
+                      <option key={item._id} value={item._id}>
+                        {item.name} • {toMoney(item.price)}
                       </option>
-                    ),
-                  )}
-                </select>
-              </FormField>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+              <select
+                aria-label="Quantité"
+                className={fieldClass(false)}
+                value={line.quantity}
+                onChange={(e) =>
+                  updateManualLine(index, {
+                    quantity: Number(e.target.value || 1),
+                  })
+                }
+              >
+                {Array.from({ length: 20 }, (_, qty) => qty + 1).map((qty) => (
+                  <option key={qty} value={qty}>
+                    {qty}
+                  </option>
+                ))}
+              </select>
               <button
                 type="button"
                 disabled={manualOrder.items.length <= 1}
@@ -458,6 +461,6 @@ export default function ManualTakeAwayOrderComponent({
           Créer
         </button>
       </div>
-    </aside>
+    </Wrapper>
   );
 }

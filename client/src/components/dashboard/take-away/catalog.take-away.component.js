@@ -6,7 +6,6 @@ import { GlobalContext } from "@/contexts/global.context";
 import TakeAwayHeaderComponent from "./header.take-away.component";
 import { EmptyState, FormField } from "./form.take-away.component";
 import {
-  SOURCE_LABELS,
   fieldClass,
   getCatalogCategoryName,
   normalizeForMatch,
@@ -126,7 +125,6 @@ export default function TakeAwayCatalogComponent() {
         data: item,
       });
       restaurantContext.setRestaurantData(data.restaurant);
-      setMessage("Article importé dans le catalogue emporter.");
     } catch (error) {
       console.error(error);
       setMessage("Import impossible.");
@@ -165,7 +163,6 @@ export default function TakeAwayCatalogComponent() {
       setCustomCategoryMode("À emporter");
       setCustomCategoryText("");
       setErrors({});
-      setMessage("Article créé.");
     } catch (error) {
       console.error(error);
       setMessage("Création impossible.");
@@ -200,7 +197,6 @@ export default function TakeAwayCatalogComponent() {
         url: `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/take-away/catalog/${item._id}`,
       });
       restaurantContext.setRestaurantData(data.restaurant);
-      setMessage("Produit retiré du catalogue emporter.");
     } catch (error) {
       console.error(error);
       setMessage("Suppression impossible.");
@@ -211,7 +207,7 @@ export default function TakeAwayCatalogComponent() {
 
   return (
     <section className="flex flex-col gap-6">
-      <TakeAwayHeaderComponent subtitle="Catalogue" />
+      <TakeAwayHeaderComponent subtitle="Catalogue" showBack />
 
       {message && (
         <div className="rounded-2xl border border-darkBlue/10 bg-white/70 px-4 py-3 text-sm text-darkBlue">
@@ -237,9 +233,6 @@ export default function TakeAwayCatalogComponent() {
                   >
                     <div>
                       <p className="font-semibold text-darkBlue">{item.name}</p>
-                      <p className="text-sm text-darkBlue/50">
-                        {SOURCE_LABELS[item.sourceType] || item.sourceType}
-                      </p>
                     </div>
                     <FormField label="Prix">
                       <input

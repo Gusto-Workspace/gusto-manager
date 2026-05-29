@@ -258,6 +258,7 @@ const takeAwaySettingsSchema = new mongoose.Schema(
     enabled: { type: Boolean, default: false },
     pickupEnabled: { type: Boolean, default: true },
     deliveryEnabled: { type: Boolean, default: false },
+    auto_accept: { type: Boolean, default: true },
     paymentPolicy: {
       type: String,
       enum: ["online_required", "on_site", "customer_choice"],

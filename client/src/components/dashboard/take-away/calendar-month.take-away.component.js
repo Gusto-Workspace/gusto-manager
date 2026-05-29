@@ -1,5 +1,13 @@
 import { STATUS_ORDER, toDateKey } from "./take-away.utils";
 
+function getStatusBarColor(status) {
+  if (status === "completed") return "#22c55e";
+  if (status === "canceled" || status === "rejected") return "#ff7664";
+  if (status === "pending") return "#93c5fd";
+  if (status === "ready") return "#f59e0b";
+  return "#3b82f6";
+}
+
 export default function CalendarMonthTakeAwayComponent({
   monthGridDays,
   selectedDay,
@@ -61,16 +69,7 @@ export default function CalendarMonthTakeAwayComponent({
                         className="h-1"
                         style={{
                           width: `${pct}%`,
-                          backgroundColor:
-                            status === "completed"
-                              ? "#22c55e"
-                              : status === "canceled" || status === "rejected"
-                                ? "#ff7664"
-                                : status === "pending"
-                                  ? "#93c5fd"
-                                  : status === "ready"
-                                    ? "#f59e0b"
-                                    : "#3b82f6",
+                          backgroundColor: getStatusBarColor(status),
                         }}
                       />
                     </div>

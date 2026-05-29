@@ -7,9 +7,9 @@ import { GlobalContext } from "@/contexts/global.context";
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
-import TakeAwayParametersComponent from "@/components/dashboard/take-away/parameters.take-away.component";
+import ListTakeAwayComponent from "@/components/dashboard/take-away/list.take-away.component";
 
-export default function TakeAwayParametersPage() {
+export default function TakeAwayPage() {
   const { restaurantContext } = useContext(GlobalContext);
 
   let title;
@@ -68,7 +68,7 @@ export default function TakeAwayParametersPage() {
                 dataLoading={restaurantContext.dataLoading}
               />
             ) : (
-              <TakeAwayParametersComponent />
+              <ListTakeAwayComponent />
             )}
           </div>
         </div>
@@ -80,11 +80,7 @@ export default function TakeAwayParametersPage() {
 export async function getStaticProps({ locale }) {
   return {
     props: {
-      ...(await serverSideTranslations(locale, [
-        "common",
-        "take-away",
-        "restaurant",
-      ])),
+      ...(await serverSideTranslations(locale, ["common", "take-away"])),
     },
   };
 }

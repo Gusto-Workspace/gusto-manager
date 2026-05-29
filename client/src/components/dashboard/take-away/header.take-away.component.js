@@ -1,5 +1,5 @@
 import { useRouter } from "next/router";
-import { ClipboardList, Plus, Settings, ShoppingBag } from "lucide-react";
+import { Plus, Settings, ShoppingBag } from "lucide-react";
 
 import CatalogHeaderDashboardComponent from "../_shared/catalog-header.dashboard.component";
 import { TakeAwaySvg } from "@/components/_shared/_svgs/_index";
@@ -7,8 +7,11 @@ import { TakeAwaySvg } from "@/components/_shared/_svgs/_index";
 export default function TakeAwayHeaderComponent({
   subtitle = "Commandes",
   actions,
+  showBack = false,
+  onBack,
 }) {
   const router = useRouter();
+  const handleBack = onBack || (() => router.push("/dashboard/take-away"));
 
   const defaultActions = (
     <>
@@ -30,15 +33,6 @@ export default function TakeAwayHeaderComponent({
       >
         <Settings className="size-4 text-darkBlue/70" />
       </button>
-      <button
-        type="button"
-        onClick={() => router.push("/dashboard/take-away")}
-        className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 transition hover:bg-darkBlue/5"
-        aria-label="Commandes"
-        title="Commandes"
-      >
-        <ClipboardList className="size-4 text-darkBlue/70" />
-      </button>
     </>
   );
 
@@ -56,6 +50,8 @@ export default function TakeAwayHeaderComponent({
         }
         title="Vente à emporter"
         subtitle={subtitle}
+        onBack={showBack ? handleBack : undefined}
+        backLabel="Retour"
         onTitleClick={() => router.push("/dashboard/take-away")}
         actions={actions || defaultActions}
       />

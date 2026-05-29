@@ -1,13 +1,25 @@
 import { useContext } from "react";
 import Head from "next/head";
+import { i18n } from "next-i18next";
+import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 
 import { GlobalContext } from "@/contexts/global.context";
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
+import AddTakeAwayComponent from "@/components/dashboard/take-away/add.take-away.component";
 
-export default function TakeAwayPageShell({ children }) {
+export default function AddTakeAwayPage() {
   const { restaurantContext } = useContext(GlobalContext);
+
+  let title;
+  switch (i18n.language) {
+    case "en":
+      title = "Gusto Manager";
+      break;
+    default:
+      title = "Gusto Manager";
+  }
 
   if (!restaurantContext.isAuth) return null;
 
@@ -30,7 +42,7 @@ export default function TakeAwayPageShell({ children }) {
   return (
     <>
       <Head>
-        <title>Gusto Manager</title>
+        <title>{title}</title>
       </Head>
 
       <div>
@@ -56,11 +68,19 @@ export default function TakeAwayPageShell({ children }) {
                 dataLoading={restaurantContext.dataLoading}
               />
             ) : (
-              children
+              <AddTakeAwayComponent />
             )}
           </div>
         </div>
       </div>
     </>
   );
+}
+
+export async function getStaticProps({ locale }) {
+  return {
+    props: {
+      ...(await serverSideTranslations(locale, ["common", "take-away"])),
+    },
+  };
 }

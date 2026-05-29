@@ -9,9 +9,7 @@ const {
   onTakeAwayOrderStatusChanged,
 } = require("./customers.service");
 const { broadcastToRestaurant } = require("./sse-bus.service");
-const {
-  createAndBroadcastNotification,
-} = require("./notifications.service");
+const { createAndBroadcastNotification } = require("./notifications.service");
 
 const ACTIVE_ORDER_STATUSES = [
   "pending",
@@ -78,9 +76,11 @@ function getSettings(restaurant) {
 }
 
 function sanitizeTakeAwaySettingsInput(input = {}) {
-  const paymentPolicy = ["online_required", "on_site", "customer_choice"].includes(
-    input.paymentPolicy,
-  )
+  const paymentPolicy = [
+    "online_required",
+    "on_site",
+    "customer_choice",
+  ].includes(input.paymentPolicy)
     ? input.paymentPolicy
     : "on_site";
 
@@ -88,6 +88,7 @@ function sanitizeTakeAwaySettingsInput(input = {}) {
     enabled: Boolean(input.enabled),
     pickupEnabled: input.pickupEnabled !== false,
     deliveryEnabled: Boolean(input.deliveryEnabled),
+    auto_accept: input.auto_accept !== false,
     paymentPolicy,
     same_hours_as_restaurant: input.same_hours_as_restaurant !== false,
     defaultSlotIntervalMinutes: Math.max(
@@ -111,7 +112,11 @@ function sanitizeTakeAwaySettingsInput(input = {}) {
                   end: cleanString(slot.end),
                   intervalMinutes: Math.max(
                     5,
-                    Number(slot.intervalMinutes || input.defaultSlotIntervalMinutes || 15),
+                    Number(
+                      slot.intervalMinutes ||
+                        input.defaultSlotIntervalMinutes ||
+                        15,
+                    ),
                   ),
                   maxOrders: Math.max(
                     1,
@@ -141,7 +146,9 @@ function sanitizeTakeAwaySettingsInput(input = {}) {
         }))
       : [],
     email_templates: {
-      confirmationSubject: cleanString(input?.email_templates?.confirmationSubject),
+      confirmationSubject: cleanString(
+        input?.email_templates?.confirmationSubject,
+      ),
       confirmationBody: cleanString(input?.email_templates?.confirmationBody),
     },
   };
@@ -182,14 +189,23 @@ function getDisplayPriceForWine(wine) {
   return prices.length ? Math.min(...prices) : 0;
 }
 
-function findSourceItem(restaurant, sourceType, sourceItemId, sourceCategoryId, sourceSubCategoryId) {
+function findSourceItem(
+  restaurant,
+  sourceType,
+  sourceItemId,
+  sourceCategoryId,
+  sourceSubCategoryId,
+) {
   const targetId = cleanString(sourceItemId);
   if (!targetId) return null;
 
   if (sourceType === "dish") {
     for (const category of restaurant.dish_categories || []) {
-      if (sourceCategoryId && String(category._id) !== String(sourceCategoryId)) continue;
-      const dish = (category.dishes || []).find((item) => String(item._id) === targetId);
+      if (sourceCategoryId && String(category._id) !== String(sourceCategoryId))
+        continue;
+      const dish = (category.dishes || []).find(
+        (item) => String(item._id) === targetId,
+      );
       if (dish) {
         return {
           item: dish,
@@ -212,7 +228,11 @@ function findSourceItem(restaurant, sourceType, sourceItemId, sourceCategoryId, 
         drinks.push({ drink, subCategory: null }),
       );
       (category.subCategories || []).forEach((subCategory) => {
-        if (sourceSubCategoryId && String(subCategory._id) !== String(sourceSubCategoryId)) return;
+        if (
+          sourceSubCategoryId &&
+          String(subCategory._id) !== String(sourceSubCategoryId)
+        )
+          return;
         (subCategory.drinks || []).forEach((drink) =>
           drinks.push({ drink, subCategory }),
         );
@@ -243,7 +263,11 @@ function findSourceItem(restaurant, sourceType, sourceItemId, sourceCategoryId, 
         wines.push({ wine, subCategory: null }),
       );
       (category.subCategories || []).forEach((subCategory) => {
-        if (sourceSubCategoryId && String(subCategory._id) !== String(sourceSubCategoryId)) return;
+        if (
+          sourceSubCategoryId &&
+          String(subCategory._id) !== String(sourceSubCategoryId)
+        )
+          return;
         (subCategory.wines || []).forEach((wine) =>
           wines.push({ wine, subCategory }),
         );
@@ -268,7 +292,9 @@ function findSourceItem(restaurant, sourceType, sourceItemId, sourceCategoryId, 
   }
 
   if (sourceType === "menu") {
-    const menu = (restaurant.menus || []).find((candidate) => String(candidate._id) === targetId);
+    const menu = (restaurant.menus || []).find(
+      (candidate) => String(candidate._id) === targetId,
+    );
     if (menu) {
       return {
         item: menu,
@@ -420,11 +446,16 @@ function upsertCatalogItemFromSource({
 
   const snapshot = sourceMatch.sourceSnapshot;
 
-  let catalogItem = findCatalogItemForSource(restaurant, sourceType, sourceItemId);
+  let catalogItem = findCatalogItemForSource(
+    restaurant,
+    sourceType,
+    sourceItemId,
+  );
   const payload = {
     sourceType,
     sourceCategoryId: sourceCategoryId || sourceMatch.category?._id || null,
-    sourceSubCategoryId: sourceSubCategoryId || sourceMatch.subCategory?._id || null,
+    sourceSubCategoryId:
+      sourceSubCategoryId || sourceMatch.subCategory?._id || null,
     sourceItemId,
     sourceSnapshot: snapshot,
     name: cleanString(overrides.name) || snapshot.name,
@@ -442,7 +473,8 @@ function upsertCatalogItemFromSource({
         ? normalizeMoney(overrides.price, snapshot.price)
         : snapshot.price,
     active: overrides.active !== undefined ? Boolean(overrides.active) : true,
-    visible: overrides.visible !== undefined ? Boolean(overrides.visible) : true,
+    visible:
+      overrides.visible !== undefined ? Boolean(overrides.visible) : true,
     sortOrder: Number(overrides.sortOrder || catalogItem?.sortOrder || 0),
     options: Array.isArray(overrides.options)
       ? normalizeCatalogItemInput(overrides).options
@@ -459,7 +491,8 @@ function upsertCatalogItemFromSource({
     Object.assign(catalogItem, payload);
   } else {
     restaurant.takeAwayCatalog.push(payload);
-    catalogItem = restaurant.takeAwayCatalog[restaurant.takeAwayCatalog.length - 1];
+    catalogItem =
+      restaurant.takeAwayCatalog[restaurant.takeAwayCatalog.length - 1];
   }
 
   return catalogItem;
@@ -509,7 +542,9 @@ function getDaySchedule(restaurant, date) {
     };
   }
 
-  const customDay = Array.isArray(settings.slots) ? settings.slots[dayIndex] : null;
+  const customDay = Array.isArray(settings.slots)
+    ? settings.slots[dayIndex]
+    : null;
   if (!customDay || customDay.isClosed) return null;
   return { ranges: customDay.slots || [] };
 }
@@ -561,7 +596,9 @@ async function getAvailableSlots({ restaurant, dateKey }) {
     { $group: { _id: "$slotId", count: { $sum: 1 } } },
   ]);
 
-  const countBySlot = new Map(counts.map((row) => [String(row._id), row.count]));
+  const countBySlot = new Map(
+    counts.map((row) => [String(row._id), row.count]),
+  );
 
   return slots.map((slot) => {
     const booked = countBySlot.get(slot.slotId) || 0;
@@ -600,7 +637,11 @@ function buildOrderItems(restaurant, rawItems = []) {
 
   return rawItems.map((rawItem) => {
     const catalogItem = getCatalogItem(restaurant, rawItem.catalogItemId);
-    if (!catalogItem || catalogItem.active === false || catalogItem.visible === false) {
+    if (
+      !catalogItem ||
+      catalogItem.active === false ||
+      catalogItem.visible === false
+    ) {
       const err = new Error("Catalog item unavailable");
       err.status = 400;
       throw err;
@@ -619,14 +660,16 @@ function buildOrderItems(restaurant, rawItems = []) {
     );
     const selectedOptions = (catalogItem.options || []).filter(
       (option) =>
-        optionIds.has(String(option._id)) || optionNames.has(cleanString(option.name)),
+        optionIds.has(String(option._id)) ||
+        optionNames.has(cleanString(option.name)),
     );
     const optionsTotal = selectedOptions.reduce(
       (sum, option) => sum + normalizeMoney(option.price, 0),
       0,
     );
     const unitPrice = normalizeMoney(catalogItem.price, 0);
-    const lineTotal = Math.round((unitPrice + optionsTotal) * quantity * 100) / 100;
+    const lineTotal =
+      Math.round((unitPrice + optionsTotal) * quantity * 100) / 100;
 
     return {
       catalogItemId: catalogItem._id,
@@ -701,7 +744,9 @@ function broadcastOrder(restaurantId, order, type = "takeaway_order_updated") {
 }
 
 async function cleanupCompletedTakeAwayOrders(restaurant) {
-  const days = Number(getSettings(restaurant)?.completedOrderAutoDeleteDays || 0);
+  const days = Number(
+    getSettings(restaurant)?.completedOrderAutoDeleteDays || 0,
+  );
   if (!Number.isFinite(days) || days <= 0) return;
 
   const before = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
@@ -728,7 +773,8 @@ async function createTakeAwayOrder({ restaurant, payload, source = "public" }) {
     throw err;
   }
 
-  const fulfillmentMode = payload.fulfillmentMode === "delivery" ? "delivery" : "pickup";
+  const fulfillmentMode =
+    payload.fulfillmentMode === "delivery" ? "delivery" : "pickup";
   if (fulfillmentMode === "pickup" && settings.pickupEnabled === false) {
     const err = new Error("Retrait indisponible");
     err.status = 400;
@@ -747,13 +793,15 @@ async function createTakeAwayOrder({ restaurant, payload, source = "public" }) {
     throw err;
   }
   const dateKey = toDateKey(scheduledFor);
-  const slotId = cleanString(payload.slotId) || `${dateKey}-${pad2(scheduledFor.getHours())}:${pad2(scheduledFor.getMinutes())}`;
+  const slotId =
+    cleanString(payload.slotId) ||
+    `${dateKey}-${pad2(scheduledFor.getHours())}:${pad2(scheduledFor.getMinutes())}`;
   await validateSlotCapacity({ restaurant, dateKey, slotId });
 
   const items = buildOrderItems(restaurant, payload.items);
-  const subtotal = Math.round(
-    items.reduce((sum, item) => sum + item.lineTotal, 0) * 100,
-  ) / 100;
+  const subtotal =
+    Math.round(items.reduce((sum, item) => sum + item.lineTotal, 0) * 100) /
+    100;
 
   let deliveryFee = 0;
   let deliveryZone = null;
@@ -779,9 +827,18 @@ async function createTakeAwayOrder({ restaurant, payload, source = "public" }) {
   }
 
   const paymentMethod = getPaymentMethod(settings, payload.paymentMethod);
-  const status = paymentMethod === "online" && source === "public" ? "pending" : "confirmed";
+  const status =
+    source === "dashboard"
+      ? "confirmed"
+      : paymentMethod === "online"
+        ? "pending"
+        : settings.auto_accept === false
+          ? "pending"
+          : "confirmed";
   const paymentStatus =
-    paymentMethod === "online" && source === "public" ? "pending" : "not_required";
+    paymentMethod === "online" && source === "public"
+      ? "pending"
+      : "not_required";
 
   const customer = await upsertCustomer({
     restaurantId: restaurant._id,
@@ -856,7 +913,10 @@ function getRestaurantStripeSecretKey(restaurant) {
   try {
     return decryptApiKey(encrypted);
   } catch (error) {
-    console.error("[take-away] stripe secret decrypt failed", error?.message || error);
+    console.error(
+      "[take-away] stripe secret decrypt failed",
+      error?.message || error,
+    );
     return "";
   }
 }
@@ -896,7 +956,12 @@ async function createOrderPaymentIntent({ restaurant, order }) {
   return paymentIntent;
 }
 
-async function confirmOrderPayment({ restaurant, restaurantId, orderId, paymentIntentId }) {
+async function confirmOrderPayment({
+  restaurant,
+  restaurantId,
+  orderId,
+  paymentIntentId,
+}) {
   const resolvedRestaurantId = restaurant?._id || restaurantId;
   const order = await TakeAwayOrderModel.findOne({
     _id: orderId,
@@ -936,11 +1001,19 @@ async function confirmOrderPayment({ restaurant, restaurantId, orderId, paymentI
   }
 
   order.paymentStatus = "paid";
-  if (order.status === "pending") {
+  if (
+    order.status === "pending" &&
+    getSettings(restaurant)?.auto_accept !== false
+  ) {
     const prevStatus = order.status;
     order.status = "confirmed";
     applyStatusTimestamp(order, "confirmed");
-    await onTakeAwayOrderStatusChanged(order.customer, order, prevStatus, order.status);
+    await onTakeAwayOrderStatusChanged(
+      order.customer,
+      order,
+      prevStatus,
+      order.status,
+    );
   }
   await order.save();
   broadcastOrder(resolvedRestaurantId, order);

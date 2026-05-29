@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { X } from "lucide-react";
+import { Clock, CreditCard, Mail, MapPin, Phone, X } from "lucide-react";
 
 import {
   NEXT_STATUS,
   STATUS_LABELS,
+  formatTime,
   getStatusTone,
   toMoney,
 } from "./take-away.utils";
@@ -48,7 +49,7 @@ export default function TakeAwayOrderDrawerComponent({
   }
 
   return (
-    <div className="fixed inset-0 z-[80]">
+    <div className="fixed inset-0 z-[120]">
       <button
         type="button"
         className={`absolute inset-0 bg-darkBlue/30 transition-opacity ${
@@ -58,11 +59,13 @@ export default function TakeAwayOrderDrawerComponent({
         aria-label="Fermer"
       />
       <aside
-        className={`absolute right-0 top-0 flex h-full w-full max-w-[460px] flex-col bg-lightGrey shadow-2xl transition-transform duration-200 ${
-          isVisible ? "translate-x-0" : "translate-x-full"
+        className={`absolute inset-x-0 bottom-0 flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-3xl bg-lightGrey shadow-2xl transition-transform duration-200 midTablet:inset-y-0 midTablet:left-auto midTablet:right-0 midTablet:max-h-none midTablet:max-w-[480px] midTablet:rounded-none ${
+          isVisible
+            ? "translate-y-0 midTablet:translate-x-0"
+            : "translate-y-full midTablet:translate-x-full midTablet:translate-y-0"
         }`}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-darkBlue/10 bg-white/70 p-5">
+        <div className="flex items-start justify-between gap-4 border-b border-darkBlue/10 bg-white p-5">
           <div>
             <p className="text-xs font-semibold text-darkBlue/45">
               {order.orderNumber}
@@ -91,15 +94,75 @@ export default function TakeAwayOrderDrawerComponent({
           </button>
         </div>
 
-        <div className="flex-1 overflow-auto p-5">
+        <div className="flex-1 overflow-auto bg-lightGrey p-5">
           {errorMessage ? (
             <div className="mb-4 rounded-xl border border-red/20 bg-red/10 px-4 py-3 text-sm font-semibold text-red">
               {errorMessage}
             </div>
           ) : null}
 
-          <div className="rounded-2xl border border-darkBlue/10 bg-white/70 p-4">
-            <p className="text-xs font-semibold text-darkBlue/45">Commande</p>
+          <div className="rounded-2xl border border-darkBlue/10 bg-white p-4 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-darkBlue/45">
+              Informations client
+            </p>
+            <div className="mt-3 grid gap-2 text-sm text-darkBlue/70">
+              <a
+                href={
+                  order.customerPhone ? `tel:${order.customerPhone}` : undefined
+                }
+                className="inline-flex items-center gap-2 rounded-xl bg-lightGrey px-3 py-2"
+              >
+                <Phone className="size-4 text-darkBlue/45" />
+                <span>{order.customerPhone || "Téléphone non renseigné"}</span>
+              </a>
+              <a
+                href={
+                  order.customerEmail
+                    ? `mailto:${order.customerEmail}`
+                    : undefined
+                }
+                className="inline-flex items-center gap-2 rounded-xl bg-lightGrey px-3 py-2"
+              >
+                <Mail className="size-4 text-darkBlue/45" />
+                <span>{order.customerEmail || "Email non renseigné"}</span>
+              </a>
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-darkBlue/10 bg-white p-4 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-darkBlue/45">
+              Organisation
+            </p>
+            <div className="mt-3 grid gap-2 text-sm text-darkBlue/70">
+              <div className="inline-flex items-center gap-2 rounded-xl bg-lightGrey px-3 py-2">
+                <Clock className="size-4 text-darkBlue/45" />
+                <span>{formatTime(order.scheduledFor)}</span>
+              </div>
+              <div className="inline-flex items-center gap-2 rounded-xl bg-lightGrey px-3 py-2">
+                <MapPin className="size-4 text-darkBlue/45" />
+                <span>
+                  {order.fulfillmentMode === "delivery"
+                    ? "Livraison"
+                    : "Retrait"}
+                </span>
+              </div>
+              <div className="inline-flex items-center gap-2 rounded-xl bg-lightGrey px-3 py-2">
+                <CreditCard className="size-4 text-darkBlue/45" />
+                <span>
+                  {order.paymentStatus === "paid"
+                    ? "Payée"
+                    : order.paymentStatus === "pending"
+                      ? "Paiement en attente"
+                      : "Paiement sur place/livraison"}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-darkBlue/10 bg-white p-4 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-darkBlue/45">
+              Commande
+            </p>
             <div className="mt-3 flex flex-col gap-3">
               {(order.items || []).map((item, index) => (
                 <div
@@ -138,17 +201,9 @@ export default function TakeAwayOrderDrawerComponent({
             </div>
           </div>
 
-          <div className="mt-4 rounded-2xl border border-darkBlue/10 bg-white/70 p-4">
-            <p className="text-xs font-semibold text-darkBlue/45">Client</p>
-            <div className="mt-2 text-sm text-darkBlue/70">
-              <p>{order.customerPhone || "Téléphone non renseigné"}</p>
-              <p>{order.customerEmail || "Email non renseigné"}</p>
-            </div>
-          </div>
-
           {order.fulfillmentMode === "delivery" ? (
-            <div className="mt-4 rounded-2xl border border-darkBlue/10 bg-white/70 p-4">
-              <p className="text-xs font-semibold text-darkBlue/45">
+            <div className="mt-4 rounded-2xl border border-darkBlue/10 bg-white p-4 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-wide text-darkBlue/45">
                 Livraison
               </p>
               <div className="mt-2 text-sm text-darkBlue/70">
@@ -167,15 +222,19 @@ export default function TakeAwayOrderDrawerComponent({
           ) : null}
         </div>
 
-        <div className="border-t border-darkBlue/10 bg-white/70 p-4">
+        <div className="border-t border-darkBlue/10 bg-white p-4">
           <div className="flex flex-wrap gap-2">
-            {(NEXT_STATUS[order.status] || []).map((status) => (
+            {(NEXT_STATUS[order.status] || []).map((status, index) => (
               <button
                 key={status}
                 type="button"
                 disabled={loading}
                 onClick={() => runAction(status)}
-                className="inline-flex h-10 items-center rounded-xl border border-darkBlue/10 bg-white px-3 text-xs font-semibold text-darkBlue hover:bg-darkBlue/5 disabled:opacity-50"
+                className={`inline-flex h-10 items-center rounded-xl px-3 text-xs font-semibold transition disabled:opacity-50 ${
+                  index === 0
+                    ? "bg-blue text-white hover:bg-blue/90"
+                    : "border border-darkBlue/10 bg-white text-darkBlue hover:bg-darkBlue/5"
+                }`}
               >
                 {STATUS_LABELS[status]}
               </button>
