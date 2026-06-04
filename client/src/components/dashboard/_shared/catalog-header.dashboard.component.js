@@ -57,7 +57,7 @@ export default function CatalogHeaderDashboardComponent({
 
   return (
     <div className="flex flex-wrap items-start justify-between gap-4">
-      <div className="flex gap-2 items-center min-h-[40px]">
+      <div className="flex gap-2 items-center min-h-[48px]">
         <div className="flex h-[30px] w-[30px] shrink-0 items-center justify-center">
           {typeof onBack === "function" ? (
             <button
