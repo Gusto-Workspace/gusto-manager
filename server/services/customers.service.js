@@ -20,6 +20,75 @@ function normPhone(v) {
   return out || null;
 }
 
+function normalizeReservationHistoryTime(value) {
+  return String(value || "")
+    .trim()
+    .replace(/h/i, ":");
+}
+
+function getReservationHistorySortValue(item) {
+  const dateValue = item?.reservationDate;
+  const timeValue = normalizeReservationHistoryTime(item?.reservationTime);
+  const datePart =
+    dateValue instanceof Date
+      ? dateValue.toISOString().slice(0, 10)
+      : String(dateValue || "").slice(0, 10);
+
+  if (!datePart) return 0;
+
+  const timestamp = new Date(
+    `${datePart}T${timeValue || "00:00"}:00`,
+  ).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function buildReservationHistoryItem(reservation, statusOverride = null) {
+  return {
+    reservationId: reservation._id,
+    reservationDate: reservation.reservationDate,
+    reservationTime: reservation.reservationTime,
+    numberOfGuests: reservation.numberOfGuests,
+    status: statusOverride || reservation.status,
+  };
+}
+
+async function upsertCustomerReservationHistory(
+  customerId,
+  reservation,
+  statusOverride = null,
+) {
+  if (!customerId || !reservation?._id) return;
+
+  const customer = await CustomerModel.findById(customerId)
+    .select("lastReservations")
+    .lean();
+
+  if (!customer) return;
+
+  const nextItem = buildReservationHistoryItem(reservation, statusOverride);
+  const nextReservationId = String(nextItem.reservationId || "");
+  const currentItems = Array.isArray(customer.lastReservations)
+    ? customer.lastReservations
+    : [];
+
+  const lastReservations = currentItems
+    .filter(
+      (item) =>
+        String(item?.reservationId || item?._id || "") !== nextReservationId,
+    )
+    .concat(nextItem)
+    .sort(
+      (a, b) =>
+        getReservationHistorySortValue(b) - getReservationHistorySortValue(a),
+    )
+    .slice(0, 5);
+
+  await CustomerModel.updateOne(
+    { _id: customerId },
+    { $set: { lastReservations } },
+  );
+}
+
 // ✅ Upsert “identité” + complète first/last si vides (sans écraser)
 async function upsertCustomer({
   restaurantId,
@@ -127,23 +196,10 @@ async function onReservationCreated(customerId, reservation) {
         lastReservationAt: reservation.reservationDate,
         lastActivityAt: now,
       },
-      $push: {
-        lastReservations: {
-          $each: [
-            {
-              reservationId: reservation._id,
-              reservationDate: reservation.reservationDate,
-              reservationTime: reservation.reservationTime,
-              numberOfGuests: reservation.numberOfGuests,
-              status: reservation.status,
-            },
-          ],
-          $slice: -30,
-        },
-      },
     },
   );
 
+  await upsertCustomerReservationHistory(customerId, reservation);
   await recomputeCustomerTagsForId(customerId, now);
 }
 
@@ -168,25 +224,12 @@ async function onReservationStatusChanged(
 
   const update = {
     $set: { lastActivityAt: now },
-    $push: {
-      lastReservations: {
-        $each: [
-          {
-            reservationId: reservation._id,
-            reservationDate: reservation.reservationDate,
-            reservationTime: reservation.reservationTime,
-            numberOfGuests: reservation.numberOfGuests,
-            status: nextStatus,
-          },
-        ],
-        $slice: -30,
-      },
-    },
   };
 
   if (Object.keys(inc).length) update.$inc = inc;
 
   await CustomerModel.updateOne({ _id: customerId }, update);
+  await upsertCustomerReservationHistory(customerId, reservation, nextStatus);
 
   // sécurité: jamais négatif
   await CustomerModel.updateOne(

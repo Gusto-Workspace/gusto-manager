@@ -156,6 +156,24 @@ export default function NavComponent() {
   }, [isTabletUp, supportsHover, navExpanded]);
 
   useEffect(() => {
+    if (!isTabletUp || !supportsHover || navExpanded) return;
+    if (typeof document === "undefined") return;
+
+    const handlePointerMove = (event) => {
+      const isInsideNav = !!navRef.current?.contains(event.target);
+      setNavHovered((current) =>
+        current === isInsideNav ? current : isInsideNav,
+      );
+    };
+
+    document.addEventListener("pointermove", handlePointerMove);
+
+    return () => {
+      document.removeEventListener("pointermove", handlePointerMove);
+    };
+  }, [isTabletUp, supportsHover, navExpanded]);
+
+  useEffect(() => {
     setMenuOpen(false);
     setNavExpanded(false);
     setNavHovered(false);

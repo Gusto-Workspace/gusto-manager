@@ -366,10 +366,31 @@ export default function ReservationsDrawerComponent({
   const customerStats = customerProfile?.stats || {};
   const currentReservationId = String(reservation?._id || "").trim();
   const now = new Date();
-  const customerReservations = (
-    customerDetails?.history?.reservations?.items || []
-  )
-    .filter((item) => {
+  const detailedCustomerReservations =
+    customerDetails?.history?.reservations?.items || [];
+  const summaryCustomerReservations = customerSummary?.lastReservations || [];
+  const customerReservationsSource = customerDetails
+    ? detailedCustomerReservations
+    : summaryCustomerReservations;
+  const customerReservations = customerReservationsSource
+    .reduce(
+      (acc, item) => {
+        const itemId = String(item?._id || item?.reservationId || "").trim();
+        const fallbackKey = [
+          item?.reservationDate || "",
+          item?.reservationTime || "",
+          item?.numberOfGuests || "",
+          item?.status || "",
+        ].join("|");
+        const key = itemId || fallbackKey;
+        if (key && acc.seen.has(key)) return acc;
+        if (key) acc.seen.add(key);
+        acc.items.push(item);
+        return acc;
+      },
+      { seen: new Set(), items: [] },
+    )
+    .items.filter((item) => {
       const itemId = String(item?._id || item?.reservationId || "").trim();
       if (currentReservationId && itemId === currentReservationId) {
         return false;
@@ -381,6 +402,11 @@ export default function ReservationsDrawerComponent({
       }
 
       return true;
+    })
+    .sort((a, b) => {
+      const aDate = getReservationDateTime(a)?.getTime() || 0;
+      const bDate = getReservationDateTime(b)?.getTime() || 0;
+      return bDate - aDate;
     })
     .slice(0, 5);
 
@@ -719,7 +745,7 @@ export default function ReservationsDrawerComponent({
                     Dernières réservations
                   </p>
 
-                  {customerLoading ? (
+                  {customerLoading && !customerReservations.length ? (
                     <div className="mt-2 flex items-center gap-2 text-sm text-darkBlue/55">
                       <LoaderCircle className="size-4 animate-spin text-darkBlue/40" />
                       Chargement des dernières réservations…

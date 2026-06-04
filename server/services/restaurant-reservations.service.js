@@ -29,6 +29,66 @@ function normalizeReservationListItem(reservation) {
   };
 }
 
+function normalizeHistoryTime(value) {
+  return String(value || "")
+    .trim()
+    .replace(/h/i, ":");
+}
+
+function getHistoryReservationSortValue(item) {
+  const dateValue = item?.reservationDate;
+  const timeValue = normalizeHistoryTime(item?.reservationTime);
+  const datePart =
+    dateValue instanceof Date
+      ? dateValue.toISOString().slice(0, 10)
+      : String(dateValue || "").slice(0, 10);
+
+  if (!datePart) return 0;
+
+  const timestamp = new Date(
+    `${datePart}T${timeValue || "00:00"}:00`,
+  ).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function normalizeCustomerLastReservations(lastReservations = []) {
+  if (!Array.isArray(lastReservations)) return [];
+
+  const seen = new Set();
+
+  return lastReservations
+    .slice()
+    .sort(
+      (a, b) =>
+        getHistoryReservationSortValue(b) - getHistoryReservationSortValue(a),
+    )
+    .reduce((items, item) => {
+      const reservationId = String(item?.reservationId || item?._id || "");
+      const fallbackKey = [
+        item?.reservationDate || "",
+        item?.reservationTime || "",
+        item?.numberOfGuests || "",
+        item?.status || "",
+      ].join("|");
+      const key = reservationId || fallbackKey;
+
+      if (key && seen.has(key)) return items;
+      if (key) seen.add(key);
+
+      items.push({
+        _id: item?._id || item?.reservationId || undefined,
+        reservationId: item?.reservationId || item?._id || undefined,
+        reservationDate: item?.reservationDate || null,
+        reservationTime: item?.reservationTime || "",
+        numberOfGuests: item?.numberOfGuests || 0,
+        status: item?.status || "",
+      });
+
+      return items;
+    }, [])
+    .slice(0, 5);
+}
+
 function normalizeCustomerSummary(customer) {
   if (!customer || typeof customer !== "object") return null;
 
@@ -38,9 +98,9 @@ function normalizeCustomerSummary(customer) {
     stats: customer.stats || {},
     notes: customer.notes || "",
     lastReservationAt: customer.lastReservationAt || null,
-    lastReservations: Array.isArray(customer.lastReservations)
-      ? customer.lastReservations
-      : [],
+    lastReservations: normalizeCustomerLastReservations(
+      customer.lastReservations,
+    ),
     createdAt: customer.createdAt || null,
   };
 }
@@ -63,10 +123,10 @@ async function enrichReservationsWithCustomerSummary(reservations = []) {
     .lean();
 
   const customerSummaryById = new Map(
-    customers.map((customer) => [
-      String(customer._id),
-      normalizeCustomerSummary(customer),
-    ]),
+    customers.map((customer) => {
+      const customerId = String(customer._id);
+      return [customerId, normalizeCustomerSummary(customer)];
+    }),
   );
 
   return reservations.map((reservation) => {

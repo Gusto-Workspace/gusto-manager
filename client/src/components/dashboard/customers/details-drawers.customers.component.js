@@ -233,7 +233,7 @@ export default function DetailsDrawerCustomersComponent({
           {
             params: {
               resaPage: 1,
-              resaLimit: 40,
+              resaLimit: 5,
               giftPage: 1,
               giftLimit: 40,
               takeAwayPage: 1,
@@ -314,11 +314,13 @@ export default function DetailsDrawerCustomersComponent({
   const takeAwayOrdersTotal = stats.takeAwayOrdersTotal ?? 0;
 
   const sortedReservations = useMemo(() => {
-    return [...reservations].sort((a, b) => {
-      const ad = new Date(a?.reservationDate || 0).getTime();
-      const bd = new Date(b?.reservationDate || 0).getTime();
-      return bd - ad;
-    });
+    return [...reservations]
+      .sort((a, b) => {
+        const ad = new Date(a?.reservationDate || 0).getTime();
+        const bd = new Date(b?.reservationDate || 0).getTime();
+        return bd - ad;
+      })
+      .slice(0, 5);
   }, [reservations]);
 
   const sortedGiftCards = useMemo(() => {
@@ -481,7 +483,7 @@ export default function DetailsDrawerCustomersComponent({
     : 1 * (1 - Math.min(1, dragY / DRAG_MAX_PX));
 
   return (
-    <div className="fixed inset-0 z-[120]" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-[260]" role="dialog" aria-modal="true">
       {/* Overlay */}
       <div
         className={`
@@ -753,7 +755,7 @@ export default function DetailsDrawerCustomersComponent({
           </div>
 
           {/* Stats */}
-          <div className="mt-4 grid grid-cols-2 tablet:grid-cols-4 gap-3">
+          <div className="mt-4 grid grid-cols-2 gap-3">
             <div className="rounded-2xl bg-white/50 border border-darkBlue/10 shadow-sm p-4">
               <p className="text-[11px] text-darkBlue/50 flex items-center gap-2">
                 <Calendar className="size-4 text-darkBlue/40" />
@@ -784,7 +786,7 @@ export default function DetailsDrawerCustomersComponent({
               </p>
             </div>
 
-            <div className="rounded-2xl bg-white/50 border border-darkBlue/10 shadow-sm p-4 col-span-2 tablet:col-span-1">
+            <div className="rounded-2xl bg-white/50 border border-darkBlue/10 shadow-sm p-4">
               <p className="text-[11px] text-darkBlue/50 flex items-center gap-2">
                 <ClipboardList className="size-4 text-darkBlue/40" />À emporter
               </p>
@@ -848,7 +850,7 @@ export default function DetailsDrawerCustomersComponent({
                 onClick={() => setTab("reservations")}
                 type="button"
               >
-                Dernières réservations ({reservations.length})
+                Dernières réservations ({sortedReservations.length})
               </button>
 
               <button
@@ -872,7 +874,7 @@ export default function DetailsDrawerCustomersComponent({
                 onClick={() => setTab("takeaway")}
                 type="button"
               >
-                Commandes à emporter ({takeAwayOrders.length})
+                À emporter ({takeAwayOrders.length})
               </button>
             </div>
 

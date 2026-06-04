@@ -65,6 +65,75 @@ function pickGiftPurchasesForCustomer(restaurantDoc, customerId, page, limit) {
   return { items, page: safePage, totalPages, total };
 }
 
+function normalizeReservationHistoryTime(value) {
+  return String(value || "")
+    .trim()
+    .replace(/h/i, ":");
+}
+
+function getReservationHistorySortValue(item) {
+  const dateValue = item?.reservationDate;
+  const timeValue = normalizeReservationHistoryTime(item?.reservationTime);
+  const datePart =
+    dateValue instanceof Date
+      ? dateValue.toISOString().slice(0, 10)
+      : String(dateValue || "").slice(0, 10);
+
+  if (!datePart) return 0;
+
+  const timestamp = new Date(
+    `${datePart}T${timeValue || "00:00"}:00`,
+  ).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function pickReservationHistoryForCustomer(customerDoc, page, limit) {
+  const list = Array.isArray(customerDoc?.lastReservations)
+    ? customerDoc.lastReservations
+    : [];
+
+  const seen = new Set();
+  const filtered = list
+    .slice()
+    .sort(
+      (a, b) =>
+        getReservationHistorySortValue(b) - getReservationHistorySortValue(a),
+    )
+    .reduce((items, item) => {
+      const reservationId = String(item?.reservationId || item?._id || "");
+      const fallbackKey = [
+        item?.reservationDate || "",
+        item?.reservationTime || "",
+        item?.numberOfGuests || "",
+        item?.status || "",
+      ].join("|");
+      const key = reservationId || fallbackKey;
+
+      if (key && seen.has(key)) return items;
+      if (key) seen.add(key);
+
+      items.push({
+        _id: item?._id || item?.reservationId || undefined,
+        reservationId: item?.reservationId || item?._id || undefined,
+        reservationDate: item?.reservationDate || null,
+        reservationTime: item?.reservationTime || "",
+        numberOfGuests: item?.numberOfGuests || 0,
+        status: item?.status || "",
+      });
+
+      return items;
+    }, []);
+
+  const total = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+
+  const start = (safePage - 1) * limit;
+  const items = filtered.slice(start, start + limit);
+
+  return { items, page: safePage, totalPages, total };
+}
+
 /* ---------------------------------------------------------
    GET LIST CUSTOMERS
    /restaurants/:id/customers?query=&tag=&source=&page=&limit=
@@ -217,24 +286,12 @@ router.get(
         Math.max(5, toInt(req.query.takeAwayLimit, 20)),
       );
 
-      // ✅ Reservations history (collection)
-      const resaFilter = {
-        restaurant_id: restaurantId,
-        customer: customerId,
-      };
-
-      const resaTotal = await ReservationModel.countDocuments(resaFilter);
-      const resaTotalPages = Math.max(1, Math.ceil(resaTotal / resaLimit));
-      const resaSafePage = Math.min(resaPage, resaTotalPages);
-
-      const reservations = await ReservationModel.find(resaFilter)
-        .sort({ reservationDate: -1, reservationTime: -1 })
-        .skip((resaSafePage - 1) * resaLimit)
-        .limit(resaLimit)
-        .select(
-          "reservationDate reservationTime numberOfGuests status createdAt updatedAt table",
-        )
-        .lean();
+      // ✅ Reservations history (customer mini-history, durable if reservations are auto-deleted)
+      const reservations = pickReservationHistoryForCustomer(
+        customer,
+        resaPage,
+        resaLimit,
+      );
 
       // ✅ Gift purchases history (embed)
       const gift = pickGiftPurchasesForCustomer(
@@ -268,12 +325,12 @@ router.get(
         customer,
         history: {
           reservations: {
-            items: reservations,
+            items: reservations.items,
             pagination: {
-              page: resaSafePage,
+              page: reservations.page,
               limit: resaLimit,
-              total: resaTotal,
-              totalPages: resaTotalPages,
+              total: reservations.total,
+              totalPages: reservations.totalPages,
             },
           },
           giftCards: {
