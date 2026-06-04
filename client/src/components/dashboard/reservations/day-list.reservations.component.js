@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 // COMPONENTS
 import CardReservationComponent from "./card.reservations.component";
 import ReservationsDrawerComponent from "@/components/_shared/reservations/reservations-drawer.component";
+import { CommunitySvg } from "@/components/_shared/_svgs/_index";
 
 export default function DayListReservationsComponent(props) {
   const { t } = useTranslation("reservations");
@@ -26,8 +27,15 @@ export default function DayListReservationsComponent(props) {
   };
 
   const closeDetails = () => {
+    const scrollY = typeof window !== "undefined" ? window.scrollY || 0 : 0;
     setDetailsOpen(false);
     props.clearFocusedReservationId?.();
+
+    if (typeof window !== "undefined") {
+      window.requestAnimationFrame(() => {
+        window.scrollTo({ top: scrollY, left: 0, behavior: "auto" });
+      });
+    }
   };
 
   useEffect(() => {
@@ -138,6 +146,19 @@ export default function DayListReservationsComponent(props) {
     return { orderedTimes: times, byTime: map };
   }, [list]);
 
+  const guestsByTime = useMemo(() => {
+    return Object.fromEntries(
+      orderedTimes.map((time) => [
+        time,
+        (byTime[time] || []).reduce(
+          (total, reservation) =>
+            total + Math.max(0, Number(reservation?.numberOfGuests || 0)),
+          0,
+        ),
+      ]),
+    );
+  }, [orderedTimes, byTime]);
+
   // ✅ EARLY RETURN APRES LES HOOKS
   if (!props.selectedDay) return null;
 
@@ -156,6 +177,7 @@ export default function DayListReservationsComponent(props) {
           onAction={handleDrawerAction}
           errorMessage={actionError}
           tablesCatalog={props.tablesCatalog}
+          restaurantId={props.restaurantId}
         />
       </>
     );
@@ -177,13 +199,23 @@ export default function DayListReservationsComponent(props) {
                 <span className="text-xs text-darkBlue/60">
                   {byTime[time].length}
                 </span>
+                <span className="text-xs text-darkBlue/35">-</span>
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-darkBlue/60">
+                  <CommunitySvg width={14} height={14} className="opacity-50" />
+                  {guestsByTime[time] || 0}
+                </span>
               </div>
 
               <div className="h-px flex-1 bg-darkBlue/10" />
             </div>
 
-            {/* ✅ Mobile: liste / MidTablet+: grid */}
-            <ul className="flex flex-col gap-2 midTablet:grid midTablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-4">
+            <ul
+              className={
+                props.compactRows
+                  ? "flex flex-col gap-2"
+                  : "flex flex-col gap-2 midTablet:grid midTablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-4"
+              }
+            >
               {byTime[time].map((reservation) => (
                 <CardReservationComponent
                   key={reservation._id}
@@ -192,6 +224,7 @@ export default function DayListReservationsComponent(props) {
                   openModalForAction={props.openModalForAction}
                   handleEditClick={props.handleEditClick}
                   onOpenDetails={openDetails}
+                  inlineLayout={props.compactRows}
                 />
               ))}
             </ul>
@@ -207,6 +240,7 @@ export default function DayListReservationsComponent(props) {
         onAction={handleDrawerAction}
         errorMessage={actionError}
         tablesCatalog={props.tablesCatalog}
+        restaurantId={props.restaurantId}
       />
     </>
   );

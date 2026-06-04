@@ -14,6 +14,10 @@ import {
   getReservationStatusClassName,
   getReservationStatusLabel,
 } from "@/components/_shared/reservations/reservation-status.utils";
+import {
+  CustomerTagPill,
+  getPrimaryCustomerTag,
+} from "@/components/_shared/customers/customer-tags-ui";
 
 function formatTime(t) {
   const v = String(t || "");
@@ -67,6 +71,7 @@ export default function CardReservationWebapp(props) {
   const timeLabel = formatTime(r.reservationTime);
   const hasCommentary = Boolean((r.commentary || "").trim());
   const tableName = getReservationTableLabel(r, props.tablesCatalog);
+  const primaryCustomerTag = getPrimaryCustomerTag(r?.customerSummary?.tags);
 
   const openDetails = () => props.onOpenDetails?.(r);
 
@@ -79,7 +84,6 @@ export default function CardReservationWebapp(props) {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex justify-between gap-3">
-              {/* Top row: name + badge */}
               <div className="flex items-center gap-2 min-w-0">
                 <UserSvg
                   width={18}
@@ -98,7 +102,6 @@ export default function CardReservationWebapp(props) {
               </span>
             </div>
 
-            {/* Meta pills + CTA */}
             <div className="mt-2 flex flex-wrap justify-between items-center gap-2">
               <div className="flex gap-1 flex-wrap">
                 <span className={metaPill}>
@@ -120,6 +123,10 @@ export default function CardReservationWebapp(props) {
                   </span>
                 ) : null}
 
+                {primaryCustomerTag ? (
+                  <CustomerTagPill tagKey={primaryCustomerTag} compact />
+                ) : null}
+
                 {hasCommentary ? (
                   <span className={metaPill}>
                     <CommentarySvg
@@ -131,7 +138,6 @@ export default function CardReservationWebapp(props) {
                 ) : null}
               </div>
 
-              {/* CTA: mobile = icône seule / desktop = icône + "Détails" */}
               <button
                 type="button"
                 onClick={openDetails}

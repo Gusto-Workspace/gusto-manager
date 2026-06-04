@@ -1,5 +1,6 @@
 // I18N
 import { useTranslation } from "next-i18next";
+import { useRouter } from "next/router";
 
 // SVG
 import { ReservationSvg } from "@/components/_shared/_svgs/reservation.svg";
@@ -14,10 +15,12 @@ import {
   Plus,
   X,
   LayoutGrid,
+  Users,
 } from "lucide-react";
 
 export default function CalendarToolbarReservationsComponent(props) {
   const { t } = useTranslation("reservations");
+  const router = useRouter();
 
   const monthYearLabel = props.capitalizeFirst(
     new Intl.DateTimeFormat("fr-FR", {
@@ -59,18 +62,18 @@ export default function CalendarToolbarReservationsComponent(props) {
             fillColor="#131E3690"
           />
           <div className="flex flex-col">
-              <h1 className="pl-2 text-xl flex-wrap tablet:text-2xl flex items-center gap-2">
-                <span
-                  className="cursor-pointer hover:underline"
-                  onClick={() => router.push("/dashboard/reservations")}
-                >
-                  {t("titles.main")}
-                </span>
-              </h1>
-              <span className="ml-2 text-xs font-semibold text-darkBlue/50">
-                Calendrier
+            <h1 className="pl-2 text-xl flex-wrap tablet:text-2xl flex items-center gap-2">
+              <span
+                className="cursor-pointer hover:underline"
+                onClick={() => router.push("/dashboard/reservations")}
+              >
+                {t("titles.main")}
               </span>
-            </div>
+            </h1>
+            <span className="ml-2 text-xs font-semibold text-darkBlue/50">
+              Calendrier
+            </span>
+          </div>
         </div>
 
         {/* Right: actions (icônes) */}
@@ -137,6 +140,28 @@ export default function CalendarToolbarReservationsComponent(props) {
           >
             <CalendarDays className="size-5 text-darkBlue/70" />
           </button>
+        </div>
+
+        <div className="flex h-[42px] items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white px-3 py-2 shadow-sm">
+          <Users className="size-4 text-darkBlue/40" />
+          <label className="sr-only" htmlFor="calendar-floor-plan-seats-filter">
+            Couverts
+          </label>
+          <select
+            id="calendar-floor-plan-seats-filter"
+            value={props.minSeatsFilter}
+            onChange={(event) =>
+              props.setMinSeatsFilter?.(Number(event.target.value || 0))
+            }
+            className="h-full bg-white text-sm text-darkBlue outline-none"
+            title="Filtrer les réservations par couverts"
+          >
+            {(props.seatsFilterOptions || []).map((value) => (
+              <option key={value} value={value}>
+                {value ? `${value}+` : "Toutes"}
+              </option>
+            ))}
+          </select>
         </div>
 
         {/* Search */}

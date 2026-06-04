@@ -14,6 +14,7 @@ const RestaurantModel = require("../models/restaurant.model");
 const ReservationModel = require("../models/reservation.model");
 const ReservationDayLockModel = require("../models/reservation-day-lock.model");
 const {
+  enrichReservationWithCustomerSummary,
   getRestaurantReservationsList,
 } = require("../services/restaurant-reservations.service");
 
@@ -1509,6 +1510,10 @@ async function syncCustomerOnFirstReservationConfirmation(reservation) {
   return customerId;
 }
 
+async function buildRealtimeReservationPayload(reservation) {
+  return enrichReservationWithCustomerSummary(reservation);
+}
+
 async function notifyReservationAfterBankHoldFinalization(reservation) {
   const finalStatus = String(reservation?.status || "");
 
@@ -1947,9 +1952,7 @@ async function finalizePublicBankHoldReservation({
   broadcastToRestaurant(String(finalizedReservation.restaurant_id), {
     type: "reservation_updated",
     restaurantId: String(finalizedReservation.restaurant_id),
-    reservation: finalizedReservation.toObject
-      ? finalizedReservation.toObject()
-      : finalizedReservation,
+    reservation: await buildRealtimeReservationPayload(finalizedReservation),
   });
 
   await notifyReservationAfterBankHoldFinalization(finalizedReservation);
@@ -2085,7 +2088,7 @@ async function captureReservationBankHold({ restaurantId, reservationId }) {
   broadcastToRestaurant(String(reservation.restaurant_id), {
     type: "reservation_updated",
     restaurantId: String(reservation.restaurant_id),
-    reservation: reservation.toObject ? reservation.toObject() : reservation,
+    reservation: await buildRealtimeReservationPayload(reservation),
   });
 
   const updatedRestaurant = await fetchRestaurantFull(restaurantId);
@@ -2145,7 +2148,7 @@ async function releaseReservationBankHold({ restaurantId, reservationId }) {
   broadcastToRestaurant(String(reservation.restaurant_id), {
     type: "reservation_updated",
     restaurantId: String(reservation.restaurant_id),
-    reservation: reservation.toObject ? reservation.toObject() : reservation,
+    reservation: await buildRealtimeReservationPayload(reservation),
   });
 
   const updatedRestaurant = await fetchRestaurantFull(restaurantId);
@@ -2777,9 +2780,7 @@ router.post(
       broadcastToRestaurant(String(reservation.restaurant_id), {
         type: "reservation_updated",
         restaurantId: String(reservation.restaurant_id),
-        reservation: reservation.toObject
-          ? reservation.toObject()
-          : reservation,
+        reservation: await buildRealtimeReservationPayload(reservation),
       });
 
       return res.status(200).json({ success: true });
@@ -3005,9 +3006,9 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
       );
       const customerLastName = cleanNamePart(reservationData.customerLastName);
 
-      if (!customerFirstName || !customerLastName) {
+      if (!customerFirstName && !customerLastName) {
         return res.status(400).json({
-          message: "customerFirstName et customerLastName sont requis.",
+          message: "Un prénom ou un nom client est requis.",
         });
       }
 
@@ -3057,7 +3058,7 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
         broadcastToRestaurant(restaurantId, {
           type: "reservation_created",
           restaurantId,
-          reservation: newReservation,
+          reservation: await buildRealtimeReservationPayload(newReservation),
         });
 
         await createAndBroadcastNotification({
@@ -3192,7 +3193,7 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
         broadcastToRestaurant(restaurantId, {
           type: "reservation_created",
           restaurantId,
-          reservation: newReservation,
+          reservation: await buildRealtimeReservationPayload(newReservation),
         });
 
         const baseOrigin = new URL(returnUrl).origin;
@@ -3420,7 +3421,7 @@ router.post(
           broadcastToRestaurant(restaurantId, {
             type: "reservation_created",
             restaurantId,
-            reservation: newReservation,
+            reservation: await buildRealtimeReservationPayload(newReservation),
           });
 
           try {
@@ -3512,7 +3513,7 @@ router.post(
           broadcastToRestaurant(restaurantId, {
             type: "reservation_created",
             restaurantId,
-            reservation: newReservation,
+            reservation: await buildRealtimeReservationPayload(newReservation),
           });
 
           const baseOrigin = new URL(returnUrl).origin;
@@ -3930,9 +3931,7 @@ router.put(
         broadcastToRestaurant(restaurantId, {
           type: "reservation_updated",
           restaurantId,
-          reservation: reservation.toObject
-            ? reservation.toObject()
-            : reservation, // ✅ FIX
+          reservation: await buildRealtimeReservationPayload(reservation),
         });
 
         // ✅ EMAILS (SAFE) — ne doit jamais casser la route
@@ -4462,9 +4461,7 @@ router.put(
         broadcastToRestaurant(restaurantId, {
           type: "reservation_updated",
           restaurantId,
-          reservation: updatedReservation.toObject
-            ? updatedReservation.toObject()
-            : updatedReservation,
+          reservation: await buildRealtimeReservationPayload(updatedReservation),
         });
 
         const restaurant = await fetchRestaurantFull(restaurantId);

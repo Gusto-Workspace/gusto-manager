@@ -8,18 +8,13 @@ import {
   Calendar,
   Gift,
   Ticket,
-  Tag,
   ClipboardList,
   Pencil,
   Save,
   Trash2,
-  UserCheck,
-  Crown,
-  RotateCcw,
-  UserX,
-  PlusCircle,
   LoaderCircle,
 } from "lucide-react";
+import { CustomerTagPill } from "@/components/_shared/customers/customer-tags-ui";
 
 const CLOSE_MS = 280;
 
@@ -56,53 +51,6 @@ function getInitials(firstName, lastName) {
   const b = (l[0] || "").toUpperCase();
   const out = `${a}${b}`.trim();
   return out || "?";
-}
-
-const TAGS_UI = {
-  new: {
-    label: "Nouveau",
-    cls: "bg-violet/10 text-violet border-violet/20",
-    Icon: PlusCircle,
-  },
-  regular: {
-    label: "Régulier",
-    cls: "bg-blue/10 text-blue border-blue/20",
-    Icon: UserCheck,
-  },
-  very_regular: {
-    label: "Très régulier",
-    cls: "bg-green/10 text-green border-green/20",
-    Icon: Crown,
-  },
-  to_reconquer: {
-    label: "À reconquérir",
-    cls: "bg-[#FF914D22] text-[#B95E1C] border-[#FF914D55]",
-    Icon: RotateCcw,
-  },
-  lost: {
-    label: "Perdu",
-    cls: "bg-red/10 text-red border-red/20",
-    Icon: UserX,
-  },
-};
-
-function TagPill({ tagKey }) {
-  const ui = TAGS_UI[tagKey] || {
-    label: tagKey,
-    cls: "bg-darkBlue/5 text-darkBlue/70 border-darkBlue/15",
-    Icon: Tag,
-  };
-
-  const Icon = ui.Icon || Tag;
-
-  return (
-    <div
-      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${ui.cls}`}
-    >
-      <Icon className="size-3.5 opacity-80" />
-      {ui.label}
-    </div>
-  );
 }
 
 export default function DetailsDrawerCustomersComponent({
@@ -616,7 +564,7 @@ export default function DetailsDrawerCustomersComponent({
                   <div className="mt-1 flex flex-wrap items-center gap-2">
                     {(baseCustomer?.tags || []).length
                       ? baseCustomer.tags.map((tagKey) => (
-                          <TagPill
+                          <CustomerTagPill
                             key={`${customerId}-drawer-tag-${tagKey}`}
                             tagKey={tagKey}
                           />

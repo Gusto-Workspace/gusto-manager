@@ -703,6 +703,7 @@ export default function FloorPlanCanvasReservationsComponent({
   selectedTableState,
   onSelectTable,
   shouldResetView,
+  minSeatsFilter = 0,
   selectionMode = false,
   selectableConfiguredTableIds = [],
   selectedConfiguredTableIds = [],
@@ -1382,7 +1383,15 @@ export default function FloorPlanCanvasReservationsComponent({
 
   function handleCanvasTap(e) {
     if (suppressTableSelectRef.current) return;
-    if (e?.target !== e?.target?.getStage?.()) return;
+
+    const target = e?.target;
+    const stage = target?.getStage?.();
+    if (!stage) return;
+
+    const isTableTarget = Boolean(
+      target?.findAncestor?.(".floor-plan-table", true),
+    );
+    if (isTableTarget) return;
 
     if (selectionMode) {
       onSelectConfiguredTable?.("", null);
@@ -1739,6 +1748,9 @@ export default function FloorPlanCanvasReservationsComponent({
     const ref = ui.ref || null;
     const label = ref?.name || "Table";
     const seatsCount = Number(ref?.seats || 0);
+    const minSeats = Math.max(0, Number(minSeatsFilter || 0));
+    if (minSeats && seatsCount < minSeats) return null;
+
     const { w, h } = getTableDimensions(seatsCount);
 
     const currentReservation = ui.currentReservation || null;
@@ -1825,6 +1837,7 @@ export default function FloorPlanCanvasReservationsComponent({
     return (
       <Group
         key={obj.id}
+        name="floor-plan-table"
         x={Number(obj.x || 0)}
         y={Number(obj.y || 0)}
         opacity={tableOpacity}
@@ -2022,7 +2035,15 @@ export default function FloorPlanCanvasReservationsComponent({
   ]);
 
   return (
-    <div className="relative h-full min-h-[520px] rounded-[28px] border border-darkBlue/10 bg-[#667085] overflow-hidden flex flex-col shadow-inner">
+    <div
+      className="relative h-full min-h-[520px] rounded-[28px] border border-darkBlue/10 bg-[#667085] overflow-hidden flex flex-col shadow-inner"
+      onPointerDown={(event) => {
+        if (!selectedTableState) return;
+        const stageContainer = stageRef.current?.container?.();
+        if (stageContainer?.contains(event.target)) return;
+        onSelectTable?.(null);
+      }}
+    >
       <button
         type="button"
         onClick={resetView}

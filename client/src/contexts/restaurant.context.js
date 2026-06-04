@@ -21,6 +21,19 @@ function countUnreadTotal(byModule = {}) {
   );
 }
 
+function mergeRealtimeReservation(prevReservation, nextReservation) {
+  if (!prevReservation) return nextReservation;
+  if (!nextReservation) return prevReservation;
+
+  return {
+    ...prevReservation,
+    ...nextReservation,
+    customerName: nextReservation.customerName || prevReservation.customerName,
+    customerSummary:
+      nextReservation.customerSummary || prevReservation.customerSummary,
+  };
+}
+
 export default function RestaurantContext() {
   const router = useRouter();
 
@@ -490,7 +503,13 @@ export default function RestaurantContext() {
           setReservationsList((prev) => {
             const list = Array.isArray(prev) ? prev : [];
             const exists = list.some((x) => String(x?._id) === String(r._id));
-            if (exists) return prev;
+            if (exists) {
+              return list.map((x) =>
+                String(x?._id) === String(r._id)
+                  ? mergeRealtimeReservation(x, r)
+                  : x,
+              );
+            }
             return [r, ...list];
           });
         }
@@ -501,7 +520,9 @@ export default function RestaurantContext() {
           setReservationsList((prev) => {
             const list = Array.isArray(prev) ? prev : [];
             const id = String(r._id);
-            const nextList = list.map((x) => (String(x._id) === id ? r : x));
+            const nextList = list.map((x) =>
+              String(x._id) === id ? mergeRealtimeReservation(x, r) : x,
+            );
             return nextList;
           });
         }

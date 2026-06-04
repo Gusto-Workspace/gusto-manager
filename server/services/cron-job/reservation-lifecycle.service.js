@@ -202,7 +202,7 @@ async function runReservationLifecycleCron() {
   const autoFinishReservations = await ReservationModel.find({
     status: { $in: ["Confirmed", "Active", "Late"] },
   }).select(
-    "_id restaurant_id customer numberOfGuests reservationDate reservationTime status activatedAt finishedAt reminder24hDueAt reminder24hSentAt reminder24hLockedAt",
+    "_id restaurant_id customer customerFirstName customerLastName customerEmail customerPhone numberOfGuests reservationDate reservationTime status activatedAt finishedAt reminder24hDueAt reminder24hSentAt reminder24hLockedAt",
   );
 
   for (const reservation of autoFinishReservations) {
@@ -240,7 +240,9 @@ async function runReservationLifecycleCron() {
   const finishedReservations = await ReservationModel.find({
     status: "Finished",
     finishedAt: { $ne: null },
-  }).select("_id restaurant_id status finishedAt bankHold");
+  }).select(
+    "_id restaurant_id customerFirstName customerLastName customerEmail customerPhone numberOfGuests reservationDate reservationTime status finishedAt bankHold",
+  );
 
   for (const reservation of finishedReservations) {
     const restaurant = await getRestaurantCached(
@@ -266,7 +268,9 @@ async function runReservationLifecycleCron() {
   const shortLivedReservations = await ReservationModel.find({
     status: { $in: ["Canceled", "Rejected"] },
     $or: [{ canceledAt: { $ne: null } }, { rejectedAt: { $ne: null } }],
-  }).select("_id restaurant_id status canceledAt rejectedAt bankHold");
+  }).select(
+    "_id restaurant_id customerFirstName customerLastName customerEmail customerPhone numberOfGuests reservationDate reservationTime status canceledAt rejectedAt bankHold",
+  );
 
   for (const reservation of shortLivedReservations) {
     const baseDate =

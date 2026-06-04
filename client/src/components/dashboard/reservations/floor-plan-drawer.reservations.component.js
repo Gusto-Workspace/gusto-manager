@@ -1,7 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import dynamic from "next/dynamic";
-import { X, Clock3, Loader2, LayoutGrid } from "lucide-react";
+import {
+  X,
+  Clock3,
+  Loader2,
+  LayoutGrid,
+  Pin,
+  Info,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import {
   getActiveFloorPlanRooms,
   getDefaultActiveFloorPlanRoomId,
@@ -15,7 +24,6 @@ const SWIPE_VELOCITY = 0.6; // px/ms
 const CLOSE_RATIO = 0.25; // 25% panel height => close
 
 const FLOOR_PLAN_ROOMS_CACHE = new Map();
-
 const FloorPlanCanvasReservationsComponent = dynamic(
   () => import("./floor-plan-canvas.reservations.component"),
   { ssr: false },
@@ -31,17 +39,6 @@ function dateKeyOf(date) {
     2,
     "0",
   )}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-function isSameDay(a, b) {
-  const da = a instanceof Date ? a : new Date(a);
-  const db = b instanceof Date ? b : new Date(b);
-
-  return (
-    da.getFullYear() === db.getFullYear() &&
-    da.getMonth() === db.getMonth() &&
-    da.getDate() === db.getDate()
-  );
 }
 
 function getInitialDrawerState(restaurantId) {
@@ -89,7 +86,12 @@ export default function FloorPlanDrawerReservationsComponent({
   restaurantData,
   reservations,
   selectedDay,
+  variant = "drawer",
+  floorPlanPinned = false,
+  onToggleFloorPlanPinned,
 }) {
+  const isPanel = variant === "panel";
+  const effectiveOpen = isPanel || open;
   const initialState = useMemo(
     () => getInitialDrawerState(restaurantId),
     [restaurantId],
@@ -111,16 +113,18 @@ export default function FloorPlanDrawerReservationsComponent({
   const [selectedTime, setSelectedTime] = useState("");
   const [selectedTableState, setSelectedTableState] = useState(null);
   const [shouldResetView, setShouldResetView] = useState(false);
-
+  const [legendOpen, setLegendOpen] = useState(false);
   const tablesCatalog = restaurantData?.reservationsSettings?.tables || [];
   const reservationParameters = restaurantData?.reservationsSettings || {};
 
   const contextDate = selectedDay || new Date();
   const contextDateKey = dateKeyOf(contextDate);
   const isDayContext = Boolean(selectedDay);
+  const isTodayContext = contextDateKey === dateKeyOf(new Date());
 
-  const isTodayContext = isSameDay(contextDate, new Date());
   const showLiveToggle = !isDayContext || isTodayContext;
+  const showHeader = !isPanel;
+  const inlineTimeControls = isPanel && isDayContext && !liveMode;
 
   const [isTabletUp, setIsTabletUp] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -128,6 +132,10 @@ export default function FloorPlanDrawerReservationsComponent({
   });
   const panelRef = useRef(null);
   const scrollRef = useRef(null);
+  const timeOptionsScrollRef = useRef(null);
+  const canvasHostRef = useRef(null);
+  const legendButtonRef = useRef(null);
+  const legendPanelRef = useRef(null);
   const [panelH, setPanelH] = useState(null);
   const [dragY, setDragY] = useState(0);
 
@@ -163,6 +171,11 @@ export default function FloorPlanDrawerReservationsComponent({
   };
 
   const closeWithAnimation = () => {
+    if (isPanel) {
+      onClose?.();
+      return;
+    }
+
     if (closeTimerRef.current) {
       window.clearTimeout(closeTimerRef.current);
     }
@@ -184,17 +197,12 @@ export default function FloorPlanDrawerReservationsComponent({
       setSelectedTableState(null);
       setShouldResetView(true);
 
-      if (isDayContext) {
-        if (!isTodayContext) {
-          setLiveMode(false);
-          setSelectedTime(timeOptions[0] || "");
-        } else {
-          setLiveMode(true);
-          setSelectedTime("");
-        }
-      } else {
+      if (!isDayContext || isTodayContext) {
         setLiveMode(true);
         setSelectedTime("");
+      } else {
+        setLiveMode(false);
+        setSelectedTime(timeOptions[0] || "");
       }
 
       if (scrollRef.current) {
@@ -273,14 +281,14 @@ export default function FloorPlanDrawerReservationsComponent({
   }, []);
 
   useEffect(() => {
-    if (!open) {
+    if (!effectiveOpen) {
       setIsVisible(false);
       setDragY(0);
-      restoreScroll();
+      if (!isPanel) restoreScroll();
       return;
     }
 
-    lockScroll();
+    if (!isPanel) lockScroll();
     setDragY(0);
 
     const raf = requestAnimationFrame(() => {
@@ -296,7 +304,7 @@ export default function FloorPlanDrawerReservationsComponent({
       window.removeEventListener("resize", onResize);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [effectiveOpen, isPanel]);
 
   useEffect(() => {
     return () => {
@@ -308,7 +316,7 @@ export default function FloorPlanDrawerReservationsComponent({
   }, []);
 
   useEffect(() => {
-    if (!open || !restaurantId) return;
+    if (!effectiveOpen || !restaurantId) return;
 
     const token =
       typeof window !== "undefined" ? localStorage.getItem("token") : null;
@@ -378,19 +386,12 @@ export default function FloorPlanDrawerReservationsComponent({
     }
 
     fetchRooms({ silent: Boolean(cached) });
-  }, [open, restaurantId]);
+  }, [effectiveOpen, restaurantId]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!effectiveOpen) return;
 
-    if (!isDayContext) {
-      setLiveMode(true);
-      setSelectedTime("");
-      setSelectedTableState(null);
-      return;
-    }
-
-    if (isTodayContext) {
+    if (!isDayContext || isTodayContext) {
       setLiveMode(true);
       setSelectedTime("");
       setSelectedTableState(null);
@@ -403,15 +404,55 @@ export default function FloorPlanDrawerReservationsComponent({
       return hasPrev ? prev : timeOptions[0] || "";
     });
     setSelectedTableState(null);
-  }, [open, contextDateKey, isDayContext, isTodayContext, timeOptions]);
+  }, [
+    effectiveOpen,
+    contextDateKey,
+    isDayContext,
+    isTodayContext,
+    timeOptions,
+  ]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!effectiveOpen) return;
     setSelectedTableState(null);
-  }, [open, activeRoomId, selectedTime, liveMode, selectedDay]);
+    setLegendOpen(false);
+  }, [effectiveOpen, activeRoomId, selectedTime, liveMode, selectedDay]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!effectiveOpen) return;
+    if (!selectedTableState && !legendOpen) return;
+    if (typeof document === "undefined") return;
+
+    const onPointerDown = (event) => {
+      const target = event.target;
+      const panel = panelRef.current;
+      const canvasHost = canvasHostRef.current;
+      const legendButton = legendButtonRef.current;
+      const legendPanel = legendPanelRef.current;
+
+      if (
+        legendOpen &&
+        !legendButton?.contains(target) &&
+        !legendPanel?.contains(target)
+      ) {
+        setLegendOpen(false);
+      }
+
+      if (selectedTableState && canvasHost && !canvasHost.contains(target)) {
+        setSelectedTableState(null);
+      } else if (selectedTableState && panel && !panel.contains(target)) {
+        setSelectedTableState(null);
+      }
+    };
+
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+    };
+  }, [effectiveOpen, selectedTableState, legendOpen]);
+
+  useEffect(() => {
+    if (!effectiveOpen) return;
     if (!isDayContext) return;
     if (liveMode) {
       if (selectedTime !== "") {
@@ -426,7 +467,7 @@ export default function FloorPlanDrawerReservationsComponent({
     if (!hasSelectedTime && firstTime) {
       setSelectedTime(firstTime);
     }
-  }, [open, isDayContext, liveMode, timeOptions, selectedTime]);
+  }, [effectiveOpen, isDayContext, liveMode, timeOptions, selectedTime]);
 
   useEffect(() => {
     setSelectedTableState(null);
@@ -439,9 +480,19 @@ export default function FloorPlanDrawerReservationsComponent({
     Math.floor((panelH || panelFallback) * CLOSE_RATIO),
   );
 
+  const scrollTimeOptions = (direction) => {
+    const target = timeOptionsScrollRef.current;
+    if (!target) return;
+    target.scrollBy({
+      left: direction * Math.max(180, target.clientWidth * 0.65),
+      behavior: "smooth",
+    });
+  };
+
   const onPointerDown = (e) => {
+    if (isPanel) return;
     if (isTabletUp) return;
-    if (!open) return;
+    if (!effectiveOpen) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
 
     dragStateRef.current.active = true;
@@ -493,79 +544,98 @@ export default function FloorPlanDrawerReservationsComponent({
     ? 0
     : 1 * (1 - Math.min(1, dragY / DRAG_MAX_PX));
 
+  if (!effectiveOpen) return null;
+
   return (
     <div
-      className={`fixed inset-0 z-[120] ${
-        open ? "pointer-events-auto" : "pointer-events-none"
-      }`}
-      role="dialog"
-      aria-modal="true"
-      aria-hidden={!open}
+      className={
+        isPanel
+          ? "relative z-0 h-full min-h-[680px] w-full"
+          : `fixed inset-0 z-[260] ${
+              open ? "pointer-events-auto" : "pointer-events-none"
+            }`
+      }
+      role={isPanel ? undefined : "dialog"}
+      aria-modal={isPanel ? undefined : "true"}
+      aria-hidden={isPanel ? undefined : !open}
     >
       {/* Overlay */}
-      <div
-        className={`
-          absolute inset-0 bg-darkBlue/30
-          transition-opacity duration-200
-          ${isVisible ? "opacity-100" : "opacity-0"}
-        `}
-        style={{ opacity: overlayOpacity }}
-        onClick={open ? closeWithAnimation : undefined}
-        aria-label="Fermer le plan de salle"
-      />
+      {!isPanel ? (
+        <div
+          className={`
+            absolute inset-0 bg-darkBlue/30
+            transition-opacity duration-200
+            ${isVisible ? "opacity-100" : "opacity-0"}
+          `}
+          style={{ opacity: overlayOpacity }}
+          onClick={open ? closeWithAnimation : undefined}
+          aria-label="Fermer le plan de salle"
+        />
+      ) : null}
 
       {/* Panel */}
       <aside
         ref={panelRef}
-        className={`
-          absolute z-[1]
-          border border-darkBlue/10 bg-lightGrey
-          shadow-[0_25px_80px_rgba(19,30,54,0.25)]
-          flex flex-col overflow-hidden
-          transform-gpu
-          left-0 right-0 bottom-0 w-full min-h-[50vh] max-h-[90vh]
-          rounded-t-3xl
-          tablet:top-0 tablet:bottom-0 tablet:left-auto tablet:right-0
-          tablet:h-full tablet:max-h-none tablet:w-1/2 tablet:max-w-[1180px]
-          tablet:rounded-none tablet:border-l tablet:border-t-0 tablet:border-r-0 tablet:border-b-0
-          transition-transform ease-out will-change-transform
-          ${
-            isVisible
-              ? "translate-y-0 tablet:translate-y-0 tablet:translate-x-0"
-              : "translate-y-full tablet:translate-y-0 tablet:translate-x-full"
-          }
-        `}
+        className={
+          isPanel
+            ? `
+              relative z-[1] flex h-full min-h-[680px] w-full flex-col overflow-hidden
+              rounded-[28px] border border-darkBlue/10 bg-lightGrey shadow-sm
+            `
+            : `
+              absolute z-[1]
+              border border-darkBlue/10 bg-lightGrey
+              shadow-[0_25px_80px_rgba(19,30,54,0.25)]
+              flex flex-col overflow-hidden
+              transform-gpu
+              left-0 right-0 bottom-0 w-full min-h-[50vh] max-h-[90vh]
+              rounded-t-3xl
+              tablet:top-0 tablet:bottom-0 tablet:left-auto tablet:right-0
+              tablet:h-full tablet:max-h-none tablet:w-1/2 tablet:max-w-[1180px]
+              tablet:rounded-none tablet:border-l tablet:border-t-0 tablet:border-r-0 tablet:border-b-0
+              transition-transform ease-out will-change-transform
+              ${
+                isVisible
+                  ? "translate-y-0 tablet:translate-y-0 tablet:translate-x-0"
+                  : "translate-y-full tablet:translate-y-0 tablet:translate-x-full"
+              }
+            `
+        }
         style={
-          isTabletUp
-            ? {
-                transitionDuration: `${OPEN_MS}ms`,
-                backfaceVisibility: "hidden",
-              }
-            : {
-                transform: isVisible
-                  ? `translate3d(0, ${dragY}px, 0)`
-                  : "translate3d(0, 100%, 0)",
-                transition: dragStateRef.current.active
-                  ? "none"
-                  : `transform ${OPEN_MS}ms ease-out`,
-                willChange: "transform",
-                backfaceVisibility: "hidden",
-              }
+          isPanel
+            ? undefined
+            : isTabletUp
+              ? {
+                  transitionDuration: `${OPEN_MS}ms`,
+                  backfaceVisibility: "hidden",
+                }
+              : {
+                  transform: isVisible
+                    ? `translate3d(0, ${dragY}px, 0)`
+                    : "translate3d(0, 100%, 0)",
+                  transition: dragStateRef.current.active
+                    ? "none"
+                    : `transform ${OPEN_MS}ms ease-out`,
+                  willChange: "transform",
+                  backfaceVisibility: "hidden",
+                }
         }
         onClick={(e) => e.stopPropagation()}
       >
         {/* Mobile drag zone */}
-        <div
-          className="tablet:hidden shrink-0 cursor-grab active:cursor-grabbing touch-none"
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
-        >
-          <div className="py-3 flex justify-center bg-white">
-            <div className="h-1.5 w-12 rounded-full bg-darkBlue/20" />
+        {!isPanel ? (
+          <div
+            className="tablet:hidden shrink-0 cursor-grab active:cursor-grabbing touch-none"
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
+          >
+            <div className="py-3 flex justify-center bg-white">
+              <div className="h-1.5 w-12 rounded-full bg-darkBlue/20" />
+            </div>
           </div>
-        </div>
+        ) : null}
 
         {/* Scrollable content: tout le drawer scroll */}
         <div
@@ -574,42 +644,72 @@ export default function FloorPlanDrawerReservationsComponent({
         >
           {/* Header */}
           <div className="border-b border-darkBlue/10">
-            <div className="sticky top-0 z-20 bg-white border-b border-darkBlue/10">
-              <div className="px-4 pb-3 desktop:py-3 flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <LayoutGrid className="size-5 text-darkBlue/70" />
-                    <h2 className="text-lg tablet:text-xl font-semibold text-darkBlue">
-                      Plan de salle
-                    </h2>
+            {showHeader ? (
+              <div className="sticky top-0 z-20 bg-white border-b border-darkBlue/10">
+                <div className="px-4 pb-3 desktop:py-3 flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <LayoutGrid className="size-5 text-darkBlue/70" />
+                      <h2 className="text-lg tablet:text-xl font-semibold text-darkBlue">
+                        Plan de salle
+                      </h2>
+                    </div>
+
+                    <p className="mt-1 text-sm text-darkBlue/55">
+                      {isDayContext
+                        ? `Affichage du ${new Intl.DateTimeFormat("fr-FR", {
+                            weekday: "long",
+                            day: "2-digit",
+                            month: "long",
+                            year: "numeric",
+                          }).format(contextDate)}`
+                        : "Affichage en direct du service du jour"}
+                    </p>
                   </div>
 
-                  <p className="mt-1 text-sm text-darkBlue/55">
-                    {isDayContext
-                      ? `Affichage du ${new Intl.DateTimeFormat("fr-FR", {
-                          weekday: "long",
-                          day: "2-digit",
-                          month: "long",
-                          year: "numeric",
-                        }).format(contextDate)}`
-                      : "Affichage en direct du service du jour"}
-                  </p>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {isDayContext &&
+                    !floorPlanPinned &&
+                    typeof onToggleFloorPlanPinned === "function" ? (
+                      <button
+                        type="button"
+                        onClick={onToggleFloorPlanPinned}
+                        className="hidden size-10 items-center justify-center rounded-full border border-darkBlue/10 bg-white text-darkBlue/70 transition hover:bg-darkBlue/5 min-[1024px]:inline-flex"
+                        aria-label="Épingler le plan de salle"
+                        title="Épingler le plan de salle"
+                      >
+                        <Pin className="size-4" />
+                      </button>
+                    ) : null}
+
+                    <button
+                      type="button"
+                      onClick={closeWithAnimation}
+                      className="inline-flex items-center justify-center size-10 rounded-full border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition"
+                      aria-label="Fermer"
+                      title="Fermer"
+                    >
+                      <X className="size-4 text-darkBlue/70" />
+                    </button>
+                  </div>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={closeWithAnimation}
-                  className="inline-flex items-center justify-center size-10 rounded-full border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition"
-                  aria-label="Fermer"
-                  title="Fermer"
-                >
-                  <X className="size-4 text-darkBlue/70" />
-                </button>
               </div>
-            </div>
+            ) : null}
 
-            <div className="px-4 tablet:px-6 py-4 flex flex-col gap-3 bg-white/90">
-              <div className="grid grid-cols-1 tablet:grid-cols-[1.1fr_1fr] gap-3">
+            <div
+              className={`px-4 tablet:px-6 py-4 flex flex-col gap-3 bg-white/90 ${
+                !showHeader ? "rounded-t-[28px]" : ""
+              } ${
+                inlineTimeControls
+                  ? "min-[1024px]:grid min-[1024px]:grid-cols-2 min-[1024px]:items-center"
+                  : ""
+              }`}
+            >
+              <div
+                className={`grid grid-cols-1 gap-3 ${
+                  showLiveToggle ? "tablet:grid-cols-[1.1fr_1fr]" : ""
+                }`}
+              >
                 <div className="flex items-center gap-3 rounded-[22px] border border-darkBlue/10 bg-white/70 px-4 py-3 tablet:h-[66px]">
                   <label className="shrink-0 text-xs font-medium uppercase tracking-wide text-darkBlue/45">
                     Salle
@@ -655,15 +755,26 @@ export default function FloorPlanDrawerReservationsComponent({
               </div>
 
               {isDayContext && !liveMode ? (
-                <div className="rounded-[22px] border border-darkBlue/10 bg-white/70 px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <Clock3 className="size-4 text-darkBlue/55" />
-                    <label className="text-sm font-medium text-darkBlue">
-                      Créneau d’affichage
-                    </label>
-                  </div>
+                <div className="flex min-w-0 items-center gap-2 rounded-[22px] border border-darkBlue/10 bg-white/70 px-3 py-3">
+                  <Clock3 className="size-4 shrink-0 text-darkBlue/55" />
+                  <span className="sr-only">Créneau d’affichage</span>
 
-                  <div className="mt-3 flex flex-wrap gap-2">
+                  {timeOptions.length ? (
+                    <button
+                      type="button"
+                      onClick={() => scrollTimeOptions(-1)}
+                      className="inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-darkBlue/10 bg-white text-darkBlue/65 transition hover:bg-darkBlue/5"
+                      aria-label="Créneaux précédents"
+                      title="Créneaux précédents"
+                    >
+                      <ChevronLeft className="size-4" />
+                    </button>
+                  ) : null}
+
+                  <div
+                    ref={timeOptionsScrollRef}
+                    className="hide-scrollbar flex min-w-0 flex-1 items-center gap-2 overflow-x-auto overscroll-x-contain scroll-smooth"
+                  >
                     {timeOptions.length ? (
                       timeOptions.map((time) => (
                         <button
@@ -671,7 +782,7 @@ export default function FloorPlanDrawerReservationsComponent({
                           type="button"
                           onClick={() => setSelectedTime(time)}
                           className={[
-                            "inline-flex items-center rounded-full px-3 h-9 text-sm font-medium transition border",
+                            "inline-flex h-9 shrink-0 items-center rounded-full border px-3 text-sm font-medium transition",
                             selectedTime === time
                               ? "bg-darkBlue text-white border-darkBlue"
                               : "bg-white text-darkBlue border-darkBlue/10 hover:bg-darkBlue/5",
@@ -686,15 +797,78 @@ export default function FloorPlanDrawerReservationsComponent({
                       </div>
                     )}
                   </div>
+
+                  {timeOptions.length ? (
+                    <button
+                      type="button"
+                      onClick={() => scrollTimeOptions(1)}
+                      className="inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-darkBlue/10 bg-white text-darkBlue/65 transition hover:bg-darkBlue/5"
+                      aria-label="Créneaux suivants"
+                      title="Créneaux suivants"
+                    >
+                      <ChevronRight className="size-4" />
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
-
-              <StatusLegend />
             </div>
           </div>
 
           {/* Body */}
-          <div className="rounded-[28px] m-4 tablet:m-6 min-h-[520px] bg-[#667085]">
+          <div
+            className={`relative rounded-[28px] bg-[#667085] ${
+              isPanel ? "m-4 min-h-[560px]" : "m-4 min-h-[520px] tablet:m-6"
+            }`}
+            onClick={(event) => {
+              if (event.target !== event.currentTarget) return;
+              setSelectedTableState(null);
+              setLegendOpen(false);
+            }}
+          >
+            {!loading && !error && floorPlanEnabled && activeRooms.length ? (
+              <>
+                <button
+                  ref={legendButtonRef}
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setSelectedTableState(null);
+                    setLegendOpen((value) => !value);
+                  }}
+                  className="absolute left-4 top-4 z-[70] inline-flex size-11 items-center justify-center rounded-full border border-white/25 bg-white/8 text-white/90 transition hover:bg-white/12"
+                  aria-label="Afficher la légende du plan"
+                  title="Légende"
+                >
+                  <Info className="size-5" />
+                </button>
+
+                {legendOpen ? (
+                  <div
+                    ref={legendPanelRef}
+                    className="absolute left-4 top-16 z-[80] w-[240px] rounded-3xl border border-white/20 bg-white/95 p-4 shadow-xl"
+                    onClick={(event) => event.stopPropagation()}
+                    role="dialog"
+                    aria-label="Légende du plan de salle"
+                  >
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-darkBlue">
+                        Légende
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setLegendOpen(false)}
+                        className="inline-flex size-8 items-center justify-center rounded-full border border-darkBlue/10 bg-white transition hover:bg-darkBlue/5"
+                        aria-label="Fermer la légende"
+                      >
+                        <X className="size-4 text-darkBlue/70" />
+                      </button>
+                    </div>
+                    <StatusLegend />
+                  </div>
+                ) : null}
+              </>
+            ) : null}
+
             {loading ? (
               <div className="min-h-[520px] rounded-[28px] border border-darkBlue/10 bg-[#667085] flex items-center justify-center">
                 <div className="inline-flex items-center gap-3 text-lightGrey">
@@ -715,37 +889,42 @@ export default function FloorPlanDrawerReservationsComponent({
                 Salle introuvable.
               </div>
             ) : (
-              <FloorPlanCanvasReservationsComponent
-                key={`${activeRoom?._id || "room"}_${JSON.stringify(activeRoom?.canvas || {})}_${safeArr(activeRoom?.objects).length}_${safeArr(
-                  activeRoom?.objects,
-                )
-                  .map(
-                    (o) => `${o.id}_${o.x}_${o.y}_${o.w}_${o.h}_${o.rotation}`,
+              <div ref={canvasHostRef} className="h-full min-h-[520px]">
+                <FloorPlanCanvasReservationsComponent
+                  key={`${activeRoom?._id || "room"}_${JSON.stringify(activeRoom?.canvas || {})}_${safeArr(activeRoom?.objects).length}_${safeArr(
+                    activeRoom?.objects,
                   )
-                  .join("|")}`}
-                room={activeRoom}
-                reservations={dayReservations}
-                tablesCatalog={tablesCatalog}
-                reservationParameters={reservationParameters}
-                selectedDate={contextDate}
-                selectedTime={selectedTime}
-                liveMode={liveMode}
-                selectedTableState={selectedTableState}
-                onSelectTable={setSelectedTableState}
-                shouldResetView={shouldResetView}
-              />
+                    .map(
+                      (o) =>
+                        `${o.id}_${o.x}_${o.y}_${o.w}_${o.h}_${o.rotation}`,
+                    )
+                    .join("|")}`}
+                  room={activeRoom}
+                  reservations={dayReservations}
+                  tablesCatalog={tablesCatalog}
+                  reservationParameters={reservationParameters}
+                  selectedDate={contextDate}
+                  selectedTime={selectedTime}
+                  liveMode={liveMode}
+                  selectedTableState={selectedTableState}
+                  onSelectTable={setSelectedTableState}
+                  shouldResetView={shouldResetView}
+                />
+              </div>
             )}
           </div>
 
           {/* Footer mobile */}
-          <div className="tablet:hidden border-t border-darkBlue/10 bg-white/70 px-4 py-3 pb-[calc(env(safe-area-inset-bottom)+24px)]">
-            <button
-              onClick={closeWithAnimation}
-              className="w-full inline-flex items-center justify-center rounded-xl bg-blue px-4 py-3 text-white text-sm font-semibold shadow-sm hover:bg-blue/90 active:scale-[0.98] transition"
-            >
-              Retour
-            </button>
-          </div>
+          {!isPanel ? (
+            <div className="tablet:hidden border-t border-darkBlue/10 bg-white/70 px-4 py-3 pb-[calc(env(safe-area-inset-bottom)+24px)]">
+              <button
+                onClick={closeWithAnimation}
+                className="w-full inline-flex items-center justify-center rounded-xl bg-blue px-4 py-3 text-white text-sm font-semibold shadow-sm hover:bg-blue/90 active:scale-[0.98] transition"
+              >
+                Retour
+              </button>
+            </div>
+          ) : null}
         </div>
       </aside>
     </div>

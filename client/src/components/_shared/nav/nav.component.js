@@ -8,6 +8,7 @@ import {
 } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 
 // I18N
 import { useTranslation } from "next-i18next";
@@ -32,41 +33,61 @@ export default function NavComponent() {
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [translateX, setTranslateX] = useState(0);
-  const [hasHover, setHasHover] = useState(false);
+  const [supportsHover, setSupportsHover] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+  });
+  const [isTabletUp, setIsTabletUp] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return window.matchMedia("(min-width: 1024px)").matches;
+  });
+  const [navHovered, setNavHovered] = useState(false);
+  const [navExpanded, setNavExpanded] = useState(false);
 
   const navRef = useRef(null);
-  const timeoutRef = useRef(null);
+  const navScrollRef = useRef(null);
+
+  const navIsExpanded = !isTabletUp || navExpanded || navHovered;
 
   // ----- Styles communs -----
   const sidebarCls = `
-  fixed inset-y-0 left-0
-  w-[270px]
-  flex flex-col
-  bg-white
-  border-r border-darkBlue/10
-  shadow-[3px_0_20px_rgba(19,30,54,0.06)]
-  px-2 py-4 tablet:px-4 tablet:py-6
-  gap-4
-  overflow-y-auto hide-scrollbar
-  z-[90] tablet:z-10
-`;
+    fixed inset-y-0 left-0
+    flex flex-col
+    bg-white
+    border-r border-darkBlue/10
+    shadow-[3px_0_20px_rgba(19,30,54,0.06)]
+    px-2 py-4 tablet:px-3 tablet:py-6
+    gap-4
+    overflow-visible
+    z-[120] tablet:z-[140]
+    transition-[width,transform] duration-300 ease-out
+    will-change-[width,transform]
+  `;
 
-  const logoWrapCls = "h-[72px] flex items-center justify-center  mb-1";
+  const navInnerCls =
+    "flex h-full flex-col gap-4 overflow-x-hidden overflow-y-auto hide-scrollbar";
+  const logoWrapCls = "h-[88px] shrink-0 flex items-center justify-center mb-1";
   const logoImgCls = "max-w-[50px] opacity-70";
   const navListCls = "flex-1 flex flex-col gap-3 mt-1.5";
   const navItemBaseCls =
-    "group h-11 flex items-center rounded-xl px-2 pr-3 text-base font-medium transition";
+    "group grid h-11 grid-cols-[64px_minmax(0,1fr)] items-center overflow-hidden rounded-xl text-base font-medium transition-colors duration-200";
   const navItemEnabledCls =
-    "cursor-pointer text-darkBlue/80" + (hasHover ? " hover:bg-blue/10" : "");
+    "cursor-pointer text-darkBlue/80" +
+    (supportsHover ? " hover:bg-blue/10" : "");
   const navItemDisabledCls = "cursor-not-allowed text-darkBlue/40 opacity-60";
   const navItemActiveCls = "bg-blue/10 text-blue";
+  const iconSlotCls =
+    "flex h-11 w-16 shrink-0 items-center justify-center self-stretch";
   const iconChipBase =
     "inline-flex items-center justify-center rounded-full p-2 transition-colors";
   const iconChipActive = "bg-blue border border-blue text-white";
   const iconChipInactive =
     "bg-white border border-darkBlue/10 group-hover:border-darkBlue/25";
-  const logoutBtnCls =
-    "w-full inline-flex items-center justify-center rounded-xl bg-red text-white text-sm font-semibold py-2.5 mt-2 shadow hover:bg-red/90 transition";
+  const navLabelCls = `min-w-0 truncate whitespace-nowrap transition-[max-width,opacity,transform,margin] duration-300 ease-out ${
+    navIsExpanded
+      ? "ml-0 max-w-[190px] translate-x-0 opacity-100 delay-75"
+      : "ml-0 max-w-0 -translate-x-1 opacity-0 pointer-events-none"
+  }`;
 
   const calculateTranslateX = useCallback(() => {
     const windowWidth = window.innerWidth;
@@ -78,19 +99,27 @@ export default function NavComponent() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const mq = window.matchMedia("(hover: hover) and (pointer: fine)");
+    const hoverMq = window.matchMedia("(hover: hover) and (pointer: fine)");
+    const tabletMq = window.matchMedia("(min-width: 1024px)");
 
-    const handleChange = (event) => {
-      setHasHover(event.matches);
+    const syncMedia = () => {
+      setSupportsHover(hoverMq.matches);
+      setIsTabletUp(tabletMq.matches);
+
+      if (!tabletMq.matches) {
+        setNavHovered(false);
+        setNavExpanded(false);
+      }
     };
 
-    // valeur initiale
-    setHasHover(mq.matches);
+    syncMedia();
 
-    mq.addEventListener?.("change", handleChange);
+    hoverMq.addEventListener?.("change", syncMedia);
+    tabletMq.addEventListener?.("change", syncMedia);
 
     return () => {
-      mq.removeEventListener?.("change", handleChange);
+      hoverMq.removeEventListener?.("change", syncMedia);
+      tabletMq.removeEventListener?.("change", syncMedia);
     };
   }, []);
 
@@ -99,7 +128,7 @@ export default function NavComponent() {
       calculateTranslateX();
       window.addEventListener("resize", calculateTranslateX);
       document.body.classList.add("overflow-hidden");
-      navRef.current?.scrollTo(0, 0);
+      navScrollRef.current?.scrollTo(0, 0);
     } else {
       setTranslateX(0);
       document.body.classList.remove("overflow-hidden");
@@ -111,15 +140,33 @@ export default function NavComponent() {
   }, [menuOpen, calculateTranslateX]);
 
   useEffect(() => {
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    if (!isTabletUp || supportsHover || !navExpanded) return;
+    if (typeof document === "undefined") return;
+
+    const handleOutsidePointer = (event) => {
+      if (navRef.current?.contains(event.target)) return;
+      setNavExpanded(false);
     };
-  }, []);
+
+    document.addEventListener("pointerdown", handleOutsidePointer);
+
+    return () => {
+      document.removeEventListener("pointerdown", handleOutsidePointer);
+    };
+  }, [isTabletUp, supportsHover, navExpanded]);
+
+  useEffect(() => {
+    setMenuOpen(false);
+    setNavExpanded(false);
+    setNavHovered(false);
+  }, [router.asPath]);
 
   function handleLinkClick(e, href) {
     e.preventDefault();
     setMenuOpen(false);
-    timeoutRef.current = setTimeout(() => router.push(href), 180);
+    setNavExpanded(false);
+    setNavHovered(false);
+    router.push(href);
   }
 
   function isActive(itemHref) {
@@ -221,7 +268,7 @@ export default function NavComponent() {
       {/* Bouton hamburger mobile */}
       <button
         className="
-          fixed left-2 top-5 z-[91]
+          fixed left-2 top-5 z-[150]
           tablet:hidden desktop:hidden
           flex items-center justify-center
           w-[49px] h-[49px]
@@ -264,87 +311,135 @@ export default function NavComponent() {
       <nav
         ref={navRef}
         className={`
-    ${sidebarCls}
-    transform transition-transform duration-200 ease-out
-    tablet:translate-x-0
-    ${menuOpen ? "translate-x-0" : "-translate-x-full"}
-  `}
+          ${sidebarCls}
+          transform
+          tablet:translate-x-0
+          ${menuOpen ? "translate-x-0" : "-translate-x-full"}
+        `}
+        style={{
+          width: isTabletUp ? (navIsExpanded ? 270 : 88) : 270,
+        }}
+        onMouseEnter={() => {
+          if (supportsHover && isTabletUp && !navExpanded) {
+            setNavHovered(true);
+          }
+        }}
+        onMouseLeave={() => {
+          if (supportsHover) {
+            setNavHovered(false);
+          }
+        }}
+        onFocus={() => {
+          if (supportsHover && isTabletUp && !navExpanded) {
+            setNavHovered(true);
+          }
+        }}
+        onBlur={(event) => {
+          if (!supportsHover) return;
+          if (event.currentTarget.contains(event.relatedTarget)) return;
+          setNavHovered(false);
+        }}
       >
-        {/* Logo */}
-        <div className={logoWrapCls}>
-          <img
-            src="/img/logo-3.png"
-            draggable={false}
-            alt="logo"
-            className={logoImgCls}
-          />
+        {isTabletUp && !supportsHover ? (
+          <button
+            type="button"
+            onClick={() => {
+              setNavExpanded((value) => !value);
+              setNavHovered(false);
+            }}
+            className="absolute -right-4 top-1/2 z-[4] hidden size-8 -translate-y-1/2 items-center justify-center rounded-full border border-darkBlue/10 bg-white text-darkBlue opacity-100 shadow-[0_8px_24px_rgba(19,30,54,0.18)] transition hover:bg-white focus:bg-white active:bg-white tablet:inline-flex"
+            style={{ WebkitTapHighlightColor: "transparent" }}
+            aria-label={
+              navExpanded ? "Réduire la navigation" : "Déployer la navigation"
+            }
+            title={
+              navExpanded ? "Réduire la navigation" : "Déployer la navigation"
+            }
+          >
+            <ChevronRight
+              className={`size-4 transition-transform duration-200 ${
+                navExpanded ? "rotate-180" : ""
+              }`}
+            />
+          </button>
+        ) : null}
+
+        <div ref={navScrollRef} className={navInnerCls}>
+          {/* Logo */}
+          <div className={logoWrapCls}>
+            <img
+              src="/img/logo-3.png"
+              draggable={false}
+              alt="logo"
+              className={logoImgCls}
+            />
+          </div>
+
+          {/* Items */}
+          <ul className={navListCls}>
+            {sortedNavItems.map((item) => {
+              const Icon = icons[item.icon];
+              const active = isActive(item.href);
+              const canClick = item.enabled;
+
+              const itemCls = [
+                navItemBaseCls,
+                canClick ? navItemEnabledCls : navItemDisabledCls,
+                active ? navItemActiveCls : "",
+              ]
+                .join(" ")
+                .trim();
+
+              return (
+                <li key={item.href}>
+                  {canClick ? (
+                    <Link
+                      href={item.href}
+                      onClick={(e) => handleLinkClick(e, item.href)}
+                      className={itemCls}
+                    >
+                      {Icon && (
+                        <div className={iconSlotCls}>
+                          <div
+                            className={`${
+                              active ? iconChipActive : iconChipInactive
+                            } ${iconChipBase}`}
+                          >
+                            <Icon
+                              width={20}
+                              height={20}
+                              fillColor={active ? "white" : "#131E3699"}
+                              strokeColor={active ? "white" : "#131E3699"}
+                            />
+                          </div>
+                        </div>
+                      )}
+                      <span className={navLabelCls}>{t(item.label)}</span>
+                    </Link>
+                  ) : (
+                    <div className={itemCls}>
+                      {Icon && (
+                        <div className={iconSlotCls}>
+                          <div
+                            className={`${iconChipBase} bg-white border border-darkBlue/5`}
+                          >
+                            <Icon
+                              width={20}
+                              height={20}
+                              fillColor="#9ca3af"
+                              strokeColor="#9ca3af"
+                            />
+                          </div>
+                        </div>
+                      )}
+                      <span className={navLabelCls}>{t(item.label)}</span>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
         </div>
-
-        {/* Items */}
-        <ul className={navListCls}>
-          {sortedNavItems.map((item) => {
-            const Icon = icons[item.icon];
-            const active = isActive(item.href);
-            const canClick = item.enabled;
-
-            const itemCls = [
-              navItemBaseCls,
-              canClick ? navItemEnabledCls : navItemDisabledCls,
-              active ? navItemActiveCls : "",
-            ]
-              .join(" ")
-              .trim();
-
-            return (
-              <li key={item.href}>
-                {canClick ? (
-                  <Link
-                    href={item.href}
-                    onClick={(e) => handleLinkClick(e, item.href)}
-                    className={itemCls}
-                  >
-                    {Icon && (
-                      <div
-                        className={`${
-                          active ? iconChipActive : iconChipInactive
-                        } ${iconChipBase}`}
-                      >
-                        <Icon
-                          width={20}
-                          height={20}
-                          fillColor={active ? "white" : "#131E3699"}
-                          strokeColor={active ? "white" : "#131E3699"}
-                        />
-                      </div>
-                    )}
-                    <span className="ml-2 truncate">{t(item.label)}</span>
-                  </Link>
-                ) : (
-                  <div className={itemCls}>
-                    {Icon && (
-                      <div
-                        className={`${iconChipBase} bg-white border border-darkBlue/5`}
-                      >
-                        <Icon
-                          width={20}
-                          height={20}
-                          fillColor="#9ca3af"
-                          strokeColor="#9ca3af"
-                        />
-                      </div>
-                    )}
-                    <span className="ml-2 truncate">{t(item.label)}</span>
-                  </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-
-        {/* Logout */}
-        <button className={logoutBtnCls} onClick={restaurantContext.logout}>
-          {t("buttons.logout")}
-        </button>
       </nav>
     </div>
   );

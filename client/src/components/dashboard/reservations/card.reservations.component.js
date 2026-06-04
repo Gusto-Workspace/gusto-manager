@@ -5,15 +5,16 @@ import {
   UserSvg,
 } from "../../_shared/_svgs/_index";
 
-// I18N
-import { useTranslation } from "next-i18next";
-
 // LUCIDE
 import { Clock, ExternalLink } from "lucide-react";
 import {
   getReservationStatusClassName,
   getReservationStatusLabel,
 } from "@/components/_shared/reservations/reservation-status.utils";
+import {
+  CustomerTagPill,
+  getPrimaryCustomerTag,
+} from "@/components/_shared/customers/customer-tags-ui";
 
 function formatTime(t) {
   const v = String(t || "");
@@ -56,10 +57,9 @@ function getReservationTableLabel(reservation, tablesCatalog = []) {
 }
 
 export default function CardReservationComponent(props) {
-  const { t } = useTranslation("reservations");
-
   const r = props.reservation;
   const status = r.status;
+  const inlineLayout = Boolean(props.inlineLayout);
 
   const badgeClass = getReservationStatusClassName(status);
   const badgeLabel = getReservationStatusLabel(status);
@@ -67,6 +67,7 @@ export default function CardReservationComponent(props) {
   const timeLabel = formatTime(r.reservationTime);
   const hasCommentary = Boolean((r.commentary || "").trim());
   const tableName = getReservationTableLabel(r, props.tablesCatalog);
+  const primaryCustomerTag = getPrimaryCustomerTag(r?.customerSummary?.tags);
 
   const openDetails = () => props.onOpenDetails?.(r);
 
@@ -75,72 +76,91 @@ export default function CardReservationComponent(props) {
 
   return (
     <li className="w-full">
-      <div className="w-full text-left rounded-2xl border border-darkBlue/10 bg-white/70 shadow-sm hover:shadow-md transition-shadow p-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="flex justify-between gap-3">
-              {/* Top row: name + badge */}
-              <div className="flex items-center gap-2 min-w-0">
-                <UserSvg
-                  width={18}
-                  height={18}
-                  className="opacity-50 shrink-0"
-                />
-                <p className="font-semibold text-darkBlue truncate">
-                  {fullName(r) || "-"}
-                </p>
-              </div>
+      <div className="relative w-full text-left rounded-2xl border border-darkBlue/10 bg-white/70 shadow-sm hover:shadow-md transition-shadow p-3">
+        <div
+          className={
+            inlineLayout
+              ? "flex min-w-0 items-center gap-2"
+              : "flex min-w-0 flex-col gap-3"
+          }
+        >
+          <div
+            className={
+              inlineLayout
+                ? "flex min-w-[128px] max-w-[210px] shrink-0 items-center gap-2"
+                : "flex min-w-0 items-center gap-2"
+            }
+          >
+            <UserSvg width={18} height={18} className="opacity-50 shrink-0" />
+            <p className="truncate font-semibold text-darkBlue">
+              {fullName(r) || "-"}
+            </p>
 
+            {!inlineLayout ? (
               <span
-                className={`shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${badgeClass}`}
+                className={`ml-auto shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${badgeClass}`}
               >
                 {badgeLabel}
               </span>
-            </div>
-
-            {/* Meta pills + CTA */}
-            <div className="mt-2 flex flex-wrap justify-between items-center gap-2">
-              <div className="flex gap-1 flex-wrap">
-                <span className={metaPill}>
-                  <Clock width={15} height={15} className="opacity-50" />
-                  {timeLabel}
-                </span>
-
-                <span className={metaPill}>
-                  <CommunitySvg width={15} height={15} className="opacity-50" />
-                  {r.numberOfGuests || 0}
-                </span>
-
-                {tableName ? (
-                  <span className={metaPill}>
-                    <TableSvg width={15} height={15} className="opacity-50" />
-                    <span className="truncate max-w-[160px] midTablet:max-w-[220px]">
-                      {tableName}
-                    </span>
-                  </span>
-                ) : null}
-
-                {hasCommentary ? (
-                  <span className={metaPill}>
-                    <CommentarySvg
-                      width={15}
-                      height={15}
-                      className="opacity-50"
-                    />
-                  </span>
-                ) : null}
-              </div>
-
-              {/* CTA: mobile = icône seule / desktop = icône + "Détails" */}
-              <button
-                type="button"
-                onClick={openDetails}
-                className="shrink-0 inline-flex items-center gap-2 rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2 text-xs font-semibold text-darkBlue"
-              >
-                <ExternalLink className="size-4 text-darkBlue/60" />
-              </button>
-            </div>
+            ) : null}
           </div>
+
+          <div
+            className={
+              inlineLayout
+                ? "hide-scrollbar flex min-w-0 flex-1 items-center gap-1 overflow-x-auto"
+                : "hide-scrollbar flex min-w-0 items-center gap-1 overflow-x-auto pr-11"
+            }
+          >
+            <span className={metaPill}>
+              <Clock width={15} height={15} className="opacity-50" />
+              {timeLabel}
+            </span>
+
+            <span className={metaPill}>
+              <CommunitySvg width={15} height={15} className="opacity-50" />
+              {r.numberOfGuests || 0}
+            </span>
+
+            {tableName ? (
+              <span className={`${metaPill} max-w-[170px]`}>
+                <TableSvg width={15} height={15} className="opacity-50" />
+                <span className="truncate">{tableName}</span>
+              </span>
+            ) : null}
+
+            {primaryCustomerTag ? (
+              <CustomerTagPill tagKey={primaryCustomerTag} compact />
+            ) : null}
+
+            {hasCommentary ? (
+              <span className={metaPill}>
+                <CommentarySvg width={15} height={15} className="opacity-50" />
+              </span>
+            ) : null}
+          </div>
+
+          {inlineLayout ? (
+            <span
+              className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${badgeClass}`}
+            >
+              {badgeLabel}
+            </span>
+          ) : null}
+
+          <button
+            type="button"
+            onClick={openDetails}
+            className={
+              inlineLayout
+                ? "inline-flex shrink-0 items-center gap-2 rounded-xl border border-darkBlue/10 bg-white p-2 text-xs font-semibold text-darkBlue transition hover:bg-darkBlue/5"
+                : "absolute right-3 bottom-3 inline-flex shrink-0 items-center gap-2 rounded-xl border border-darkBlue/10 bg-white p-2 text-xs font-semibold text-darkBlue transition hover:bg-darkBlue/5"
+            }
+            aria-label="Détails"
+            title="Détails"
+          >
+            <ExternalLink className="size-4 text-darkBlue/60" />
+          </button>
         </div>
       </div>
     </li>
