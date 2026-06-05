@@ -385,6 +385,82 @@ function buildEmailHtml({ bodyHtml, restaurantName, actionUrl, actionLabel }) {
   </html>`;
 }
 
+function getPublicWebsiteOrigin(website) {
+  const raw = String(website || "").trim();
+  if (!raw) return "";
+
+  try {
+    return new URL(raw).origin;
+  } catch (_) {
+    try {
+      return new URL(`https://${raw}`).origin;
+    } catch (error) {
+      return "";
+    }
+  }
+}
+
+function buildReservationManageUrl({ restaurant, reservation }) {
+  const origin = getPublicWebsiteOrigin(restaurant?.website);
+  const reservationId = String(reservation?._id || "").trim();
+
+  if (!origin || !reservationId) return "";
+  return `${origin}/reservations/${reservationId}/manage`;
+}
+
+function resolveReservationEmailActionUrl({
+  type,
+  actionUrl,
+  restaurant,
+  reservation,
+}) {
+  const explicitUrl = String(actionUrl || "").trim();
+  if (explicitUrl) return explicitUrl;
+
+  if (type === "confirmed" || type === "reminder24h") {
+    return buildReservationManageUrl({ restaurant, reservation });
+  }
+
+  return "";
+}
+
+function getReservationEmailActionConfig(type, variables) {
+  if (type === "bankHoldActionRequired") {
+    return {
+      actionUrl: variables.actionUrl,
+      actionLabel: "Valider mon empreinte bancaire",
+    };
+  }
+
+  if (type === "reminder24h") {
+    return {
+      actionUrl: variables.actionUrl,
+      actionLabel: "Gérer ma réservation",
+    };
+  }
+
+  if (type === "confirmed") {
+    return {
+      actionUrl: variables.actionUrl,
+      actionLabel: "Gérer ma réservation",
+    };
+  }
+
+  return {
+    actionUrl: "",
+    actionLabel: "",
+  };
+}
+
+function appendManageHint(body, actionUrl) {
+  const text = String(body || "").trim();
+  if (!text || !String(actionUrl || "").trim()) return text;
+
+  return `${text}
+
+Si vous souhaitez modifier ou annuler votre réservation, cliquez sur le bouton ci-dessous.`;
+}
+
 function renderInfoRowsHtml(rows = []) {
   return rows
     .filter((row) => row && row.value)
@@ -491,28 +567,37 @@ async function sendReservationEmail(
     return { skipped: true, reason: "unknown_type" };
   }
 
+  const resolvedActionUrl = resolveReservationEmailActionUrl({
+    type,
+    actionUrl,
+    restaurant,
+    reservation,
+  });
+
   const variables = buildTemplateVariables({
     reservation,
     restaurantName: resolvedRestaurantName,
-    actionUrl,
+    actionUrl: resolvedActionUrl,
     bankHoldAmountTotal,
   });
 
   const renderedSubject =
     interpolateTemplate(template.subject, variables).trim() || template.subject;
-  const renderedBody =
+  let renderedBody =
     interpolateTemplate(template.body, variables).trim() || template.body;
+  const action = getReservationEmailActionConfig(type, variables);
+
+  if (type === "reminder24h" || type === "confirmed") {
+    renderedBody = appendManageHint(renderedBody, action.actionUrl);
+  }
 
   return sendEmail({
     subject: renderedSubject,
     htmlContent: buildEmailHtml({
       bodyHtml: renderBodyHtml(renderedBody),
       restaurantName: resolvedRestaurantName,
-      actionUrl: type === "bankHoldActionRequired" ? variables.actionUrl : "",
-      actionLabel:
-        type === "bankHoldActionRequired"
-          ? "Valider mon empreinte bancaire"
-          : "",
+      actionUrl: action.actionUrl,
+      actionLabel: action.actionLabel,
     }),
     toEmail: email,
     toName: variables.customerName,
