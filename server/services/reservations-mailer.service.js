@@ -43,7 +43,7 @@ Nous vous confirmons que votre réservation pour {{guestCountLabel}} a bien ét�
 
 Nous vous remercions de votre confiance et nous nous réjouissons de vous accueillir chez {{restaurantName}}.
 
-Pour toute question ou modification, n'hésitez pas à nous contacter.
+Pour toute question, n'hésitez pas à nous contacter.
 
 Cordialement,
 L'équipe de {{restaurantName}}`,
@@ -106,7 +106,7 @@ Nous avons le plaisir de vous rappeler votre réservation chez {{restaurantName}
 
 Toute l’équipe se réjouit de vous accueillir.
 
-En cas d’empêchement ou de modification, nous vous remercions de bien vouloir nous prévenir dès que possible.
+En cas d’empêchement, nous vous remercions de bien vouloir nous prévenir dès que possible.
 
 À très bientôt,
 L'équipe de {{restaurantName}}`,
@@ -432,33 +432,33 @@ function getReservationEmailActionConfig(type, variables) {
     };
   }
 
-  if (type === "reminder24h") {
-    return {
-      actionUrl: variables.actionUrl,
-      actionLabel: "Gérer ma réservation",
-    };
-  }
-
-  if (type === "confirmed") {
-    return {
-      actionUrl: variables.actionUrl,
-      actionLabel: "Gérer ma réservation",
-    };
-  }
-
   return {
     actionUrl: "",
     actionLabel: "",
   };
 }
 
-function appendManageHint(body, actionUrl) {
-  const text = String(body || "").trim();
-  if (!text || !String(actionUrl || "").trim()) return text;
+function appendCancellationHintHtml(bodyHtml, actionUrl) {
+  const content = String(bodyHtml || "").trim();
+  const safeActionUrl = String(actionUrl || "").trim();
 
-  return `${text}
+  if (!content) return "";
 
-Si vous souhaitez modifier ou annuler votre réservation, cliquez sur le bouton ci-dessous.`;
+  if (!safeActionUrl) {
+    return `${content}
+      <p style="margin:0 0 16px; line-height:1.6;">
+        Pour toute modification concernant votre réservation, merci de contacter directement le restaurant.
+      </p>`;
+  }
+
+  return `${content}
+      <p style="margin:0 0 16px; line-height:1.6;">
+        Si vous souhaitez annuler votre réservation, cliquez
+        <a href="${escapeHtml(safeActionUrl)}" style="color:#1d4ed8;font-weight:700;text-decoration:underline;">ici</a>.
+      </p>
+      <p style="margin:0 0 16px; line-height:1.6;">
+        Pour toute modification concernant votre réservation, merci de contacter directement le restaurant.
+      </p>`;
 }
 
 function renderInfoRowsHtml(rows = []) {
@@ -586,15 +586,16 @@ async function sendReservationEmail(
   let renderedBody =
     interpolateTemplate(template.body, variables).trim() || template.body;
   const action = getReservationEmailActionConfig(type, variables);
+  let bodyHtml = renderBodyHtml(renderedBody);
 
   if (type === "reminder24h" || type === "confirmed") {
-    renderedBody = appendManageHint(renderedBody, action.actionUrl);
+    bodyHtml = appendCancellationHintHtml(bodyHtml, resolvedActionUrl);
   }
 
   return sendEmail({
     subject: renderedSubject,
     htmlContent: buildEmailHtml({
-      bodyHtml: renderBodyHtml(renderedBody),
+      bodyHtml,
       restaurantName: resolvedRestaurantName,
       actionUrl: action.actionUrl,
       actionLabel: action.actionLabel,
