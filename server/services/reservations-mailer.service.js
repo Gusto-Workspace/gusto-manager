@@ -111,6 +111,19 @@ En cas d’empêchement, nous vous remercions de bien vouloir nous prévenir dè
 À très bientôt,
 L'équipe de {{restaurantName}}`,
   },
+  waitlistOffer: {
+    subject: "Une place s’est libérée pour votre réservation",
+    body: `Bonjour {{customerName}},
+
+Une place s’est libérée chez {{restaurantName}} pour {{guestCountLabel}}, le {{reservationDate}} à {{reservationTime}}.
+
+Vous pouvez accepter cette place jusqu’au {{waitlistOfferExpiresAt}}. Passé ce délai, elle pourra être proposée à une autre personne.
+
+Si vous n’êtes plus disponible, vous pouvez refuser la proposition depuis le même lien.
+
+Cordialement,
+L'équipe de {{restaurantName}}`,
+  },
 };
 
 const EDITABLE_TEMPLATE_BY_KEY = Object.fromEntries(
@@ -317,6 +330,7 @@ function buildTemplateVariables({
   restaurantName,
   actionUrl,
   bankHoldAmountTotal,
+  expiresAt,
 }) {
   const customerName = getReservationCustomerName(reservation) || "Client";
   const numberOfGuests = Number(reservation?.numberOfGuests || 0);
@@ -330,7 +344,17 @@ function buildTemplateVariables({
     commentary: String(reservation?.commentary || "").trim(),
     bankHoldAmountTotal: fmtCurrencyEUR(bankHoldAmountTotal),
     actionUrl: String(actionUrl || "").trim(),
+    waitlistOfferExpiresAt: expiresAt ? fmtShortDateTimeFR(expiresAt) : "",
   };
+}
+
+function fmtShortDateTimeFR(dateInput) {
+  const d = new Date(dateInput);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("fr-FR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  });
 }
 
 function interpolateTemplate(template, variables = {}) {
@@ -429,6 +453,13 @@ function getReservationEmailActionConfig(type, variables) {
     return {
       actionUrl: variables.actionUrl,
       actionLabel: "Valider mon empreinte bancaire",
+    };
+  }
+
+  if (type === "waitlistOffer") {
+    return {
+      actionUrl: variables.actionUrl,
+      actionLabel: "Répondre à la proposition",
     };
   }
 
@@ -553,7 +584,14 @@ function getTemplateForEmailType(type, restaurant) {
 
 async function sendReservationEmail(
   type,
-  { reservation, restaurantName, restaurant, actionUrl, bankHoldAmountTotal },
+  {
+    reservation,
+    restaurantName,
+    restaurant,
+    actionUrl,
+    bankHoldAmountTotal,
+    expiresAt,
+  },
 ) {
   if (!reservation) return { skipped: true, reason: "no_reservation" };
 
@@ -579,6 +617,7 @@ async function sendReservationEmail(
     restaurantName: resolvedRestaurantName,
     actionUrl: resolvedActionUrl,
     bankHoldAmountTotal,
+    expiresAt,
   });
 
   const renderedSubject =

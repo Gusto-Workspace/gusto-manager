@@ -33,14 +33,8 @@ export default function NavComponent() {
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [translateX, setTranslateX] = useState(0);
-  const [supportsHover, setSupportsHover] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.matchMedia("(hover: hover) and (pointer: fine)").matches;
-  });
-  const [isTabletUp, setIsTabletUp] = useState(() => {
-    if (typeof window === "undefined") return true;
-    return window.matchMedia("(min-width: 1024px)").matches;
-  });
+  const [supportsHover, setSupportsHover] = useState(false);
+  const [isTabletUp, setIsTabletUp] = useState(true);
   const [navHovered, setNavHovered] = useState(false);
   const [navExpanded, setNavExpanded] = useState(false);
 

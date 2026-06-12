@@ -7,6 +7,9 @@ const RestaurantModel = require("../../models/restaurant.model");
 const { broadcastToRestaurant } = require("../sse-bus.service");
 const { sendReservationEmail } = require("../reservations-mailer.service");
 const { decryptApiKey } = require("../encryption.service");
+const {
+  triggerWaitlistAutoPromotionForReservationSlot,
+} = require("../../routes/reservations.routes");
 
 const BANK_HOLD_STRIPE_CHECK_AFTER_HOURS = 144; // 6 jours
 
@@ -48,6 +51,8 @@ cron.schedule("*/5 * * * *", async () => {
           ? reservation.toObject()
           : reservation,
       });
+
+      await triggerWaitlistAutoPromotionForReservationSlot(reservation);
 
       try {
         const restaurant = await RestaurantModel.findById(

@@ -1,4 +1,5 @@
 export const RESERVATION_DISPLAY_STATUS_KEYS = [
+  "Waitlist",
   "Pending",
   "Confirmed",
   "Finished",
@@ -7,6 +8,8 @@ export const RESERVATION_DISPLAY_STATUS_KEYS = [
 
 export function getReservationDisplayStatus(status) {
   switch (String(status || "").trim()) {
+    case "Waitlist":
+      return "Waitlist";
     case "AwaitingBankHold":
     case "Pending":
       return "Pending";
@@ -26,6 +29,8 @@ export function getReservationDisplayStatus(status) {
 
 export function getReservationStatusLabel(status) {
   switch (getReservationDisplayStatus(status)) {
+    case "Waitlist":
+      return "Liste d’attente";
     case "Pending":
       return "En attente";
     case "Confirmed":
@@ -41,8 +46,10 @@ export function getReservationStatusLabel(status) {
 
 export function getReservationStatusClassName(status) {
   switch (getReservationDisplayStatus(status)) {
+    case "Waitlist":
+      return "bg-[#F59E0B1A] text-[#B45309] border-[#F59E0B66]";
     case "Pending":
-      return "bg-blue/10 text-blue border-blue/30";
+      return "bg-[#93C5FD26] text-[#1D4ED8] border-[#93C5FD]";
     case "Confirmed":
       return "bg-blue/15 text-blue border-blue/40";
     case "Finished":
@@ -56,6 +63,7 @@ export function getReservationStatusClassName(status) {
 
 export function createReservationDisplayStatusCounter() {
   return {
+    Waitlist: 0,
     Pending: 0,
     Confirmed: 0,
     Finished: 0,
@@ -65,6 +73,7 @@ export function createReservationDisplayStatusCounter() {
 
 export function createReservationDisplayStatusBuckets() {
   return {
+    Waitlist: [],
     Pending: [],
     Confirmed: [],
     Finished: [],

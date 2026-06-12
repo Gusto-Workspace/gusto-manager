@@ -816,7 +816,7 @@ export default function FloorPlanDrawerReservationsComponent({
 
           {/* Body */}
           <div
-            className={`relative rounded-[28px] bg-[#667085] ${
+            className={`relative overflow-hidden rounded-[28px] bg-[#667085] ${
               isPanel ? "m-4 min-h-[560px]" : "m-4 min-h-[520px] tablet:m-6"
             }`}
             onClick={(event) => {
@@ -889,7 +889,7 @@ export default function FloorPlanDrawerReservationsComponent({
                 Salle introuvable.
               </div>
             ) : (
-              <div ref={canvasHostRef} className="h-full min-h-[520px]">
+              <div ref={canvasHostRef} className="absolute inset-0">
                 <FloorPlanCanvasReservationsComponent
                   key={`${activeRoom?._id || "room"}_${JSON.stringify(activeRoom?.canvas || {})}_${safeArr(activeRoom?.objects).length}_${safeArr(
                     activeRoom?.objects,

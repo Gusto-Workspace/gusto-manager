@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
 import { useTranslation } from "next-i18next";
+import { ChevronRight, LogOut } from "lucide-react";
 
 import {
   AnalyticsSvg,
@@ -37,43 +38,57 @@ export default function NavAdminComponent() {
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [translateX, setTranslateX] = useState(0);
-  const [hasHover, setHasHover] = useState(false);
+  const [supportsHover, setSupportsHover] = useState(false);
+  const [isTabletUp, setIsTabletUp] = useState(true);
+  const [navHovered, setNavHovered] = useState(false);
+  const [navExpanded, setNavExpanded] = useState(false);
 
   const navRef = useRef(null);
-  const timeoutRef = useRef(null);
+  const navScrollRef = useRef(null);
 
-  // ----- Styles (identiques à ta nav principale) -----
+  const navIsExpanded = !isTabletUp || navExpanded || navHovered;
+
   const sidebarCls = `
     fixed inset-y-0 left-0
-    w-[270px]
     flex flex-col
     bg-white
     border-r border-darkBlue/10
     shadow-[3px_0_20px_rgba(19,30,54,0.06)]
-    px-2 py-4 tablet:px-4 tablet:py-6
+    px-2 py-4 tablet:px-3 tablet:py-6
     gap-4
-    overflow-y-auto hide-scrollbar
-    z-[90] tablet:z-10
+    overflow-visible
+    z-[120] tablet:z-[140]
+    transition-[width,transform] duration-300 ease-out
+    will-change-[width,transform]
   `;
 
-  const logoWrapCls = "h-[72px] flex items-center justify-center mb-1";
+  const navInnerCls =
+    "flex h-full flex-col gap-4 overflow-x-hidden overflow-y-auto hide-scrollbar";
+  const logoWrapCls = "h-[88px] shrink-0 flex items-center justify-center mb-1";
   const logoImgCls = "max-w-[50px] opacity-70";
   const navListCls = "flex-1 flex flex-col gap-3 mt-1.5";
 
   const navItemBaseCls =
-    "group h-11 flex items-center rounded-xl px-2 pr-3 text-base font-medium transition";
+    "group grid h-11 grid-cols-[64px_minmax(0,1fr)] items-center overflow-hidden rounded-xl text-base font-medium transition-colors duration-200";
   const navItemEnabledCls =
-    "cursor-pointer text-darkBlue/80" + (hasHover ? " hover:bg-blue/10" : "");
+    "cursor-pointer text-darkBlue/80" +
+    (supportsHover ? " hover:bg-blue/10" : "");
   const navItemActiveCls = "bg-blue/10 text-blue";
-
+  const iconSlotCls =
+    "flex h-11 w-16 shrink-0 items-center justify-center self-stretch";
   const iconChipBase =
     "inline-flex items-center justify-center rounded-full p-2 transition-colors";
   const iconChipActive = "bg-blue border border-blue text-white";
   const iconChipInactive =
     "bg-white border border-darkBlue/10 group-hover:border-darkBlue/25";
+  const navLabelCls = `min-w-0 truncate whitespace-nowrap transition-[max-width,opacity,transform,margin] duration-300 ease-out ${
+    navIsExpanded
+      ? "ml-0 max-w-[190px] translate-x-0 opacity-100 delay-75"
+      : "ml-0 max-w-0 -translate-x-1 opacity-0 pointer-events-none"
+  }`;
 
   const logoutBtnCls =
-    "w-full inline-flex items-center justify-center rounded-xl bg-red text-white text-sm font-semibold py-2.5 mt-2 shadow hover:bg-red/90 transition";
+    "group grid h-11 grid-cols-[64px_minmax(0,1fr)] items-center overflow-hidden rounded-xl bg-red text-sm font-semibold text-white shadow transition hover:bg-red/90";
 
   const calculateTranslateX = useCallback(() => {
     const windowWidth = window.innerWidth;
@@ -84,12 +99,27 @@ export default function NavAdminComponent() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const mq = window.matchMedia("(hover: hover) and (pointer: fine)");
-    const handleChange = (event) => setHasHover(event.matches);
+    const hoverMq = window.matchMedia("(hover: hover) and (pointer: fine)");
+    const tabletMq = window.matchMedia("(min-width: 1024px)");
 
-    setHasHover(mq.matches);
-    mq.addEventListener?.("change", handleChange);
-    return () => mq.removeEventListener?.("change", handleChange);
+    const syncMedia = () => {
+      setSupportsHover(hoverMq.matches);
+      setIsTabletUp(tabletMq.matches);
+
+      if (!tabletMq.matches) {
+        setNavHovered(false);
+        setNavExpanded(false);
+      }
+    };
+
+    syncMedia();
+
+    hoverMq.addEventListener?.("change", syncMedia);
+    tabletMq.addEventListener?.("change", syncMedia);
+    return () => {
+      hoverMq.removeEventListener?.("change", syncMedia);
+      tabletMq.removeEventListener?.("change", syncMedia);
+    };
   }, []);
 
   useEffect(() => {
@@ -99,7 +129,7 @@ export default function NavAdminComponent() {
       calculateTranslateX();
       window.addEventListener("resize", calculateTranslateX);
       document.body.classList.add("overflow-hidden");
-      navRef.current?.scrollTo(0, 0);
+      navScrollRef.current?.scrollTo(0, 0);
     } else {
       setTranslateX(0);
       document.body.classList.remove("overflow-hidden");
@@ -112,15 +142,51 @@ export default function NavAdminComponent() {
   }, [menuOpen, calculateTranslateX]);
 
   useEffect(() => {
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    if (!isTabletUp || supportsHover || !navExpanded) return;
+    if (typeof document === "undefined") return;
+
+    const handleOutsidePointer = (event) => {
+      if (navRef.current?.contains(event.target)) return;
+      setNavExpanded(false);
     };
-  }, []);
+
+    document.addEventListener("pointerdown", handleOutsidePointer);
+
+    return () => {
+      document.removeEventListener("pointerdown", handleOutsidePointer);
+    };
+  }, [isTabletUp, supportsHover, navExpanded]);
+
+  useEffect(() => {
+    if (!isTabletUp || !supportsHover || navExpanded) return;
+    if (typeof document === "undefined") return;
+
+    const handlePointerMove = (event) => {
+      const isInsideNav = !!navRef.current?.contains(event.target);
+      setNavHovered((current) =>
+        current === isInsideNav ? current : isInsideNav,
+      );
+    };
+
+    document.addEventListener("pointermove", handlePointerMove);
+
+    return () => {
+      document.removeEventListener("pointermove", handlePointerMove);
+    };
+  }, [isTabletUp, supportsHover, navExpanded]);
+
+  useEffect(() => {
+    setMenuOpen(false);
+    setNavExpanded(false);
+    setNavHovered(false);
+  }, [router.asPath]);
 
   function handleLinkClick(e, href) {
     e.preventDefault();
     setMenuOpen(false);
-    timeoutRef.current = setTimeout(() => router.push(href), 180);
+    setNavExpanded(false);
+    setNavHovered(false);
+    router.push(href);
   }
 
   function isActive(itemHref) {
@@ -132,6 +198,9 @@ export default function NavAdminComponent() {
 
   function handleLogout() {
     localStorage.removeItem("admin-token");
+    setMenuOpen(false);
+    setNavExpanded(false);
+    setNavHovered(false);
     router.push("/dashboard/admin/login");
   }
 
@@ -150,7 +219,7 @@ export default function NavAdminComponent() {
       {/* Bouton hamburger */}
       <button
         className="
-          fixed left-2 top-5 z-[91]
+          fixed left-2 top-5 z-[150]
           tablet:hidden desktop:hidden
           flex items-center justify-center
           w-[49px] h-[49px]
@@ -162,6 +231,7 @@ export default function NavAdminComponent() {
           transform: menuOpen ? `translateX(${translateX}px)` : "translateX(0)",
         }}
         onClick={() => setMenuOpen((o) => !o)}
+        aria-label="Toggle navigation"
       >
         <div className="relative w-6 h-4 flex flex-col justify-between">
           <span
@@ -186,66 +256,122 @@ export default function NavAdminComponent() {
       <nav
         ref={navRef}
         className={`
-        ${sidebarCls}
-        transform transition-transform duration-200 ease-out
-        tablet:translate-x-0
-        ${menuOpen ? "translate-x-0" : "-translate-x-full"}
+          ${sidebarCls}
+          transform
+          tablet:translate-x-0
+          ${menuOpen ? "translate-x-0" : "-translate-x-full"}
         `}
+        style={{
+          width: isTabletUp ? (navIsExpanded ? 270 : 88) : 270,
+        }}
+        onMouseEnter={() => {
+          if (supportsHover && isTabletUp && !navExpanded) {
+            setNavHovered(true);
+          }
+        }}
+        onMouseLeave={() => {
+          if (supportsHover) {
+            setNavHovered(false);
+          }
+        }}
+        onFocus={() => {
+          if (supportsHover && isTabletUp && !navExpanded) {
+            setNavHovered(true);
+          }
+        }}
+        onBlur={(event) => {
+          if (!supportsHover) return;
+          if (event.currentTarget.contains(event.relatedTarget)) return;
+          setNavHovered(false);
+        }}
       >
-        {/* Logo */}
-        <div className={logoWrapCls}>
-          <img
-            src="/img/logo-3.png"
-            draggable={false}
-            alt="logo"
-            className={logoImgCls}
-          />
-        </div>
+        {isTabletUp && !supportsHover ? (
+          <button
+            type="button"
+            onClick={() => {
+              setNavExpanded((value) => !value);
+              setNavHovered(false);
+            }}
+            className="absolute -right-4 top-1/2 z-[4] hidden size-8 -translate-y-1/2 items-center justify-center rounded-full border border-darkBlue/10 bg-white text-darkBlue opacity-100 shadow-[0_8px_24px_rgba(19,30,54,0.18)] transition hover:bg-white focus:bg-white active:bg-white tablet:inline-flex"
+            style={{ WebkitTapHighlightColor: "transparent" }}
+            aria-label={
+              navExpanded ? "Réduire la navigation" : "Déployer la navigation"
+            }
+            title={
+              navExpanded ? "Réduire la navigation" : "Déployer la navigation"
+            }
+          >
+            <ChevronRight
+              className={`size-4 transition-transform duration-200 ${
+                navExpanded ? "rotate-180" : ""
+              }`}
+            />
+          </button>
+        ) : null}
 
-        {/* Items */}
-        <ul className={navListCls}>
-          {ADMIN_NAV_ITEMS.map(({ href, label, Icon }) => {
-            const active = isActive(href);
+        <div ref={navScrollRef} className={navInnerCls}>
+          {/* Logo */}
+          <div className={logoWrapCls}>
+            <img
+              src="/img/logo-3.png"
+              draggable={false}
+              alt="logo"
+              className={logoImgCls}
+            />
+          </div>
 
-            const itemCls = [
-              navItemBaseCls,
-              navItemEnabledCls,
-              active ? navItemActiveCls : "",
-            ]
-              .join(" ")
-              .trim();
+          {/* Items */}
+          <ul className={navListCls}>
+            {ADMIN_NAV_ITEMS.map(({ href, label, Icon }) => {
+              const active = isActive(href);
 
-            return (
-              <li key={href}>
-                <Link
-                  href={href}
-                  onClick={(e) => handleLinkClick(e, href)}
-                  className={itemCls}
-                >
-                  <div
-                    className={`${iconChipBase} ${
-                      active ? iconChipActive : iconChipInactive
-                    }`}
+              const itemCls = [
+                navItemBaseCls,
+                navItemEnabledCls,
+                active ? navItemActiveCls : "",
+              ]
+                .join(" ")
+                .trim();
+
+              return (
+                <li key={href}>
+                  <Link
+                    href={href}
+                    onClick={(e) => handleLinkClick(e, href)}
+                    className={itemCls}
                   >
-                    <Icon
-                      width={20}
-                      height={20}
-                      fillColor={active ? "white" : "#131E3699"}
-                      strokeColor={active ? "white" : "#131E3699"}
-                    />
-                  </div>
+                    <div className={iconSlotCls}>
+                      <div
+                        className={`${iconChipBase} ${
+                          active ? iconChipActive : iconChipInactive
+                        }`}
+                      >
+                        <Icon
+                          width={20}
+                          height={20}
+                          fillColor={active ? "white" : "#131E3699"}
+                          strokeColor={active ? "white" : "#131E3699"}
+                        />
+                      </div>
+                    </div>
 
-                  <span className="ml-2 truncate">{t(label)}</span>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+                    <span className={navLabelCls}>{t(label)}</span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
 
-        {/* Logout */}
-        <button className={logoutBtnCls} onClick={handleLogout}>
-          {t("buttons.logout")}
-        </button>
+          {/* Logout */}
+          <button className={logoutBtnCls} onClick={handleLogout}>
+            <div className={iconSlotCls}>
+              <span className="inline-flex items-center justify-center rounded-full border border-white/30 bg-white/10 p-2 text-white">
+                <LogOut className="size-5" />
+              </span>
+            </div>
+            <span className={navLabelCls}>{t("buttons.logout")}</span>
+          </button>
+        </div>
       </nav>
     </div>
   );

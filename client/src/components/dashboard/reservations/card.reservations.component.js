@@ -108,7 +108,7 @@ export default function CardReservationComponent(props) {
           <div
             className={
               inlineLayout
-                ? "hide-scrollbar flex min-w-0 flex-1 items-center gap-1 overflow-x-auto"
+                ? "hide-scrollbar flex min-w-0 flex-1 items-center justify-end gap-1 overflow-x-auto"
                 : "hide-scrollbar flex min-w-0 items-center gap-1 overflow-x-auto pr-11"
             }
           >

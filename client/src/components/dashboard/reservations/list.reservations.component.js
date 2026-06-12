@@ -81,6 +81,7 @@ export default function ListReservationsComponent(props) {
 
   const statusTranslations = {
     All: t("list.status.all", "Toutes"),
+    Waitlist: t("list.status.waitlist", "Liste d’attente"),
     Pending: t("list.status.pending", "En attente"),
     Confirmed: t("list.status.confirmed", "Confirmées"),
     Finished: t("list.status.finished", "Terminées"),

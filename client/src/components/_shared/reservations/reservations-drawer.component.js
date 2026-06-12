@@ -419,6 +419,8 @@ export default function ReservationsDrawerComponent({
   );
 
   const primaryAction = useMemo(() => {
+    if (status === "Waitlist")
+      return { type: "confirm", label: "Confirmer la place" };
     if (status === "Pending")
       return { type: "confirm", label: t?.("buttons.confirm") || "Confirmer" };
     if (["Confirmed", "Active", "Late"].includes(status))
