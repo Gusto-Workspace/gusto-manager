@@ -212,7 +212,7 @@ export default function DayListReservationsComponent(props) {
             <ul
               className={
                 props.compactRows
-                  ? "flex flex-col gap-2"
+                  ? "flex flex-col gap-2 midTablet:grid midTablet:grid-cols-2 min-[1024px]:flex min-[1024px]:flex-col"
                   : "flex flex-col gap-2 midTablet:grid midTablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-4"
               }
             >
@@ -224,7 +224,7 @@ export default function DayListReservationsComponent(props) {
                   openModalForAction={props.openModalForAction}
                   handleEditClick={props.handleEditClick}
                   onOpenDetails={openDetails}
-                  inlineLayout={props.compactRows}
+                  responsiveInlineLayout={props.compactRows}
                 />
               ))}
             </ul>

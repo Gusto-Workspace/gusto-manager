@@ -59,7 +59,7 @@ function getReservationTableLabel(reservation, tablesCatalog = []) {
 export default function CardReservationComponent(props) {
   const r = props.reservation;
   const status = r.status;
-  const inlineLayout = Boolean(props.inlineLayout);
+  const responsiveInlineLayout = Boolean(props.responsiveInlineLayout);
 
   const badgeClass = getReservationStatusClassName(status);
   const badgeLabel = getReservationStatusLabel(status);
@@ -79,15 +79,15 @@ export default function CardReservationComponent(props) {
       <div className="relative w-full text-left rounded-2xl border border-darkBlue/10 bg-white/70 shadow-sm hover:shadow-md transition-shadow p-3">
         <div
           className={
-            inlineLayout
-              ? "flex min-w-0 items-center gap-2"
+            responsiveInlineLayout
+              ? "flex min-w-0 flex-col gap-3 min-[1024px]:flex-row min-[1024px]:items-center min-[1024px]:gap-2"
               : "flex min-w-0 flex-col gap-3"
           }
         >
           <div
             className={
-              inlineLayout
-                ? "flex min-w-[128px] max-w-[210px] shrink-0 items-center gap-2"
+              responsiveInlineLayout
+                ? "flex min-w-0 items-center gap-2 min-[1024px]:min-w-[128px] min-[1024px]:max-w-[210px] min-[1024px]:shrink-0"
                 : "flex min-w-0 items-center gap-2"
             }
           >
@@ -96,19 +96,21 @@ export default function CardReservationComponent(props) {
               {fullName(r) || "-"}
             </p>
 
-            {!inlineLayout ? (
-              <span
-                className={`ml-auto shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${badgeClass}`}
-              >
-                {badgeLabel}
-              </span>
-            ) : null}
+            <span
+              className={[
+                "ml-auto shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold",
+                badgeClass,
+                responsiveInlineLayout ? "min-[1024px]:hidden" : "",
+              ].join(" ")}
+            >
+              {badgeLabel}
+            </span>
           </div>
 
           <div
             className={
-              inlineLayout
-                ? "hide-scrollbar flex min-w-0 flex-1 items-center justify-end gap-1 overflow-x-auto"
+              responsiveInlineLayout
+                ? "hide-scrollbar flex min-w-0 items-center gap-1 overflow-x-auto pr-11 min-[1024px]:flex-1 min-[1024px]:justify-end min-[1024px]:pr-0"
                 : "hide-scrollbar flex min-w-0 items-center gap-1 overflow-x-auto pr-11"
             }
           >
@@ -140,9 +142,9 @@ export default function CardReservationComponent(props) {
             ) : null}
           </div>
 
-          {inlineLayout ? (
+          {responsiveInlineLayout ? (
             <span
-              className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${badgeClass}`}
+              className={`hidden shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold min-[1024px]:inline-flex ${badgeClass}`}
             >
               {badgeLabel}
             </span>
@@ -152,8 +154,8 @@ export default function CardReservationComponent(props) {
             type="button"
             onClick={openDetails}
             className={
-              inlineLayout
-                ? "inline-flex shrink-0 items-center gap-2 rounded-xl border border-darkBlue/10 bg-white p-2 text-xs font-semibold text-darkBlue transition hover:bg-darkBlue/5"
+              responsiveInlineLayout
+                ? "absolute right-3 bottom-3 inline-flex shrink-0 items-center gap-2 rounded-xl border border-darkBlue/10 bg-white p-2 text-xs font-semibold text-darkBlue transition hover:bg-darkBlue/5 min-[1024px]:static"
                 : "absolute right-3 bottom-3 inline-flex shrink-0 items-center gap-2 rounded-xl border border-darkBlue/10 bg-white p-2 text-xs font-semibold text-darkBlue transition hover:bg-darkBlue/5"
             }
             aria-label="Détails"
