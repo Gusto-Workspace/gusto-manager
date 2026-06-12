@@ -20,6 +20,11 @@ import {
   createReservationDisplayStatusCounter,
   getReservationDisplayStatus,
 } from "@/components/_shared/reservations/reservation-status.utils";
+import { useReservationServiceClosure } from "../../reservations/use-reservation-service-closure.reservations";
+import {
+  matchesReservationGuestsFilter,
+  RESERVATION_SEATS_FILTER_OPTIONS,
+} from "../../reservations/reservation-filters.reservations";
 
 export default function ListReservationsWebapp(props) {
   const { t } = useTranslation("reservations");
@@ -49,6 +54,7 @@ export default function ListReservationsWebapp(props) {
   );
   const [selectedDay, setSelectedDay] = useState(null);
   const [activeDayTab, setActiveDayTab] = useState("All");
+  const [minSeatsFilter, setMinSeatsFilter] = useState(0);
 
   const calendarSearchRef = useRef(null);
   const daySearchRef = useRef(null);
@@ -57,6 +63,15 @@ export default function ListReservationsWebapp(props) {
   const [disableDayClick, setDisableDayClick] = useState(false);
   const [isFloorPlanDrawerOpen, setIsFloorPlanDrawerOpen] = useState(false);
   const autoMarkedNotificationRef = useRef(null);
+  const {
+    serviceClosureState,
+    serviceFullSaving,
+    serviceFullError,
+    handleToggleServiceFull,
+  } = useReservationServiceClosure({
+    restaurantData: props.restaurantData,
+    setRestaurantData: props.setRestaurantData,
+  });
 
   const closeKeyboardOnly = useCallback(() => {
     setDisableDayClick(true);
@@ -222,6 +237,7 @@ export default function ListReservationsWebapp(props) {
       const dt = getReservationDateTime(r);
       if (!dt) return;
       if (dt < monthStart || dt > monthEnd) return;
+      if (!matchesReservationGuestsFilter(r, minSeatsFilter)) return;
 
       const key = toDateKey(dt);
       if (!dayAgg[key]) {
@@ -288,7 +304,7 @@ export default function ListReservationsWebapp(props) {
       });
     }
     return days;
-  }, [props.reservations, currentMonth, searchTerm]);
+  }, [props.reservations, currentMonth, searchTerm, minSeatsFilter]);
 
   /* =========================================================
    * Données vue Jour (réservations du jour + par statut)
@@ -317,6 +333,7 @@ export default function ListReservationsWebapp(props) {
         const dt = getReservationDateTime(r);
         if (!dt) return false;
         if (toDateKey(dt) !== key) return false;
+        if (!matchesReservationGuestsFilter(r, minSeatsFilter)) return false;
 
         if (term) {
           const hay =
@@ -346,7 +363,7 @@ export default function ListReservationsWebapp(props) {
     );
 
     return { byStatus: by, counts };
-  }, [props.reservations, selectedDay, searchTerm]);
+  }, [props.reservations, selectedDay, searchTerm, minSeatsFilter]);
 
   /* =========================================================
    * Navigation / actions
@@ -665,6 +682,12 @@ export default function ListReservationsWebapp(props) {
 
   return (
     <section className="flex flex-col gap-6">
+      {serviceFullError ? (
+        <p className="rounded-2xl border border-red/20 bg-red/5 px-4 py-3 text-sm text-red">
+          {serviceFullError}
+        </p>
+      ) : null}
+
       {!selectedDay ? (
         <>
           <CalendarToolbarReservationsWebapp
@@ -681,6 +704,14 @@ export default function ListReservationsWebapp(props) {
             setSearchTerm={setSearchTerm}
             restaurantData={props.restaurantData}
             setIsKeyboardOpen={setIsKeyboardOpen}
+            minSeatsFilter={minSeatsFilter}
+            setMinSeatsFilter={setMinSeatsFilter}
+            seatsFilterOptions={RESERVATION_SEATS_FILTER_OPTIONS}
+            serviceFullActive={serviceClosureState.closed}
+            serviceFullAutomatic={serviceClosureState.automatic}
+            hasCurrentService={Boolean(serviceClosureState.currentService)}
+            serviceFullSaving={serviceFullSaving}
+            onToggleServiceFull={handleToggleServiceFull}
           />
           <CalendarMonthReservationsWebapp
             monthGridDays={monthGridDays}
@@ -715,6 +746,9 @@ export default function ListReservationsWebapp(props) {
             handleSearchChangeDay={handleSearchChangeDay}
             setIsKeyboardOpen={setIsKeyboardOpen}
             handleOpenFloorPlanDrawer={handleOpenFloorPlanDrawer}
+            minSeatsFilter={minSeatsFilter}
+            setMinSeatsFilter={setMinSeatsFilter}
+            seatsFilterOptions={RESERVATION_SEATS_FILTER_OPTIONS}
           />
           {/* Liste du statut actif */}
           <DayListReservationsWebapp

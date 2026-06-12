@@ -20,12 +20,11 @@ import {
   createReservationDisplayStatusCounter,
   getReservationDisplayStatus,
 } from "@/components/_shared/reservations/reservation-status.utils";
+import { useReservationServiceClosure } from "./use-reservation-service-closure.reservations";
 import {
-  getNextReservationServiceBoundaryAt,
-  getReservationServiceClosureState,
-} from "./service-closure.reservations";
-
-const SEATS_FILTER_OPTIONS = [0, 2, 4, 6, 8, 10, 12];
+  matchesReservationGuestsFilter,
+  RESERVATION_SEATS_FILTER_OPTIONS,
+} from "./reservation-filters.reservations";
 
 export default function ListReservationsComponent(props) {
   const { t } = useTranslation("reservations");
@@ -59,9 +58,6 @@ export default function ListReservationsComponent(props) {
   const [isFloorPlanDrawerOpen, setIsFloorPlanDrawerOpen] = useState(false);
   const [floorPlanMinSeatsFilter, setFloorPlanMinSeatsFilter] = useState(0);
   const [isFloorPlanPinned, setIsFloorPlanPinned] = useState(false);
-  const [serviceClock, setServiceClock] = useState(() => Date.now());
-  const [serviceFullSaving, setServiceFullSaving] = useState(false);
-  const [serviceFullError, setServiceFullError] = useState("");
 
   const restaurantId = props.restaurantData?._id
     ? String(props.restaurantData._id)
@@ -70,32 +66,15 @@ export default function ListReservationsComponent(props) {
     ? `gusto:reservations:floor-plan-pinned:${restaurantId}`
     : "";
   const showPinnedFloorPlan = Boolean(selectedDay && isFloorPlanPinned);
-  const serviceClosureState = useMemo(
-    () =>
-      getReservationServiceClosureState(
-        props.restaurantData,
-        new Date(serviceClock),
-      ),
-    [props.restaurantData, serviceClock],
-  );
-
-  useEffect(() => {
-    const now = new Date();
-    const boundary = getNextReservationServiceBoundaryAt(
-      props.restaurantData,
-      now,
-    );
-    const untilBoundary = boundary
-      ? boundary.getTime() - now.getTime() + 100
-      : 60 * 1000;
-    const delay = Math.min(Math.max(untilBoundary, 250), 60 * 1000);
-
-    const timer = window.setTimeout(() => {
-      setServiceClock(Date.now());
-    }, delay);
-
-    return () => window.clearTimeout(timer);
-  }, [props.restaurantData, serviceClock]);
+  const {
+    serviceClosureState,
+    serviceFullSaving,
+    serviceFullError,
+    handleToggleServiceFull,
+  } = useReservationServiceClosure({
+    restaurantData: props.restaurantData,
+    setRestaurantData: props.setRestaurantData,
+  });
 
   const closeKeyboardOnly = useCallback(() => {
     setDisableDayClick(true);
@@ -148,12 +127,6 @@ export default function ListReservationsComponent(props) {
     if (!s) return s;
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
-  function matchesGuestsFilter(reservation) {
-    const minGuests = Math.max(0, Number(floorPlanMinSeatsFilter || 0));
-    if (!minGuests) return true;
-    return Number(reservation?.numberOfGuests || 0) >= minGuests;
-  }
-
   useEffect(() => {
     if (!selectedDayKey) {
       setSelectedDay(null);
@@ -278,7 +251,7 @@ export default function ListReservationsComponent(props) {
       const dt = getReservationDateTime(r);
       if (!dt) return;
       if (dt < monthStart || dt > monthEnd) return;
-      if (!matchesGuestsFilter(r)) return;
+      if (!matchesReservationGuestsFilter(r, floorPlanMinSeatsFilter)) return;
 
       const key = toDateKey(dt);
       if (!dayAgg[key]) {
@@ -374,7 +347,9 @@ export default function ListReservationsComponent(props) {
         const dt = getReservationDateTime(r);
         if (!dt) return false;
         if (toDateKey(dt) !== key) return false;
-        if (!matchesGuestsFilter(r)) return false;
+        if (!matchesReservationGuestsFilter(r, floorPlanMinSeatsFilter)) {
+          return false;
+        }
 
         if (term) {
           const hay =
@@ -414,44 +389,6 @@ export default function ListReservationsComponent(props) {
   }
   function handleParametersClick() {
     router.push(`/dashboard/reservations/parameters`);
-  }
-  async function handleToggleServiceFull(nextActive) {
-    if (
-      serviceFullSaving ||
-      serviceClosureState.automatic ||
-      !serviceClosureState.currentService ||
-      !props.restaurantData?._id
-    ) {
-      return;
-    }
-
-    try {
-      setServiceFullSaving(true);
-      setServiceFullError("");
-
-      const token = localStorage.getItem("token");
-      const response = await axios.put(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${props.restaurantData._id}/reservations/parameters`,
-        {
-          parameters: {
-            manual_service_full_until: nextActive
-              ? serviceClosureState.currentService.endAt.toISOString()
-              : null,
-          },
-        },
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
-
-      props.setRestaurantData(response.data.restaurant);
-      setServiceClock(Date.now());
-    } catch (toggleError) {
-      setServiceFullError(
-        toggleError?.response?.data?.message ||
-          "Impossible de modifier la fermeture du service.",
-      );
-    } finally {
-      setServiceFullSaving(false);
-    }
   }
   function handleEditClick(reservation) {
     router.push(`/dashboard/reservations/add?reservationId=${reservation._id}`);
@@ -778,7 +715,7 @@ export default function ListReservationsComponent(props) {
             handleOpenFloorPlanDrawer={handleOpenFloorPlanDrawer}
             minSeatsFilter={floorPlanMinSeatsFilter}
             setMinSeatsFilter={setFloorPlanMinSeatsFilter}
-            seatsFilterOptions={SEATS_FILTER_OPTIONS}
+            seatsFilterOptions={RESERVATION_SEATS_FILTER_OPTIONS}
             serviceFullActive={serviceClosureState.closed}
             serviceFullAutomatic={serviceClosureState.automatic}
             hasCurrentService={Boolean(serviceClosureState.currentService)}
@@ -824,7 +761,7 @@ export default function ListReservationsComponent(props) {
             }
             minSeatsFilter={floorPlanMinSeatsFilter}
             setMinSeatsFilter={setFloorPlanMinSeatsFilter}
-            seatsFilterOptions={SEATS_FILTER_OPTIONS}
+            seatsFilterOptions={RESERVATION_SEATS_FILTER_OPTIONS}
             serviceFullActive={serviceClosureState.closed}
             serviceFullAutomatic={serviceClosureState.automatic}
             hasCurrentService={Boolean(serviceClosureState.currentService)}
