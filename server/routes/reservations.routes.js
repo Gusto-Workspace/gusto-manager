@@ -46,6 +46,10 @@ const { decryptApiKey } = require("../services/encryption.service");
 const {
   buildReservationBankHoldStripeMetadata,
 } = require("../services/reservation-bank-hold-metadata.service");
+const {
+  getCurrentReservationService,
+  isPublicReservationBlockedByCurrentService,
+} = require("../services/reservation-service-closure.service");
 
 const BANK_HOLD_IMMEDIATE_WINDOW_HOURS = 168; // 7 jours
 
@@ -3873,6 +3877,33 @@ router.put(
         waitlist: nextWaitlist,
       };
 
+      if (
+        Object.prototype.hasOwnProperty.call(
+          parameters,
+          "manual_service_full_until",
+        )
+      ) {
+        if (!parameters.manual_service_full_until) {
+          nextReservationSettings.manual_service_full_until = null;
+        } else {
+          const currentService = getCurrentReservationService({
+            restaurant,
+            parameters: nextReservationSettings,
+          });
+
+          if (!currentService) {
+            return res.status(409).json({
+              code: "NO_ACTIVE_RESERVATION_SERVICE",
+              message:
+                "Le mode complet ne peut être activé que pendant un service.",
+            });
+          }
+
+          nextReservationSettings.manual_service_full_until =
+            currentService.endAt;
+        }
+      }
+
       const nextManage = Boolean(
         nextReservationSettings?.manage_disponibilities,
       );
@@ -4474,6 +4505,20 @@ router.post("/restaurants/:id/reservations/waitlist", async (req, res) => {
     } = slotValidation;
     const occupancyMs = getReservationOccupancyMs(parameters, normalizedTime);
 
+    if (
+      isPublicReservationBlockedByCurrentService({
+        restaurant,
+        parameters,
+        candidateDateTime: candidateDT,
+        occupancyMs,
+      })
+    ) {
+      return res.status(409).json({
+        message:
+          "Les réservations en ligne sont fermées pour le service en cours.",
+      });
+    }
+
     if (isDateTimeBlocked(parameters, candidateDT, occupancyMs)) {
       return res.status(409).json({
         message:
@@ -5011,6 +5056,20 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
       candidateDT,
     } = slotValidation;
     const occupancyMs = getReservationOccupancyMs(parameters, normalizedTime);
+
+    if (
+      isPublicReservationBlockedByCurrentService({
+        restaurant,
+        parameters,
+        candidateDateTime: candidateDT,
+        occupancyMs,
+      })
+    ) {
+      return res.status(409).json({
+        message:
+          "Les réservations en ligne sont fermées pour le service en cours.",
+      });
+    }
 
     let dayLock = null;
 

@@ -124,6 +124,7 @@ export default function ParametersReservationComponent(props) {
       auto_accept: true,
       interval: "30",
       pending_duration_minutes: 120,
+      refuse_public_reservations_during_service: false,
 
       // Empreinte bancaire
       bank_hold_enabled: false,
@@ -169,7 +170,7 @@ export default function ParametersReservationComponent(props) {
 
   const [tablesCatalog, setTablesCatalog] = useState([]);
   const [emailTemplates, setEmailTemplates] = useState(
-    buildReservationEmailTemplatesState(),
+    buildReservationEmailTemplatesPayload(),
   );
   const [
     notifyRestaurantOnNewPublicReservation,
@@ -316,7 +317,11 @@ export default function ParametersReservationComponent(props) {
   // Init depuis le contexte
   useEffect(() => {
     if (restaurantContext?.restaurantData) {
-      const parameters = restaurantContext.restaurantData.reservationsSettings;
+      const parameters =
+        restaurantContext.restaurantData.reservationsSettings || {};
+      const normalizedEmailTemplates = buildReservationEmailTemplatesPayload(
+        parameters.email_templates,
+      );
 
       const nextLunch =
         parameters?.table_occupancy_lunch_minutes === 0 ||
@@ -344,6 +349,8 @@ export default function ParametersReservationComponent(props) {
         auto_accept: parameters.auto_accept ?? true,
         interval: String(parameters.interval ?? "30"),
         pending_duration_minutes: parameters.pending_duration_minutes ?? 120,
+        refuse_public_reservations_during_service:
+          parameters.refuse_public_reservations_during_service ?? false,
 
         bank_hold_enabled: parameters?.bank_hold?.enabled ?? false,
         bank_hold_amount_per_person:
@@ -374,9 +381,7 @@ export default function ParametersReservationComponent(props) {
       setIsLoading(false);
       setDurationError({ lunch: false, dinner: false });
       setTablesCatalog(parameters.tables || []);
-      setEmailTemplates(
-        buildReservationEmailTemplatesState(parameters.email_templates),
-      );
+      setEmailTemplates(normalizedEmailTemplates);
       setNotifyRestaurantOnNewPublicReservation(
         parameters?.notify_restaurant_on_new_public_reservation ?? false,
       );
@@ -390,6 +395,8 @@ export default function ParametersReservationComponent(props) {
           auto_accept: parameters.auto_accept ?? true,
           interval: String(parameters.interval ?? "30"),
           pending_duration_minutes: parameters.pending_duration_minutes ?? 120,
+          refuse_public_reservations_during_service:
+            parameters.refuse_public_reservations_during_service ?? false,
         },
         bank_hold: {
           bank_hold_enabled: parameters?.bank_hold?.enabled ?? false,
@@ -415,7 +422,7 @@ export default function ParametersReservationComponent(props) {
           table_occupancy_dinner_minutes: nextDinner,
         },
         emails: buildEmailsSectionSnapshot({
-          templates: parameters.email_templates,
+          templates: normalizedEmailTemplates,
           notifyRestaurantOnNewPublicReservation:
             parameters?.notify_restaurant_on_new_public_reservation ?? false,
         }),
@@ -444,6 +451,9 @@ export default function ParametersReservationComponent(props) {
   const deletion_duration = watch("deletion_duration");
   const auto_finish_reservations = watch("auto_finish_reservations");
   const auto_accept = watch("auto_accept");
+  const refuse_public_reservations_during_service = watch(
+    "refuse_public_reservations_during_service",
+  );
 
   const interval = watch("interval");
   const pending_duration_minutes = watch("pending_duration_minutes");
@@ -528,10 +538,18 @@ export default function ParametersReservationComponent(props) {
       auto_accept: Boolean(auto_accept),
       interval: String(interval ?? ""),
       pending_duration_minutes: Number(pending_duration_minutes ?? 0),
+      refuse_public_reservations_during_service: Boolean(
+        refuse_public_reservations_during_service,
+      ),
     };
     markSectionDirty("slots", !shallowEqual(snap, next));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auto_accept, interval, pending_duration_minutes]);
+  }, [
+    auto_accept,
+    interval,
+    pending_duration_minutes,
+    refuse_public_reservations_during_service,
+  ]);
 
   useEffect(() => {
     const snap = initialSnapRef.current?.bank_hold;
@@ -700,6 +718,9 @@ export default function ParametersReservationComponent(props) {
           pending_duration_minutes: aa
             ? currentParams.pending_duration_minutes || 120
             : Number(pending_duration_minutes),
+          refuse_public_reservations_during_service: Boolean(
+            refuse_public_reservations_during_service,
+          ),
         };
       }
 
@@ -856,6 +877,9 @@ export default function ParametersReservationComponent(props) {
           auto_accept: Boolean(auto_accept),
           interval: String(interval ?? ""),
           pending_duration_minutes: Number(pending_duration_minutes ?? 0),
+          refuse_public_reservations_during_service: Boolean(
+            refuse_public_reservations_during_service,
+          ),
         };
       }
       if (sectionKey === "bank_hold") {

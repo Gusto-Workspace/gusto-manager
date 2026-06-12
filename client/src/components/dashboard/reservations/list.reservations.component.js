@@ -20,6 +20,10 @@ import {
   createReservationDisplayStatusCounter,
   getReservationDisplayStatus,
 } from "@/components/_shared/reservations/reservation-status.utils";
+import {
+  getNextReservationServiceBoundaryAt,
+  getReservationServiceClosureState,
+} from "./service-closure.reservations";
 
 const SEATS_FILTER_OPTIONS = [0, 2, 4, 6, 8, 10, 12];
 
@@ -55,6 +59,9 @@ export default function ListReservationsComponent(props) {
   const [isFloorPlanDrawerOpen, setIsFloorPlanDrawerOpen] = useState(false);
   const [floorPlanMinSeatsFilter, setFloorPlanMinSeatsFilter] = useState(0);
   const [isFloorPlanPinned, setIsFloorPlanPinned] = useState(false);
+  const [serviceClock, setServiceClock] = useState(() => Date.now());
+  const [serviceFullSaving, setServiceFullSaving] = useState(false);
+  const [serviceFullError, setServiceFullError] = useState("");
 
   const restaurantId = props.restaurantData?._id
     ? String(props.restaurantData._id)
@@ -63,6 +70,32 @@ export default function ListReservationsComponent(props) {
     ? `gusto:reservations:floor-plan-pinned:${restaurantId}`
     : "";
   const showPinnedFloorPlan = Boolean(selectedDay && isFloorPlanPinned);
+  const serviceClosureState = useMemo(
+    () =>
+      getReservationServiceClosureState(
+        props.restaurantData,
+        new Date(serviceClock),
+      ),
+    [props.restaurantData, serviceClock],
+  );
+
+  useEffect(() => {
+    const now = new Date();
+    const boundary = getNextReservationServiceBoundaryAt(
+      props.restaurantData,
+      now,
+    );
+    const untilBoundary = boundary
+      ? boundary.getTime() - now.getTime() + 100
+      : 60 * 1000;
+    const delay = Math.min(Math.max(untilBoundary, 250), 60 * 1000);
+
+    const timer = window.setTimeout(() => {
+      setServiceClock(Date.now());
+    }, delay);
+
+    return () => window.clearTimeout(timer);
+  }, [props.restaurantData, serviceClock]);
 
   const closeKeyboardOnly = useCallback(() => {
     setDisableDayClick(true);
@@ -382,6 +415,44 @@ export default function ListReservationsComponent(props) {
   function handleParametersClick() {
     router.push(`/dashboard/reservations/parameters`);
   }
+  async function handleToggleServiceFull(nextActive) {
+    if (
+      serviceFullSaving ||
+      serviceClosureState.automatic ||
+      !serviceClosureState.currentService ||
+      !props.restaurantData?._id
+    ) {
+      return;
+    }
+
+    try {
+      setServiceFullSaving(true);
+      setServiceFullError("");
+
+      const token = localStorage.getItem("token");
+      const response = await axios.put(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${props.restaurantData._id}/reservations/parameters`,
+        {
+          parameters: {
+            manual_service_full_until: nextActive
+              ? serviceClosureState.currentService.endAt.toISOString()
+              : null,
+          },
+        },
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+
+      props.setRestaurantData(response.data.restaurant);
+      setServiceClock(Date.now());
+    } catch (toggleError) {
+      setServiceFullError(
+        toggleError?.response?.data?.message ||
+          "Impossible de modifier la fermeture du service.",
+      );
+    } finally {
+      setServiceFullSaving(false);
+    }
+  }
   function handleEditClick(reservation) {
     router.push(`/dashboard/reservations/add?reservationId=${reservation._id}`);
   }
@@ -683,6 +754,12 @@ export default function ListReservationsComponent(props) {
     <section className="flex flex-col gap-6">
       <hr className="hidden midTablet:block opacity-20" />
 
+      {serviceFullError ? (
+        <p className="rounded-2xl border border-red/20 bg-red/5 px-4 py-3 text-sm text-red">
+          {serviceFullError}
+        </p>
+      ) : null}
+
       {!selectedDay ? (
         <>
           <CalendarToolbarReservationsComponent
@@ -702,6 +779,11 @@ export default function ListReservationsComponent(props) {
             minSeatsFilter={floorPlanMinSeatsFilter}
             setMinSeatsFilter={setFloorPlanMinSeatsFilter}
             seatsFilterOptions={SEATS_FILTER_OPTIONS}
+            serviceFullActive={serviceClosureState.closed}
+            serviceFullAutomatic={serviceClosureState.automatic}
+            hasCurrentService={Boolean(serviceClosureState.currentService)}
+            serviceFullSaving={serviceFullSaving}
+            onToggleServiceFull={handleToggleServiceFull}
           />
           <CalendarMonthReservationsComponent
             monthGridDays={monthGridDays}
@@ -743,6 +825,11 @@ export default function ListReservationsComponent(props) {
             minSeatsFilter={floorPlanMinSeatsFilter}
             setMinSeatsFilter={setFloorPlanMinSeatsFilter}
             seatsFilterOptions={SEATS_FILTER_OPTIONS}
+            serviceFullActive={serviceClosureState.closed}
+            serviceFullAutomatic={serviceClosureState.automatic}
+            hasCurrentService={Boolean(serviceClosureState.currentService)}
+            serviceFullSaving={serviceFullSaving}
+            onToggleServiceFull={handleToggleServiceFull}
           />
           <div
             className={

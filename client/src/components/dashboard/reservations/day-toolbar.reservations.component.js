@@ -9,6 +9,7 @@ import {
   Users,
   PinOff,
 } from "lucide-react";
+import ServiceFullToggleReservationsComponent from "./service-full-toggle.reservations.component";
 
 // I18N
 import { useTranslation } from "next-i18next";
@@ -39,6 +40,14 @@ export default function DayToolbarReservationsComponent(props) {
         subtitle={dateStrLong}
         actions={
           <>
+            <ServiceFullToggleReservationsComponent
+              active={props.serviceFullActive}
+              automatic={props.serviceFullAutomatic}
+              hasCurrentService={props.hasCurrentService}
+              saving={props.serviceFullSaving}
+              onToggle={props.onToggleServiceFull}
+            />
+
             <button
               onClick={props.handleParametersClick}
               className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition h-[40px] w-[40px]"

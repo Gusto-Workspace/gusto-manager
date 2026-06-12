@@ -24,6 +24,9 @@ const {
 const {
   decorateRestaurantEmployees,
 } = require("../services/employee-serialization.service");
+const {
+  buildPublicReservationServiceBlockedRange,
+} = require("../services/reservation-service-closure.service");
 
 // Ajoute le restaurant dans employee.restaurants s'il n'y est pas déjà
 function ensureEmployeeRestaurantLink(employee, restaurantId) {
@@ -288,6 +291,23 @@ router.get("/restaurants/:id", async (req, res) => {
         })),
       })),
     };
+
+    const serviceBlockedRange = buildPublicReservationServiceBlockedRange({
+      restaurant: restaurantData,
+    });
+
+    if (serviceBlockedRange) {
+      const reservationSettings = restaurantData.reservationsSettings || {};
+      restaurantData.reservationsSettings = {
+        ...reservationSettings,
+        blocked_ranges: [
+          ...(Array.isArray(reservationSettings.blocked_ranges)
+            ? reservationSettings.blocked_ranges
+            : []),
+          serviceBlockedRange,
+        ],
+      };
+    }
 
     res.status(200).json({ restaurant: restaurantData });
   } catch (error) {

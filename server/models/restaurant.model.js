@@ -183,6 +183,11 @@ const reservationParametersSchema = new mongoose.Schema({
   auto_accept: { type: Boolean, default: true },
   interval: { type: Number, default: 30 },
   pending_duration_minutes: { type: Number, min: 1, default: 120 },
+  refuse_public_reservations_during_service: {
+    type: Boolean,
+    default: false,
+  },
+  manual_service_full_until: { type: Date, default: null },
 
   // Empreinte bancaire
   bank_hold: { type: reservationBankHoldSchema, default: () => ({}) },

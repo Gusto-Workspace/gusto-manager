@@ -17,6 +17,7 @@ import {
   LayoutGrid,
   Users,
 } from "lucide-react";
+import ServiceFullToggleReservationsComponent from "./service-full-toggle.reservations.component";
 
 export default function CalendarToolbarReservationsComponent(props) {
   const { t } = useTranslation("reservations");
@@ -78,6 +79,14 @@ export default function CalendarToolbarReservationsComponent(props) {
 
         {/* Right: actions (icônes) */}
         <div className="shrink-0 flex items-center gap-1">
+          <ServiceFullToggleReservationsComponent
+            active={props.serviceFullActive}
+            automatic={props.serviceFullAutomatic}
+            hasCurrentService={props.hasCurrentService}
+            saving={props.serviceFullSaving}
+            onToggle={props.onToggleServiceFull}
+          />
+
           <button
             onClick={props.handleParametersClick}
             className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition h-[40px] w-[40px]"

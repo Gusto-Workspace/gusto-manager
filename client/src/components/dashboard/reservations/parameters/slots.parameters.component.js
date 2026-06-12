@@ -163,6 +163,47 @@ export default function SlotsParametersComponent({
             </div>
           </div>
 
+          <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3 h-fit">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-semibold text-darkBlue">
+                  Refuser les réservations pendant le service
+                </p>
+                <p className="text-xs text-darkBlue/50 mt-1">
+                  Ferme automatiquement les réservations en ligne pour les
+                  créneaux du service en cours. Les services futurs restent
+                  disponibles.
+                </p>
+              </div>
+
+              <label className={toggleWrap}>
+                <span
+                  className={[
+                    toggleBase,
+                    watch("refuse_public_reservations_during_service")
+                      ? toggleOn
+                      : toggleOff,
+                  ].join(" ")}
+                >
+                  <input
+                    type="checkbox"
+                    className="sr-only"
+                    id="refuse_public_reservations_during_service"
+                    {...register("refuse_public_reservations_during_service")}
+                  />
+                  <span
+                    className={[
+                      toggleDot,
+                      watch("refuse_public_reservations_during_service")
+                        ? toggleDotOn
+                        : toggleDotOff,
+                    ].join(" ")}
+                  />
+                </span>
+              </label>
+            </div>
+          </div>
+
           {/* Pending duration */}
           {!auto_accept && (
             <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3">
