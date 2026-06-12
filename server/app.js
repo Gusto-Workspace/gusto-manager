@@ -40,7 +40,8 @@ app.use(
       "https://reservations-module.vercel.app", // module reservations test
       "https://alassiettebrive.com", // Client A l'Assiette
       "https://www.lescapucinsbylily.fr", // Client Capucins by Lily
-      "https://www.brasserielesartistes.fr" // Client Les Artistes
+      "https://www.brasserielesartistes.fr", // Client Les Artistes
+      "https://preview-jacasse-gusto-manager.vercel.app" // Preview Jacasse
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     credentials: true,
