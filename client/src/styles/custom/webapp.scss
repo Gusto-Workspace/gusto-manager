@@ -6,6 +6,19 @@
   display: none;
 }
 
+.gm-webapp-device-content input,
+.gm-webapp-device-content select,
+.gm-webapp-device-content textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.gm-webapp-device-content input:focus,
+.gm-webapp-device-content select:focus,
+.gm-webapp-device-content textarea:focus {
+  outline: none;
+  box-shadow: none;
+}
+
 @media (min-width: 1024px) and (hover: hover) and (pointer: fine) {
   .gm-webapp-device-content {
     display: none;

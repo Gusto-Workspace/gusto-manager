@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import dynamic from "next/dynamic";
-import { Menu, Clock3, Loader2, Users } from "lucide-react";
+import { ChevronDown, Clock3, Loader2, Menu, Users } from "lucide-react";
 import SidebarReservationsWebapp from "../_shared/sidebar.webapp";
 import {
   getActiveFloorPlanRooms,
@@ -112,6 +112,9 @@ export default function FloorPlanReservationsWebapp({
   const [roomsResolved, setRoomsResolved] = useState(
     initialFloorPlanState.roomsResolved,
   );
+  const seatsFilterLabel = minSeatsFilter
+    ? `${minSeatsFilter}+ couverts`
+    : "Toutes les tables";
 
   const tablesCatalog = restaurantData?.reservationsSettings?.tables || [];
   const reservationParameters = restaurantData?.reservationsSettings || {};
@@ -399,20 +402,24 @@ export default function FloorPlanReservationsWebapp({
             </label>
           </div>
 
-          <select
-            id="floor-plan-seats-filter-webapp"
-            value={minSeatsFilter}
-            onChange={(event) =>
-              setMinSeatsFilter(Number(event.target.value || 0))
-            }
-            className="mt-3 w-full h-11 rounded-2xl border border-darkBlue/10 bg-white px-3 text-sm text-darkBlue outline-none"
-          >
-            {SEATS_FILTER_OPTIONS.map((value) => (
-              <option key={value} value={value}>
-                {value ? `${value}+ couverts` : "Toutes les tables"}
-              </option>
-            ))}
-          </select>
+          <div className="relative mt-3 flex h-11 w-full items-center rounded-2xl border border-darkBlue/10 bg-white px-3 pr-10 text-sm text-darkBlue">
+            <span>{seatsFilterLabel}</span>
+            <select
+              id="floor-plan-seats-filter-webapp"
+              value={minSeatsFilter}
+              onChange={(event) =>
+                setMinSeatsFilter(Number(event.target.value || 0))
+              }
+              className="absolute inset-0 h-full w-full cursor-pointer appearance-none rounded-2xl bg-transparent opacity-0 outline-none [-webkit-appearance:none] focus:outline-none focus:ring-0"
+            >
+              {SEATS_FILTER_OPTIONS.map((value) => (
+                <option key={value} value={value}>
+                  {value ? `${value}+ couverts` : "Toutes les tables"}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-darkBlue/45" />
+          </div>
         </div>
 
         <StatusLegend />
