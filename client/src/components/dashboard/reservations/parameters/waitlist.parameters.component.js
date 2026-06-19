@@ -6,6 +6,7 @@ export default function WaitlistParametersComponent({
   setValue,
   saveUI,
   onSave,
+  savePresentation = "full",
 }) {
   const enabled = Boolean(watch("waitlist_enabled"));
   const autoPromoteEnabled = Boolean(watch("waitlist_auto_promote_enabled"));
@@ -77,12 +78,24 @@ export default function WaitlistParametersComponent({
               onClick={onSave}
               disabled={saveUI?.saving || saveUI?.saved}
               className={[
-                saveBtnBase,
+                savePresentation === "icon"
+                  ? "inline-flex h-10 min-w-10 items-center justify-center rounded-xl transition"
+                  : saveBtnBase,
                 saveUI?.saved ? saveBtnDone : saveBtnPrimary,
                 saveUI?.saving ? "opacity-60 cursor-not-allowed" : "",
               ].join(" ")}
+              aria-label="Enregistrer"
+              title="Enregistrer"
             >
-              {saveUI?.saving ? (
+              {savePresentation === "icon" ? (
+                saveUI?.saving ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : saveUI?.saved ? (
+                  <Check className="size-4" />
+                ) : (
+                  <Save className="size-4" />
+                )
+              ) : saveUI?.saving ? (
                 <>
                   <Loader2 className="size-4 animate-spin" />
                   Enregistrement...
@@ -106,14 +119,10 @@ export default function WaitlistParametersComponent({
 
         <div className="grid grid-cols-1 gap-3 midTablet:grid-cols-2">
           <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3">
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <p className="font-semibold text-darkBlue">
                   Autoriser la liste d’attente
-                </p>
-                <p className="text-xs text-darkBlue/50">
-                  Active la liste d’attente côté Gusto Manager et sur le site
-                  client.
                 </p>
               </div>
               {toggle({
@@ -164,13 +173,10 @@ export default function WaitlistParametersComponent({
           </div>
 
           <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3">
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <p className="font-semibold text-darkBlue">
                   Nettoyer les demandes expirées
-                </p>
-                <p className="text-xs text-darkBlue/50">
-                  Supprime uniquement les waitlists simples restées sans offre.
                 </p>
               </div>
               {toggle({

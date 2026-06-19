@@ -1,5 +1,6 @@
 import CatalogHeaderDashboardComponent from "../_shared/catalog-header.dashboard.component";
 import {
+  ChevronDown,
   Plus,
   Settings,
   Search,
@@ -124,7 +125,7 @@ export default function DayToolbarReservationsComponent(props) {
           {t("list.status.filter", "Filtrer par statut")}
         </label>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-2 bg-white border border-darkBlue/10 rounded-2xl px-3 py-2 shadow-sm">
+          <div className="relative flex items-center gap-2 bg-white border border-darkBlue/10 rounded-2xl py-2 pl-3 pr-8 shadow-sm">
             <Users className="size-4 text-darkBlue/40" />
             <label className="sr-only" htmlFor="day-floor-plan-seats-filter">
               Couverts
@@ -135,7 +136,7 @@ export default function DayToolbarReservationsComponent(props) {
               onChange={(event) =>
                 props.setMinSeatsFilter?.(Number(event.target.value || 0))
               }
-              className="bg-white outline-none text-sm text-darkBlue"
+              className="appearance-none rounded-none bg-transparent outline-none text-sm text-darkBlue [-webkit-appearance:none]"
               title="Filtrer les réservations par couverts"
             >
               {(props.seatsFilterOptions || []).map((value) => (
@@ -144,6 +145,7 @@ export default function DayToolbarReservationsComponent(props) {
                 </option>
               ))}
             </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-darkBlue/45" />
           </div>
 
           <div className="flex items-center gap-2 bg-white border border-darkBlue/10 rounded-2xl px-3 py-2 shadow-sm">

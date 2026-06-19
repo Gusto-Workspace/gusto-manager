@@ -33,6 +33,9 @@ export default function CalendarToolbarReservationsWebapp(props) {
 
   const unreadCount =
     restaurantContext?.unreadCounts?.byModule?.reservations || 0;
+  const seatsFilterLabel = props.minSeatsFilter
+    ? `${props.minSeatsFilter}+`
+    : "Toutes";
 
   const monthYearLabel = props.capitalizeFirst(
     new Intl.DateTimeFormat("fr-FR", {
@@ -241,7 +244,7 @@ export default function CalendarToolbarReservationsWebapp(props) {
             onChange={props.handleSearchChangeCalendar}
             className={`h-[42px] w-full rounded-2xl border border-darkBlue/10 bg-white/70 ${
               props.searchTerm ? "pr-12" : "pr-4"
-            } pl-9 text-base`}
+            } pl-9 text-base outline-none focus:border-darkBlue/10 focus:outline-none focus:ring-0`}
           />
           {props.searchTerm && (
             <button
@@ -255,18 +258,19 @@ export default function CalendarToolbarReservationsWebapp(props) {
           )}
         </div>
 
-        <div className="flex h-[42px] shrink-0 items-center gap-1 rounded-2xl border border-darkBlue/10 bg-white/70 px-2">
+        <div className="relative flex h-[42px] shrink-0 items-center gap-1 rounded-2xl border border-darkBlue/10 bg-white/70 py-2 pl-2 pr-8">
           <Users className="size-4 text-darkBlue/40" />
           <label className="sr-only" htmlFor="webapp-calendar-seats-filter">
             Couverts
           </label>
+          <span className="text-sm text-darkBlue">{seatsFilterLabel}</span>
           <select
             id="webapp-calendar-seats-filter"
             value={props.minSeatsFilter}
             onChange={(event) =>
               props.setMinSeatsFilter?.(Number(event.target.value || 0))
             }
-            className="h-full bg-transparent text-sm text-darkBlue outline-none"
+            className="absolute inset-0 h-full w-full cursor-pointer appearance-none rounded-2xl bg-transparent opacity-0 outline-none [-webkit-appearance:none] focus:outline-none focus:ring-0"
             title="Filtrer les réservations par couverts"
           >
             {(props.seatsFilterOptions || []).map((value) => (
@@ -275,6 +279,7 @@ export default function CalendarToolbarReservationsWebapp(props) {
               </option>
             ))}
           </select>
+          <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-darkBlue/45" />
         </div>
       </div>
     </div>

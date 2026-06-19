@@ -8,6 +8,7 @@ import { ReservationSvg } from "@/components/_shared/_svgs/reservation.svg";
 // LUCIDE
 import {
   CalendarDays,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Search,
@@ -197,7 +198,7 @@ export default function CalendarToolbarReservationsComponent(props) {
             )}
           </div>
 
-          <div className="flex h-[42px] shrink-0 items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white px-3 py-2 shadow-sm">
+          <div className="relative flex h-[42px] shrink-0 items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white py-2 pl-3 pr-8 shadow-sm">
             <Users className="size-4 text-darkBlue/40" />
             <label
               className="sr-only"
@@ -211,7 +212,7 @@ export default function CalendarToolbarReservationsComponent(props) {
               onChange={(event) =>
                 props.setMinSeatsFilter?.(Number(event.target.value || 0))
               }
-              className="h-full bg-white text-sm text-darkBlue outline-none"
+              className="h-full appearance-none rounded-none bg-transparent text-sm text-darkBlue outline-none [-webkit-appearance:none]"
               title="Filtrer les réservations par couverts"
             >
               {(props.seatsFilterOptions || []).map((value) => (
@@ -220,6 +221,7 @@ export default function CalendarToolbarReservationsComponent(props) {
                 </option>
               ))}
             </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-darkBlue/45" />
           </div>
         </div>
       </div>
