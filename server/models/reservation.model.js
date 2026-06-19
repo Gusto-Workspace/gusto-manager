@@ -63,6 +63,26 @@ const BankHoldSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const WaitlistOfferSchema = new mongoose.Schema(
+  {
+    state: {
+      type: String,
+      enum: ["waiting", "offered", "accepted", "declined", "expired"],
+      default: "waiting",
+      index: true,
+    },
+    offeredAt: { type: Date, default: null },
+    offerExpiresAt: { type: Date, default: null, index: true },
+    acceptedAt: { type: Date, default: null },
+    declinedAt: { type: Date, default: null },
+    expiredAt: { type: Date, default: null },
+    tokenHash: { type: String, default: "", index: true },
+    tokenExpiresAt: { type: Date, default: null },
+    emailSentAt: { type: Date, default: null },
+  },
+  { _id: false },
+);
+
 const ReservationSchema = new mongoose.Schema(
   {
     restaurant_id: {
@@ -98,6 +118,7 @@ const ReservationSchema = new mongoose.Schema(
       type: String,
       enum: [
         "AwaitingBankHold",
+        "Waitlist",
         "Pending",
         "Confirmed",
         "Active",
@@ -115,6 +136,7 @@ const ReservationSchema = new mongoose.Schema(
     pendingExpiresAt: { type: Date, default: null },
 
     bankHold: { type: BankHoldSchema, default: () => ({}) },
+    waitlistOffer: { type: WaitlistOfferSchema, default: () => ({}) },
 
     reminder24hDueAt: { type: Date, default: null, index: true },
     reminder24hSentAt: { type: Date, default: null, index: true },
@@ -162,6 +184,16 @@ ReservationSchema.index({
 ReservationSchema.index({
   restaurant_id: 1,
   reservationDate: 1,
+});
+
+ReservationSchema.index({
+  restaurant_id: 1,
+  reservationDate: 1,
+  reservationTime: 1,
+  status: 1,
+  "waitlistOffer.state": 1,
+  createdAt: 1,
+  _id: 1,
 });
 
 ReservationSchema.set("toJSON", { virtuals: true });

@@ -21,6 +21,19 @@ function countUnreadTotal(byModule = {}) {
   );
 }
 
+function mergeRealtimeReservation(prevReservation, nextReservation) {
+  if (!prevReservation) return nextReservation;
+  if (!nextReservation) return prevReservation;
+
+  return {
+    ...prevReservation,
+    ...nextReservation,
+    customerName: nextReservation.customerName || prevReservation.customerName,
+    customerSummary:
+      nextReservation.customerSummary || prevReservation.customerSummary,
+  };
+}
+
 export default function RestaurantContext() {
   const router = useRouter();
 
@@ -490,7 +503,13 @@ export default function RestaurantContext() {
           setReservationsList((prev) => {
             const list = Array.isArray(prev) ? prev : [];
             const exists = list.some((x) => String(x?._id) === String(r._id));
-            if (exists) return prev;
+            if (exists) {
+              return list.map((x) =>
+                String(x?._id) === String(r._id)
+                  ? mergeRealtimeReservation(x, r)
+                  : x,
+              );
+            }
             return [r, ...list];
           });
         }
@@ -501,7 +520,9 @@ export default function RestaurantContext() {
           setReservationsList((prev) => {
             const list = Array.isArray(prev) ? prev : [];
             const id = String(r._id);
-            const nextList = list.map((x) => (String(x._id) === id ? r : x));
+            const nextList = list.map((x) =>
+              String(x._id) === id ? mergeRealtimeReservation(x, r) : x,
+            );
             return nextList;
           });
         }
@@ -1249,14 +1270,24 @@ export default function RestaurantContext() {
     const checkExpiredReservations = () => {
       const now = new Date();
       const reservations = reservationsList || [];
+      const deletionBaseDateByStatus = {
+        Finished: "finishedAt",
+        Canceled: "canceledAt",
+        Rejected: "rejectedAt",
+      };
+
       reservations.forEach((reservation) => {
-        if (reservation.status === "Finished" && reservation.finishedAt) {
-          const finishedAt = new Date(reservation.finishedAt);
-          const deletionThreshold = new Date(
-            finishedAt.getTime() + deletionDurationMinutes * 60000,
-          );
-          if (now >= deletionThreshold) autoDeleteReservation(reservation);
-        }
+        const dateField = deletionBaseDateByStatus[reservation.status];
+        if (!dateField) return;
+
+        const baseRaw = reservation?.[dateField];
+        const baseDate = baseRaw ? new Date(baseRaw) : null;
+        if (!baseDate || Number.isNaN(baseDate.getTime())) return;
+
+        const deletionThreshold = new Date(
+          baseDate.getTime() + deletionDurationMinutes * 60000,
+        );
+        if (now >= deletionThreshold) autoDeleteReservation(reservation);
       });
     };
 
@@ -1269,37 +1300,6 @@ export default function RestaurantContext() {
     restaurantData?.reservationsSettings?.deletion_duration,
     restaurantData?.reservationsSettings?.deletion_duration_minutes,
   ]);
-
-  useEffect(() => {
-    if (!restaurantData) return;
-
-    const DELETE_MINUTES = 10;
-    const STATUS_TO_DATE_FIELD = {
-      Canceled: "canceledAt",
-      Rejected: "rejectedAt",
-    };
-
-    const checkAutoDeleteShortLived = () => {
-      const now = new Date();
-      const reservations = reservationsList || [];
-
-      reservations.forEach((r) => {
-        const dateField = STATUS_TO_DATE_FIELD[r.status];
-        if (!dateField) return;
-
-        const baseRaw = r?.[dateField];
-        const base = baseRaw ? new Date(baseRaw) : null;
-        if (!base || Number.isNaN(base.getTime())) return;
-
-        const threshold = new Date(base.getTime() + DELETE_MINUTES * 60000);
-        if (now >= threshold) autoDeleteReservation(r);
-      });
-    };
-
-    checkAutoDeleteShortLived();
-    const id = setInterval(checkAutoDeleteShortLived, 30000);
-    return () => clearInterval(id);
-  }, [restaurantData?._id, reservationsList]);
 
   function getServiceBucketFromTime(reservationTime) {
     const [hh = "0"] = String(reservationTime || "00:00").split(":");

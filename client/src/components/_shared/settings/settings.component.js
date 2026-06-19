@@ -8,6 +8,7 @@ import {
 } from "react";
 import { useRouter } from "next/router";
 import { useTranslation } from "next-i18next";
+import { LogOut } from "lucide-react";
 
 // SVG
 import {
@@ -98,13 +99,13 @@ export default function SettingsComponent() {
       {showRestaurantList && (
         <div
           onClick={() => setShowRestaurantList(false)}
-          className="fixed inset-0 bg-black bg-opacity-20 z-[92]"
+          className="fixed inset-0 bg-black bg-opacity-20 z-[240]"
         />
       )}
 
       <div
         className={`${
-          showRestaurantList ? "z-[92]" : "z-50"
+          showRestaurantList ? "z-[250]" : "z-50"
         } relative min-h-[64px] w-full bg-white flex-1 px-6 items-center flex justify-between drop-shadow-sm rounded-lg ${
           restaurantContext.restaurantsList?.length > 1 && !isSubRoute
             ? "cursor-pointer"
@@ -130,7 +131,7 @@ export default function SettingsComponent() {
 
         {showRestaurantList &&
           restaurantContext.restaurantsList?.length > 1 && (
-            <div className="absolute top-full left-0 bg-white shadow-sm rounded-lg mt-2 w-full">
+            <div className="absolute top-full left-0 z-[251] bg-white shadow-sm rounded-lg mt-2 w-full">
               <ul>
                 {restaurantContext.restaurantsList.map((restaurant, i) => (
                   <Fragment key={restaurant._id}>
@@ -273,6 +274,15 @@ export default function SettingsComponent() {
               >
                 <HelpSvg width={20} height={20} />
                 {t("settings.help")}
+              </li>
+
+              <hr className="h-[1px] bg-darkBlue opacity-20 mx-4" />
+              <li
+                className="cursor-pointer flex gap-4 items-center px-4 py-2 my-2 text-red hover:bg-red hover:bg-opacity-10"
+                onClick={restaurantContext.logout}
+              >
+                <LogOut className="size-5" />
+                {t("buttons.logout", { ns: "common" })}
               </li>
             </ul>
           </div>

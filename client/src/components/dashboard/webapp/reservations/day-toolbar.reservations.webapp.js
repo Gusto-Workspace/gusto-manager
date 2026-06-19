@@ -1,6 +1,4 @@
-// SVG
-import { ReservationSvg } from "@/components/_shared/_svgs/reservation.svg";
-import { ChevronLeft, LayoutGrid, Plus, Search, X } from "lucide-react";
+import { ChevronLeft, LayoutGrid, Search, Users, X } from "lucide-react";
 
 // I18N
 import { useTranslation } from "next-i18next";
@@ -56,7 +54,7 @@ export default function DayHeaderReservationsWebapp(props) {
         </div>
 
         {/* Filters row */}
-        <div className="mt-6 flex items-center gap-2">
+        <div className="mt-6 flex flex-col gap-2">
           {/* Select */}
           <label className="sr-only" htmlFor="day-status-select-mobile">
             {t("list.status.filter", "Filtrer par statut")}
@@ -66,7 +64,7 @@ export default function DayHeaderReservationsWebapp(props) {
             id="day-status-select-mobile"
             value={props.activeDayTab}
             onChange={(e) => props.setActiveDayTab(e.target.value)}
-            className="h-11 rounded-2xl border border-darkBlue/10 bg-white/70 px-3 text-sm text-darkBlue "
+            className="h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/70 px-3 text-sm text-darkBlue"
           >
             {props.dayStatusTabs.map((s) => (
               <option key={s} value={s}>
@@ -75,34 +73,58 @@ export default function DayHeaderReservationsWebapp(props) {
             ))}
           </select>
 
-          {/* Search */}
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40" />
-            <input
-              ref={props.daySearchRef}
-              onFocus={() => props.setIsKeyboardOpen(true)}
-              onBlur={() => props.setIsKeyboardOpen(false)}
-              type="text"
-              placeholder={t(
-                "filters.search.placeholder",
-                "Rechercher nom, email, tel, code…",
+          <div className="flex items-center gap-2">
+            {/* Search */}
+            <div className="relative min-w-0 flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40" />
+              <input
+                ref={props.daySearchRef}
+                onFocus={() => props.setIsKeyboardOpen(true)}
+                onBlur={() => props.setIsKeyboardOpen(false)}
+                type="text"
+                placeholder={t(
+                  "filters.search.placeholder",
+                  "Rechercher nom, email, tel, code…",
+                )}
+                value={props.searchTerm}
+                onChange={props.handleSearchChangeDay}
+                className={`h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/70 ${props.searchTerm ? "pr-10" : "pr-4"} pl-8 text-base`}
+              />
+              {props.searchTerm && (
+                <button
+                  onClick={() => {
+                    props.setSearchTerm("");
+                    props.keepFocus(props.daySearchRef);
+                  }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center size-8 rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition"
+                  aria-label={t("buttons.clear", "Effacer")}
+                >
+                  <X className="size-4 text-darkBlue/60" />
+                </button>
               )}
-              value={props.searchTerm}
-              onChange={props.handleSearchChangeDay}
-              className={`h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/70 ${props.searchTerm ? "pr-10" : "pr-4"} pl-8 text-base`}
-            />
-            {props.searchTerm && (
-              <button
-                onClick={() => {
-                  props.setSearchTerm("");
-                  props.keepFocus(props.daySearchRef);
-                }}
-                className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center size-8 rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition"
-                aria-label={t("buttons.clear", "Effacer")}
+            </div>
+
+            <div className="flex h-11 shrink-0 items-center gap-1 rounded-2xl border border-darkBlue/10 bg-white/70 px-2">
+              <Users className="size-4 text-darkBlue/40" />
+              <label className="sr-only" htmlFor="webapp-day-seats-filter">
+                Couverts
+              </label>
+              <select
+                id="webapp-day-seats-filter"
+                value={props.minSeatsFilter}
+                onChange={(event) =>
+                  props.setMinSeatsFilter?.(Number(event.target.value || 0))
+                }
+                className="h-full bg-transparent text-sm text-darkBlue outline-none"
+                title="Filtrer les réservations par couverts"
               >
-                <X className="size-4 text-darkBlue/60" />
-              </button>
-            )}
+                {(props.seatsFilterOptions || []).map((value) => (
+                  <option key={value} value={value}>
+                    {value ? `${value}+` : "Toutes"}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
       </div>

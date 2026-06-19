@@ -1,6 +1,6 @@
 const express = require("express");
 const Stripe = require("stripe");
-const { randomUUID } = require("crypto");
+const { createHash, randomBytes, randomUUID } = require("crypto");
 const router = express.Router();
 
 // DATE-FNS
@@ -14,6 +14,7 @@ const RestaurantModel = require("../models/restaurant.model");
 const ReservationModel = require("../models/reservation.model");
 const ReservationDayLockModel = require("../models/reservation-day-lock.model");
 const {
+  enrichReservationWithCustomerSummary,
   getRestaurantReservationsList,
 } = require("../services/restaurant-reservations.service");
 
@@ -45,6 +46,10 @@ const { decryptApiKey } = require("../services/encryption.service");
 const {
   buildReservationBankHoldStripeMetadata,
 } = require("../services/reservation-bank-hold-metadata.service");
+const {
+  getCurrentReservationService,
+  isPublicReservationBlockedByCurrentService,
+} = require("../services/reservation-service-closure.service");
 
 const BANK_HOLD_IMMEDIATE_WINDOW_HOURS = 168; // 7 jours
 
@@ -584,6 +589,7 @@ function normalizeReservationDayToUTC(dateInput) {
 
 const BLOCKING_STATUSES = [
   "AwaitingBankHold",
+  "Waitlist",
   "Pending",
   "Confirmed",
   "Active",
@@ -598,6 +604,19 @@ function isBlockingStatus(status) {
 function isBlockingReservation(r) {
   if (!r) return false;
   if (!isBlockingStatus(r.status)) return false;
+
+  if (r.status === "Waitlist") {
+    const state = String(r?.waitlistOffer?.state || "").trim();
+    const expiresAt = r?.waitlistOffer?.offerExpiresAt
+      ? new Date(r.waitlistOffer.offerExpiresAt).getTime()
+      : null;
+
+    return (
+      state === "offered" &&
+      Number.isFinite(expiresAt) &&
+      expiresAt > Date.now()
+    );
+  }
 
   if (r.status === "AwaitingBankHold") {
     const bankHoldEnabled = Boolean(r?.bankHold?.enabled);
@@ -893,7 +912,9 @@ async function getConfiguredTableAvailabilityForCandidate({
   }
 
   const dayReservations = await ReservationModel.find(query)
-    .select("status reservationTime pendingExpiresAt table bankHold")
+    .select(
+      "status reservationTime pendingExpiresAt table bankHold waitlistOffer",
+    )
     .lean();
 
   const blockingReservations = dayReservations.filter(isBlockingReservation);
@@ -1460,6 +1481,12 @@ function sanitizePublicReservationAvailability(reservation) {
           expiresAt: reservation.bankHold.expiresAt || null,
         }
       : { enabled: false, expiresAt: null },
+    waitlistOffer: reservation?.waitlistOffer
+      ? {
+          state: String(reservation.waitlistOffer.state || "").trim() || null,
+          offerExpiresAt: reservation.waitlistOffer.offerExpiresAt || null,
+        }
+      : { state: null, offerExpiresAt: null },
   };
 }
 
@@ -1509,6 +1536,10 @@ async function syncCustomerOnFirstReservationConfirmation(reservation) {
   return customerId;
 }
 
+async function buildRealtimeReservationPayload(reservation) {
+  return enrichReservationWithCustomerSummary(reservation);
+}
+
 async function notifyReservationAfterBankHoldFinalization(reservation) {
   const finalStatus = String(reservation?.status || "");
 
@@ -1532,6 +1563,1041 @@ async function notifyReservationAfterBankHoldFinalization(reservation) {
 
 function cleanNamePart(v) {
   return normalizeNamePart(v);
+}
+
+function createReservationRouteError(status, message, code = null) {
+  const error = new Error(message || "Internal server error");
+  error.status = Number(status) || 500;
+  if (code) {
+    error.code = code;
+  }
+  return error;
+}
+
+function buildReservationRouteErrorResponse(error, defaultMessage) {
+  if (!error) return null;
+
+  if (error?.status) {
+    return {
+      status: error.status,
+      payload: {
+        ...(error?.code ? { code: error.code } : {}),
+        message: error.message || defaultMessage,
+      },
+    };
+  }
+
+  if (error?.code === "RESERVATION_DAY_LOCK_TIMEOUT") {
+    return {
+      status: 423,
+      payload: {
+        code: "DAY_LOCK_TIMEOUT",
+        message:
+          "Une autre réservation est en cours de traitement sur cette date. Veuillez réessayer.",
+      },
+    };
+  }
+
+  return null;
+}
+
+function buildPublicReservationManagement(reservation) {
+  const status = String(reservation?.status || "").trim();
+  const baseState = {
+    canModify: false,
+    canCancel: false,
+    reasonCode: null,
+    reasonMessage: "",
+  };
+
+  if (!reservation) {
+    return {
+      ...baseState,
+      reasonCode: "NOT_FOUND",
+      reasonMessage: "Réservation introuvable.",
+    };
+  }
+
+  if (status === "AwaitingBankHold") {
+    const bankHoldExpiresAt = reservation?.bankHold?.expiresAt
+      ? new Date(reservation.bankHold.expiresAt).getTime()
+      : null;
+
+    if (Number.isFinite(bankHoldExpiresAt) && bankHoldExpiresAt <= Date.now()) {
+      return {
+        ...baseState,
+        reasonCode: "BANK_HOLD_EXPIRED",
+        reasonMessage:
+          "Le délai de validation de cette réservation a expiré. Merci de contacter le restaurant.",
+      };
+    }
+
+    return {
+      ...baseState,
+      reasonCode: "AWAITING_BANK_HOLD",
+      reasonMessage:
+        "Cette réservation doit d’abord être validée via l’empreinte bancaire.",
+    };
+  }
+
+  if (status === "Pending" && reservation?.pendingExpiresAt) {
+    const pendingExpiresAt = new Date(reservation.pendingExpiresAt).getTime();
+    if (Number.isFinite(pendingExpiresAt) && pendingExpiresAt <= Date.now()) {
+      return {
+        ...baseState,
+        reasonCode: "PENDING_EXPIRED",
+        reasonMessage:
+          "Cette réservation n’est plus modifiable en ligne car son délai de confirmation a expiré.",
+      };
+    }
+  }
+
+  if (!["Pending", "Confirmed"].includes(status)) {
+    return {
+      ...baseState,
+      reasonCode: "STATUS_LOCKED",
+      reasonMessage:
+        "Cette réservation ne peut plus être modifiée ni annulée en ligne.",
+    };
+  }
+
+  const reservationDateTime = buildReservationDateTime(
+    reservation?.reservationDate,
+    reservation?.reservationTime,
+  );
+
+  if (
+    !(reservationDateTime instanceof Date) ||
+    Number.isNaN(reservationDateTime.getTime())
+  ) {
+    return {
+      ...baseState,
+      reasonCode: "INVALID_DATETIME",
+      reasonMessage:
+        "Cette réservation ne peut pas être gérée en ligne pour le moment.",
+    };
+  }
+
+  if (reservationDateTime.getTime() <= Date.now()) {
+    return {
+      ...baseState,
+      reasonCode: "PAST_RESERVATION",
+      reasonMessage:
+        "Cette réservation n’est plus modifiable en ligne car le créneau est passé.",
+    };
+  }
+
+  return {
+    ...baseState,
+    canModify: true,
+    canCancel: true,
+  };
+}
+
+function buildReservationPublicResponse(reservation) {
+  return {
+    reservation,
+    management: buildPublicReservationManagement(reservation),
+  };
+}
+
+function assertPublicReservationMutationAllowed(reservation) {
+  const management = buildPublicReservationManagement(reservation);
+
+  if (management.canModify && management.canCancel) {
+    return management;
+  }
+
+  throw createReservationRouteError(
+    409,
+    management.reasonMessage ||
+      "Cette réservation ne peut pas être modifiée en ligne.",
+    "NOT_MODIFIABLE",
+  );
+}
+
+async function broadcastReservationUpdated(restaurantId, reservation) {
+  broadcastToRestaurant(String(restaurantId), {
+    type: "reservation_updated",
+    restaurantId: String(restaurantId),
+    reservation: await buildRealtimeReservationPayload(reservation),
+  });
+}
+
+async function sendReservationStatusTransitionEmails({
+  reservation,
+  restaurant,
+  prevStatus,
+  nextStatus,
+}) {
+  const restaurantName = restaurant?.name || "Restaurant";
+  const reservationId = String(reservation?._id || "");
+  const logSkip = (type, info) => {
+    console.log("[reservation-email-skip]", type, {
+      reservationId,
+      prevStatus,
+      nextStatus,
+      ...info,
+    });
+  };
+
+  try {
+    if (prevStatus === "Pending" && nextStatus === "Confirmed") {
+      sendReservationEmail("confirmed", {
+        reservation,
+        restaurantName,
+        restaurant,
+      })
+        .then((r) => r?.skipped && logSkip("confirmed", { reason: r.reason }))
+        .catch((e) =>
+          console.error("Email transition failed:", e?.response?.body || e),
+        );
+    }
+
+    if (prevStatus !== "Canceled" && nextStatus === "Canceled") {
+      sendReservationEmail("canceled", {
+        reservation,
+        restaurantName,
+        restaurant,
+      })
+        .then((r) => r?.skipped && logSkip("canceled", { reason: r.reason }))
+        .catch((e) =>
+          console.error("Email transition failed:", e?.response?.body || e),
+        );
+    }
+
+    if (prevStatus !== "Rejected" && nextStatus === "Rejected") {
+      sendReservationEmail("rejected", {
+        reservation,
+        restaurantName,
+        restaurant,
+      })
+        .then((r) => r?.skipped && logSkip("rejected", { reason: r.reason }))
+        .catch((e) =>
+          console.error("Email transition failed:", e?.response?.body || e),
+        );
+    }
+  } catch (e) {
+    console.error("Email status transition failed:", e?.response?.body || e);
+  }
+}
+
+const PUBLIC_RESERVATION_UPDATE_FIELDS = new Set([
+  "reservationDate",
+  "reservationTime",
+  "numberOfGuests",
+  "customerFirstName",
+  "customerLastName",
+  "customerEmail",
+  "customerPhone",
+  "commentary",
+]);
+
+function sanitizePublicReservationUpdateData(rawData = {}) {
+  const source =
+    rawData && typeof rawData === "object" && !Array.isArray(rawData)
+      ? rawData
+      : {};
+  const invalidFields = Object.keys(source).filter(
+    (key) => !PUBLIC_RESERVATION_UPDATE_FIELDS.has(key),
+  );
+
+  if (invalidFields.length > 0) {
+    throw createReservationRouteError(
+      400,
+      "Seuls la date, l’horaire, le nombre de couverts et les informations client peuvent être modifiés.",
+      "INVALID_PAYLOAD",
+    );
+  }
+
+  return Object.fromEntries(
+    Object.entries(source).filter(([key]) =>
+      PUBLIC_RESERVATION_UPDATE_FIELDS.has(key),
+    ),
+  );
+}
+
+async function updateReservationDetailsInternal({
+  restaurantId,
+  reservationId,
+  updateData,
+  channel = "dashboard",
+}) {
+  const existing = await ReservationModel.findById(reservationId);
+  if (!existing) {
+    throw createReservationRouteError(404, "Reservation not found");
+  }
+
+  if (String(existing.restaurant_id) !== String(restaurantId)) {
+    throw createReservationRouteError(404, "Reservation not found");
+  }
+
+  const restaurantLean = await RestaurantModel.findById(restaurantId).lean();
+  if (!restaurantLean) {
+    throw createReservationRouteError(404, "Restaurant not found");
+  }
+
+  const previousReservationSlot = {
+    restaurantId: String(existing.restaurant_id),
+    reservationDate: existing.reservationDate,
+    reservationTime: existing.reservationTime,
+    status: existing.status,
+  };
+
+  const parameters = restaurantLean?.reservationsSettings || {};
+  const nextUpdateData = { ...(updateData || {}) };
+
+  const existingDate = normalizeReservationDayToUTC(existing.reservationDate);
+  if (!existingDate) {
+    throw createReservationRouteError(
+      400,
+      "reservationDate invalide.",
+      "INVALID_PAYLOAD",
+    );
+  }
+
+  const existingTime = String(existing.reservationTime || "00:00").slice(0, 5);
+  const existingGuests = Number(existing.numberOfGuests || 0);
+
+  const hasReservationDate = Object.prototype.hasOwnProperty.call(
+    nextUpdateData,
+    "reservationDate",
+  );
+  const hasReservationTime = Object.prototype.hasOwnProperty.call(
+    nextUpdateData,
+    "reservationTime",
+  );
+  const hasNumberOfGuests = Object.prototype.hasOwnProperty.call(
+    nextUpdateData,
+    "numberOfGuests",
+  );
+  const hasCustomerFirstName = Object.prototype.hasOwnProperty.call(
+    nextUpdateData,
+    "customerFirstName",
+  );
+  const hasCustomerLastName = Object.prototype.hasOwnProperty.call(
+    nextUpdateData,
+    "customerLastName",
+  );
+
+  const nextDate = hasReservationDate
+    ? normalizeReservationDayToUTC(nextUpdateData.reservationDate)
+    : existingDate;
+  if (hasReservationDate && !nextDate) {
+    throw createReservationRouteError(
+      400,
+      "reservationDate invalide.",
+      "INVALID_PAYLOAD",
+    );
+  }
+
+  const nextTime = hasReservationTime
+    ? String(nextUpdateData.reservationTime || "00:00").slice(0, 5)
+    : existingTime;
+  if (hasReservationTime && !isValidHHmm(nextTime)) {
+    throw createReservationRouteError(
+      400,
+      "reservationTime invalide (HH:mm).",
+      "INVALID_PAYLOAD",
+    );
+  }
+
+  const nextGuests = hasNumberOfGuests
+    ? Number(nextUpdateData.numberOfGuests)
+    : existingGuests;
+  if (hasNumberOfGuests && (!Number.isInteger(nextGuests) || nextGuests < 1)) {
+    throw createReservationRouteError(
+      400,
+      "numberOfGuests invalide.",
+      "INVALID_PAYLOAD",
+    );
+  }
+
+  const touchesDateTime =
+    nextDate?.getTime() !== existingDate?.getTime() ||
+    nextTime !== existingTime;
+  const touchesGuests = nextGuests !== existingGuests;
+
+  let candidateDate = nextDate;
+  let candidateTime = nextTime;
+  let candidateGuests = nextGuests;
+
+  if (touchesDateTime || touchesGuests) {
+    const slotValidation = validateReservationSlotInput({
+      restaurant: restaurantLean,
+      parameters,
+      reservationDateUTC: nextDate,
+      reservationTime: nextTime,
+      numberOfGuests: nextGuests,
+      channel,
+    });
+
+    if (slotValidation?.message) {
+      const message = slotValidation.message;
+      let code = slotValidation.status === 400 ? "INVALID_PAYLOAD" : null;
+
+      if (slotValidation.status === 409) {
+        code = "SLOT_BLOCKED";
+        if (message.includes("Aucune table n’est disponible")) {
+          code = "NO_TABLE_AVAILABLE";
+        }
+      }
+
+      throw createReservationRouteError(
+        slotValidation.status || 400,
+        message,
+        code,
+      );
+    }
+
+    candidateDate = slotValidation.normalizedDay;
+    candidateTime = slotValidation.normalizedTime;
+    candidateGuests = slotValidation.guests;
+  }
+
+  const candidateOccupancyMs = getReservationOccupancyMs(
+    parameters,
+    candidateTime,
+  );
+
+  if (hasReservationDate) {
+    nextUpdateData.reservationDate = candidateDate;
+  }
+  if (hasReservationTime) {
+    nextUpdateData.reservationTime = candidateTime;
+  }
+  if (hasNumberOfGuests) {
+    nextUpdateData.numberOfGuests = candidateGuests;
+  }
+
+  if (hasCustomerFirstName || hasCustomerLastName) {
+    const nextCustomerFirstName = hasCustomerFirstName
+      ? cleanNamePart(nextUpdateData.customerFirstName)
+      : cleanNamePart(existing.customerFirstName);
+    const nextCustomerLastName = hasCustomerLastName
+      ? cleanNamePart(nextUpdateData.customerLastName)
+      : cleanNamePart(existing.customerLastName);
+
+    if (!nextCustomerFirstName && !nextCustomerLastName) {
+      throw createReservationRouteError(
+        400,
+        "Un prénom ou un nom client est requis.",
+        "INVALID_PAYLOAD",
+      );
+    }
+
+    if (hasCustomerFirstName) {
+      nextUpdateData.customerFirstName = nextCustomerFirstName;
+    }
+    if (hasCustomerLastName) {
+      nextUpdateData.customerLastName = nextCustomerLastName;
+    }
+  }
+
+  if (touchesDateTime) {
+    const candidateDT = buildReservationDateTime(candidateDate, candidateTime);
+
+    if (isDateTimeBlocked(parameters, candidateDT, candidateOccupancyMs)) {
+      throw createReservationRouteError(
+        409,
+        "Les réservations sont temporairement indisponibles sur ce créneau.",
+        "SLOT_BLOCKED",
+      );
+    }
+  }
+
+  const statusExplicit = Object.prototype.hasOwnProperty.call(
+    nextUpdateData,
+    "status",
+  );
+
+  if (
+    touchesDateTime &&
+    !statusExplicit &&
+    ["Active", "Late"].includes(String(existing.status || ""))
+  ) {
+    nextUpdateData.status = "Confirmed";
+    nextUpdateData.finishedAt = null;
+    nextUpdateData.activatedAt = null;
+  }
+
+  const touchesTableExplicitly = Object.prototype.hasOwnProperty.call(
+    nextUpdateData,
+    "table",
+  );
+  const shouldCheckTables =
+    touchesDateTime ||
+    touchesGuests ||
+    touchesTableExplicitly ||
+    statusExplicit;
+
+  let tableReassigned = false;
+  let tableChange = null;
+
+  const candidateStatus = String(nextUpdateData.status ?? existing.status);
+  const mustBlockSlot = BLOCKING_STATUSES.includes(candidateStatus);
+  const normalizedDashboardTableInput = touchesTableExplicitly
+    ? normalizeDashboardTableInput({
+        table: nextUpdateData.table,
+        tableMode: nextUpdateData.tableMode,
+        manageDisponibilities: Boolean(parameters.manage_disponibilities),
+      })
+    : null;
+
+  if (Object.prototype.hasOwnProperty.call(nextUpdateData, "tableMode")) {
+    delete nextUpdateData.tableMode;
+  }
+
+  const shouldValidateConfiguredSelection =
+    mustBlockSlot &&
+    shouldCheckTables &&
+    ((!touchesTableExplicitly && Boolean(parameters.manage_disponibilities)) ||
+      normalizedDashboardTableInput?.mode === "configured" ||
+      (Boolean(parameters.manage_disponibilities) &&
+        normalizedDashboardTableInput?.mode === "empty"));
+  const allowLargerSingleTablesForManualSelection =
+    normalizedDashboardTableInput?.mode === "configured" &&
+    !parameters.manage_disponibilities;
+  let dayLock = null;
+
+  try {
+    if (shouldValidateConfiguredSelection) {
+      dayLock = await acquireReservationDayLock({
+        restaurantId,
+        reservationDateUTC: candidateDate,
+      });
+    }
+
+    if (shouldValidateConfiguredSelection) {
+      const availableConfig = await getConfiguredTableAvailabilityForCandidate({
+        restaurantId,
+        parameters,
+        reservationDateUTC: candidateDate,
+        reservationTime: candidateTime,
+        numberOfGuests: candidateGuests,
+        reservationIdToExclude: reservationId,
+        allowLargerSingleTables: allowLargerSingleTablesForManualSelection,
+      });
+      const availableOptions = availableConfig.options;
+      const currentSelectionKey = getConfiguredTableSelectionKey(
+        existing?.table,
+      );
+      const currentCatalogOption = getCurrentConfiguredOptionFromCatalog({
+        parameters,
+        currentTable: existing?.table,
+        singleSeatSizes: availableConfig.singleSeatSizes,
+        comboSeatSize: availableConfig.comboSeatSize,
+        channel: "dashboard",
+        allowLargerSingleTables: !parameters.manage_disponibilities,
+        minimumSingleSeats: availableConfig.minimumSingleSeats,
+        maximumSingleSeats: availableConfig.maximumSingleSeats,
+      });
+      const currentOption =
+        currentCatalogOption &&
+        isConfiguredTableFree({
+          tableDef: currentCatalogOption,
+          blockingReservations: availableConfig.blockingReservations,
+          overlaps: availableConfig.overlaps,
+          blockedTableIds: availableConfig.blockedTableIds,
+        })
+          ? currentCatalogOption
+          : null;
+
+      const assignWanted = (tableDef) => {
+        nextUpdateData.table = buildAssignedTablePayload(tableDef);
+      };
+
+      if (normalizedDashboardTableInput?.mode === "configured") {
+        const wanted =
+          normalizedDashboardTableInput.value === currentSelectionKey
+            ? currentOption
+            : findConfiguredOptionBySelectionKey(
+                availableOptions,
+                normalizedDashboardTableInput.value,
+              );
+
+        if (!wanted) {
+          throw createReservationRouteError(
+            409,
+            "La table sélectionnée n'est plus disponible.",
+            "SLOT_BLOCKED",
+          );
+        }
+
+        assignWanted(wanted);
+      } else {
+        if (
+          touchesTableExplicitly &&
+          normalizedDashboardTableInput?.mode === "empty"
+        ) {
+          throw createReservationRouteError(
+            400,
+            "La table est obligatoire quand le placement automatique est actif.",
+            "INVALID_PAYLOAD",
+          );
+        }
+
+        const currentEligible =
+          findConfiguredOptionBySelectionKey(
+            availableOptions,
+            currentSelectionKey,
+          ) || currentOption;
+
+        if (currentEligible) {
+          assignWanted(currentEligible);
+        } else {
+          const free = availableOptions[0] || null;
+
+          if (!free) {
+            throw createReservationRouteError(
+              409,
+              "Aucune table n’est disponible pour ce créneau. Contactez le client.",
+              "NO_TABLE_AVAILABLE",
+            );
+          }
+
+          if (currentSelectionKey) {
+            tableReassigned = true;
+            tableChange = buildTableChangePayload(existing?.table, free);
+          }
+
+          assignWanted(free);
+        }
+      }
+    } else if (Object.prototype.hasOwnProperty.call(nextUpdateData, "table")) {
+      if (normalizedDashboardTableInput?.mode === "manual") {
+        const requiredSize = requiredTableSizeFromGuests(candidateGuests);
+        nextUpdateData.table = {
+          name: normalizedDashboardTableInput.value,
+          seats: requiredSize || 2,
+          source: "manual",
+        };
+      } else if (normalizedDashboardTableInput?.mode === "configured") {
+        const requestedTable = buildConfiguredTableLikeFromSelectionKey(
+          normalizedDashboardTableInput.value,
+        );
+        const wanted = getCurrentConfiguredOptionFromCatalog({
+          parameters,
+          currentTable: requestedTable,
+          singleSeatSizes:
+            getEligibleSingleTableSeatSizesFromGuests(candidateGuests),
+          comboSeatSize:
+            getRequiredCombinedTableSizeFromGuests(candidateGuests),
+          channel: "dashboard",
+          allowLargerSingleTables: !parameters.manage_disponibilities,
+          minimumSingleSeats:
+            getMinimumSingleTableSeatsFromGuests(candidateGuests),
+          maximumSingleSeats:
+            getMaximumSingleTableSeatsFromGuests(candidateGuests),
+        });
+
+        if (!wanted) {
+          throw createReservationRouteError(
+            409,
+            "La table sélectionnée n'est plus disponible.",
+            "SLOT_BLOCKED",
+          );
+        }
+
+        nextUpdateData.table = buildAssignedTablePayload(wanted);
+      } else {
+        nextUpdateData.table = null;
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(nextUpdateData, "status")) {
+      const tmp = {
+        activatedAt: existing.activatedAt,
+        finishedAt: existing.finishedAt,
+        status: existing.status,
+      };
+
+      existing.status = nextUpdateData.status;
+      applyActivationFields(existing, nextUpdateData.status);
+      nextUpdateData.activatedAt = existing.activatedAt;
+      nextUpdateData.finishedAt = existing.finishedAt;
+
+      existing.status = tmp.status;
+      existing.activatedAt = tmp.activatedAt;
+      existing.finishedAt = tmp.finishedAt;
+    }
+
+    const shouldRefreshReminder24h = touchesDateTime || statusExplicit;
+
+    if (shouldRefreshReminder24h) {
+      const nextStatus = String(nextUpdateData.status ?? existing.status);
+      const nextReminderDate = nextUpdateData.reservationDate ?? candidateDate;
+      const nextReminderTime = nextUpdateData.reservationTime ?? candidateTime;
+
+      Object.assign(
+        nextUpdateData,
+        buildReminder24hFields({
+          status: nextStatus,
+          reservationDate: nextReminderDate,
+          reservationTime: nextReminderTime,
+        }),
+      );
+    }
+
+    const updatedReservation = await ReservationModel.findByIdAndUpdate(
+      reservationId,
+      nextUpdateData,
+      { new: true, runValidators: true },
+    );
+
+    if (!updatedReservation) {
+      throw createReservationRouteError(404, "Reservation not found");
+    }
+
+    await broadcastReservationUpdated(restaurantId, updatedReservation);
+
+    return {
+      updatedReservation,
+      previousReservationSlot,
+      tableReassigned,
+      tableChange,
+    };
+  } finally {
+    await releaseReservationDayLock(dayLock);
+  }
+}
+
+async function updateReservationStatusInternal({
+  restaurantId,
+  reservationId,
+  requestedStatus,
+}) {
+  const requestedStatusValue = String(requestedStatus || "").trim();
+  if (!requestedStatusValue) {
+    throw createReservationRouteError(
+      400,
+      "status manquant.",
+      "INVALID_PAYLOAD",
+    );
+  }
+
+  const nextStatus =
+    requestedStatusValue === "Active" || requestedStatusValue === "Late"
+      ? "Confirmed"
+      : requestedStatusValue;
+  const ALLOWED = new Set([
+    "Pending",
+    "Confirmed",
+    "Active",
+    "Late",
+    "Finished",
+    "Canceled",
+    "Rejected",
+  ]);
+
+  if (!ALLOWED.has(nextStatus)) {
+    throw createReservationRouteError(
+      400,
+      "status invalide.",
+      "INVALID_PAYLOAD",
+    );
+  }
+
+  const reservation = await ReservationModel.findById(reservationId);
+  if (!reservation) {
+    throw createReservationRouteError(404, "Reservation not found");
+  }
+
+  if (String(reservation.restaurant_id) !== String(restaurantId)) {
+    throw createReservationRouteError(
+      403,
+      "Reservation does not belong to this restaurant",
+    );
+  }
+
+  const prevStatus = String(reservation.status || "");
+  const previousReservationSlot = {
+    restaurantId: String(reservation.restaurant_id),
+    reservationDate: reservation.reservationDate,
+    reservationTime: reservation.reservationTime,
+    status: prevStatus,
+  };
+
+  if (prevStatus === nextStatus) {
+    return {
+      updatedReservation: reservation,
+      tableReassigned: false,
+      tableChange: null,
+      noOp: true,
+      prevStatus,
+      nextStatus,
+      previousReservationSlot,
+    };
+  }
+
+  const restaurant = await RestaurantModel.findById(restaurantId).lean();
+  if (!restaurant) {
+    throw createReservationRouteError(404, "Restaurant not found");
+  }
+
+  const parameters = restaurant?.reservationsSettings || {};
+  const normalizedDay = normalizeReservationDayToUTC(
+    reservation.reservationDate,
+  );
+  if (!normalizedDay) {
+    throw createReservationRouteError(
+      400,
+      "reservationDate invalide.",
+      "INVALID_PAYLOAD",
+    );
+  }
+
+  const normalizedTime = String(reservation.reservationTime || "00:00").slice(
+    0,
+    5,
+  );
+  const occupancyMs = getReservationOccupancyMs(parameters, normalizedTime);
+  const willBlockSlot = BLOCKING_STATUSES.includes(nextStatus);
+  let dayLock = null;
+
+  try {
+    if (parameters.manage_disponibilities && willBlockSlot) {
+      dayLock = await acquireReservationDayLock({
+        restaurantId,
+        reservationDateUTC: normalizedDay,
+      });
+    }
+
+    if (willBlockSlot) {
+      const candidateDT = buildReservationDateTime(
+        normalizedDay,
+        normalizedTime,
+      );
+
+      if (isDateTimeBlocked(parameters, candidateDT, occupancyMs)) {
+        throw createReservationRouteError(
+          409,
+          "Le créneau n'est plus disponible.",
+          "SLOT_BLOCKED",
+        );
+      }
+    }
+
+    const mustCheckTable = ["Pending", "Confirmed", "Active", "Late"].includes(
+      nextStatus,
+    );
+    let tableReassigned = false;
+    let tableChange = null;
+    const hasConfiguredTable =
+      String(reservation?.table?.source || "") === "configured";
+
+    if (
+      mustCheckTable &&
+      (parameters.manage_disponibilities || hasConfiguredTable)
+    ) {
+      const singleSeatSizes = getEligibleSingleTableSeatSizesFromGuests(
+        reservation.numberOfGuests,
+      );
+      const minimumSingleSeats = getMinimumSingleTableSeatsFromGuests(
+        reservation.numberOfGuests,
+      );
+      const maximumSingleSeats = getMaximumSingleTableSeatsFromGuests(
+        reservation.numberOfGuests,
+      );
+      const comboSeatSize = getRequiredCombinedTableSizeFromGuests(
+        reservation.numberOfGuests,
+      );
+      const formattedDate = format(normalizedDay, "yyyy-MM-dd");
+      const candidateStart = minutesFromHHmm(normalizedTime);
+      const durCandidate = getOccupancyMinutes(parameters, normalizedTime);
+      const candidateEnd = candidateStart + durCandidate;
+      const candidateDateTime = buildReservationDateTime(
+        normalizedDay,
+        normalizedTime,
+      );
+      const blockedTableIds = getBlockedTableIdsForDateTime(
+        parameters,
+        candidateDateTime,
+        occupancyMs,
+      );
+
+      const dayStart = new Date(`${formattedDate}T00:00:00.000Z`);
+      const dayEnd = new Date(`${formattedDate}T23:59:59.999Z`);
+
+      const dayReservations = await ReservationModel.find({
+        restaurant_id: restaurantId,
+        reservationDate: { $gte: dayStart, $lte: dayEnd },
+        status: { $in: BLOCKING_STATUSES },
+        _id: { $ne: reservationId },
+      })
+        .select(
+          "status reservationTime pendingExpiresAt table bankHold waitlistOffer",
+        )
+        .lean();
+
+      const blockingReservations = dayReservations.filter(
+        isBlockingReservation,
+      );
+
+      const overlaps = (r) => {
+        const rStart = minutesFromHHmm(r.reservationTime);
+        const rDur = getOccupancyMinutes(parameters, r.reservationTime);
+        const rEnd = rStart + rDur;
+
+        if (durCandidate > 0 && rDur > 0) {
+          return candidateStart < rEnd && candidateEnd > rStart;
+        }
+
+        return (
+          String(r.reservationTime).slice(0, 5) ===
+          String(reservation.reservationTime).slice(0, 5)
+        );
+      };
+
+      const availableConfig = getAvailableConfiguredTableOptions({
+        parameters,
+        singleSeatSizes,
+        comboSeatSize,
+        channel: "dashboard",
+        blockingReservations,
+        overlaps,
+        blockedTableIds,
+      });
+      const availableOptions = availableConfig.options;
+      const currentSelectionKey = getConfiguredTableSelectionKey(
+        reservation?.table,
+      );
+      const currentCatalogOption = getCurrentConfiguredOptionFromCatalog({
+        parameters,
+        currentTable: reservation?.table,
+        singleSeatSizes,
+        comboSeatSize,
+        channel: "dashboard",
+        allowLargerSingleTables: !parameters.manage_disponibilities,
+        minimumSingleSeats,
+        maximumSingleSeats,
+      });
+      const currentOption =
+        findConfiguredOptionBySelectionKey(
+          availableOptions,
+          currentSelectionKey,
+        ) ||
+        (currentCatalogOption &&
+        isConfiguredTableFree({
+          tableDef: currentCatalogOption,
+          blockingReservations,
+          overlaps,
+          blockedTableIds,
+        })
+          ? currentCatalogOption
+          : null);
+
+      if (!currentOption) {
+        if (!parameters.manage_disponibilities) {
+          throw createReservationRouteError(
+            409,
+            "La table attribuée n’est plus disponible pour ce créneau.",
+            "SLOT_BLOCKED",
+          );
+        }
+
+        const newTable = availableOptions[0] || null;
+        if (!newTable) {
+          throw createReservationRouteError(
+            409,
+            "Aucune table n’est disponible pour ce créneau. Contactez le client.",
+            "NO_TABLE_AVAILABLE",
+          );
+        }
+
+        tableReassigned = true;
+        tableChange = buildTableChangePayload(reservation?.table, newTable);
+        reservation.table = {
+          ...buildAssignedTablePayload(newTable),
+        };
+      }
+    }
+
+    reservation.status = nextStatus;
+
+    if (prevStatus === "Waitlist") {
+      reservation.waitlistOffer = reservation.waitlistOffer || {};
+      if (nextStatus === "Confirmed") {
+        reservation.waitlistOffer.state = "accepted";
+        reservation.waitlistOffer.acceptedAt =
+          reservation.waitlistOffer.acceptedAt || new Date();
+      } else if (["Canceled", "Rejected"].includes(nextStatus)) {
+        reservation.waitlistOffer.state =
+          nextStatus === "Rejected" ? "declined" : "expired";
+        if (nextStatus === "Rejected") {
+          reservation.waitlistOffer.declinedAt =
+            reservation.waitlistOffer.declinedAt || new Date();
+        } else {
+          reservation.waitlistOffer.expiredAt =
+            reservation.waitlistOffer.expiredAt || new Date();
+        }
+      }
+      reservation.waitlistOffer.tokenHash = "";
+      reservation.waitlistOffer.tokenExpiresAt = null;
+    }
+
+    applyActivationFields(reservation, nextStatus);
+    applyCancelFields(reservation, nextStatus);
+    applyRejectFields(reservation, nextStatus);
+
+    if (nextStatus === "Pending") {
+      if (!reservation.pendingExpiresAt) {
+        reservation.pendingExpiresAt = computePendingExpiresAt(restaurant);
+      }
+    } else {
+      reservation.pendingExpiresAt = null;
+    }
+
+    const reminderFields = buildReminder24hFields({
+      status: nextStatus,
+      reservationDate: reservation.reservationDate,
+      reservationTime: reservation.reservationTime,
+    });
+
+    reservation.reminder24hDueAt = reminderFields.reminder24hDueAt;
+    reservation.reminder24hSentAt = reminderFields.reminder24hSentAt;
+    reservation.reminder24hLockedAt = reminderFields.reminder24hLockedAt;
+
+    await reservation.save();
+
+    let customerId = reservation.customer || null;
+
+    if (
+      prevStatus !== "Confirmed" &&
+      nextStatus === "Confirmed" &&
+      !customerId
+    ) {
+      customerId =
+        await syncCustomerOnFirstReservationConfirmation(reservation);
+    } else if (customerId) {
+      await onReservationStatusChanged(
+        customerId,
+        reservation,
+        prevStatus,
+        nextStatus,
+      );
+    }
+
+    await broadcastReservationUpdated(restaurantId, reservation);
+    await sendReservationStatusTransitionEmails({
+      reservation,
+      restaurant,
+      prevStatus,
+      nextStatus,
+    });
+
+    return {
+      updatedReservation: reservation,
+      tableReassigned,
+      tableChange,
+      noOp: false,
+      prevStatus,
+      nextStatus,
+      previousReservationSlot,
+    };
+  } finally {
+    await releaseReservationDayLock(dayLock);
+  }
 }
 
 function getBankHoldConfig(parameters = {}) {
@@ -1753,6 +2819,558 @@ async function createPublicBankHoldIntent({ stripe, reservation, flow }) {
   };
 }
 
+function getWaitlistSettings(restaurantOrParameters = {}) {
+  const source =
+    restaurantOrParameters?.reservationsSettings ||
+    restaurantOrParameters ||
+    {};
+  const waitlist = source?.waitlist || {};
+
+  return {
+    enabled: Boolean(waitlist.enabled),
+    public_enabled: Boolean(waitlist.public_enabled),
+    auto_promote_enabled: Boolean(waitlist.auto_promote_enabled),
+    auto_cleanup_enabled:
+      waitlist.auto_cleanup_enabled === undefined
+        ? true
+        : Boolean(waitlist.auto_cleanup_enabled),
+    auto_cleanup_delay_minutes: Math.max(
+      1,
+      Number(waitlist.auto_cleanup_delay_minutes || 1440),
+    ),
+    public_offer_delay_minutes: Math.max(
+      1,
+      Number(waitlist.public_offer_delay_minutes || 60),
+    ),
+  };
+}
+
+function isPublicWaitlistEnabled(restaurant) {
+  const settings = getWaitlistSettings(restaurant);
+  return Boolean(settings.enabled && settings.public_enabled);
+}
+
+function isAutoWaitlistPromotionEnabled(restaurant) {
+  const settings = getWaitlistSettings(restaurant);
+  return Boolean(settings.enabled && settings.auto_promote_enabled);
+}
+
+function createWaitlistOfferToken() {
+  return randomBytes(32).toString("hex");
+}
+
+function hashWaitlistOfferToken(token) {
+  return createHash("sha256")
+    .update(String(token || "").trim())
+    .digest("hex");
+}
+
+function getPublicWebsiteOrigin(website) {
+  const raw = String(website || "").trim();
+  if (!raw) return "";
+
+  try {
+    return new URL(raw).origin;
+  } catch (_) {
+    try {
+      return new URL(`https://${raw}`).origin;
+    } catch (error) {
+      return "";
+    }
+  }
+}
+
+function buildWaitlistOfferUrl({ restaurant, token }) {
+  const origin = getPublicWebsiteOrigin(restaurant?.website);
+  const safeToken = String(token || "").trim();
+  if (!origin || !safeToken) return "";
+  return `${origin}/reservations/waitlist-offer/${safeToken}`;
+}
+
+function computeWaitlistOfferExpiresAt(restaurant, now = new Date()) {
+  const settings = getWaitlistSettings(restaurant);
+  return new Date(
+    now.getTime() + settings.public_offer_delay_minutes * 60 * 1000,
+  );
+}
+
+function isWaitlistOfferActive(reservation, now = new Date()) {
+  if (String(reservation?.status || "") !== "Waitlist") return false;
+  const state = String(reservation?.waitlistOffer?.state || "").trim();
+  if (state !== "offered") return false;
+  const expiresAt = reservation?.waitlistOffer?.offerExpiresAt
+    ? new Date(reservation.waitlistOffer.offerExpiresAt)
+    : null;
+  return Boolean(
+    expiresAt &&
+      !Number.isNaN(expiresAt.getTime()) &&
+      expiresAt.getTime() > now.getTime(),
+  );
+}
+
+function buildWaitlistOfferPublicSnapshot(reservation, restaurant = null) {
+  return {
+    state: String(reservation?.waitlistOffer?.state || "").trim() || "waiting",
+    offerExpiresAt: reservation?.waitlistOffer?.offerExpiresAt || null,
+    reservation: {
+      _id: reservation?._id,
+      restaurant_id: reservation?.restaurant_id,
+      restaurantName: restaurant?.name || "Restaurant",
+      customerFirstName: reservation?.customerFirstName || "",
+      numberOfGuests: reservation?.numberOfGuests || 0,
+      reservationDate: reservation?.reservationDate || null,
+      reservationTime: reservation?.reservationTime || "",
+      status: reservation?.status || "",
+    },
+  };
+}
+
+function buildDayRangeFromReservationDate(reservationDate) {
+  const normalizedDay = normalizeReservationDayToUTC(reservationDate);
+  if (!normalizedDay) return null;
+  const formattedDate = format(normalizedDay, "yyyy-MM-dd");
+  return {
+    normalizedDay,
+    dayStart: new Date(`${formattedDate}T00:00:00.000Z`),
+    dayEnd: new Date(`${formattedDate}T23:59:59.999Z`),
+  };
+}
+
+function getWaitlistWaitingStateQuery() {
+  return {
+    $or: [
+      { "waitlistOffer.state": { $exists: false } },
+      { "waitlistOffer.state": null },
+      { "waitlistOffer.state": "" },
+      { "waitlistOffer.state": "waiting" },
+    ],
+  };
+}
+
+async function findActiveWaitlistOfferForSlot({
+  restaurantId,
+  reservationDate,
+  reservationTime,
+  excludeReservationId = null,
+}) {
+  const dayRange = buildDayRangeFromReservationDate(reservationDate);
+  if (!dayRange) return null;
+  const now = new Date();
+  const query = {
+    restaurant_id: restaurantId,
+    reservationDate: { $gte: dayRange.dayStart, $lte: dayRange.dayEnd },
+    reservationTime: String(reservationTime || "").slice(0, 5),
+    status: "Waitlist",
+    "waitlistOffer.state": "offered",
+    "waitlistOffer.offerExpiresAt": { $gt: now },
+  };
+
+  if (excludeReservationId) {
+    query._id = { $ne: excludeReservationId };
+  }
+
+  return ReservationModel.findOne(query).lean();
+}
+
+async function resolveWaitlistAssignableTable({
+  restaurantId,
+  restaurant,
+  reservation,
+  reservationIdToExclude = null,
+  channel = "public",
+}) {
+  const parameters = restaurant?.reservationsSettings || {};
+  const normalizedDay = normalizeReservationDayToUTC(
+    reservation?.reservationDate,
+  );
+  const normalizedTime = String(reservation?.reservationTime || "").slice(0, 5);
+
+  if (!normalizedDay || !isValidHHmm(normalizedTime)) {
+    return { available: false, table: null, reason: "invalid_slot" };
+  }
+
+  const candidateDT = buildReservationDateTime(normalizedDay, normalizedTime);
+  const occupancyMs = getReservationOccupancyMs(parameters, normalizedTime);
+
+  if (isDateTimeBlocked(parameters, candidateDT, occupancyMs)) {
+    return { available: false, table: null, reason: "slot_blocked" };
+  }
+
+  if (!parameters.manage_disponibilities) {
+    return {
+      available: true,
+      table: reservation?.table || null,
+      reason: "availability_not_managed",
+    };
+  }
+
+  const availableConfig = await getConfiguredTableAvailabilityForCandidate({
+    restaurantId,
+    parameters,
+    reservationDateUTC: normalizedDay,
+    reservationTime: normalizedTime,
+    numberOfGuests: reservation?.numberOfGuests,
+    reservationIdToExclude,
+    channel,
+  });
+
+  const currentSelectionKey = getConfiguredTableSelectionKey(
+    reservation?.table,
+  );
+  const currentOption =
+    currentSelectionKey &&
+    findConfiguredOptionBySelectionKey(
+      availableConfig.options,
+      currentSelectionKey,
+    );
+  const free = currentOption || availableConfig.options[0] || null;
+
+  if (!free) {
+    return { available: false, table: null, reason: "no_table_available" };
+  }
+
+  return {
+    available: true,
+    table: buildAssignedTablePayload(free),
+    reason: "table_available",
+  };
+}
+
+async function triggerWaitlistAutoPromotionForSlot({
+  restaurantId,
+  reservationDate,
+  reservationTime,
+}) {
+  const restaurant = await RestaurantModel.findById(restaurantId);
+  if (!restaurant || !isAutoWaitlistPromotionEnabled(restaurant)) {
+    return { promoted: false, reason: "auto_promote_disabled" };
+  }
+
+  const normalizedDay = normalizeReservationDayToUTC(reservationDate);
+  const normalizedTime = String(reservationTime || "").slice(0, 5);
+  if (!normalizedDay || !isValidHHmm(normalizedTime)) {
+    return { promoted: false, reason: "invalid_slot" };
+  }
+
+  const activeOffer = await findActiveWaitlistOfferForSlot({
+    restaurantId,
+    reservationDate: normalizedDay,
+    reservationTime: normalizedTime,
+  });
+  if (activeOffer) {
+    return { promoted: false, reason: "active_offer_exists" };
+  }
+
+  const origin = getPublicWebsiteOrigin(restaurant.website);
+  if (!origin) {
+    console.error("[waitlist-auto-promote] missing public website origin", {
+      restaurantId: String(restaurantId),
+    });
+    return { promoted: false, reason: "missing_public_website" };
+  }
+
+  const dayRange = buildDayRangeFromReservationDate(normalizedDay);
+  if (!dayRange) return { promoted: false, reason: "invalid_day" };
+
+  let dayLock = null;
+
+  try {
+    dayLock = await acquireReservationDayLock({
+      restaurantId,
+      reservationDateUTC: normalizedDay,
+    });
+
+    const activeOfferAfterLock = await findActiveWaitlistOfferForSlot({
+      restaurantId,
+      reservationDate: normalizedDay,
+      reservationTime: normalizedTime,
+    });
+    if (activeOfferAfterLock) {
+      return { promoted: false, reason: "active_offer_exists" };
+    }
+
+    const candidates = await ReservationModel.find({
+      restaurant_id: restaurantId,
+      reservationDate: { $gte: dayRange.dayStart, $lte: dayRange.dayEnd },
+      reservationTime: normalizedTime,
+      status: "Waitlist",
+      ...getWaitlistWaitingStateQuery(),
+    }).sort({ createdAt: 1, _id: 1 });
+
+    for (const candidate of candidates) {
+      const availability = await resolveWaitlistAssignableTable({
+        restaurantId,
+        restaurant,
+        reservation: candidate,
+        reservationIdToExclude: candidate._id,
+        channel: "public",
+      });
+
+      if (!availability.available) continue;
+
+      const now = new Date();
+      const token = createWaitlistOfferToken();
+      const tokenHash = hashWaitlistOfferToken(token);
+      const offerExpiresAt = computeWaitlistOfferExpiresAt(restaurant, now);
+      const actionUrl = buildWaitlistOfferUrl({ restaurant, token });
+
+      if (!actionUrl) {
+        return { promoted: false, reason: "missing_action_url" };
+      }
+
+      const update = {
+        $set: {
+          table: availability.table || null,
+          "waitlistOffer.state": "offered",
+          "waitlistOffer.offeredAt": now,
+          "waitlistOffer.offerExpiresAt": offerExpiresAt,
+          "waitlistOffer.tokenHash": tokenHash,
+          "waitlistOffer.tokenExpiresAt": offerExpiresAt,
+          "waitlistOffer.acceptedAt": null,
+          "waitlistOffer.declinedAt": null,
+          "waitlistOffer.expiredAt": null,
+        },
+      };
+
+      const promotedReservation = await ReservationModel.findOneAndUpdate(
+        {
+          _id: candidate._id,
+          restaurant_id: restaurantId,
+          status: "Waitlist",
+          ...getWaitlistWaitingStateQuery(),
+        },
+        update,
+        { new: true },
+      );
+
+      if (!promotedReservation) continue;
+
+      let emailSent = false;
+      try {
+        const result = await sendReservationEmail("waitlistOffer", {
+          reservation: promotedReservation,
+          restaurantName: restaurant?.name || "Restaurant",
+          restaurant,
+          actionUrl,
+          expiresAt: offerExpiresAt,
+        });
+        emailSent = !result?.skipped;
+      } catch (error) {
+        console.error(
+          "[waitlist-auto-promote-email-error]",
+          promotedReservation?._id?.toString?.(),
+          error?.response?.body || error,
+        );
+      }
+
+      if (emailSent) {
+        promotedReservation.waitlistOffer.emailSentAt = new Date();
+        await promotedReservation.save();
+      }
+
+      broadcastToRestaurant(String(restaurantId), {
+        type: "reservation_updated",
+        restaurantId: String(restaurantId),
+        reservation: await buildRealtimeReservationPayload(promotedReservation),
+      });
+
+      await createAndBroadcastNotification({
+        restaurantId: String(restaurantId),
+        module: "reservations",
+        type: "reservation_waitlist_offer_sent",
+        data: {
+          reservationId: String(promotedReservation?._id),
+          customerName: getCustomerFullNameFromReservation(promotedReservation),
+          numberOfGuests: promotedReservation?.numberOfGuests,
+          reservationDate: promotedReservation?.reservationDate,
+          reservationTime: promotedReservation?.reservationTime,
+          status: promotedReservation?.status,
+        },
+      });
+
+      return {
+        promoted: true,
+        reservation: promotedReservation,
+        emailSent,
+      };
+    }
+
+    return { promoted: false, reason: "no_confirmable_waitlist" };
+  } finally {
+    await releaseReservationDayLock(dayLock);
+  }
+}
+
+async function triggerWaitlistAutoPromotionForReservationSlot(reservation) {
+  if (!reservation?.restaurantId && !reservation?.restaurant_id) {
+    return { promoted: false, reason: "missing_restaurant" };
+  }
+
+  return triggerWaitlistAutoPromotionForSlot({
+    restaurantId: reservation.restaurantId || reservation.restaurant_id,
+    reservationDate: reservation.reservationDate,
+    reservationTime: reservation.reservationTime,
+  });
+}
+
+async function triggerWaitlistAutoPromotionIfBlockingSlotWasFreed(slot) {
+  const prevStatus = String(slot?.status || "").trim();
+  if (!slot?.restaurantId && !slot?.restaurant_id) return null;
+  if (
+    !["AwaitingBankHold", "Pending", "Confirmed", "Active", "Late"].includes(
+      prevStatus,
+    )
+  ) {
+    return null;
+  }
+
+  return triggerWaitlistAutoPromotionForReservationSlot(slot);
+}
+
+async function triggerWaitlistAutoPromotionForRestaurant(restaurantId) {
+  const restaurant = await RestaurantModel.findById(restaurantId).select(
+    "_id reservationsSettings website",
+  );
+  if (!restaurant || !isAutoWaitlistPromotionEnabled(restaurant)) {
+    return { promoted: 0 };
+  }
+
+  const waitlists = await ReservationModel.find({
+    restaurant_id: restaurantId,
+    status: "Waitlist",
+    ...getWaitlistWaitingStateQuery(),
+  })
+    .select("reservationDate reservationTime")
+    .sort({ reservationDate: 1, reservationTime: 1, createdAt: 1 })
+    .lean();
+
+  const seen = new Set();
+  let promoted = 0;
+
+  for (const item of waitlists) {
+    const day = normalizeReservationDayToUTC(item.reservationDate);
+    const time = String(item.reservationTime || "").slice(0, 5);
+    if (!day || !time) continue;
+    const key = `${day.toISOString().slice(0, 10)}|${time}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const result = await triggerWaitlistAutoPromotionForSlot({
+      restaurantId,
+      reservationDate: day,
+      reservationTime: time,
+    });
+    if (result?.promoted) promoted += 1;
+  }
+
+  return { promoted };
+}
+
+async function expireWaitlistOfferAndPromoteNext(reservation) {
+  if (!reservation?._id) return null;
+  const now = new Date();
+  const expired = await ReservationModel.findOneAndUpdate(
+    {
+      _id: reservation._id,
+      status: "Waitlist",
+      "waitlistOffer.state": "offered",
+      "waitlistOffer.offerExpiresAt": { $lte: now },
+    },
+    {
+      $set: {
+        "waitlistOffer.state": "expired",
+        "waitlistOffer.expiredAt": now,
+        "waitlistOffer.tokenHash": "",
+        "waitlistOffer.tokenExpiresAt": null,
+        table: null,
+      },
+    },
+    { new: true },
+  );
+
+  if (!expired) return null;
+
+  broadcastToRestaurant(String(expired.restaurant_id), {
+    type: "reservation_updated",
+    restaurantId: String(expired.restaurant_id),
+    reservation: await buildRealtimeReservationPayload(expired),
+  });
+
+  await triggerWaitlistAutoPromotionForReservationSlot(expired);
+  return expired;
+}
+
+async function runWaitlistMaintenance() {
+  const now = new Date();
+
+  const expiredOffers = await ReservationModel.find({
+    status: "Waitlist",
+    "waitlistOffer.state": "offered",
+    "waitlistOffer.offerExpiresAt": { $ne: null, $lte: now },
+  }).select(
+    "_id restaurant_id reservationDate reservationTime status waitlistOffer table",
+  );
+
+  for (const reservation of expiredOffers) {
+    await expireWaitlistOfferAndPromoteNext(reservation);
+  }
+
+  const simpleWaitlists = await ReservationModel.find({
+    status: "Waitlist",
+    $or: [
+      { "waitlistOffer.state": { $exists: false } },
+      { "waitlistOffer.state": null },
+      { "waitlistOffer.state": "" },
+      { "waitlistOffer.state": "waiting" },
+    ],
+  }).select("_id restaurant_id reservationDate reservationTime waitlistOffer");
+
+  const restaurantCache = new Map();
+
+  for (const reservation of simpleWaitlists) {
+    const restaurantId = String(reservation.restaurant_id || "");
+    if (!restaurantId) continue;
+
+    if (!restaurantCache.has(restaurantId)) {
+      restaurantCache.set(
+        restaurantId,
+        await RestaurantModel.findById(restaurantId).select(
+          "reservationsSettings",
+        ),
+      );
+    }
+
+    const restaurant = restaurantCache.get(restaurantId);
+    const settings = getWaitlistSettings(restaurant);
+    if (!settings.auto_cleanup_enabled) continue;
+
+    const reservationDateTime = buildReservationDateTime(
+      reservation.reservationDate,
+      reservation.reservationTime,
+    );
+    if (!reservationDateTime) continue;
+
+    const cleanupAt = new Date(
+      reservationDateTime.getTime() +
+        settings.auto_cleanup_delay_minutes * 60 * 1000,
+    );
+
+    if (cleanupAt.getTime() > now.getTime()) continue;
+
+    await ReservationModel.deleteOne({
+      _id: reservation._id,
+      status: "Waitlist",
+      ...getWaitlistWaitingStateQuery(),
+    });
+
+    broadcastToRestaurant(restaurantId, {
+      type: "reservation_deleted",
+      restaurantId,
+      reservationId: String(reservation._id),
+    });
+  }
+}
+
 async function finalizePublicBankHoldReservation({
   reservationId,
   intentType,
@@ -1947,9 +3565,7 @@ async function finalizePublicBankHoldReservation({
   broadcastToRestaurant(String(finalizedReservation.restaurant_id), {
     type: "reservation_updated",
     restaurantId: String(finalizedReservation.restaurant_id),
-    reservation: finalizedReservation.toObject
-      ? finalizedReservation.toObject()
-      : finalizedReservation,
+    reservation: await buildRealtimeReservationPayload(finalizedReservation),
   });
 
   await notifyReservationAfterBankHoldFinalization(finalizedReservation);
@@ -2085,7 +3701,7 @@ async function captureReservationBankHold({ restaurantId, reservationId }) {
   broadcastToRestaurant(String(reservation.restaurant_id), {
     type: "reservation_updated",
     restaurantId: String(reservation.restaurant_id),
-    reservation: reservation.toObject ? reservation.toObject() : reservation,
+    reservation: await buildRealtimeReservationPayload(reservation),
   });
 
   const updatedRestaurant = await fetchRestaurantFull(restaurantId);
@@ -2145,7 +3761,7 @@ async function releaseReservationBankHold({ restaurantId, reservationId }) {
   broadcastToRestaurant(String(reservation.restaurant_id), {
     type: "reservation_updated",
     restaurantId: String(reservation.restaurant_id),
-    reservation: reservation.toObject ? reservation.toObject() : reservation,
+    reservation: await buildRealtimeReservationPayload(reservation),
   });
 
   const updatedRestaurant = await fetchRestaurantFull(restaurantId);
@@ -2216,6 +3832,19 @@ router.put(
           ? parameters.blocked_ranges
           : existing.blocked_ranges || [];
 
+      const nextWaitlist =
+        Object.prototype.hasOwnProperty.call(parameters, "waitlist") &&
+        parameters.waitlist &&
+        typeof parameters.waitlist === "object"
+          ? getWaitlistSettings({
+              ...existing,
+              waitlist: {
+                ...(existing.waitlist || {}),
+                ...parameters.waitlist,
+              },
+            })
+          : getWaitlistSettings(existing);
+
       const nextTableBlocked =
         Object.prototype.hasOwnProperty.call(
           parameters,
@@ -2245,7 +3874,35 @@ router.put(
         blocked_ranges: nextBlocked,
         table_blocked_ranges: nextTableBlocked,
         email_templates: nextEmailTemplates,
+        waitlist: nextWaitlist,
       };
+
+      if (
+        Object.prototype.hasOwnProperty.call(
+          parameters,
+          "manual_service_full_until",
+        )
+      ) {
+        if (!parameters.manual_service_full_until) {
+          nextReservationSettings.manual_service_full_until = null;
+        } else {
+          const currentService = getCurrentReservationService({
+            restaurant,
+            parameters: nextReservationSettings,
+          });
+
+          if (!currentService) {
+            return res.status(409).json({
+              code: "NO_ACTIVE_RESERVATION_SERVICE",
+              message:
+                "Le mode complet ne peut être activé que pendant un service.",
+            });
+          }
+
+          nextReservationSettings.manual_service_full_until =
+            currentService.endAt;
+        }
+      }
 
       const nextManage = Boolean(
         nextReservationSettings?.manage_disponibilities,
@@ -2415,6 +4072,8 @@ router.delete(
 
       await restaurant.save();
 
+      await triggerWaitlistAutoPromotionForRestaurant(restaurantId);
+
       const updatedRestaurant = await fetchRestaurantFull(restaurantId);
 
       return res.status(200).json({
@@ -2536,6 +4195,8 @@ router.delete(
         );
 
       await restaurant.save();
+
+      await triggerWaitlistAutoPromotionForRestaurant(restaurantId);
 
       const updatedRestaurant = await fetchRestaurantFull(restaurantId);
 
@@ -2777,14 +4438,568 @@ router.post(
       broadcastToRestaurant(String(reservation.restaurant_id), {
         type: "reservation_updated",
         restaurantId: String(reservation.restaurant_id),
-        reservation: reservation.toObject
-          ? reservation.toObject()
-          : reservation,
+        reservation: await buildRealtimeReservationPayload(reservation),
+      });
+
+      await triggerWaitlistAutoPromotionIfBlockingSlotWasFreed({
+        restaurantId: String(reservation.restaurant_id),
+        reservationDate: reservation.reservationDate,
+        reservationTime: reservation.reservationTime,
+        status: "AwaitingBankHold",
       });
 
       return res.status(200).json({ success: true });
     } catch (error) {
       console.error("Error canceling pending bank hold reservation:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  },
+);
+
+/* --------------------------
+   CREATE A PUBLIC WAITLIST ENTRY
+----------------------------- */
+router.post("/restaurants/:id/reservations/waitlist", async (req, res) => {
+  const restaurantId = req.params.id;
+  const reservationData = req.body || {};
+
+  try {
+    const restaurant = await RestaurantModel.findById(restaurantId);
+    if (!restaurant) {
+      return res.status(404).json({ message: "Restaurant not found" });
+    }
+
+    if (restaurant?.options?.reservations === false) {
+      return res.status(403).json({
+        message: "Le module de réservation n’est pas actif pour ce restaurant.",
+      });
+    }
+
+    if (!isPublicWaitlistEnabled(restaurant)) {
+      return res.status(403).json({
+        message: "La liste d’attente n’est pas disponible pour ce restaurant.",
+      });
+    }
+
+    const parameters = restaurant?.reservationsSettings || {};
+    const slotValidation = validateReservationSlotInput({
+      restaurant,
+      parameters,
+      reservationDateUTC: reservationData.reservationDate,
+      reservationTime: reservationData.reservationTime,
+      numberOfGuests: reservationData.numberOfGuests,
+      channel: "public",
+    });
+
+    if (slotValidation?.message) {
+      return res
+        .status(slotValidation.status || 400)
+        .json({ message: slotValidation.message });
+    }
+
+    const {
+      normalizedDay,
+      normalizedTime,
+      guests: normalizedGuests,
+      candidateDT,
+    } = slotValidation;
+    const occupancyMs = getReservationOccupancyMs(parameters, normalizedTime);
+
+    if (
+      isPublicReservationBlockedByCurrentService({
+        restaurant,
+        parameters,
+        candidateDateTime: candidateDT,
+        occupancyMs,
+      })
+    ) {
+      return res.status(409).json({
+        message:
+          "Les réservations en ligne sont fermées pour le service en cours.",
+      });
+    }
+
+    if (isDateTimeBlocked(parameters, candidateDT, occupancyMs)) {
+      return res.status(409).json({
+        message:
+          "Les réservations sont temporairement indisponibles sur ce créneau.",
+      });
+    }
+
+    if (!parameters.manage_disponibilities) {
+      return res.status(409).json({
+        message:
+          "Ce créneau ne peut pas recevoir d’inscription en liste d’attente.",
+      });
+    }
+
+    let dayLock = null;
+
+    try {
+      dayLock = await acquireReservationDayLock({
+        restaurantId,
+        reservationDateUTC: normalizedDay,
+      });
+
+      if (reservationData.idempotencyKey) {
+        const existing = await ReservationModel.findOne({
+          restaurant_id: restaurantId,
+          idempotencyKey: reservationData.idempotencyKey,
+        });
+
+        if (existing) {
+          return res.status(200).json({
+            message: "Votre demande est déjà inscrite en liste d’attente.",
+            reservation: existing,
+          });
+        }
+      }
+
+      const availability = await resolveWaitlistAssignableTable({
+        restaurantId,
+        restaurant,
+        reservation: {
+          reservationDate: normalizedDay,
+          reservationTime: normalizedTime,
+          numberOfGuests: normalizedGuests,
+        },
+        channel: "public",
+      });
+
+      if (availability.available) {
+        return res.status(409).json({
+          code: "SLOT_AVAILABLE",
+          message:
+            "Ce créneau est encore disponible. Merci d’effectuer une réservation classique.",
+        });
+      }
+
+      const customerFirstName = cleanNamePart(
+        reservationData.customerFirstName,
+      );
+      const customerLastName = cleanNamePart(reservationData.customerLastName);
+
+      if (!customerFirstName && !customerLastName) {
+        return res.status(400).json({
+          message: "Un prénom ou un nom client est requis.",
+        });
+      }
+
+      const customerEmail = String(reservationData.customerEmail || "").trim();
+      const customerPhone = String(reservationData.customerPhone || "").trim();
+
+      if (!customerEmail && !customerPhone) {
+        return res.status(400).json({
+          message: "Un email ou un téléphone est requis.",
+        });
+      }
+
+      const recentDuplicateThreshold = new Date(Date.now() - 15 * 60 * 1000);
+      const duplicate = await ReservationModel.findOne({
+        restaurant_id: restaurantId,
+        reservationDate: normalizedDay,
+        reservationTime: normalizedTime,
+        numberOfGuests: normalizedGuests,
+        status: "Waitlist",
+        createdAt: { $gte: recentDuplicateThreshold },
+        $or: [
+          customerEmail ? { customerEmail } : null,
+          customerPhone ? { customerPhone } : null,
+        ].filter(Boolean),
+      });
+
+      if (duplicate) {
+        return res.status(200).json({
+          message: "Votre demande est déjà inscrite en liste d’attente.",
+          reservation: duplicate,
+        });
+      }
+
+      const waitlistReservation = await ReservationModel.create({
+        restaurant_id: restaurantId,
+        idempotencyKey: reservationData.idempotencyKey || null,
+        customerFirstName,
+        customerLastName,
+        customerEmail,
+        customerPhone,
+        numberOfGuests: normalizedGuests,
+        reservationDate: normalizedDay,
+        reservationTime: normalizedTime,
+        commentary: reservationData.commentary,
+        table: null,
+        customer: null,
+        status: "Waitlist",
+        source: "public",
+        pendingExpiresAt: null,
+        bankHold: { enabled: false, flow: "none", status: "none" },
+        waitlistOffer: { state: "waiting" },
+        reminder24hDueAt: null,
+        reminder24hSentAt: null,
+        reminder24hLockedAt: null,
+        activatedAt: null,
+        finishedAt: null,
+      });
+
+      broadcastToRestaurant(restaurantId, {
+        type: "reservation_created",
+        restaurantId,
+        reservation: await buildRealtimeReservationPayload(waitlistReservation),
+      });
+
+      await createAndBroadcastNotification({
+        restaurantId,
+        module: "reservations",
+        type: "reservation_waitlist_created",
+        data: {
+          reservationId: String(waitlistReservation?._id),
+          customerName: getCustomerFullNameFromReservation(waitlistReservation),
+          numberOfGuests: waitlistReservation?.numberOfGuests,
+          reservationDate: waitlistReservation?.reservationDate,
+          reservationTime: waitlistReservation?.reservationTime,
+          status: waitlistReservation?.status,
+        },
+      });
+
+      return res.status(201).json({
+        message:
+          "Votre demande a été ajoutée à la liste d’attente. Vous recevrez un email si une place se libère.",
+        reservation: waitlistReservation,
+      });
+    } finally {
+      await releaseReservationDayLock(dayLock);
+    }
+  } catch (error) {
+    if (error?.code === "RESERVATION_DAY_LOCK_TIMEOUT") {
+      return res.status(423).json({
+        message:
+          "Une autre demande est en cours de traitement sur cette date. Veuillez réessayer.",
+      });
+    }
+    console.error("Error creating waitlist reservation:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+router.get("/reservations/waitlist-offers/:token", async (req, res) => {
+  const token = String(req.params.token || "").trim();
+  if (!token) {
+    return res.status(400).json({ message: "Token manquant." });
+  }
+
+  try {
+    const reservation = await ReservationModel.findOne({
+      "waitlistOffer.tokenHash": hashWaitlistOfferToken(token),
+    });
+
+    if (!reservation) {
+      return res.status(404).json({ message: "Proposition introuvable." });
+    }
+
+    const restaurant = await RestaurantModel.findById(
+      reservation.restaurant_id,
+    ).select("name");
+
+    if (isWaitlistOfferActive(reservation)) {
+      return res
+        .status(200)
+        .json(buildWaitlistOfferPublicSnapshot(reservation, restaurant));
+    }
+
+    if (
+      reservation.status === "Waitlist" &&
+      reservation.waitlistOffer?.state === "offered"
+    ) {
+      await expireWaitlistOfferAndPromoteNext(reservation);
+      return res.status(410).json({
+        message: "Cette proposition a expiré.",
+        ...buildWaitlistOfferPublicSnapshot(reservation, restaurant),
+      });
+    }
+
+    return res
+      .status(200)
+      .json(buildWaitlistOfferPublicSnapshot(reservation, restaurant));
+  } catch (error) {
+    console.error("Error fetching waitlist offer:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+router.post("/reservations/waitlist-offers/:token/accept", async (req, res) => {
+  const token = String(req.params.token || "").trim();
+  if (!token) {
+    return res.status(400).json({ message: "Token manquant." });
+  }
+
+  try {
+    const tokenHash = hashWaitlistOfferToken(token);
+    const reservation = await ReservationModel.findOne({
+      "waitlistOffer.tokenHash": tokenHash,
+    });
+
+    if (!reservation) {
+      return res.status(404).json({ message: "Proposition introuvable." });
+    }
+
+    if (!isWaitlistOfferActive(reservation)) {
+      if (
+        reservation.status === "Waitlist" &&
+        reservation.waitlistOffer?.state === "offered"
+      ) {
+        await expireWaitlistOfferAndPromoteNext(reservation);
+      }
+      return res.status(409).json({
+        message: "Cette proposition n’est plus disponible.",
+      });
+    }
+
+    const restaurant = await RestaurantModel.findById(
+      reservation.restaurant_id,
+    );
+    if (!restaurant) {
+      return res.status(404).json({ message: "Restaurant introuvable." });
+    }
+
+    const normalizedDay = normalizeReservationDayToUTC(
+      reservation.reservationDate,
+    );
+    const normalizedTime = String(reservation.reservationTime || "").slice(
+      0,
+      5,
+    );
+    let dayLock = null;
+
+    try {
+      dayLock = await acquireReservationDayLock({
+        restaurantId: reservation.restaurant_id,
+        reservationDateUTC: normalizedDay,
+      });
+
+      const availability = await resolveWaitlistAssignableTable({
+        restaurantId: reservation.restaurant_id,
+        restaurant,
+        reservation,
+        reservationIdToExclude: reservation._id,
+        channel: "public",
+      });
+
+      if (!availability.available) {
+        return res.status(409).json({
+          message: "Cette place n’est plus disponible.",
+        });
+      }
+
+      const parameters = restaurant?.reservationsSettings || {};
+      const bankHoldPlan = buildBankHoldPlan({
+        restaurant,
+        parameters,
+        reservationDateUTC: normalizedDay,
+        reservationTime: normalizedTime,
+        numberOfGuests: reservation.numberOfGuests,
+      });
+
+      const now = new Date();
+      const updateSet = {
+        table: availability.table || null,
+        "waitlistOffer.state": "accepted",
+        "waitlistOffer.acceptedAt": now,
+        "waitlistOffer.tokenHash": "",
+        "waitlistOffer.tokenExpiresAt": null,
+      };
+
+      if (bankHoldPlan.enabled) {
+        const bankHoldExpiresAt = computeBankHoldActionExpiresAt(
+          normalizedDay,
+          normalizedTime,
+        );
+        Object.assign(updateSet, {
+          status: "AwaitingBankHold",
+          pendingExpiresAt: null,
+          bankHold: {
+            enabled: true,
+            flow: bankHoldPlan.flow,
+            amountPerPerson: Number(bankHoldPlan.amountPerPerson || 0),
+            amountTotal: Number(bankHoldPlan.amountTotal || 0),
+            currency: "eur",
+            status: bankHoldPlan.initialBankHoldStatus,
+            authorizationScheduledFor: bankHoldPlan.authorizationScheduledFor,
+            expiresAt: bankHoldExpiresAt,
+          },
+          reminder24hDueAt: null,
+          reminder24hSentAt: null,
+          reminder24hLockedAt: null,
+        });
+      } else {
+        Object.assign(updateSet, {
+          status: "Confirmed",
+          pendingExpiresAt: null,
+          bankHold: { enabled: false, flow: "none", status: "none" },
+          ...buildReminder24hFields({
+            status: "Confirmed",
+            reservationDate: normalizedDay,
+            reservationTime: normalizedTime,
+          }),
+        });
+      }
+
+      const acceptedReservation = await ReservationModel.findOneAndUpdate(
+        {
+          _id: reservation._id,
+          status: "Waitlist",
+          "waitlistOffer.state": "offered",
+          "waitlistOffer.tokenHash": tokenHash,
+          "waitlistOffer.offerExpiresAt": { $gt: now },
+        },
+        { $set: updateSet },
+        { new: true },
+      );
+
+      if (!acceptedReservation) {
+        return res.status(409).json({
+          message: "Cette proposition n’est plus disponible.",
+        });
+      }
+
+      if (acceptedReservation.status === "Confirmed") {
+        await syncCustomerOnFirstReservationConfirmation(acceptedReservation);
+      }
+
+      broadcastToRestaurant(String(acceptedReservation.restaurant_id), {
+        type: "reservation_updated",
+        restaurantId: String(acceptedReservation.restaurant_id),
+        reservation: await buildRealtimeReservationPayload(acceptedReservation),
+      });
+
+      await createAndBroadcastNotification({
+        restaurantId: String(acceptedReservation.restaurant_id),
+        module: "reservations",
+        type: "reservation_waitlist_accepted",
+        data: {
+          reservationId: String(acceptedReservation?._id),
+          customerName: getCustomerFullNameFromReservation(acceptedReservation),
+          numberOfGuests: acceptedReservation?.numberOfGuests,
+          reservationDate: acceptedReservation?.reservationDate,
+          reservationTime: acceptedReservation?.reservationTime,
+          status: acceptedReservation?.status,
+        },
+      });
+
+      if (acceptedReservation.status === "Confirmed") {
+        sendReservationEmail("confirmed", {
+          reservation: acceptedReservation,
+          restaurantName: restaurant?.name || "Restaurant",
+          restaurant,
+        }).catch((e) =>
+          console.error(
+            "Email waitlist accepted failed:",
+            e?.response?.body || e,
+          ),
+        );
+      }
+
+      if (acceptedReservation.status === "AwaitingBankHold") {
+        const origin = getPublicWebsiteOrigin(restaurant.website);
+        if (!origin) {
+          return res.status(500).json({
+            message:
+              "La place est acceptée, mais le lien de validation carte est indisponible. Contactez le restaurant.",
+            reservation: acceptedReservation,
+          });
+        }
+
+        return res.status(200).json({
+          message:
+            "Votre place est réservée temporairement. Merci de valider l’empreinte bancaire.",
+          requiresAction: true,
+          reservationId: acceptedReservation._id,
+          redirectUrl: `${origin}/reservations/${acceptedReservation._id}/bank-hold`,
+          reservation: acceptedReservation,
+        });
+      }
+
+      return res.status(200).json({
+        message: "Votre réservation est confirmée.",
+        reservation: acceptedReservation,
+      });
+    } finally {
+      await releaseReservationDayLock(dayLock);
+    }
+  } catch (error) {
+    if (error?.code === "RESERVATION_DAY_LOCK_TIMEOUT") {
+      return res.status(423).json({
+        message:
+          "Une autre action est en cours sur ce créneau. Veuillez réessayer.",
+      });
+    }
+    console.error("Error accepting waitlist offer:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+router.post(
+  "/reservations/waitlist-offers/:token/decline",
+  async (req, res) => {
+    const token = String(req.params.token || "").trim();
+    if (!token) {
+      return res.status(400).json({ message: "Token manquant." });
+    }
+
+    try {
+      const tokenHash = hashWaitlistOfferToken(token);
+      const now = new Date();
+      const declinedReservation = await ReservationModel.findOneAndUpdate(
+        {
+          status: "Waitlist",
+          "waitlistOffer.state": "offered",
+          "waitlistOffer.tokenHash": tokenHash,
+          "waitlistOffer.offerExpiresAt": { $gt: now },
+        },
+        {
+          $set: {
+            table: null,
+            "waitlistOffer.state": "declined",
+            "waitlistOffer.declinedAt": now,
+            "waitlistOffer.tokenHash": "",
+            "waitlistOffer.tokenExpiresAt": null,
+          },
+        },
+        { new: true },
+      );
+
+      if (!declinedReservation) {
+        return res.status(404).json({
+          message: "Cette proposition n’est plus disponible.",
+        });
+      }
+
+      broadcastToRestaurant(String(declinedReservation.restaurant_id), {
+        type: "reservation_updated",
+        restaurantId: String(declinedReservation.restaurant_id),
+        reservation: await buildRealtimeReservationPayload(declinedReservation),
+      });
+
+      await createAndBroadcastNotification({
+        restaurantId: String(declinedReservation.restaurant_id),
+        module: "reservations",
+        type: "reservation_waitlist_declined",
+        data: {
+          reservationId: String(declinedReservation?._id),
+          customerName: getCustomerFullNameFromReservation(declinedReservation),
+          numberOfGuests: declinedReservation?.numberOfGuests,
+          reservationDate: declinedReservation?.reservationDate,
+          reservationTime: declinedReservation?.reservationTime,
+          status: declinedReservation?.status,
+        },
+      });
+
+      await triggerWaitlistAutoPromotionForReservationSlot(declinedReservation);
+
+      return res.status(200).json({
+        message: "Votre refus a bien été pris en compte.",
+        reservation: declinedReservation,
+      });
+    } catch (error) {
+      console.error("Error declining waitlist offer:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   },
@@ -2841,6 +5056,20 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
       candidateDT,
     } = slotValidation;
     const occupancyMs = getReservationOccupancyMs(parameters, normalizedTime);
+
+    if (
+      isPublicReservationBlockedByCurrentService({
+        restaurant,
+        parameters,
+        candidateDateTime: candidateDT,
+        occupancyMs,
+      })
+    ) {
+      return res.status(409).json({
+        message:
+          "Les réservations en ligne sont fermées pour le service en cours.",
+      });
+    }
 
     let dayLock = null;
 
@@ -2922,7 +5151,9 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
           reservationDate: { $gte: dayStart, $lte: dayEnd },
           status: { $in: BLOCKING_STATUSES },
         })
-          .select("status reservationTime pendingExpiresAt table bankHold")
+          .select(
+            "status reservationTime pendingExpiresAt table bankHold waitlistOffer",
+          )
           .lean();
 
         const blockingReservations = dayReservations.filter(
@@ -3005,9 +5236,9 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
       );
       const customerLastName = cleanNamePart(reservationData.customerLastName);
 
-      if (!customerFirstName || !customerLastName) {
+      if (!customerFirstName && !customerLastName) {
         return res.status(400).json({
-          message: "customerFirstName et customerLastName sont requis.",
+          message: "Un prénom ou un nom client est requis.",
         });
       }
 
@@ -3057,7 +5288,7 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
         broadcastToRestaurant(restaurantId, {
           type: "reservation_created",
           restaurantId,
-          reservation: newReservation,
+          reservation: await buildRealtimeReservationPayload(newReservation),
         });
 
         await createAndBroadcastNotification({
@@ -3192,7 +5423,7 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
         broadcastToRestaurant(restaurantId, {
           type: "reservation_created",
           restaurantId,
-          reservation: newReservation,
+          reservation: await buildRealtimeReservationPayload(newReservation),
         });
 
         const baseOrigin = new URL(returnUrl).origin;
@@ -3420,7 +5651,7 @@ router.post(
           broadcastToRestaurant(restaurantId, {
             type: "reservation_created",
             restaurantId,
-            reservation: newReservation,
+            reservation: await buildRealtimeReservationPayload(newReservation),
           });
 
           try {
@@ -3512,7 +5743,7 @@ router.post(
           broadcastToRestaurant(restaurantId, {
             type: "reservation_created",
             restaurantId,
-            reservation: newReservation,
+            reservation: await buildRealtimeReservationPayload(newReservation),
           });
 
           const baseOrigin = new URL(returnUrl).origin;
@@ -3646,382 +5877,33 @@ router.put(
     const { status } = req.body;
 
     try {
-      const requestedStatus = String(status || "").trim();
-      if (!requestedStatus) {
-        return res.status(400).json({ message: "status manquant." });
+      const result = await updateReservationStatusInternal({
+        restaurantId,
+        reservationId,
+        requestedStatus: status,
+      });
+      if (!result.noOp) {
+        await triggerWaitlistAutoPromotionIfBlockingSlotWasFreed(
+          result.previousReservationSlot,
+        );
       }
+      const updatedRestaurant = await fetchRestaurantFull(restaurantId);
 
-      const nextStatus =
-        requestedStatus === "Active" || requestedStatus === "Late"
-          ? "Confirmed"
-          : requestedStatus;
-
-      // whitelist des statuts si tu veux sécuriser
-      const ALLOWED = new Set([
-        "Pending",
-        "Confirmed",
-        "Active",
-        "Late",
-        "Finished",
-        "Canceled",
-        "Rejected",
-      ]);
-      if (!ALLOWED.has(nextStatus)) {
-        return res.status(400).json({ message: "status invalide." });
-      }
-
-      const reservation = await ReservationModel.findById(reservationId);
-      if (!reservation) {
-        return res.status(404).json({ message: "Reservation not found" });
-      }
-
-      if (String(reservation.restaurant_id) !== String(restaurantId)) {
-        return res
-          .status(403)
-          .json({ message: "Reservation does not belong to this restaurant" });
-      }
-
-      const prevStatus = String(reservation.status || "");
-
-      // ✅ no-op (évite double emails / double SSE)
-      if (prevStatus === nextStatus) {
-        const updatedRestaurant = await fetchRestaurantFull(restaurantId);
-        return res.status(200).json({
-          restaurant: updatedRestaurant,
-          tableReassigned: false,
-          tableChange: null,
-          noOp: true,
-        });
-      }
-
-      const restaurant = await RestaurantModel.findById(restaurantId).lean();
-      if (!restaurant) {
-        return res.status(404).json({ message: "Restaurant not found" });
-      }
-
-      const parameters = restaurant?.reservationsSettings || {};
-      const normalizedDay = normalizeReservationDayToUTC(
-        reservation.reservationDate,
-      );
-      if (!normalizedDay) {
-        return res.status(400).json({ message: "reservationDate invalide." });
-      }
-
-      const normalizedTime = String(
-        reservation.reservationTime || "00:00",
-      ).slice(0, 5);
-      const occupancyMs = getReservationOccupancyMs(parameters, normalizedTime);
-
-      // ✅ si on repasse en statut "bloquant" (Confirmed/Active/Late/Pending),
-      // on vérifie que le créneau n'est pas dans un blocked_range
-      const willBlockSlot = BLOCKING_STATUSES.includes(nextStatus);
-      let dayLock = null;
-
-      try {
-        if (parameters.manage_disponibilities && willBlockSlot) {
-          dayLock = await acquireReservationDayLock({
-            restaurantId,
-            reservationDateUTC: normalizedDay,
-          });
-        }
-
-        if (willBlockSlot) {
-          const candidateDT = buildReservationDateTime(
-            normalizedDay,
-            normalizedTime,
-          );
-
-          if (isDateTimeBlocked(parameters, candidateDT, occupancyMs)) {
-            return res.status(409).json({
-              code: "SLOT_BLOCKED",
-              message: "Le créneau n'est plus disponible.",
-            });
-          }
-        }
-
-        // ✅ table check uniquement quand on met un statut qui occupe une table
-        const mustCheckTable = [
-          "Pending",
-          "Confirmed",
-          "Active",
-          "Late",
-        ].includes(nextStatus);
-
-        let tableReassigned = false;
-        let tableChange = null;
-
-        const hasConfiguredTable =
-          String(reservation?.table?.source || "") === "configured";
-
-        if (
-          mustCheckTable &&
-          (parameters.manage_disponibilities || hasConfiguredTable)
-        ) {
-          const singleSeatSizes = getEligibleSingleTableSeatSizesFromGuests(
-            reservation.numberOfGuests,
-          );
-          const minimumSingleSeats = getMinimumSingleTableSeatsFromGuests(
-            reservation.numberOfGuests,
-          );
-          const maximumSingleSeats = getMaximumSingleTableSeatsFromGuests(
-            reservation.numberOfGuests,
-          );
-          const comboSeatSize = getRequiredCombinedTableSizeFromGuests(
-            reservation.numberOfGuests,
-          );
-          const formattedDate = format(normalizedDay, "yyyy-MM-dd");
-
-          const candidateStart = minutesFromHHmm(normalizedTime);
-          const durCandidate = getOccupancyMinutes(parameters, normalizedTime);
-          const candidateEnd = candidateStart + durCandidate;
-          const candidateDateTime = buildReservationDateTime(
-            normalizedDay,
-            normalizedTime,
-          );
-          const blockedTableIds = getBlockedTableIdsForDateTime(
-            parameters,
-            candidateDateTime,
-            occupancyMs,
-          );
-
-          const dayStart = new Date(`${formattedDate}T00:00:00.000Z`);
-          const dayEnd = new Date(`${formattedDate}T23:59:59.999Z`);
-
-          const dayReservations = await ReservationModel.find({
-            restaurant_id: restaurantId,
-            reservationDate: { $gte: dayStart, $lte: dayEnd },
-            status: { $in: BLOCKING_STATUSES },
-            _id: { $ne: reservationId },
-          })
-            .select("status reservationTime pendingExpiresAt table bankHold")
-            .lean();
-
-          const blockingReservations = dayReservations.filter(
-            isBlockingReservation,
-          );
-
-          const overlaps = (r) => {
-            const rStart = minutesFromHHmm(r.reservationTime);
-            const rDur = getOccupancyMinutes(parameters, r.reservationTime);
-            const rEnd = rStart + rDur;
-
-            if (durCandidate > 0 && rDur > 0) {
-              return candidateStart < rEnd && candidateEnd > rStart;
-            }
-            return (
-              String(r.reservationTime).slice(0, 5) ===
-              String(reservation.reservationTime).slice(0, 5)
-            );
-          };
-
-          const availableConfig = getAvailableConfiguredTableOptions({
-            parameters,
-            singleSeatSizes,
-            comboSeatSize,
-            channel: "dashboard",
-            blockingReservations,
-            overlaps,
-            blockedTableIds,
-          });
-          const availableOptions = availableConfig.options;
-          const currentSelectionKey = getConfiguredTableSelectionKey(
-            reservation?.table,
-          );
-          const currentCatalogOption = getCurrentConfiguredOptionFromCatalog({
-            parameters,
-            currentTable: reservation?.table,
-            singleSeatSizes,
-            comboSeatSize,
-            channel: "dashboard",
-            allowLargerSingleTables: !parameters.manage_disponibilities,
-            minimumSingleSeats,
-            maximumSingleSeats,
-          });
-          const currentOption =
-            findConfiguredOptionBySelectionKey(
-              availableOptions,
-              currentSelectionKey,
-            ) ||
-            (currentCatalogOption &&
-            isConfiguredTableFree({
-              tableDef: currentCatalogOption,
-              blockingReservations,
-              overlaps,
-              blockedTableIds,
-            })
-              ? currentCatalogOption
-              : null);
-
-          if (!currentOption) {
-            if (!parameters.manage_disponibilities) {
-              return res.status(409).json({
-                code: "TABLE_UNAVAILABLE",
-                message:
-                  "La table attribuée n’est plus disponible pour ce créneau.",
-              });
-            }
-
-            const newTable = availableOptions[0] || null;
-            if (!newTable) {
-              return res.status(409).json({
-                code: "NO_TABLE_AVAILABLE",
-                message:
-                  "Aucune table n’est disponible pour ce créneau. Contactez le client.",
-              });
-            }
-
-            tableReassigned = true;
-            tableChange = buildTableChangePayload(reservation?.table, newTable);
-
-            reservation.table = {
-              ...buildAssignedTablePayload(newTable),
-            };
-          }
-        }
-
-        // ✅ status + champs dérivés
-        reservation.status = nextStatus;
-
-        applyActivationFields(reservation, nextStatus);
-        applyCancelFields(reservation, nextStatus);
-        applyRejectFields(reservation, nextStatus);
-
-        // ✅ pendingExpiresAt si on repasse en Pending
-        if (nextStatus === "Pending") {
-          if (!reservation.pendingExpiresAt) {
-            reservation.pendingExpiresAt = computePendingExpiresAt(restaurant);
-          }
-        } else {
-          reservation.pendingExpiresAt = null;
-        }
-
-        const reminderFields = buildReminder24hFields({
-          status: nextStatus,
-          reservationDate: reservation.reservationDate,
-          reservationTime: reservation.reservationTime,
-        });
-
-        reservation.reminder24hDueAt = reminderFields.reminder24hDueAt;
-        reservation.reminder24hSentAt = reminderFields.reminder24hSentAt;
-        reservation.reminder24hLockedAt = reminderFields.reminder24hLockedAt;
-
-        await reservation.save();
-
-        // ✅ Sync fiche client seulement au premier passage en Confirmed
-        let customerId = reservation.customer || null;
-
-        if (
-          prevStatus !== "Confirmed" &&
-          nextStatus === "Confirmed" &&
-          !customerId
-        ) {
-          customerId =
-            await syncCustomerOnFirstReservationConfirmation(reservation);
-        } else if (customerId) {
-          await onReservationStatusChanged(
-            customerId,
-            reservation,
-            prevStatus,
-            nextStatus,
-          );
-        }
-
-        // ✅ SSE: push temps réel à tous les devices connectés
-        broadcastToRestaurant(restaurantId, {
-          type: "reservation_updated",
-          restaurantId,
-          reservation: reservation.toObject
-            ? reservation.toObject()
-            : reservation, // ✅ FIX
-        });
-
-        // ✅ EMAILS (SAFE) — ne doit jamais casser la route
-        const restaurantName = restaurant?.name || "Restaurant";
-        const logSkip = (type, info) => {
-          console.log("[reservation-email-skip]", type, {
-            reservationId: String(reservationId),
-            prevStatus,
-            nextStatus,
-            ...info,
-          });
-        };
-
-        try {
-          // Pending -> Confirmed
-          if (prevStatus === "Pending" && nextStatus === "Confirmed") {
-            sendReservationEmail("confirmed", {
-              reservation,
-              restaurantName,
-              restaurant,
-            })
-              .then(
-                (r) => r?.skipped && logSkip("confirmed", { reason: r.reason }),
-              )
-              .catch((e) =>
-                console.error(
-                  "Email transition failed:",
-                  e?.response?.body || e,
-                ),
-              );
-          }
-
-          if (prevStatus !== "Canceled" && nextStatus === "Canceled") {
-            sendReservationEmail("canceled", {
-              reservation,
-              restaurantName,
-              restaurant,
-            })
-              .then(
-                (r) => r?.skipped && logSkip("canceled", { reason: r.reason }),
-              )
-              .catch((e) =>
-                console.error(
-                  "Email transition failed:",
-                  e?.response?.body || e,
-                ),
-              );
-          }
-
-          if (prevStatus !== "Rejected" && nextStatus === "Rejected") {
-            sendReservationEmail("rejected", {
-              reservation,
-              restaurantName,
-              restaurant,
-            })
-              .then(
-                (r) => r?.skipped && logSkip("rejected", { reason: r.reason }),
-              )
-              .catch((e) =>
-                console.error(
-                  "Email transition failed:",
-                  e?.response?.body || e,
-                ),
-              );
-          }
-        } catch (e) {
-          console.error(
-            "Email status transition failed:",
-            e?.response?.body || e,
-          );
-        }
-
-        const updatedRestaurant = await fetchRestaurantFull(restaurantId);
-
-        return res.status(200).json({
-          restaurant: updatedRestaurant,
-          tableReassigned,
-          tableChange,
-        });
-      } finally {
-        await releaseReservationDayLock(dayLock);
-      }
+      return res.status(200).json({
+        restaurant: updatedRestaurant,
+        tableReassigned: result.tableReassigned,
+        tableChange: result.tableChange,
+        ...(result.noOp ? { noOp: true } : {}),
+      });
     } catch (error) {
-      if (error?.code === "RESERVATION_DAY_LOCK_TIMEOUT") {
-        return res.status(423).json({
-          message:
-            "Une autre réservation est en cours de traitement sur cette date. Veuillez réessayer.",
-        });
+      const knownError = buildReservationRouteErrorResponse(
+        error,
+        "Impossible de mettre à jour le statut de la réservation.",
+      );
+      if (knownError) {
+        return res.status(knownError.status).json(knownError.payload);
       }
+
       console.error("Error updating reservation status:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
@@ -4039,10 +5921,103 @@ router.get("/reservations/:reservationId", async (req, res) => {
     if (!reservation) {
       return res.status(404).json({ message: "Reservation not found" });
     }
-    return res.status(200).json({ reservation });
+    return res.status(200).json(buildReservationPublicResponse(reservation));
   } catch (error) {
     console.error("Error fetching reservation:", error);
     return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+router.put("/reservations/:reservationId", async (req, res) => {
+  const { reservationId } = req.params;
+
+  try {
+    const updateData = sanitizePublicReservationUpdateData(req.body);
+
+    if (Object.keys(updateData).length === 0) {
+      throw createReservationRouteError(
+        400,
+        "Aucune modification à enregistrer.",
+        "INVALID_PAYLOAD",
+      );
+    }
+
+    const existingReservation = await ReservationModel.findById(reservationId);
+    if (!existingReservation) {
+      return res.status(404).json({ message: "Reservation not found" });
+    }
+
+    assertPublicReservationMutationAllowed(existingReservation);
+
+    const result = await updateReservationDetailsInternal({
+      restaurantId: String(existingReservation.restaurant_id),
+      reservationId,
+      updateData,
+      channel: "public",
+    });
+    await triggerWaitlistAutoPromotionIfBlockingSlotWasFreed(
+      result.previousReservationSlot,
+    );
+
+    return res.status(200).json({
+      message: "Votre réservation a bien été modifiée.",
+      ...buildReservationPublicResponse(result.updatedReservation),
+    });
+  } catch (error) {
+    const knownError = buildReservationRouteErrorResponse(
+      error,
+      "Impossible de modifier la réservation.",
+    );
+    if (knownError) {
+      return res.status(knownError.status).json(knownError.payload);
+    }
+
+    console.error("Error updating public reservation:", error);
+    return res.status(500).json({
+      message: "Impossible de modifier la réservation.",
+    });
+  }
+});
+
+router.post("/reservations/:reservationId/cancel", async (req, res) => {
+  const { reservationId } = req.params;
+
+  try {
+    const existingReservation = await ReservationModel.findById(reservationId);
+    if (!existingReservation) {
+      return res.status(404).json({ message: "Reservation not found" });
+    }
+
+    assertPublicReservationMutationAllowed(existingReservation);
+
+    const result = await updateReservationStatusInternal({
+      restaurantId: String(existingReservation.restaurant_id),
+      reservationId,
+      requestedStatus: "Canceled",
+    });
+    if (!result.noOp) {
+      await triggerWaitlistAutoPromotionIfBlockingSlotWasFreed(
+        result.previousReservationSlot,
+      );
+    }
+
+    return res.status(200).json({
+      message: "Votre réservation a bien été annulée.",
+      ...buildReservationPublicResponse(result.updatedReservation),
+    });
+  } catch (error) {
+    const knownError = buildReservationRouteErrorResponse(
+      error,
+      "Impossible d’annuler la réservation.",
+    );
+    if (knownError) {
+      return res.status(knownError.status).json(knownError.payload);
+    }
+
+    console.error("Error canceling public reservation:", error);
+    return res.status(500).json({
+      message: "Impossible d’annuler la réservation.",
+    });
   }
 });
 
@@ -4055,435 +6030,31 @@ router.put(
     const updateData = req.body || {};
 
     try {
-      const existing = await ReservationModel.findById(reservationId);
-      if (!existing) {
-        return res.status(404).json({ message: "Reservation not found" });
-      }
-
-      const restaurantLean =
-        await RestaurantModel.findById(restaurantId).lean();
-      if (!restaurantLean) {
-        return res.status(404).json({ message: "Restaurant not found" });
-      }
-
-      const parameters = restaurantLean?.reservationsSettings || {};
-
-      const existingDate = normalizeReservationDayToUTC(
-        existing.reservationDate,
-      );
-      const existingTime = String(existing.reservationTime || "00:00").slice(
-        0,
-        5,
-      );
-      const existingGuests = Number(existing.numberOfGuests || 0);
-
-      const hasReservationDate = Object.prototype.hasOwnProperty.call(
+      const result = await updateReservationDetailsInternal({
+        restaurantId,
+        reservationId,
         updateData,
-        "reservationDate",
+        channel: "dashboard",
+      });
+      await triggerWaitlistAutoPromotionIfBlockingSlotWasFreed(
+        result.previousReservationSlot,
       );
-      const hasReservationTime = Object.prototype.hasOwnProperty.call(
-        updateData,
-        "reservationTime",
-      );
-      const hasNumberOfGuests = Object.prototype.hasOwnProperty.call(
-        updateData,
-        "numberOfGuests",
-      );
-      const hasCustomerFirstName = Object.prototype.hasOwnProperty.call(
-        updateData,
-        "customerFirstName",
-      );
-      const hasCustomerLastName = Object.prototype.hasOwnProperty.call(
-        updateData,
-        "customerLastName",
-      );
+      const restaurant = await fetchRestaurantFull(restaurantId);
 
-      const nextDate = hasReservationDate
-        ? normalizeReservationDayToUTC(updateData.reservationDate)
-        : existingDate;
-      if (hasReservationDate && !nextDate) {
-        return res.status(400).json({ message: "reservationDate invalide." });
-      }
-
-      const nextTime = hasReservationTime
-        ? String(updateData.reservationTime || "00:00").slice(0, 5)
-        : existingTime;
-      if (hasReservationTime && !isValidHHmm(nextTime)) {
-        return res
-          .status(400)
-          .json({ message: "reservationTime invalide (HH:mm)." });
-      }
-
-      const nextGuests = hasNumberOfGuests
-        ? Number(updateData.numberOfGuests)
-        : existingGuests;
-      if (
-        hasNumberOfGuests &&
-        (!Number.isInteger(nextGuests) || nextGuests < 1)
-      ) {
-        return res.status(400).json({ message: "numberOfGuests invalide." });
-      }
-
-      const touchesDateTime =
-        nextDate?.getTime() !== existingDate?.getTime() ||
-        nextTime !== existingTime;
-      const touchesGuests = nextGuests !== existingGuests;
-
-      let candidateDate = nextDate;
-      let candidateTime = nextTime;
-      let candidateGuests = nextGuests;
-
-      if (touchesDateTime || touchesGuests) {
-        const slotValidation = validateReservationSlotInput({
-          restaurant: restaurantLean,
-          parameters,
-          reservationDateUTC: nextDate,
-          reservationTime: nextTime,
-          numberOfGuests: nextGuests,
-          channel: "dashboard",
-        });
-        if (slotValidation?.message) {
-          return res
-            .status(slotValidation.status || 400)
-            .json({ message: slotValidation.message });
-        }
-
-        candidateDate = slotValidation.normalizedDay;
-        candidateTime = slotValidation.normalizedTime;
-        candidateGuests = slotValidation.guests;
-      }
-
-      const candidateOccupancyMs = getReservationOccupancyMs(
-        parameters,
-        candidateTime,
-      );
-
-      if (hasReservationDate) {
-        updateData.reservationDate = candidateDate;
-      }
-      if (hasReservationTime) {
-        updateData.reservationTime = candidateTime;
-      }
-      if (hasNumberOfGuests) {
-        updateData.numberOfGuests = candidateGuests;
-      }
-
-      if (hasCustomerFirstName || hasCustomerLastName) {
-        const nextCustomerFirstName = hasCustomerFirstName
-          ? cleanNamePart(updateData.customerFirstName)
-          : cleanNamePart(existing.customerFirstName);
-        const nextCustomerLastName = hasCustomerLastName
-          ? cleanNamePart(updateData.customerLastName)
-          : cleanNamePart(existing.customerLastName);
-
-        if (!nextCustomerFirstName && !nextCustomerLastName) {
-          return res.status(400).json({
-            message: "Un prénom ou un nom client est requis.",
-          });
-        }
-
-        if (hasCustomerFirstName) {
-          updateData.customerFirstName = nextCustomerFirstName;
-        }
-        if (hasCustomerLastName) {
-          updateData.customerLastName = nextCustomerLastName;
-        }
-      }
-
-      // ✅ pause check uniquement si date/heure changent
-      if (touchesDateTime) {
-        const candidateDT = buildReservationDateTime(
-          candidateDate,
-          candidateTime,
-        );
-        if (isDateTimeBlocked(parameters, candidateDT, candidateOccupancyMs)) {
-          return res.status(409).json({
-            message:
-              "Les réservations sont temporairement indisponibles sur ce créneau.",
-          });
-        }
-      }
-
-      const statusExplicit = Object.prototype.hasOwnProperty.call(
-        updateData,
-        "status",
-      );
-
-      if (
-        touchesDateTime &&
-        !statusExplicit &&
-        ["Active", "Late"].includes(String(existing.status || ""))
-      ) {
-        updateData.status = "Confirmed";
-        updateData.finishedAt = null;
-        updateData.activatedAt = null;
-      }
-
-      const touchesTableExplicitly = Object.prototype.hasOwnProperty.call(
-        updateData,
-        "table",
-      );
-
-      // ✅ On ne vérifie les tables que si on touche au slot (date/heure/guests),
-      // ou si on change explicitement la table / le status
-      const shouldCheckTables =
-        touchesDateTime ||
-        touchesGuests ||
-        touchesTableExplicitly ||
-        statusExplicit;
-
-      // ---------------------------------------------
-      // ✅ TABLE AVAILABILITY CHECK (optimisé)
-      // ---------------------------------------------
-      let tableReassigned = false;
-      let tableChange = null;
-
-      // le statut candidat (si on le change), sinon statut actuel
-      const candidateStatus = String(updateData.status ?? existing.status);
-
-      const mustBlockSlot = BLOCKING_STATUSES.includes(candidateStatus);
-      const normalizedDashboardTableInput = touchesTableExplicitly
-        ? normalizeDashboardTableInput({
-            table: updateData.table,
-            tableMode: updateData.tableMode,
-            manageDisponibilities: Boolean(parameters.manage_disponibilities),
-          })
-        : null;
-      if (Object.prototype.hasOwnProperty.call(updateData, "tableMode")) {
-        delete updateData.tableMode;
-      }
-      const shouldValidateConfiguredSelection =
-        mustBlockSlot &&
-        shouldCheckTables &&
-        ((!touchesTableExplicitly &&
-          Boolean(parameters.manage_disponibilities)) ||
-          normalizedDashboardTableInput?.mode === "configured" ||
-          (Boolean(parameters.manage_disponibilities) &&
-            normalizedDashboardTableInput?.mode === "empty"));
-      const allowLargerSingleTablesForManualSelection =
-        normalizedDashboardTableInput?.mode === "configured" &&
-        !parameters.manage_disponibilities;
-      let dayLock = null;
-
-      try {
-        if (shouldValidateConfiguredSelection) {
-          dayLock = await acquireReservationDayLock({
-            restaurantId,
-            reservationDateUTC: candidateDate,
-          });
-        }
-
-        if (shouldValidateConfiguredSelection) {
-          const availableConfig =
-            await getConfiguredTableAvailabilityForCandidate({
-              restaurantId,
-              parameters,
-              reservationDateUTC: candidateDate,
-              reservationTime: candidateTime,
-              numberOfGuests: candidateGuests,
-              reservationIdToExclude: reservationId,
-              allowLargerSingleTables:
-                allowLargerSingleTablesForManualSelection,
-            });
-          const availableOptions = availableConfig.options;
-          const currentSelectionKey = getConfiguredTableSelectionKey(
-            existing?.table,
-          );
-          const currentCatalogOption = getCurrentConfiguredOptionFromCatalog({
-            parameters,
-            currentTable: existing?.table,
-            singleSeatSizes: availableConfig.singleSeatSizes,
-            comboSeatSize: availableConfig.comboSeatSize,
-            channel: "dashboard",
-            allowLargerSingleTables: !parameters.manage_disponibilities,
-            minimumSingleSeats: availableConfig.minimumSingleSeats,
-            maximumSingleSeats: availableConfig.maximumSingleSeats,
-          });
-          const currentOption =
-            currentCatalogOption &&
-            isConfiguredTableFree({
-              tableDef: currentCatalogOption,
-              blockingReservations: availableConfig.blockingReservations,
-              overlaps: availableConfig.overlaps,
-              blockedTableIds: availableConfig.blockedTableIds,
-            })
-              ? currentCatalogOption
-              : null;
-
-          const assignWanted = (tableDef) => {
-            updateData.table = buildAssignedTablePayload(tableDef);
-          };
-
-          if (normalizedDashboardTableInput?.mode === "configured") {
-            const wanted =
-              normalizedDashboardTableInput.value === currentSelectionKey
-                ? currentOption
-                : findConfiguredOptionBySelectionKey(
-                    availableOptions,
-                    normalizedDashboardTableInput.value,
-                  );
-
-            if (!wanted) {
-              return res.status(409).json({
-                message: "La table sélectionnée n'est plus disponible.",
-              });
-            }
-
-            assignWanted(wanted);
-          } else {
-            if (
-              touchesTableExplicitly &&
-              normalizedDashboardTableInput?.mode === "empty"
-            ) {
-              return res.status(400).json({
-                message:
-                  "La table est obligatoire quand le placement automatique est actif.",
-              });
-            }
-
-            const currentEligible =
-              findConfiguredOptionBySelectionKey(
-                availableOptions,
-                currentSelectionKey,
-              ) || currentOption;
-
-            if (currentEligible) {
-              assignWanted(currentEligible);
-            } else {
-              const free = availableOptions[0] || null;
-
-              if (!free) {
-                return res.status(409).json({
-                  code: "NO_TABLE_AVAILABLE",
-                  message:
-                    "Aucune table n’est disponible pour ce créneau. Contactez le client.",
-                });
-              }
-
-              if (currentSelectionKey) {
-                tableReassigned = true;
-                tableChange = buildTableChangePayload(existing?.table, free);
-              }
-
-              assignWanted(free);
-            }
-          }
-        } else {
-          if (Object.prototype.hasOwnProperty.call(updateData, "table")) {
-            if (normalizedDashboardTableInput?.mode === "manual") {
-              const requiredSize = requiredTableSizeFromGuests(candidateGuests);
-              updateData.table = {
-                name: normalizedDashboardTableInput.value,
-                seats: requiredSize || 2,
-                source: "manual",
-              };
-            } else if (normalizedDashboardTableInput?.mode === "configured") {
-              const requestedTable = buildConfiguredTableLikeFromSelectionKey(
-                normalizedDashboardTableInput.value,
-              );
-              const wanted = getCurrentConfiguredOptionFromCatalog({
-                parameters,
-                currentTable: requestedTable,
-                singleSeatSizes:
-                  getEligibleSingleTableSeatSizesFromGuests(candidateGuests),
-                comboSeatSize:
-                  getRequiredCombinedTableSizeFromGuests(candidateGuests),
-                channel: "dashboard",
-                allowLargerSingleTables: !parameters.manage_disponibilities,
-                minimumSingleSeats:
-                  getMinimumSingleTableSeatsFromGuests(candidateGuests),
-                maximumSingleSeats:
-                  getMaximumSingleTableSeatsFromGuests(candidateGuests),
-              });
-
-              if (!wanted) {
-                return res.status(409).json({
-                  message: "La table sélectionnée n'est plus disponible.",
-                });
-              }
-
-              updateData.table = buildAssignedTablePayload(wanted);
-            } else {
-              updateData.table = null;
-            }
-          }
-        }
-
-        // ---------------------------------------------
-        // ✅ activatedAt / finishedAt si status change
-        // ---------------------------------------------
-        if (Object.prototype.hasOwnProperty.call(updateData, "status")) {
-          const tmp = {
-            activatedAt: existing.activatedAt,
-            finishedAt: existing.finishedAt,
-            status: updateData.status,
-          };
-
-          existing.status = updateData.status;
-          applyActivationFields(existing, updateData.status);
-          updateData.activatedAt = existing.activatedAt;
-          updateData.finishedAt = existing.finishedAt;
-
-          // restore
-          existing.status = tmp.status;
-          existing.activatedAt = tmp.activatedAt;
-          existing.finishedAt = tmp.finishedAt;
-        }
-
-        const shouldRefreshReminder24h = touchesDateTime || statusExplicit;
-
-        if (shouldRefreshReminder24h) {
-          const nextStatus = String(updateData.status ?? existing.status);
-          const nextDate = updateData.reservationDate ?? candidateDate;
-          const nextTime = updateData.reservationTime ?? candidateTime;
-
-          Object.assign(
-            updateData,
-            buildReminder24hFields({
-              status: nextStatus,
-              reservationDate: nextDate,
-              reservationTime: nextTime,
-            }),
-          );
-        }
-
-        // ✅ update réservation
-        const updatedReservation = await ReservationModel.findByIdAndUpdate(
-          reservationId,
-          updateData,
-          { new: true, runValidators: true },
-        );
-
-        if (!updatedReservation) {
-          return res.status(404).json({ message: "Reservation not found" });
-        }
-
-        // ✅ SSE: push update temps réel à tous les devices
-        broadcastToRestaurant(restaurantId, {
-          type: "reservation_updated",
-          restaurantId,
-          reservation: updatedReservation.toObject
-            ? updatedReservation.toObject()
-            : updatedReservation,
-        });
-
-        const restaurant = await fetchRestaurantFull(restaurantId);
-
-        return res.status(200).json({
-          restaurant,
-          tableReassigned,
-          tableChange,
-        });
-      } finally {
-        await releaseReservationDayLock(dayLock);
-      }
+      return res.status(200).json({
+        restaurant,
+        tableReassigned: result.tableReassigned,
+        tableChange: result.tableChange,
+      });
     } catch (error) {
-      if (error?.code === "RESERVATION_DAY_LOCK_TIMEOUT") {
-        return res.status(423).json({
-          message:
-            "Une autre réservation est en cours de traitement sur cette date. Veuillez réessayer.",
-        });
+      const knownError = buildReservationRouteErrorResponse(
+        error,
+        "Impossible de mettre à jour la réservation.",
+      );
+      if (knownError) {
+        return res.status(knownError.status).json(knownError.payload);
       }
+
       console.error("Error updating reservation:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
@@ -4564,6 +6135,13 @@ router.delete(
         reservationId: String(reservationId),
       });
 
+      await triggerWaitlistAutoPromotionIfBlockingSlotWasFreed({
+        restaurantId,
+        reservationDate: reservation.reservationDate,
+        reservationTime: reservation.reservationTime,
+        status: reservation.status,
+      });
+
       const updatedRestaurant = await fetchRestaurantFull(restaurantId);
 
       return res.status(200).json({
@@ -4593,7 +6171,7 @@ router.get("/public/restaurants/:id/reservations", async (req, res) => {
 
     const reservations = await getRestaurantReservationsList(restaurantId, {
       select:
-        "reservationDate reservationTime status pendingExpiresAt table bankHold.enabled bankHold.expiresAt",
+        "reservationDate reservationTime status pendingExpiresAt table bankHold.enabled bankHold.expiresAt waitlistOffer.state waitlistOffer.offerExpiresAt",
       lean: true,
     });
 
@@ -4773,3 +6351,8 @@ router.get(
 );
 
 module.exports = router;
+module.exports.runWaitlistMaintenance = runWaitlistMaintenance;
+module.exports.triggerWaitlistAutoPromotionForSlot =
+  triggerWaitlistAutoPromotionForSlot;
+module.exports.triggerWaitlistAutoPromotionForReservationSlot =
+  triggerWaitlistAutoPromotionForReservationSlot;

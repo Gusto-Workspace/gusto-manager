@@ -43,7 +43,7 @@ Nous vous confirmons que votre réservation pour {{guestCountLabel}} a bien ét�
 
 Nous vous remercions de votre confiance et nous nous réjouissons de vous accueillir chez {{restaurantName}}.
 
-Pour toute question ou modification, n'hésitez pas à nous contacter.
+Pour toute question, n'hésitez pas à nous contacter.
 
 Cordialement,
 L'équipe de {{restaurantName}}`,
@@ -106,9 +106,22 @@ Nous avons le plaisir de vous rappeler votre réservation chez {{restaurantName}
 
 Toute l’équipe se réjouit de vous accueillir.
 
-En cas d’empêchement ou de modification, nous vous remercions de bien vouloir nous prévenir dès que possible.
+En cas d’empêchement, nous vous remercions de bien vouloir nous prévenir dès que possible.
 
 À très bientôt,
+L'équipe de {{restaurantName}}`,
+  },
+  waitlistOffer: {
+    subject: "Une place s’est libérée pour votre réservation",
+    body: `Bonjour {{customerName}},
+
+Une place s’est libérée chez {{restaurantName}} pour {{guestCountLabel}}, le {{reservationDate}} à {{reservationTime}}.
+
+Vous pouvez accepter cette place jusqu’au {{waitlistOfferExpiresAt}}. Passé ce délai, elle pourra être proposée à une autre personne.
+
+Si vous n’êtes plus disponible, vous pouvez refuser la proposition depuis le même lien.
+
+Cordialement,
 L'équipe de {{restaurantName}}`,
   },
 };
@@ -317,6 +330,7 @@ function buildTemplateVariables({
   restaurantName,
   actionUrl,
   bankHoldAmountTotal,
+  expiresAt,
 }) {
   const customerName = getReservationCustomerName(reservation) || "Client";
   const numberOfGuests = Number(reservation?.numberOfGuests || 0);
@@ -330,7 +344,17 @@ function buildTemplateVariables({
     commentary: String(reservation?.commentary || "").trim(),
     bankHoldAmountTotal: fmtCurrencyEUR(bankHoldAmountTotal),
     actionUrl: String(actionUrl || "").trim(),
+    waitlistOfferExpiresAt: expiresAt ? fmtShortDateTimeFR(expiresAt) : "",
   };
+}
+
+function fmtShortDateTimeFR(dateInput) {
+  const d = new Date(dateInput);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("fr-FR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  });
 }
 
 function interpolateTemplate(template, variables = {}) {
@@ -383,6 +407,89 @@ function buildEmailHtml({ bodyHtml, restaurantName, actionUrl, actionLabel }) {
       </div>
     </body>
   </html>`;
+}
+
+function getPublicWebsiteOrigin(website) {
+  const raw = String(website || "").trim();
+  if (!raw) return "";
+
+  try {
+    return new URL(raw).origin;
+  } catch (_) {
+    try {
+      return new URL(`https://${raw}`).origin;
+    } catch (error) {
+      return "";
+    }
+  }
+}
+
+function buildReservationManageUrl({ restaurant, reservation }) {
+  const origin = getPublicWebsiteOrigin(restaurant?.website);
+  const reservationId = String(reservation?._id || "").trim();
+
+  if (!origin || !reservationId) return "";
+  return `${origin}/reservations/${reservationId}/manage`;
+}
+
+function resolveReservationEmailActionUrl({
+  type,
+  actionUrl,
+  restaurant,
+  reservation,
+}) {
+  const explicitUrl = String(actionUrl || "").trim();
+  if (explicitUrl) return explicitUrl;
+
+  if (type === "confirmed" || type === "reminder24h") {
+    return buildReservationManageUrl({ restaurant, reservation });
+  }
+
+  return "";
+}
+
+function getReservationEmailActionConfig(type, variables) {
+  if (type === "bankHoldActionRequired") {
+    return {
+      actionUrl: variables.actionUrl,
+      actionLabel: "Valider mon empreinte bancaire",
+    };
+  }
+
+  if (type === "waitlistOffer") {
+    return {
+      actionUrl: variables.actionUrl,
+      actionLabel: "Répondre à la proposition",
+    };
+  }
+
+  return {
+    actionUrl: "",
+    actionLabel: "",
+  };
+}
+
+function appendCancellationHintHtml(bodyHtml, actionUrl) {
+  const content = String(bodyHtml || "").trim();
+  const safeActionUrl = String(actionUrl || "").trim();
+
+  if (!content) return "";
+
+  if (!safeActionUrl) {
+    return `${content}
+      <p style="margin:0 0 16px; line-height:1.6;">
+        Pour toute modification concernant votre réservation, merci de contacter directement le restaurant.
+      </p>`;
+  }
+
+  return `${content}
+      <p style="margin:0 0 16px; line-height:1.6;">
+        Si vous souhaitez annuler votre réservation, cliquez
+        <a href="${escapeHtml(safeActionUrl)}" style="color:#1d4ed8;font-weight:700;text-decoration:underline;">ici</a>.
+      </p>
+      <p style="margin:0 0 16px; line-height:1.6;">
+        Pour toute modification concernant votre réservation, merci de contacter directement le restaurant.
+      </p>`;
 }
 
 function renderInfoRowsHtml(rows = []) {
@@ -477,7 +584,14 @@ function getTemplateForEmailType(type, restaurant) {
 
 async function sendReservationEmail(
   type,
-  { reservation, restaurantName, restaurant, actionUrl, bankHoldAmountTotal },
+  {
+    reservation,
+    restaurantName,
+    restaurant,
+    actionUrl,
+    bankHoldAmountTotal,
+    expiresAt,
+  },
 ) {
   if (!reservation) return { skipped: true, reason: "no_reservation" };
 
@@ -491,28 +605,39 @@ async function sendReservationEmail(
     return { skipped: true, reason: "unknown_type" };
   }
 
+  const resolvedActionUrl = resolveReservationEmailActionUrl({
+    type,
+    actionUrl,
+    restaurant,
+    reservation,
+  });
+
   const variables = buildTemplateVariables({
     reservation,
     restaurantName: resolvedRestaurantName,
-    actionUrl,
+    actionUrl: resolvedActionUrl,
     bankHoldAmountTotal,
+    expiresAt,
   });
 
   const renderedSubject =
     interpolateTemplate(template.subject, variables).trim() || template.subject;
-  const renderedBody =
+  let renderedBody =
     interpolateTemplate(template.body, variables).trim() || template.body;
+  const action = getReservationEmailActionConfig(type, variables);
+  let bodyHtml = renderBodyHtml(renderedBody);
+
+  if (type === "reminder24h" || type === "confirmed") {
+    bodyHtml = appendCancellationHintHtml(bodyHtml, resolvedActionUrl);
+  }
 
   return sendEmail({
     subject: renderedSubject,
     htmlContent: buildEmailHtml({
-      bodyHtml: renderBodyHtml(renderedBody),
+      bodyHtml,
       restaurantName: resolvedRestaurantName,
-      actionUrl: type === "bankHoldActionRequired" ? variables.actionUrl : "",
-      actionLabel:
-        type === "bankHoldActionRequired"
-          ? "Valider mon empreinte bancaire"
-          : "",
+      actionUrl: action.actionUrl,
+      actionLabel: action.actionLabel,
     }),
     toEmail: email,
     toName: variables.customerName,

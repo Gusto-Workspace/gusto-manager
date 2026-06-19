@@ -6,7 +6,10 @@ import {
   LayoutGrid,
   X,
   Filter,
+  Users,
+  PinOff,
 } from "lucide-react";
+import ServiceFullToggleReservationsComponent from "./service-full-toggle.reservations.component";
 
 // I18N
 import { useTranslation } from "next-i18next";
@@ -37,6 +40,14 @@ export default function DayToolbarReservationsComponent(props) {
         subtitle={dateStrLong}
         actions={
           <>
+            <ServiceFullToggleReservationsComponent
+              active={props.serviceFullActive}
+              automatic={props.serviceFullAutomatic}
+              hasCurrentService={props.hasCurrentService}
+              saving={props.serviceFullSaving}
+              onToggle={props.onToggleServiceFull}
+            />
+
             <button
               onClick={props.handleParametersClick}
               className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition h-[40px] w-[40px]"
@@ -48,12 +59,26 @@ export default function DayToolbarReservationsComponent(props) {
 
             <button
               onClick={props.handleOpenFloorPlanDrawer}
-              className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition h-[40px] w-[40px]"
+              className={`inline-flex h-[40px] w-[40px] items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 transition hover:bg-darkBlue/5 ${
+                props.hideFloorPlanButtonOnDesktop ? "min-[1024px]:hidden" : ""
+              }`}
               aria-label="Plan de salle"
               title="Plan de salle"
             >
               <LayoutGrid className="size-4 text-darkBlue/70" />
             </button>
+
+            {props.floorPlanPinned ? (
+              <button
+                onClick={props.onToggleFloorPlanPinned}
+                className="hidden h-[40px] w-[40px] items-center justify-center rounded-full border border-blue/20 bg-blue/10 text-blue transition hover:bg-blue/15 min-[1024px]:inline-flex"
+                aria-label="Désépingler le plan de salle"
+                title="Désépingler le plan de salle"
+                type="button"
+              >
+                <PinOff className="size-4" />
+              </button>
+            ) : null}
 
             <button
               onClick={props.handleAddClick}
@@ -98,21 +123,45 @@ export default function DayToolbarReservationsComponent(props) {
         <label className="sr-only" htmlFor="day-status-select">
           {t("list.status.filter", "Filtrer par statut")}
         </label>
-        <div className="flex items-center gap-2 bg-white border border-darkBlue/10 rounded-2xl px-3 py-2 shadow-sm">
-          <Filter className="size-4 text-darkBlue/40" />
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2 bg-white border border-darkBlue/10 rounded-2xl px-3 py-2 shadow-sm">
+            <Users className="size-4 text-darkBlue/40" />
+            <label className="sr-only" htmlFor="day-floor-plan-seats-filter">
+              Couverts
+            </label>
+            <select
+              id="day-floor-plan-seats-filter"
+              value={props.minSeatsFilter}
+              onChange={(event) =>
+                props.setMinSeatsFilter?.(Number(event.target.value || 0))
+              }
+              className="bg-white outline-none text-sm text-darkBlue"
+              title="Filtrer les réservations par couverts"
+            >
+              {(props.seatsFilterOptions || []).map((value) => (
+                <option key={value} value={value}>
+                  {value ? `${value}+ couverts` : "Toutes les réservations"}
+                </option>
+              ))}
+            </select>
+          </div>
 
-          <select
-            id="day-status-select"
-            value={props.activeDayTab}
-            onChange={(e) => props.setActiveDayTab(e.target.value)}
-            className="bg-white outline-none text-sm text-darkBlue w-full"
-          >
-            {props.dayStatusTabs.map((s) => (
-              <option key={s} value={s}>
-                {props.statusTranslations[s]} ({props.dayData.counts[s] || 0})
-              </option>
-            ))}
-          </select>
+          <div className="flex items-center gap-2 bg-white border border-darkBlue/10 rounded-2xl px-3 py-2 shadow-sm">
+            <Filter className="size-4 text-darkBlue/40" />
+
+            <select
+              id="day-status-select"
+              value={props.activeDayTab}
+              onChange={(e) => props.setActiveDayTab(e.target.value)}
+              className="bg-white outline-none text-sm text-darkBlue w-full"
+            >
+              {props.dayStatusTabs.map((s) => (
+                <option key={s} value={s}>
+                  {props.statusTranslations[s]} ({props.dayData.counts[s] || 0})
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
     </div>

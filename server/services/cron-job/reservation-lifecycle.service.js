@@ -9,8 +9,7 @@ const { decryptApiKey } = require("../encryption.service");
 const {
   buildReservationBankHoldStripeMetadata,
 } = require("../reservation-bank-hold-metadata.service");
-
-const SHORT_LIVED_DELETE_MS = 10 * 60 * 1000;
+const { runWaitlistMaintenance } = require("../../routes/reservations.routes");
 
 function buildReservationDateTime(reservationDateUTC, reservationTime) {
   const d = new Date(reservationDateUTC);
@@ -202,7 +201,7 @@ async function runReservationLifecycleCron() {
   const autoFinishReservations = await ReservationModel.find({
     status: { $in: ["Confirmed", "Active", "Late"] },
   }).select(
-    "_id restaurant_id customer numberOfGuests reservationDate reservationTime status activatedAt finishedAt reminder24hDueAt reminder24hSentAt reminder24hLockedAt",
+    "_id restaurant_id customer customerFirstName customerLastName customerEmail customerPhone numberOfGuests reservationDate reservationTime status activatedAt finishedAt reminder24hDueAt reminder24hSentAt reminder24hLockedAt",
   );
 
   for (const reservation of autoFinishReservations) {
@@ -240,7 +239,9 @@ async function runReservationLifecycleCron() {
   const finishedReservations = await ReservationModel.find({
     status: "Finished",
     finishedAt: { $ne: null },
-  }).select("_id restaurant_id status finishedAt bankHold");
+  }).select(
+    "_id restaurant_id customerFirstName customerLastName customerEmail customerPhone numberOfGuests reservationDate reservationTime status finishedAt bankHold",
+  );
 
   for (const reservation of finishedReservations) {
     const restaurant = await getRestaurantCached(
@@ -263,12 +264,20 @@ async function runReservationLifecycleCron() {
     }
   }
 
-  const shortLivedReservations = await ReservationModel.find({
+  const inactiveReservations = await ReservationModel.find({
     status: { $in: ["Canceled", "Rejected"] },
     $or: [{ canceledAt: { $ne: null } }, { rejectedAt: { $ne: null } }],
-  }).select("_id restaurant_id status canceledAt rejectedAt bankHold");
+  }).select(
+    "_id restaurant_id customerFirstName customerLastName customerEmail customerPhone numberOfGuests reservationDate reservationTime status canceledAt rejectedAt bankHold",
+  );
 
-  for (const reservation of shortLivedReservations) {
+  for (const reservation of inactiveReservations) {
+    const restaurant = await getRestaurantCached(
+      restaurantCache,
+      reservation.restaurant_id,
+    );
+    if (!restaurant) continue;
+
     const baseDate =
       reservation.status === "Canceled"
         ? reservation.canceledAt
@@ -277,11 +286,15 @@ async function runReservationLifecycleCron() {
     const base = baseDate ? new Date(baseDate) : null;
     if (!base || Number.isNaN(base.getTime())) continue;
 
-    const deleteThreshold = new Date(base.getTime() + SHORT_LIVED_DELETE_MS);
+    const deleteThreshold = new Date(
+      base.getTime() + getDeletionMinutes(restaurant) * 60 * 1000,
+    );
     if (now >= deleteThreshold) {
       await deleteReservation({ reservation, restaurantCache });
     }
   }
+
+  await runWaitlistMaintenance();
 }
 
 cron.schedule(

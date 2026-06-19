@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import dynamic from "next/dynamic";
-import { Menu, Clock3, Loader2 } from "lucide-react";
+import { Menu, Clock3, Loader2, Users } from "lucide-react";
 import SidebarReservationsWebapp from "../_shared/sidebar.webapp";
 import {
   getActiveFloorPlanRooms,
@@ -14,6 +14,7 @@ const FloorPlanCanvasReservationsComponent = dynamic(
 );
 
 const FLOOR_PLAN_ROOMS_CACHE = new Map();
+const SEATS_FILTER_OPTIONS = [0, 2, 4, 6, 8, 10, 12];
 
 function safeArr(a) {
   return Array.isArray(a) ? a : [];
@@ -107,6 +108,7 @@ export default function FloorPlanReservationsWebapp({
   const [liveMode, setLiveMode] = useState(true);
   const [selectedTime, setSelectedTime] = useState("");
   const [selectedTableState, setSelectedTableState] = useState(null);
+  const [minSeatsFilter, setMinSeatsFilter] = useState(0);
   const [roomsResolved, setRoomsResolved] = useState(
     initialFloorPlanState.roomsResolved,
   );
@@ -240,7 +242,14 @@ export default function FloorPlanReservationsWebapp({
 
   useEffect(() => {
     setSelectedTableState(null);
-  }, [activeRoomId, selectedTime, liveMode, selectedDay, contextDateKey]);
+  }, [
+    activeRoomId,
+    selectedTime,
+    liveMode,
+    selectedDay,
+    contextDateKey,
+    minSeatsFilter,
+  ]);
 
   useEffect(() => {
     if (!isDayContext) return;
@@ -379,6 +388,33 @@ export default function FloorPlanReservationsWebapp({
           </div>
         ) : null}
 
+        <div className="rounded-[22px] border border-darkBlue/10 bg-white/70 px-4 py-3">
+          <div className="flex items-center gap-2">
+            <Users className="size-4 text-darkBlue/55" />
+            <label
+              htmlFor="floor-plan-seats-filter-webapp"
+              className="text-sm font-medium text-darkBlue"
+            >
+              Couverts
+            </label>
+          </div>
+
+          <select
+            id="floor-plan-seats-filter-webapp"
+            value={minSeatsFilter}
+            onChange={(event) =>
+              setMinSeatsFilter(Number(event.target.value || 0))
+            }
+            className="mt-3 w-full h-11 rounded-2xl border border-darkBlue/10 bg-white px-3 text-sm text-darkBlue outline-none"
+          >
+            {SEATS_FILTER_OPTIONS.map((value) => (
+              <option key={value} value={value}>
+                {value ? `${value}+ couverts` : "Toutes les tables"}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <StatusLegend />
       </div>
 
@@ -418,6 +454,7 @@ export default function FloorPlanReservationsWebapp({
             liveMode={liveMode}
             selectedTableState={selectedTableState}
             onSelectTable={setSelectedTableState}
+            minSeatsFilter={minSeatsFilter}
           />
         )}
       </div>

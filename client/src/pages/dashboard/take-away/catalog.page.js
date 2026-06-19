@@ -49,7 +49,7 @@ export default function TakeAwayCatalogPage() {
         <div className="flex">
           <NavComponent />
 
-          <div className="tablet:ml-[270px] flex min-h-screen flex-1 flex-col gap-6 bg-lightGrey p-6 px-2 text-darkBlue mobile:px-6">
+          <div className="tablet:ml-[88px] flex min-h-screen flex-1 flex-col gap-6 bg-lightGrey p-6 px-2 text-darkBlue mobile:px-6">
             <SettingsComponent
               dataLoading={restaurantContext.dataLoading}
               setDataLoading={restaurantContext.setDataLoading}

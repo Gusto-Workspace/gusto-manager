@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import axios from "axios";
 import {
   X,
   Phone,
@@ -8,12 +9,16 @@ import {
   Calendar,
   User,
   ChevronDown,
+  LoaderCircle,
+  StickyNote,
+  Ticket,
 } from "lucide-react";
 import { TableSvg, CommentarySvg } from "@/components/_shared/_svgs/_index";
 import {
   getReservationStatusClassName,
   getReservationStatusLabel,
 } from "./reservation-status.utils";
+import { CustomerTagPill } from "@/components/_shared/customers/customer-tags-ui";
 
 const CLOSE_MS = 280;
 
@@ -91,6 +96,28 @@ function getReservationCustomerName(reservation) {
   return fallback || "-";
 }
 
+function getReservationCustomerId(reservation) {
+  const summaryId = String(reservation?.customerSummary?._id || "").trim();
+  if (summaryId) return summaryId;
+
+  const customer = reservation?.customer;
+  if (!customer) return "";
+  if (typeof customer === "object") return String(customer?._id || "").trim();
+  return String(customer || "").trim();
+}
+
+function getReservationDateTime(reservation) {
+  const date = new Date(reservation?.reservationDate);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const [hours = "0", minutes = "0"] = String(
+    reservation?.reservationTime || "",
+  ).split(":");
+
+  date.setHours(Number(hours) || 0, Number(minutes) || 0, 0, 0);
+  return date;
+}
+
 export default function ReservationsDrawerComponent({
   open,
   onClose,
@@ -99,27 +126,16 @@ export default function ReservationsDrawerComponent({
   onAction,
   errorMessage,
   tablesCatalog,
+  restaurantId,
 }) {
   const [isVisible, setIsVisible] = useState(false);
   const [bankHoldOpen, setBankHoldOpen] = useState(false);
+  const [customerDetails, setCustomerDetails] = useState(null);
+  const [customerLoading, setCustomerLoading] = useState(false);
+  const [customerError, setCustomerError] = useState("");
 
-  // Scroll lock robuste
-  const prevBodyOverflowRef = useRef("");
-  const prevHtmlOverflowRef = useRef("");
-
-  const restoreScroll = () => {
-    if (typeof document === "undefined") return;
-    document.body.style.overflow = prevBodyOverflowRef.current || "";
-    document.documentElement.style.overflow = prevHtmlOverflowRef.current || "";
-  };
-
-  const lockScroll = () => {
-    if (typeof document === "undefined") return;
-    prevBodyOverflowRef.current = document.body.style.overflow || "";
-    prevHtmlOverflowRef.current = document.documentElement.style.overflow || "";
-    document.body.style.overflow = "hidden";
-    document.documentElement.style.overflow = "hidden";
-  };
+  const restoreScroll = () => {};
+  const lockScroll = () => {};
 
   // ✅ detect tablet+ (to avoid breaking slide-right)
   const [isTabletUp, setIsTabletUp] = useState(false);
@@ -204,6 +220,7 @@ export default function ReservationsDrawerComponent({
   }
 
   const status = reservation?.status || null;
+  const customerId = getReservationCustomerId(reservation);
 
   const bankHold = reservation?.bankHold || {};
   const bankHoldEnabled = Boolean(bankHold?.enabled);
@@ -284,6 +301,115 @@ export default function ReservationsDrawerComponent({
   const tableLabel =
     getReservationTableLabel(reservation, tablesCatalog) || "-";
 
+  useEffect(() => {
+    if (!open) {
+      setCustomerDetails(null);
+      setCustomerLoading(false);
+      setCustomerError("");
+      return;
+    }
+
+    if (!restaurantId || !customerId) {
+      setCustomerDetails(null);
+      setCustomerLoading(false);
+      setCustomerError("");
+      return;
+    }
+
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    let ignore = false;
+
+    setCustomerDetails(null);
+    setCustomerLoading(true);
+    setCustomerError("");
+
+    axios
+      .get(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/customers/${customerId}`,
+        {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          params: {
+            resaPage: 1,
+            resaLimit: 6,
+            giftPage: 1,
+            giftLimit: 5,
+            takeAwayPage: 1,
+            takeAwayLimit: 5,
+          },
+        },
+      )
+      .then(({ data }) => {
+        if (ignore) return;
+        setCustomerDetails(data || null);
+      })
+      .catch((error) => {
+        if (ignore) return;
+        setCustomerDetails(null);
+        setCustomerError(
+          error?.response?.data?.message ||
+            "Impossible de charger la fiche client.",
+        );
+      })
+      .finally(() => {
+        if (ignore) return;
+        setCustomerLoading(false);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [open, restaurantId, customerId]);
+
+  const customerSummary = reservation?.customerSummary || null;
+  const customerProfile = customerDetails?.customer || customerSummary || null;
+  const customerStats = customerProfile?.stats || {};
+  const currentReservationId = String(reservation?._id || "").trim();
+  const now = new Date();
+  const detailedCustomerReservations =
+    customerDetails?.history?.reservations?.items || [];
+  const summaryCustomerReservations = customerSummary?.lastReservations || [];
+  const customerReservationsSource = customerDetails
+    ? detailedCustomerReservations
+    : summaryCustomerReservations;
+  const customerReservations = customerReservationsSource
+    .reduce(
+      (acc, item) => {
+        const itemId = String(item?._id || item?.reservationId || "").trim();
+        const fallbackKey = [
+          item?.reservationDate || "",
+          item?.reservationTime || "",
+          item?.numberOfGuests || "",
+          item?.status || "",
+        ].join("|");
+        const key = itemId || fallbackKey;
+        if (key && acc.seen.has(key)) return acc;
+        if (key) acc.seen.add(key);
+        acc.items.push(item);
+        return acc;
+      },
+      { seen: new Set(), items: [] },
+    )
+    .items.filter((item) => {
+      const itemId = String(item?._id || item?.reservationId || "").trim();
+      if (currentReservationId && itemId === currentReservationId) {
+        return false;
+      }
+
+      const itemDateTime = getReservationDateTime(item);
+      if (itemDateTime && itemDateTime > now) {
+        return false;
+      }
+
+      return true;
+    })
+    .sort((a, b) => {
+      const aDate = getReservationDateTime(a)?.getTime() || 0;
+      const bDate = getReservationDateTime(b)?.getTime() || 0;
+      return bDate - aDate;
+    })
+    .slice(0, 5);
+
   const statusUi = useMemo(
     () => ({
       cls: getReservationStatusClassName(status),
@@ -293,6 +419,8 @@ export default function ReservationsDrawerComponent({
   );
 
   const primaryAction = useMemo(() => {
+    if (status === "Waitlist")
+      return { type: "confirm", label: "Confirmer la place" };
     if (status === "Pending")
       return { type: "confirm", label: t?.("buttons.confirm") || "Confirmer" };
     if (["Confirmed", "Active", "Late"].includes(status))
@@ -365,7 +493,7 @@ export default function ReservationsDrawerComponent({
     : 1 * (1 - Math.min(1, dragY / DRAG_MAX_PX));
 
   return (
-    <div className="fixed inset-0 z-[120]" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-[260]" role="dialog" aria-modal="true">
       {/* Overlay */}
       <div
         className={`
@@ -546,6 +674,118 @@ export default function ReservationsDrawerComponent({
                 </p>
               </div>
             </div>
+          </div>
+
+          {/* Fiche client */}
+          <div className="mt-4 rounded-2xl bg-white/60 border border-darkBlue/10 shadow-sm p-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs text-darkBlue/50">Fiche client</p>
+              {customerLoading ? (
+                <LoaderCircle className="size-4 animate-spin text-darkBlue/40" />
+              ) : null}
+            </div>
+
+            {!customerId ? (
+              <p className="mt-3 rounded-2xl border border-darkBlue/10 bg-white/50 px-3 py-3 text-sm text-darkBlue/60">
+                Aucune fiche client liée à cette réservation.
+              </p>
+            ) : customerError ? (
+              <p className="mt-3 rounded-2xl border border-red/20 bg-red/10 px-3 py-3 text-sm text-red">
+                {customerError}
+              </p>
+            ) : (
+              <>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {(customerProfile?.tags || []).length ? (
+                    customerProfile.tags.map((tagKey) => (
+                      <CustomerTagPill
+                        key={`${customerId}-reservation-drawer-tag-${tagKey}`}
+                        tagKey={tagKey}
+                      />
+                    ))
+                  ) : (
+                    <span className="inline-flex items-center rounded-full border border-darkBlue/10 bg-white/60 px-3 py-1 text-xs font-semibold text-darkBlue/60">
+                      Aucun tag
+                    </span>
+                  )}
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <div className="rounded-2xl border border-darkBlue/10 bg-white/50 p-3">
+                    <p className="text-[11px] text-darkBlue/50 flex items-center gap-2">
+                      <Calendar className="size-3.5 text-darkBlue/40" />
+                      Réservations
+                    </p>
+                    <p className="mt-1 text-lg font-semibold text-darkBlue">
+                      {customerStats.reservationsTotal || 0}
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-darkBlue/10 bg-white/50 p-3">
+                    <p className="text-[11px] text-darkBlue/50 flex items-center gap-2">
+                      <Ticket className="size-3.5 text-darkBlue/40" />
+                      Annulations
+                    </p>
+                    <p className="mt-1 text-lg font-semibold text-darkBlue">
+                      {customerStats.reservationsCanceled || 0}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-3 rounded-2xl border border-darkBlue/10 bg-white/50 px-3 py-3">
+                  <p className="text-[11px] text-darkBlue/50 flex items-center gap-2">
+                    <StickyNote className="size-3.5 text-darkBlue/40" />
+                    Note client
+                  </p>
+                  <p className="mt-1 text-sm text-darkBlue/80 whitespace-pre-wrap">
+                    {String(customerProfile?.notes || "").trim() || "—"}
+                  </p>
+                </div>
+
+                <div className="mt-3 rounded-2xl border border-darkBlue/10 bg-white/50 px-3 py-3">
+                  <p className="text-[11px] text-darkBlue/50">
+                    Dernières réservations
+                  </p>
+
+                  {customerLoading && !customerReservations.length ? (
+                    <div className="mt-2 flex items-center gap-2 text-sm text-darkBlue/55">
+                      <LoaderCircle className="size-4 animate-spin text-darkBlue/40" />
+                      Chargement des dernières réservations…
+                    </div>
+                  ) : customerReservations.length ? (
+                    <div className="mt-2 flex flex-col gap-2">
+                      {customerReservations.map((item, index) => (
+                        <div
+                          key={`${customerId}-last-reservation-${
+                            item?._id || item?.reservationId || index
+                          }`}
+                          className="flex items-center justify-between gap-3 rounded-xl border border-darkBlue/10 bg-white/60 px-3 py-2"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-darkBlue">
+                              {fmtDate(item?.reservationDate)} ·{" "}
+                              {fmtTime(item?.reservationTime)}
+                            </p>
+                            <p className="text-[11px] text-darkBlue/50">
+                              {getReservationStatusLabel(item?.status)}
+                            </p>
+                          </div>
+
+                          <span className="inline-flex items-center gap-1 rounded-full border border-darkBlue/10 bg-white px-2 py-1 text-[11px] font-semibold text-darkBlue/70">
+                            <Users className="size-3 text-darkBlue/40" />
+                            {item?.numberOfGuests || 0}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-sm text-darkBlue/55">
+                      Aucune réservation passée récente.
+                    </p>
+                  )}
+                </div>
+              </>
+            )}
           </div>
 
           {/* Empreinte bancaire */}

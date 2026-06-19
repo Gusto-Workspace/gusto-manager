@@ -8,18 +8,13 @@ import {
   Calendar,
   Gift,
   Ticket,
-  Tag,
   ClipboardList,
   Pencil,
   Save,
   Trash2,
-  UserCheck,
-  Crown,
-  RotateCcw,
-  UserX,
-  PlusCircle,
   LoaderCircle,
 } from "lucide-react";
+import { CustomerTagPill } from "@/components/_shared/customers/customer-tags-ui";
 
 const CLOSE_MS = 280;
 
@@ -56,53 +51,6 @@ function getInitials(firstName, lastName) {
   const b = (l[0] || "").toUpperCase();
   const out = `${a}${b}`.trim();
   return out || "?";
-}
-
-const TAGS_UI = {
-  new: {
-    label: "Nouveau",
-    cls: "bg-violet/10 text-violet border-violet/20",
-    Icon: PlusCircle,
-  },
-  regular: {
-    label: "Régulier",
-    cls: "bg-blue/10 text-blue border-blue/20",
-    Icon: UserCheck,
-  },
-  very_regular: {
-    label: "Très régulier",
-    cls: "bg-green/10 text-green border-green/20",
-    Icon: Crown,
-  },
-  to_reconquer: {
-    label: "À reconquérir",
-    cls: "bg-[#FF914D22] text-[#B95E1C] border-[#FF914D55]",
-    Icon: RotateCcw,
-  },
-  lost: {
-    label: "Perdu",
-    cls: "bg-red/10 text-red border-red/20",
-    Icon: UserX,
-  },
-};
-
-function TagPill({ tagKey }) {
-  const ui = TAGS_UI[tagKey] || {
-    label: tagKey,
-    cls: "bg-darkBlue/5 text-darkBlue/70 border-darkBlue/15",
-    Icon: Tag,
-  };
-
-  const Icon = ui.Icon || Tag;
-
-  return (
-    <div
-      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${ui.cls}`}
-    >
-      <Icon className="size-3.5 opacity-80" />
-      {ui.label}
-    </div>
-  );
 }
 
 export default function DetailsDrawerCustomersComponent({
@@ -285,7 +233,7 @@ export default function DetailsDrawerCustomersComponent({
           {
             params: {
               resaPage: 1,
-              resaLimit: 40,
+              resaLimit: 5,
               giftPage: 1,
               giftLimit: 40,
               takeAwayPage: 1,
@@ -366,11 +314,13 @@ export default function DetailsDrawerCustomersComponent({
   const takeAwayOrdersTotal = stats.takeAwayOrdersTotal ?? 0;
 
   const sortedReservations = useMemo(() => {
-    return [...reservations].sort((a, b) => {
-      const ad = new Date(a?.reservationDate || 0).getTime();
-      const bd = new Date(b?.reservationDate || 0).getTime();
-      return bd - ad;
-    });
+    return [...reservations]
+      .sort((a, b) => {
+        const ad = new Date(a?.reservationDate || 0).getTime();
+        const bd = new Date(b?.reservationDate || 0).getTime();
+        return bd - ad;
+      })
+      .slice(0, 5);
   }, [reservations]);
 
   const sortedGiftCards = useMemo(() => {
@@ -533,7 +483,7 @@ export default function DetailsDrawerCustomersComponent({
     : 1 * (1 - Math.min(1, dragY / DRAG_MAX_PX));
 
   return (
-    <div className="fixed inset-0 z-[120]" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-[260]" role="dialog" aria-modal="true">
       {/* Overlay */}
       <div
         className={`
@@ -616,7 +566,7 @@ export default function DetailsDrawerCustomersComponent({
                   <div className="mt-1 flex flex-wrap items-center gap-2">
                     {(baseCustomer?.tags || []).length
                       ? baseCustomer.tags.map((tagKey) => (
-                          <TagPill
+                          <CustomerTagPill
                             key={`${customerId}-drawer-tag-${tagKey}`}
                             tagKey={tagKey}
                           />
@@ -805,7 +755,7 @@ export default function DetailsDrawerCustomersComponent({
           </div>
 
           {/* Stats */}
-          <div className="mt-4 grid grid-cols-2 tablet:grid-cols-4 gap-3">
+          <div className="mt-4 grid grid-cols-2 gap-3">
             <div className="rounded-2xl bg-white/50 border border-darkBlue/10 shadow-sm p-4">
               <p className="text-[11px] text-darkBlue/50 flex items-center gap-2">
                 <Calendar className="size-4 text-darkBlue/40" />
@@ -836,7 +786,7 @@ export default function DetailsDrawerCustomersComponent({
               </p>
             </div>
 
-            <div className="rounded-2xl bg-white/50 border border-darkBlue/10 shadow-sm p-4 col-span-2 tablet:col-span-1">
+            <div className="rounded-2xl bg-white/50 border border-darkBlue/10 shadow-sm p-4">
               <p className="text-[11px] text-darkBlue/50 flex items-center gap-2">
                 <ClipboardList className="size-4 text-darkBlue/40" />À emporter
               </p>
@@ -900,7 +850,7 @@ export default function DetailsDrawerCustomersComponent({
                 onClick={() => setTab("reservations")}
                 type="button"
               >
-                Dernières réservations ({reservations.length})
+                Dernières réservations ({sortedReservations.length})
               </button>
 
               <button
@@ -924,7 +874,7 @@ export default function DetailsDrawerCustomersComponent({
                 onClick={() => setTab("takeaway")}
                 type="button"
               >
-                Commandes à emporter ({takeAwayOrders.length})
+                À emporter ({takeAwayOrders.length})
               </button>
             </div>
 

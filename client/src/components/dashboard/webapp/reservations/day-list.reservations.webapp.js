@@ -8,6 +8,7 @@ import axios from "axios";
 // COMPONENTS
 import CardReservationWebapp from "./card.reservations.webapp";
 import ReservationsDrawerComponent from "@/components/_shared/reservations/reservations-drawer.component";
+import { CommunitySvg } from "@/components/_shared/_svgs/_index";
 
 export default function DayListReservationsWebapp(props) {
   const { t } = useTranslation("reservations");
@@ -138,6 +139,19 @@ export default function DayListReservationsWebapp(props) {
     return { orderedTimes: times, byTime: map };
   }, [list]);
 
+  const guestsByTime = useMemo(() => {
+    return Object.fromEntries(
+      orderedTimes.map((time) => [
+        time,
+        (byTime[time] || []).reduce(
+          (total, reservation) =>
+            total + Math.max(0, Number(reservation?.numberOfGuests || 0)),
+          0,
+        ),
+      ]),
+    );
+  }, [orderedTimes, byTime]);
+
   if (!props.selectedDay) return null;
 
   const isEmpty = orderedTimes.length === 0;
@@ -164,6 +178,11 @@ export default function DayListReservationsWebapp(props) {
                   <span className="h-4 w-px bg-darkBlue/10" />
                   <span className="text-xs text-darkBlue/60">
                     {byTime[time].length}
+                  </span>
+                  <span className="text-xs text-darkBlue/35">-</span>
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-darkBlue/60">
+                    <CommunitySvg width={14} height={14} className="opacity-50" />
+                    {guestsByTime[time] || 0}
                   </span>
                 </div>
 
@@ -195,6 +214,7 @@ export default function DayListReservationsWebapp(props) {
         onAction={handleDrawerAction}
         errorMessage={actionError}
         tablesCatalog={props.tablesCatalog}
+        restaurantId={props.restaurantId}
       />
     </>
   );

@@ -28,6 +28,7 @@ import EmailsParametersComponent from "./parameters/emails.parameters.component"
 import SmartParametersComponent from "./parameters/smart.parameters.component";
 import FloorPlanParametersComponent from "./parameters/floor-plan.parameters.component";
 import BankHoldParametersComponent from "./parameters/bank-hold.parameters.component";
+import WaitlistParametersComponent from "./parameters/waitlist.parameters.component";
 import {
   getSmartAvailabilitySetupState,
   SMART_AVAILABILITY_SETUP_ERROR_MESSAGE,
@@ -70,6 +71,13 @@ function shallowEqual(a, b) {
     if (String(a[k]) !== String(b[k])) return false;
   }
   return true;
+}
+
+const WAITLIST_CLEANUP_DELAY_OPTIONS = [60, 120, 360, 720, 1440, 2880, 10080];
+
+function normalizeWaitlistCleanupDelay(value) {
+  const delay = Number(value ?? 1440);
+  return WAITLIST_CLEANUP_DELAY_OPTIONS.includes(delay) ? delay : 1440;
 }
 
 function buildEmailsSectionSnapshot({
@@ -116,6 +124,7 @@ export default function ParametersReservationComponent(props) {
       auto_accept: true,
       interval: "30",
       pending_duration_minutes: 120,
+      refuse_public_reservations_during_service: false,
 
       // Empreinte bancaire
       bank_hold_enabled: false,
@@ -126,6 +135,13 @@ export default function ParametersReservationComponent(props) {
 
       deletion_duration: false,
       deletion_duration_minutes: 1440,
+
+      waitlist_enabled: false,
+      waitlist_public_enabled: false,
+      waitlist_auto_promote_enabled: false,
+      waitlist_auto_cleanup_enabled: true,
+      waitlist_auto_cleanup_delay_minutes: 1440,
+      waitlist_public_offer_delay_minutes: 60,
 
       // Gestion intelligente
       manage_disponibilities: false,
@@ -154,7 +170,7 @@ export default function ParametersReservationComponent(props) {
 
   const [tablesCatalog, setTablesCatalog] = useState([]);
   const [emailTemplates, setEmailTemplates] = useState(
-    buildReservationEmailTemplatesState(),
+    buildReservationEmailTemplatesPayload(),
   );
   const [
     notifyRestaurantOnNewPublicReservation,
@@ -249,6 +265,7 @@ export default function ParametersReservationComponent(props) {
     hours: null,
     slots: null,
     bank_hold: null,
+    waitlist: null,
     automations: null,
     emails: null,
     smart: null,
@@ -258,6 +275,7 @@ export default function ParametersReservationComponent(props) {
     hours: { dirty: false, saving: false, saved: false },
     slots: { dirty: false, saving: false, saved: false },
     bank_hold: { dirty: false, saving: false, saved: false },
+    waitlist: { dirty: false, saving: false, saved: false },
     automations: { dirty: false, saving: false, saved: false },
     emails: { dirty: false, saving: false, saved: false },
     smart: { dirty: false, saving: false, saved: false },
@@ -299,7 +317,11 @@ export default function ParametersReservationComponent(props) {
   // Init depuis le contexte
   useEffect(() => {
     if (restaurantContext?.restaurantData) {
-      const parameters = restaurantContext.restaurantData.reservationsSettings;
+      const parameters =
+        restaurantContext.restaurantData.reservationsSettings || {};
+      const normalizedEmailTemplates = buildReservationEmailTemplatesPayload(
+        parameters.email_templates,
+      );
 
       const nextLunch =
         parameters?.table_occupancy_lunch_minutes === 0 ||
@@ -316,6 +338,10 @@ export default function ParametersReservationComponent(props) {
       const nextAutoFinishEnabled = Boolean(
         parameters?.auto_finish_reservations,
       );
+      const waitlist = parameters?.waitlist || {};
+      const waitlistActive = Boolean(
+        waitlist.enabled || waitlist.public_enabled,
+      );
 
       reset({
         same_hours_as_restaurant: parameters.same_hours_as_restaurant ?? true,
@@ -323,6 +349,8 @@ export default function ParametersReservationComponent(props) {
         auto_accept: parameters.auto_accept ?? true,
         interval: String(parameters.interval ?? "30"),
         pending_duration_minutes: parameters.pending_duration_minutes ?? 120,
+        refuse_public_reservations_during_service:
+          parameters.refuse_public_reservations_during_service ?? false,
 
         bank_hold_enabled: parameters?.bank_hold?.enabled ?? false,
         bank_hold_amount_per_person:
@@ -332,6 +360,16 @@ export default function ParametersReservationComponent(props) {
 
         deletion_duration: parameters.deletion_duration ?? false,
         deletion_duration_minutes: parameters.deletion_duration_minutes ?? 1440,
+
+        waitlist_enabled: waitlistActive,
+        waitlist_public_enabled: waitlistActive,
+        waitlist_auto_promote_enabled: waitlist.auto_promote_enabled ?? false,
+        waitlist_auto_cleanup_enabled: waitlist.auto_cleanup_enabled ?? true,
+        waitlist_auto_cleanup_delay_minutes: normalizeWaitlistCleanupDelay(
+          waitlist.auto_cleanup_delay_minutes,
+        ),
+        waitlist_public_offer_delay_minutes:
+          waitlist.public_offer_delay_minutes ?? 60,
 
         manage_disponibilities: parameters.manage_disponibilities ?? false,
 
@@ -343,9 +381,7 @@ export default function ParametersReservationComponent(props) {
       setIsLoading(false);
       setDurationError({ lunch: false, dinner: false });
       setTablesCatalog(parameters.tables || []);
-      setEmailTemplates(
-        buildReservationEmailTemplatesState(parameters.email_templates),
-      );
+      setEmailTemplates(normalizedEmailTemplates);
       setNotifyRestaurantOnNewPublicReservation(
         parameters?.notify_restaurant_on_new_public_reservation ?? false,
       );
@@ -359,11 +395,23 @@ export default function ParametersReservationComponent(props) {
           auto_accept: parameters.auto_accept ?? true,
           interval: String(parameters.interval ?? "30"),
           pending_duration_minutes: parameters.pending_duration_minutes ?? 120,
+          refuse_public_reservations_during_service:
+            parameters.refuse_public_reservations_during_service ?? false,
         },
         bank_hold: {
           bank_hold_enabled: parameters?.bank_hold?.enabled ?? false,
           bank_hold_amount_per_person:
             parameters?.bank_hold?.amount_per_person ?? 0,
+        },
+        waitlist: {
+          waitlist_enabled: waitlist.enabled ?? false,
+          waitlist_public_enabled: waitlist.public_enabled ?? false,
+          waitlist_auto_promote_enabled: waitlist.auto_promote_enabled ?? false,
+          waitlist_auto_cleanup_enabled: waitlist.auto_cleanup_enabled ?? true,
+          waitlist_auto_cleanup_delay_minutes:
+            waitlist.auto_cleanup_delay_minutes ?? 1440,
+          waitlist_public_offer_delay_minutes:
+            waitlist.public_offer_delay_minutes ?? 60,
         },
         automations: {
           auto_finish_reservations: nextAutoFinishEnabled,
@@ -374,7 +422,7 @@ export default function ParametersReservationComponent(props) {
           table_occupancy_dinner_minutes: nextDinner,
         },
         emails: buildEmailsSectionSnapshot({
-          templates: parameters.email_templates,
+          templates: normalizedEmailTemplates,
           notifyRestaurantOnNewPublicReservation:
             parameters?.notify_restaurant_on_new_public_reservation ?? false,
         }),
@@ -389,6 +437,7 @@ export default function ParametersReservationComponent(props) {
         hours: { dirty: false, saving: false, saved: false },
         slots: { dirty: false, saving: false, saved: false },
         bank_hold: { dirty: false, saving: false, saved: false },
+        waitlist: { dirty: false, saving: false, saved: false },
         automations: { dirty: false, saving: false, saved: false },
         emails: { dirty: false, saving: false, saved: false },
         smart: { dirty: false, saving: false, saved: false },
@@ -402,12 +451,25 @@ export default function ParametersReservationComponent(props) {
   const deletion_duration = watch("deletion_duration");
   const auto_finish_reservations = watch("auto_finish_reservations");
   const auto_accept = watch("auto_accept");
+  const refuse_public_reservations_during_service = watch(
+    "refuse_public_reservations_during_service",
+  );
 
   const interval = watch("interval");
   const pending_duration_minutes = watch("pending_duration_minutes");
   const deletion_duration_minutes = watch("deletion_duration_minutes");
   const bank_hold_enabled = watch("bank_hold_enabled");
   const bank_hold_amount_per_person = watch("bank_hold_amount_per_person");
+  const waitlist_enabled = watch("waitlist_enabled");
+  const waitlist_public_enabled = watch("waitlist_public_enabled");
+  const waitlist_auto_promote_enabled = watch("waitlist_auto_promote_enabled");
+  const waitlist_auto_cleanup_enabled = watch("waitlist_auto_cleanup_enabled");
+  const waitlist_auto_cleanup_delay_minutes = watch(
+    "waitlist_auto_cleanup_delay_minutes",
+  );
+  const waitlist_public_offer_delay_minutes = watch(
+    "waitlist_public_offer_delay_minutes",
+  );
   const table_occupancy_lunch_minutes = watch("table_occupancy_lunch_minutes");
   const table_occupancy_dinner_minutes = watch(
     "table_occupancy_dinner_minutes",
@@ -476,10 +538,18 @@ export default function ParametersReservationComponent(props) {
       auto_accept: Boolean(auto_accept),
       interval: String(interval ?? ""),
       pending_duration_minutes: Number(pending_duration_minutes ?? 0),
+      refuse_public_reservations_during_service: Boolean(
+        refuse_public_reservations_during_service,
+      ),
     };
     markSectionDirty("slots", !shallowEqual(snap, next));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auto_accept, interval, pending_duration_minutes]);
+  }, [
+    auto_accept,
+    interval,
+    pending_duration_minutes,
+    refuse_public_reservations_during_service,
+  ]);
 
   useEffect(() => {
     const snap = initialSnapRef.current?.bank_hold;
@@ -492,6 +562,33 @@ export default function ParametersReservationComponent(props) {
     markSectionDirty("bank_hold", !shallowEqual(snap, next));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bank_hold_enabled, bank_hold_amount_per_person]);
+
+  useEffect(() => {
+    const snap = initialSnapRef.current?.waitlist;
+    if (!snap) return;
+
+    const next = {
+      waitlist_enabled: Boolean(waitlist_enabled),
+      waitlist_public_enabled: Boolean(waitlist_public_enabled),
+      waitlist_auto_promote_enabled: Boolean(waitlist_auto_promote_enabled),
+      waitlist_auto_cleanup_enabled: Boolean(waitlist_auto_cleanup_enabled),
+      waitlist_auto_cleanup_delay_minutes: Number(
+        waitlist_auto_cleanup_delay_minutes ?? 0,
+      ),
+      waitlist_public_offer_delay_minutes: Number(
+        waitlist_public_offer_delay_minutes ?? 0,
+      ),
+    };
+    markSectionDirty("waitlist", !shallowEqual(snap, next));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    waitlist_enabled,
+    waitlist_public_enabled,
+    waitlist_auto_promote_enabled,
+    waitlist_auto_cleanup_enabled,
+    waitlist_auto_cleanup_delay_minutes,
+    waitlist_public_offer_delay_minutes,
+  ]);
 
   useEffect(() => {
     const snap = initialSnapRef.current?.automations;
@@ -621,6 +718,9 @@ export default function ParametersReservationComponent(props) {
           pending_duration_minutes: aa
             ? currentParams.pending_duration_minutes || 120
             : Number(pending_duration_minutes),
+          refuse_public_reservations_during_service: Boolean(
+            refuse_public_reservations_during_service,
+          ),
         };
       }
 
@@ -632,6 +732,28 @@ export default function ParametersReservationComponent(props) {
           bank_hold: {
             enabled: bhe,
             amount_per_person: bhe ? amount : 0,
+          },
+        };
+      }
+
+      if (sectionKey === "waitlist") {
+        const waitlistActive = Boolean(waitlist_enabled);
+        partial = {
+          waitlist: {
+            enabled: waitlistActive,
+            public_enabled: waitlistActive,
+            auto_promote_enabled: waitlistActive
+              ? Boolean(waitlist_auto_promote_enabled)
+              : false,
+            auto_cleanup_enabled: Boolean(waitlist_auto_cleanup_enabled),
+            auto_cleanup_delay_minutes: Math.max(
+              1,
+              Number(waitlist_auto_cleanup_delay_minutes || 1440),
+            ),
+            public_offer_delay_minutes: Math.max(
+              1,
+              Number(waitlist_public_offer_delay_minutes || 60),
+            ),
           },
         };
       }
@@ -755,12 +877,38 @@ export default function ParametersReservationComponent(props) {
           auto_accept: Boolean(auto_accept),
           interval: String(interval ?? ""),
           pending_duration_minutes: Number(pending_duration_minutes ?? 0),
+          refuse_public_reservations_during_service: Boolean(
+            refuse_public_reservations_during_service,
+          ),
         };
       }
       if (sectionKey === "bank_hold") {
         initialSnapRef.current.bank_hold = {
           bank_hold_enabled: Boolean(bank_hold_enabled),
           bank_hold_amount_per_person: Number(bank_hold_amount_per_person ?? 0),
+        };
+      }
+      if (sectionKey === "waitlist") {
+        const savedWaitlist =
+          response?.data?.restaurant?.reservationsSettings?.waitlist ||
+          partial.waitlist ||
+          {};
+        initialSnapRef.current.waitlist = {
+          waitlist_enabled: Boolean(savedWaitlist.enabled),
+          waitlist_public_enabled: Boolean(savedWaitlist.public_enabled),
+          waitlist_auto_promote_enabled: Boolean(
+            savedWaitlist.auto_promote_enabled,
+          ),
+          waitlist_auto_cleanup_enabled:
+            savedWaitlist.auto_cleanup_enabled === undefined
+              ? true
+              : Boolean(savedWaitlist.auto_cleanup_enabled),
+          waitlist_auto_cleanup_delay_minutes: Number(
+            savedWaitlist.auto_cleanup_delay_minutes ?? 1440,
+          ),
+          waitlist_public_offer_delay_minutes: Number(
+            savedWaitlist.public_offer_delay_minutes ?? 60,
+          ),
         };
       }
       if (sectionKey === "smart") {
@@ -898,6 +1046,13 @@ export default function ParametersReservationComponent(props) {
           stripeReady={stripeReady}
           saveUI={sectionUI.bank_hold}
           onSave={() => saveSection("bank_hold")}
+        />
+        <WaitlistParametersComponent
+          register={register}
+          watch={watch}
+          setValue={setValue}
+          saveUI={sectionUI.waitlist}
+          onSave={() => saveSection("waitlist")}
         />
         {/* --- Bloc: Automatisations --- */}
         <AutomationsParametersComponent

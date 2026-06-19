@@ -6,6 +6,29 @@ const { sendReservationEmail } = require("../reservations-mailer.service");
 const LOCK_MAX_AGE_MS = 10 * 60 * 1000;
 const BATCH_SIZE = 50;
 
+function getPublicWebsiteOrigin(website) {
+  const raw = String(website || "").trim();
+  if (!raw) return "";
+
+  try {
+    return new URL(raw).origin;
+  } catch (_) {
+    try {
+      return new URL(`https://${raw}`).origin;
+    } catch (error) {
+      return "";
+    }
+  }
+}
+
+function buildReservationManageUrl({ website, reservationId }) {
+  const origin = getPublicWebsiteOrigin(website);
+  const id = String(reservationId || "").trim();
+
+  if (!origin || !id) return "";
+  return `${origin}/reservations/${id}/manage`;
+}
+
 function looksDue(d) {
   return (
     d instanceof Date && !Number.isNaN(d.getTime()) && d.getTime() <= Date.now()
@@ -85,14 +108,19 @@ async function runReservationReminder24h() {
 
       const restaurant = await RestaurantModel.findById(
         locked.restaurant_id,
-      ).select("name reservationsSettings.email_templates");
+      ).select("name website reservationsSettings.email_templates");
 
       const restaurantName = restaurant?.name || "Restaurant";
+      const actionUrl = buildReservationManageUrl({
+        website: restaurant?.website,
+        reservationId: locked._id,
+      });
 
       const result = await sendReservationEmail("reminder24h", {
         reservation: locked,
         restaurantName,
         restaurant,
+        actionUrl,
       });
 
       if (result?.skipped) {

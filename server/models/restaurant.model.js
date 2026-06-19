@@ -158,6 +158,18 @@ const reservationEmailTemplatesSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const reservationWaitlistSchema = new mongoose.Schema(
+  {
+    enabled: { type: Boolean, default: false },
+    public_enabled: { type: Boolean, default: false },
+    auto_promote_enabled: { type: Boolean, default: false },
+    auto_cleanup_enabled: { type: Boolean, default: true },
+    auto_cleanup_delay_minutes: { type: Number, min: 1, default: 1440 },
+    public_offer_delay_minutes: { type: Number, min: 1, default: 60 },
+  },
+  { _id: false },
+);
+
 // Sous-schéma pour les paramètres de réservation
 const reservationParametersSchema = new mongoose.Schema({
   same_hours_as_restaurant: { type: Boolean, default: true },
@@ -171,6 +183,11 @@ const reservationParametersSchema = new mongoose.Schema({
   auto_accept: { type: Boolean, default: true },
   interval: { type: Number, default: 30 },
   pending_duration_minutes: { type: Number, min: 1, default: 120 },
+  refuse_public_reservations_during_service: {
+    type: Boolean,
+    default: false,
+  },
+  manual_service_full_until: { type: Date, default: null },
 
   // Empreinte bancaire
   bank_hold: { type: reservationBankHoldSchema, default: () => ({}) },
@@ -203,6 +220,7 @@ const reservationParametersSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  waitlist: { type: reservationWaitlistSchema, default: () => ({}) },
 
   // Horaires & pauses
   reservation_hours: { type: [openingHoursSchema], default: [] },
