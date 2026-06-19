@@ -408,8 +408,8 @@ export default function ParametersReservationComponent(props) {
             parameters?.bank_hold?.amount_per_person ?? 0,
         },
         waitlist: {
-          waitlist_enabled: waitlist.enabled ?? false,
-          waitlist_public_enabled: waitlist.public_enabled ?? false,
+          waitlist_enabled: waitlistActive,
+          waitlist_public_enabled: waitlistActive,
           waitlist_auto_promote_enabled: waitlist.auto_promote_enabled ?? false,
           waitlist_auto_cleanup_enabled: waitlistCleanupActive,
           waitlist_auto_cleanup_delay_minutes:
@@ -906,8 +906,9 @@ export default function ParametersReservationComponent(props) {
           waitlist_auto_promote_enabled: Boolean(
             savedWaitlist.auto_promote_enabled,
           ),
-          waitlist_auto_cleanup_enabled:
-            Boolean(savedWaitlist.auto_cleanup_enabled),
+          waitlist_auto_cleanup_enabled: Boolean(
+            savedWaitlist.auto_cleanup_enabled,
+          ),
           waitlist_auto_cleanup_delay_minutes: Number(
             savedWaitlist.auto_cleanup_delay_minutes ?? 1440,
           ),

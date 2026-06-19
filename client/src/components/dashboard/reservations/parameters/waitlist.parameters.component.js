@@ -166,7 +166,6 @@ export default function WaitlistParametersComponent({
             </div>
           </div>
 
-
           <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
@@ -177,6 +176,16 @@ export default function WaitlistParametersComponent({
               {toggle({
                 name: "waitlist_auto_cleanup_enabled",
                 checked: autoCleanupEnabled,
+                onChange: (event) => {
+                  if (event.target.checked) {
+                    setValue("waitlist_enabled", true, {
+                      shouldDirty: true,
+                    });
+                    setValue("waitlist_public_enabled", true, {
+                      shouldDirty: true,
+                    });
+                  }
+                },
               })}
             </div>
           </div>
@@ -208,7 +217,6 @@ export default function WaitlistParametersComponent({
               })}
             </div>
           </div>
-
         </div>
 
         <div className={divider} />
