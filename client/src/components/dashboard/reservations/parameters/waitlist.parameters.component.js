@@ -8,9 +8,12 @@ export default function WaitlistParametersComponent({
   onSave,
   savePresentation = "full",
 }) {
-  const enabled = Boolean(watch("waitlist_enabled"));
-  const autoPromoteEnabled = Boolean(watch("waitlist_auto_promote_enabled"));
-  const autoCleanupEnabled = Boolean(watch("waitlist_auto_cleanup_enabled"));
+  const asBoolean = (value) =>
+    value === true || value === "true" || value === "on" || value === 1;
+
+  const enabled = asBoolean(watch("waitlist_enabled"));
+  const autoPromoteEnabled = asBoolean(watch("waitlist_auto_promote_enabled"));
+  const autoCleanupEnabled = asBoolean(watch("waitlist_auto_cleanup_enabled"));
 
   const card = "rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm";
   const cardInner = "px-2 py-4 mobile:p-4 midTablet:p-6";
@@ -39,23 +42,39 @@ export default function WaitlistParametersComponent({
     "bg-white text-darkBlue border border-darkBlue opacity-60";
   const showSaveButton = saveUI?.dirty || saveUI?.saving || saveUI?.saved;
 
-  const toggle = ({ name, checked, onChange }) => (
-    <label className={toggleWrap}>
-      <span className={[toggleBase, checked ? toggleOn : toggleOff].join(" ")}>
-        <input
-          type="checkbox"
-          className="sr-only"
-          id={name}
-          {...register(name, onChange ? { onChange } : undefined)}
-        />
+  const toggle = ({ name, checked, onChange }) => {
+    const field = register(name);
+
+    return (
+      <label className={toggleWrap}>
         <span
-          className={[toggleDot, checked ? toggleDotOn : toggleDotOff].join(
-            " ",
-          )}
-        />
-      </span>
-    </label>
-  );
+          className={[toggleBase, checked ? toggleOn : toggleOff].join(" ")}
+        >
+          <input
+            ref={field.ref}
+            name={field.name}
+            onBlur={field.onBlur}
+            type="checkbox"
+            className="sr-only"
+            id={name}
+            checked={checked}
+            onChange={(event) => {
+              setValue(name, event.target.checked, {
+                shouldDirty: true,
+                shouldTouch: true,
+              });
+              onChange?.(event);
+            }}
+          />
+          <span
+            className={[toggleDot, checked ? toggleDotOn : toggleDotOff].join(
+              " ",
+            )}
+          />
+        </span>
+      </label>
+    );
+  };
 
   return (
     <div className={card}>
@@ -118,8 +137,8 @@ export default function WaitlistParametersComponent({
         <div className={divider} />
 
         <div className="grid grid-cols-1 gap-3 midTablet:grid-cols-2">
-          <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3">
-            <div className="flex items-center justify-between gap-3">
+          <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3 flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3 w-full">
               <div className="min-w-0">
                 <p className="font-semibold text-darkBlue">
                   Autoriser la liste d’attente
@@ -139,6 +158,30 @@ export default function WaitlistParametersComponent({
                       shouldDirty: true,
                     });
                     setValue("waitlist_auto_cleanup_enabled", false, {
+                      shouldDirty: true,
+                    });
+                  }
+                },
+              })}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-semibold text-darkBlue">
+                  Nettoyer les demandes expirées
+                </p>
+              </div>
+              {toggle({
+                name: "waitlist_auto_cleanup_enabled",
+                checked: autoCleanupEnabled,
+                onChange: (event) => {
+                  if (event.target.checked) {
+                    setValue("waitlist_enabled", true, {
+                      shouldDirty: true,
+                    });
+                    setValue("waitlist_public_enabled", true, {
                       shouldDirty: true,
                     });
                   }
@@ -171,20 +214,6 @@ export default function WaitlistParametersComponent({
                     });
                   }
                 },
-              })}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="font-semibold text-darkBlue">
-                  Nettoyer les demandes expirées
-                </p>
-              </div>
-              {toggle({
-                name: "waitlist_auto_cleanup_enabled",
-                checked: autoCleanupEnabled,
               })}
             </div>
           </div>
