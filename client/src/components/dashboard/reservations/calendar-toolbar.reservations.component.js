@@ -30,6 +30,9 @@ export default function CalendarToolbarReservationsComponent(props) {
       year: "numeric",
     }).format(props.currentMonth),
   );
+  const seatsFilterLabel = props.minSeatsFilter
+    ? `${props.minSeatsFilter}+`
+    : "Toutes";
 
   const goPrev = () =>
     props.setCurrentMonth(
@@ -206,13 +209,14 @@ export default function CalendarToolbarReservationsComponent(props) {
             >
               Couverts
             </label>
+            <span className="text-sm text-darkBlue">{seatsFilterLabel}</span>
             <select
               id="calendar-floor-plan-seats-filter"
               value={props.minSeatsFilter}
               onChange={(event) =>
                 props.setMinSeatsFilter?.(Number(event.target.value || 0))
               }
-              className="h-full appearance-none rounded-none bg-transparent text-sm text-darkBlue outline-none [-webkit-appearance:none]"
+              className="absolute inset-0 h-full w-full cursor-pointer appearance-none rounded-2xl bg-transparent opacity-0 outline-none [-webkit-appearance:none] focus:outline-none focus:ring-0"
               title="Filtrer les réservations par couverts"
             >
               {(props.seatsFilterOptions || []).map((value) => (

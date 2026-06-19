@@ -14,6 +14,56 @@ function buildLocalDateTime(baseDate, time) {
   return result;
 }
 
+function normalizeReservationDateKey(value) {
+  if (!value) return "";
+
+  const stringValue = String(value).trim();
+  const dateMatch = stringValue.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (dateMatch) {
+    return `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}`;
+  }
+
+  const parsedDate = new Date(value);
+  if (Number.isNaN(parsedDate.getTime())) return "";
+
+  const year = parsedDate.getFullYear();
+  const month = String(parsedDate.getMonth() + 1).padStart(2, "0");
+  const day = String(parsedDate.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function minutesFromHHmm(timeStr) {
+  const [hour, minute] = String(timeStr || "00:00")
+    .split(":")
+    .map(Number);
+  return (Number(hour) || 0) * 60 + (Number(minute) || 0);
+}
+
+function getReservationExceptionalOpeningForDate(parameters, date) {
+  const dateKey = normalizeReservationDateKey(date);
+  if (!dateKey) return null;
+
+  const openings = Array.isArray(parameters?.exceptional_openings)
+    ? parameters.exceptional_openings
+    : [];
+
+  const opening = openings.find(
+    (item) => normalizeReservationDateKey(item?.date) === dateKey,
+  );
+
+  if (!opening || !Array.isArray(opening.hours)) return null;
+
+  const hours = opening.hours.filter(
+    (range) =>
+      isValidHHmm(range?.open) &&
+      isValidHHmm(range?.close) &&
+      minutesFromHHmm(range.open) < minutesFromHHmm(range.close),
+  );
+
+  if (!hours.length) return null;
+  return { day: "exceptional", isClosed: false, hours };
+}
+
 function getReservationHoursSource(restaurant, parameters = null) {
   const settings = parameters || restaurant?.reservationsSettings || {};
   return settings?.same_hours_as_restaurant
@@ -29,11 +79,17 @@ function getCurrentReservationService({
   if (!(now instanceof Date) || Number.isNaN(now.getTime())) return null;
 
   const sourceHours = getReservationHoursSource(restaurant, parameters);
-  if (!Array.isArray(sourceHours)) return null;
 
+  const exceptionalOpening = getReservationExceptionalOpeningForDate(
+    parameters || restaurant?.reservationsSettings || {},
+    now,
+  );
   const jsDay = now.getDay();
   const dayIndex = jsDay === 0 ? 6 : jsDay - 1;
-  const dayHours = sourceHours[dayIndex];
+  const dayHours =
+    exceptionalOpening ||
+    (Array.isArray(sourceHours) ? sourceHours[dayIndex] : null);
+
   if (!dayHours || dayHours?.isClosed || !Array.isArray(dayHours?.hours)) {
     return null;
   }

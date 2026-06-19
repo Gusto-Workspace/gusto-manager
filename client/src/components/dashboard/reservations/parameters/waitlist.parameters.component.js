@@ -138,6 +138,9 @@ export default function WaitlistParametersComponent({
                     setValue("waitlist_auto_promote_enabled", false, {
                       shouldDirty: true,
                     });
+                    setValue("waitlist_auto_cleanup_enabled", false, {
+                      shouldDirty: true,
+                    });
                   }
                 },
               })}
@@ -209,27 +212,29 @@ export default function WaitlistParametersComponent({
             </span>
           </label>
 
-          <label className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3">
-            <span className="flex items-center gap-2 text-sm font-semibold text-darkBlue">
-              <Clock className="size-4 opacity-50" />
-              Nettoyage après le créneau
-            </span>
-            <select
-              className={[selectBase, "mt-2"].join(" ")}
-              {...register("waitlist_auto_cleanup_delay_minutes")}
-            >
-              <option value={60}>1 heure après le créneau</option>
-              <option value={120}>2 heures après le créneau</option>
-              <option value={360}>6 heures après le créneau</option>
-              <option value={720}>12 heures après le créneau</option>
-              <option value={1440}>24 heures après le créneau</option>
-              <option value={2880}>48 heures après le créneau</option>
-              <option value={10080}>7 jours après le créneau</option>
-            </select>
-            <span className="mt-1 block text-xs text-darkBlue/50">
-              Par défaut: 24 heures après date + heure du créneau.
-            </span>
-          </label>
+          {autoCleanupEnabled ? (
+            <label className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3">
+              <span className="flex items-center gap-2 text-sm font-semibold text-darkBlue">
+                <Clock className="size-4 opacity-50" />
+                Nettoyage après le créneau
+              </span>
+              <select
+                className={[selectBase, "mt-2"].join(" ")}
+                {...register("waitlist_auto_cleanup_delay_minutes")}
+              >
+                <option value={60}>1 heure après le créneau</option>
+                <option value={120}>2 heures après le créneau</option>
+                <option value={360}>6 heures après le créneau</option>
+                <option value={720}>12 heures après le créneau</option>
+                <option value={1440}>24 heures après le créneau</option>
+                <option value={2880}>48 heures après le créneau</option>
+                <option value={10080}>7 jours après le créneau</option>
+              </select>
+              <span className="mt-1 block text-xs text-darkBlue/50">
+                Par défaut: 24 heures après date + heure du créneau.
+              </span>
+            </label>
+          ) : null}
         </div>
       </div>
     </div>
