@@ -41,7 +41,7 @@ app.use(
       "https://alassiettebrive.com", // Client A l'Assiette
       "https://www.lescapucinsbylily.fr", // Client Capucins by Lily
       "https://www.brasserielesartistes.fr", // Client Les Artistes
-      "https://preview-jacasse-gusto-manager.vercel.app" // Preview Jacasse
+      "https://www.jacasse-montauban.fr" // Client Jacasse
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     credentials: true,
