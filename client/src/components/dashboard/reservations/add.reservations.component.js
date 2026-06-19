@@ -42,6 +42,42 @@ import {
 
 const OTHER_TABLE_OPTION_VALUE = "__other_table__";
 
+function getExceptionalOpeningForDate(parameters, reservationDate) {
+  if (
+    !(reservationDate instanceof Date) ||
+    Number.isNaN(reservationDate.getTime())
+  ) {
+    return null;
+  }
+
+  const dateKey = format(reservationDate, "yyyy-MM-dd");
+  const openings = Array.isArray(parameters?.exceptional_openings)
+    ? parameters.exceptional_openings
+    : [];
+
+  const opening = openings.find(
+    (item) => String(item?.date || "").slice(0, 10) === dateKey,
+  );
+
+  if (!opening || !Array.isArray(opening.hours) || opening.hours.length === 0) {
+    return null;
+  }
+
+  return { day: "exceptional", isClosed: false, hours: opening.hours };
+}
+
+function getReservationDayHoursForDate({ restaurant, parameters, date }) {
+  const exceptionalOpening = getExceptionalOpeningForDate(parameters, date);
+  if (exceptionalOpening) return exceptionalOpening;
+
+  const selectedDay = date.getDay();
+  const dayIndex = selectedDay === 0 ? 6 : selectedDay - 1;
+
+  return parameters.same_hours_as_restaurant
+    ? restaurant?.opening_hours?.[dayIndex]
+    : parameters?.reservation_hours?.[dayIndex];
+}
+
 /* ---------------------------------------
    ✅ Simple Modal (inline)
 --------------------------------------- */
@@ -804,19 +840,17 @@ export default function AddReservationComponent(props) {
       return;
     }
 
-    const selectedDay = reservationData.reservationDate.getDay();
-    const dayIndex = selectedDay === 0 ? 6 : selectedDay - 1;
-
     const parameters = props.restaurantData.reservationsSettings;
-
-    const dayHours = parameters.same_hours_as_restaurant
-      ? props.restaurantData.opening_hours[dayIndex]
-      : parameters.reservation_hours[dayIndex];
+    const dayHours = getReservationDayHoursForDate({
+      restaurant: props.restaurantData,
+      parameters,
+      date: reservationData.reservationDate,
+    });
 
     // -----------------------------
     // Si fermé => aucun créneau
     // -----------------------------
-    if (dayHours?.isClosed) {
+    if (!dayHours || dayHours?.isClosed) {
       setAvailableTimes([]);
       setIsLoading(false);
       return;
@@ -1146,14 +1180,14 @@ export default function AddReservationComponent(props) {
   function disableClosedDays({ date, view }) {
     if (view !== "month") return false;
 
-    const selectedDay = date.getDay();
-    const dayIndex = selectedDay === 0 ? 6 : selectedDay - 1;
     const parameters = props.restaurantData.reservationsSettings;
-    const dayHours = parameters.same_hours_as_restaurant
-      ? props.restaurantData.opening_hours[dayIndex]
-      : parameters.reservation_hours[dayIndex];
+    const dayHours = getReservationDayHoursForDate({
+      restaurant: props.restaurantData,
+      parameters,
+      date,
+    });
 
-    return dayHours.isClosed;
+    return dayHours?.isClosed ?? true;
   }
 
   function handleInputChange(e) {

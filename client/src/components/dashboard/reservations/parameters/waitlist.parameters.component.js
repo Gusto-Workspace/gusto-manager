@@ -138,6 +138,9 @@ export default function WaitlistParametersComponent({
                     setValue("waitlist_auto_promote_enabled", false, {
                       shouldDirty: true,
                     });
+                    setValue("waitlist_auto_cleanup_enabled", false, {
+                      shouldDirty: true,
+                    });
                   }
                 },
               })}

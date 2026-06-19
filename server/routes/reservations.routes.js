@@ -120,6 +120,82 @@ function isValidHHmm(value) {
   return /^([01]\d|2[0-3]):([0-5]\d)$/.test(String(value || "").trim());
 }
 
+function normalizeReservationDateKey(value) {
+  if (!value) return "";
+
+  const stringValue = String(value).trim();
+  const dateMatch = stringValue.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (dateMatch) {
+    return `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}`;
+  }
+
+  const parsedDate = new Date(value);
+  if (Number.isNaN(parsedDate.getTime())) return "";
+
+  const year = parsedDate.getUTCFullYear();
+  const month = String(parsedDate.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(parsedDate.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function sanitizeReservationExceptionalOpeningsInput(value) {
+  if (!Array.isArray(value)) return [];
+
+  const byDate = new Map();
+
+  value.forEach((opening) => {
+    const date = normalizeReservationDateKey(opening?.date);
+    if (!date) return;
+
+    const hours = (Array.isArray(opening?.hours) ? opening.hours : [])
+      .map((range) => ({
+        open: String(range?.open || "").trim().slice(0, 5),
+        close: String(range?.close || "").trim().slice(0, 5),
+      }))
+      .filter((range) => {
+        if (!isValidHHmm(range.open) || !isValidHHmm(range.close)) {
+          return false;
+        }
+
+        return minutesFromHHmm(range.open) < minutesFromHHmm(range.close);
+      });
+
+    if (!hours.length) return;
+    byDate.set(date, { date, hours });
+  });
+
+  return Array.from(byDate.values()).sort((a, b) =>
+    String(a.date).localeCompare(String(b.date)),
+  );
+}
+
+function getReservationExceptionalOpeningForDate(parameters, reservationDate) {
+  const dateKey = normalizeReservationDateKey(reservationDate);
+  if (!dateKey) return null;
+
+  const openings = Array.isArray(parameters?.exceptional_openings)
+    ? parameters.exceptional_openings
+    : [];
+
+  const opening = openings.find(
+    (item) => normalizeReservationDateKey(item?.date) === dateKey,
+  );
+
+  if (!opening || !Array.isArray(opening.hours) || opening.hours.length === 0) {
+    return null;
+  }
+
+  const hours = opening.hours.filter(
+    (range) =>
+      isValidHHmm(range?.open) &&
+      isValidHHmm(range?.close) &&
+      minutesFromHHmm(range.open) < minutesFromHHmm(range.close),
+  );
+
+  if (!hours.length) return null;
+  return { day: "exceptional", isClosed: false, hours };
+}
+
 function getConfiguredTableIds(tableLike) {
   if (!tableLike || typeof tableLike !== "object") return [];
 
@@ -1115,6 +1191,12 @@ function getReservationDayHours({
 }) {
   const normalizedDay = normalizeReservationDayToUTC(reservationDateUTC);
   if (!normalizedDay) return null;
+
+  const exceptionalOpening = getReservationExceptionalOpeningForDate(
+    parameters,
+    normalizedDay,
+  );
+  if (exceptionalOpening) return exceptionalOpening;
 
   const jsDay = normalizedDay.getUTCDay();
   const dayIndex = jsDay === 0 ? 6 : jsDay - 1;
@@ -2825,15 +2907,14 @@ function getWaitlistSettings(restaurantOrParameters = {}) {
     restaurantOrParameters ||
     {};
   const waitlist = source?.waitlist || {};
+  const waitlistEnabled = Boolean(waitlist.enabled || waitlist.public_enabled);
 
   return {
     enabled: Boolean(waitlist.enabled),
     public_enabled: Boolean(waitlist.public_enabled),
     auto_promote_enabled: Boolean(waitlist.auto_promote_enabled),
     auto_cleanup_enabled:
-      waitlist.auto_cleanup_enabled === undefined
-        ? true
-        : Boolean(waitlist.auto_cleanup_enabled),
+      waitlistEnabled && Boolean(waitlist.auto_cleanup_enabled),
     auto_cleanup_delay_minutes: Math.max(
       1,
       Number(waitlist.auto_cleanup_delay_minutes || 1440),
@@ -3832,6 +3913,18 @@ router.put(
           ? parameters.blocked_ranges
           : existing.blocked_ranges || [];
 
+      const nextExceptionalOpenings =
+        Object.prototype.hasOwnProperty.call(
+          parameters,
+          "exceptional_openings",
+        ) && Array.isArray(parameters.exceptional_openings)
+          ? sanitizeReservationExceptionalOpeningsInput(
+              parameters.exceptional_openings,
+            )
+          : sanitizeReservationExceptionalOpeningsInput(
+              existing.exceptional_openings || [],
+            );
+
       const nextWaitlist =
         Object.prototype.hasOwnProperty.call(parameters, "waitlist") &&
         parameters.waitlist &&
@@ -3872,6 +3965,7 @@ router.put(
         ...existing,
         ...parameters,
         blocked_ranges: nextBlocked,
+        exceptional_openings: nextExceptionalOpenings,
         table_blocked_ranges: nextTableBlocked,
         email_templates: nextEmailTemplates,
         waitlist: nextWaitlist,

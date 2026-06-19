@@ -139,7 +139,7 @@ export default function ParametersReservationComponent(props) {
       waitlist_enabled: false,
       waitlist_public_enabled: false,
       waitlist_auto_promote_enabled: false,
-      waitlist_auto_cleanup_enabled: true,
+      waitlist_auto_cleanup_enabled: false,
       waitlist_auto_cleanup_delay_minutes: 1440,
       waitlist_public_offer_delay_minutes: 60,
 
@@ -153,6 +153,7 @@ export default function ParametersReservationComponent(props) {
   });
 
   const [reservationHours, setReservationHours] = useState([]);
+  const [exceptionalOpenings, setExceptionalOpenings] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [manualTablesNeedingAssignment, setManualTablesNeedingAssignment] =
     useState(0);
@@ -342,6 +343,8 @@ export default function ParametersReservationComponent(props) {
       const waitlistActive = Boolean(
         waitlist.enabled || waitlist.public_enabled,
       );
+      const waitlistCleanupActive =
+        waitlistActive && Boolean(waitlist.auto_cleanup_enabled);
 
       reset({
         same_hours_as_restaurant: parameters.same_hours_as_restaurant ?? true,
@@ -364,7 +367,7 @@ export default function ParametersReservationComponent(props) {
         waitlist_enabled: waitlistActive,
         waitlist_public_enabled: waitlistActive,
         waitlist_auto_promote_enabled: waitlist.auto_promote_enabled ?? false,
-        waitlist_auto_cleanup_enabled: waitlist.auto_cleanup_enabled ?? true,
+        waitlist_auto_cleanup_enabled: waitlistCleanupActive,
         waitlist_auto_cleanup_delay_minutes: normalizeWaitlistCleanupDelay(
           waitlist.auto_cleanup_delay_minutes,
         ),
@@ -378,6 +381,7 @@ export default function ParametersReservationComponent(props) {
       });
 
       setReservationHours(parameters.reservation_hours || []);
+      setExceptionalOpenings(parameters.exceptional_openings || []);
       setIsLoading(false);
       setDurationError({ lunch: false, dinner: false });
       setTablesCatalog(parameters.tables || []);
@@ -407,7 +411,7 @@ export default function ParametersReservationComponent(props) {
           waitlist_enabled: waitlist.enabled ?? false,
           waitlist_public_enabled: waitlist.public_enabled ?? false,
           waitlist_auto_promote_enabled: waitlist.auto_promote_enabled ?? false,
-          waitlist_auto_cleanup_enabled: waitlist.auto_cleanup_enabled ?? true,
+          waitlist_auto_cleanup_enabled: waitlistCleanupActive,
           waitlist_auto_cleanup_delay_minutes:
             waitlist.auto_cleanup_delay_minutes ?? 1440,
           waitlist_public_offer_delay_minutes:
@@ -707,6 +711,7 @@ export default function ParametersReservationComponent(props) {
           reservation_hours: Boolean(same_hours_as_restaurant)
             ? restaurantContext.restaurantData?.opening_hours
             : reservationHours,
+          exceptional_openings: exceptionalOpenings,
         };
       }
 
@@ -745,7 +750,9 @@ export default function ParametersReservationComponent(props) {
             auto_promote_enabled: waitlistActive
               ? Boolean(waitlist_auto_promote_enabled)
               : false,
-            auto_cleanup_enabled: Boolean(waitlist_auto_cleanup_enabled),
+            auto_cleanup_enabled: waitlistActive
+              ? Boolean(waitlist_auto_cleanup_enabled)
+              : false,
             auto_cleanup_delay_minutes: Math.max(
               1,
               Number(waitlist_auto_cleanup_delay_minutes || 1440),
@@ -900,9 +907,7 @@ export default function ParametersReservationComponent(props) {
             savedWaitlist.auto_promote_enabled,
           ),
           waitlist_auto_cleanup_enabled:
-            savedWaitlist.auto_cleanup_enabled === undefined
-              ? true
-              : Boolean(savedWaitlist.auto_cleanup_enabled),
+            Boolean(savedWaitlist.auto_cleanup_enabled),
           waitlist_auto_cleanup_delay_minutes: Number(
             savedWaitlist.auto_cleanup_delay_minutes ?? 1440,
           ),
@@ -1025,6 +1030,8 @@ export default function ParametersReservationComponent(props) {
           restaurantId={props.restaurantData?._id}
           reservationHours={reservationHours}
           setReservationHours={setReservationHours}
+          exceptionalOpenings={exceptionalOpenings}
+          setExceptionalOpenings={setExceptionalOpenings}
           setRestaurantData={props.setRestaurantData}
           dataLoading={restaurantContext.dataLoading}
           closeEditing={restaurantContext.closeEditing}

@@ -31,6 +31,9 @@ export default function DayToolbarReservationsComponent(props) {
     month: "short",
     year: "numeric",
   }).format(props.selectedDay);
+  const seatsFilterLabel = props.minSeatsFilter
+    ? `${props.minSeatsFilter}+ couverts`
+    : "Toutes les réservations";
 
   return (
     <div className="flex flex-col gap-2">
@@ -130,13 +133,14 @@ export default function DayToolbarReservationsComponent(props) {
             <label className="sr-only" htmlFor="day-floor-plan-seats-filter">
               Couverts
             </label>
+            <span className="text-sm text-darkBlue">{seatsFilterLabel}</span>
             <select
               id="day-floor-plan-seats-filter"
               value={props.minSeatsFilter}
               onChange={(event) =>
                 props.setMinSeatsFilter?.(Number(event.target.value || 0))
               }
-              className="appearance-none rounded-none bg-transparent outline-none text-sm text-darkBlue [-webkit-appearance:none]"
+              className="absolute inset-0 h-full w-full cursor-pointer appearance-none rounded-2xl bg-transparent opacity-0 outline-none [-webkit-appearance:none] focus:outline-none focus:ring-0"
               title="Filtrer les réservations par couverts"
             >
               {(props.seatsFilterOptions || []).map((value) => (

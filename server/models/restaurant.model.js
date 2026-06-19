@@ -163,11 +163,24 @@ const reservationWaitlistSchema = new mongoose.Schema(
     enabled: { type: Boolean, default: false },
     public_enabled: { type: Boolean, default: false },
     auto_promote_enabled: { type: Boolean, default: false },
-    auto_cleanup_enabled: { type: Boolean, default: true },
+    auto_cleanup_enabled: { type: Boolean, default: false },
     auto_cleanup_delay_minutes: { type: Number, min: 1, default: 1440 },
     public_offer_delay_minutes: { type: Number, min: 1, default: 60 },
   },
   { _id: false },
+);
+
+const reservationExceptionalOpeningSchema = new mongoose.Schema(
+  {
+    date: { type: String, required: true, trim: true },
+    hours: [
+      {
+        open: { type: String },
+        close: { type: String },
+      },
+    ],
+  },
+  { _id: true },
 );
 
 // Sous-schéma pour les paramètres de réservation
@@ -224,6 +237,10 @@ const reservationParametersSchema = new mongoose.Schema({
 
   // Horaires & pauses
   reservation_hours: { type: [openingHoursSchema], default: [] },
+  exceptional_openings: {
+    type: [reservationExceptionalOpeningSchema],
+    default: [],
+  },
   blocked_ranges: { type: [blockedRangeSchema], default: [] },
   table_blocked_ranges: { type: [tableBlockedRangeSchema], default: [] },
 });
