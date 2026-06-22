@@ -49,6 +49,8 @@ export default function WebAppListGiftCardsComponent(props) {
   const router = useRouter();
   const { locale } = router;
   const currencySymbol = locale === "fr" ? "€" : "$";
+  const giftCardValidityFallback =
+    restaurantContext?.restaurantData?.giftCardSettings;
   const view = props?.view || "purchases";
 
   // ----- Initialisation giftCards depuis le contexte pour éviter le flash -----
@@ -397,6 +399,7 @@ export default function WebAppListGiftCardsComponent(props) {
                     handleDeleteClick={handleDeleteClick}
                     handleVisibilityToggle={handleVisibilityToggle}
                     currencySymbol={currencySymbol}
+                    fallbackSettings={giftCardValidityFallback}
                   />
                 ))}
               </div>
@@ -437,6 +440,7 @@ export default function WebAppListGiftCardsComponent(props) {
                     handleDeleteClick={handleDeleteClick}
                     handleVisibilityToggle={handleVisibilityToggle}
                     currencySymbol={currencySymbol}
+                    fallbackSettings={giftCardValidityFallback}
                   />
                 ))}
               </div>
@@ -472,6 +476,7 @@ export default function WebAppListGiftCardsComponent(props) {
           currencySymbol={currencySymbol}
           isDeleting={isDeleting}
           editingGift={editingGift}
+          fallbackSettings={giftCardValidityFallback}
           t={t}
         />
       )}

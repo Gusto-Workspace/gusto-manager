@@ -14,8 +14,28 @@ function clampInteger(value, fallback, min, max) {
   return Math.min(Math.max(parsed, min), max);
 }
 
-function getGiftCardSettings(source) {
-  const raw = source?.giftCardSettings || source || {};
+function toPlainObject(source) {
+  if (!source) return {};
+  if (source.toObject) return source.toObject({ depopulate: true });
+  return source;
+}
+
+function hasGiftCardValidityConfig(source) {
+  const raw = toPlainObject(source?.giftCardSettings || source);
+  return (
+    raw?.validity_mode !== undefined ||
+    raw?.validity_fixed_months !== undefined ||
+    raw?.validity_until_day !== undefined ||
+    raw?.validity_until_month !== undefined
+  );
+}
+
+function getGiftCardValiditySettings(source, fallbackSource = null) {
+  const sourceRaw = toPlainObject(source?.giftCardSettings || source);
+  const fallbackRaw = toPlainObject(
+    fallbackSource?.giftCardSettings || fallbackSource,
+  );
+  const raw = hasGiftCardValidityConfig(sourceRaw) ? sourceRaw : fallbackRaw;
 
   return {
     validity_mode:
@@ -38,6 +58,15 @@ function getGiftCardSettings(source) {
       1,
       12,
     ),
+  };
+}
+
+function getGiftCardSettings(source) {
+  const raw = toPlainObject(source?.giftCardSettings || source);
+  const validitySettings = getGiftCardValiditySettings(raw);
+
+  return {
+    ...validitySettings,
     archive_used_after_months: clampInteger(
       raw?.archive_used_after_months,
       DEFAULT_GIFT_CARD_SETTINGS.archive_used_after_months,
@@ -59,8 +88,54 @@ function buildConfiguredAnnualDate(year, monthNumber, dayNumber) {
   return new Date(year, monthIndex, safeDay, 23, 59, 59, 999);
 }
 
-function computeGiftCardValidUntil(settingsSource, referenceDate = new Date()) {
-  const settings = getGiftCardSettings(settingsSource);
+function isGiftCardConfiguredWithAnnualDate(giftCard) {
+  return toPlainObject(giftCard)?.validity_mode === "until_date";
+}
+
+function buildGiftCardVisibilityDeadline(
+  giftCard,
+  referenceDate = new Date(),
+  fallbackSettingsSource = null,
+) {
+  const settings = getGiftCardValiditySettings(
+    giftCard,
+    fallbackSettingsSource,
+  );
+  const baseDate = new Date(referenceDate);
+
+  return buildConfiguredAnnualDate(
+    baseDate.getFullYear(),
+    settings.validity_until_month,
+    settings.validity_until_day,
+  );
+}
+
+function getGiftCardAutoHiddenYearForVisibility(
+  giftCard,
+  referenceDate = new Date(),
+  fallbackSettingsSource = null,
+) {
+  if (!isGiftCardConfiguredWithAnnualDate(giftCard)) return undefined;
+
+  const baseDate = new Date(referenceDate);
+  const deadline = buildGiftCardVisibilityDeadline(
+    giftCard,
+    baseDate,
+    fallbackSettingsSource,
+  );
+
+  return deadline < baseDate ? baseDate.getFullYear() : undefined;
+}
+
+function computeGiftCardValidUntil(
+  settingsSource,
+  referenceDate = new Date(),
+  fallbackSettingsSource = null,
+) {
+  const settings = getGiftCardValiditySettings(
+    settingsSource,
+    fallbackSettingsSource,
+  );
   const baseDate = new Date(referenceDate);
 
   if (settings.validity_mode === "until_date") {
@@ -90,14 +165,36 @@ function computeGiftCardValidUntil(settingsSource, referenceDate = new Date()) {
 }
 
 function applyGiftCardLifecycle(restaurant, now = new Date()) {
-  if (!restaurant || !Array.isArray(restaurant.purchasesGiftCards)) {
+  if (!restaurant) {
     return false;
   }
 
   const settings = getGiftCardSettings(restaurant);
   let changed = false;
 
-  for (const purchase of restaurant.purchasesGiftCards) {
+  for (const giftCard of restaurant.giftCards || []) {
+    if (
+      giftCard?.visible !== false &&
+      isGiftCardConfiguredWithAnnualDate(giftCard)
+    ) {
+      const autoHiddenYear = getGiftCardAutoHiddenYearForVisibility(
+        giftCard,
+        now,
+        restaurant?.giftCardSettings,
+      );
+
+      if (
+        autoHiddenYear !== undefined &&
+        Number(giftCard.validity_auto_hidden_year) !== autoHiddenYear
+      ) {
+        giftCard.visible = false;
+        giftCard.validity_auto_hidden_year = autoHiddenYear;
+        changed = true;
+      }
+    }
+  }
+
+  for (const purchase of restaurant.purchasesGiftCards || []) {
     if (
       purchase?.status === "Valid" &&
       purchase?.validUntil &&
@@ -171,11 +268,43 @@ function sanitizeGiftCardSettingsInput(input = {}) {
   };
 }
 
+function sanitizeGiftCardValidityInput(input = {}, fallbackInput = {}) {
+  const current = getGiftCardValiditySettings(input, fallbackInput);
+
+  return {
+    validity_mode:
+      input?.validity_mode === "until_date"
+        ? "until_date"
+        : current.validity_mode,
+    validity_fixed_months: clampInteger(
+      input?.validity_fixed_months,
+      current.validity_fixed_months,
+      1,
+      60,
+    ),
+    validity_until_day: clampInteger(
+      input?.validity_until_day,
+      current.validity_until_day,
+      1,
+      31,
+    ),
+    validity_until_month: clampInteger(
+      input?.validity_until_month,
+      current.validity_until_month,
+      1,
+      12,
+    ),
+  };
+}
+
 module.exports = {
   DEFAULT_GIFT_CARD_SETTINGS,
+  getGiftCardAutoHiddenYearForVisibility,
+  getGiftCardValiditySettings,
   getGiftCardSettings,
   computeGiftCardValidUntil,
   applyGiftCardLifecycle,
   refreshGiftCardLifecycle,
   sanitizeGiftCardSettingsInput,
+  sanitizeGiftCardValidityInput,
 };

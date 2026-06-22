@@ -39,12 +39,14 @@ import PurchasesGiftListComponent from "./purshases-gift-list.gift-cards.compone
 import CardGiftsComponent from "./card.gift-cards.component";
 import CreateDrawerGiftCardsComponent from "../../_shared/gift-cards/create-drawer.gift-cards.component";
 
-export default function ListGiftsComponent(props) {
+export default function ListGiftsComponent() {
   const { t } = useTranslation("gifts");
   const { restaurantContext } = useContext(GlobalContext);
   const router = useRouter();
   const { locale } = router;
   const currencySymbol = locale === "fr" ? "€" : "$";
+  const giftCardValidityFallback =
+    restaurantContext?.restaurantData?.giftCardSettings;
 
   // ----- Initialisation giftCards depuis le contexte pour éviter le flash -----
   const initialCards = restaurantContext?.restaurantData?.giftCards || [];
@@ -288,6 +290,7 @@ export default function ListGiftsComponent(props) {
                     handleDeleteClick={handleDeleteClick}
                     handleVisibilityToggle={handleVisibilityToggle}
                     currencySymbol={currencySymbol}
+                    fallbackSettings={giftCardValidityFallback}
                   />
                 ))}
               </div>
@@ -328,6 +331,7 @@ export default function ListGiftsComponent(props) {
                     handleDeleteClick={handleDeleteClick}
                     handleVisibilityToggle={handleVisibilityToggle}
                     currencySymbol={currencySymbol}
+                    fallbackSettings={giftCardValidityFallback}
                   />
                 ))}
               </div>
@@ -360,6 +364,7 @@ export default function ListGiftsComponent(props) {
           currencySymbol={currencySymbol}
           isDeleting={isDeleting}
           editingGift={editingGift}
+          fallbackSettings={giftCardValidityFallback}
           t={t}
         />
       )}

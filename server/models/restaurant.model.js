@@ -468,6 +468,14 @@ const giftCardSchema = new mongoose.Schema({
   value: { type: Number, required: true },
   description: { type: String },
   visible: { type: Boolean, default: true },
+  validity_mode: {
+    type: String,
+    enum: ["fixed_duration", "until_date"],
+  },
+  validity_fixed_months: { type: Number, min: 1 },
+  validity_until_day: { type: Number, min: 1, max: 31 },
+  validity_until_month: { type: Number, min: 1, max: 12 },
+  validity_auto_hidden_year: { type: Number },
 });
 
 // Schéma pour les achats de cartes cadeaux

@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Save, Trash2, X } from "lucide-react";
+import { CalendarDays, Save, Trash2, X } from "lucide-react";
+import {
+  DEFAULT_GIFT_CARD_SETTINGS,
+  MONTH_OPTIONS,
+  buildGiftCardValidityLabel,
+  normalizeGiftCardSettings,
+} from "./settings-form.gift-cards.component";
 
 const CLOSE_MS = 180;
 
@@ -16,6 +22,7 @@ export default function CreateDrawerGiftCardsComponent({
   currencySymbol,
   isDeleting,
   editingGift,
+  fallbackSettings,
   t,
 }) {
   const [isVisible, setIsVisible] = useState(false);
@@ -23,6 +30,9 @@ export default function CreateDrawerGiftCardsComponent({
     if (typeof window === "undefined") return false;
     return window.matchMedia("(min-width: 768px)").matches;
   });
+  const [validityMode, setValidityMode] = useState(
+    normalizeGiftCardSettings(editingGift, fallbackSettings).validity_mode,
+  );
 
   const prevBodyOverflowRef = useRef("");
   const prevHtmlOverflowRef = useRef("");
@@ -50,7 +60,17 @@ export default function CreateDrawerGiftCardsComponent({
   const requiredLabel = t?.("form.errors.required") || "Champ requis";
   const subtitle = isDeleting
     ? "Cette action est définitive."
-    : "Renseignez la description et la valeur de la carte cadeau.";
+    : "Renseignez la description, la valeur et la durée de validité de cette carte cadeau.";
+  const validitySettings = useMemo(
+    () => normalizeGiftCardSettings(editingGift, fallbackSettings),
+    [editingGift, fallbackSettings],
+  );
+  const validityLabel = buildGiftCardValidityLabel({
+    validity_mode: validityMode,
+    validity_fixed_months: validitySettings.validity_fixed_months,
+    validity_until_day: validitySettings.validity_until_day,
+    validity_until_month: validitySettings.validity_until_month,
+  });
 
   const lockScroll = () => {
     if (typeof document === "undefined") return;
@@ -133,6 +153,10 @@ export default function CreateDrawerGiftCardsComponent({
       setDragY(0);
     }
   }, [open]);
+
+  useEffect(() => {
+    setValidityMode(validitySettings.validity_mode);
+  }, [validitySettings]);
 
   const panelFallback = 720;
   const dragMaxPx = Math.max(240, (panelH || panelFallback) - 12);
@@ -357,6 +381,126 @@ export default function CreateDrawerGiftCardsComponent({
                 </p>
               ) : null}
             </div>
+
+            {!isDeleting ? (
+              <div className="mt-4 rounded-2xl bg-white/60 border border-darkBlue/10 shadow-sm p-4">
+                <div className="flex items-start gap-3">
+                  <CalendarDays className="mt-0.5 size-4 shrink-0 text-darkBlue/50" />
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-darkBlue/60">
+                      Validité de cette carte
+                    </p>
+                    <p className="mt-1 text-xs text-darkBlue/50">
+                      {validityLabel}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-1 gap-3">
+                  <label
+                    className={`rounded-2xl border px-4 py-3 text-left transition ${
+                      validityMode === "fixed_duration"
+                        ? "border-darkBlue bg-blue/10"
+                        : "border-darkBlue/10 bg-white/60 hover:bg-white/80"
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <input
+                        type="radio"
+                        value="fixed_duration"
+                        defaultChecked={validityMode === "fixed_duration"}
+                        {...register("validity_mode")}
+                        onChange={() => setValidityMode("fixed_duration")}
+                        className="mt-1"
+                      />
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-darkBlue">
+                          Durée fixe
+                        </p>
+                        <p className="mt-1 text-xs text-darkBlue/55">
+                          Exemple : 6 mois à partir de la date d’achat.
+                        </p>
+                      </div>
+                    </div>
+
+                    {validityMode === "fixed_duration" ? (
+                      <div className="mt-3 flex items-center gap-3 pl-7">
+                        <input
+                          type="number"
+                          min="1"
+                          max="60"
+                          defaultValue={
+                            validitySettings.validity_fixed_months ||
+                            DEFAULT_GIFT_CARD_SETTINGS.validity_fixed_months
+                          }
+                          {...register("validity_fixed_months")}
+                          className="h-11 w-24 rounded-xl border border-darkBlue/10 bg-white/85 px-3 text-base text-darkBlue outline-none focus:border-blue/40 focus:ring-1 focus:ring-blue/20"
+                        />
+                        <span className="text-sm text-darkBlue/70">mois</span>
+                      </div>
+                    ) : null}
+                  </label>
+
+                  <label
+                    className={`rounded-2xl border px-4 py-3 text-left transition ${
+                      validityMode === "until_date"
+                        ? "border-darkBlue bg-blue/10"
+                        : "border-darkBlue/10 bg-white/60 hover:bg-white/80"
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <input
+                        type="radio"
+                        value="until_date"
+                        defaultChecked={validityMode === "until_date"}
+                        {...register("validity_mode")}
+                        onChange={() => setValidityMode("until_date")}
+                        className="mt-1"
+                      />
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-darkBlue">
+                          Jusqu’à une date donnée
+                        </p>
+                        <p className="mt-1 text-xs text-darkBlue/55">
+                          Exemple : visible jusqu’au 25 juin, puis masquée
+                          automatiquement après cette date.
+                        </p>
+                      </div>
+                    </div>
+
+                    {validityMode === "until_date" ? (
+                      <div className="mt-3 grid grid-cols-[0.8fr_1.2fr] gap-2 pl-7">
+                        <input
+                          type="number"
+                          min="1"
+                          max="31"
+                          defaultValue={
+                            validitySettings.validity_until_day ||
+                            DEFAULT_GIFT_CARD_SETTINGS.validity_until_day
+                          }
+                          {...register("validity_until_day")}
+                          className="h-11 rounded-xl border border-darkBlue/10 bg-white/85 px-3 text-base text-darkBlue outline-none focus:border-blue/40 focus:ring-1 focus:ring-blue/20"
+                        />
+                        <select
+                          defaultValue={
+                            validitySettings.validity_until_month ||
+                            DEFAULT_GIFT_CARD_SETTINGS.validity_until_month
+                          }
+                          {...register("validity_until_month")}
+                          className="h-11 rounded-xl border border-darkBlue/10 bg-white/85 px-3 text-base text-darkBlue outline-none focus:border-blue/40 focus:ring-1 focus:ring-blue/20"
+                        >
+                          {MONTH_OPTIONS.map((month) => (
+                            <option key={month.value} value={month.value}>
+                              {month.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : null}
+                  </label>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <div className="sticky bottom-0 border-t border-darkBlue/10 bg-white/70 backdrop-blur-xl px-4 py-3 pb-[calc(env(safe-area-inset-bottom)+24px)] tablet:pb-4">

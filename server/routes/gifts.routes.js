@@ -19,7 +19,9 @@ const {
 } = require("../services/notifications.service");
 const {
   computeGiftCardValidUntil,
+  getGiftCardAutoHiddenYearForVisibility,
   sanitizeGiftCardSettingsInput,
+  sanitizeGiftCardValidityInput,
 } = require("../services/gift-card-lifecycle.service");
 
 function generateGiftCode() {
@@ -43,23 +45,41 @@ router.post("/restaurants/:id/gifts", async (req, res) => {
   const { value, description } = req.body;
 
   try {
-    // Crée une nouvelle carte cadeau sans code ni date de validité
+    const restaurant = await RestaurantModel.findById(restaurantId);
+    if (!restaurant) {
+      return res.status(404).json({ error: "Restaurant not found" });
+    }
+
+    const validity = sanitizeGiftCardValidityInput(
+      req.body,
+      restaurant?.giftCardSettings,
+    );
+    const autoHiddenYear = getGiftCardAutoHiddenYearForVisibility(
+      validity,
+      new Date(),
+      restaurant?.giftCardSettings,
+    );
+
+    // Crée une nouvelle carte cadeau catalogue avec sa règle de validité.
     const newGiftCard = {
       value,
       description,
       visible: true,
+      ...validity,
     };
+    if (autoHiddenYear !== undefined) {
+      newGiftCard.validity_auto_hidden_year = autoHiddenYear;
+    }
 
-    const restaurant = await RestaurantModel.findByIdAndUpdate(
-      restaurantId,
-      { $push: { giftCards: newGiftCard } },
-      { new: true },
-    )
+    restaurant.giftCards.push(newGiftCard);
+    await restaurant.save();
+
+    const updatedRestaurant = await RestaurantModel.findById(restaurantId)
       .populate("owner_id", "firstname")
       .populate("employees")
       .populate("menus");
 
-    res.status(200).json({ restaurant });
+    res.status(200).json({ restaurant: updatedRestaurant });
   } catch (error) {
     res.status(500).json({ error: "Error adding gift card" });
   }
@@ -105,32 +125,67 @@ router.put(
 router.put("/restaurants/:id/gifts/:giftId", async (req, res) => {
   const restaurantId = req.params.id;
   const giftId = req.params.giftId;
-  const { value, description, visible } = req.body;
 
   try {
-    // Mise à jour de la carte cadeau spécifique dans le tableau `giftCards`
-    const restaurant = await RestaurantModel.findOneAndUpdate(
-      { _id: restaurantId, "giftCards._id": giftId },
-      {
-        $set: {
-          "giftCards.$.value": value,
-          "giftCards.$.description": description,
-          "giftCards.$.visible": visible,
-        },
-      },
-      { new: true },
-    )
-      .populate("owner_id", "firstname")
-      .populate("employees")
-      .populate("menus");
-
+    const restaurant = await RestaurantModel.findById(restaurantId);
     if (!restaurant) {
       return res
         .status(404)
         .json({ error: "Restaurant or gift card not found" });
     }
 
-    res.status(200).json({ restaurant });
+    const gift = restaurant.giftCards?.id(giftId);
+    if (!gift) {
+      return res
+        .status(404)
+        .json({ error: "Restaurant or gift card not found" });
+    }
+
+    if (req.body.value !== undefined) gift.value = req.body.value;
+    if (req.body.description !== undefined) {
+      gift.description = req.body.description;
+    }
+    if (req.body.visible !== undefined) gift.visible = req.body.visible;
+
+    const hasValidityPatch =
+      req.body.validity_mode !== undefined ||
+      req.body.validity_fixed_months !== undefined ||
+      req.body.validity_until_day !== undefined ||
+      req.body.validity_until_month !== undefined;
+
+    if (hasValidityPatch) {
+      const validity = sanitizeGiftCardValidityInput(
+        {
+          ...(gift.toObject?.() || gift),
+          ...req.body,
+        },
+        restaurant?.giftCardSettings,
+      );
+      Object.assign(gift, validity);
+    }
+
+    if (hasValidityPatch || req.body.visible === true) {
+      const autoHiddenYear = getGiftCardAutoHiddenYearForVisibility(
+        gift,
+        new Date(),
+        restaurant?.giftCardSettings,
+      );
+
+      if (autoHiddenYear !== undefined) {
+        gift.validity_auto_hidden_year = autoHiddenYear;
+      } else if (hasValidityPatch) {
+        gift.validity_auto_hidden_year = undefined;
+      }
+    }
+
+    await restaurant.save();
+
+    const updatedRestaurant = await RestaurantModel.findById(restaurantId)
+      .populate("owner_id", "firstname")
+      .populate("employees")
+      .populate("menus");
+
+    res.status(200).json({ restaurant: updatedRestaurant });
   } catch (error) {
     res.status(500).json({ error: "Error updating gift card" });
   }
@@ -212,10 +267,11 @@ router.post(
         { $set: { giftCardSold: { totalSold: 0, totalRefunded: 0 } } },
       );
 
-      // 3) validUntil depuis les paramètres du restaurant
+      // 3) validUntil depuis la carte achetée (fallback anciens paramètres)
       const validUntil = computeGiftCardValidUntil(
-        restaurant?.giftCardSettings,
+        gift,
         new Date(),
+        restaurant?.giftCardSettings,
       );
 
       const customer = await upsertCustomer({
