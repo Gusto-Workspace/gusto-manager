@@ -852,6 +852,73 @@ function sendTransactionalEmail(params) {
   }
 }
 
+function formatDateForEmail(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString("fr-FR", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function getLeaveTypeLabel(type) {
+  if (type === "morning") return "matin";
+  if (type === "afternoon") return "après-midi";
+  return "journée entière";
+}
+
+async function sendLeaveRequestOwnerEmail({
+  restaurantId,
+  employee,
+  leaveRequest,
+}) {
+  const restaurant = await RestaurantModel.findById(restaurantId)
+    .select("name owner_id")
+    .lean();
+  if (!restaurant?.owner_id) return;
+
+  const owner = await OwnerModel.findById(restaurant.owner_id)
+    .select("firstname lastname email")
+    .lean();
+  const ownerEmail = normalizeEmail(owner?.email);
+  if (!ownerEmail) return;
+
+  const employeeName =
+    `${employee?.firstname || ""} ${employee?.lastname || ""}`.trim() ||
+    "Un employé";
+  const start = formatDateForEmail(leaveRequest?.start);
+  const end = formatDateForEmail(leaveRequest?.end);
+  const period =
+    start && end && start !== end
+      ? `du ${start} au ${end}`
+      : `${start || "date non renseignée"} (${getLeaveTypeLabel(
+          leaveRequest?.type,
+        )})`;
+
+  return sendTransactionalEmail({
+    to: [
+      {
+        email: ownerEmail,
+        name: `${owner?.firstname || ""} ${owner?.lastname || ""}`.trim(),
+      },
+    ],
+    subject: "Nouvelle demande de congé",
+    htmlContent: `
+      <p>Bonjour ${escapeHtml(owner?.firstname || "")},</p>
+      <p>Une nouvelle demande de congé vient d’être déposée pour <strong>${escapeHtml(
+        restaurant.name || "votre restaurant",
+      )}</strong>.</p>
+      <p>
+        <strong>Employé :</strong> ${escapeHtml(employeeName)}<br/>
+        <strong>Période :</strong> ${escapeHtml(period)}
+      </p>
+      <p>Vous pouvez la consulter et la traiter depuis Gusto Manager, dans le module Personnel &gt; Planning &gt; Congés.</p>
+      <p>— L’équipe Gusto Manager</p>
+    `,
+  });
+}
+
 // Générateur de mot de passe 8 caractères
 function generatePassword() {
   const upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -938,11 +1005,24 @@ router.post(
 
         if (ownerDuplicate) {
           return res.status(409).json({
-            message: "L'adresse mail est déjà utilisée par un autre compte.",
+            code: "OWNER_EMAIL_CONFLICT",
+            message:
+              "Cette adresse mail est celle du compte restaurateur. Utilisez une autre adresse pour créer un compte employé.",
           });
         }
 
         existingEmployee = employeeDuplicate;
+      }
+
+      if (
+        existingEmployee &&
+        employeeWorksInRestaurant(existingEmployee, restaurantId)
+      ) {
+        return res.status(409).json({
+          code: "EMPLOYEE_EMAIL_EXISTS",
+          message:
+            "Un employé utilise déjà cette adresse mail dans ce restaurant.",
+        });
       }
 
       // ---------- CAS 1 : NOUVEL EMPLOYÉ ----------
@@ -2521,6 +2601,14 @@ router.post(
           status: last?.status,
         },
       });
+
+      sendLeaveRequestOwnerEmail({
+        restaurantId,
+        employee: emp,
+        leaveRequest: last,
+      }).catch((error) =>
+        console.error("Erreur mail demande de congé propriétaire :", error),
+      );
 
       return res.status(201).json(profile.leaveRequests);
     } catch (err) {

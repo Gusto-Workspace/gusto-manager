@@ -2,6 +2,7 @@ import { useContext, useEffect, useState } from "react";
 import axios from "axios";
 import {
   CalendarDays,
+  ChevronDown,
   Clock,
   Plus,
   Save,
@@ -21,7 +22,14 @@ import {
 
 const SLOT_INTERVAL_OPTIONS = [5, 10, 15, 20, 30, 45, 60];
 const SLOT_QUOTA_OPTIONS = Array.from({ length: 20 }, (_, index) => index + 1);
-const AUTO_DELETE_OPTIONS = [0, 1, 3, 7, 14, 30, 60, 90];
+const DEFAULT_AUTO_DELETE_MINUTES = 6 * 30 * 24 * 60;
+const AUTO_DELETE_OPTIONS = [
+  { value: 1440, label: "24 h" },
+  { value: 7 * 24 * 60, label: "1 semaine" },
+  { value: 30 * 24 * 60, label: "1 mois" },
+  { value: DEFAULT_AUTO_DELETE_MINUTES, label: "6 mois (défaut)" },
+  { value: 365 * 24 * 60, label: "1 an" },
+];
 const DAYS = [
   { key: "hours.days.monday", label: "Lundi" },
   { key: "hours.days.tuesday", label: "Mardi" },
@@ -170,6 +178,7 @@ export default function TakeAwayParametersComponent() {
   const [settingsForm, setSettingsForm] = useState(null);
   const [deliveryZones, setDeliveryZones] = useState([]);
   const [takeAwayHours, setTakeAwayHours] = useState([]);
+  const [openZoneIndex, setOpenZoneIndex] = useState(0);
 
   const stripeReady = Boolean(String(restaurant?.stripeSecretKey || "").trim());
   const paymentRequiresStripe = ["online_required", "customer_choice"].includes(
@@ -190,7 +199,14 @@ export default function TakeAwayParametersComponent() {
       defaultSlotIntervalMinutes: settings.defaultSlotIntervalMinutes || 15,
       defaultSlotMaxOrders: settings.defaultSlotMaxOrders || 6,
       minimumPickupOrder: settings.minimumPickupOrder || 0,
-      completedOrderAutoDeleteDays: settings.completedOrderAutoDeleteDays ?? 0,
+      completedOrderAutoDeleteEnabled:
+        settings.completedOrderAutoDeleteEnabled ??
+        Number(settings.completedOrderAutoDeleteDays || 0) > 0,
+      completedOrderAutoDeleteMinutes:
+        settings.completedOrderAutoDeleteMinutes ??
+        (settings.completedOrderAutoDeleteDays
+          ? Number(settings.completedOrderAutoDeleteDays) * 24 * 60
+          : DEFAULT_AUTO_DELETE_MINUTES),
     });
     setTakeAwayHours(buildTakeAwayHours(settings, restaurant));
     setDeliveryZones(
@@ -221,6 +237,11 @@ export default function TakeAwayParametersComponent() {
         data: {
           settings: {
             ...settingsForm,
+            completedOrderAutoDeleteDays:
+              settingsForm.completedOrderAutoDeleteEnabled === true
+                ? Number(settingsForm.completedOrderAutoDeleteMinutes || 0) /
+                  (24 * 60)
+                : 0,
             slots: buildSlotsFromHours(takeAwayHours, settingsForm),
             deliveryZones: buildDeliveryZonesPayload(deliveryZones),
           },
@@ -244,26 +265,34 @@ export default function TakeAwayParametersComponent() {
   }
 
   function addDeliveryZone() {
-    setDeliveryZones((prev) => [
-      ...prev,
-      getDeliveryZoneForm(
-        {
-          name: "",
-          zipCodes: [],
-          fee: 0,
-          minimumOrder: 0,
-          estimatedMinutes: 30,
-          active: true,
-        },
-        Date.now(),
-      ),
-    ]);
+    setDeliveryZones((prev) => {
+      const next = [
+        ...prev,
+        getDeliveryZoneForm(
+          {
+            name: "",
+            zipCodes: [],
+            fee: 0,
+            minimumOrder: 0,
+            estimatedMinutes: 30,
+            active: true,
+          },
+          Date.now(),
+        ),
+      ];
+      setOpenZoneIndex(next.length - 1);
+      return next;
+    });
   }
 
   function removeDeliveryZone(index) {
-    setDeliveryZones((prev) =>
-      prev.filter((_, zoneIndex) => zoneIndex !== index),
-    );
+    setDeliveryZones((prev) => {
+      const next = prev.filter((_, zoneIndex) => zoneIndex !== index);
+      setOpenZoneIndex((current) =>
+        Math.min(current, Math.max(0, next.length - 1)),
+      );
+      return next;
+    });
   }
 
   async function saveTakeAwayHoursImmediate(newHours) {
@@ -352,10 +381,7 @@ export default function TakeAwayParametersComponent() {
           description="Définis le rythme de production, les quotas par créneau et la règle de paiement."
         >
           <div className="grid gap-4 midTablet:grid-cols-2">
-            <FormField
-              label="Règle de paiement"
-              hint="Le paiement en ligne nécessite une clé Stripe configurée."
-            >
+            <FormField label="Règle de paiement">
               <select
                 className={fieldClass(false)}
                 value={settingsForm.paymentPolicy}
@@ -373,7 +399,7 @@ export default function TakeAwayParametersComponent() {
                 <option value="customer_choice">Choix client</option>
               </select>
             </FormField>
-            <FormField label="Durée d’un créneau" hint="En minutes.">
+            <FormField label="Durée d’un créneau">
               <select
                 className={fieldClass(false)}
                 value={settingsForm.defaultSlotIntervalMinutes}
@@ -391,10 +417,7 @@ export default function TakeAwayParametersComponent() {
                 ))}
               </select>
             </FormField>
-            <FormField
-              label="Nombre maximum de commandes par créneau"
-              hint="Permet d’éviter de surcharger la production."
-            >
+            <FormField label="Nombre maximum de commandes par créneau">
               <select
                 className={fieldClass(false)}
                 value={settingsForm.defaultSlotMaxOrders}
@@ -412,47 +435,99 @@ export default function TakeAwayParametersComponent() {
                 ))}
               </select>
             </FormField>
-            <FormField
-              label="Minimum de commande en retrait"
-              hint="0 si aucun minimum."
-            >
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                className={fieldClass(false)}
-                value={settingsForm.minimumPickupOrder}
-                onChange={(e) =>
-                  setSettingsForm((prev) => ({
-                    ...prev,
-                    minimumPickupOrder: e.target.value,
-                  }))
-                }
-              />
+            <FormField label="Minimum de commande en retrait">
+              <div className="flex h-11 items-center rounded-xl border border-darkBlue/10 bg-white px-3 focus-within:border-blue/60 focus-within:ring-2 focus-within:ring-blue/20">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="h-full min-w-0 flex-1 bg-transparent outline-none"
+                  value={settingsForm.minimumPickupOrder}
+                  onChange={(e) =>
+                    setSettingsForm((prev) => ({
+                      ...prev,
+                      minimumPickupOrder: e.target.value,
+                    }))
+                  }
+                />
+                <span className="ml-2 text-sm font-semibold text-darkBlue/55">
+                  €
+                </span>
+              </div>
             </FormField>
-            <FormField
-              label="Suppression automatique des commandes terminées"
-              hint="Indique le délai en jours. 0 désactive la suppression automatique."
-            >
+          </div>
+        </SectionCard>
+
+        <SectionCard
+          icon={<Settings2 className="size-4 shrink-0 opacity-60" />}
+          title="Automatisations"
+          description="Nettoie automatiquement les commandes terminées après le délai choisi."
+        >
+          <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-semibold text-darkBlue">
+                  Supprimer automatiquement les commandes terminées
+                </p>
+                <p className="text-xs text-darkBlue/50">
+                  Une commande au statut “Terminée” sera supprimée après le
+                  délai configuré.
+                </p>
+              </div>
+
+              <label className="inline-flex items-center gap-2">
+                <span
+                  className={`relative inline-flex h-8 w-14 items-center rounded-full border transition ${
+                    settingsForm.completedOrderAutoDeleteEnabled
+                      ? "border-blue/40 bg-blue"
+                      : "border-darkBlue/10 bg-darkBlue/10"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    className="sr-only"
+                    checked={settingsForm.completedOrderAutoDeleteEnabled}
+                    onChange={(e) =>
+                      setSettingsForm((prev) => ({
+                        ...prev,
+                        completedOrderAutoDeleteEnabled: e.target.checked,
+                        completedOrderAutoDeleteMinutes: e.target.checked
+                          ? prev.completedOrderAutoDeleteMinutes ||
+                            DEFAULT_AUTO_DELETE_MINUTES
+                          : DEFAULT_AUTO_DELETE_MINUTES,
+                      }))
+                    }
+                  />
+                  <span
+                    className={`absolute top-1/2 h-6 w-6 -translate-y-1/2 rounded-full bg-white shadow-sm transition ${
+                      settingsForm.completedOrderAutoDeleteEnabled
+                        ? "translate-x-7"
+                        : "translate-x-1"
+                    }`}
+                  />
+                </span>
+              </label>
+            </div>
+
+            <div className="mt-3">
               <select
                 className={fieldClass(false)}
-                value={settingsForm.completedOrderAutoDeleteDays}
+                disabled={!settingsForm.completedOrderAutoDeleteEnabled}
+                value={settingsForm.completedOrderAutoDeleteMinutes}
                 onChange={(e) =>
                   setSettingsForm((prev) => ({
                     ...prev,
-                    completedOrderAutoDeleteDays: e.target.value,
+                    completedOrderAutoDeleteMinutes: e.target.value,
                   }))
                 }
               >
-                {AUTO_DELETE_OPTIONS.map((days) => (
-                  <option key={days} value={days}>
-                    {days === 0
-                      ? "Ne pas supprimer automatiquement"
-                      : `${days} jour${days > 1 ? "s" : ""}`}
+                {AUTO_DELETE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
                   </option>
                 ))}
               </select>
-            </FormField>
+            </div>
           </div>
         </SectionCard>
 
@@ -529,96 +604,156 @@ export default function TakeAwayParametersComponent() {
             deliveryZones.map((zone, index) => (
               <div
                 key={zone.localId}
-                className="rounded-xl border border-darkBlue/10 bg-white/70 p-4"
+                className="rounded-2xl border border-darkBlue/10 bg-white/80 px-2 py-3 transition-shadow tablet:px-5 tablet:py-4"
               >
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <label className="inline-flex items-center gap-2 text-sm font-semibold text-darkBlue">
-                    <input
-                      type="checkbox"
-                      checked={zone.active}
-                      onChange={(e) =>
-                        updateDeliveryZone(index, { active: e.target.checked })
-                      }
-                    />
-                    Zone active
-                  </label>
+                <div className="flex w-full items-center justify-between gap-3">
                   <button
                     type="button"
-                    onClick={() => removeDeliveryZone(index)}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-red/20 bg-white text-red hover:bg-red/10"
-                    aria-label="Supprimer la zone"
-                    title="Supprimer la zone"
+                    onClick={() => setOpenZoneIndex(index)}
+                    className="flex min-w-0 flex-1 items-center gap-4 text-left"
                   >
-                    <Trash2 className="size-4" />
+                    <span className="inline-flex h-7 items-center justify-center rounded-full bg-darkBlue/5 px-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-darkBlue">
+                      Zone {index + 1}
+                    </span>
+                    <p className="truncate text-sm font-semibold text-darkBlue">
+                      {zone.name || "Nouvelle zone"}
+                    </p>
                   </button>
+
+                  <div className="flex shrink-0 items-center gap-3">
+                    <label className="inline-flex items-center gap-2 text-xs font-semibold text-darkBlue/70">
+                      <input
+                        type="checkbox"
+                        checked={zone.active}
+                        onChange={(e) =>
+                          updateDeliveryZone(index, {
+                            active: e.target.checked,
+                          })
+                        }
+                      />
+                      Active
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => removeDeliveryZone(index)}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-red/20 bg-white text-red hover:bg-red/10"
+                      aria-label="Supprimer la zone"
+                      title="Supprimer la zone"
+                    >
+                      <Trash2 className="size-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOpenZoneIndex(index)}
+                      className="inline-flex size-8 items-center justify-center rounded-xl text-darkBlue/50 transition hover:bg-darkBlue/5"
+                      aria-label={
+                        openZoneIndex === index
+                          ? "Replier la zone"
+                          : "Déplier la zone"
+                      }
+                    >
+                      <ChevronDown
+                        className={`size-4 transition-transform ${
+                          openZoneIndex === index ? "rotate-180" : ""
+                        }`}
+                      />
+                    </button>
+                  </div>
                 </div>
 
-                <div className="grid gap-3 midTablet:grid-cols-2">
-                  <FormField
-                    label="Nom de la zone"
-                    hint="Exemple : Centre-ville"
-                  >
-                    <input
-                      className={fieldClass(false)}
-                      value={zone.name}
-                      onChange={(e) =>
-                        updateDeliveryZone(index, { name: e.target.value })
-                      }
-                    />
-                  </FormField>
-                  <FormField
-                    label="Codes postaux couverts"
-                    hint="Exemple : 19100, 19270"
-                  >
-                    <input
-                      className={fieldClass(false)}
-                      value={zone.zipCodesText}
-                      onChange={(e) =>
-                        updateDeliveryZone(index, {
-                          zipCodesText: e.target.value,
-                        })
-                      }
-                    />
-                  </FormField>
-                  <FormField label="Frais de livraison">
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      className={fieldClass(false)}
-                      value={zone.fee}
-                      onChange={(e) =>
-                        updateDeliveryZone(index, { fee: e.target.value })
-                      }
-                    />
-                  </FormField>
-                  <FormField label="Minimum de commande">
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      className={fieldClass(false)}
-                      value={zone.minimumOrder}
-                      onChange={(e) =>
-                        updateDeliveryZone(index, {
-                          minimumOrder: e.target.value,
-                        })
-                      }
-                    />
-                  </FormField>
-                  <FormField label="Délai estimé" hint="En minutes.">
-                    <input
-                      type="number"
-                      min="0"
-                      className={fieldClass(false)}
-                      value={zone.estimatedMinutes}
-                      onChange={(e) =>
-                        updateDeliveryZone(index, {
-                          estimatedMinutes: e.target.value,
-                        })
-                      }
-                    />
-                  </FormField>
+                <div
+                  className={`grid transition-[grid-template-rows,opacity,margin] duration-200 ${
+                    openZoneIndex === index
+                      ? "mt-4 grid-rows-[1fr] opacity-100"
+                      : "grid-rows-[0fr] opacity-0 pointer-events-none"
+                  }`}
+                >
+                  <div className="overflow-hidden">
+                    <div className="grid gap-3 midTablet:grid-cols-2">
+                      <FormField
+                        label="Nom de la zone"
+                        hint="Exemple : Centre-ville"
+                      >
+                        <input
+                          className={fieldClass(false)}
+                          value={zone.name}
+                          onChange={(e) =>
+                            updateDeliveryZone(index, { name: e.target.value })
+                          }
+                        />
+                      </FormField>
+                      <FormField
+                        label="Codes postaux couverts"
+                        hint="Exemple : 19100, 19270"
+                      >
+                        <input
+                          className={fieldClass(false)}
+                          value={zone.zipCodesText}
+                          onChange={(e) =>
+                            updateDeliveryZone(index, {
+                              zipCodesText: e.target.value,
+                            })
+                          }
+                        />
+                      </FormField>
+                      <FormField label="Frais de livraison">
+                        <div className="flex h-11 items-center rounded-xl border border-darkBlue/10 bg-white px-3 focus-within:border-blue/60 focus-within:ring-2 focus-within:ring-blue/20">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            className="h-full min-w-0 flex-1 bg-transparent outline-none"
+                            value={zone.fee}
+                            onChange={(e) =>
+                              updateDeliveryZone(index, {
+                                fee: e.target.value,
+                              })
+                            }
+                          />
+                          <span className="ml-2 text-sm font-semibold text-darkBlue/55">
+                            €
+                          </span>
+                        </div>
+                      </FormField>
+                      <FormField label="Minimum de commande">
+                        <div className="flex h-11 items-center rounded-xl border border-darkBlue/10 bg-white px-3 focus-within:border-blue/60 focus-within:ring-2 focus-within:ring-blue/20">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            className="h-full min-w-0 flex-1 bg-transparent outline-none"
+                            value={zone.minimumOrder}
+                            onChange={(e) =>
+                              updateDeliveryZone(index, {
+                                minimumOrder: e.target.value,
+                              })
+                            }
+                          />
+                          <span className="ml-2 text-sm font-semibold text-darkBlue/55">
+                            €
+                          </span>
+                        </div>
+                      </FormField>
+                      <FormField label="Délai estimé">
+                        <div className="flex h-11 items-center rounded-xl border border-darkBlue/10 bg-white px-3 focus-within:border-blue/60 focus-within:ring-2 focus-within:ring-blue/20">
+                          <input
+                            type="number"
+                            min="0"
+                            className="h-full min-w-0 flex-1 bg-transparent outline-none"
+                            value={zone.estimatedMinutes}
+                            onChange={(e) =>
+                              updateDeliveryZone(index, {
+                                estimatedMinutes: e.target.value,
+                              })
+                            }
+                          />
+                          <span className="ml-2 text-sm font-semibold text-darkBlue/55">
+                            min
+                          </span>
+                        </div>
+                      </FormField>
+                    </div>
+                  </div>
                 </div>
               </div>
             ))

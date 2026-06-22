@@ -1,5 +1,7 @@
 import { Settings2, Save, Check, Loader2 } from "lucide-react";
 
+const DEFAULT_DELETION_DURATION_MINUTES = 6 * 30 * 24 * 60;
+
 export default function AutomationsParametersComponent({
   register,
   setValue,
@@ -169,7 +171,10 @@ export default function AutomationsParametersComponent({
                     {...register("deletion_duration", {
                       onChange: (e) => {
                         if (!e.target.checked) {
-                          setValue("deletion_duration_minutes", 1440);
+                          setValue(
+                            "deletion_duration_minutes",
+                            DEFAULT_DELETION_DURATION_MINUTES,
+                          );
                         }
                       },
                     })}
@@ -198,10 +203,12 @@ export default function AutomationsParametersComponent({
                 <option value="120">2 h</option>
                 <option value="360">6 h</option>
                 <option value="720">12 h</option>
-                <option value="1440">24 h (défaut)</option>
+                <option value="1440">24 h</option>
                 <option value={String(7 * 24 * 60)}>1 semaine</option>
                 <option value={String(30 * 24 * 60)}>1 mois</option>
-                <option value={String(6 * 30 * 24 * 60)}>6 mois</option>
+                <option value={String(DEFAULT_DELETION_DURATION_MINUTES)}>
+                  6 mois (défaut)
+                </option>
                 <option value={String(365 * 24 * 60)}>1 an</option>
               </select>
             </div>

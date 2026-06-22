@@ -75,6 +75,8 @@ function getSettings(restaurant) {
   return restaurant?.takeAwaySettings || {};
 }
 
+const DEFAULT_COMPLETED_ORDER_AUTO_DELETE_MINUTES = 6 * 30 * 24 * 60;
+
 function sanitizeTakeAwaySettingsInput(input = {}) {
   const paymentPolicy = [
     "online_required",
@@ -97,6 +99,16 @@ function sanitizeTakeAwaySettingsInput(input = {}) {
     ),
     defaultSlotMaxOrders: Math.max(1, Number(input.defaultSlotMaxOrders || 6)),
     minimumPickupOrder: normalizeMoney(input.minimumPickupOrder, 0),
+    completedOrderAutoDeleteEnabled: Boolean(
+      input.completedOrderAutoDeleteEnabled,
+    ),
+    completedOrderAutoDeleteMinutes: Math.max(
+      1,
+      Number(
+        input.completedOrderAutoDeleteMinutes ||
+          DEFAULT_COMPLETED_ORDER_AUTO_DELETE_MINUTES,
+      ),
+    ),
     completedOrderAutoDeleteDays: Math.max(
       0,
       Number(input.completedOrderAutoDeleteDays || 0),
@@ -744,12 +756,20 @@ function broadcastOrder(restaurantId, order, type = "takeaway_order_updated") {
 }
 
 async function cleanupCompletedTakeAwayOrders(restaurant) {
-  const days = Number(
-    getSettings(restaurant)?.completedOrderAutoDeleteDays || 0,
-  );
-  if (!Number.isFinite(days) || days <= 0) return;
+  const settings = getSettings(restaurant);
+  const enabled =
+    settings?.completedOrderAutoDeleteEnabled === true ||
+    Number(settings?.completedOrderAutoDeleteDays || 0) > 0;
+  if (!enabled) return;
 
-  const before = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const minutes = Number(
+    settings?.completedOrderAutoDeleteMinutes ||
+      Number(settings?.completedOrderAutoDeleteDays || 0) * 24 * 60 ||
+      DEFAULT_COMPLETED_ORDER_AUTO_DELETE_MINUTES,
+  );
+  if (!Number.isFinite(minutes) || minutes <= 0) return;
+
+  const before = new Date(Date.now() - minutes * 60 * 1000);
   await TakeAwayOrderModel.deleteMany({
     restaurant_id: restaurant._id,
     status: "completed",

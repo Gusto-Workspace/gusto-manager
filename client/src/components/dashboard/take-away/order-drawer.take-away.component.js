@@ -220,25 +220,28 @@ export default function TakeAwayOrderDrawerComponent({
               </div>
             </div>
           ) : null}
-        </div>
 
-        <div className="border-t border-darkBlue/10 bg-white p-4">
-          <div className="flex flex-wrap gap-2">
-            {(NEXT_STATUS[order.status] || []).map((status, index) => (
-              <button
-                key={status}
-                type="button"
-                disabled={loading}
-                onClick={() => runAction(status)}
-                className={`inline-flex h-10 items-center rounded-xl px-3 text-xs font-semibold transition disabled:opacity-50 ${
-                  index === 0
-                    ? "bg-blue text-white hover:bg-blue/90"
-                    : "border border-darkBlue/10 bg-white text-darkBlue hover:bg-darkBlue/5"
-                }`}
-              >
-                {STATUS_LABELS[status]}
-              </button>
-            ))}
+          <div className="mt-4 rounded-2xl border border-darkBlue/10 bg-white p-4 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-darkBlue/45">
+              Actions
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {(NEXT_STATUS[order.status] || []).map((status, index) => (
+                <button
+                  key={status}
+                  type="button"
+                  disabled={loading}
+                  onClick={() => runAction(status)}
+                  className={`inline-flex h-10 items-center rounded-xl px-3 text-xs font-semibold transition disabled:opacity-50 ${
+                    index === 0
+                      ? "bg-blue text-white hover:bg-blue/90"
+                      : "border border-darkBlue/10 bg-white text-darkBlue hover:bg-darkBlue/5"
+                  }`}
+                >
+                  {STATUS_LABELS[status]}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </aside>
