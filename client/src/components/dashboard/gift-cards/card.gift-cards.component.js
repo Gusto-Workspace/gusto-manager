@@ -12,6 +12,7 @@ import {
   DeleteSvg,
   DragMultiSvg,
 } from "../../_shared/_svgs/_index";
+import { buildGiftCardValidityLabel } from "../../_shared/gift-cards/settings-form.gift-cards.component";
 
 export default function CardGiftsComponent(props) {
   const { t } = useTranslation("gifts");
@@ -27,6 +28,10 @@ export default function CardGiftsComponent(props) {
 
   const isVisible = props.giftCard.visible;
   const amountLabel = `${props.giftCard.value} ${props.currencySymbol}`;
+  const validityLabel = buildGiftCardValidityLabel(
+    props.giftCard,
+    props.fallbackSettings,
+  );
 
   const shortDescription = (() => {
     const desc = props.giftCard.description || "";
@@ -99,6 +104,10 @@ export default function CardGiftsComponent(props) {
             {shortDescription}
           </p>
         )}
+
+        <p className="mt-2 rounded-full bg-darkBlue/5 px-3 py-1 text-[11px] font-semibold text-darkBlue/55">
+          {validityLabel}
+        </p>
 
         {/* Badge visibilité */}
         <div className="mt-3 inline-flex items-center gap-1 rounded-full border border-darkBlue/10 bg-white px-3 py-0.5 text-[11px]">

@@ -5,6 +5,7 @@ require("./services/cron-job/reservation-reminders.service");
 require("./services/cron-job/reservation-bank-hold-authorization.service");
 require("./services/cron-job/reservation-bank-hold-expiration.service");
 require("./services/cron-job/reservation-lifecycle.service");
+require("./services/cron-job/gift-card-lifecycle.service");
 const express = require("express");
 const http = require("http");
 const cors = require("cors");
