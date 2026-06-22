@@ -22,13 +22,24 @@ export function FormField({ label, hint, error, children }) {
   );
 }
 
-export function ToggleField({ checked, onChange, title, description }) {
+export function ToggleField({
+  checked,
+  onChange,
+  title,
+  description,
+  disabled = false,
+}) {
   return (
-    <label className="flex min-h-[76px] cursor-pointer items-start gap-3 rounded-xl border border-darkBlue/10 bg-white/70 p-3">
+    <label
+      className={`flex min-h-[76px] items-start gap-3 rounded-xl border border-darkBlue/10 bg-white/70 p-3 transition ${
+        disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+      }`}
+    >
       <input
         type="checkbox"
         className="mt-1"
         checked={checked}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
       />
       <span className="flex flex-col gap-1">

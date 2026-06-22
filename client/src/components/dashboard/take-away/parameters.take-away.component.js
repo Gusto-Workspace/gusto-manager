@@ -189,11 +189,12 @@ export default function TakeAwayParametersComponent() {
 
   useEffect(() => {
     const settings = restaurant?.takeAwaySettings || {};
+    const enabled = settings.enabled === true;
     setSettingsForm({
-      enabled: settings.enabled === true,
-      pickupEnabled: settings.pickupEnabled !== false,
-      deliveryEnabled: settings.deliveryEnabled === true,
-      auto_accept: settings.auto_accept !== false,
+      enabled,
+      pickupEnabled: enabled ? settings.pickupEnabled !== false : false,
+      deliveryEnabled: enabled ? settings.deliveryEnabled === true : false,
+      auto_accept: enabled ? settings.auto_accept !== false : false,
       paymentPolicy: settings.paymentPolicy || "on_site",
       same_hours_as_restaurant: settings.same_hours_as_restaurant !== false,
       defaultSlotIntervalMinutes: settings.defaultSlotIntervalMinutes || 15,
@@ -237,6 +238,13 @@ export default function TakeAwayParametersComponent() {
         data: {
           settings: {
             ...settingsForm,
+            pickupEnabled: settingsForm.enabled
+              ? settingsForm.pickupEnabled
+              : false,
+            deliveryEnabled: settingsForm.enabled
+              ? settingsForm.deliveryEnabled
+              : false,
+            auto_accept: settingsForm.enabled ? settingsForm.auto_accept : false,
             completedOrderAutoDeleteDays:
               settingsForm.completedOrderAutoDeleteEnabled === true
                 ? Number(settingsForm.completedOrderAutoDeleteMinutes || 0) /
@@ -340,13 +348,20 @@ export default function TakeAwayParametersComponent() {
             <ToggleField
               checked={settingsForm.enabled}
               onChange={(checked) =>
-                setSettingsForm((prev) => ({ ...prev, enabled: checked }))
+                setSettingsForm((prev) => ({
+                  ...prev,
+                  enabled: checked,
+                  pickupEnabled: checked ? prev.pickupEnabled : false,
+                  deliveryEnabled: checked ? prev.deliveryEnabled : false,
+                  auto_accept: checked ? prev.auto_accept : false,
+                }))
               }
               title="Activer les commandes en ligne"
               description="Rend le parcours public disponible pour les clients."
             />
             <ToggleField
-              checked={settingsForm.pickupEnabled}
+              checked={settingsForm.enabled && settingsForm.pickupEnabled}
+              disabled={!settingsForm.enabled}
               onChange={(checked) =>
                 setSettingsForm((prev) => ({ ...prev, pickupEnabled: checked }))
               }
@@ -354,7 +369,8 @@ export default function TakeAwayParametersComponent() {
               description="Les clients peuvent venir récupérer leur commande au restaurant."
             />
             <ToggleField
-              checked={settingsForm.deliveryEnabled}
+              checked={settingsForm.enabled && settingsForm.deliveryEnabled}
+              disabled={!settingsForm.enabled}
               onChange={(checked) =>
                 setSettingsForm((prev) => ({
                   ...prev,
@@ -365,7 +381,8 @@ export default function TakeAwayParametersComponent() {
               description="Les clients peuvent choisir une adresse dans une zone couverte."
             />
             <ToggleField
-              checked={settingsForm.auto_accept}
+              checked={settingsForm.enabled && settingsForm.auto_accept}
+              disabled={!settingsForm.enabled}
               onChange={(checked) =>
                 setSettingsForm((prev) => ({ ...prev, auto_accept: checked }))
               }
@@ -601,7 +618,8 @@ export default function TakeAwayParametersComponent() {
           {!deliveryZones.length ? (
             <EmptyState text="Aucune zone configurée. Ajoute une première zone de livraison." />
           ) : (
-            deliveryZones.map((zone, index) => (
+            <div className="flex flex-col gap-3">
+              {deliveryZones.map((zone, index) => (
               <div
                 key={zone.localId}
                 className="rounded-2xl border border-darkBlue/10 bg-white/80 px-2 py-3 transition-shadow tablet:px-5 tablet:py-4"
@@ -756,13 +774,14 @@ export default function TakeAwayParametersComponent() {
                   </div>
                 </div>
               </div>
-            ))
+              ))}
+            </div>
           )}
 
           <button
             type="button"
             onClick={addDeliveryZone}
-            className="inline-flex h-10 w-fit items-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 text-sm font-semibold text-darkBlue hover:bg-darkBlue/5"
+            className="mt-3 inline-flex h-10 w-fit items-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 text-sm font-semibold text-darkBlue hover:bg-darkBlue/5"
           >
             <Plus className="size-4" />
             Ajouter une zone

@@ -48,8 +48,22 @@ export default function TakeAwayOrderDrawerComponent({
     onAction?.(order, status);
   }
 
+  const availableActions = NEXT_STATUS[order.status] || [];
+
+  function getActionButtonClass(status, index) {
+    const base =
+      "w-full inline-flex items-center justify-center rounded-xl px-4 py-3 text-sm font-semibold transition disabled:opacity-50";
+    if (index === 0) {
+      return `${base} bg-blue text-white shadow-sm hover:bg-blue/90 active:scale-[0.98]`;
+    }
+    if (status === "canceled" || status === "rejected") {
+      return `${base} border border-red/20 bg-red/10 text-red hover:bg-red/15`;
+    }
+    return `${base} border border-darkBlue/10 bg-white text-darkBlue hover:bg-darkBlue/5`;
+  }
+
   return (
-    <div className="fixed inset-0 z-[120]">
+    <div className="fixed inset-0 z-[260]" role="dialog" aria-modal="true">
       <button
         type="button"
         className={`absolute inset-0 bg-darkBlue/30 transition-opacity ${
@@ -101,8 +115,8 @@ export default function TakeAwayOrderDrawerComponent({
             </div>
           ) : null}
 
-          <div className="rounded-2xl border border-darkBlue/10 bg-white p-4 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-darkBlue/45">
+          <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-4 shadow-sm">
+            <p className="text-xs text-darkBlue/50">
               Informations client
             </p>
             <div className="mt-3 grid gap-2 text-sm text-darkBlue/70">
@@ -129,8 +143,8 @@ export default function TakeAwayOrderDrawerComponent({
             </div>
           </div>
 
-          <div className="mt-4 rounded-2xl border border-darkBlue/10 bg-white p-4 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-darkBlue/45">
+          <div className="mt-4 rounded-2xl border border-darkBlue/10 bg-white/60 p-4 shadow-sm">
+            <p className="text-xs text-darkBlue/50">
               Organisation
             </p>
             <div className="mt-3 grid gap-2 text-sm text-darkBlue/70">
@@ -159,8 +173,8 @@ export default function TakeAwayOrderDrawerComponent({
             </div>
           </div>
 
-          <div className="mt-4 rounded-2xl border border-darkBlue/10 bg-white p-4 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-darkBlue/45">
+          <div className="mt-4 rounded-2xl border border-darkBlue/10 bg-white/60 p-4 shadow-sm">
+            <p className="text-xs text-darkBlue/50">
               Commande
             </p>
             <div className="mt-3 flex flex-col gap-3">
@@ -202,8 +216,8 @@ export default function TakeAwayOrderDrawerComponent({
           </div>
 
           {order.fulfillmentMode === "delivery" ? (
-            <div className="mt-4 rounded-2xl border border-darkBlue/10 bg-white p-4 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-wide text-darkBlue/45">
+            <div className="mt-4 rounded-2xl border border-darkBlue/10 bg-white/60 p-4 shadow-sm">
+              <p className="text-xs text-darkBlue/50">
                 Livraison
               </p>
               <div className="mt-2 text-sm text-darkBlue/70">
@@ -221,28 +235,24 @@ export default function TakeAwayOrderDrawerComponent({
             </div>
           ) : null}
 
-          <div className="mt-4 rounded-2xl border border-darkBlue/10 bg-white p-4 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-darkBlue/45">
-              Actions
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {(NEXT_STATUS[order.status] || []).map((status, index) => (
-                <button
-                  key={status}
-                  type="button"
-                  disabled={loading}
-                  onClick={() => runAction(status)}
-                  className={`inline-flex h-10 items-center rounded-xl px-3 text-xs font-semibold transition disabled:opacity-50 ${
-                    index === 0
-                      ? "bg-blue text-white hover:bg-blue/90"
-                      : "border border-darkBlue/10 bg-white text-darkBlue hover:bg-darkBlue/5"
-                  }`}
-                >
-                  {STATUS_LABELS[status]}
-                </button>
-              ))}
+          {availableActions.length ? (
+            <div className="mt-4 rounded-2xl border border-darkBlue/10 bg-white/60 p-4 shadow-sm">
+              <p className="mb-3 text-xs text-darkBlue/50">Actions</p>
+              <div className="flex gap-2">
+                {availableActions.map((status, index) => (
+                  <button
+                    key={status}
+                    type="button"
+                    disabled={loading}
+                    onClick={() => runAction(status)}
+                    className={getActionButtonClass(status, index)}
+                  >
+                    {STATUS_LABELS[status]}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          ) : null}
         </div>
       </aside>
     </div>

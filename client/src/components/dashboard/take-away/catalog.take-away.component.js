@@ -249,8 +249,13 @@ export default function TakeAwayCatalogComponent() {
                     key={item._id}
                     className="grid items-center gap-3 rounded-2xl border border-darkBlue/10 bg-white/70 p-4 midTablet:grid-cols-[1fr_120px_220px]"
                   >
-                    <div>
+                    <div className="min-w-0">
                       <p className="font-semibold text-darkBlue">{item.name}</p>
+                      {item.description ? (
+                        <p className="mt-1 truncate text-xs text-darkBlue/45">
+                          {item.description}
+                        </p>
+                      ) : null}
                     </div>
                     <div className="flex h-11 items-center rounded-xl border border-darkBlue/10 bg-white px-3 focus-within:border-blue/60 focus-within:ring-2 focus-within:ring-blue/20">
                       <input
