@@ -12,6 +12,20 @@ import {
   toMoney,
 } from "./take-away.utils";
 
+function getOptionsPriceLabel(options = []) {
+  const prices = options
+    .map((option) => Number(option?.price || 0))
+    .filter((price) => price > 0);
+  if (!prices.length) return "";
+  return `À partir de ${toMoney(Math.min(...prices))}`;
+}
+
+function getItemPriceLabel(item) {
+  const optionsPriceLabel = getOptionsPriceLabel(item?.options);
+  if (optionsPriceLabel) return optionsPriceLabel;
+  return toMoney(item?.price);
+}
+
 export default function TakeAwayCatalogComponent() {
   const { restaurantContext } = useContext(GlobalContext);
   const restaurant = restaurantContext.restaurantData;
@@ -80,6 +94,24 @@ export default function TakeAwayCatalogComponent() {
       return a.localeCompare(b, "fr");
     });
   }, [catalog, importableItems]);
+
+  const importableGroups = useMemo(() => {
+    const groups = new Map();
+    importableItems.slice(0, 120).forEach((item) => {
+      const name =
+        item.sourceType === "menu"
+          ? "Menus"
+          : String(item.categoryName || "À emporter").trim();
+      const key = normalizeForMatch(name);
+      if (!groups.has(key)) groups.set(key, { name, items: [] });
+      groups.get(key).items.push(item);
+    });
+    return Array.from(groups.values()).sort((a, b) => {
+      if (a.name === "Menus") return -1;
+      if (b.name === "Menus") return 1;
+      return a.name.localeCompare(b.name, "fr");
+    });
+  }, [importableItems]);
 
   async function request(config) {
     return axios({
@@ -229,17 +261,42 @@ export default function TakeAwayCatalogComponent() {
                 {group.items.map((item) => (
                   <article
                     key={item._id}
-                    className="grid gap-3 rounded-2xl border border-darkBlue/10 bg-white/70 p-4 midTablet:grid-cols-[1fr_120px_220px]"
+                    className="grid items-center gap-3 rounded-2xl border border-darkBlue/10 bg-white/70 p-4 midTablet:grid-cols-[1fr_120px_220px]"
                   >
-                    <div>
+                    <div className="min-w-0">
                       <p className="font-semibold text-darkBlue">{item.name}</p>
+                      {item.description ? (
+                        <p className="mt-1 truncate text-xs text-darkBlue/45">
+                          {item.description}
+                        </p>
+                      ) : null}
+                      {item.options?.length ? (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {item.options.slice(0, 4).map((option) => (
+                            <span
+                              key={`${item._id}-${option._id || option.name}`}
+                              className="inline-flex items-center gap-1 rounded-full bg-blue/10 px-2 py-1 text-[11px] font-semibold text-blue"
+                            >
+                              {option.name}
+                              <span className="text-blue/70">
+                                {toMoney(option.price)}
+                              </span>
+                            </span>
+                          ))}
+                          {item.options.length > 4 ? (
+                            <span className="inline-flex items-center rounded-full bg-darkBlue/5 px-2 py-1 text-[11px] font-semibold text-darkBlue/55">
+                              +{item.options.length - 4}
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
-                    <FormField label="Prix">
+                    <div className="flex h-11 items-center rounded-xl border border-darkBlue/10 bg-white px-3 focus-within:border-blue/60 focus-within:ring-2 focus-within:ring-blue/20">
                       <input
                         type="number"
                         min="0"
                         step="0.01"
-                        className={fieldClass(false)}
+                        className="h-full min-w-0 flex-1 bg-transparent text-center text-base outline-none"
                         defaultValue={item.price}
                         onBlur={(e) =>
                           patchCatalogItem(item, {
@@ -247,8 +304,11 @@ export default function TakeAwayCatalogComponent() {
                           })
                         }
                       />
-                    </FormField>
-                    <div className="flex items-end gap-2">
+                      <span className="ml-2 text-sm font-semibold text-darkBlue/55">
+                        €
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
                       <button
                         type="button"
                         disabled={loading}
@@ -291,25 +351,53 @@ export default function TakeAwayCatalogComponent() {
               Importer depuis la carte
             </h2>
             <div className="max-h-[360px] overflow-auto pr-1">
-              {importableItems.slice(0, 80).map((item) => (
-                <button
-                  key={`${item.sourceType}-${item.sourceItemId}-${item.sourceSubCategoryId || ""}`}
-                  type="button"
-                  disabled={loading}
-                  onClick={() => importItem(item)}
-                  className="mb-2 flex w-full items-center justify-between gap-3 rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-left text-sm hover:bg-darkBlue/5"
-                >
-                  <span>
-                    <span className="block font-semibold text-darkBlue">
-                      {item.name}
-                    </span>
-                    <span className="text-xs text-darkBlue/50">
-                      {item.sourceType === "menu" ? "Menus" : item.categoryName}{" "}
-                      • {toMoney(item.price)}
-                    </span>
-                  </span>
-                  <Plus className="size-4 shrink-0" />
-                </button>
+              {importableGroups.map((group) => (
+                <div key={group.name} className="mb-4 last:mb-0">
+                  <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-darkBlue/45">
+                    {group.name}
+                  </p>
+                  {group.items.map((item) => (
+                    <button
+                      key={`${item.sourceType}-${item.sourceItemId}-${item.sourceSubCategoryId || ""}`}
+                      type="button"
+                      disabled={loading}
+                      onClick={() => importItem(item)}
+                      className="mb-2 flex w-full items-center justify-between gap-3 rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-left text-sm hover:bg-darkBlue/5"
+                    >
+                      <span className="min-w-0">
+                        <span className="block font-semibold text-darkBlue">
+                          {item.name}
+                        </span>
+                        {item.description ? (
+                          <span className="mt-0.5 block truncate text-xs text-darkBlue/45">
+                            {item.description}
+                          </span>
+                        ) : null}
+                        <span className="mt-1 block text-xs text-darkBlue/50">
+                          {getItemPriceLabel(item)}
+                        </span>
+                        {item.options?.length ? (
+                          <span className="mt-2 flex flex-wrap gap-1">
+                            {item.options.slice(0, 3).map((option) => (
+                              <span
+                                key={`${item.sourceItemId}-${option.name}`}
+                                className="rounded-full bg-blue/10 px-2 py-0.5 text-[11px] font-semibold text-blue"
+                              >
+                                {option.name} · {toMoney(option.price)}
+                              </span>
+                            ))}
+                            {item.options.length > 3 ? (
+                              <span className="rounded-full bg-darkBlue/5 px-2 py-0.5 text-[11px] font-semibold text-darkBlue/55">
+                                +{item.options.length - 3}
+                              </span>
+                            ) : null}
+                          </span>
+                        ) : null}
+                      </span>
+                      <Plus className="size-4 shrink-0" />
+                    </button>
+                  ))}
+                </div>
               ))}
             </div>
           </div>

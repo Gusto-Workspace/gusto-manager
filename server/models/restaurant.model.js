@@ -190,7 +190,7 @@ const reservationParametersSchema = new mongoose.Schema({
   // Automatisations
   auto_finish_reservations: { type: Boolean, default: false },
   deletion_duration: { type: Boolean, default: false },
-  deletion_duration_minutes: { type: Number, min: 1, default: 1440 },
+  deletion_duration_minutes: { type: Number, min: 1, default: 259200 },
 
   // Créneaux
   auto_accept: { type: Boolean, default: true },
@@ -305,6 +305,8 @@ const takeAwaySettingsSchema = new mongoose.Schema(
     defaultSlotIntervalMinutes: { type: Number, min: 5, default: 15 },
     defaultSlotMaxOrders: { type: Number, min: 1, default: 6 },
     minimumPickupOrder: { type: Number, min: 0, default: 0 },
+    completedOrderAutoDeleteEnabled: { type: Boolean, default: false },
+    completedOrderAutoDeleteMinutes: { type: Number, min: 1, default: 259200 },
     completedOrderAutoDeleteDays: { type: Number, min: 0, default: 0 },
     email_templates: {
       type: takeAwayEmailTemplatesSchema,

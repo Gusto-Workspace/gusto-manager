@@ -59,6 +59,7 @@ export default function DetailsDrawerCustomersComponent({
   customer,
   t,
   restaurantId,
+  hasTakeAwayModule = true,
   onUpdated,
   onAction,
 }) {
@@ -183,6 +184,12 @@ export default function DetailsDrawerCustomersComponent({
   useEffect(() => {
     if (!open) setIsVisible(false);
   }, [open]);
+
+  useEffect(() => {
+    if (!hasTakeAwayModule && tab === "takeaway") {
+      setTab("reservations");
+    }
+  }, [hasTakeAwayModule, tab]);
 
   // ✅ reset edit states when closing drawer (even if reopening same customer)
   useEffect(() => {
@@ -786,14 +793,17 @@ export default function DetailsDrawerCustomersComponent({
               </p>
             </div>
 
-            <div className="rounded-2xl bg-white/50 border border-darkBlue/10 shadow-sm p-4">
-              <p className="text-[11px] text-darkBlue/50 flex items-center gap-2">
-                <ClipboardList className="size-4 text-darkBlue/40" />À emporter
-              </p>
-              <p className="mt-1 text-lg font-semibold text-darkBlue">
-                {takeAwayOrdersTotal}
-              </p>
-            </div>
+            {hasTakeAwayModule ? (
+              <div className="rounded-2xl bg-white/50 border border-darkBlue/10 shadow-sm p-4">
+                <p className="text-[11px] text-darkBlue/50 flex items-center gap-2">
+                  <ClipboardList className="size-4 text-darkBlue/40" />À
+                  emporter
+                </p>
+                <p className="mt-1 text-lg font-semibold text-darkBlue">
+                  {takeAwayOrdersTotal}
+                </p>
+              </div>
+            ) : null}
           </div>
 
           {/* Notes */}
@@ -865,17 +875,19 @@ export default function DetailsDrawerCustomersComponent({
                 Cartes cadeaux ({giftCards.length})
               </button>
 
-              <button
-                className={`flex-1 px-4 py-3 text-xs font-semibold transition ${
-                  tab === "takeaway"
-                    ? "text-darkBlue bg-darkBlue/5"
-                    : "text-darkBlue/60 hover:bg-darkBlue/5"
-                }`}
-                onClick={() => setTab("takeaway")}
-                type="button"
-              >
-                À emporter ({takeAwayOrders.length})
-              </button>
+              {hasTakeAwayModule ? (
+                <button
+                  className={`flex-1 px-4 py-3 text-xs font-semibold transition ${
+                    tab === "takeaway"
+                      ? "text-darkBlue bg-darkBlue/5"
+                      : "text-darkBlue/60 hover:bg-darkBlue/5"
+                  }`}
+                  onClick={() => setTab("takeaway")}
+                  type="button"
+                >
+                  À emporter ({takeAwayOrders.length})
+                </button>
+              ) : null}
             </div>
 
             <div className="p-4">

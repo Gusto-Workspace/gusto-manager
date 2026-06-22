@@ -1,5 +1,5 @@
 import { useRouter } from "next/router";
-import { useState, useContext, useMemo, useRef } from "react";
+import { useState, useContext, useMemo, useRef, useCallback } from "react";
 import axios from "axios";
 import { GlobalContext } from "@/contexts/global.context";
 import { useTranslation } from "next-i18next";
@@ -12,7 +12,15 @@ import {
   openTimeClockInNewTab,
 } from "../time-clock/time-clock.utils";
 
-import { Search, X, Calendar, Plus, Clock3, Download } from "lucide-react";
+import {
+  Search,
+  X,
+  Calendar,
+  Plus,
+  Clock3,
+  Download,
+  Briefcase,
+} from "lucide-react";
 
 function pad2(value) {
   return String(value).padStart(2, "0");
@@ -52,12 +60,21 @@ async function getExportErrorMessage(error, fallbackMessage) {
   return fallbackMessage;
 }
 
+function normalize(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
 export default function ListEmployeesComponent() {
   const { t } = useTranslation("employees");
   const { restaurantContext } = useContext(GlobalContext);
   const router = useRouter();
 
   const [searchTerm, setSearchTerm] = useState("");
+  const [postFilter, setPostFilter] = useState("all");
   const [isDeleting, setIsDeleting] = useState(false);
   const [isLoadingDelete, setIsLoadingDelete] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
@@ -67,28 +84,21 @@ export default function ListEmployeesComponent() {
 
   const searchRef = useRef(null);
 
-  // accent-insensitive normalize
-  const normalize = (str) =>
-    str
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .trim();
-
   // filtered employees
   const restaurantId = restaurantContext.restaurantData?._id;
 
-  const getSnapshotForRestaurant = (emp) => {
+  const getSnapshotForRestaurant = useCallback((emp) => {
     const profile =
       (emp.restaurantProfiles || []).find(
         (p) => String(p.restaurant) === String(restaurantId),
       ) || null;
     return profile?.snapshot || {};
-  };
+  }, [restaurantId]);
 
   const filtered = useMemo(() => {
     const list = restaurantContext.restaurantData?.employees || [];
-    if (!searchTerm.trim()) return list;
+    const selectedPost = normalize(postFilter);
+    const hasSearch = Boolean(searchTerm.trim());
 
     const norm = normalize(searchTerm);
 
@@ -96,9 +106,36 @@ export default function ListEmployeesComponent() {
       const snap = getSnapshotForRestaurant(e);
       const firstname = snap.firstname ?? e.firstname ?? "";
       const lastname = snap.lastname ?? e.lastname ?? "";
-      return normalize(`${firstname} ${lastname}`).includes(norm);
+      const post = snap.post ?? e.post ?? "";
+
+      const matchesSearch = hasSearch
+        ? normalize(`${firstname} ${lastname}`).includes(norm)
+        : true;
+      const matchesPost =
+        postFilter === "all" ? true : normalize(post) === selectedPost;
+
+      return matchesSearch && matchesPost;
     });
-  }, [restaurantContext.restaurantData?.employees, restaurantId, searchTerm]);
+  }, [
+    restaurantContext.restaurantData?.employees,
+    searchTerm,
+    postFilter,
+    getSnapshotForRestaurant,
+  ]);
+
+  const postOptions = useMemo(() => {
+    const map = new Map();
+    (restaurantContext.restaurantData?.employees || []).forEach((employee) => {
+      const snapshot = getSnapshotForRestaurant(employee);
+      const post = String(snapshot.post ?? employee.post ?? "").trim();
+      if (!post) return;
+      map.set(normalize(post), post);
+    });
+    return Array.from(map.values()).sort((a, b) => a.localeCompare(b, "fr"));
+  }, [
+    restaurantContext.restaurantData?.employees,
+    getSnapshotForRestaurant,
+  ]);
 
   const exportEmployees = useMemo(() => {
     return (restaurantContext.restaurantData?.employees || []).map(
@@ -115,7 +152,10 @@ export default function ListEmployeesComponent() {
         };
       },
     );
-  }, [restaurantContext.restaurantData?.employees, restaurantId]);
+  }, [
+    restaurantContext.restaurantData?.employees,
+    getSnapshotForRestaurant,
+  ]);
 
   const defaultExportRange = useMemo(() => getCurrentMonthRange(), []);
   const totalEmployees =
@@ -341,34 +381,53 @@ export default function ListEmployeesComponent() {
           </button>
         </div>
 
-        {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40" />
-          <input
-            ref={searchRef}
-            type="text"
-            inputMode="search"
-            placeholder={t(
-              "placeholders.searchEmployee",
-              "Rechercher un employé",
+        {/* Search + post filter */}
+        <div className="grid grid-cols-[minmax(0,1fr)_minmax(150px,240px)] gap-2">
+          <div className="relative min-w-0">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40" />
+            <input
+              ref={searchRef}
+              type="text"
+              inputMode="search"
+              placeholder={t(
+                "placeholders.searchEmployee",
+                "Rechercher un employé",
+              )}
+              value={searchTerm}
+              onChange={handleSearchChange}
+              className={`h-12 w-full rounded-2xl border border-darkBlue/10 bg-white/70 ${
+                searchTerm ? "pr-12" : "pr-4"
+              } pl-9 text-base`}
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={clearSearch}
+                className="absolute right-2 top-1/2 inline-flex size-9 -translate-y-1/2 items-center justify-center rounded-2xl border border-darkBlue/10 bg-white transition hover:bg-darkBlue/5"
+                aria-label={t("buttons.clear", "Effacer")}
+                title={t("buttons.clear", "Effacer")}
+              >
+                <X className="size-4 text-darkBlue/60" />
+              </button>
             )}
-            value={searchTerm}
-            onChange={handleSearchChange}
-            className={`h-12 w-full rounded-2xl border border-darkBlue/10 bg-white/70 ${
-              searchTerm ? "pr-12" : "pr-4"
-            } pl-9 text-base`}
-          />
-          {searchTerm && (
-            <button
-              type="button"
-              onClick={clearSearch}
-              className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center size-9 rounded-2xl border border-darkBlue/10 bg-white transition hover:bg-darkBlue/5"
-              aria-label={t("buttons.clear", "Effacer")}
-              title={t("buttons.clear", "Effacer")}
+          </div>
+
+          <div className="relative min-w-0">
+            <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40" />
+            <select
+              value={postFilter}
+              onChange={(e) => setPostFilter(e.target.value)}
+              className="h-12 w-full rounded-2xl border border-darkBlue/10 bg-white/70 pl-9 pr-4 text-base text-darkBlue outline-none"
+              aria-label="Filtrer par poste"
             >
-              <X className="size-4 text-darkBlue/60" />
-            </button>
-          )}
+              <option value="all">Tous les postes</option>
+              {postOptions.map((post) => (
+                <option key={post} value={post}>
+                  {post}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 

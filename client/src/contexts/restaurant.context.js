@@ -7,6 +7,8 @@ import axios from "axios";
 // JWT
 import { jwtDecode } from "jwt-decode";
 
+const DEFAULT_RESERVATION_DELETION_MINUTES = 6 * 30 * 24 * 60;
+
 const EMPTY_UNREAD_BY_MODULE = {
   reservations: 0,
   gift_cards: 0,
@@ -1250,12 +1252,17 @@ export default function RestaurantContext() {
 
     // Si le switch est ON → on utilise la durée configurée
     if (enabled) {
-      const n = Number(parameters?.deletion_duration_minutes || 1440);
-      return Number.isFinite(n) && n > 0 ? n : 1440;
+      const n = Number(
+        parameters?.deletion_duration_minutes ||
+          DEFAULT_RESERVATION_DELETION_MINUTES,
+      );
+      return Number.isFinite(n) && n > 0
+        ? n
+        : DEFAULT_RESERVATION_DELETION_MINUTES;
     }
 
-    // Si le switch est OFF → suppression auto quand même à 24h
-    return 1440;
+    // Si le switch est OFF → suppression auto avec le délai par défaut
+    return DEFAULT_RESERVATION_DELETION_MINUTES;
   }
 
   // ------------------------------------------------------------

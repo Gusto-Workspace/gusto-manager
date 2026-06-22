@@ -19,7 +19,9 @@ const initialManualOrder = {
   date: todayKey(),
   time: "12:00",
   deliveryZoneId: "",
-  items: [{ localId: "line-1", catalogItemId: "", quantity: 1 }],
+  items: [
+    { localId: "line-1", catalogItemId: "", selectedOptionId: "", quantity: 1 },
+  ],
   deliveryAddress: {
     line1: "",
     line2: "",
@@ -28,6 +30,16 @@ const initialManualOrder = {
     instructions: "",
   },
 };
+
+function getCatalogItemPriceLabel(item) {
+  const optionPrices = (item?.options || [])
+    .map((option) => Number(option.price || 0))
+    .filter((price) => price > 0);
+  if (optionPrices.length) {
+    return `à partir de ${toMoney(Math.min(...optionPrices))}`;
+  }
+  return toMoney(item?.price);
+}
 
 export default function ManualTakeAwayOrderComponent({
   catalog,
@@ -73,7 +85,13 @@ export default function ManualTakeAwayOrderComponent({
   const manualSubtotal = (manualOrder.items || []).reduce((sum, line) => {
     const item = catalogById.get(String(line.catalogItemId));
     if (!item) return sum;
-    return sum + Number(item.price || 0) * Number(line.quantity || 1);
+    const selectedOption = (item.options || []).find(
+      (option) => String(option._id) === String(line.selectedOptionId),
+    );
+    const optionsTotal = selectedOption ? Number(selectedOption.price || 0) : 0;
+    return (
+      sum + (Number(item.price || 0) + optionsTotal) * Number(line.quantity || 1)
+    );
   }, 0);
   const manualDeliveryFee =
     manualOrder.fulfillmentMode === "delivery" && selectedZone
@@ -95,7 +113,12 @@ export default function ManualTakeAwayOrderComponent({
       ...prev,
       items: [
         ...prev.items,
-        { localId: `line-${Date.now()}`, catalogItemId: "", quantity: 1 },
+        {
+          localId: `line-${Date.now()}`,
+          catalogItemId: "",
+          selectedOptionId: "",
+          quantity: 1,
+        },
       ],
     }));
   }
@@ -147,6 +170,14 @@ export default function ManualTakeAwayOrderComponent({
       (line) => line.catalogItemId,
     );
     if (!items.length) nextErrors.items = "Sélectionne au moins un article.";
+    if (
+      items.some((line) => {
+        const item = catalogById.get(String(line.catalogItemId));
+        return item?.options?.length && !line.selectedOptionId;
+      })
+    ) {
+      nextErrors.items = "Sélectionne une formule pour chaque menu à options.";
+    }
 
     if (manualOrder.fulfillmentMode === "delivery") {
       if (!manualOrder.deliveryZoneId)
@@ -175,6 +206,7 @@ export default function ManualTakeAwayOrderComponent({
       ...manualOrder,
       items: items.map((line) => ({
         catalogItemId: line.catalogItemId,
+        optionIds: line.selectedOptionId ? [line.selectedOptionId] : [],
         quantity: Number(line.quantity || 1),
       })),
     });
@@ -372,58 +404,96 @@ export default function ManualTakeAwayOrderComponent({
               </p>
             ) : null}
           </div>
-          {manualOrder.items.map((line, index) => (
-            <div
-              key={line.localId}
-              className="grid grid-cols-[1fr_92px_40px] items-center gap-2"
-            >
-              <select
-                aria-label="Article"
-                className={fieldClass(errors.items && !line.catalogItemId)}
-                value={line.catalogItemId}
-                onChange={(e) =>
-                  updateManualLine(index, { catalogItemId: e.target.value })
-                }
+          {manualOrder.items.map((line, index) => {
+            const selectedItem = catalogById.get(String(line.catalogItemId));
+            const hasOptions = selectedItem?.options?.length > 0;
+
+            return (
+              <div
+                key={line.localId}
+                className={`grid grid-cols-1 items-center gap-2 ${
+                  hasOptions
+                    ? "midTablet:grid-cols-[1fr_1fr_92px_40px]"
+                    : "midTablet:grid-cols-[1fr_92px_40px]"
+                }`}
               >
-                <option value="">Sélectionner un article</option>
-                {activeCatalogGroups.map((group) => (
-                  <optgroup key={group.name} label={group.name}>
-                    {group.items.map((item) => (
-                      <option key={item._id} value={item._id}>
-                        {item.name} • {toMoney(item.price)}
+                <select
+                  aria-label="Article"
+                  className={fieldClass(errors.items && !line.catalogItemId)}
+                  value={line.catalogItemId}
+                  onChange={(e) =>
+                    updateManualLine(index, {
+                      catalogItemId: e.target.value,
+                      selectedOptionId: "",
+                    })
+                  }
+                >
+                  <option value="">Sélectionner un article</option>
+                  {activeCatalogGroups.map((group) => (
+                    <optgroup key={group.name} label={group.name}>
+                      {group.items.map((item) => (
+                        <option key={item._id} value={item._id}>
+                          {item.name} • {getCatalogItemPriceLabel(item)}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+                {hasOptions ? (
+                  <select
+                    aria-label="Formule"
+                    className={fieldClass(
+                      errors.items && !line.selectedOptionId,
+                    )}
+                    value={line.selectedOptionId}
+                    onChange={(e) =>
+                      updateManualLine(index, {
+                        selectedOptionId: e.target.value,
+                      })
+                    }
+                  >
+                    <option value="">Choisir une formule</option>
+                    {selectedItem.options.map((option) => (
+                      <option
+                        key={option._id || option.name}
+                        value={option._id}
+                      >
+                        {option.name} • {toMoney(option.price)}
                       </option>
                     ))}
-                  </optgroup>
-                ))}
-              </select>
-              <select
-                aria-label="Quantité"
-                className={fieldClass(false)}
-                value={line.quantity}
-                onChange={(e) =>
-                  updateManualLine(index, {
-                    quantity: Number(e.target.value || 1),
-                  })
-                }
-              >
-                {Array.from({ length: 20 }, (_, qty) => qty + 1).map((qty) => (
-                  <option key={qty} value={qty}>
-                    {qty}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                disabled={manualOrder.items.length <= 1}
-                onClick={() => removeManualLine(index)}
-                className="inline-flex h-11 w-10 items-center justify-center rounded-xl border border-darkBlue/10 bg-white text-darkBlue/55 transition hover:bg-red/10 hover:text-red disabled:cursor-not-allowed disabled:opacity-30"
-                aria-label="Retirer la ligne"
-                title="Retirer la ligne"
-              >
-                <Trash2 className="size-4" />
-              </button>
-            </div>
-          ))}
+                  </select>
+                ) : null}
+                <select
+                  aria-label="Quantité"
+                  className={fieldClass(false)}
+                  value={line.quantity}
+                  onChange={(e) =>
+                    updateManualLine(index, {
+                      quantity: Number(e.target.value || 1),
+                    })
+                  }
+                >
+                  {Array.from({ length: 20 }, (_, qty) => qty + 1).map(
+                    (qty) => (
+                      <option key={qty} value={qty}>
+                        {qty}
+                      </option>
+                    ),
+                  )}
+                </select>
+                <button
+                  type="button"
+                  disabled={manualOrder.items.length <= 1}
+                  onClick={() => removeManualLine(index)}
+                  className="inline-flex h-11 w-10 items-center justify-center rounded-xl border border-darkBlue/10 bg-white text-darkBlue/55 transition hover:bg-red/10 hover:text-red disabled:cursor-not-allowed disabled:opacity-30"
+                  aria-label="Retirer la ligne"
+                  title="Retirer la ligne"
+                >
+                  <Trash2 className="size-4" />
+                </button>
+              </div>
+            );
+          })}
           <button
             type="button"
             onClick={addManualLine}

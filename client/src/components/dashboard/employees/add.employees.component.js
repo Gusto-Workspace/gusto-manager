@@ -98,6 +98,7 @@ export default function AddEmployeesComponent() {
   const [existingEmployees, setExistingEmployees] = useState([]);
   const [isLoadingExisting, setIsLoadingExisting] = useState(false);
   const [importError, setImportError] = useState("");
+  const [createErrorModal, setCreateErrorModal] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [isBrowser, setIsBrowser] = useState(false);
 
@@ -206,6 +207,7 @@ export default function AddEmployeesComponent() {
   // ---------- SUBMIT FORMULAIRE AJOUT / IMPORT ----------
 
   async function onSubmit(data) {
+    setCreateErrorModal(null);
     const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext.restaurantData._id}/employees`;
     const formData = new FormData();
     formData.append("lastName", data.lastName);
@@ -234,6 +236,21 @@ export default function AddEmployeesComponent() {
       router.replace("/dashboard/employees");
     } catch (err) {
       console.error("Error creating employee:", err);
+      const code = err?.response?.data?.code || "";
+      const message =
+        err?.response?.data?.message ||
+        "Impossible de créer l’employé pour le moment.";
+
+      setCreateErrorModal({
+        code,
+        title:
+          code === "OWNER_EMAIL_CONFLICT"
+            ? "Adresse mail du restaurateur"
+            : code === "EMPLOYEE_EMAIL_EXISTS"
+              ? "Adresse mail déjà utilisée"
+              : "Création impossible",
+        message,
+      });
     } finally {
       setIsSaving(false);
     }
@@ -416,9 +433,66 @@ export default function AddEmployeesComponent() {
         )
       : null;
 
+  const createEmployeeErrorModal =
+    isBrowser && createErrorModal
+      ? createPortal(
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+            <button
+              type="button"
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+              onClick={() => setCreateErrorModal(null)}
+              aria-label="Fermer"
+            />
+            <section className="relative z-10 w-full max-w-lg rounded-3xl border border-darkBlue/10 bg-white p-6 shadow-2xl">
+              <button
+                type="button"
+                onClick={() => setCreateErrorModal(null)}
+                className="absolute right-4 top-4 inline-flex size-9 items-center justify-center rounded-xl border border-darkBlue/10 bg-white text-darkBlue/60 transition hover:bg-darkBlue/5"
+                aria-label="Fermer"
+              >
+                <X className="size-4" />
+              </button>
+
+              <p className="text-xs font-semibold uppercase tracking-wide text-red">
+                Erreur
+              </p>
+              <h3 className="mt-1 pr-10 text-xl font-semibold text-darkBlue">
+                {createErrorModal.title}
+              </h3>
+              <p className="mt-4 text-sm leading-relaxed text-darkBlue/70">
+                {createErrorModal.message}
+              </p>
+
+              {createErrorModal.code === "OWNER_EMAIL_CONFLICT" ? (
+                <div className="mt-4 rounded-2xl border border-blue/15 bg-blue/10 p-4 text-sm leading-relaxed text-darkBlue/75">
+                  Si le propriétaire veut aussi apparaître comme employé, il
+                  doit utiliser une autre adresse mail pour le compte employé.
+                  Sinon, il peut d’abord modifier son adresse mail de connexion :
+                  cliquez en haut à droite sur son nom, puis{" "}
+                  <strong>Paramètres</strong>, puis changez l’adresse mail du
+                  compte.
+                </div>
+              ) : null}
+
+              <div className="mt-6 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setCreateErrorModal(null)}
+                  className="inline-flex h-11 items-center justify-center rounded-xl bg-darkBlue px-5 text-sm font-semibold text-white transition hover:opacity-90"
+                >
+                  Compris
+                </button>
+              </div>
+            </section>
+          </div>,
+          document.body,
+        )
+      : null;
+
   return (
     <>
       {importModal}
+      {createEmployeeErrorModal}
 
       <section className="flex flex-col gap-6">
         <hr className="opacity-20" />

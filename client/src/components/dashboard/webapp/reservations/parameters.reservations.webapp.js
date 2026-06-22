@@ -38,6 +38,8 @@ import {
 } from "../../../_shared/reservations/email-templates.reservations";
 import { getReservationStatusLabel } from "@/components/_shared/reservations/reservation-status.utils";
 
+const DEFAULT_DELETION_DURATION_MINUTES = 6 * 30 * 24 * 60;
+
 // Helpers
 const statusLabel = (status) => {
   const s = String(status || "").trim();
@@ -131,7 +133,7 @@ export default function ParametersReservationComponent(props) {
       auto_finish_reservations: false,
 
       deletion_duration: false,
-      deletion_duration_minutes: 1440,
+      deletion_duration_minutes: DEFAULT_DELETION_DURATION_MINUTES,
 
       waitlist_enabled: false,
       waitlist_public_enabled: false,
@@ -359,7 +361,9 @@ export default function ParametersReservationComponent(props) {
         auto_finish_reservations: nextAutoFinishEnabled,
 
         deletion_duration: parameters.deletion_duration ?? false,
-        deletion_duration_minutes: parameters.deletion_duration_minutes ?? 1440,
+        deletion_duration_minutes:
+          parameters.deletion_duration_minutes ??
+          DEFAULT_DELETION_DURATION_MINUTES,
 
         waitlist_enabled: waitlistActive,
         waitlist_public_enabled: waitlistActive,
@@ -420,7 +424,8 @@ export default function ParametersReservationComponent(props) {
           auto_finish_reservations: nextAutoFinishEnabled,
           deletion_duration: parameters.deletion_duration ?? false,
           deletion_duration_minutes:
-            parameters.deletion_duration_minutes ?? 1440,
+            parameters.deletion_duration_minutes ??
+            DEFAULT_DELETION_DURATION_MINUTES,
           table_occupancy_lunch_minutes: nextLunch,
           table_occupancy_dinner_minutes: nextDinner,
         },
@@ -831,7 +836,7 @@ export default function ParametersReservationComponent(props) {
           deletion_duration: Boolean(deletion_duration),
           deletion_duration_minutes: Boolean(deletion_duration)
             ? Number(deletion_duration_minutes)
-            : 1440,
+            : DEFAULT_DELETION_DURATION_MINUTES,
           table_occupancy_lunch_minutes: shouldStoreDurations
             ? Number(lunchRaw)
             : null,

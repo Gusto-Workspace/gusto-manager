@@ -199,6 +199,7 @@ export default function ListCustomersReservationsWebapp({
   const restaurantOptions = restaurant?.options || {};
   const hasGiftCardModule = !!restaurantOptions.gift_card;
   const hasReservationsModule = !!restaurantOptions.reservations;
+  const hasTakeAwayModule = !!restaurantOptions.take_away;
   const showSourceFilter = hasGiftCardModule && hasReservationsModule;
 
   const fetchCustomersCached = restaurantContext?.fetchCustomersCached;
@@ -828,6 +829,7 @@ export default function ListCustomersReservationsWebapp({
         customer={selectedCustomer}
         t={t}
         restaurantId={restaurantId}
+        hasTakeAwayModule={hasTakeAwayModule}
         onUpdated={() => {
           invalidateCustomersCache?.(restaurantId);
           fetchCustomers({

@@ -75,6 +75,8 @@ function getSettings(restaurant) {
   return restaurant?.takeAwaySettings || {};
 }
 
+const DEFAULT_COMPLETED_ORDER_AUTO_DELETE_MINUTES = 6 * 30 * 24 * 60;
+
 function sanitizeTakeAwaySettingsInput(input = {}) {
   const paymentPolicy = [
     "online_required",
@@ -97,6 +99,16 @@ function sanitizeTakeAwaySettingsInput(input = {}) {
     ),
     defaultSlotMaxOrders: Math.max(1, Number(input.defaultSlotMaxOrders || 6)),
     minimumPickupOrder: normalizeMoney(input.minimumPickupOrder, 0),
+    completedOrderAutoDeleteEnabled: Boolean(
+      input.completedOrderAutoDeleteEnabled,
+    ),
+    completedOrderAutoDeleteMinutes: Math.max(
+      1,
+      Number(
+        input.completedOrderAutoDeleteMinutes ||
+          DEFAULT_COMPLETED_ORDER_AUTO_DELETE_MINUTES,
+      ),
+    ),
     completedOrderAutoDeleteDays: Math.max(
       0,
       Number(input.completedOrderAutoDeleteDays || 0),
@@ -187,6 +199,34 @@ function getDisplayPriceForWine(wine) {
     .map((volume) => normalizeMoney(volume?.price, 0))
     .filter((price) => price > 0);
   return prices.length ? Math.min(...prices) : 0;
+}
+
+function getMenuCombinationLabel(combination = {}, index = 0) {
+  const categories = Array.isArray(combination.categories)
+    ? combination.categories.map(cleanString).filter(Boolean)
+    : [];
+  return (
+    categories.join(" + ") ||
+    cleanString(combination.description) ||
+    `Option ${index + 1}`
+  );
+}
+
+function getMenuTakeAwayOptions(menu = {}) {
+  return (Array.isArray(menu.combinations) ? menu.combinations : [])
+    .map((combination, index) => ({
+      name: getMenuCombinationLabel(combination, index),
+      price: normalizeMoney(combination.price, 0),
+    }))
+    .filter((option) => option.name);
+}
+
+function getDisplayPriceForMenu(menu = {}) {
+  const optionPrices = getMenuTakeAwayOptions(menu)
+    .map((option) => option.price)
+    .filter((price) => price > 0);
+  if (optionPrices.length) return Math.min(...optionPrices);
+  return normalizeMoney(menu.price, 0);
 }
 
 function findSourceItem(
@@ -296,13 +336,15 @@ function findSourceItem(
       (candidate) => String(candidate._id) === targetId,
     );
     if (menu) {
+      const options = getMenuTakeAwayOptions(menu);
       return {
         item: menu,
         category: null,
+        takeAwayOptions: options,
         sourceSnapshot: {
           name: menu.name,
           description: menu.description || "",
-          price: normalizeMoney(menu.price, 0),
+          price: options.length ? 0 : normalizeMoney(menu.price, 0),
           categoryName: "Menus",
         },
       };
@@ -336,13 +378,17 @@ function listImportableSourceItems(restaurant) {
   }
 
   for (const menu of restaurant.menus || []) {
+    const options = getMenuTakeAwayOptions(menu);
     items.push({
       sourceType: "menu",
       sourceItemId: String(menu._id),
       name: menu.name,
       description: menu.description || "",
-      price: normalizeMoney(menu.price, 0),
+      price: options.length
+        ? getDisplayPriceForMenu(menu)
+        : normalizeMoney(menu.price, 0),
       categoryName: "Menus",
+      options,
       alreadyEnabled: importedSourceKeys.has(`menu:${String(menu._id)}`),
     });
   }
@@ -478,7 +524,9 @@ function upsertCatalogItemFromSource({
     sortOrder: Number(overrides.sortOrder || catalogItem?.sortOrder || 0),
     options: Array.isArray(overrides.options)
       ? normalizeCatalogItemInput(overrides).options
-      : catalogItem?.options || [],
+      : sourceMatch.takeAwayOptions?.length
+        ? sourceMatch.takeAwayOptions
+        : catalogItem?.options || [],
     syncedWithSource:
       overrides.syncedWithSource !== undefined
         ? Boolean(overrides.syncedWithSource)
@@ -663,6 +711,15 @@ function buildOrderItems(restaurant, rawItems = []) {
         optionIds.has(String(option._id)) ||
         optionNames.has(cleanString(option.name)),
     );
+    if (
+      catalogItem.sourceType === "menu" &&
+      (catalogItem.options || []).length &&
+      !selectedOptions.length
+    ) {
+      const err = new Error("Menu option is required");
+      err.status = 400;
+      throw err;
+    }
     const optionsTotal = selectedOptions.reduce(
       (sum, option) => sum + normalizeMoney(option.price, 0),
       0,
@@ -744,12 +801,20 @@ function broadcastOrder(restaurantId, order, type = "takeaway_order_updated") {
 }
 
 async function cleanupCompletedTakeAwayOrders(restaurant) {
-  const days = Number(
-    getSettings(restaurant)?.completedOrderAutoDeleteDays || 0,
-  );
-  if (!Number.isFinite(days) || days <= 0) return;
+  const settings = getSettings(restaurant);
+  const enabled =
+    settings?.completedOrderAutoDeleteEnabled === true ||
+    Number(settings?.completedOrderAutoDeleteDays || 0) > 0;
+  if (!enabled) return;
 
-  const before = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const minutes = Number(
+    settings?.completedOrderAutoDeleteMinutes ||
+      Number(settings?.completedOrderAutoDeleteDays || 0) * 24 * 60 ||
+      DEFAULT_COMPLETED_ORDER_AUTO_DELETE_MINUTES,
+  );
+  if (!Number.isFinite(minutes) || minutes <= 0) return;
+
+  const before = new Date(Date.now() - minutes * 60 * 1000);
   await TakeAwayOrderModel.deleteMany({
     restaurant_id: restaurant._id,
     status: "completed",

@@ -1,0 +1,15 @@
+User-agent: *
+Allow: /
+
+# Private application areas
+Disallow: /dashboard
+Disallow: /dashboard/
+Disallow: /en/dashboard
+Disallow: /en/dashboard/
+Disallow: /api/
+
+# Technical pages that should not be indexed
+Disallow: /404
+Disallow: /en/404
+
+Sitemap: https://gusto-manager.com/sitemap.xml

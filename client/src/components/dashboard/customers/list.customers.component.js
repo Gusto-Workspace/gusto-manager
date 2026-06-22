@@ -209,6 +209,7 @@ export default function ListCustomersComponent() {
   const restaurantOptions = restaurant?.options || {};
   const hasGiftCardModule = !!restaurantOptions.gift_card;
   const hasReservationsModule = !!restaurantOptions.reservations;
+  const hasTakeAwayModule = !!restaurantOptions.take_away;
   const showSourceFilter = hasGiftCardModule && hasReservationsModule;
 
   // ✅ cache helpers from context
@@ -820,6 +821,7 @@ export default function ListCustomersComponent() {
         customer={selectedCustomer}
         t={t}
         restaurantId={restaurantId}
+        hasTakeAwayModule={hasTakeAwayModule}
         onUpdated={() => {
           // ✅ edit: invalidate + refetch current page (force, silent)
           invalidateCustomersCache?.(restaurantId);

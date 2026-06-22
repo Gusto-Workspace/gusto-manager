@@ -11,6 +11,8 @@ const {
 } = require("../reservation-bank-hold-metadata.service");
 const { runWaitlistMaintenance } = require("../../routes/reservations.routes");
 
+const DEFAULT_RESERVATION_DELETION_MINUTES = 6 * 30 * 24 * 60;
+
 function buildReservationDateTime(reservationDateUTC, reservationTime) {
   const d = new Date(reservationDateUTC);
   if (Number.isNaN(d.getTime())) return null;
@@ -48,11 +50,16 @@ function getOccupancyMinutes(restaurant, reservationTime) {
 function getDeletionMinutes(restaurant) {
   const parameters = restaurant?.reservationsSettings || {};
   if (parameters?.deletion_duration === true) {
-    const value = Number(parameters?.deletion_duration_minutes || 1440);
-    return Number.isFinite(value) && value > 0 ? value : 1440;
+    const value = Number(
+      parameters?.deletion_duration_minutes ||
+        DEFAULT_RESERVATION_DELETION_MINUTES,
+    );
+    return Number.isFinite(value) && value > 0
+      ? value
+      : DEFAULT_RESERVATION_DELETION_MINUTES;
   }
 
-  return 1440;
+  return DEFAULT_RESERVATION_DELETION_MINUTES;
 }
 
 function applyActivationFields(reservation, nextStatus) {

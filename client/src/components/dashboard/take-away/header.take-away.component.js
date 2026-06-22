@@ -53,7 +53,7 @@ export default function TakeAwayHeaderComponent({
         onBack={showBack ? handleBack : undefined}
         backLabel="Retour"
         onTitleClick={() => router.push("/dashboard/take-away")}
-        actions={actions || defaultActions}
+        actions={actions !== undefined ? actions : showBack ? null : defaultActions}
       />
     </>
   );
