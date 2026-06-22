@@ -201,6 +201,34 @@ function getDisplayPriceForWine(wine) {
   return prices.length ? Math.min(...prices) : 0;
 }
 
+function getMenuCombinationLabel(combination = {}, index = 0) {
+  const categories = Array.isArray(combination.categories)
+    ? combination.categories.map(cleanString).filter(Boolean)
+    : [];
+  return (
+    categories.join(" + ") ||
+    cleanString(combination.description) ||
+    `Option ${index + 1}`
+  );
+}
+
+function getMenuTakeAwayOptions(menu = {}) {
+  return (Array.isArray(menu.combinations) ? menu.combinations : [])
+    .map((combination, index) => ({
+      name: getMenuCombinationLabel(combination, index),
+      price: normalizeMoney(combination.price, 0),
+    }))
+    .filter((option) => option.name);
+}
+
+function getDisplayPriceForMenu(menu = {}) {
+  const optionPrices = getMenuTakeAwayOptions(menu)
+    .map((option) => option.price)
+    .filter((price) => price > 0);
+  if (optionPrices.length) return Math.min(...optionPrices);
+  return normalizeMoney(menu.price, 0);
+}
+
 function findSourceItem(
   restaurant,
   sourceType,
@@ -308,13 +336,15 @@ function findSourceItem(
       (candidate) => String(candidate._id) === targetId,
     );
     if (menu) {
+      const options = getMenuTakeAwayOptions(menu);
       return {
         item: menu,
         category: null,
+        takeAwayOptions: options,
         sourceSnapshot: {
           name: menu.name,
           description: menu.description || "",
-          price: normalizeMoney(menu.price, 0),
+          price: options.length ? 0 : normalizeMoney(menu.price, 0),
           categoryName: "Menus",
         },
       };
@@ -348,13 +378,17 @@ function listImportableSourceItems(restaurant) {
   }
 
   for (const menu of restaurant.menus || []) {
+    const options = getMenuTakeAwayOptions(menu);
     items.push({
       sourceType: "menu",
       sourceItemId: String(menu._id),
       name: menu.name,
       description: menu.description || "",
-      price: normalizeMoney(menu.price, 0),
+      price: options.length
+        ? getDisplayPriceForMenu(menu)
+        : normalizeMoney(menu.price, 0),
       categoryName: "Menus",
+      options,
       alreadyEnabled: importedSourceKeys.has(`menu:${String(menu._id)}`),
     });
   }
@@ -490,7 +524,9 @@ function upsertCatalogItemFromSource({
     sortOrder: Number(overrides.sortOrder || catalogItem?.sortOrder || 0),
     options: Array.isArray(overrides.options)
       ? normalizeCatalogItemInput(overrides).options
-      : catalogItem?.options || [],
+      : sourceMatch.takeAwayOptions?.length
+        ? sourceMatch.takeAwayOptions
+        : catalogItem?.options || [],
     syncedWithSource:
       overrides.syncedWithSource !== undefined
         ? Boolean(overrides.syncedWithSource)
@@ -675,6 +711,15 @@ function buildOrderItems(restaurant, rawItems = []) {
         optionIds.has(String(option._id)) ||
         optionNames.has(cleanString(option.name)),
     );
+    if (
+      catalogItem.sourceType === "menu" &&
+      (catalogItem.options || []).length &&
+      !selectedOptions.length
+    ) {
+      const err = new Error("Menu option is required");
+      err.status = 400;
+      throw err;
+    }
     const optionsTotal = selectedOptions.reduce(
       (sum, option) => sum + normalizeMoney(option.price, 0),
       0,

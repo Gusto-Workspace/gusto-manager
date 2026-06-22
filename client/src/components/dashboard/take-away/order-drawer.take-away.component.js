@@ -187,8 +187,25 @@ export default function TakeAwayOrderDrawerComponent({
                     <p className="text-sm font-semibold text-darkBlue">
                       {item.quantity}x {item.name}
                     </p>
-                    <p className="text-xs text-darkBlue/45">
-                      {toMoney(item.unitPrice)} / unité
+                    {item.options?.length ? (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {item.options.map((option) => (
+                          <span
+                            key={`${item.catalogItemId}-${option.name}`}
+                            className="rounded-full bg-blue/10 px-2 py-0.5 text-[11px] font-semibold text-blue"
+                          >
+                            {option.name} · {toMoney(option.price)}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                    <p className="mt-1 text-xs text-darkBlue/45">
+                      {item.optionsTotal > 0
+                        ? `${toMoney(
+                            Number(item.unitPrice || 0) +
+                              Number(item.optionsTotal || 0),
+                          )} / unité avec formule`
+                        : `${toMoney(item.unitPrice)} / unité`}
                     </p>
                   </div>
                   <span className="text-sm font-bold text-darkBlue">

@@ -381,51 +381,53 @@ export default function ListEmployeesComponent() {
           </button>
         </div>
 
-        {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40" />
-          <input
-            ref={searchRef}
-            type="text"
-            inputMode="search"
-            placeholder={t(
-              "placeholders.searchEmployee",
-              "Rechercher un employé",
+        {/* Search + post filter */}
+        <div className="grid grid-cols-[minmax(0,1fr)_minmax(150px,240px)] gap-2">
+          <div className="relative min-w-0">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40" />
+            <input
+              ref={searchRef}
+              type="text"
+              inputMode="search"
+              placeholder={t(
+                "placeholders.searchEmployee",
+                "Rechercher un employé",
+              )}
+              value={searchTerm}
+              onChange={handleSearchChange}
+              className={`h-12 w-full rounded-2xl border border-darkBlue/10 bg-white/70 ${
+                searchTerm ? "pr-12" : "pr-4"
+              } pl-9 text-base`}
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={clearSearch}
+                className="absolute right-2 top-1/2 inline-flex size-9 -translate-y-1/2 items-center justify-center rounded-2xl border border-darkBlue/10 bg-white transition hover:bg-darkBlue/5"
+                aria-label={t("buttons.clear", "Effacer")}
+                title={t("buttons.clear", "Effacer")}
+              >
+                <X className="size-4 text-darkBlue/60" />
+              </button>
             )}
-            value={searchTerm}
-            onChange={handleSearchChange}
-            className={`h-12 w-full rounded-2xl border border-darkBlue/10 bg-white/70 ${
-              searchTerm ? "pr-12" : "pr-4"
-            } pl-9 text-base`}
-          />
-          {searchTerm && (
-            <button
-              type="button"
-              onClick={clearSearch}
-              className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center size-9 rounded-2xl border border-darkBlue/10 bg-white transition hover:bg-darkBlue/5"
-              aria-label={t("buttons.clear", "Effacer")}
-              title={t("buttons.clear", "Effacer")}
-            >
-              <X className="size-4 text-darkBlue/60" />
-            </button>
-          )}
-        </div>
+          </div>
 
-        <div className="relative">
-          <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40" />
-          <select
-            value={postFilter}
-            onChange={(e) => setPostFilter(e.target.value)}
-            className="h-12 w-full rounded-2xl border border-darkBlue/10 bg-white/70 pl-9 pr-4 text-base text-darkBlue outline-none"
-            aria-label="Filtrer par poste"
-          >
-            <option value="all">Tous les postes</option>
-            {postOptions.map((post) => (
-              <option key={post} value={post}>
-                {post}
-              </option>
-            ))}
-          </select>
+          <div className="relative min-w-0">
+            <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40" />
+            <select
+              value={postFilter}
+              onChange={(e) => setPostFilter(e.target.value)}
+              className="h-12 w-full rounded-2xl border border-darkBlue/10 bg-white/70 pl-9 pr-4 text-base text-darkBlue outline-none"
+              aria-label="Filtrer par poste"
+            >
+              <option value="all">Tous les postes</option>
+              {postOptions.map((post) => (
+                <option key={post} value={post}>
+                  {post}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
