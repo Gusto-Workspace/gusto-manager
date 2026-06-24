@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useTranslation } from "next-i18next";
 import { Menu } from "lucide-react";
 import SidebarReservationsWebapp from "../_shared/sidebar.webapp";
 import GiftCardSettingsFormComponent, {
@@ -7,7 +6,6 @@ import GiftCardSettingsFormComponent, {
 } from "../../../_shared/gift-cards/settings-form.gift-cards.component";
 
 export default function ParametersGiftCardsWebapp() {
-  const { t } = useTranslation("gifts");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { settings, sectionState, errorMessage, handleChange, saveSettings } =
     useGiftCardSettingsController();

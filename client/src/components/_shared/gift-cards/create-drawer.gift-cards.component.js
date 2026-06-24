@@ -6,6 +6,11 @@ import {
   buildGiftCardValidityLabel,
   normalizeGiftCardSettings,
 } from "./settings-form.gift-cards.component";
+import {
+  GiftCardVisualPreview,
+  getGiftCardVisuals,
+  resolveGiftCardVisual,
+} from "./visuals-form.gift-cards.component";
 
 const CLOSE_MS = 180;
 
@@ -32,6 +37,9 @@ export default function CreateDrawerGiftCardsComponent({
   });
   const [validityMode, setValidityMode] = useState(
     normalizeGiftCardSettings(editingGift, fallbackSettings).validity_mode,
+  );
+  const [selectedVisualId, setSelectedVisualId] = useState(
+    editingGift?.visualId || "",
   );
 
   const prevBodyOverflowRef = useRef("");
@@ -71,6 +79,11 @@ export default function CreateDrawerGiftCardsComponent({
     validity_until_day: validitySettings.validity_until_day,
     validity_until_month: validitySettings.validity_until_month,
   });
+  const visualOptions = getGiftCardVisuals(fallbackSettings);
+  const selectedVisual = resolveGiftCardVisual(
+    { ...editingGift, visualId: selectedVisualId },
+    fallbackSettings,
+  );
 
   const lockScroll = () => {
     if (typeof document === "undefined") return;
@@ -157,6 +170,10 @@ export default function CreateDrawerGiftCardsComponent({
   useEffect(() => {
     setValidityMode(validitySettings.validity_mode);
   }, [validitySettings]);
+
+  useEffect(() => {
+    setSelectedVisualId(editingGift?.visualId || "");
+  }, [editingGift]);
 
   const panelFallback = 720;
   const dragMaxPx = Math.max(240, (panelH || panelFallback) - 12);
@@ -381,6 +398,42 @@ export default function CreateDrawerGiftCardsComponent({
                 </p>
               ) : null}
             </div>
+
+            {!isDeleting ? (
+              <div className="mt-4 rounded-2xl bg-white/60 border border-darkBlue/10 shadow-sm p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-darkBlue/60">
+                  Visuel de cette carte
+                </p>
+                <p className="mt-1 text-xs text-darkBlue/50">
+                  Choisis le fond utilisé dans le catalogue Gusto. Sans choix,
+                  le visuel par défaut est utilisé.
+                </p>
+
+                <div className="mt-3 grid grid-cols-1 gap-3">
+                  <select
+                    value={selectedVisualId}
+                    {...register("visualId")}
+                    onChange={(event) =>
+                      setSelectedVisualId(event.target.value)
+                    }
+                    className="h-11 rounded-xl border border-darkBlue/10 bg-white/85 px-3 text-sm text-darkBlue outline-none focus:border-blue/40 focus:ring-1 focus:ring-blue/20"
+                  >
+                    <option value="">Visuel par défaut</option>
+                    {visualOptions.map((visual) => (
+                      <option key={visual._id} value={visual._id}>
+                        {visual.name || "Visuel carte cadeau"}
+                      </option>
+                    ))}
+                  </select>
+
+                  <GiftCardVisualPreview
+                    visual={selectedVisual}
+                    amount={`${editingGift?.value || "50"} ${currencySymbol}`}
+                    description={editingGift?.description || "Carte cadeau"}
+                  />
+                </div>
+              </div>
+            ) : null}
 
             {!isDeleting ? (
               <div className="mt-4 rounded-2xl bg-white/60 border border-darkBlue/10 shadow-sm p-4">

@@ -468,6 +468,7 @@ const giftCardSchema = new mongoose.Schema({
   value: { type: Number, required: true },
   description: { type: String },
   visible: { type: Boolean, default: true },
+  visualId: { type: String, default: "" },
   validity_mode: {
     type: String,
     enum: ["fixed_duration", "until_date"],
@@ -477,6 +478,22 @@ const giftCardSchema = new mongoose.Schema({
   validity_until_month: { type: Number, min: 1, max: 12 },
   validity_auto_hidden_year: { type: Number },
 });
+
+const giftCardVisualSnapshotSchema = new mongoose.Schema(
+  {
+    visualId: { type: String, default: "" },
+    name: { type: String, default: "" },
+    imageUrl: { type: String, default: "" },
+    imagePublicId: { type: String, default: "" },
+    textColor: { type: String, default: "#000000" },
+    textLayout: {
+      type: String,
+      enum: ["right", "center", "left"],
+      default: "right",
+    },
+  },
+  { _id: false },
+);
 
 // Schéma pour les achats de cartes cadeaux
 const giftCardPurchaseSchema = new mongoose.Schema({
@@ -493,6 +510,8 @@ const giftCardPurchaseSchema = new mongoose.Schema({
   beneficiaryFirstName: { type: String, required: true },
   beneficiaryLastName: { type: String, required: true },
   sender: { type: String },
+  message: { type: String, default: "" },
+  hidePrice: { type: Boolean, default: false },
   buyerFirstName: { type: String, default: "" },
   buyerLastName: { type: String, default: "" },
   sendEmail: { type: String },
@@ -505,6 +524,9 @@ const giftCardPurchaseSchema = new mongoose.Schema({
   },
   paymentIntentId: { type: String, index: true },
   amount: { type: Number },
+  visualSnapshot: { type: giftCardVisualSnapshotSchema, default: () => ({}) },
+  emailSentAt: { type: Date },
+  emailSendError: { type: String, default: "" },
   created_at: { type: Date, default: Date.now },
 });
 
@@ -539,6 +561,19 @@ const giftCardSoldSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const giftCardVisualSchema = new mongoose.Schema({
+  name: { type: String, default: "" },
+  imageUrl: { type: String, required: true },
+  imagePublicId: { type: String, default: "" },
+  textColor: { type: String, default: "#000000" },
+  textLayout: {
+    type: String,
+    enum: ["right", "center", "left"],
+    default: "right",
+  },
+  createdAt: { type: Date, default: Date.now },
+});
+
 const giftCardSettingsSchema = new mongoose.Schema(
   {
     validity_mode: {
@@ -550,6 +585,8 @@ const giftCardSettingsSchema = new mongoose.Schema(
     validity_until_day: { type: Number, min: 1, max: 31, default: 25 },
     validity_until_month: { type: Number, min: 1, max: 12, default: 6 },
     archive_used_after_months: { type: Number, min: 0, default: 2 },
+    visuals: { type: [giftCardVisualSchema], default: [] },
+    defaultVisualId: { type: String, default: "" },
   },
   { _id: false },
 );

@@ -132,11 +132,13 @@ export default function WebAppListGiftCardsComponent(props) {
       reset({
         value: editingGift.value,
         description: editingGift.description || "",
+        visualId: editingGift.visualId || "",
       });
     } else {
       reset({
         value: "",
         description: "",
+        visualId: "",
       });
     }
   }, [editingGift, reset]);

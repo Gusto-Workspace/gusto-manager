@@ -130,7 +130,7 @@ cron.schedule("*/5 * * * *", async () => {
         if (paymentIntent.status === "canceled") {
           reservation.bankHold.status = "expired";
           reservation.bankHold.lastError =
-            "L’autorisation bancaire a expiré automatiquement côté Stripe.";
+            "L’autorisation bancaire a expiré automatiquement.";
 
           await reservation.save();
 
@@ -146,7 +146,7 @@ cron.schedule("*/5 * * * *", async () => {
         if (err?.code === "resource_missing") {
           reservation.bankHold.status = "expired";
           reservation.bankHold.lastError =
-            "Autorisation Stripe introuvable (probablement expirée).";
+            "Autorisation introuvable (probablement expirée).";
 
           await reservation.save();
 

@@ -237,6 +237,7 @@ async function refreshGiftCardLifecycle(restaurantId) {
 
 function sanitizeGiftCardSettingsInput(input = {}) {
   const current = getGiftCardSettings(input);
+  const raw = toPlainObject(input);
 
   return {
     validity_mode:
@@ -265,6 +266,8 @@ function sanitizeGiftCardSettingsInput(input = {}) {
       0,
       60,
     ),
+    visuals: Array.isArray(raw.visuals) ? raw.visuals : [],
+    defaultVisualId: raw.defaultVisualId || "",
   };
 }
 

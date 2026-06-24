@@ -2,6 +2,7 @@ import { useContext, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { CalendarDays, Check, Loader2, Save } from "lucide-react";
 import { GlobalContext } from "@/contexts/global.context";
+import GiftCardVisualsFormComponent from "./visuals-form.gift-cards.component";
 
 export const MONTH_OPTIONS = [
   { value: 1, label: "Janvier" },
@@ -207,12 +208,12 @@ export default function GiftCardSettingsFormComponent({
   onSave,
   savePresentation = "full",
 }) {
-  const card = "rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm";
+  const card =
+    "w-full rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm";
   const cardInner = "px-2 py-4 mobile:p-4 midTablet:p-6";
   const sectionTitle =
     "text-base font-semibold text-darkBlue flex items-center gap-2";
   const hint = "text-sm text-darkBlue/60";
-  const divider = "h-px bg-darkBlue/10 my-4";
   const saveBtnBase =
     "inline-flex items-center gap-2 rounded-xl px-3 h-10 text-sm font-semibold transition";
   const saveBtnPrimary =
@@ -290,7 +291,7 @@ export default function GiftCardSettingsFormComponent({
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex w-full flex-col gap-4">
       {errorMessage ? (
         <div className="rounded-2xl border border-red/20 bg-red/10 px-4 py-3 text-sm text-red">
           {errorMessage}
@@ -299,7 +300,7 @@ export default function GiftCardSettingsFormComponent({
 
       <div className={card}>
         <div className={cardInner}>
-          <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-col gap-4 midTablet:flex-row midTablet:items-center midTablet:justify-between">
             <div className="min-w-0">
               <p className={sectionTitle}>
                 <CalendarDays className="size-4 shrink-0 opacity-60" />
@@ -310,43 +311,43 @@ export default function GiftCardSettingsFormComponent({
               </p>
             </div>
 
-            {renderSaveButton("archive")}
-          </div>
-
-          <div className={divider} />
-
-          <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3">
-            <div className="flex items-center gap-3">
-              <CalendarDays className="size-5 text-darkBlue/50" />
-              <input
-                type="number"
-                min="0"
-                max="60"
-                value={settings.archive_used_after_months}
-                onChange={(event) =>
-                  onChange("archive_used_after_months", event.target.value)
-                }
-                onBlur={() =>
-                  onChange(
-                    "archive_used_after_months",
-                    String(
-                      sanitizeIntegerDraft(
-                        settings.archive_used_after_months,
-                        DEFAULT_GIFT_CARD_SETTINGS.archive_used_after_months,
-                        { min: 0, max: 60 },
+            <div className="flex w-full flex-wrap items-center gap-3 midTablet:w-[460px] midTablet:shrink-0 midTablet:justify-end">
+              <div className="flex min-w-0 flex-1 items-center gap-3 rounded-2xl border border-darkBlue/10 bg-white/60 p-3">
+                <CalendarDays className="size-5 shrink-0 text-darkBlue/50" />
+                <input
+                  type="number"
+                  min="0"
+                  max="60"
+                  value={settings.archive_used_after_months}
+                  onChange={(event) =>
+                    onChange("archive_used_after_months", event.target.value)
+                  }
+                  onBlur={() =>
+                    onChange(
+                      "archive_used_after_months",
+                      String(
+                        sanitizeIntegerDraft(
+                          settings.archive_used_after_months,
+                          DEFAULT_GIFT_CARD_SETTINGS.archive_used_after_months,
+                          { min: 0, max: 60 },
+                        ),
                       ),
-                    ),
-                  )
-                }
-                className={`${inputBase} w-24 px-3`}
-              />
-              <span className="text-sm text-darkBlue/70">
-                mois après utilisation
-              </span>
+                    )
+                  }
+                  className={`${inputBase} min-w-0 flex-1 px-3`}
+                />
+                <span className="shrink-0 text-sm text-darkBlue/70">
+                  mois après utilisation
+                </span>
+              </div>
+
+              {renderSaveButton("archive")}
             </div>
           </div>
         </div>
       </div>
+
+      <GiftCardVisualsFormComponent />
     </div>
   );
 }

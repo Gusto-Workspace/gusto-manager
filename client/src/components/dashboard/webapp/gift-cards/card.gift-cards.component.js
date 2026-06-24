@@ -13,6 +13,10 @@ import {
   DragMultiSvg,
 } from "../../../_shared/_svgs/_index";
 import { buildGiftCardValidityLabel } from "../../../_shared/gift-cards/settings-form.gift-cards.component";
+import {
+  GiftCardVisualPreview,
+  resolveGiftCardVisual,
+} from "../../../_shared/gift-cards/visuals-form.gift-cards.component";
 
 export default function CardGiftsComponent(props) {
   const { t } = useTranslation("gifts");
@@ -32,6 +36,7 @@ export default function CardGiftsComponent(props) {
     props.giftCard,
     props.fallbackSettings,
   );
+  const visual = resolveGiftCardVisual(props.giftCard, props.fallbackSettings);
 
   const shortDescription = (() => {
     const desc = props.giftCard.description || "";
@@ -48,7 +53,7 @@ export default function CardGiftsComponent(props) {
       className="
         relative flex flex-col gap-2 items-stretch
         rounded-2xl border border-darkBlue/10 bg-white/80
-        px-4 py-4 pb-2
+        px-4 pt-11 pb-2
         shadow-[0_18px_45px_rgba(19,30,54,0.06)]
         hover:shadow-[0_22px_55px_rgba(19,30,54,0.10)]
         transition-shadow
@@ -59,7 +64,7 @@ export default function CardGiftsComponent(props) {
         <button
           {...listeners}
           className="
-            absolute gap-1 p-3 opacity-50 left-3 top-3
+            absolute z-20 gap-1 p-3 opacity-50 left-3 top-2
             text-darkBlue/30 hover:text-darkBlue/60
             cursor-grab active:cursor-grabbing
           "
@@ -73,7 +78,7 @@ export default function CardGiftsComponent(props) {
             props.handleEditClick(props.giftCard);
           }}
           className="
-            absolute right-4 items-center justify-center
+            absolute z-20 right-4 top-3 items-center justify-center
             rounded-full border border-darkBlue/10 bg-white
             p-1.5 shadow-sm
             hover:bg-darkBlue/5 hover:border-darkBlue/30
@@ -90,7 +95,17 @@ export default function CardGiftsComponent(props) {
       </div>
 
       {/* Contenu principal */}
-      <div className="flex flex-col items-center text-center px-2 pt-1">
+      <div className="flex flex-col items-center text-center px-2">
+        <div className="mb-3 w-full shrink-0 aspect-[16/9] overflow-hidden">
+          <GiftCardVisualPreview
+            visual={visual}
+            amount={amountLabel}
+            description={props.giftCard.description || "Carte cadeau"}
+            className="h-full w-full"
+            fill
+          />
+        </div>
+
         {/* Montant */}
         <h2 className="text-lg tablet:text-xl font-semibold text-darkBlue">
           {amountLabel}
