@@ -94,11 +94,13 @@ export default function ListGiftsComponent() {
       reset({
         value: editingGift.value,
         description: editingGift.description || "",
+        visualId: editingGift.visualId || "",
       });
     } else {
       reset({
         value: "",
         description: "",
+        visualId: "",
       });
     }
   }, [editingGift, reset]);

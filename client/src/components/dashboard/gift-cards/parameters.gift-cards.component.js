@@ -24,7 +24,7 @@ export default function ParametersGiftCardsComponent() {
         subtitle={t("buttons.parameters", "Paramètres")}
       />
 
-      <div className="max-w-3xl">
+      <div className="w-full">
         <GiftCardSettingsFormComponent
           settings={settings}
           sectionState={sectionState}
