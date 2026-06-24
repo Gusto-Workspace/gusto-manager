@@ -9,6 +9,7 @@ import { useRouter } from "next/router";
 import Head from "next/head";
 import axios from "axios";
 import { jwtDecode } from "jwt-decode";
+import { Analytics } from "@vercel/analytics/next";
 
 // I18N
 import { appWithTranslation } from "next-i18next";
@@ -366,6 +367,7 @@ function App({ Component, pageProps }) {
           </EmployeeDashboardAccessGuard>
         </OwnerOnlyWebAppGuard>
       </GlobalProvider>
+      <Analytics />
     </>
   );
 }
