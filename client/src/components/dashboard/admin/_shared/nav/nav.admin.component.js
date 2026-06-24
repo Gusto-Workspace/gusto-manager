@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
+import Image from "next/image";
 import { useTranslation } from "next-i18next";
 import { ChevronRight, LogOut } from "lucide-react";
 
@@ -312,11 +313,14 @@ export default function NavAdminComponent() {
         <div ref={navScrollRef} className={navInnerCls}>
           {/* Logo */}
           <div className={logoWrapCls}>
-            <img
+            <Image
               src="/img/logo-3.png"
+              width={50}
+              height={50}
               draggable={false}
               alt="logo"
               className={logoImgCls}
+              priority
             />
           </div>
 

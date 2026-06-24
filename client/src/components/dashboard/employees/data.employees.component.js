@@ -1,6 +1,7 @@
 // SVG
 import { AvatarSvg } from "@/components/_shared/_svgs/avatar.svg";
 import { EditSvg } from "@/components/_shared/_svgs/edit.svg";
+import Image from "next/image";
 
 // I18N
 import { useTranslation } from "next-i18next";
@@ -339,10 +340,13 @@ export default function DataEmployeesComponent(props) {
         <div className="relative flex flex-col items-center gap-2 w-full midTablet:w-auto">
           <div className="relative w-40 h-40 midTablet:w-36 midTablet:h-36 flex-shrink-0 mx-auto midTablet:mx-0 rounded-full overflow-hidden border border-darkBlue/15 bg-white/70 shadow-sm">
             {avatarUrl ? (
-              <img
+              <Image
                 src={avatarUrl}
                 alt="aperçu"
-                className="w-full h-full object-cover"
+                fill
+                sizes="160px"
+                className="object-cover"
+                unoptimized
               />
             ) : (
               <div className="flex items-center justify-center w-full h-full bg-lightGrey/60">

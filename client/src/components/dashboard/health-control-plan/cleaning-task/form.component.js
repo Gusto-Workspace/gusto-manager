@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, useContext } from "react";
+import Image from "next/image";
 import { useForm } from "react-hook-form";
 
 // AXIOS
@@ -409,11 +410,14 @@ export default function CleaningTaskForm({
                               );
                               const name = displayUser(h?.doneBy);
                               return url ? (
-                                <img
+                                <Image
                                   src={url}
                                   alt={name}
+                                  width={36}
+                                  height={36}
                                   className="h-9 w-9 rounded-full object-cover ring-2 ring-white shadow"
                                   referrerPolicy="no-referrer"
+                                  unoptimized
                                 />
                               ) : (
                                 <div className="grid h-9 w-9 place-items-center rounded-full bg-blue text-white text-sm font-semibold">

@@ -1,5 +1,6 @@
 import { useContext, useEffect, useState } from "react";
 import { useRouter } from "next/router";
+import Image from "next/image";
 
 // REACT HOOK FORM
 import { useForm } from "react-hook-form";
@@ -278,11 +279,14 @@ export default function AddNewsComponent(props) {
 
               {imagePreview ? (
                 <div className="relative rounded-2xl overflow-hidden border border-darkBlue/10 bg-white/80 shadow-[0_10px_30px_rgba(19,30,54,0.06)]">
-                  <div className="aspect-[4/3] w-full">
-                    <img
+                  <div className="relative aspect-[4/3] w-full">
+                    <Image
                       src={imagePreview}
                       alt="Preview"
-                      className="h-full w-full object-cover"
+                      fill
+                      sizes="(max-width: 768px) 100vw, 50vw"
+                      className="object-cover"
+                      unoptimized
                     />
                   </div>
 
