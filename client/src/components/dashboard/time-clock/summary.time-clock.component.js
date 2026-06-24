@@ -12,7 +12,6 @@ import {
   Pencil,
   Plus,
   RefreshCw,
-  SquareArrowOutUpRight,
   Trash2,
 } from "lucide-react";
 
@@ -30,7 +29,6 @@ import {
   getTimeClockActionLabel,
   getTimeClockAnomalyLabel,
   getTimeClockSituationLabel,
-  openTimeClockInNewTab,
   toLocalDateKey,
 } from "./time-clock.utils";
 
@@ -432,7 +430,6 @@ export default function TimeClockSummaryComponent({
   selfView = false,
   title = "Pointeuse",
   subtitle = "",
-  allowOpenKiosk = false,
 }) {
   const [anchorDate, setAnchorDate] = useState(() =>
     toLocalDateKey(new Date()),

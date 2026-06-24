@@ -112,23 +112,15 @@ export default function MicrobiologyForm({
       : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/microbiology`;
     const method = initial?._id ? "put" : "post";
 
-    const { data: saved } = await axios[method](url, payload, {
-    });
+    const { data: saved } = await axios[method](url, payload, {});
 
     window.dispatchEvent(
-      new CustomEvent("microbiology:upsert", { detail: { doc: saved } })
+      new CustomEvent("microbiology:upsert", { detail: { doc: saved } }),
     );
 
     reset(buildDefaults(null));
     onSuccess?.(saved);
   };
-
-  // Helpers
-  const setNow = (field) =>
-    setValue(field, toDatetimeLocal(new Date()), {
-      shouldDirty: true,
-      shouldTouch: true,
-    });
 
   // Styles
   const fieldWrap =
@@ -139,8 +131,6 @@ export default function MicrobiologyForm({
     "h-11 w-full rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition placeholder:text-darkBlue/40";
   const selectCls =
     "h-11 w-full appearance-none rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition";
-  const btnBase =
-    "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition active:scale-[0.98]";
 
   const notesVal = watch("notes");
   const passed = watch("passed"); // boolean

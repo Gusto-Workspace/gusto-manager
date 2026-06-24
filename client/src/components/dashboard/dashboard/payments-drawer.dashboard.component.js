@@ -10,12 +10,10 @@ import {
   Users,
   Clock,
   CheckCircle2,
-  ExternalLink,
   ReceiptText,
   RotateCcw,
   Wallet,
 } from "lucide-react";
-import { TableSvg, CommentarySvg } from "@/components/_shared/_svgs/_index";
 
 const CLOSE_MS = 280;
 const SWIPE_VELOCITY = 0.6;
@@ -111,46 +109,6 @@ function getPaymentStatusUi(transaction, t) {
         cls: "bg-darkBlue/5 text-darkBlue border border-darkBlue/10",
       };
   }
-}
-
-function getGiftCardStatusLabel(status, t) {
-  switch (String(status || "")) {
-    case "Valid":
-      return t("payments.sourceStatus.gift.valid", "Valide");
-    case "Used":
-      return t("payments.sourceStatus.gift.used", "Utilisee");
-    case "Expired":
-      return t("payments.sourceStatus.gift.expired", "Expiree");
-    case "Archived":
-      return t("payments.sourceStatus.gift.archived", "Archivee");
-    default:
-      return status || "-";
-  }
-}
-
-function getBankHoldStatusLabel(status, t) {
-  switch (String(status || "")) {
-    case "captured":
-      return t("payments.sourceStatus.bankHold.captured", "Capturee");
-    case "authorized":
-      return t("payments.sourceStatus.bankHold.authorized", "Autorisee");
-    case "released":
-      return t("payments.sourceStatus.bankHold.released", "Liberee");
-    default:
-      return status || "-";
-  }
-}
-
-function getReservationTableLabel(reservation) {
-  const explicitName = String(reservation?.table?.name || "").trim();
-  if (explicitName) return explicitName;
-
-  const tableIds = Array.isArray(reservation?.table?.tableIds)
-    ? reservation.table.tableIds
-    : [];
-
-  if (!tableIds.length) return "-";
-  return tableIds.map((id) => String(id || "").trim()).join(" + ");
 }
 
 function DetailRow({ icon: Icon, label, value, mono = false }) {

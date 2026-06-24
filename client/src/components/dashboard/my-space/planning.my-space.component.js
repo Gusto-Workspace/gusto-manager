@@ -447,18 +447,6 @@ export default function PlanningMySpaceComponent({
 
   // hauteur webapp
   const calendarHeight = isMobile ? "calc(100vh - 160px)" : "75vh";
-  // ✅ largeur mini (week/month) + plus large sur mobile pour éviter la compression
-  const minTableWidth = useMemo(() => {
-    if (currentView === Views.DAY) return "auto";
-
-    // week/month : 7 colonnes
-    if (isMobile) {
-      // un peu plus large pour que ça reste lisible en scroll horizontal
-      return `${7 * 120}px`; // ajuste 110/130 si tu veux
-    }
-
-    return `${7 * 100}px`;
-  }, [currentView, isMobile]);
 
   return (
     <section

@@ -147,7 +147,9 @@ export default function FridgeTemperatureForm({
         headers: { Authorization: `Bearer ${token}` },
       });
       window.dispatchEvent(
-        new CustomEvent("fridge-temperature:upsert", { detail: { doc: saved } })
+        new CustomEvent("fridge-temperature:upsert", {
+          detail: { doc: saved },
+        }),
       );
       onCreated?.(saved);
       onSaved?.(saved);
@@ -161,7 +163,9 @@ export default function FridgeTemperatureForm({
         headers: { Authorization: `Bearer ${token}` },
       });
       window.dispatchEvent(
-        new CustomEvent("fridge-temperature:upsert", { detail: { doc: saved } })
+        new CustomEvent("fridge-temperature:upsert", {
+          detail: { doc: saved },
+        }),
       );
       onSaved?.(saved);
       clearEditing();
@@ -175,13 +179,12 @@ export default function FridgeTemperatureForm({
     window.dispatchEvent(
       new CustomEvent("fridge-temperature:deleted", {
         detail: { id: editingId },
-      })
+      }),
     );
     clearEditing();
   };
 
   // UI helpers
-  const setNow = () => setValue("createdAt", toDatetimeLocalValue());
 
   const fieldWrap =
     "group relative rounded-xl bg-white/50   px-3 py-2 h-[80px] transition-shadow";

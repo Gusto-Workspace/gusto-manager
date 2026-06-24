@@ -99,7 +99,6 @@ export default function NotificationsDrawerComponent({
   fetchNotifications,
   markNotificationRead,
   markAllRead,
-  role,
   lastNotificationsSyncRef,
   modulesFilter,
 }) {

@@ -1000,8 +1000,6 @@ export default function PlanningEmployeesComponent() {
 
   // ─── Toolbar mobile compacte ────────────────────────────────────────────────
   const today = new Date();
-  const isToday =
-    date && today.toDateString && date.toDateString() === today.toDateString();
 
   const rangeLabel = useMemo(() => {
     if (!date) return "";

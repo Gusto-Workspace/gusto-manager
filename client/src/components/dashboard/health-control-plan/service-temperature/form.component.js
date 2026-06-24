@@ -90,7 +90,7 @@ export default function ServiceTemperatureForm({
   const token = useMemo(
     () =>
       typeof window !== "undefined" ? localStorage.getItem("token") : null,
-    []
+    [],
   );
   const dishName = watch("dishName");
   const [batchOpen, setBatchOpen] = useState(false);
@@ -212,7 +212,7 @@ export default function ServiceTemperatureForm({
       {
         ...payload,
       },
-      { headers: { Authorization: `Bearer ${tk}` } }
+      { headers: { Authorization: `Bearer ${tk}` } },
     );
 
     reset(buildFormDefaults(null));
@@ -346,6 +346,7 @@ export default function ServiceTemperatureForm({
                       onClick={() => pickBatch(it)}
                       className="w-full text-left px-3 py-2 hover:bg-blue/5 text-sm"
                       role="option"
+                      aria-selected={false}
                       title="Cliquer pour préremplir"
                     >
                       <div className="font-medium text-darkBlue">

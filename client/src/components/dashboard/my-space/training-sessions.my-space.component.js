@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { useTranslation } from "next-i18next";
 import { StudySvg } from "@/components/_shared/_svgs/_index";
 
 function fmtDate(d) {
@@ -37,7 +36,6 @@ export default function TrainingSessionsMySpaceComponent({
   employeeId,
   restaurantId,
 }) {
-  const { t } = useTranslation("myspace");
   const [trainingSessions, setTrainingSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState({});
@@ -62,7 +60,7 @@ export default function TrainingSessionsMySpaceComponent({
         const token = localStorage.getItem("token");
         const { data } = await axios.get(
           `${process.env.NEXT_PUBLIC_API_URL}/employees/${employeeId}/training-sessions`,
-          { headers: { Authorization: `Bearer ${token}` } }
+          { headers: { Authorization: `Bearer ${token}` } },
         );
 
         const all = data.trainingSessions || [];
@@ -104,13 +102,13 @@ export default function TrainingSessionsMySpaceComponent({
             status: nextStatus,
           },
         },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` } },
       );
 
       setTrainingSessions((arr) =>
         arr.map((s) =>
-          s._id === sessionId ? { ...s, myStatus: data.myStatus } : s
-        )
+          s._id === sessionId ? { ...s, myStatus: data.myStatus } : s,
+        ),
       );
     } catch (e) {
       console.error(e);
@@ -156,7 +154,7 @@ export default function TrainingSessionsMySpaceComponent({
               const title = tra.title || tra.topic || "Formation";
               const endISO = endFromStartAndMinutes(
                 tra.date,
-                tra.durationMinutes
+                tra.durationMinutes,
               );
               const myStatus = tra.myStatus || "attended";
               const statusBgCls = STATUS_BG_CLASS[myStatus] || "";

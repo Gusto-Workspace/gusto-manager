@@ -1,11 +1,4 @@
-import {
-  Fragment,
-  useState,
-  useContext,
-  useRef,
-  useEffect,
-  useMemo,
-} from "react";
+import { Fragment, useState, useContext, useRef, useEffect } from "react";
 import { useRouter } from "next/router";
 import { useTranslation } from "next-i18next";
 import { LogOut } from "lucide-react";
@@ -89,10 +82,6 @@ export default function SettingsComponent() {
     restaurantContext?.userConnected?.profilePictureUrl || null;
 
   const unreadCount = restaurantContext?.unreadCounts?.total || 0;
-
-  const token =
-    typeof window !== "undefined" ? localStorage.getItem("token") : null; // adapte si ton token owner a un autre nom
-  const restaurantId = restaurantContext?.restaurantData?._id || null;
 
   return (
     <section className="flex flex-col-reverse tablet:flex-row min-h-16 gap-6 tablet:gap-7 justify-between items-center relative">

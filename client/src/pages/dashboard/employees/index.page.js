@@ -4,7 +4,6 @@ import Head from "next/head";
 // I18N
 import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
-import { useTranslation } from "next-i18next";
 
 // CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
@@ -16,7 +15,6 @@ import NoAvailableComponent from "@/components/_shared/options/no-available.opti
 import ListEmployeesComponent from "@/components/dashboard/employees/list.employees.component";
 
 export default function EmployeesPage(props) {
-  const { t } = useTranslation("");
   const { restaurantContext } = useContext(GlobalContext);
 
   let title;
@@ -34,7 +32,7 @@ export default function EmployeesPage(props) {
 
   if (!restaurantContext.isAuth) return null;
 
-    const restaurant = restaurantContext.restaurantData;
+  const restaurant = restaurantContext.restaurantData;
   const restaurantOptions = restaurant?.options || {};
   const hasEmployeesModule = !!restaurantOptions.employees;
 
@@ -45,11 +43,11 @@ export default function EmployeesPage(props) {
 
   if (isEmployee && restaurant) {
     const employeeInRestaurant = restaurant.employees?.find(
-      (emp) => String(emp._id) === String(user.id)
+      (emp) => String(emp._id) === String(user.id),
     );
 
     const profile = employeeInRestaurant?.restaurantProfiles?.find(
-      (p) => String(p.restaurant) === String(restaurant._id)
+      (p) => String(p.restaurant) === String(restaurant._id),
     );
 
     employeeHasEmployeesAccess = profile?.options?.employees === true;
@@ -82,12 +80,10 @@ export default function EmployeesPage(props) {
             ) : !employeeHasEmployeesAccess ? (
               <NoAvailableComponent
                 dataLoading={restaurantContext.dataLoading}
-                 />
+              />
             ) : (
               <ListEmployeesComponent />
             )}
-
-            
           </div>
         </div>
       </div>

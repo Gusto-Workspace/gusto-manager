@@ -58,12 +58,6 @@ export default function HealthMeasuresList({
   const [isClient, setIsClient] = useState(false);
   useEffect(() => setIsClient(true), []);
 
-  const token = useMemo(
-    () =>
-      typeof window !== "undefined" ? localStorage.getItem("token") : null,
-    []
-  );
-
   const metaRef = useRef(meta);
   useEffect(() => {
     metaRef.current = meta;
@@ -93,9 +87,9 @@ export default function HealthMeasuresList({
           dateFrom ||
           dateTo ||
           appliedDateFrom ||
-          appliedDateTo
+          appliedDateTo,
       ),
-    [q, type, dateFrom, dateTo, appliedDateFrom, appliedDateTo]
+    [q, type, dateFrom, dateTo, appliedDateFrom, appliedDateTo],
   );
 
   const hasFullDateRange = Boolean(dateFrom && dateTo);
@@ -139,7 +133,7 @@ export default function HealthMeasuresList({
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-health-measures`,
         {
           params,
-        }
+        },
       );
 
       const list = sortLogic(data.items || []);
@@ -544,7 +538,7 @@ export default function HealthMeasuresList({
               </div>
             </div>
           </div>,
-          document.body
+          document.body,
         )}
     </div>
   );

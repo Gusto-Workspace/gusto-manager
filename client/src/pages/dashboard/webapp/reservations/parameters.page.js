@@ -1,4 +1,4 @@
-import { useContext, useEffect } from "react";
+import { useContext } from "react";
 import Head from "next/head";
 
 // I18N
@@ -9,8 +9,6 @@ import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import { GlobalContext } from "@/contexts/global.context";
 
 // COMPONENTS
-import NavComponent from "@/components/_shared/nav/nav.component";
-import SettingsComponent from "@/components/_shared/settings/settings.component";
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
 import ParametersReservationWebApp from "@/components/dashboard/webapp/reservations/parameters.reservations.webapp";
 import NotGoodDeviceWebAppComponent from "@/components/dashboard/webapp/_shared/not-good-device.webapp";

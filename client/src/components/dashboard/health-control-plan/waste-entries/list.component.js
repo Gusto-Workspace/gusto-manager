@@ -76,12 +76,6 @@ export default function WasteEntriesList({
   const [isClient, setIsClient] = useState(false);
   useEffect(() => setIsClient(true), []);
 
-  const token = useMemo(
-    () =>
-      typeof window !== "undefined" ? localStorage.getItem("token") : null,
-    []
-  );
-
   const metaRef = useRef(meta);
   useEffect(() => {
     metaRef.current = meta;
@@ -112,9 +106,9 @@ export default function WasteEntriesList({
           dateFrom ||
           dateTo ||
           appliedDateFrom ||
-          appliedDateTo
+          appliedDateTo,
       ),
-    [q, wasteType, method, dateFrom, dateTo, appliedDateFrom, appliedDateTo]
+    [q, wasteType, method, dateFrom, dateTo, appliedDateFrom, appliedDateTo],
   );
 
   const hasFullDateRange = Boolean(dateFrom && dateTo);
@@ -161,7 +155,7 @@ export default function WasteEntriesList({
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-waste-entries`,
         {
           params,
-        }
+        },
       );
 
       const list = sortLogic(data.items || []);
@@ -607,7 +601,7 @@ export default function WasteEntriesList({
               </div>
             </div>
           </div>,
-          document.body
+          document.body,
         )}
     </div>
   );

@@ -2,7 +2,7 @@ import { useContext } from "react";
 import Head from "next/head";
 
 // I18N
-import { i18n, useTranslation } from "next-i18next";
+import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 
 // CONTEXT
@@ -15,7 +15,6 @@ import NoAvailableComponent from "@/components/_shared/options/no-available.opti
 import DashboardHealthControlPlanComponent from "@/components/dashboard/health-control-plan/dashboard.health-control-plan.component";
 
 export default function HealthControlPlanPage(props) {
-  const { t } = useTranslation("");
   const { restaurantContext } = useContext(GlobalContext);
 
   let title;

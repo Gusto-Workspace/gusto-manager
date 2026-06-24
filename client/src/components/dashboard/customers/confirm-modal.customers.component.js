@@ -1,27 +1,7 @@
-import { useMemo, useState, useEffect } from "react";
-
-// I18N
-import { useTranslation } from "next-i18next";
-
-// SVG
-import { CustomerSvg } from "@/components/_shared/_svgs/customer.svg";
+import { useState, useEffect } from "react";
 
 // ICONS
-import {
-  Search,
-  Tag,
-  ChevronLeft,
-  ChevronRight,
-  Phone,
-  Mail,
-  UserCheck,
-  Crown,
-  RotateCcw,
-  UserX,
-  Trash2,
-  AlertTriangle,
-  X,
-} from "lucide-react";
+import { Trash2, X } from "lucide-react";
 
 const MODAL_CLOSE_MS = 220;
 

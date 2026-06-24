@@ -5,9 +5,6 @@ import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import { useTranslation } from "next-i18next";
 
-// CONTEXT
-import { GlobalContext } from "@/contexts/global.context";
-
 // COMPONENTS
 import NavbarLanding from "@/components/landing/nav.landing.component";
 import FooterLandingComponent from "@/components/landing/footer.landing.component";

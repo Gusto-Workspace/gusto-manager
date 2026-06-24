@@ -76,12 +76,6 @@ export default function SupplierCertificateList({
   const [isClient, setIsClient] = useState(false);
   useEffect(() => setIsClient(true), []);
 
-  const token = useMemo(
-    () =>
-      typeof window !== "undefined" ? localStorage.getItem("token") : null,
-    []
-  );
-
   const metaRef = useRef(meta);
   useEffect(() => {
     metaRef.current = meta;
@@ -111,9 +105,9 @@ export default function SupplierCertificateList({
           dateFrom ||
           dateTo ||
           appliedDateFrom ||
-          appliedDateTo
+          appliedDateTo,
       ),
-    [q, status, dateFrom, dateTo, appliedDateFrom, appliedDateTo]
+    [q, status, dateFrom, dateTo, appliedDateFrom, appliedDateTo],
   );
 
   const hasFullDateRange = Boolean(dateFrom && dateTo);
@@ -279,11 +273,10 @@ export default function SupplierCertificateList({
     try {
       setDeleteLoading(true);
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/supplier-certificates/${deleteTarget._id}`;
-      await axios.delete(url, {
-      });
+      await axios.delete(url, {});
 
       setItems((prev) =>
-        (prev || []).filter((x) => String(x?._id) !== String(deleteTarget._id))
+        (prev || []).filter((x) => String(x?._id) !== String(deleteTarget._id)),
       );
       onDeleted?.(deleteTarget);
       setIsDeleteModalOpen(false);
@@ -632,7 +625,7 @@ export default function SupplierCertificateList({
               </div>
             </div>
           </div>,
-          document.body
+          document.body,
         )}
     </div>
   );

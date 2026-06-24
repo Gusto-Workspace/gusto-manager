@@ -5,7 +5,6 @@ import {
   DrinkSvg,
   WineSvg,
   NewsSvg,
-  NotificationSvg,
   ReservationSvg,
 } from "../../components/_shared/_svgs/_index";
 

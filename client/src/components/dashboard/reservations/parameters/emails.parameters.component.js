@@ -129,7 +129,6 @@ export default function EmailsParametersComponent({
   notifyRestaurantOnNewPublicReservation = false,
   onNotifyRestaurantOnNewPublicReservationChange,
   restaurantName,
-  restaurantEmail = "",
   bankHoldEnabled = false,
   saveUI,
   onSave,

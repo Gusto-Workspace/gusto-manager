@@ -86,12 +86,6 @@ export default function NonConformityList({
   const [isClient, setIsClient] = useState(false);
   useEffect(() => setIsClient(true), []);
 
-  const token = useMemo(
-    () =>
-      typeof window !== "undefined" ? localStorage.getItem("token") : null,
-    []
-  );
-
   const metaRef = useRef(meta);
   useEffect(() => {
     metaRef.current = meta;
@@ -123,7 +117,7 @@ export default function NonConformityList({
           dateFrom ||
           dateTo ||
           appliedDateFrom ||
-          appliedDateTo
+          appliedDateTo,
       ),
     [
       q,
@@ -134,7 +128,7 @@ export default function NonConformityList({
       dateTo,
       appliedDateFrom,
       appliedDateTo,
-    ]
+    ],
   );
 
   const hasFullDateRange = Boolean(dateFrom && dateTo);
@@ -309,11 +303,10 @@ export default function NonConformityList({
     try {
       setDeleteLoading(true);
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/non-conformities/${deleteTarget._id}`;
-      await axios.delete(url, {
-      });
+      await axios.delete(url, {});
 
       setItems((prev) =>
-        (prev || []).filter((x) => String(x?._id) !== String(deleteTarget._id))
+        (prev || []).filter((x) => String(x?._id) !== String(deleteTarget._id)),
       );
       onDeleted?.(deleteTarget);
       setIsDeleteModalOpen(false);
@@ -688,7 +681,7 @@ export default function NonConformityList({
               </div>
             </div>
           </div>,
-          document.body
+          document.body,
         )}
     </div>
   );

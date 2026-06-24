@@ -60,11 +60,6 @@ export default function RecallList({
   const [isClient, setIsClient] = useState(false);
   useEffect(() => setIsClient(true), []);
 
-  const token = useMemo(
-    () =>
-      typeof window !== "undefined" ? localStorage.getItem("token") : null,
-    []
-  );
   const metaRef = useRef(meta);
   useEffect(() => {
     metaRef.current = meta;
@@ -95,9 +90,9 @@ export default function RecallList({
           dateFrom ||
           dateTo ||
           appliedDateFrom ||
-          appliedDateTo
+          appliedDateTo,
       ),
-    [q, status, dateFrom, dateTo, appliedDateFrom, appliedDateTo]
+    [q, status, dateFrom, dateTo, appliedDateFrom, appliedDateTo],
   );
 
   const hasFullDateRange = Boolean(dateFrom && dateTo);
@@ -140,7 +135,7 @@ export default function RecallList({
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-recalls`,
         {
           params,
-        }
+        },
       );
 
       const list = sortLogic(data.items || []);
@@ -256,7 +251,7 @@ export default function RecallList({
         total: Math.max(0, (m.total || 0) - 1),
         pages: Math.max(
           1,
-          Math.ceil(Math.max(0, (m.total || 0) - 1) / (m.limit || 20))
+          Math.ceil(Math.max(0, (m.total || 0) - 1) / (m.limit || 20)),
         ),
       }));
     } catch (err) {
@@ -556,7 +551,7 @@ export default function RecallList({
               </div>
             </div>
           </div>,
-          document.body
+          document.body,
         )}
     </div>
   );

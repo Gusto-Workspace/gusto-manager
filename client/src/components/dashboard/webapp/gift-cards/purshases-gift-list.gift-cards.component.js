@@ -22,7 +22,7 @@ import { ChevronDown } from "lucide-react";
 // ✅ Bottomsheet
 import PurshasesDrawerGiftCardsComponent from "../../../_shared/gift-cards/purshases-drawer.gift-cards.component";
 
-export default function WebAppPurchasesGiftListComponent(props) {
+export default function WebAppPurchasesGiftListComponent() {
   const { t } = useTranslation("gifts");
   const { restaurantContext } = useContext(GlobalContext);
   const router = useRouter();
@@ -281,17 +281,6 @@ export default function WebAppPurchasesGiftListComponent(props) {
     if (isSearching) return total;
     return Math.min(visibleCount[status] || STEP, total);
   };
-
-  // Total results badge
-  const totalResults = useMemo(() => {
-    if (!isSearching) return null;
-    return (
-      (filteredByStatus.Valid?.length || 0) +
-      (filteredByStatus.Used?.length || 0) +
-      (filteredByStatus.Expired?.length || 0) +
-      (filteredByStatus.Archived?.length || 0)
-    );
-  }, [filteredByStatus, isSearching]);
 
   // ✅ Refs for scroll tracking (section headers)
   const sectionRefs = useRef({

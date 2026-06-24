@@ -114,7 +114,6 @@ export default function ParametersReservationComponent(props) {
     watch,
     setValue,
     setFocus,
-    control,
     reset,
     formState: { errors },
   } = useForm({
@@ -1088,7 +1087,6 @@ export default function ParametersReservationComponent(props) {
             setNotifyRestaurantOnNewPublicReservation
           }
           restaurantName={props.restaurantData?.name}
-          restaurantEmail={props.restaurantData?.email}
           bankHoldEnabled={Boolean(bank_hold_enabled)}
           saveUI={sectionUI.emails}
           onSave={() => saveSection("emails")}

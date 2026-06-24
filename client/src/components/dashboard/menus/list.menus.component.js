@@ -35,7 +35,7 @@ import {
   restrictToParentElement,
 } from "@dnd-kit/modifiers";
 
-export default function ListMenusComponent(props) {
+export default function ListMenusComponent() {
   const { t } = useTranslation("menus");
   const router = useRouter();
   const { restaurantContext } = useContext(GlobalContext);
@@ -178,7 +178,7 @@ export default function ListMenusComponent(props) {
         >
           <SortableContext items={menus?.map((menu) => menu._id)}>
             <div className="grid grid-cols-1 midTablet:grid-cols-2 desktop:grid-cols-3 gap-4">
-              {menus?.map((menu, i) => (
+              {menus?.map((menu) => (
                 <CardListMenuComponent
                   key={menu._id}
                   menu={menu}
