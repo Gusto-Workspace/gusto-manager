@@ -1,5 +1,6 @@
 import { Fragment, useState, useContext, useRef, useEffect } from "react";
 import { useRouter } from "next/router";
+import Image from "next/image";
 import { useTranslation } from "next-i18next";
 import { LogOut } from "lucide-react";
 
@@ -213,13 +214,16 @@ export default function SettingsComponent() {
                 {restaurantContext?.userConnected?.firstname}
               </span>
             </p>
-            <div className="h-10 w-10 rounded-full bg-black bg-opacity-20 text-white text-xl flex items-center justify-center overflow-hidden">
+            <div className="relative h-10 w-10 rounded-full bg-black bg-opacity-20 text-white text-xl flex items-center justify-center overflow-hidden">
               {profilePictureUrl ? (
-                <img
+                <Image
                   src={profilePictureUrl}
                   alt={`Avatar ${restaurantContext?.userConnected?.firstname || ""}`}
-                  className="w-full h-full object-cover"
+                  fill
+                  sizes="40px"
+                  className="object-cover"
                   referrerPolicy="no-referrer"
+                  unoptimized
                 />
               ) : (
                 restaurantContext?.userConnected?.firstname?.charAt(0)

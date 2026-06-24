@@ -8,6 +8,7 @@ import {
 } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
+import Image from "next/image";
 import { ChevronRight } from "lucide-react";
 
 // I18N
@@ -379,11 +380,14 @@ export default function NavComponent() {
         <div ref={navScrollRef} className={navInnerCls}>
           {/* Logo */}
           <div className={logoWrapCls}>
-            <img
+            <Image
               src="/img/logo-3.png"
+              width={50}
+              height={50}
               draggable={false}
               alt="logo"
               className={logoImgCls}
+              priority
             />
           </div>
 

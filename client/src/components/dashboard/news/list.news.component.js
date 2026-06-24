@@ -1,5 +1,6 @@
 import { useState, useContext } from "react";
 import { useRouter } from "next/router";
+import Image from "next/image";
 
 // I18N
 import { useTranslation } from "next-i18next";
@@ -178,12 +179,15 @@ export default function ListNewsComponent(props) {
 
                   <div className="flex flex-col gap-2">
                     {data.image ? (
-                      <div className="w-full rounded-xl overflow-hidden border border-darkBlue/10 bg-white">
-                        <img
+                      <div className="relative w-full h-[210px] rounded-xl overflow-hidden border border-darkBlue/10 bg-white">
+                        <Image
                           src={data.image}
                           alt={data.title || "Image de l'actualité"}
                           draggable={false}
-                          className="w-full h-[210px] object-cover object-center"
+                          fill
+                          sizes="(max-width: 768px) 100vw, 33vw"
+                          className="object-cover object-center"
+                          unoptimized
                         />
                       </div>
                     ) : (

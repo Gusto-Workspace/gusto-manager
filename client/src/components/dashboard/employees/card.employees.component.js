@@ -1,4 +1,5 @@
 import { useRouter } from "next/router";
+import Image from "next/image";
 
 import {
   AvatarSvg,
@@ -35,12 +36,15 @@ export default function CardEmployeesComponent(props) {
     return (
       <div className="bg-white/70 rounded-2xl px-3 py-2 flex items-center gap-3">
         {/* Avatar */}
-        <div className="shrink-0 size-10 rounded-full bg-lightGrey border border-darkBlue/10 overflow-hidden grid place-items-center">
+        <div className="relative shrink-0 size-10 rounded-full bg-lightGrey border border-darkBlue/10 overflow-hidden grid place-items-center">
           {props.employee.profilePicture ? (
-            <img
+            <Image
               src={props.employee.profilePicture.url}
-              className="w-full h-full object-cover"
               alt="profile"
+              fill
+              sizes="40px"
+              className="object-cover"
+              unoptimized
             />
           ) : (
             // fallback: initiales (plus lisible en compact) ou AvatarSvg si tu préfères
@@ -71,10 +75,13 @@ export default function CardEmployeesComponent(props) {
     <div className="relative bg-white rounded-lg drop-shadow-sm px-1 midTablet:px-6 pt-12 pb-2 flex flex-col items-center gap-2 h-fit z-[4]">
       <div className="absolute flex items-center justify-center -top-6 left-1/2 -translate-x-1/2 border border-darkBlue/5 w-14 h-14 rounded-full bg-lightGrey overflow-hidden">
         {props.employee.profilePicture ? (
-          <img
+          <Image
             src={props.employee.profilePicture.url}
-            className="w-full h-full object-cover"
             alt="profile"
+            fill
+            sizes="56px"
+            className="object-cover"
+            unoptimized
           />
         ) : (
           <AvatarSvg width={30} fillColor="#131E3690" />

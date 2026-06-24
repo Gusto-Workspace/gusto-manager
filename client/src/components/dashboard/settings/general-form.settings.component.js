@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from "react";
+import Image from "next/image";
 import { useForm } from "react-hook-form";
 import axios from "axios";
 import { useTranslation } from "next-i18next";
@@ -333,10 +334,13 @@ export default function GeneralFormSettingsComponent({
               <div className="flex items-center gap-3">
                 <div className="relative w-20 h-20 rounded-full border border-darkBlue/10 bg-gradient-to-br from-darkBlue/5 to-darkBlue/10 flex items-center justify-center overflow-hidden">
                   {profilePreview ? (
-                    <img
+                    <Image
                       src={profilePreview}
                       alt="Photo de profil"
-                      className="w-full h-full object-cover"
+                      fill
+                      sizes="80px"
+                      className="object-cover"
+                      unoptimized
                     />
                   ) : (
                     <AvatarSvg width={56} height={56} fillColor="#131E3690" />
