@@ -62,7 +62,6 @@ export default function MicrobiologyForm({
     register,
     handleSubmit,
     reset,
-    setValue,
     watch,
     formState: { errors, isSubmitting },
   } = useForm({ defaultValues: buildDefaults(initial) });

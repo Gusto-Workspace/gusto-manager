@@ -75,8 +75,6 @@ const fieldWrap =
   "group relative rounded-xl bg-white/50 px-3 py-2 h-[80px] transition-shadow";
 const labelCls =
   "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
-const inputCls =
-  "h-11 w-full rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition placeholder:text-darkBlue/40";
 const selectCls =
   "h-11 w-full appearance-none rounded-lg border border-darkBlue/20 bg-white px-3 text-[15px] outline-none transition";
 const textareaCls =
@@ -101,7 +99,7 @@ export default function HealthMeasuresForm({
   } = useForm({ defaultValues: buildDefaults(initial) });
 
   const [existingAttachments, setExistingAttachments] = useState(
-    Array.isArray(initial?.attachments) ? initial.attachments : []
+    Array.isArray(initial?.attachments) ? initial.attachments : [],
   );
   const [removedAttachmentIds, setRemovedAttachmentIds] = useState([]);
   const [newFiles, setNewFiles] = useState([]);
@@ -112,13 +110,13 @@ export default function HealthMeasuresForm({
   const token = useMemo(
     () =>
       typeof window !== "undefined" ? localStorage.getItem("token") : null,
-    []
+    [],
   );
 
   useEffect(() => {
     reset(buildDefaults(initial));
     setExistingAttachments(
-      Array.isArray(initial?.attachments) ? initial.attachments : []
+      Array.isArray(initial?.attachments) ? initial.attachments : [],
     );
     setRemovedAttachmentIds([]);
     setNewFiles([]);
@@ -163,7 +161,7 @@ export default function HealthMeasuresForm({
 
     // live upsert (événement déjà utilisé dans la liste)
     window.dispatchEvent(
-      new CustomEvent("health-mesures:upsert", { detail: { doc: saved } })
+      new CustomEvent("health-mesures:upsert", { detail: { doc: saved } }),
     );
 
     reset(buildDefaults(null));
@@ -365,7 +363,7 @@ export default function HealthMeasuresForm({
                     const prettyName = normalizeFilename(att.filename);
                     const label = mimeBadgeLabel(att.mimetype || att.filename);
                     const isMarked = removedAttachmentIds.includes(
-                      String(att.public_id)
+                      String(att.public_id),
                     );
 
                     return (

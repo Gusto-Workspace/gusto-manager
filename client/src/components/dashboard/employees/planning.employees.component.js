@@ -999,8 +999,6 @@ export default function PlanningEmployeesComponent() {
   };
 
   // ─── Toolbar mobile compacte ────────────────────────────────────────────────
-  const today = new Date();
-
   const rangeLabel = useMemo(() => {
     if (!date) return "";
     if (view === Views.DAY)
