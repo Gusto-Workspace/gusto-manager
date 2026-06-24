@@ -1,8 +1,6 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/router";
 import axios from "axios";
-import { useTranslation } from "next-i18next";
-
 import SimpleSkeletonComponent from "@/components/_shared/skeleton/simple-skeleton.component";
 import DoubleSkeletonComponent from "@/components/_shared/skeleton/double-skeleton.component";
 import PageHeaderAdminComponent from "../_shared/page-header.admin.component";
@@ -15,7 +13,6 @@ import {
   FileText,
   PenSquare,
   Eye,
-  CheckCircle2,
   FileSignature,
   FileDown,
   RefreshCw,
@@ -48,7 +45,6 @@ function statusBadge(status) {
 }
 
 export default function ListDocumentsAdminComponent(props) {
-  const { t } = useTranslation("admin");
   const router = useRouter();
 
   const [docToDelete, setDocToDelete] = useState(null);

@@ -5,9 +5,6 @@ import {
   UserSvg,
 } from "../../../_shared/_svgs/_index";
 
-// I18N
-import { useTranslation } from "next-i18next";
-
 // LUCIDE
 import { Clock, ExternalLink } from "lucide-react";
 import {
@@ -60,8 +57,6 @@ function getReservationTableLabel(reservation, tablesCatalog = []) {
 }
 
 export default function CardReservationWebapp(props) {
-  const { t } = useTranslation("reservations");
-
   const r = props.reservation;
   const status = r.status;
 

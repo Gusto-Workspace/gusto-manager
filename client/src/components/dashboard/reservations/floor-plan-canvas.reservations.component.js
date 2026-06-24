@@ -301,8 +301,6 @@ function getTableReservationState({
 function getTableStatus({
   currentReservation,
   nextReservation,
-  theoreticalCurrent,
-  realCurrent,
   conflictingReservation,
   parameters,
   liveMode,

@@ -312,14 +312,7 @@ export default function DashboardComponent(props) {
           </div>
           <div className="grid grid-cols-1 gap-2 midTablet:gap-4 w-full">
             {giftDashboardData.map(
-              ({
-                key,
-                title,
-                IconComponent,
-                getCounts,
-                emptyLabel,
-                chartType,
-              }) => {
+              ({ key, title, IconComponent, getCounts, emptyLabel }) => {
                 const { total = 0, data = [] } =
                   getCounts?.(props.restaurantData) ?? {};
 

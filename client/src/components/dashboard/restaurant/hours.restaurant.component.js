@@ -10,7 +10,7 @@ import { daysOfWeeksData } from "@/_assets/data/days-of-week.data";
 import axios from "axios";
 
 // ICONS
-import { Edit, Loader2, Save, X, Check } from "lucide-react";
+import { Edit, Loader2, Save, X } from "lucide-react";
 
 // COMPONENTS
 import DoubleSkeletonComponent from "../../_shared/skeleton/double-skeleton.component";
@@ -263,7 +263,7 @@ export default function HoursRestaurantComponent(props) {
       <hr className="opacity-10" />
 
       <ul className="mt-1 flex flex-col gap-3">
-        {localHours.map((dayHour, dayIndex) => (
+        {localHours.map((dayHour) => (
           <Fragment key={dayHour.day}>
             <li className={rowCls}>
               {/* Jour */}

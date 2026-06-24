@@ -2,7 +2,6 @@ import Head from "next/head";
 import { useEffect } from "react";
 import { useRouter } from "next/router";
 import { jwtDecode } from "jwt-decode";
-import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import FormLoginComponent from "@/components/dashboard/login/form.login.component";
 

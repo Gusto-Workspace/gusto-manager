@@ -140,12 +140,6 @@ export default function MaintenanceList({
   const [isClient, setIsClient] = useState(false);
   useEffect(() => setIsClient(true), []);
 
-  const token = useMemo(
-    () =>
-      typeof window !== "undefined" ? localStorage.getItem("token") : null,
-    []
-  );
-
   const metaRef = useRef(meta);
   useEffect(() => {
     metaRef.current = meta;
@@ -178,7 +172,7 @@ export default function MaintenanceList({
           dateTo ||
           appliedDateFrom ||
           appliedDateTo ||
-          soonDays !== DUE_SOON_DEFAULT
+          soonDays !== DUE_SOON_DEFAULT,
       ),
     [
       q,
@@ -191,7 +185,7 @@ export default function MaintenanceList({
       appliedDateFrom,
       appliedDateTo,
       soonDays,
-    ]
+    ],
   );
 
   const hasFullDateRange = Boolean(dateFrom && dateTo);
@@ -243,7 +237,7 @@ export default function MaintenanceList({
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-maintenance`,
         {
           params,
-        }
+        },
       );
 
       const list = sortLogic(data.items || []);
@@ -395,7 +389,7 @@ export default function MaintenanceList({
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/maintenance/${item._id}/mark-done`;
       const { data: saved } = await axios.post(url, {});
       window.dispatchEvent(
-        new CustomEvent("maintenance:upsert", { detail: { doc: saved } })
+        new CustomEvent("maintenance:upsert", { detail: { doc: saved } }),
       );
     } catch (e) {
       console.error("mark-done error:", e);
@@ -778,7 +772,7 @@ export default function MaintenanceList({
               </div>
             </div>
           </div>,
-          document.body
+          document.body,
         )}
     </div>
   );

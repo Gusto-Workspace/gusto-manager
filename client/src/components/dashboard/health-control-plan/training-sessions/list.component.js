@@ -83,12 +83,6 @@ export default function TrainingList({
   const [isClient, setIsClient] = useState(false);
   useEffect(() => setIsClient(true), []);
 
-  const token = useMemo(
-    () =>
-      typeof window !== "undefined" ? localStorage.getItem("token") : null,
-    []
-  );
-
   const metaRef = useRef(meta);
   useEffect(() => {
     metaRef.current = meta;
@@ -119,9 +113,9 @@ export default function TrainingList({
           dateTo ||
           appliedDateFrom ||
           appliedDateTo ||
-          soonDays !== DUE_SOON_DEFAULT
+          soonDays !== DUE_SOON_DEFAULT,
       ),
-    [q, status, dateFrom, dateTo, appliedDateFrom, appliedDateTo, soonDays]
+    [q, status, dateFrom, dateTo, appliedDateFrom, appliedDateTo, soonDays],
   );
 
   const hasFullDateRange = Boolean(dateFrom && dateTo);
@@ -169,7 +163,7 @@ export default function TrainingList({
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-training-sessions`,
         {
           params,
-        }
+        },
       );
 
       const list = sortLogic(data.items || []);
@@ -602,7 +596,7 @@ export default function TrainingList({
               </div>
             </div>
           </div>,
-          document.body
+          document.body,
         )}
     </div>
   );

@@ -189,7 +189,7 @@ export default function ReceptionDeliveryForm({
   const token = useMemo(
     () =>
       typeof window !== "undefined" ? localStorage.getItem("token") : null,
-    []
+    [],
   );
   const suggestLoadedRef = useRef(false);
   const [suggestLoading, setSuggestLoading] = useState(false);
@@ -281,10 +281,10 @@ export default function ReceptionDeliveryForm({
 
   /* ---------- Attachments état global par ligne ---------- */
   const [existingAttachmentsByLine, setExistingAttachmentsByLine] = useState(
-    {}
+    {},
   );
   const [removedAttachmentIdsByLine, setRemovedAttachmentIdsByLine] = useState(
-    {}
+    {},
   );
   const [newFilesByLine, setNewFilesByLine] = useState({});
   const [currentUploadLineKey, setCurrentUploadLineKey] = useState(null);
@@ -402,7 +402,7 @@ export default function ReceptionDeliveryForm({
   };
 
   /* ---------- Gestion fichiers ---------- */
-  const handleFilesSelected = (event, isCamera = false) => {
+  const handleFilesSelected = (event) => {
     const files = Array.from(event.target.files || []);
     event.target.value = "";
     if (!files.length || !currentUploadLineKey) return;
@@ -525,7 +525,7 @@ export default function ReceptionDeliveryForm({
 
     // Event temps réel (comme les autres)
     window.dispatchEvent(
-      new CustomEvent("reception-delivery:upsert", { detail: { doc: saved } })
+      new CustomEvent("reception-delivery:upsert", { detail: { doc: saved } }),
     );
 
     reset(buildFormDefaults(null));
@@ -734,7 +734,7 @@ export default function ReceptionDeliveryForm({
     list.sort((a, b) =>
       String(a.label).localeCompare(String(b.label), "fr", {
         sensitivity: "base",
-      })
+      }),
     );
 
     return list
@@ -996,7 +996,7 @@ export default function ReceptionDeliveryForm({
                     </div>
                   );
                 })(),
-                document.body
+                document.body,
               )}
           </div>
         </div>
@@ -1077,7 +1077,7 @@ export default function ReceptionDeliveryForm({
             const existingAttachments =
               existingAttachmentsByLine[lineKey] || [];
             const removedIds = new Set(
-              removedAttachmentIdsByLine[lineKey] || []
+              removedAttachmentIdsByLine[lineKey] || [],
             );
             const newFiles = newFilesByLine[lineKey] || [];
 
@@ -1172,7 +1172,7 @@ export default function ReceptionDeliveryForm({
                             {...register(`lines.${idx}.productName`, {
                               onChange: () => {
                                 setValidatedById((s) =>
-                                  s[id] ? { ...s, [id]: false } : s
+                                  s[id] ? { ...s, [id]: false } : s,
                                 );
                                 handleProductTyping(id, idx);
                               },
@@ -1185,7 +1185,7 @@ export default function ReceptionDeliveryForm({
                               if (q.length >= 2) {
                                 const matches = computeProductMatches(
                                   supplierValue,
-                                  q
+                                  q,
                                 );
                                 setProductItemsFor(id, matches);
                                 openProductDropdownFor(id, matches.length > 0);
@@ -1242,6 +1242,7 @@ export default function ReceptionDeliveryForm({
                                           }
                                           className="w-full text-left px-3 py-2 hover:bg-blue/5 text-sm"
                                           role="option"
+                                          aria-selected={false}
                                           title="Choisir ce produit"
                                         >
                                           <div className="flex flex-col">
@@ -1265,7 +1266,7 @@ export default function ReceptionDeliveryForm({
                                   </div>
                                 );
                               })(),
-                              document.body
+                              document.body,
                             )}
                         </div>
                       </div>
@@ -1330,7 +1331,7 @@ export default function ReceptionDeliveryForm({
                             {...register(`lines.${idx}.qty`, {
                               onChange: () => {
                                 setValidatedById((s) =>
-                                  s[id] ? { ...s, [id]: false } : s
+                                  s[id] ? { ...s, [id]: false } : s,
                                 );
                               },
                             })}
@@ -1345,7 +1346,7 @@ export default function ReceptionDeliveryForm({
                               {...register(`lines.${idx}.unit`, {
                                 onChange: () => {
                                   setValidatedById((s) =>
-                                    s[id] ? { ...s, [id]: false } : s
+                                    s[id] ? { ...s, [id]: false } : s,
                                   );
                                 },
                               })}
@@ -1432,7 +1433,7 @@ export default function ReceptionDeliveryForm({
                                 pkg === "compliant"
                                   ? "non-compliant"
                                   : "compliant",
-                                { shouldDirty: true, shouldTouch: true }
+                                { shouldDirty: true, shouldTouch: true },
                               )
                             }
                           />
@@ -1495,7 +1496,7 @@ export default function ReceptionDeliveryForm({
                               {newFiles.map((file, fIdx) => {
                                 const pretty = normalizeFilename(file.name);
                                 const label = mimeBadgeLabel(
-                                  file.type || file.name
+                                  file.type || file.name,
                                 );
                                 return (
                                   <div
@@ -1535,10 +1536,10 @@ export default function ReceptionDeliveryForm({
                               {existingAttachments.map((att) => {
                                 const pretty = normalizeFilename(att.filename);
                                 const label = mimeBadgeLabel(
-                                  att.mimetype || att.filename
+                                  att.mimetype || att.filename,
                                 );
                                 const isMarked = removedIds.has(
-                                  String(att.public_id)
+                                  String(att.public_id),
                                 );
 
                                 return (
@@ -1566,7 +1567,7 @@ export default function ReceptionDeliveryForm({
                                           ? undefined
                                           : downloadUrlForAttachment(
                                               restaurantId,
-                                              att
+                                              att,
                                             )
                                       }
                                       target={isMarked ? undefined : "_blank"}
@@ -1591,7 +1592,7 @@ export default function ReceptionDeliveryForm({
                                       onClick={() =>
                                         toggleExistingAttachmentRemoval(
                                           lineKey,
-                                          att.public_id
+                                          att.public_id,
                                         )
                                       }
                                       className={`ml-1 inline-flex items-center justify-center rounded-full p-[3px] ${

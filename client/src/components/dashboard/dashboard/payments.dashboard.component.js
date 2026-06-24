@@ -16,7 +16,6 @@ import {
   RotateCcw,
   CheckCircle2,
   ChevronDown,
-  ArrowUpRight,
   Calendar,
   Gift,
   CreditCard,
@@ -27,15 +26,6 @@ function formatDateFromUnix(timestamp) {
   const date = new Date(Number(timestamp || 0) * 1000);
   if (Number.isNaN(date.getTime())) return "-";
   return date.toLocaleDateString("fr-FR");
-}
-
-function formatDateTimeFromUnix(timestamp) {
-  const date = new Date(Number(timestamp || 0) * 1000);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString("fr-FR", {
-    dateStyle: "short",
-    timeStyle: "short",
-  });
 }
 
 function formatCurrency(amount, currency = "eur") {

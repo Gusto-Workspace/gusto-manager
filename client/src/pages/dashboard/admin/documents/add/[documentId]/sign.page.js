@@ -2,7 +2,6 @@ import { useContext } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
-import { i18n } from "next-i18next";
 
 import { GlobalContext } from "@/contexts/global.context";
 

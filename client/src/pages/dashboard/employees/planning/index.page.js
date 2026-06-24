@@ -4,7 +4,6 @@ import Head from "next/head";
 // I18N
 import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
-import { useTranslation } from "next-i18next";
 
 // CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
@@ -16,7 +15,6 @@ import NoAvailableComponent from "@/components/_shared/options/no-available.opti
 import PlanningEmployeesComponent from "@/components/dashboard/employees/planning.employees.component";
 
 export default function PlanningEmployeePage(props) {
-  const { t } = useTranslation("");
   const { restaurantContext } = useContext(GlobalContext);
 
   let title;
@@ -45,11 +43,11 @@ export default function PlanningEmployeePage(props) {
 
   if (isEmployee && restaurant) {
     const employeeInRestaurant = restaurant.employees?.find(
-      (emp) => String(emp._id) === String(user.id)
+      (emp) => String(emp._id) === String(user.id),
     );
 
     const profile = employeeInRestaurant?.restaurantProfiles?.find(
-      (p) => String(p.restaurant) === String(restaurant._id)
+      (p) => String(p.restaurant) === String(restaurant._id),
     );
 
     employeeHasEmployeesAccess = profile?.options?.employees === true;
@@ -84,7 +82,7 @@ export default function PlanningEmployeePage(props) {
             ) : !employeeHasEmployeesAccess ? (
               <NoAvailableComponent
                 dataLoading={restaurantContext.dataLoading}
-                 />
+              />
             ) : (
               <PlanningEmployeesComponent />
             )}

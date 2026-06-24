@@ -432,7 +432,7 @@ export default function ListWinesComponent(props) {
               items={subCategories?.map((subCategory) => subCategory._id)}
             >
               <div className="grid grid-cols-1 midTablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-4 gap-4">
-                {subCategories?.map((subCategory, i) => (
+                {subCategories?.map((subCategory) => (
                   <CardCategoryListComponent
                     key={subCategory._id}
                     category={subCategory}

@@ -397,7 +397,7 @@ export default function ReceptionDeliveryList({
                   </td>
                 </tr>
               ) : (
-                items.map((it, index) => (
+                items.map((it) => (
                   <tr
                     key={it._id}
                     className={`border-b border-darkBlue/10 last:border-b-0 transition-colors hover:bg-darkBlue/[0.03] ${

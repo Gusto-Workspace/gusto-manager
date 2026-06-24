@@ -1,5 +1,4 @@
 import { useRouter } from "next/router";
-import { useTranslation } from "next-i18next";
 
 import {
   AvatarSvg,
@@ -8,7 +7,6 @@ import {
 } from "@/components/_shared/_svgs/_index";
 
 export default function CardEmployeesComponent(props) {
-  const { t } = useTranslation("employees");
   const router = useRouter();
 
   const restaurantId = props.restaurantId;

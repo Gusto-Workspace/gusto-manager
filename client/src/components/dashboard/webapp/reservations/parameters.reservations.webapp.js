@@ -1,5 +1,4 @@
 import { useContext, useState, useEffect, useMemo, useRef } from "react";
-import { useRouter } from "next/router";
 
 // CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
@@ -104,14 +103,12 @@ function areEmailsSectionSnapshotsEqual(left, right) {
 export default function ParametersReservationComponent(props) {
   const { t } = useTranslation(["reservations", "restaurant"]);
   const { restaurantContext } = useContext(GlobalContext);
-  const router = useRouter();
 
   const {
     register,
     watch,
     setValue,
     setFocus,
-    control,
     reset,
     formState: { errors },
   } = useForm({

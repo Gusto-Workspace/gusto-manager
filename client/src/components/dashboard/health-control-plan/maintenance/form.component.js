@@ -180,7 +180,7 @@ export default function MaintenanceForm({
   const token = useMemo(
     () =>
       typeof window !== "undefined" ? localStorage.getItem("token") : null,
-    []
+    [],
   );
 
   const [noteEditIdx, setNoteEditIdx] = useState(null);
@@ -191,7 +191,7 @@ export default function MaintenanceForm({
 
   // Pièces jointes Cloudinary pour le PLAN de maintenance
   const [existingAttachments, setExistingAttachments] = useState(
-    Array.isArray(initial?.attachments) ? initial.attachments : []
+    Array.isArray(initial?.attachments) ? initial.attachments : [],
   );
   const [removedAttachmentIds, setRemovedAttachmentIds] = useState([]);
   const [newFiles, setNewFiles] = useState([]);
@@ -207,7 +207,7 @@ export default function MaintenanceForm({
     setDeletingIdx(null);
 
     setExistingAttachments(
-      Array.isArray(initial?.attachments) ? initial.attachments : []
+      Array.isArray(initial?.attachments) ? initial.attachments : [],
     );
     setRemovedAttachmentIds([]);
     setNewFiles([]);
@@ -268,11 +268,6 @@ export default function MaintenanceForm({
   };
 
   /* ---------- Actions helpers ---------- */
-  const setNow = () =>
-    setValue("performedAt", toDatetimeLocal(new Date()), {
-      shouldDirty: true,
-      shouldTouch: true,
-    });
 
   const notesVal = watch("notes");
 
@@ -300,7 +295,7 @@ export default function MaintenanceForm({
     if (!isEdit) {
       formData.append(
         "performedAt",
-        data.performedAt ? data.performedAt : new Date().toISOString()
+        data.performedAt ? data.performedAt : new Date().toISOString(),
       );
     }
 
@@ -331,7 +326,7 @@ export default function MaintenanceForm({
     });
 
     window.dispatchEvent(
-      new CustomEvent("maintenance:upsert", { detail: { doc: saved } })
+      new CustomEvent("maintenance:upsert", { detail: { doc: saved } }),
     );
 
     reset(buildDefaults(null));
@@ -347,14 +342,11 @@ export default function MaintenanceForm({
     try {
       setSavingNote(true);
       const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/maintenance/${initial._id}/history/${idx}/note`;
-      const { data: saved } = await axios.put(
-        url,
-        { note: noteDraft },
-      );
+      const { data: saved } = await axios.put(url, { note: noteDraft });
 
       setValue("history", saved?.history || [], { shouldDirty: false });
       window.dispatchEvent(
-        new CustomEvent("maintenance:upsert", { detail: { doc: saved } })
+        new CustomEvent("maintenance:upsert", { detail: { doc: saved } }),
       );
 
       setNoteEditIdx(null);
@@ -377,7 +369,7 @@ export default function MaintenanceForm({
 
       setValue("history", saved?.history || [], { shouldDirty: false });
       window.dispatchEvent(
-        new CustomEvent("maintenance:upsert", { detail: { doc: saved } })
+        new CustomEvent("maintenance:upsert", { detail: { doc: saved } }),
       );
 
       if (noteEditIdx === idx) {
@@ -618,7 +610,7 @@ export default function MaintenanceForm({
                     const prettyName = normalizeFilename(att.filename);
                     const label = mimeBadgeLabel(att.mimetype || att.filename);
                     const isMarked = removedAttachmentIds.includes(
-                      String(att.public_id)
+                      String(att.public_id),
                     );
 
                     return (

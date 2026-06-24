@@ -11,7 +11,6 @@ import {
   Trash2,
   ChevronLeft,
   Save,
-  X,
   Check,
   Loader2,
 } from "lucide-react";

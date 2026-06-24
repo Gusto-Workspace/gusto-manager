@@ -130,7 +130,7 @@ function findMatchingOptionKey(productOptions, initial) {
   if (!initial) return "";
   if (initial.receptionLineId) {
     const byId = productOptions.find(
-      (o) => String(o?.line?._id || "") === String(initial.receptionLineId)
+      (o) => String(o?.line?._id || "") === String(initial.receptionLineId),
     );
     if (byId) return byId.key;
   }
@@ -140,11 +140,11 @@ function findMatchingOptionKey(productOptions, initial) {
   const byNameLot = productOptions.find(
     (o) =>
       norm(o?.line?.productName) === targetName &&
-      norm(o?.line?.lotNumber) === targetLot
+      norm(o?.line?.lotNumber) === targetLot,
   );
   if (byNameLot) return byNameLot.key;
   const byName = productOptions.find(
-    (o) => norm(o?.line?.productName) === targetName
+    (o) => norm(o?.line?.productName) === targetName,
   );
   return byName?.key || "";
 }
@@ -190,7 +190,6 @@ export default function InventoryLotForm({
 
   const notesVal = watch("notes");
   const packCond = watch("packagingCondition");
-  const statusWatch = watch("status");
   const qtyReceivedWatch = watch("qtyReceived");
   const unitWatch = watch("unit");
   const receptionIdWatch = watch("receptionId");
@@ -313,7 +312,7 @@ export default function InventoryLotForm({
         setRecLoading(false);
       }
     },
-    [restaurantId]
+    [restaurantId],
   );
 
   const maybeOpenReceptionMenu = () => {
@@ -348,7 +347,7 @@ export default function InventoryLotForm({
   const selectedReceptionLabel = useMemo(() => {
     if (receptionIdWatch) {
       const found = recItems.find(
-        (r) => String(r?._id) === String(receptionIdWatch)
+        (r) => String(r?._id) === String(receptionIdWatch),
       );
       if (found) return formatReceptionLabel(found);
       if (selectedReception) return formatReceptionLabel(selectedReception);
@@ -398,7 +397,7 @@ export default function InventoryLotForm({
         }
       }
     },
-    [restaurantId, setValue]
+    [restaurantId, setValue],
   );
 
   useEffect(() => {
@@ -441,7 +440,7 @@ export default function InventoryLotForm({
   function prefillFromReceptionLine(
     line,
     reception,
-    { updateRemaining = false } = {}
+    { updateRemaining = false } = {},
   ) {
     if (!line) return;
     const r = reception || selectedReception || {};
@@ -596,8 +595,7 @@ export default function InventoryLotForm({
       : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/inventory-lots`;
     const method = initial?._id ? "put" : "post";
 
-    const { data: saved } = await axios[method](url, payload, {
-    });
+    const { data: saved } = await axios[method](url, payload, {});
 
     reset(buildFormDefaults(null));
     setSelectedReception(null);
@@ -606,8 +604,6 @@ export default function InventoryLotForm({
     setReceptionMissing(false);
     onSuccess?.(saved);
   };
-
-  const isCompliant = (packCond || "compliant") !== "non-compliant";
 
   // ----- Helpers d’affichage (produit sélectionné : nom seul)
   const selectedProductName = useMemo(() => {
@@ -738,7 +734,7 @@ export default function InventoryLotForm({
                   </div>
                 );
               })(),
-              document.body
+              document.body,
             )}
 
           {receptionMissing && (
@@ -846,7 +842,7 @@ export default function InventoryLotForm({
                                     selectedReception,
                                     {
                                       updateRemaining: true,
-                                    }
+                                    },
                                   );
                                   setValue(
                                     "productName",
@@ -854,7 +850,7 @@ export default function InventoryLotForm({
                                     {
                                       shouldValidate: true,
                                       shouldDirty: true,
-                                    }
+                                    },
                                   );
                                   setProdOpen(false);
                                 }}
@@ -879,7 +875,7 @@ export default function InventoryLotForm({
                       </div>
                     );
                   })(),
-                  document.body
+                  document.body,
                 )}
             </>
           )}
@@ -1132,7 +1128,7 @@ export default function InventoryLotForm({
                 setValue(
                   "packagingCondition",
                   e.target.checked ? "compliant" : "non-compliant",
-                  { shouldDirty: true }
+                  { shouldDirty: true },
                 );
               }}
             />
@@ -1256,10 +1252,10 @@ export default function InventoryLotForm({
       <div className="flex flex-col gap-2 mt-3 mobile:flex-row">
         <button type="submit" disabled={isSubmitting} className={btnPrimary}>
           {isSubmitting ? (
-             <div className="flex items-center gap-2">
-                <Loader2 className="size-4 animate-spin" />
-                <span>Enregistrementﬂ…</span>
-              </div>
+            <div className="flex items-center gap-2">
+              <Loader2 className="size-4 animate-spin" />
+              <span>Enregistrementﬂ…</span>
+            </div>
           ) : initial?._id ? (
             <>
               <FileText className="size-4" />

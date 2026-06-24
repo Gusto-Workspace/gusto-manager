@@ -16,9 +16,6 @@ export default function BottomSheetChangeRestaurantComponent(props) {
 
   // ✅ NEW (reusable): which option toggles eligibility
   const optionKey = props.optionKey || "reservations";
-  const moduleLabel =
-    props.moduleLabel || t?.("titles.main", "Réservations") || "Réservations";
-
   const [isVisible, setIsVisible] = useState(false);
   const [restaurantQuery, setRestaurantQuery] = useState("");
 

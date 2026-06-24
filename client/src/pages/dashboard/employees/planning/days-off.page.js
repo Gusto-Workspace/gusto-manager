@@ -4,7 +4,6 @@ import Head from "next/head";
 // I18N
 import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
-import { useTranslation } from "next-i18next";
 
 // CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
@@ -16,7 +15,6 @@ import NoAvailableComponent from "@/components/_shared/options/no-available.opti
 import DaysOffEmployeesComponent from "@/components/dashboard/employees/days-off.employees.component";
 
 export default function EmployeesDaysOffPage(props) {
-  const { t } = useTranslation("");
   const { restaurantContext } = useContext(GlobalContext);
 
   let title;

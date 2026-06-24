@@ -73,12 +73,6 @@ export default function CalibrationList({
   const [isClient, setIsClient] = useState(false);
   useEffect(() => setIsClient(true), []);
 
-  const token = useMemo(
-    () =>
-      typeof window !== "undefined" ? localStorage.getItem("token") : null,
-    []
-  );
-
   const metaRef = useRef(meta);
   useEffect(() => {
     metaRef.current = meta;
@@ -109,9 +103,9 @@ export default function CalibrationList({
           dateTo ||
           appliedDateFrom ||
           appliedDateTo ||
-          soonDays !== DUE_SOON_DEFAULT
+          soonDays !== DUE_SOON_DEFAULT,
       ),
-    [q, status, dateFrom, dateTo, appliedDateFrom, appliedDateTo, soonDays]
+    [q, status, dateFrom, dateTo, appliedDateFrom, appliedDateTo, soonDays],
   );
 
   const hasFullDateRange = Boolean(dateFrom && dateTo);
@@ -159,7 +153,7 @@ export default function CalibrationList({
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/list-calibrations`,
         {
           params,
-        }
+        },
       );
 
       const list = sortLogic(data.items || []);
@@ -612,7 +606,7 @@ export default function CalibrationList({
               </div>
             </div>
           </div>,
-          document.body
+          document.body,
         )}
     </div>
   );

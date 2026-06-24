@@ -4,7 +4,6 @@ import Head from "next/head";
 // I18N
 import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
-import { useTranslation } from "next-i18next";
 
 // CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
@@ -20,7 +19,6 @@ import TrainingSessionsMySpaceComponent from "@/components/dashboard/my-space/tr
 import TimeClockMySpaceComponent from "@/components/dashboard/my-space/time-clock.my-space.component";
 
 export default function MySpacePage(props) {
-  const { t } = useTranslation("");
   const { restaurantContext } = useContext(GlobalContext);
 
   let title;

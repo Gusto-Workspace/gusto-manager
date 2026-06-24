@@ -1,5 +1,5 @@
 import { useRouter } from "next/router";
-import { useContext, useState, useEffect } from "react";
+import { useContext, useEffect } from "react";
 import Head from "next/head";
 
 // I18N

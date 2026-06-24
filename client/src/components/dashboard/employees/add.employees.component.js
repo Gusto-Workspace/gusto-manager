@@ -37,26 +37,19 @@ import {
 
 /* ---------- Utils ---------- */
 
-function toDateInputValue(value) {
-  if (!value) return "";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "";
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
 function getImportedEmployment(employee) {
   const profiles = Array.isArray(employee?.restaurantProfiles)
     ? employee.restaurantProfiles
     : [];
-  const firstEmployment = profiles.find((profile) => profile?.employment)?.employment;
+  const firstEmployment = profiles.find(
+    (profile) => profile?.employment,
+  )?.employment;
 
   return {
     contractType: firstEmployment?.contractType || "",
     contractualValue:
-      firstEmployment?.contractualValue || firstEmployment?.contractualValue === 0
+      firstEmployment?.contractualValue ||
+      firstEmployment?.contractualValue === 0
         ? String(firstEmployment.contractualValue || "")
         : "",
     contractualUnit: firstEmployment?.contractualUnit || "",
@@ -467,8 +460,8 @@ export default function AddEmployeesComponent() {
                 <div className="mt-4 rounded-2xl border border-blue/15 bg-blue/10 p-4 text-sm leading-relaxed text-darkBlue/75">
                   Si le propriétaire veut aussi apparaître comme employé, il
                   doit utiliser une autre adresse mail pour le compte employé.
-                  Sinon, il peut d’abord modifier son adresse mail de connexion :
-                  cliquez en haut à droite sur son nom, puis{" "}
+                  Sinon, il peut d’abord modifier son adresse mail de connexion
+                  : cliquez en haut à droite sur son nom, puis{" "}
                   <strong>Paramètres</strong>, puis changez l’adresse mail du
                   compte.
                 </div>

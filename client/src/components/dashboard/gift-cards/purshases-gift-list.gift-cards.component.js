@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import PurshasesDrawerGiftCardsComponent from "../../_shared/gift-cards/purshases-drawer.gift-cards.component";
 
-export default function PurchasesGiftListComponent(props) {
+export default function PurchasesGiftListComponent() {
   const { t } = useTranslation("gifts");
   const { restaurantContext } = useContext(GlobalContext);
   const router = useRouter();

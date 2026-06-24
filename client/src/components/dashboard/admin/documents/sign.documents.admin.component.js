@@ -133,18 +133,6 @@ export default function SignDocumentAdminComponent({ documentId }) {
     return parsed;
   }
 
-  function persistStrokes({ strokes, placeOfSignatureValue }) {
-    if (typeof window === "undefined") return;
-    if (!documentId) return;
-
-    const payload = {
-      strokes: strokes || [],
-      savedAt: new Date().toISOString(),
-      placeOfSignature: placeOfSignatureValue || "",
-    };
-    localStorage.setItem(sigStorageKey(documentId), JSON.stringify(payload));
-  }
-
   function clearPersistedStrokes() {
     if (typeof window === "undefined") return;
     if (!documentId) return;

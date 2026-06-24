@@ -9,7 +9,6 @@ import {
   DragSvg,
   EditSvg,
   GlutenFreeSvg,
-  NoVisibleSvg,
   VeganSvg,
   VegetarianSvg,
 } from "../../_shared/_svgs/_index";
@@ -35,28 +34,6 @@ export default function DetailsDishComponent(props) {
     transform: CSS.Translate.toString(transform),
     transition,
   };
-
-  function DishTooltip({ active, label, children, position = "center" }) {
-    let tooltipClass = "left-1/2 -translate-x-1/2 bottom-full mb-2";
-
-    if (position === "right") {
-      tooltipClass = "right-0 bottom-full mb-2";
-    }
-
-    return (
-      <div className="relative flex items-center">
-        {children}
-
-        {active && (
-          <div
-            className={`absolute ${tooltipClass} z-50 whitespace-nowrap rounded-xl bg-darkBlue px-2.5 py-1.5 text-[11px] text-white shadow-lg`}
-          >
-            {label}
-          </div>
-        )}
-      </div>
-    );
-  }
 
   const price =
     typeof props?.dish?.price === "number"

@@ -4,7 +4,6 @@ import axios from "axios";
 import { useForm } from "react-hook-form";
 import { GlobalContext } from "@/contexts/global.context";
 import { useTranslation } from "next-i18next";
-import { Clock3, SquareArrowOutUpRight } from "lucide-react";
 
 // SVG
 import { EmployeesSvg } from "@/components/_shared/_svgs/employees.svg";
@@ -16,7 +15,6 @@ import DocumentsEmployeeComponent from "./documents.employees.component";
 import AccessRightsEmployeesComponent from "./access-rights.employees.component";
 import DataEmployeesComponent from "./data.employees.component";
 import TimeClockEmployeesComponent from "./time-clock.employees.component";
-import { openTimeClockInNewTab } from "../time-clock/time-clock.utils";
 
 const DEFAULT_OPTIONS = {
   dashboard: false,

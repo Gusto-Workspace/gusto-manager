@@ -1,11 +1,9 @@
-// ICONS
-import { BarChart3, CheckCircle2, Heart, XCircle, Zap } from "lucide-react";
 import Image from "next/image";
 
 export default function HelpingLandingComponent() {
   return (
     <section className="py-8 pt-12 tablet:pb-12" id="helping">
-        <div className="mx-auto max-w-[95%] tablet:max-w-[85%]">
+      <div className="mx-auto max-w-[95%] tablet:max-w-[85%]">
         <div className="text-center max-w-3xl mx-auto mb-12">
           <h2 className="uppercase text-3xl tablet:text-4xl font-bold text-darkBlue mb-4">
             Moins de gestion. Plus de clients.

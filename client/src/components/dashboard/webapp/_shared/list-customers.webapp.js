@@ -569,8 +569,6 @@ export default function ListCustomersReservationsWebapp({
               );
             }
 
-            const hasTags = Array.isArray(c.tags) && c.tags.length;
-
             return (
               <div
                 key={c._id}
