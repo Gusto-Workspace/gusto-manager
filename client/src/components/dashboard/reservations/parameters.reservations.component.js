@@ -104,6 +104,64 @@ function areEmailsSectionSnapshotsEqual(left, right) {
   );
 }
 
+function normalizeSlotCoverLimitDay(value) {
+  const day = Math.floor(Number(value));
+  return Number.isInteger(day) && day >= 0 && day <= 6 ? day : null;
+}
+
+function normalizeSlotCoverLimitsForForm(value = []) {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((limit, index) => ({
+      _id: limit?._id,
+      localId: String(limit?._id || `slot-cover-limit-${index}`),
+      day: normalizeSlotCoverLimitDay(limit?.day),
+      time: String(limit?.time || "").slice(0, 5),
+      maxCovers:
+        limit?.maxCovers === 0 || limit?.maxCovers
+          ? String(limit.maxCovers)
+          : "",
+      active: limit?.active !== false,
+    }))
+    .filter((limit) => limit.time || limit.maxCovers);
+}
+
+function buildSlotCoverLimitsPayload(value = []) {
+  if (!Array.isArray(value)) return [];
+
+  const byKey = new Map();
+
+  value.forEach((limit) => {
+    const time = String(limit?.time || "").slice(0, 5);
+    const maxCovers = Math.floor(Number(limit?.maxCovers || 0));
+
+    if (!/^\d{2}:\d{2}$/.test(time) || maxCovers <= 0) return;
+
+    const day = normalizeSlotCoverLimitDay(limit?.day);
+    const key = `${day === null ? "all" : day}|${time}`;
+
+    byKey.set(key, {
+      ...(limit?._id ? { _id: limit._id } : {}),
+      ...(day === null ? {} : { day }),
+      time,
+      maxCovers,
+      active: limit?.active !== false,
+    });
+  });
+
+  return Array.from(byKey.values()).sort((a, b) => {
+    const aDay = Number.isInteger(a.day) ? a.day : 99;
+    const bDay = Number.isInteger(b.day) ? b.day : 99;
+    if (aDay !== bDay) return aDay - bDay;
+    return String(a.time).localeCompare(String(b.time));
+  });
+}
+
+function buildSlotCoverLimitsSnapshot(value = []) {
+  return JSON.stringify(buildSlotCoverLimitsPayload(value));
+}
+
 export default function ParametersReservationComponent(props) {
   const { t } = useTranslation(["reservations", "restaurant"]);
   const { restaurantContext } = useContext(GlobalContext);
@@ -155,6 +213,7 @@ export default function ParametersReservationComponent(props) {
 
   const [reservationHours, setReservationHours] = useState([]);
   const [exceptionalOpenings, setExceptionalOpenings] = useState([]);
+  const [slotCoverLimits, setSlotCoverLimits] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [manualTablesNeedingAssignment, setManualTablesNeedingAssignment] =
     useState(0);
@@ -346,6 +405,9 @@ export default function ParametersReservationComponent(props) {
       );
       const waitlistCleanupActive =
         waitlistActive && Boolean(waitlist.auto_cleanup_enabled);
+      const nextSlotCoverLimits = normalizeSlotCoverLimitsForForm(
+        parameters.slot_cover_limits,
+      );
 
       reset({
         same_hours_as_restaurant: parameters.same_hours_as_restaurant ?? true,
@@ -385,6 +447,7 @@ export default function ParametersReservationComponent(props) {
 
       setReservationHours(parameters.reservation_hours || []);
       setExceptionalOpenings(parameters.exceptional_openings || []);
+      setSlotCoverLimits(nextSlotCoverLimits);
       setIsLoading(false);
       setDurationError({ lunch: false, dinner: false });
       setTablesCatalog(parameters.tables || []);
@@ -404,6 +467,9 @@ export default function ParametersReservationComponent(props) {
           pending_duration_minutes: parameters.pending_duration_minutes ?? 120,
           refuse_public_reservations_during_service:
             parameters.refuse_public_reservations_during_service ?? false,
+          slot_cover_limits: buildSlotCoverLimitsSnapshot(
+            nextSlotCoverLimits,
+          ),
         },
         bank_hold: {
           bank_hold_enabled: parameters?.bank_hold?.enabled ?? false,
@@ -549,6 +615,7 @@ export default function ParametersReservationComponent(props) {
       refuse_public_reservations_during_service: Boolean(
         refuse_public_reservations_during_service,
       ),
+      slot_cover_limits: buildSlotCoverLimitsSnapshot(slotCoverLimits),
     };
     markSectionDirty("slots", !shallowEqual(snap, next));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -557,6 +624,7 @@ export default function ParametersReservationComponent(props) {
     interval,
     pending_duration_minutes,
     refuse_public_reservations_during_service,
+    slotCoverLimits,
   ]);
 
   useEffect(() => {
@@ -730,6 +798,7 @@ export default function ParametersReservationComponent(props) {
           refuse_public_reservations_during_service: Boolean(
             refuse_public_reservations_during_service,
           ),
+          slot_cover_limits: buildSlotCoverLimitsPayload(slotCoverLimits),
         };
       }
 
@@ -891,6 +960,7 @@ export default function ParametersReservationComponent(props) {
           refuse_public_reservations_during_service: Boolean(
             refuse_public_reservations_during_service,
           ),
+          slot_cover_limits: buildSlotCoverLimitsSnapshot(slotCoverLimits),
         };
       }
       if (sectionKey === "bank_hold") {
@@ -1047,6 +1117,12 @@ export default function ParametersReservationComponent(props) {
           watch={watch}
           errors={errors}
           auto_accept={auto_accept}
+          restaurantData={props.restaurantData || restaurantContext.restaurantData}
+          sameHoursAsRestaurant={same_hours_as_restaurant}
+          reservationHours={reservationHours}
+          interval={interval}
+          slotCoverLimits={slotCoverLimits}
+          onSlotCoverLimitsChange={setSlotCoverLimits}
           saveUI={sectionUI.slots}
           onSave={() => saveSection("slots")}
         />

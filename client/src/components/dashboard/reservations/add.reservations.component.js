@@ -157,6 +157,18 @@ function minutesFromHHmm(timeStr) {
 
 function isBlockingReservationFront(r) {
   if (!r) return false;
+  if (r.status === "Waitlist") {
+    const state = String(r?.waitlistOffer?.state || "").trim();
+    const expiresAt = r?.waitlistOffer?.offerExpiresAt
+      ? new Date(r.waitlistOffer.offerExpiresAt).getTime()
+      : null;
+    return (
+      state === "offered" &&
+      Number.isFinite(expiresAt) &&
+      expiresAt > Date.now()
+    );
+  }
+
   if (
     !["AwaitingBankHold", "Pending", "Confirmed", "Active", "Late"].includes(
       r.status,
@@ -683,6 +695,106 @@ function isDateTimeBlockedFront(parameters, reservationDate, reservationTime) {
   });
 }
 
+function getReservationDayIndexFront(reservationDate) {
+  if (!(reservationDate instanceof Date)) return null;
+  if (Number.isNaN(reservationDate.getTime())) return null;
+  const jsDay = reservationDate.getDay();
+  return jsDay === 0 ? 6 : jsDay - 1;
+}
+
+function hasSlotCoverLimitDayFront(limit) {
+  return (
+    Number.isInteger(limit?.day) &&
+    Number(limit.day) >= 0 &&
+    Number(limit.day) <= 6
+  );
+}
+
+function getActiveSlotCoverLimitFront(
+  parameters,
+  reservationTime,
+  reservationDate,
+) {
+  const time = String(reservationTime || "").slice(0, 5);
+  const limits = Array.isArray(parameters?.slot_cover_limits)
+    ? parameters.slot_cover_limits
+    : [];
+  const dayIndex = getReservationDayIndexFront(reservationDate);
+  const matchingTimeLimits = limits.filter(
+    (entry) =>
+      String(entry?.time || "").slice(0, 5) === time,
+  );
+  const exactDayLimit =
+    Number.isInteger(dayIndex) &&
+    matchingTimeLimits.find(
+      (entry) =>
+        hasSlotCoverLimitDayFront(entry) && Number(entry.day) === dayIndex,
+    );
+  const fallbackLimit = matchingTimeLimits.find(
+    (entry) => !hasSlotCoverLimitDayFront(entry),
+  );
+  const limit = exactDayLimit || fallbackLimit;
+
+  if (exactDayLimit && exactDayLimit.active === false) return null;
+
+  const maxCovers = Math.floor(Number(limit?.maxCovers || 0));
+
+  if (
+    !limit ||
+    limit.active === false ||
+    !/^\d{2}:\d{2}$/.test(time) ||
+    maxCovers <= 0
+  ) {
+    return null;
+  }
+
+  return { time, maxCovers };
+}
+
+function isSlotCoverCapacityAvailableFront({
+  parameters,
+  reservations = [],
+  reservationDate,
+  reservationTime,
+  numberOfGuests,
+  excludeReservationId = null,
+}) {
+  const limit = getActiveSlotCoverLimitFront(
+    parameters,
+    reservationTime,
+    reservationDate,
+  );
+  if (!limit) return true;
+
+  const formattedSelectedDate = format(reservationDate, "yyyy-MM-dd");
+  const usedCovers = (Array.isArray(reservations) ? reservations : [])
+    .filter((reservation) => {
+      if (!isBlockingReservationFront(reservation)) return false;
+      if (
+        excludeReservationId &&
+        String(reservation?._id) === String(excludeReservationId)
+      ) {
+        return false;
+      }
+
+      const reservationDay = format(
+        new Date(reservation?.reservationDate),
+        "yyyy-MM-dd",
+      );
+      return (
+        reservationDay === formattedSelectedDate &&
+        String(reservation?.reservationTime || "").slice(0, 5) === limit.time
+      );
+    })
+    .reduce(
+      (sum, reservation) =>
+        sum + Math.max(0, Number(reservation?.numberOfGuests || 0)),
+      0,
+    );
+
+  return usedCovers + Math.max(0, Number(numberOfGuests || 0)) <= limit.maxCovers;
+}
+
 export default function AddReservationComponent(props) {
   const { t } = useTranslation("reservations");
   const router = useRouter();
@@ -866,6 +978,23 @@ export default function AddReservationComponent(props) {
         generateTimeOptions(open, close, interval),
       );
 
+      allAvailableTimes = allAvailableTimes.filter(
+        (time) =>
+          !isDateTimeBlockedFront(
+            parameters,
+            reservationData.reservationDate,
+            time,
+          ) &&
+          isSlotCoverCapacityAvailableFront({
+            parameters,
+            reservations,
+            reservationDate: reservationData.reservationDate,
+            reservationTime: time,
+            numberOfGuests: reservationData.numberOfGuests,
+            excludeReservationId: isEditing ? props.reservation?._id : null,
+          }),
+      );
+
       // -----------------------------
       // ✅ Filtre dispo basé sur capacité (si manage ON)
       // (aligné backend: pool éligible + overlap + manual unassigned)
@@ -951,6 +1080,7 @@ export default function AddReservationComponent(props) {
     props.restaurantData.opening_hours,
     props.restaurantData?.reservationsSettings?.reservation_hours,
     props.restaurantData?.reservationsSettings?.interval,
+    props.restaurantData?.reservationsSettings?.slot_cover_limits,
     props.restaurantData.reservationsSettings.manage_disponibilities,
     props.restaurantData.reservationsSettings.same_hours_as_restaurant,
     props.restaurantData.reservationsSettings.tables,
@@ -1442,6 +1572,16 @@ export default function AddReservationComponent(props) {
         setModalTitle("Aucune table disponible");
         setModalMsg(
           "Aucune table n’est disponible pour ce créneau.\nVous devez contacter le client pour proposer un autre horaire ou une autre date.",
+        );
+        setPostModalRedirect(false);
+        setModalOpen(true);
+        return;
+      }
+
+      if (code === "SLOT_COVER_CAPACITY_EXCEEDED") {
+        setModalTitle("Créneau complet");
+        setModalMsg(
+          "Ce créneau est complet en nombre de couverts. Vous pouvez proposer un autre horaire au client.",
         );
         setPostModalRedirect(false);
         setModalOpen(true);
