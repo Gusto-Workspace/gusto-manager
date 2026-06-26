@@ -178,7 +178,7 @@ export default function TakeAwayParametersComponent() {
   const [settingsForm, setSettingsForm] = useState(null);
   const [deliveryZones, setDeliveryZones] = useState([]);
   const [takeAwayHours, setTakeAwayHours] = useState([]);
-  const [openZoneIndex, setOpenZoneIndex] = useState(0);
+  const [openZoneIndex, setOpenZoneIndex] = useState(null);
 
   const stripeReady = Boolean(String(restaurant?.stripeSecretKey || "").trim());
   const paymentRequiresStripe = ["online_required", "customer_choice"].includes(
@@ -215,7 +215,8 @@ export default function TakeAwayParametersComponent() {
         getDeliveryZoneForm(zone, index),
       ),
     );
-  }, [restaurant?._id]);
+    setOpenZoneIndex(null);
+  }, [restaurant]);
 
   async function request(config) {
     return axios({
@@ -272,6 +273,51 @@ export default function TakeAwayParametersComponent() {
     );
   }
 
+  function updateZoneZipDraft(index, value) {
+    updateDeliveryZone(index, {
+      zipCodeDraft: String(value || "")
+        .replace(/\D/g, "")
+        .slice(0, 5),
+    });
+  }
+
+  function addZipCodeToZone(index) {
+    setDeliveryZones((prev) =>
+      prev.map((zone, zoneIndex) => {
+        if (zoneIndex !== index) return zone;
+
+        const zipCode = String(zone.zipCodeDraft || "").trim();
+        if (!/^\d{5}$/.test(zipCode)) return zone;
+
+        const zipCodes = Array.isArray(zone.zipCodes) ? zone.zipCodes : [];
+        if (zipCodes.includes(zipCode)) {
+          return { ...zone, zipCodeDraft: "" };
+        }
+
+        return {
+          ...zone,
+          zipCodes: [...zipCodes, zipCode],
+          zipCodeDraft: "",
+        };
+      }),
+    );
+  }
+
+  function removeZipCodeFromZone(index, zipCodeToRemove) {
+    setDeliveryZones((prev) =>
+      prev.map((zone, zoneIndex) =>
+        zoneIndex === index
+          ? {
+              ...zone,
+              zipCodes: (zone.zipCodes || []).filter(
+                (zipCode) => zipCode !== zipCodeToRemove,
+              ),
+            }
+          : zone,
+      ),
+    );
+  }
+
   function addDeliveryZone() {
     setDeliveryZones((prev) => {
       const next = [
@@ -296,9 +342,12 @@ export default function TakeAwayParametersComponent() {
   function removeDeliveryZone(index) {
     setDeliveryZones((prev) => {
       const next = prev.filter((_, zoneIndex) => zoneIndex !== index);
-      setOpenZoneIndex((current) =>
-        Math.min(current, Math.max(0, next.length - 1)),
-      );
+      setOpenZoneIndex((current) => {
+        if (current === null) return null;
+        if (current === index) return null;
+        if (current > index) return current - 1;
+        return current;
+      });
       return next;
     });
   }
@@ -620,160 +669,217 @@ export default function TakeAwayParametersComponent() {
           ) : (
             <div className="flex flex-col gap-3">
               {deliveryZones.map((zone, index) => (
-              <div
-                key={zone.localId}
-                className="rounded-2xl border border-darkBlue/10 bg-white/80 px-2 py-3 transition-shadow tablet:px-5 tablet:py-4"
-              >
-                <div className="flex w-full items-center justify-between gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setOpenZoneIndex(index)}
-                    className="flex min-w-0 flex-1 items-center gap-4 text-left"
-                  >
-                    <span className="inline-flex h-7 items-center justify-center rounded-full bg-darkBlue/5 px-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-darkBlue">
-                      Zone {index + 1}
-                    </span>
-                    <p className="truncate text-sm font-semibold text-darkBlue">
-                      {zone.name || "Nouvelle zone"}
-                    </p>
-                  </button>
-
-                  <div className="flex shrink-0 items-center gap-3">
-                    <label className="inline-flex items-center gap-2 text-xs font-semibold text-darkBlue/70">
-                      <input
-                        type="checkbox"
-                        checked={zone.active}
-                        onChange={(e) =>
-                          updateDeliveryZone(index, {
-                            active: e.target.checked,
-                          })
-                        }
-                      />
-                      Active
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => removeDeliveryZone(index)}
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-red/20 bg-white text-red hover:bg-red/10"
-                      aria-label="Supprimer la zone"
-                      title="Supprimer la zone"
-                    >
-                      <Trash2 className="size-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setOpenZoneIndex(index)}
-                      className="inline-flex size-8 items-center justify-center rounded-xl text-darkBlue/50 transition hover:bg-darkBlue/5"
-                      aria-label={
-                        openZoneIndex === index
-                          ? "Replier la zone"
-                          : "Déplier la zone"
-                      }
-                    >
-                      <ChevronDown
-                        className={`size-4 transition-transform ${
-                          openZoneIndex === index ? "rotate-180" : ""
-                        }`}
-                      />
-                    </button>
-                  </div>
-                </div>
-
                 <div
-                  className={`grid transition-[grid-template-rows,opacity,margin] duration-200 ${
-                    openZoneIndex === index
-                      ? "mt-4 grid-rows-[1fr] opacity-100"
-                      : "grid-rows-[0fr] opacity-0 pointer-events-none"
-                  }`}
+                  key={zone.localId}
+                  className="rounded-2xl border border-darkBlue/10 bg-white/80 px-2 py-3 transition-shadow tablet:px-5 tablet:py-4"
                 >
-                  <div className="overflow-hidden">
-                    <div className="grid gap-3 midTablet:grid-cols-2">
-                      <FormField
-                        label="Nom de la zone"
-                        hint="Exemple : Centre-ville"
-                      >
+                  <div className="flex w-full items-center justify-between gap-3">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setOpenZoneIndex((current) =>
+                          current === index ? null : index,
+                        )
+                      }
+                      className="flex min-w-0 flex-1 items-center gap-4 text-left"
+                    >
+                      <span className="inline-flex h-7 items-center justify-center rounded-full bg-darkBlue/5 px-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-darkBlue">
+                        Zone {index + 1}
+                      </span>
+                      <p className="truncate text-sm font-semibold text-darkBlue">
+                        {zone.name || "Nouvelle zone"}
+                      </p>
+                    </button>
+
+                    <div className="flex shrink-0 items-center gap-3">
+                      <label className="inline-flex items-center gap-2 text-xs font-semibold text-darkBlue/70">
                         <input
-                          className={fieldClass(false)}
-                          value={zone.name}
-                          onChange={(e) =>
-                            updateDeliveryZone(index, { name: e.target.value })
-                          }
-                        />
-                      </FormField>
-                      <FormField
-                        label="Codes postaux couverts"
-                        hint="Exemple : 19100, 19270"
-                      >
-                        <input
-                          className={fieldClass(false)}
-                          value={zone.zipCodesText}
+                          type="checkbox"
+                          checked={zone.active}
                           onChange={(e) =>
                             updateDeliveryZone(index, {
-                              zipCodesText: e.target.value,
+                              active: e.target.checked,
                             })
                           }
                         />
-                      </FormField>
-                      <FormField label="Frais de livraison">
-                        <div className="flex h-11 items-center rounded-xl border border-darkBlue/10 bg-white px-3 focus-within:border-blue/60 focus-within:ring-2 focus-within:ring-blue/20">
+                        Active
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => removeDeliveryZone(index)}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-red/20 bg-white text-red hover:bg-red/10"
+                        aria-label="Supprimer la zone"
+                        title="Supprimer la zone"
+                      >
+                        <Trash2 className="size-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setOpenZoneIndex((current) =>
+                            current === index ? null : index,
+                          )
+                        }
+                        className="inline-flex size-8 items-center justify-center rounded-xl text-darkBlue/50 transition hover:bg-darkBlue/5"
+                        aria-label={
+                          openZoneIndex === index
+                            ? "Replier la zone"
+                            : "Déplier la zone"
+                        }
+                      >
+                        <ChevronDown
+                          className={`size-4 transition-transform ${
+                            openZoneIndex === index ? "rotate-180" : ""
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div
+                    className={`grid transition-[grid-template-rows,opacity,margin] duration-200 ${
+                      openZoneIndex === index
+                        ? "mt-4 grid-rows-[1fr] opacity-100"
+                        : "grid-rows-[0fr] opacity-0 pointer-events-none"
+                    }`}
+                  >
+                    <div className="overflow-hidden">
+                      <div className="grid gap-3 midTablet:grid-cols-2">
+                        <FormField
+                          label="Nom de la zone"
+                        >
                           <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            className="h-full min-w-0 flex-1 bg-transparent outline-none"
-                            value={zone.fee}
+                            className={fieldClass(false)}
+                            value={zone.name}
                             onChange={(e) =>
                               updateDeliveryZone(index, {
-                                fee: e.target.value,
+                                name: e.target.value,
                               })
                             }
                           />
-                          <span className="ml-2 text-sm font-semibold text-darkBlue/55">
-                            €
-                          </span>
-                        </div>
-                      </FormField>
-                      <FormField label="Minimum de commande">
-                        <div className="flex h-11 items-center rounded-xl border border-darkBlue/10 bg-white px-3 focus-within:border-blue/60 focus-within:ring-2 focus-within:ring-blue/20">
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            className="h-full min-w-0 flex-1 bg-transparent outline-none"
-                            value={zone.minimumOrder}
-                            onChange={(e) =>
-                              updateDeliveryZone(index, {
-                                minimumOrder: e.target.value,
-                              })
-                            }
-                          />
-                          <span className="ml-2 text-sm font-semibold text-darkBlue/55">
-                            €
-                          </span>
-                        </div>
-                      </FormField>
-                      <FormField label="Délai estimé">
-                        <div className="flex h-11 items-center rounded-xl border border-darkBlue/10 bg-white px-3 focus-within:border-blue/60 focus-within:ring-2 focus-within:ring-blue/20">
-                          <input
-                            type="number"
-                            min="0"
-                            className="h-full min-w-0 flex-1 bg-transparent outline-none"
-                            value={zone.estimatedMinutes}
-                            onChange={(e) =>
-                              updateDeliveryZone(index, {
-                                estimatedMinutes: e.target.value,
-                              })
-                            }
-                          />
-                          <span className="ml-2 text-sm font-semibold text-darkBlue/55">
-                            min
-                          </span>
-                        </div>
-                      </FormField>
+                        </FormField>
+                        <FormField
+                          label="Codes postaux couverts"
+                        >
+                          <div className="flex h-11 items-center rounded-xl border border-darkBlue/10 bg-white pl-3 pr-1 focus-within:border-blue/60 focus-within:ring-2 focus-within:ring-blue/20">
+                            <input
+                              inputMode="numeric"
+                              pattern="[0-9]{5}"
+                              maxLength={5}
+                              placeholder="Exemple : 19100"
+                              className="h-full min-w-0 flex-1 bg-transparent outline-none"
+                              value={zone.zipCodeDraft || ""}
+                              onChange={(e) =>
+                                updateZoneZipDraft(index, e.target.value)
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  addZipCodeToZone(index);
+                                }
+                              }}
+                            />
+                            {zone.zipCodeDraft ? (
+                              <button
+                                type="button"
+                                onClick={() => addZipCodeToZone(index)}
+                                disabled={!/^\d{5}$/.test(zone.zipCodeDraft)}
+                                className="inline-flex size-9 items-center justify-center rounded-lg bg-blue text-white transition hover:bg-blue/90 disabled:cursor-not-allowed disabled:bg-darkBlue/15 disabled:text-darkBlue/35"
+                                aria-label="Ajouter le code postal"
+                                title="Ajouter le code postal"
+                              >
+                                <Plus className="size-4" />
+                              </button>
+                            ) : null}
+                          </div>
+                          {zone.zipCodes?.length ? (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {zone.zipCodes.map((zipCode) => (
+                                <span
+                                  key={zipCode}
+                                  className="inline-flex items-center gap-2 rounded-full bg-darkBlue/5 px-3 py-1 text-xs font-semibold text-darkBlue"
+                                >
+                                  {zipCode}
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      removeZipCodeFromZone(index, zipCode)
+                                    }
+                                    className="text-darkBlue/45 transition hover:text-red"
+                                    aria-label={`Supprimer le code postal ${zipCode}`}
+                                    title="Supprimer ce code postal"
+                                  >
+                                    ×
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="mt-2 text-xs text-darkBlue/45">
+                              Aucun code postal ajouté.
+                            </p>
+                          )}
+                        </FormField>
+                        <FormField label="Frais de livraison">
+                          <div className="flex h-11 items-center rounded-xl border border-darkBlue/10 bg-white px-3 focus-within:border-blue/60 focus-within:ring-2 focus-within:ring-blue/20">
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              className="h-full min-w-0 flex-1 bg-transparent outline-none"
+                              value={zone.fee}
+                              onChange={(e) =>
+                                updateDeliveryZone(index, {
+                                  fee: e.target.value,
+                                })
+                              }
+                            />
+                            <span className="ml-2 text-sm font-semibold text-darkBlue/55">
+                              €
+                            </span>
+                          </div>
+                        </FormField>
+                        <FormField label="Minimum de commande">
+                          <div className="flex h-11 items-center rounded-xl border border-darkBlue/10 bg-white px-3 focus-within:border-blue/60 focus-within:ring-2 focus-within:ring-blue/20">
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              className="h-full min-w-0 flex-1 bg-transparent outline-none"
+                              value={zone.minimumOrder}
+                              onChange={(e) =>
+                                updateDeliveryZone(index, {
+                                  minimumOrder: e.target.value,
+                                })
+                              }
+                            />
+                            <span className="ml-2 text-sm font-semibold text-darkBlue/55">
+                              €
+                            </span>
+                          </div>
+                        </FormField>
+                        <FormField label="Délai estimé">
+                          <div className="flex h-11 items-center rounded-xl border border-darkBlue/10 bg-white px-3 focus-within:border-blue/60 focus-within:ring-2 focus-within:ring-blue/20">
+                            <input
+                              type="number"
+                              min="0"
+                              className="h-full min-w-0 flex-1 bg-transparent outline-none"
+                              value={zone.estimatedMinutes}
+                              onChange={(e) =>
+                                updateDeliveryZone(index, {
+                                  estimatedMinutes: e.target.value,
+                                })
+                              }
+                            />
+                            <span className="ml-2 text-sm font-semibold text-darkBlue/55">
+                              min
+                            </span>
+                          </div>
+                        </FormField>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
               ))}
             </div>
           )}

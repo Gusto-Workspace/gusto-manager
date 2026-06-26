@@ -145,11 +145,20 @@ export function buildMonthGrid(currentMonth, orders, searchTerm = "") {
 }
 
 export function getDeliveryZoneForm(zone = {}, index = 0) {
+  const zipCodes = Array.isArray(zone.zipCodes)
+    ? zone.zipCodes.map((zip) => String(zip || "").trim()).filter(Boolean)
+    : String(zone.zipCodesText || "")
+        .split(",")
+        .map((zip) => zip.trim())
+        .filter(Boolean);
+
   return {
     localId: String(zone._id || `zone-${index}-${zone.name || "new"}`),
     _id: zone._id || "",
     name: zone.name || "",
-    zipCodesText: Array.isArray(zone.zipCodes) ? zone.zipCodes.join(", ") : "",
+    zipCodes,
+    zipCodeDraft: "",
+    zipCodesText: zipCodes.join(", "),
     fee: zone.fee ?? 0,
     minimumOrder: zone.minimumOrder ?? 0,
     estimatedMinutes: zone.estimatedMinutes ?? 30,
@@ -157,19 +166,31 @@ export function getDeliveryZoneForm(zone = {}, index = 0) {
   };
 }
 
-export function buildDeliveryZonesPayload(zones) {
-  return (zones || [])
-    .map((zone) => ({
-      _id: zone._id || undefined,
-      name: String(zone.name || "").trim() || "Zone de livraison",
-      zipCodes: String(zone.zipCodesText || "")
+export function normalizeZipCodes(zipCodes) {
+  return Array.isArray(zipCodes)
+    ? zipCodes.map((zip) => String(zip || "").trim()).filter(Boolean)
+    : String(zipCodes || "")
         .split(",")
         .map((zip) => zip.trim())
-        .filter(Boolean),
-      fee: Number(zone.fee || 0),
-      minimumOrder: Number(zone.minimumOrder || 0),
-      estimatedMinutes: Number(zone.estimatedMinutes || 30),
-      active: zone.active !== false,
-    }))
+        .filter(Boolean);
+}
+
+export function buildDeliveryZonesPayload(zones) {
+  return (zones || [])
+    .map((zone) => {
+      const zipCodes = Array.isArray(zone.zipCodes)
+        ? normalizeZipCodes(zone.zipCodes)
+        : normalizeZipCodes(zone.zipCodesText);
+
+      return {
+        _id: zone._id || undefined,
+        name: String(zone.name || "").trim() || "Zone de livraison",
+        zipCodes,
+        fee: Number(zone.fee || 0),
+        minimumOrder: Number(zone.minimumOrder || 0),
+        estimatedMinutes: Number(zone.estimatedMinutes || 30),
+        active: zone.active !== false,
+      };
+    })
     .filter((zone) => zone.zipCodes.length > 0);
 }
