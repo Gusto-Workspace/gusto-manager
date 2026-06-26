@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 // AXIOS
 import axios from "axios";
@@ -8,6 +8,73 @@ import { CalendarDays, Check, Loader2, Plus, Save, Trash2 } from "lucide-react";
 
 // COMPONENTS
 import HoursRestaurantComponent from "../../restaurant/hours.restaurant.component";
+
+function getLocalDateKey(date) {
+  const today = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(today.getTime())) return "";
+
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function minutesFromHHmm(value) {
+  const [hours = "0", minutes = "0"] = String(value || "00:00").split(":");
+  return (Number(hours) || 0) * 60 + (Number(minutes) || 0);
+}
+
+function getMinutesFromDate(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(d.getTime())) return 0;
+  return d.getHours() * 60 + d.getMinutes();
+}
+
+function cleanExceptionalOpenings(openings, referenceDate = new Date()) {
+  const byDate = new Map();
+  const todayKey = getLocalDateKey(referenceDate);
+  const nowMinutes = getMinutesFromDate(referenceDate);
+
+  (Array.isArray(openings) ? openings : []).forEach((opening) => {
+    const date = String(opening?.date || "")
+      .trim()
+      .slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+    if (date < todayKey) return;
+
+    const hours = (Array.isArray(opening?.hours) ? opening.hours : [])
+      .map((range) => ({
+        open: String(range?.open || "")
+          .trim()
+          .slice(0, 5),
+        close: String(range?.close || "")
+          .trim()
+          .slice(0, 5),
+      }))
+      .filter((range) => {
+        if (!range.open || !range.close || range.open >= range.close) {
+          return false;
+        }
+
+        if (date === todayKey) {
+          return minutesFromHHmm(range.close) > nowMinutes;
+        }
+
+        return true;
+      });
+
+    if (!hours.length) return;
+    byDate.set(date, { date, hours });
+  });
+
+  return Array.from(byDate.values()).sort((a, b) =>
+    String(a.date).localeCompare(String(b.date)),
+  );
+}
+
+function serializeExceptionalOpenings(openings, referenceDate = new Date()) {
+  return JSON.stringify(cleanExceptionalOpenings(openings, referenceDate));
+}
 
 export default function HoursParametersComponent({
   // RHF
@@ -58,46 +125,75 @@ export default function HoursParametersComponent({
   const saveBtnDone =
     "bg-white text-darkBlue border border-darkBlue opacity-60";
 
-  useEffect(() => {
-    setLocalExceptionalOpenings(
-      Array.isArray(exceptionalOpenings) ? exceptionalOpenings : [],
-    );
-  }, [exceptionalOpenings]);
+  const saveExceptionalOpeningsImmediate = useCallback(
+    async (cleanedOpenings) => {
+      try {
+        const token = localStorage.getItem("token");
+        if (!restaurantId) return;
 
-  function cleanExceptionalOpenings(openings) {
-    const byDate = new Map();
-
-    (Array.isArray(openings) ? openings : []).forEach((opening) => {
-      const date = String(opening?.date || "")
-        .trim()
-        .slice(0, 10);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
-
-      const hours = (Array.isArray(opening?.hours) ? opening.hours : [])
-        .map((range) => ({
-          open: String(range?.open || "")
-            .trim()
-            .slice(0, 5),
-          close: String(range?.close || "")
-            .trim()
-            .slice(0, 5),
-        }))
-        .filter(
-          (range) => range.open && range.close && range.open < range.close,
+        const response = await axios.put(
+          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/reservations/parameters`,
+          {
+            parameters: {
+              exceptional_openings: cleanedOpenings,
+            },
+          },
+          { headers: { Authorization: `Bearer ${token}` } },
         );
 
-      if (!hours.length) return;
-      byDate.set(date, { date, hours });
-    });
+        setRestaurantData?.(response.data.restaurant);
+      } catch (e) {
+        console.error("Erreur nettoyage ouvertures exceptionnelles :", e);
+      }
+    },
+    [restaurantId, setRestaurantData],
+  );
 
-    return Array.from(byDate.values()).sort((a, b) =>
-      String(a.date).localeCompare(String(b.date)),
-    );
-  }
+  useEffect(() => {
+    const referenceDate = new Date();
+    const rawOpenings = Array.isArray(exceptionalOpenings)
+      ? exceptionalOpenings
+      : [];
+    const cleanedOpenings = cleanExceptionalOpenings(rawOpenings, referenceDate);
 
-  function serializeExceptionalOpenings(openings) {
-    return JSON.stringify(cleanExceptionalOpenings(openings));
-  }
+    setLocalExceptionalOpenings(cleanedOpenings);
+
+    if (
+      serializeExceptionalOpenings(rawOpenings, referenceDate) !==
+      serializeExceptionalOpenings(cleanedOpenings, referenceDate)
+    ) {
+      setExceptionalOpenings?.(cleanedOpenings);
+      saveExceptionalOpeningsImmediate(cleanedOpenings);
+    }
+  }, [
+    exceptionalOpenings,
+    saveExceptionalOpeningsImmediate,
+    setExceptionalOpenings,
+  ]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      const referenceDate = new Date();
+
+      setLocalExceptionalOpenings((prev) => {
+        const cleanedOpenings = cleanExceptionalOpenings(prev, referenceDate);
+
+        if (
+          serializeExceptionalOpenings(prev, referenceDate) ===
+          serializeExceptionalOpenings(cleanedOpenings, referenceDate)
+        ) {
+          return prev;
+        }
+
+        setExceptionalSaved(false);
+        setExceptionalOpenings?.(cleanedOpenings);
+        saveExceptionalOpeningsImmediate(cleanedOpenings);
+        return cleanedOpenings;
+      });
+    }, 30000);
+
+    return () => window.clearInterval(interval);
+  }, [saveExceptionalOpeningsImmediate, setExceptionalOpenings]);
 
   const exceptionalDirty =
     serializeExceptionalOpenings(localExceptionalOpenings) !==
