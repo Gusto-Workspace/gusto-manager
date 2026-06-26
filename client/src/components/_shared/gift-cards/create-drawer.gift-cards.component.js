@@ -17,11 +17,17 @@ const CLOSE_MS = 180;
 const SWIPE_VELOCITY = 0.6;
 const CLOSE_RATIO = 0.25;
 
+function translateWithFallback(t, key, fallback) {
+  const translated = t?.(key);
+  return translated && translated !== key ? translated : fallback;
+}
+
 export default function CreateDrawerGiftCardsComponent({
   open,
   onClose,
   title,
   onSubmit,
+  handleSubmit,
   register,
   errors,
   currencySymbol,
@@ -41,6 +47,7 @@ export default function CreateDrawerGiftCardsComponent({
   const [selectedVisualId, setSelectedVisualId] = useState(
     editingGift?.visualId || "",
   );
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const prevBodyOverflowRef = useRef("");
   const prevHtmlOverflowRef = useRef("");
@@ -65,7 +72,11 @@ export default function CreateDrawerGiftCardsComponent({
   const descriptionLabel = t?.("form.labels.description") || "Description";
   const optionalLabel = t?.("form.labels.optional") || "optionnel";
   const valueLabel = t?.("form.labels.value") || "Valeur";
-  const requiredLabel = t?.("form.errors.required") || "Champ requis";
+  const requiredLabel = translateWithFallback(
+    t,
+    "form.errors.required",
+    "Le montant de la carte cadeau est requis.",
+  );
   const subtitle = isDeleting
     ? "Cette action est définitive."
     : "Renseignez la description, la valeur et la durée de validité de cette carte cadeau.";
@@ -107,6 +118,27 @@ export default function CreateDrawerGiftCardsComponent({
       onClose?.();
     }, CLOSE_MS);
   }
+
+  const handleValidSubmit = async (data) => {
+    if (isSubmitting) return;
+
+    setIsSubmitting(true);
+    try {
+      await onSubmit?.(data);
+      closeWithAnimation();
+    } catch (_error) {
+      // L'erreur est déjà loggée par le parent ; on garde le drawer ouvert.
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleInvalidSubmit = () => {
+    setIsSubmitting(false);
+  };
+
+  const handleFormSubmit = handleSubmit
+    ? handleSubmit(handleValidSubmit, handleInvalidSubmit)
+    : undefined;
 
   const measurePanel = () => {
     const el = panelRef.current;
@@ -318,9 +350,13 @@ export default function CreateDrawerGiftCardsComponent({
           </div>
         </div>
 
-        <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
+        <form
+          onSubmit={handleFormSubmit}
+          className="flex min-h-0 flex-1 flex-col"
+        >
           <div className="flex-1 overflow-y-auto p-4 hide-scrollbar overscroll-contain">
-            <div className="rounded-2xl bg-white/60 border border-darkBlue/10 shadow-sm p-4">
+            <div className="flex flex-col">
+            <div className="order-2 mt-4 rounded-2xl bg-white/60 border border-darkBlue/10 shadow-sm p-4">
               <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-darkBlue/60">
                 {descriptionLabel}{" "}
                 <span className="normal-case tracking-normal text-darkBlue/35">
@@ -344,7 +380,7 @@ export default function CreateDrawerGiftCardsComponent({
               />
             </div>
 
-            <div className="mt-4 rounded-2xl bg-white/60 border border-darkBlue/10 shadow-sm p-4">
+            <div className="order-1 rounded-2xl bg-white/60 border border-darkBlue/10 shadow-sm p-4">
               <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-darkBlue/60">
                 {valueLabel}
               </label>
@@ -398,6 +434,7 @@ export default function CreateDrawerGiftCardsComponent({
                 </p>
               ) : null}
             </div>
+            </div>
 
             {!isDeleting ? (
               <div className="mt-4 rounded-2xl bg-white/60 border border-darkBlue/10 shadow-sm p-4">
@@ -412,10 +449,10 @@ export default function CreateDrawerGiftCardsComponent({
                 <div className="mt-3 grid grid-cols-1 gap-3">
                   <select
                     value={selectedVisualId}
-                    {...register("visualId")}
-                    onChange={(event) =>
-                      setSelectedVisualId(event.target.value)
-                    }
+                    {...register("visualId", {
+                      onChange: (event) =>
+                        setSelectedVisualId(event.target.value),
+                    })}
                     className="h-11 rounded-xl border border-darkBlue/10 bg-white/85 px-3 text-sm text-darkBlue outline-none focus:border-blue/40 focus:ring-1 focus:ring-blue/20"
                   >
                     <option value="">Visuel par défaut</option>
@@ -462,8 +499,10 @@ export default function CreateDrawerGiftCardsComponent({
                         type="radio"
                         value="fixed_duration"
                         defaultChecked={validityMode === "fixed_duration"}
-                        {...register("validity_mode")}
-                        onChange={() => setValidityMode("fixed_duration")}
+                        {...register("validity_mode", {
+                          onChange: (event) =>
+                            setValidityMode(event.target.value),
+                        })}
                         className="mt-1"
                       />
                       <div className="min-w-0">
@@ -506,8 +545,10 @@ export default function CreateDrawerGiftCardsComponent({
                         type="radio"
                         value="until_date"
                         defaultChecked={validityMode === "until_date"}
-                        {...register("validity_mode")}
-                        onChange={() => setValidityMode("until_date")}
+                        {...register("validity_mode", {
+                          onChange: (event) =>
+                            setValidityMode(event.target.value),
+                        })}
                         className="mt-1"
                       />
                       <div className="min-w-0">
@@ -561,6 +602,7 @@ export default function CreateDrawerGiftCardsComponent({
               <button
                 type="button"
                 onClick={closeWithAnimation}
+                disabled={isSubmitting}
                 className="w-full inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white/80 hover:bg-white transition px-4 py-3 text-sm font-semibold text-darkBlue"
               >
                 {secondaryLabel}
@@ -568,11 +610,13 @@ export default function CreateDrawerGiftCardsComponent({
 
               <button
                 type="submit"
+                disabled={isSubmitting}
                 className={`
                   w-full inline-flex items-center justify-center gap-2
                   rounded-xl px-4 py-3 text-sm font-semibold text-white
                   shadow-sm transition
                   ${isDeleting ? "bg-red hover:bg-red/90" : "bg-blue hover:bg-blue/90"}
+                  ${isSubmitting ? "opacity-60 cursor-not-allowed" : ""}
                 `}
               >
                 {isDeleting ? (

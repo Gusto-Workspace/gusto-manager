@@ -138,14 +138,36 @@ function normalizeReservationDateKey(value) {
   return `${year}-${month}-${day}`;
 }
 
-function sanitizeReservationExceptionalOpeningsInput(value) {
+function getLocalDateKey(date = new Date()) {
+  const d = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(d.getTime())) return "";
+
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getLocalMinutes(date = new Date()) {
+  const d = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(d.getTime())) return 0;
+  return d.getHours() * 60 + d.getMinutes();
+}
+
+function sanitizeReservationExceptionalOpeningsInput(
+  value,
+  referenceDate = new Date(),
+) {
   if (!Array.isArray(value)) return [];
 
   const byDate = new Map();
+  const todayKey = getLocalDateKey(referenceDate);
+  const nowMinutes = getLocalMinutes(referenceDate);
 
   value.forEach((opening) => {
     const date = normalizeReservationDateKey(opening?.date);
     if (!date) return;
+    if (todayKey && date < todayKey) return;
 
     const hours = (Array.isArray(opening?.hours) ? opening.hours : [])
       .map((range) => ({
@@ -158,6 +180,10 @@ function sanitizeReservationExceptionalOpeningsInput(value) {
         }
 
         return minutesFromHHmm(range.open) < minutesFromHHmm(range.close);
+      })
+      .filter((range) => {
+        if (date !== todayKey) return true;
+        return minutesFromHHmm(range.close) > nowMinutes;
       });
 
     if (!hours.length) return;
