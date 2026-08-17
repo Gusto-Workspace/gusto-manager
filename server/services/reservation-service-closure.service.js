@@ -1,17 +1,10 @@
+const {
+  buildServiceRangeDateTimes,
+  minutesFromHHmm,
+} = require("./reservation-service-time.service");
+
 function isValidHHmm(value) {
   return /^([01]\d|2[0-3]):([0-5]\d)$/.test(String(value || "").trim());
-}
-
-function buildLocalDateTime(baseDate, time) {
-  if (!(baseDate instanceof Date) || Number.isNaN(baseDate.getTime())) {
-    return null;
-  }
-  if (!isValidHHmm(time)) return null;
-
-  const [hours, minutes] = String(time).split(":").map(Number);
-  const result = new Date(baseDate);
-  result.setHours(hours, minutes, 0, 0);
-  return result;
 }
 
 function normalizeReservationDateKey(value) {
@@ -32,13 +25,6 @@ function normalizeReservationDateKey(value) {
   return `${year}-${month}-${day}`;
 }
 
-function minutesFromHHmm(timeStr) {
-  const [hour, minute] = String(timeStr || "00:00")
-    .split(":")
-    .map(Number);
-  return (Number(hour) || 0) * 60 + (Number(minute) || 0);
-}
-
 function getReservationExceptionalOpeningForDate(parameters, date) {
   const dateKey = normalizeReservationDateKey(date);
   if (!dateKey) return null;
@@ -57,7 +43,7 @@ function getReservationExceptionalOpeningForDate(parameters, date) {
     (range) =>
       isValidHHmm(range?.open) &&
       isValidHHmm(range?.close) &&
-      minutesFromHHmm(range.open) < minutesFromHHmm(range.close),
+      minutesFromHHmm(range.open) !== minutesFromHHmm(range.close),
   );
 
   if (!hours.length) return null;
@@ -80,32 +66,41 @@ function getCurrentReservationService({
 
   const sourceHours = getReservationHoursSource(restaurant, parameters);
 
-  const exceptionalOpening = getReservationExceptionalOpeningForDate(
-    parameters || restaurant?.reservationsSettings || {},
-    now,
-  );
-  const jsDay = now.getDay();
-  const dayIndex = jsDay === 0 ? 6 : jsDay - 1;
-  const dayHours =
-    exceptionalOpening ||
-    (Array.isArray(sourceHours) ? sourceHours[dayIndex] : null);
+  const serviceDates = [new Date(now), new Date(now)];
+  serviceDates[0].setHours(0, 0, 0, 0);
+  serviceDates[1].setDate(serviceDates[1].getDate() - 1);
+  serviceDates[1].setHours(0, 0, 0, 0);
 
-  if (!dayHours || dayHours?.isClosed || !Array.isArray(dayHours?.hours)) {
-    return null;
-  }
+  for (const serviceDate of serviceDates) {
+    const exceptionalOpening = getReservationExceptionalOpeningForDate(
+      parameters || restaurant?.reservationsSettings || {},
+      serviceDate,
+    );
+    const jsDay = serviceDate.getDay();
+    const dayIndex = jsDay === 0 ? 6 : jsDay - 1;
+    const dayHours = exceptionalOpening ||
+      (Array.isArray(sourceHours) ? sourceHours[dayIndex] : null);
 
-  for (const range of dayHours.hours) {
-    const startAt = buildLocalDateTime(now, range?.open);
-    const endAt = buildLocalDateTime(now, range?.close);
-    if (!startAt || !endAt || endAt <= startAt) continue;
+    if (!dayHours || dayHours?.isClosed || !Array.isArray(dayHours?.hours)) {
+      continue;
+    }
 
-    if (now >= startAt && now < endAt) {
-      return {
-        startAt,
-        endAt,
-        open: String(range.open),
-        close: String(range.close),
-      };
+    for (const range of dayHours.hours) {
+      if (!isValidHHmm(range?.open) || !isValidHHmm(range?.close)) continue;
+      const serviceRange = buildServiceRangeDateTimes(
+        serviceDate,
+        range.open,
+        range.close,
+      );
+      if (!serviceRange) continue;
+
+      if (now >= serviceRange.startAt && now < serviceRange.endAt) {
+        return {
+          ...serviceRange,
+          open: String(range.open),
+          close: String(range.close),
+        };
+      }
     }
   }
 

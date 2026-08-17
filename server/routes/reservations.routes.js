@@ -50,6 +50,14 @@ const {
   getCurrentReservationService,
   isPublicReservationBlockedByCurrentService,
 } = require("../services/reservation-service-closure.service");
+const {
+  buildReservationDateTime,
+  getServiceBucketFromTime,
+  isOvernightServiceRange,
+  isTimeWithinServiceRange,
+  minutesFromHHmm,
+  minutesFromServiceTime,
+} = require("../services/reservation-service-time.service");
 
 const BANK_HOLD_IMMEDIATE_WINDOW_HOURS = 168; // 7 jours
 
@@ -179,11 +187,14 @@ function sanitizeReservationExceptionalOpeningsInput(
           return false;
         }
 
-        return minutesFromHHmm(range.open) < minutesFromHHmm(range.close);
+        return minutesFromHHmm(range.open) !== minutesFromHHmm(range.close);
       })
       .filter((range) => {
         if (date !== todayKey) return true;
-        return minutesFromHHmm(range.close) > nowMinutes;
+        const closeMinutes = isOvernightServiceRange(range.open, range.close)
+          ? minutesFromHHmm(range.close) + 24 * 60
+          : minutesFromHHmm(range.close);
+        return closeMinutes > nowMinutes;
       });
 
     if (!hours.length) return;
@@ -252,7 +263,7 @@ function getReservationExceptionalOpeningForDate(parameters, reservationDate) {
     (range) =>
       isValidHHmm(range?.open) &&
       isValidHHmm(range?.close) &&
-      minutesFromHHmm(range.open) < minutesFromHHmm(range.close),
+      minutesFromHHmm(range.open) !== minutesFromHHmm(range.close),
   );
 
   if (!hours.length) return null;
@@ -782,11 +793,6 @@ function isBlockingReservation(r) {
   return true;
 }
 
-function getServiceBucketFromTime(reservationTime) {
-  const [hh = "0"] = String(reservationTime || "00:00").split(":");
-  return Number(hh) < 16 ? "lunch" : "dinner";
-}
-
 function getOccupancyMinutes(parameters, reservationTime) {
   const bucket = getServiceBucketFromTime(reservationTime);
   const v =
@@ -796,13 +802,6 @@ function getOccupancyMinutes(parameters, reservationTime) {
 
   const n = Number(v || 0);
   return Number.isFinite(n) && n > 0 ? n : 0;
-}
-
-function minutesFromHHmm(timeStr) {
-  const [h, m] = String(timeStr || "00:00")
-    .split(":")
-    .map(Number);
-  return (Number(h) || 0) * 60 + (Number(m) || 0);
 }
 
 function requiredTableSizeFromGuests(n) {
@@ -1024,7 +1023,7 @@ async function getConfiguredTableAvailabilityForCandidate({
     getMaximumSingleTableSeatsFromGuests(numberOfGuests);
   const comboSeatSize = getRequiredCombinedTableSizeFromGuests(numberOfGuests);
   const formattedDate = format(reservationDateUTC, "yyyy-MM-dd");
-  const candidateStart = minutesFromHHmm(reservationTime);
+  const candidateStart = minutesFromServiceTime(reservationTime);
   const durCandidate = getOccupancyMinutes(parameters, reservationTime);
   const candidateEnd = candidateStart + durCandidate;
   const candidateDateTime = buildReservationDateTime(
@@ -1059,7 +1058,7 @@ async function getConfiguredTableAvailabilityForCandidate({
   const blockingReservations = dayReservations.filter(isBlockingReservation);
 
   const overlaps = (reservation) => {
-    const reservationStart = minutesFromHHmm(reservation.reservationTime);
+    const reservationStart = minutesFromServiceTime(reservation.reservationTime);
     const reservationDuration = getOccupancyMinutes(
       parameters,
       reservation.reservationTime,
@@ -1199,6 +1198,10 @@ function computePendingExpiresAt(restaurant, anchorDate = null) {
         const closeTime = new Date(cursor);
         closeTime.setHours(closeH, closeM, 0, 0);
 
+        if (closeTime <= openTime) {
+          closeTime.setDate(closeTime.getDate() + 1);
+        }
+
         // start = max(cursor, openTime)
         const start = cursor < openTime ? openTime : cursor;
 
@@ -1223,23 +1226,6 @@ function computePendingExpiresAt(restaurant, anchorDate = null) {
   } catch {
     return new Date(now.getTime() + 12 * 60 * 60 * 1000);
   }
-}
-
-function buildReservationDateTime(reservationDateUTC, reservationTime) {
-  const d = new Date(reservationDateUTC);
-  if (Number.isNaN(d.getTime())) return null;
-
-  const [hh = "00", mm = "00"] = String(reservationTime || "00:00").split(":");
-
-  return new Date(
-    d.getUTCFullYear(),
-    d.getUTCMonth(),
-    d.getUTCDate(),
-    parseInt(hh, 10) || 0,
-    parseInt(mm, 10) || 0,
-    0,
-    0,
-  );
 }
 
 function getReservationIntervalMinutes(parameters) {
@@ -1474,19 +1460,19 @@ function isReservationTimeWithinConfiguredHours({
     return false;
   }
 
-  const candidateMinutes = minutesFromHHmm(reservationTime);
   const intervalMinutes = getReservationIntervalMinutes(parameters);
 
   return dayHours.hours.some((range) => {
     if (!isValidHHmm(range?.open) || !isValidHHmm(range?.close)) return false;
 
-    const openMinutes = minutesFromHHmm(range.open);
-    const closeMinutes = minutesFromHHmm(range.close);
-
-    if (candidateMinutes < openMinutes || candidateMinutes > closeMinutes) {
+    if (!isTimeWithinServiceRange(reservationTime, range.open, range.close)) {
       return false;
     }
 
+    const openMinutes = minutesFromHHmm(range.open);
+    const candidateMinutes = isOvernightServiceRange(range.open, range.close)
+      ? minutesFromServiceTime(reservationTime)
+      : minutesFromHHmm(reservationTime);
     return (candidateMinutes - openMinutes) % intervalMinutes === 0;
   });
 }
@@ -2765,7 +2751,7 @@ async function updateReservationStatusInternal({
         reservation.numberOfGuests,
       );
       const formattedDate = format(normalizedDay, "yyyy-MM-dd");
-      const candidateStart = minutesFromHHmm(normalizedTime);
+      const candidateStart = minutesFromServiceTime(normalizedTime);
       const durCandidate = getOccupancyMinutes(parameters, normalizedTime);
       const candidateEnd = candidateStart + durCandidate;
       const candidateDateTime = buildReservationDateTime(
@@ -2797,7 +2783,7 @@ async function updateReservationStatusInternal({
       );
 
       const overlaps = (r) => {
-        const rStart = minutesFromHHmm(r.reservationTime);
+        const rStart = minutesFromServiceTime(r.reservationTime);
         const rDur = getOccupancyMinutes(parameters, r.reservationTime);
         const rEnd = rStart + rDur;
 
@@ -5544,7 +5530,7 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
         const comboSeatSize =
           getRequiredCombinedTableSizeFromGuests(normalizedGuests);
         const formattedDate = format(normalizedDay, "yyyy-MM-dd");
-        const candidateStart = minutesFromHHmm(normalizedTime);
+        const candidateStart = minutesFromServiceTime(normalizedTime);
         const durCandidate = getOccupancyMinutes(parameters, normalizedTime);
         const candidateEnd = candidateStart + durCandidate;
         const blockedTableIds = getBlockedTableIdsForDateTime(
@@ -5571,7 +5557,7 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
         );
 
         const overlaps = (r) => {
-          const rStart = minutesFromHHmm(r.reservationTime);
+          const rStart = minutesFromServiceTime(r.reservationTime);
           const rDur = getOccupancyMinutes(parameters, r.reservationTime);
           const rEnd = rStart + rDur;
 
