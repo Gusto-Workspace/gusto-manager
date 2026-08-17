@@ -170,7 +170,7 @@ export default function DetailsDocumentAdminPage(props) {
 
   // ✅ subscription (name + monthly number)
   const [subscriptionPriceMonthly, setSubscriptionPriceMonthly] = useState("");
-  const [engagementMonths, setEngagementMonths] = useState(12);
+  const [engagementMonths, setEngagementMonths] = useState(24);
 
   // ✅ modules numeric
   const [modules, setModules] = useState([]);
@@ -357,7 +357,12 @@ export default function DetailsDocumentAdminPage(props) {
             : 0);
 
         setSubscriptionPriceMonthly(subPrice > 0 ? subPrice : "");
-        setEngagementMonths(clampMin(d?.engagementMonths ?? 12, 1));
+        setEngagementMonths(
+          clampMin(
+            d?.engagementMonths ?? (d?.type === "CONTRACT" ? 24 : 12),
+            1,
+          ),
+        );
 
         setModules(
           d?.modules && d.modules.length > 0
@@ -1471,7 +1476,7 @@ export default function DetailsDocumentAdminPage(props) {
                           setEngagementMonths(toNumberOrEmpty(e.target.value))
                         }
                         className="mt-2 w-full rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
-                        placeholder="12"
+                        placeholder="24"
                       />
                     </div>
 

@@ -6,6 +6,7 @@ import {
   fieldClass,
   getCatalogCategoryName,
   normalizeForMatch,
+  normalizeZipCodes,
   toMoney,
   todayKey,
 } from "./take-away.utils";
@@ -81,6 +82,7 @@ export default function ManualTakeAwayOrderComponent({
   const selectedZone = activeZones.find(
     (zone) => String(zone._id) === String(manualOrder.deliveryZoneId),
   );
+  const selectedZoneZipCodes = normalizeZipCodes(selectedZone?.zipCodes);
 
   const manualSubtotal = (manualOrder.items || []).reduce((sum, line) => {
     const item = catalogById.get(String(line.catalogItemId));
@@ -144,13 +146,16 @@ export default function ManualTakeAwayOrderComponent({
     const zone = activeZones.find(
       (entry) => String(entry._id) === String(zoneId),
     );
-    const firstZip = zone?.zipCodes?.[0] || "";
+    const zoneZipCodes = normalizeZipCodes(zone?.zipCodes);
+    const firstZip = zoneZipCodes[0] || "";
     setManualOrder((prev) => ({
       ...prev,
       deliveryZoneId: zoneId,
       deliveryAddress: {
         ...prev.deliveryAddress,
-        zipCode: prev.deliveryAddress.zipCode || firstZip,
+        zipCode: zoneZipCodes.includes(prev.deliveryAddress.zipCode)
+          ? prev.deliveryAddress.zipCode
+          : firstZip,
       },
     }));
   }
@@ -190,8 +195,8 @@ export default function ManualTakeAwayOrderComponent({
         nextErrors.zipCode = "Code postal obligatoire.";
       } else if (
         selectedZone &&
-        !(selectedZone.zipCodes || [])
-          .map((zip) => normalizeForMatch(zip))
+        !selectedZoneZipCodes
+          .map((zipCode) => normalizeForMatch(zipCode))
           .includes(normalizeForMatch(manualOrder.deliveryAddress.zipCode))
       ) {
         nextErrors.zipCode =
@@ -326,61 +331,82 @@ export default function ManualTakeAwayOrderComponent({
             <h3 className="mb-3 text-sm font-semibold text-darkBlue">
               Détails de livraison
             </h3>
-            <div className="grid gap-3 midTablet:grid-cols-2">
-              <FormField
-                label="Zone de livraison"
-                error={errors.deliveryZoneId}
-              >
-                <select
-                  className={fieldClass(errors.deliveryZoneId)}
-                  value={manualOrder.deliveryZoneId}
-                  onChange={(e) => handleZoneChange(e.target.value)}
+            <div className="flex flex-col gap-3">
+              <div className="grid gap-3 midTablet:grid-cols-2">
+                <FormField
+                  label="Zone de livraison"
+                  error={errors.deliveryZoneId}
                 >
-                  <option value="">Sélectionner une zone</option>
-                  {activeZones.map((zone) => (
-                    <option key={zone._id} value={zone._id}>
-                      {zone.name || "Zone"} • {toMoney(zone.fee)}
+                  <select
+                    className={fieldClass(errors.deliveryZoneId)}
+                    value={manualOrder.deliveryZoneId}
+                    onChange={(e) => handleZoneChange(e.target.value)}
+                  >
+                    <option value="">Sélectionner une zone</option>
+                    {activeZones.map((zone) => (
+                      <option key={zone._id} value={zone._id}>
+                        {zone.name || "Zone"} • {toMoney(zone.fee)}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+              </div>
+
+              <div className="grid gap-3 midTablet:grid-cols-4">
+                <FormField label="Adresse" error={errors.line1}>
+                  <input
+                    className={fieldClass(errors.line1)}
+                    value={manualOrder.deliveryAddress.line1}
+                    onChange={(e) =>
+                      updateDeliveryAddress({ line1: e.target.value })
+                    }
+                  />
+                </FormField>
+                <FormField label="Complément">
+                  <input
+                    className={fieldClass(false)}
+                    value={manualOrder.deliveryAddress.line2}
+                    onChange={(e) =>
+                      updateDeliveryAddress({ line2: e.target.value })
+                    }
+                  />
+                </FormField>
+                <FormField label="Ville" error={errors.city}>
+                  <input
+                    className={fieldClass(errors.city)}
+                    value={manualOrder.deliveryAddress.city}
+                    onChange={(e) =>
+                      updateDeliveryAddress({ city: e.target.value })
+                    }
+                  />
+                </FormField>
+                <FormField label="Code postal" error={errors.zipCode}>
+                  <select
+                    className={fieldClass(errors.zipCode)}
+                    value={manualOrder.deliveryAddress.zipCode}
+                    onChange={(e) =>
+                      updateDeliveryAddress({ zipCode: e.target.value })
+                    }
+                    disabled={
+                      !manualOrder.deliveryZoneId ||
+                      selectedZoneZipCodes.length === 0
+                    }
+                  >
+                    <option value="">
+                      {manualOrder.deliveryZoneId
+                        ? "Sélectionner un code postal"
+                        : "Sélectionner une zone"}
                     </option>
-                  ))}
-                </select>
-              </FormField>
-              <FormField label="Adresse" error={errors.line1}>
-                <input
-                  className={fieldClass(errors.line1)}
-                  value={manualOrder.deliveryAddress.line1}
-                  onChange={(e) =>
-                    updateDeliveryAddress({ line1: e.target.value })
-                  }
-                />
-              </FormField>
-              <FormField label="Complément">
-                <input
-                  className={fieldClass(false)}
-                  value={manualOrder.deliveryAddress.line2}
-                  onChange={(e) =>
-                    updateDeliveryAddress({ line2: e.target.value })
-                  }
-                />
-              </FormField>
-              <FormField label="Code postal" error={errors.zipCode}>
-                <input
-                  className={fieldClass(errors.zipCode)}
-                  value={manualOrder.deliveryAddress.zipCode}
-                  onChange={(e) =>
-                    updateDeliveryAddress({ zipCode: e.target.value })
-                  }
-                />
-              </FormField>
-              <FormField label="Ville" error={errors.city}>
-                <input
-                  className={fieldClass(errors.city)}
-                  value={manualOrder.deliveryAddress.city}
-                  onChange={(e) =>
-                    updateDeliveryAddress({ city: e.target.value })
-                  }
-                />
-              </FormField>
-              <div className="midTablet:col-span-2">
+                    {selectedZoneZipCodes.map((zipCode) => (
+                      <option key={zipCode} value={zipCode}>
+                        {zipCode}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+              </div>
+
+              <div>
                 <FormField label="Instructions livreur">
                   <input
                     className={fieldClass(false)}

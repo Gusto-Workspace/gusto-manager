@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import CardReservationComponent from "./card.reservations.component";
 import ReservationsDrawerComponent from "@/components/_shared/reservations/reservations-drawer.component";
 import { CommunitySvg } from "@/components/_shared/_svgs/_index";
+import { getReservationDisplayStatus } from "@/components/_shared/reservations/reservation-status.utils";
 
 export default function DayListReservationsComponent(props) {
   const { t } = useTranslation("reservations");
@@ -17,8 +18,14 @@ export default function DayListReservationsComponent(props) {
   const [actionError, setActionError] = useState("");
   const autoOpenedReservationRef = useRef(null);
 
-  const list = props?.dayData?.byStatus?.[props.activeDayTab] || [];
-  const allReservationsOfDay = props?.dayData?.byStatus?.All || [];
+  const list = useMemo(
+    () => props?.dayData?.byStatus?.[props.activeDayTab] || [],
+    [props.activeDayTab, props?.dayData?.byStatus],
+  );
+  const allReservationsOfDay = useMemo(
+    () => props?.dayData?.byStatus?.All || [],
+    [props?.dayData?.byStatus],
+  );
 
   const openDetails = (reservation) => {
     setSelectedReservation(reservation);
@@ -147,17 +154,28 @@ export default function DayListReservationsComponent(props) {
   }, [list]);
 
   const guestsByTime = useMemo(() => {
+    const confirmedReservations = allReservationsOfDay.filter(
+      (reservation) =>
+        getReservationDisplayStatus(reservation?.status) === "Confirmed",
+    );
+
     return Object.fromEntries(
       orderedTimes.map((time) => [
         time,
-        (byTime[time] || []).reduce(
-          (total, reservation) =>
-            total + Math.max(0, Number(reservation?.numberOfGuests || 0)),
-          0,
-        ),
+        confirmedReservations
+          .filter(
+            (reservation) =>
+              String(reservation?.reservationTime || "--:--").slice(0, 5) ===
+              time,
+          )
+          .reduce(
+            (total, reservation) =>
+              total + Math.max(0, Number(reservation?.numberOfGuests || 0)),
+            0,
+          ),
       ]),
     );
-  }, [orderedTimes, byTime]);
+  }, [allReservationsOfDay, orderedTimes]);
 
   // ✅ EARLY RETURN APRES LES HOOKS
   if (!props.selectedDay) return null;

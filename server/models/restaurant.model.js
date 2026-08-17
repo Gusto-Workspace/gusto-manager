@@ -183,6 +183,16 @@ const reservationExceptionalOpeningSchema = new mongoose.Schema(
   { _id: true },
 );
 
+const reservationSlotCoverLimitSchema = new mongoose.Schema(
+  {
+    day: { type: Number, min: 0, max: 6, default: null },
+    time: { type: String, required: true, trim: true },
+    maxCovers: { type: Number, min: 1, required: true },
+    active: { type: Boolean, default: true },
+  },
+  { _id: true },
+);
+
 // Sous-schéma pour les paramètres de réservation
 const reservationParametersSchema = new mongoose.Schema({
   same_hours_as_restaurant: { type: Boolean, default: true },
@@ -196,6 +206,10 @@ const reservationParametersSchema = new mongoose.Schema({
   auto_accept: { type: Boolean, default: true },
   interval: { type: Number, default: 30 },
   pending_duration_minutes: { type: Number, min: 1, default: 120 },
+  slot_cover_limits: {
+    type: [reservationSlotCoverLimitSchema],
+    default: [],
+  },
   refuse_public_reservations_during_service: {
     type: Boolean,
     default: false,

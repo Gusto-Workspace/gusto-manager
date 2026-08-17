@@ -195,6 +195,43 @@ function sanitizeReservationExceptionalOpeningsInput(
   );
 }
 
+function sanitizeReservationSlotCoverLimitsInput(value) {
+  if (!Array.isArray(value)) return [];
+
+  const byKey = new Map();
+
+  value.forEach((limit) => {
+    const time = String(limit?.time || "")
+      .trim()
+      .slice(0, 5);
+    if (!isValidHHmm(time)) return;
+
+    const maxCovers = Math.floor(Number(limit?.maxCovers || 0));
+    if (!Number.isFinite(maxCovers) || maxCovers <= 0) return;
+
+    const rawDay =
+      limit?.day === 0 || limit?.day ? Math.floor(Number(limit.day)) : null;
+    const day =
+      Number.isInteger(rawDay) && rawDay >= 0 && rawDay <= 6 ? rawDay : null;
+    const key = `${day === null ? "all" : day}|${time}`;
+
+    byKey.set(key, {
+      ...(limit?._id ? { _id: limit._id } : {}),
+      ...(day === null ? {} : { day }),
+      time,
+      maxCovers,
+      active: limit?.active !== false,
+    });
+  });
+
+  return Array.from(byKey.values()).sort((a, b) => {
+    const aDay = Number.isInteger(a.day) ? a.day : 99;
+    const bDay = Number.isInteger(b.day) ? b.day : 99;
+    if (aDay !== bDay) return aDay - bDay;
+    return String(a.time).localeCompare(String(b.time));
+  });
+}
+
 function getReservationExceptionalOpeningForDate(parameters, reservationDate) {
   const dateKey = normalizeReservationDateKey(reservationDate);
   if (!dateKey) return null;
@@ -1210,6 +1247,185 @@ function getReservationIntervalMinutes(parameters) {
   return Number.isFinite(interval) && interval > 0 ? interval : 30;
 }
 
+function getReservationDayIndexFromDate(reservationDateUTC) {
+  const normalizedDay = normalizeReservationDayToUTC(reservationDateUTC);
+  if (!normalizedDay) return null;
+
+  const jsDay = normalizedDay.getUTCDay();
+  return jsDay === 0 ? 6 : jsDay - 1;
+}
+
+function hasSlotCoverLimitDay(limit) {
+  return (
+    Number.isInteger(limit?.day) &&
+    Number(limit.day) >= 0 &&
+    Number(limit.day) <= 6
+  );
+}
+
+function getActiveSlotCoverLimit(
+  parameters = {},
+  reservationTime = "",
+  reservationDateUTC = null,
+) {
+  const normalizedTime = String(reservationTime || "")
+    .trim()
+    .slice(0, 5);
+  if (!isValidHHmm(normalizedTime)) return null;
+
+  const limits = Array.isArray(parameters?.slot_cover_limits)
+    ? parameters.slot_cover_limits
+    : [];
+
+  const dayIndex = getReservationDayIndexFromDate(reservationDateUTC);
+  const matchingTimeLimits = limits.filter(
+    (entry) =>
+      String(entry?.time || "").slice(0, 5) === normalizedTime,
+  );
+
+  const exactDayLimit =
+    Number.isInteger(dayIndex) &&
+    matchingTimeLimits.find(
+      (entry) => hasSlotCoverLimitDay(entry) && Number(entry.day) === dayIndex,
+    );
+  const fallbackLimit = matchingTimeLimits.find(
+    (entry) => !hasSlotCoverLimitDay(entry),
+  );
+  const limit = exactDayLimit || fallbackLimit;
+
+  if (exactDayLimit && exactDayLimit.active === false) return null;
+
+  const maxCovers = Math.floor(Number(limit?.maxCovers || 0));
+  if (
+    !limit ||
+    limit.active === false ||
+    !Number.isFinite(maxCovers) ||
+    maxCovers <= 0
+  ) {
+    return null;
+  }
+
+  return {
+    ...(hasSlotCoverLimitDay(limit) ? { day: Number(limit.day) } : {}),
+    time: normalizedTime,
+    maxCovers,
+  };
+}
+
+function buildSlotCoverUsageFromReservations(reservations = []) {
+  const usageMap = new Map();
+
+  (Array.isArray(reservations) ? reservations : []).forEach((reservation) => {
+    if (!isBlockingReservation(reservation)) return;
+
+    const dateKey = normalizeReservationDateKey(reservation?.reservationDate);
+    const time = String(reservation?.reservationTime || "").slice(0, 5);
+    const covers = Math.max(0, Number(reservation?.numberOfGuests || 0));
+
+    if (!dateKey || !isValidHHmm(time) || covers <= 0) return;
+
+    const key = `${dateKey}|${time}`;
+    usageMap.set(key, (usageMap.get(key) || 0) + covers);
+  });
+
+  return Array.from(usageMap.entries())
+    .map(([key, covers]) => {
+      const [date, time] = key.split("|");
+      return { date, time, covers };
+    })
+    .sort((a, b) =>
+      `${a.date}|${a.time}`.localeCompare(`${b.date}|${b.time}`),
+    );
+}
+
+async function getSlotCoverUsage({
+  restaurantId,
+  reservationDateUTC,
+  reservationTime,
+  excludeReservationId = null,
+}) {
+  const normalizedDay = normalizeReservationDayToUTC(reservationDateUTC);
+  const normalizedTime = String(reservationTime || "")
+    .trim()
+    .slice(0, 5);
+
+  if (!normalizedDay || !isValidHHmm(normalizedTime)) return 0;
+
+  const formattedDate = format(normalizedDay, "yyyy-MM-dd");
+  const dayStart = new Date(`${formattedDate}T00:00:00.000Z`);
+  const dayEnd = new Date(`${formattedDate}T23:59:59.999Z`);
+
+  const query = {
+    restaurant_id: restaurantId,
+    reservationDate: { $gte: dayStart, $lte: dayEnd },
+    reservationTime: normalizedTime,
+    status: { $in: BLOCKING_STATUSES },
+  };
+
+  if (excludeReservationId) {
+    query._id = { $ne: excludeReservationId };
+  }
+
+  const reservations = await ReservationModel.find(query)
+    .select(
+      "status numberOfGuests reservationTime pendingExpiresAt bankHold waitlistOffer",
+    )
+    .lean();
+
+  return reservations
+    .filter(isBlockingReservation)
+    .reduce(
+      (sum, reservation) =>
+        sum + Math.max(0, Number(reservation?.numberOfGuests || 0)),
+      0,
+    );
+}
+
+async function checkSlotCoverCapacity({
+  restaurantId,
+  parameters,
+  reservationDateUTC,
+  reservationTime,
+  numberOfGuests,
+  excludeReservationId = null,
+}) {
+  const limit = getActiveSlotCoverLimit(
+    parameters,
+    reservationTime,
+    reservationDateUTC,
+  );
+
+  if (!limit) {
+    return {
+      available: true,
+      limited: false,
+      usedCovers: 0,
+      requestedCovers: Number(numberOfGuests || 0),
+      remainingCovers: null,
+      maxCovers: null,
+    };
+  }
+
+  const usedCovers = await getSlotCoverUsage({
+    restaurantId,
+    reservationDateUTC,
+    reservationTime: limit.time,
+    excludeReservationId,
+  });
+  const requestedCovers = Math.max(0, Number(numberOfGuests || 0));
+  const nextCovers = usedCovers + requestedCovers;
+
+  return {
+    available: nextCovers <= limit.maxCovers,
+    limited: true,
+    usedCovers,
+    requestedCovers,
+    remainingCovers: Math.max(0, limit.maxCovers - usedCovers),
+    maxCovers: limit.maxCovers,
+    time: limit.time,
+  };
+}
+
 function getReservationDayHours({
   restaurant,
   parameters,
@@ -2163,17 +2379,38 @@ async function updateReservationDetailsInternal({
       normalizedDashboardTableInput?.mode === "configured" ||
       (Boolean(parameters.manage_disponibilities) &&
         normalizedDashboardTableInput?.mode === "empty"));
+  const shouldValidateCoverCapacity =
+    mustBlockSlot && (touchesDateTime || touchesGuests || statusExplicit);
   const allowLargerSingleTablesForManualSelection =
     normalizedDashboardTableInput?.mode === "configured" &&
     !parameters.manage_disponibilities;
   let dayLock = null;
 
   try {
-    if (shouldValidateConfiguredSelection) {
+    if (shouldValidateConfiguredSelection || shouldValidateCoverCapacity) {
       dayLock = await acquireReservationDayLock({
         restaurantId,
         reservationDateUTC: candidateDate,
       });
+    }
+
+    if (shouldValidateCoverCapacity) {
+      const coverCapacity = await checkSlotCoverCapacity({
+        restaurantId,
+        parameters,
+        reservationDateUTC: candidateDate,
+        reservationTime: candidateTime,
+        numberOfGuests: candidateGuests,
+        excludeReservationId: reservationId,
+      });
+
+      if (!coverCapacity.available) {
+        throw createReservationRouteError(
+          409,
+          "Ce créneau est complet en nombre de couverts.",
+          "SLOT_COVER_CAPACITY_EXCEEDED",
+        );
+      }
     }
 
     if (shouldValidateConfiguredSelection) {
@@ -2464,7 +2701,7 @@ async function updateReservationStatusInternal({
   let dayLock = null;
 
   try {
-    if (parameters.manage_disponibilities && willBlockSlot) {
+    if (willBlockSlot) {
       dayLock = await acquireReservationDayLock({
         restaurantId,
         reservationDateUTC: normalizedDay,
@@ -2482,6 +2719,23 @@ async function updateReservationStatusInternal({
           409,
           "Le créneau n'est plus disponible.",
           "SLOT_BLOCKED",
+        );
+      }
+
+      const coverCapacity = await checkSlotCoverCapacity({
+        restaurantId,
+        parameters,
+        reservationDateUTC: normalizedDay,
+        reservationTime: normalizedTime,
+        numberOfGuests: reservation.numberOfGuests,
+        excludeReservationId: reservationId,
+      });
+
+      if (!coverCapacity.available) {
+        throw createReservationRouteError(
+          409,
+          "Ce créneau est complet en nombre de couverts.",
+          "SLOT_COVER_CAPACITY_EXCEEDED",
         );
       }
     }
@@ -3101,6 +3355,24 @@ async function resolveWaitlistAssignableTable({
 
   if (isDateTimeBlocked(parameters, candidateDT, occupancyMs)) {
     return { available: false, table: null, reason: "slot_blocked" };
+  }
+
+  const coverCapacity = await checkSlotCoverCapacity({
+    restaurantId,
+    parameters,
+    reservationDateUTC: normalizedDay,
+    reservationTime: normalizedTime,
+    numberOfGuests: reservation?.numberOfGuests,
+    excludeReservationId: reservationIdToExclude,
+  });
+
+  if (!coverCapacity.available) {
+    return {
+      available: false,
+      table: null,
+      reason: "slot_cover_capacity_exceeded",
+      coverCapacity,
+    };
   }
 
   if (!parameters.manage_disponibilities) {
@@ -3964,6 +4236,14 @@ router.put(
             })
           : getWaitlistSettings(existing);
 
+      const nextSlotCoverLimits =
+        Object.prototype.hasOwnProperty.call(parameters, "slot_cover_limits") &&
+        Array.isArray(parameters.slot_cover_limits)
+          ? sanitizeReservationSlotCoverLimitsInput(parameters.slot_cover_limits)
+          : sanitizeReservationSlotCoverLimitsInput(
+              existing.slot_cover_limits || [],
+            );
+
       const nextTableBlocked =
         Object.prototype.hasOwnProperty.call(
           parameters,
@@ -3992,6 +4272,7 @@ router.put(
         ...parameters,
         blocked_ranges: nextBlocked,
         exceptional_openings: nextExceptionalOpenings,
+        slot_cover_limits: nextSlotCoverLimits,
         table_blocked_ranges: nextTableBlocked,
         email_templates: nextEmailTemplates,
         waitlist: nextWaitlist,
@@ -4646,13 +4927,6 @@ router.post("/restaurants/:id/reservations/waitlist", async (req, res) => {
       });
     }
 
-    if (!parameters.manage_disponibilities) {
-      return res.status(409).json({
-        message:
-          "Ce créneau ne peut pas recevoir d’inscription en liste d’attente.",
-      });
-    }
-
     let dayLock = null;
 
     try {
@@ -5231,6 +5505,22 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
         });
       }
 
+      const coverCapacity = await checkSlotCoverCapacity({
+        restaurantId,
+        parameters,
+        reservationDateUTC: normalizedDay,
+        reservationTime: normalizedTime,
+        numberOfGuests: normalizedGuests,
+      });
+
+      if (!coverCapacity.available) {
+        return res.status(409).json({
+          code: "SLOT_COVER_CAPACITY_EXCEEDED",
+          message: "Ce créneau est complet en nombre de couverts.",
+          coverCapacity,
+        });
+      }
+
       const computedStatus = autoAccept ? "Confirmed" : "Pending";
 
       let pendingExpiresAt = null;
@@ -5647,6 +5937,22 @@ router.post(
           return res.status(409).json({
             message:
               "Les réservations sont temporairement indisponibles sur ce créneau.",
+          });
+        }
+
+        const coverCapacity = await checkSlotCoverCapacity({
+          restaurantId,
+          parameters,
+          reservationDateUTC: normalizedDay,
+          reservationTime: normalizedTime,
+          numberOfGuests: normalizedGuests,
+        });
+
+        if (!coverCapacity.available) {
+          return res.status(409).json({
+            code: "SLOT_COVER_CAPACITY_EXCEEDED",
+            message: "Ce créneau est complet en nombre de couverts.",
+            coverCapacity,
           });
         }
 
@@ -6291,12 +6597,13 @@ router.get("/public/restaurants/:id/reservations", async (req, res) => {
 
     const reservations = await getRestaurantReservationsList(restaurantId, {
       select:
-        "reservationDate reservationTime status pendingExpiresAt table bankHold.enabled bankHold.expiresAt waitlistOffer.state waitlistOffer.offerExpiresAt",
+        "reservationDate reservationTime numberOfGuests status pendingExpiresAt table bankHold.enabled bankHold.expiresAt waitlistOffer.state waitlistOffer.offerExpiresAt",
       lean: true,
     });
 
     return res.status(200).json({
       reservations: reservations.map(sanitizePublicReservationAvailability),
+      slotCoverUsage: buildSlotCoverUsageFromReservations(reservations),
     });
   } catch (error) {
     console.error("Error fetching public reservations availability:", error);

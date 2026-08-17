@@ -5,6 +5,8 @@ import { ArrowLeft, Loader2 } from "lucide-react";
 import { useContext } from "react";
 import { GlobalContext } from "@/contexts/global.context";
 
+const DEFAULT_CONTRACT_ENGAGEMENT_MONTHS = 24;
+
 export default function AddDocumentAdminPage() {
   const { adminContext } = useContext(GlobalContext);
 
@@ -51,20 +53,38 @@ export default function AddDocumentAdminPage() {
       const id = data?.document?._id;
       if (!id) throw new Error("Document id missing");
 
+      let createdDocument = data.document;
+
+      if (type === "CONTRACT") {
+        const { data: updatedData } = await axios.patch(
+          `${process.env.NEXT_PUBLIC_API_URL}/admin/documents/${id}`,
+          { engagementMonths: DEFAULT_CONTRACT_ENGAGEMENT_MONTHS },
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        );
+
+        createdDocument = updatedData?.document || {
+          ...createdDocument,
+          engagementMonths: DEFAULT_CONTRACT_ENGAGEMENT_MONTHS,
+        };
+      }
+
       adminContext?.setDocumentsList?.((prev) => {
         const list = prev || [];
-        const exists = list.some((d) => d._id === data.document._id);
+        const exists = list.some((d) => d._id === createdDocument._id);
         if (exists) return list;
-        return [data.document, ...list];
+        return [createdDocument, ...list];
       });
 
       router.push(`/dashboard/admin/documents/add/${id}`);
-      setSubmitting(false);
     } catch (err) {
       console.error(err);
       setErrorMsg("Erreur lors de la création du document.");
     } finally {
-      
+      setSubmitting(false);
     }
   }
 
