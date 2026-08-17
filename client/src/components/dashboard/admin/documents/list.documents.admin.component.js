@@ -16,7 +16,17 @@ import {
   FileSignature,
   FileDown,
   RefreshCw,
+  Search,
+  X,
 } from "lucide-react";
+
+function normalizeSearchValue(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
 
 function formatType(type) {
   if (type === "QUOTE") return "Devis";
@@ -52,8 +62,44 @@ export default function ListDocumentsAdminComponent(props) {
 
   const [loadingPreviewId, setLoadingPreviewId] = useState(null);
   const [loadingSendId, setLoadingSendId] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [typeFilter, setTypeFilter] = useState("ALL");
+  const [statusFilter, setStatusFilter] = useState("ALL");
 
   const documents = useMemo(() => props.documents || [], [props.documents]);
+  const filteredDocuments = useMemo(() => {
+    const normalizedSearch = normalizeSearchValue(searchTerm);
+
+    return documents.filter((doc) => {
+      if (typeFilter !== "ALL" && doc?.type !== typeFilter) return false;
+      if (statusFilter !== "ALL" && doc?.status !== statusFilter) return false;
+      if (!normalizedSearch) return true;
+
+      const searchableValues = [
+        doc?.docNumber,
+        doc?.party?.restaurantName,
+        doc?.restaurantName,
+        doc?.party?.ownerName,
+        doc?.party?.email,
+        doc?.email,
+        doc?.party?.phone,
+      ];
+
+      return searchableValues.some((value) =>
+        normalizeSearchValue(value).includes(normalizedSearch),
+      );
+    });
+  }, [documents, searchTerm, statusFilter, typeFilter]);
+  const hasActiveFilters =
+    Boolean(searchTerm.trim()) ||
+    typeFilter !== "ALL" ||
+    statusFilter !== "ALL";
+
+  function clearFilters() {
+    setSearchTerm("");
+    setTypeFilter("ALL");
+    setStatusFilter("ALL");
+  }
 
   function getAuthConfigOrRedirect() {
     const token =
@@ -189,9 +235,13 @@ export default function ListDocumentsAdminComponent(props) {
     <section className="flex flex-col gap-4">
       <PageHeaderAdminComponent
         title="Création documents"
-        subtitle={`${documents.length} ${
-          documents.length > 1 ? "documents" : "document"
-        }`}
+        subtitle={
+          hasActiveFilters
+            ? `${filteredDocuments.length} sur ${documents.length} documents`
+            : `${documents.length} ${
+                documents.length > 1 ? "documents" : "document"
+              }`
+        }
         action={
           <button
             onClick={goToCreate}
@@ -201,6 +251,56 @@ export default function ListDocumentsAdminComponent(props) {
           </button>
         }
       />
+
+      {!props?.loading && documents.length > 0 ? (
+        <div className="flex flex-col gap-2 rounded-2xl border border-darkBlue/10 bg-white/50 p-3 shadow-sm midTablet:flex-row midTablet:items-center">
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-darkBlue/40" />
+            <input
+              type="search"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Rechercher par numéro, restaurant, contact…"
+              aria-label="Rechercher un document"
+              className="h-11 w-full rounded-xl border border-darkBlue/10 bg-white py-2 pl-10 pr-10 text-sm text-darkBlue outline-none transition placeholder:text-darkBlue/40 focus:border-blue/50 focus:ring-2 focus:ring-blue/20"
+            />
+            {searchTerm ? (
+              <button
+                type="button"
+                onClick={() => setSearchTerm("")}
+                className="absolute right-3 top-1/2 inline-flex size-6 -translate-y-1/2 items-center justify-center rounded-lg text-darkBlue/45 transition hover:bg-darkBlue/5 hover:text-darkBlue"
+                aria-label="Effacer la recherche"
+              >
+                <X className="size-4" />
+              </button>
+            ) : null}
+          </div>
+
+          <select
+            value={typeFilter}
+            onChange={(event) => setTypeFilter(event.target.value)}
+            aria-label="Filtrer par type de document"
+            className="h-11 rounded-xl border border-darkBlue/10 bg-white px-3 text-sm text-darkBlue outline-none transition focus:border-blue/50 focus:ring-2 focus:ring-blue/20"
+          >
+            <option value="ALL">Tous les types</option>
+            <option value="QUOTE">Devis</option>
+            <option value="INVOICE">Factures</option>
+            <option value="CONTRACT">Contrats</option>
+          </select>
+
+          <select
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value)}
+            aria-label="Filtrer par statut du document"
+            className="h-11 rounded-xl border border-darkBlue/10 bg-white px-3 text-sm text-darkBlue outline-none transition focus:border-blue/50 focus:ring-2 focus:ring-blue/20"
+          >
+            <option value="ALL">Tous les statuts</option>
+            <option value="DRAFT">Brouillons</option>
+            <option value="SENT">Envoyés</option>
+            <option value="SIGNED">Signés</option>
+          </select>
+        </div>
+      ) : null}
 
       {/* Content */}
       <div>
@@ -219,9 +319,25 @@ export default function ListDocumentsAdminComponent(props) {
               Aucun document pour le moment.
             </p>
           </div>
+        ) : filteredDocuments.length === 0 ? (
+          <div className="rounded-xl border border-darkBlue/10 bg-white/50 p-6 text-center shadow-sm">
+            <div className="mx-auto mb-3 flex size-11 items-center justify-center rounded-2xl bg-darkBlue/5">
+              <Search className="size-5 text-darkBlue/60" />
+            </div>
+            <p className="text-sm text-darkBlue/70">
+              Aucun document ne correspond à ces critères.
+            </p>
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="mt-3 text-sm font-semibold text-blue hover:underline"
+            >
+              Réinitialiser les filtres
+            </button>
+          </div>
         ) : (
           <ul className="grid grid-cols-1 gap-3 midTablet:grid-cols-2 desktop:grid-cols-3">
-            {documents?.map((doc) => {
+            {filteredDocuments.map((doc) => {
               const isConfirming = docToDelete === doc._id;
 
               const isDeleting = loadingDeleteId === doc._id;
