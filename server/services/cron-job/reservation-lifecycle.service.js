@@ -10,30 +10,12 @@ const {
   buildReservationBankHoldStripeMetadata,
 } = require("../reservation-bank-hold-metadata.service");
 const { runWaitlistMaintenance } = require("../../routes/reservations.routes");
+const {
+  buildReservationDateTime,
+  getServiceBucketFromTime,
+} = require("../reservation-service-time.service");
 
 const DEFAULT_RESERVATION_DELETION_MINUTES = 6 * 30 * 24 * 60;
-
-function buildReservationDateTime(reservationDateUTC, reservationTime) {
-  const d = new Date(reservationDateUTC);
-  if (Number.isNaN(d.getTime())) return null;
-
-  const [hh = "00", mm = "00"] = String(reservationTime || "00:00").split(":");
-
-  return new Date(
-    d.getUTCFullYear(),
-    d.getUTCMonth(),
-    d.getUTCDate(),
-    parseInt(hh, 10) || 0,
-    parseInt(mm, 10) || 0,
-    0,
-    0,
-  );
-}
-
-function getServiceBucketFromTime(reservationTime) {
-  const [hh = "0"] = String(reservationTime || "00:00").split(":");
-  return Number(hh) < 16 ? "lunch" : "dinner";
-}
 
 function getOccupancyMinutes(restaurant, reservationTime) {
   const parameters = restaurant?.reservationsSettings || {};
