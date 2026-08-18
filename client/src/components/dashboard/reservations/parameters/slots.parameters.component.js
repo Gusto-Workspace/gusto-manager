@@ -1,5 +1,9 @@
 import { useMemo, useState } from "react";
 import { Clock, Save, Check, Loader2 } from "lucide-react";
+import {
+  generateReservationTimeOptions,
+  sortReservationTimesByServiceOrder,
+} from "@/_assets/utils/reservation-service-time";
 
 const DAYS = [
   { value: 0, short: "Lun", label: "Lundi" },
@@ -10,30 +14,6 @@ const DAYS = [
   { value: 5, short: "Sam", label: "Samedi" },
   { value: 6, short: "Dim", label: "Dimanche" },
 ];
-
-function generateTimeOptions(openTime, closeTime, interval) {
-  const times = [];
-  const [openHour, openMinute] = String(openTime || "00:00")
-    .split(":")
-    .map(Number);
-  const [closeHour, closeMinute] = String(closeTime || "00:00")
-    .split(":")
-    .map(Number);
-  const start = openHour * 60 + openMinute;
-  const end = closeHour * 60 + closeMinute;
-  const step = Number(interval || 30);
-
-  if (!Number.isFinite(start) || !Number.isFinite(end)) return times;
-  if (!Number.isFinite(step) || step <= 0) return times;
-
-  for (let minutes = start; minutes <= end; minutes += step) {
-    const hour = String(Math.floor(minutes / 60)).padStart(2, "0");
-    const minute = String(minutes % 60).padStart(2, "0");
-    times.push(`${hour}:${minute}`);
-  }
-
-  return Array.from(new Set(times));
-}
 
 function hasDay(limit) {
   return Number.isInteger(limit?.day) && limit.day >= 0 && limit.day <= 6;
@@ -138,13 +118,11 @@ export default function SlotsParametersComponent({
   const generatedSlots = useMemo(() => {
     if (!selectedDayHours) return [];
 
-    return Array.from(
-      new Set(
-        selectedDayHours.flatMap(({ open, close }) =>
-          generateTimeOptions(open, close, interval || 30),
-        ),
+    return sortReservationTimesByServiceOrder(
+      selectedDayHours.flatMap(({ open, close }) =>
+        generateReservationTimeOptions(open, close, interval || 30),
       ),
-    ).sort((a, b) => String(a).localeCompare(String(b)));
+    );
   }, [interval, selectedDayHours]);
 
   function updateLimits(nextLimits) {
