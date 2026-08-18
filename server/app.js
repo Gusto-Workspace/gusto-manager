@@ -43,7 +43,7 @@ app.use(
       "https://www.lescapucinsbylily.fr", // Client Capucins by Lily
       "https://www.brasserielesartistes.fr", // Client Les Artistes
       "https://www.jacasse-montauban.fr", // Client Jacasse
-      "https://preview-l-ambassade-gusto-manager.vercel.app" // Preview l'ambassade
+      "https://www.lambassade-montauban.fr" // Client l'Ambassade
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     credentials: true,
