@@ -39,6 +39,13 @@ import {
   buildFloorPlanRoomMetaByTableId,
   getDisabledFloorPlanTableIds,
 } from "./floor-plan.rooms.utils";
+import {
+  buildReservationDateTime as buildReservationDateTimeFront,
+  generateReservationTimeOptions,
+  getReservationServiceBucket as getServiceBucketFromTime,
+  minutesFromReservationServiceTime,
+  sortReservationTimesByServiceOrder,
+} from "@/_assets/utils/reservation-service-time";
 
 const OTHER_TABLE_OPTION_VALUE = "__other_table__";
 
@@ -128,11 +135,6 @@ function InfoModal({ open, title, message, confirmLabel = "OK", onClose }) {
   );
 }
 
-function getServiceBucketFromTime(reservationTime) {
-  const [hh = "0"] = String(reservationTime || "00:00").split(":");
-  return Number(hh) < 16 ? "lunch" : "dinner";
-}
-
 function safeArr(value) {
   return Array.isArray(value) ? value : [];
 }
@@ -146,13 +148,6 @@ function getOccupancyMinutesFront(parameters, reservationTime) {
 
   const n = Number(v || 0);
   return Number.isFinite(n) && n > 0 ? n : 0;
-}
-
-function minutesFromHHmm(timeStr) {
-  const [h, m] = String(timeStr || "00:00")
-    .split(":")
-    .map(Number);
-  return (Number(h) || 0) * 60 + (Number(m) || 0);
 }
 
 function isBlockingReservationFront(r) {
@@ -608,26 +603,6 @@ function getAvailableConfiguredTableOptionsFront({
   };
 }
 
-function buildReservationDateTimeFront(dateInput, timeStr) {
-  const d =
-    dateInput instanceof Date ? new Date(dateInput) : new Date(dateInput);
-  if (Number.isNaN(d.getTime())) return null;
-
-  const [hh = 0, mm = 0] = String(timeStr || "00:00")
-    .split(":")
-    .map(Number);
-
-  return new Date(
-    d.getUTCFullYear(),
-    d.getUTCMonth(),
-    d.getUTCDate(),
-    Number(hh) || 0,
-    Number(mm) || 0,
-    0,
-    0,
-  );
-}
-
 function getBlockedTableIdsFront(parameters, reservationDate, reservationTime) {
   const ranges = Array.isArray(parameters?.table_blocked_ranges)
     ? parameters.table_blocked_ranges
@@ -974,8 +949,10 @@ export default function AddReservationComponent(props) {
     if (Array.isArray(dayHours.hours) && dayHours.hours.length > 0) {
       const interval = parameters.interval || 30;
 
-      let allAvailableTimes = dayHours.hours.flatMap(({ open, close }) =>
-        generateTimeOptions(open, close, interval),
+      let allAvailableTimes = sortReservationTimesByServiceOrder(
+        dayHours.hours.flatMap(({ open, close }) =>
+          generateReservationTimeOptions(open, close, interval),
+        ),
       );
 
       allAvailableTimes = allAvailableTimes.filter(
@@ -1033,7 +1010,7 @@ export default function AddReservationComponent(props) {
               return false;
             }
 
-            const candidateStart = minutesFromHHmm(time);
+            const candidateStart = minutesFromReservationServiceTime(time);
             const durCandidate = getOccupancyMinutesFront(parameters, time);
             const candidateEnd = candidateStart + durCandidate;
             const blockedTableIds = getBlockedTableIdsFront(
@@ -1044,7 +1021,7 @@ export default function AddReservationComponent(props) {
 
             const overlaps = (r) => {
               const rTime = String(r.reservationTime || "").slice(0, 5);
-              const rStart = minutesFromHHmm(rTime);
+              const rStart = minutesFromReservationServiceTime(rTime);
               const rDur = getOccupancyMinutesFront(parameters, rTime);
               const rEnd = rStart + rDur;
 
@@ -1140,7 +1117,7 @@ export default function AddReservationComponent(props) {
       5,
     );
 
-    const candidateStart = minutesFromHHmm(candidateTime);
+    const candidateStart = minutesFromReservationServiceTime(candidateTime);
     const durCandidate = getOccupancyMinutesFront(parameters, candidateTime);
     const candidateEnd = candidateStart + durCandidate;
     const blockedTableIds = getBlockedTableIdsFront(
@@ -1151,7 +1128,7 @@ export default function AddReservationComponent(props) {
 
     const overlaps = (r) => {
       const rTime = String(r.reservationTime || "").slice(0, 5);
-      const rStart = minutesFromHHmm(rTime);
+      const rStart = minutesFromReservationServiceTime(rTime);
       const rDur = getOccupancyMinutesFront(parameters, rTime);
       const rEnd = rStart + rDur;
 
@@ -1268,27 +1245,6 @@ export default function AddReservationComponent(props) {
     tableInputMode,
     tableSelectionInfo,
   ]);
-
-  function generateTimeOptions(openTime, closeTime, interval) {
-    const times = [];
-    const [openHour, openMinute] = openTime.split(":").map(Number);
-    const [closeHour, closeMinute] = closeTime.split(":").map(Number);
-
-    const start = openHour * 60 + openMinute;
-    const end = closeHour * 60 + closeMinute;
-
-    const intervalMinutes = parseInt(interval, 10);
-    if (isNaN(intervalMinutes) || intervalMinutes <= 0) return times;
-
-    for (let minutes = start; minutes <= end; minutes += intervalMinutes) {
-      const hour = Math.floor(minutes / 60)
-        .toString()
-        .padStart(2, "0");
-      const minute = (minutes % 60).toString().padStart(2, "0");
-      times.push(`${hour}:${minute}`);
-    }
-    return times;
-  }
 
   function handleDateChange(selectedDate) {
     setHasUserChangedSlot(true);

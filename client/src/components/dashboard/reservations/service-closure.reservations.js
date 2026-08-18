@@ -1,17 +1,7 @@
+import { buildReservationServiceRange } from "@/_assets/utils/reservation-service-time";
+
 function isValidHHmm(value) {
   return /^([01]\d|2[0-3]):([0-5]\d)$/.test(String(value || "").trim());
-}
-
-function buildLocalDateTime(baseDate, time) {
-  if (!(baseDate instanceof Date) || Number.isNaN(baseDate.getTime())) {
-    return null;
-  }
-  if (!isValidHHmm(time)) return null;
-
-  const [hours, minutes] = String(time).split(":").map(Number);
-  const result = new Date(baseDate);
-  result.setHours(hours, minutes, 0, 0);
-  return result;
 }
 
 function getReservationHoursSource(restaurant) {
@@ -33,24 +23,24 @@ function getReservationServicesForDate(restaurant, date) {
   }
 
   return dayHours.hours
-    .map((range) => ({
-      startAt: buildLocalDateTime(date, range?.open),
-      endAt: buildLocalDateTime(date, range?.close),
-    }))
     .filter(
-      (range) =>
-        range.startAt &&
-        range.endAt &&
-        range.endAt.getTime() > range.startAt.getTime(),
-    );
+      (range) => isValidHHmm(range?.open) && isValidHHmm(range?.close),
+    )
+    .map((range) =>
+      buildReservationServiceRange(date, range.open, range.close),
+    )
+    .filter(Boolean);
 }
 
 export function getCurrentReservationService(restaurant, now = new Date()) {
-  return (
-    getReservationServicesForDate(restaurant, now).find(
-      (service) => now >= service.startAt && now < service.endAt,
-    ) || null
-  );
+  const previousServiceDate = new Date(now);
+  previousServiceDate.setDate(previousServiceDate.getDate() - 1);
+
+  return [now, previousServiceDate]
+    .flatMap((serviceDate) =>
+      getReservationServicesForDate(restaurant, serviceDate),
+    )
+    .find((service) => now >= service.startAt && now < service.endAt) || null;
 }
 
 export function getReservationServiceClosureState(
