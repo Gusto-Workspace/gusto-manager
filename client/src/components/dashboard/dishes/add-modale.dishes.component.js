@@ -33,10 +33,22 @@ export default function AddModaleDishesComponent(props) {
       <div className="bg-white p-6 rounded-lg shadow-lg mx-6 w-[400px] z-10">
         <h2 className="text-xl font-semibold mb-6 text-center">
           {props.isDeleting
-            ? t("buttons.deleteCategory")
+            ? t(
+                props.isSubCategory
+                  ? "buttons.deleteSubCategory"
+                  : "buttons.deleteCategory",
+              )
             : props.editingCategory
-              ? t("buttons.editCategory")
-              : t("buttons.addCategory")}
+              ? t(
+                  props.isSubCategory
+                    ? "buttons.editSubCategory"
+                    : "buttons.editCategory",
+                )
+              : t(
+                  props.isSubCategory
+                    ? "buttons.addSubCategory"
+                    : "buttons.addCategory",
+                )}
         </h2>
 
         <form
@@ -45,7 +57,11 @@ export default function AddModaleDishesComponent(props) {
         >
           <div className="flex flex-col gap-2">
             <label className="block font-semibold">
-              {t("form.labels.categoryName")}
+              {t(
+                props.isSubCategory
+                  ? "form.labels.subCategoryName"
+                  : "form.labels.categoryName",
+              )}
             </label>
 
             <input
@@ -59,19 +75,23 @@ export default function AddModaleDishesComponent(props) {
               } ${props.isDeleting ? "opacity-50 cursor-not-allowed" : ""}`}
             />
 
-            <label className="block font-semibold">
-              <span>{t("form.labels.description")}</span>
-              <span className="text-xs opacity-50 ml-2 italic">
-                {t("form.labels.optional")}
-              </span>
-            </label>
+            {!props.hideDescription && (
+              <>
+                <label className="block font-semibold">
+                  <span>{t("form.labels.description")}</span>
+                  <span className="text-xs opacity-50 ml-2 italic">
+                    {t("form.labels.optional")}
+                  </span>
+                </label>
 
-            <textarea
-              placeholder="-"
-              className={`h-[150px] w-full rounded-lg border p-2 text-base resize-none ${props.isDeleting ? "opacity-50 cursor-not-allowed" : ""}`}
-              {...props.register("description", { required: false })}
-              disabled={props.isDeleting}
-            />
+                <textarea
+                  placeholder="-"
+                  className={`h-[150px] w-full rounded-lg border p-2 text-base resize-none ${props.isDeleting ? "opacity-50 cursor-not-allowed" : ""}`}
+                  {...props.register("description", { required: false })}
+                  disabled={props.isDeleting}
+                />
+              </>
+            )}
           </div>
 
           <div className="flex gap-4">

@@ -1,7 +1,7 @@
 {
   "titles": {
     "main": "La Carte",
-    "second" : "Aperçu"
+    "second": "Aperçu"
   },
   "form": {
     "labels": {
@@ -13,6 +13,7 @@
       "status": "Afficher sur le site",
       "select": "Sélectionner",
       "categoryName": "Nom de la catégorie",
+      "subCategoryName": "Nom de la sous-catégorie",
       "vegan": "Végan",
       "glutenFree": "Sans gluten",
       "vegetarian": "Végétarien",
@@ -23,12 +24,15 @@
   },
   "labels": {
     "numberOfDishes": "Nombre de plats",
-    "catAlreadyExist" : "Catégorie déjà existante, merci de saisir un autre nom"
+    "catAlreadyExist": "Catégorie déjà existante, merci de saisir un autre nom"
   },
   "buttons": {
     "add": "Ajouter",
     "edit": "Modifier",
     "addCategory": "Ajouter une catégorie",
+    "addSubCategory": "Ajouter une sous-catégorie",
+    "editSubCategory": "Modifier la sous-catégorie",
+    "deleteSubCategory": "Supprimer la sous-catégorie",
     "editCategory": "Modifier la catégorie",
     "deleteCategory": "Supprimer la catégorie",
     "deleteDish": "Suppression d'un plat",
@@ -37,7 +41,7 @@
     "delete": "Supprimer",
     "access": "Accéder",
     "confirm": "Confirmer",
-    "loading" : "En cours...",
+    "loading": "En cours...",
     "yes": "Oui",
     "no": "Non",
     "cancel": "Annuler"

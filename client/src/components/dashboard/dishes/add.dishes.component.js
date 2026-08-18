@@ -101,9 +101,16 @@ export default function AddDishesComponent(props) {
     };
 
     try {
-      const apiUrl = props.dish
-        ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes/${props.dish._id}`
-        : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes`;
+      let apiUrl;
+      if (props.subCategory) {
+        apiUrl = props.dish
+          ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes/categories/${props.category._id}/subcategories/${props.subCategory._id}/dishes/${props.dish._id}`
+          : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes/categories/${props.category._id}/subcategories/${props.subCategory._id}/dishes`;
+      } else {
+        apiUrl = props.dish
+          ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes/${props.dish._id}`
+          : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes`;
+      }
 
       const method = props.dish ? "put" : "post";
 
@@ -111,7 +118,17 @@ export default function AddDishesComponent(props) {
 
       restaurantContext.setRestaurantData(response.data.restaurant);
 
-      router.push(`/dashboard/dishes/${props.category._id}`);
+      if (props.subCategory) {
+        const formattedSubCategoryName = props.subCategory.name
+          .replace(/\//g, "-")
+          .replace(/\s+/g, "&")
+          .toLowerCase();
+        router.push(
+          `${formattedCategoryRoute}/${formattedSubCategoryName}-${props.subCategory._id}`,
+        );
+      } else {
+        router.push(formattedCategoryRoute);
+      }
     } catch (error) {
       console.error("Error adding or editing dish:", error);
       setIsLoading(false);
@@ -144,6 +161,13 @@ export default function AddDishesComponent(props) {
         .replace(/\s+/g, "&")
         .toLowerCase()}-${props.category._id}`
     : "/dashboard/dishes";
+  const formattedSubCategoryRoute =
+    props.subCategory && formattedCategoryRoute
+      ? `${formattedCategoryRoute}/${props.subCategory.name
+          .replace(/\//g, "-")
+          .replace(/\s+/g, "&")
+          .toLowerCase()}-${props.subCategory._id}`
+      : null;
 
   return (
     <section className="flex flex-col gap-6">
@@ -152,20 +176,36 @@ export default function AddDishesComponent(props) {
         icon={<DishSvg width={30} height={30} fillColor="#131E3690" />}
         title={t("titles.main")}
         onTitleClick={() => router.push("/dashboard/dishes")}
-        onBack={() => router.push(formattedCategoryRoute)}
+        onBack={() =>
+          router.push(formattedSubCategoryRoute || formattedCategoryRoute)
+        }
         backLabel={t("buttons.return", "Retour")}
         subtitleItems={
-          props.category?.name
+          props.subCategory
             ? [
                 {
-                  label: props.category.name,
+                  label: props.category?.name,
                   onClick: () => router.push(formattedCategoryRoute),
+                },
+                {
+                  label: props.subCategory.name,
+                  onClick: () => router.push(formattedSubCategoryRoute),
                 },
                 {
                   label: props.dish ? t("buttons.edit") : t("buttons.add"),
                 },
               ]
-            : []
+            : props.category?.name
+              ? [
+                  {
+                    label: props.category.name,
+                    onClick: () => router.push(formattedCategoryRoute),
+                  },
+                  {
+                    label: props.dish ? t("buttons.edit") : t("buttons.add"),
+                  },
+                ]
+              : []
         }
       />
 
@@ -407,7 +447,6 @@ export default function AddDishesComponent(props) {
               </label>
             </div>
           </div>
-
         </div>
 
         {/* Boutons bas de page */}

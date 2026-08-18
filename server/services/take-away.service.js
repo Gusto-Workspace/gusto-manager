@@ -243,18 +243,32 @@ function findSourceItem(
     for (const category of restaurant.dish_categories || []) {
       if (sourceCategoryId && String(category._id) !== String(sourceCategoryId))
         continue;
-      const dish = (category.dishes || []).find(
-        (item) => String(item._id) === targetId,
+      const dishes = [];
+      (category.dishes || []).forEach((dish) =>
+        dishes.push({ dish, subCategory: null }),
       );
-      if (dish) {
+      (category.subCategories || []).forEach((subCategory) => {
+        if (
+          sourceSubCategoryId &&
+          String(subCategory._id) !== String(sourceSubCategoryId)
+        )
+          return;
+        (subCategory.dishes || []).forEach((dish) =>
+          dishes.push({ dish, subCategory }),
+        );
+      });
+      const entry = dishes.find(({ dish }) => String(dish._id) === targetId);
+      if (entry) {
         return {
-          item: dish,
+          item: entry.dish,
           category,
+          subCategory: entry.subCategory,
           sourceSnapshot: {
-            name: dish.name,
-            description: dish.description || "",
-            price: normalizeMoney(dish.price, 0),
+            name: entry.dish.name,
+            description: entry.dish.description || "",
+            price: normalizeMoney(entry.dish.price, 0),
             categoryName: category.name || "",
+            subCategoryName: entry.subCategory?.name || "",
           },
         };
       }
@@ -374,6 +388,22 @@ function listImportableSourceItems(restaurant) {
         categoryName: category.name || "Plats",
         alreadyEnabled: importedSourceKeys.has(`dish:${String(dish._id)}`),
       });
+    }
+    for (const subCategory of category.subCategories || []) {
+      for (const dish of subCategory.dishes || []) {
+        items.push({
+          sourceType: "dish",
+          sourceCategoryId: String(category._id),
+          sourceSubCategoryId: String(subCategory._id),
+          sourceItemId: String(dish._id),
+          name: dish.name,
+          description: dish.description || "",
+          price: normalizeMoney(dish.price, 0),
+          categoryName: category.name || "Plats",
+          subCategoryName: subCategory.name || "",
+          alreadyEnabled: importedSourceKeys.has(`dish:${String(dish._id)}`),
+        });
+      }
     }
   }
 
