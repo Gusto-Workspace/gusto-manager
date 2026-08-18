@@ -39,6 +39,20 @@
         "healthControlPlan": "HACCP",
         "customers": "Fichier clients"
       },
+      "importCard": {
+        "title": "Importer la carte",
+        "description": "Importe un fichier XLSX respectant les colonnes du modèle Gusto.",
+        "button": "Choisir un fichier XLSX",
+        "loading": "Import en cours...",
+        "selected": "Fichier sélectionné : {{name}}",
+        "replacementWarning": "L’import remplacera la carte actuelle du restaurant.",
+        "import": "Importer et remplacer",
+        "cancel": "Annuler",
+        "success": "Carte importée : {{categories}} catégorie(s), {{subCategories}} sous-catégorie(s) et {{dishes}} plat(s).",
+        "invalidFile": "Veuillez sélectionner un fichier au format .xlsx.",
+        "error": "Impossible d’importer la carte.",
+        "row": "Ligne {{row}},"
+      },
       "buttons": {
         "add": "Ajouter",
         "cancel": "Annuler",
