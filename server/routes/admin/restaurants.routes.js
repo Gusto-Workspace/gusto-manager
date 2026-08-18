@@ -1,4 +1,5 @@
 const express = require("express");
+const multer = require("multer");
 const router = express.Router();
 const stripe = require("stripe")(process.env.STRIPE_API_SECRET_KEY);
 
@@ -14,6 +15,10 @@ const {
   findRestaurantSubscription,
   isStripeCustomerDedicatedToRestaurant,
 } = require("../../services/stripe-billing.service");
+const {
+  DishCardImportError,
+  parseDishCardWorkbook,
+} = require("../../services/dish-card-import.service");
 
 // CRYPTO
 const {
@@ -22,6 +27,33 @@ const {
 } = require("../../services/encryption.service");
 
 router.use("/admin", authenticateAdmin);
+
+const dishCardUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, callback) => {
+    if (/\.xlsx$/i.test(file.originalname || "")) {
+      callback(null, true);
+      return;
+    }
+    callback(
+      new DishCardImportError("Seuls les fichiers .xlsx sont acceptés."),
+    );
+  },
+});
+
+function uploadDishCard(req, res, next) {
+  dishCardUpload.single("file")(req, res, (error) => {
+    if (!error) return next();
+
+    const message =
+      error.code === "LIMIT_FILE_SIZE"
+        ? "Le fichier XLSX ne doit pas dépasser 5 Mo."
+        : error.message || "Impossible de charger le fichier XLSX.";
+
+    return res.status(400).json({ message });
+  });
+}
 
 function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -135,6 +167,50 @@ router.get("/admin/restaurants", async (req, res) => {
     res.status(500).json({ message: "Erreur interne du serveur" });
   }
 });
+
+// REPLACE A RESTAURANT DISH CARD FROM AN XLSX FILE
+router.post(
+  "/admin/restaurants/:id/dishes/import",
+  requireAdminRole,
+  uploadDishCard,
+  async (req, res) => {
+    try {
+      if (!req.file?.buffer) {
+        return res.status(400).json({ message: "Aucun fichier XLSX reçu." });
+      }
+
+      const restaurant = await RestaurantModel.findById(req.params.id);
+      if (!restaurant) {
+        return res.status(404).json({ message: "Restaurant non trouvé" });
+      }
+
+      const { categories, summary } = await parseDishCardWorkbook(
+        req.file.buffer,
+        restaurant.dish_categories,
+      );
+
+      restaurant.dish_categories = categories;
+      await restaurant.save();
+      await restaurant.populate("owner_id", "firstname lastname email");
+
+      return res.status(200).json({
+        message: "Carte importée avec succès.",
+        restaurant,
+        summary,
+      });
+    } catch (error) {
+      if (error instanceof DishCardImportError) {
+        return res.status(error.statusCode).json({
+          message: error.message,
+          errors: error.details,
+        });
+      }
+
+      console.error("Erreur lors de l’import de la carte :", error);
+      return res.status(500).json({ message: "Erreur interne du serveur" });
+    }
+  },
+);
 
 // ADD RESTAURANT
 router.post("/admin/add-restaurant", async (req, res) => {

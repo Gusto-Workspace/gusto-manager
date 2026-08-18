@@ -414,11 +414,19 @@ const dishSchema = new mongoose.Schema({
   glutenFree: { type: Boolean, default: false },
 });
 
+// Sous-schéma pour les sous-catégories de plats
+const dishSubCategorySchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  visible: { type: Boolean, default: true },
+  dishes: { type: [dishSchema], default: [] },
+});
+
 // Sous-schéma pour les catégories de plats
 const dishCategorySchema = new mongoose.Schema({
   name: { type: String, required: true },
   description: { type: String },
   visible: { type: Boolean, default: true },
+  subCategories: { type: [dishSubCategorySchema], default: [] },
   dishes: { type: [dishSchema], default: [] },
 });
 

@@ -13,6 +13,7 @@
       "status": "Show on site",
       "select": "Select",
       "categoryName": "Category Name",
+      "subCategoryName": "Subcategory name",
       "vegan": "Vegan",
       "glutenFree": "Gluten Free",
       "vegetarian": "Vegetarian",
@@ -23,12 +24,15 @@
   },
   "labels": {
     "numberOfDishes": "Number of dishes",
-    "catAlreadyExist" : "Category already exist, please give an other name"
+    "catAlreadyExist": "Category already exist, please give an other name"
   },
   "buttons": {
     "add": "Add",
     "edit": "Edit",
     "addCategory": "Add a Category",
+    "addSubCategory": "Add a subcategory",
+    "editSubCategory": "Edit the subcategory",
+    "deleteSubCategory": "Delete the subcategory",
     "editCategory": "Modify the category",
     "deleteCategory": "Delete the category",
     "deleteDish": "Delete a dish",

@@ -103,12 +103,22 @@ router.get("/menus/:menuId", async (req, res) => {
       const normalizedDishId = dishId?.toString?.() || String(dishId || "");
 
       for (const category of allCategories) {
-        const dish = (category.dishes || []).find(
+        const categoryDish = (category.dishes || []).find(
           (item) => item._id.toString() === normalizedDishId,
         );
+        const subCategory = (category.subCategories || []).find((candidate) =>
+          (candidate.dishes || []).some(
+            (item) => item._id.toString() === normalizedDishId,
+          ),
+        );
+        const dish =
+          categoryDish ||
+          (subCategory?.dishes || []).find(
+            (item) => item._id.toString() === normalizedDishId,
+          );
 
         if (dish) {
-          return { category, dish };
+          return { category, subCategory, dish };
         }
       }
 
@@ -132,9 +142,17 @@ router.get("/menus/:menuId", async (req, res) => {
         const resolvedDishes = (group.dishes || [])
           .map((dishId) => {
             if (categoryById) {
-              return (categoryById.dishes || []).find(
+              const directDish = (categoryById.dishes || []).find(
                 (dish) => dish._id.toString() === dishId.toString(),
               );
+              if (directDish) return directDish;
+
+              for (const subCategory of categoryById.subCategories || []) {
+                const nestedDish = (subCategory.dishes || []).find(
+                  (dish) => dish._id.toString() === dishId.toString(),
+                );
+                if (nestedDish) return nestedDish;
+              }
             }
 
             const found = findDishAcrossCategories(dishId);
@@ -169,9 +187,12 @@ router.get("/menus/:menuId", async (req, res) => {
       });
     } else {
       allCategories.forEach((category) => {
-        const dishes = (category.dishes || []).filter((dish) =>
-          menuDishIds.includes(dish._id.toString()),
-        );
+        const dishes = [
+          ...(category.dishes || []),
+          ...(category.subCategories || []).flatMap(
+            (subCategory) => subCategory.dishes || [],
+          ),
+        ].filter((dish) => menuDishIds.includes(dish._id.toString()));
 
         if (dishes.length > 0) {
           selectedDishes.push({

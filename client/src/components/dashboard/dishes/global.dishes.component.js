@@ -12,6 +12,29 @@ import {
 
 export default function GlobalDishesComponent(props) {
   const { t } = useTranslation("dishes");
+  const categories = (props.categories || []).map((category) => ({
+    ...category,
+    dishes: [
+      ...(category.dishes || []),
+      ...(category.subCategories || [])
+        .filter(
+          (subCategory) =>
+            (props.createMenu || subCategory.visible !== false) &&
+            (subCategory.dishes || []).some(
+              (dish) => props.createMenu || dish.showOnWebsite,
+            ),
+        )
+        .flatMap((subCategory) => [
+          {
+            _id: `subcategory-${subCategory._id}`,
+            name: subCategory.name,
+            showOnWebsite: true,
+            isSubCategoryHeading: true,
+          },
+          ...(subCategory.dishes || []),
+        ]),
+    ],
+  }));
 
   const sectionCls = "flex flex-col gap-6";
   const cardCls =
@@ -33,7 +56,7 @@ export default function GlobalDishesComponent(props) {
 
       {/* Carte principale */}
       <section className={cardCls}>
-        {props?.categories
+        {categories
           ?.filter((category) => {
             const hasDishes = category.dishes && category.dishes.length > 0;
 
@@ -62,6 +85,17 @@ export default function GlobalDishesComponent(props) {
                 {category?.dishes
                   .filter((dish) => props.createMenu || dish.showOnWebsite)
                   .map((dish, j) => {
+                    if (dish.isSubCategoryHeading) {
+                      return (
+                        <h3
+                          key={dish._id}
+                          className="mt-4 border-b border-darkBlue/10 pb-2 text-sm font-semibold uppercase tracking-[0.08em] text-darkBlue/70 first:mt-0"
+                        >
+                          {dish.name}
+                        </h3>
+                      );
+                    }
+
                     const price =
                       typeof dish.price === "number"
                         ? dish.price.toFixed(2)

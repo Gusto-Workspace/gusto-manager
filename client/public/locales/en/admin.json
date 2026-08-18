@@ -39,6 +39,20 @@
         "customers": "Customers file",
         "healthControlPlan": "Health control plan"
       },
+      "importCard": {
+        "title": "Import menu",
+        "description": "Imports an XLSX file containing the columns from the Gusto template.",
+        "button": "Choose an XLSX file",
+        "loading": "Importing...",
+        "selected": "Selected file: {{name}}",
+        "replacementWarning": "The import will replace the restaurant’s current menu.",
+        "import": "Import and replace",
+        "cancel": "Cancel",
+        "success": "Menu imported: {{categories}} category(ies), {{subCategories}} subcategory(ies), and {{dishes}} dish(es).",
+        "invalidFile": "Please select an .xlsx file.",
+        "error": "The menu could not be imported.",
+        "row": "Row {{row}},"
+      },
       "buttons": {
         "add": "Add",
         "cancel": "Cancel",

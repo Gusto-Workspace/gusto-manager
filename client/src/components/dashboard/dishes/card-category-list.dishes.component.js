@@ -27,7 +27,12 @@ export default function CardCategoryListComponent(props) {
   };
 
   const isVisible = props.category.visible;
-  const dishCount = props.category.dishes?.length || 0;
+  const dishCount =
+    (props.category.dishes?.length || 0) +
+    (props.category.subCategories || []).reduce(
+      (count, subCategory) => count + (subCategory.dishes?.length || 0),
+      0,
+    );
 
   return (
     <section

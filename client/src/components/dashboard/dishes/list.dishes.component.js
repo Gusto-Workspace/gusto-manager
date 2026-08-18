@@ -1,4 +1,4 @@
-import { useState, useContext, useId } from "react";
+import { useState, useContext, useId, useEffect } from "react";
 import { useRouter } from "next/router";
 
 // I18N
@@ -9,6 +9,9 @@ import { DishSvg } from "../../_shared/_svgs/_index";
 
 // AXIOS
 import axios from "axios";
+
+// REACT HOOK FORM
+import { useForm } from "react-hook-form";
 
 // CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
@@ -30,8 +33,11 @@ import {
 
 // COMPONENTS
 import DetailsDishComponent from "./details-dish.dishes.component";
+import AddModaleDishesComponent from "./add-modale.dishes.component";
+import CardCategoryListComponent from "./card-category-list.dishes.component";
 import CatalogHeaderDashboardComponent, {
   CatalogActionButton,
+  CatalogCategoryActionButton,
 } from "../_shared/catalog-header.dashboard.component";
 
 export default function ListDishesComponent(props) {
@@ -41,10 +47,43 @@ export default function ListDishesComponent(props) {
   const { restaurantContext } = useContext(GlobalContext);
   const currencySymbol = locale === "fr" ? "€" : "$";
 
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [selectedDish, setSelectedDish] = useState(null);
   const [hoveredTooltip, setHoveredTooltip] = useState(null);
-  const [dishes, setDishes] = useState(props.category.dishes);
+  const [isLoading, setIsLoading] = useState(false);
+  const [dishes, setDishes] = useState(
+    props.subCategory
+      ? props.subCategory?.dishes || []
+      : props.category?.dishes || [],
+  );
+  const [subCategories, setSubCategories] = useState(
+    props.subCategory ? [] : props.category?.subCategories || [],
+  );
+
+  useEffect(() => {
+    if (!props.subCategory) {
+      const currentCategory =
+        restaurantContext?.restaurantData?.dish_categories?.find(
+          (category) => category._id === props.category._id,
+        );
+      setSubCategories(currentCategory?.subCategories || []);
+    }
+  }, [
+    restaurantContext?.restaurantData,
+    props.category?._id,
+    props.subCategory,
+  ]);
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm();
 
   // GENERE UN ID POUR DND
   const id = useId();
@@ -59,9 +98,19 @@ export default function ListDishesComponent(props) {
       .replace(/\//g, "-")
       .replace(/\s+/g, "&")
       .toLowerCase();
-    router.push(
-      `/dashboard/dishes/${formattedCategoryName}-${props.category._id}/add`,
-    );
+    if (props.subCategory) {
+      const formattedSubCategoryName = props.subCategory.name
+        .replace(/\//g, "-")
+        .replace(/\s+/g, "&")
+        .toLowerCase();
+      router.push(
+        `/dashboard/dishes/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${props.subCategory._id}/add`,
+      );
+    } else {
+      router.push(
+        `/dashboard/dishes/${formattedCategoryName}-${props.category._id}/add`,
+      );
+    }
   }
 
   function handleEditClick(dish) {
@@ -69,9 +118,38 @@ export default function ListDishesComponent(props) {
       .replace(/\//g, "-")
       .replace(/\s+/g, "&")
       .toLowerCase();
-    router.push(
-      `/dashboard/dishes/${formattedCategoryName}-${props.category._id}/add?dishId=${dish._id}`,
-    );
+    if (props.subCategory) {
+      const formattedSubCategoryName = props.subCategory.name
+        .replace(/\//g, "-")
+        .replace(/\s+/g, "&")
+        .toLowerCase();
+      router.push(
+        `/dashboard/dishes/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${props.subCategory._id}/add?dishId=${dish._id}`,
+      );
+    } else {
+      router.push(
+        `/dashboard/dishes/${formattedCategoryName}-${props.category._id}/add?dishId=${dish._id}`,
+      );
+    }
+  }
+
+  function handleEditClickSubCategory(category) {
+    setEditingCategory(category);
+    reset({ name: category.name });
+    setIsModalOpen(true);
+  }
+
+  function handleAddSubCategoryClick() {
+    setEditingCategory(null);
+    setIsDeleting(false);
+    reset({ name: "" });
+    setIsModalOpen(true);
+  }
+
+  function handleDeleteSubCategoryClick(category) {
+    setEditingCategory(category);
+    setIsDeleting(true);
+    setIsModalOpen(true);
   }
 
   function handleDeleteClick(dish) {
@@ -85,11 +163,39 @@ export default function ListDishesComponent(props) {
   }
 
   function handleDeleteConfirm() {
+    if (editingCategory) {
+      setIsLoading(true);
+      axios
+        .delete(
+          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes/categories/${props.category._id}/subcategories/${editingCategory._id}`,
+        )
+        .then((response) => {
+          restaurantContext.setRestaurantData(response.data.restaurant);
+          setEditingCategory(null);
+          setIsDeleting(false);
+          setIsModalOpen(false);
+        })
+        .catch((error) => {
+          console.error("Error deleting subcategory:", error);
+        })
+        .finally(() => setIsLoading(false));
+      return;
+    }
+
     if (!selectedDish) return;
 
+    setIsLoading(true);
     axios
       .delete(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes/${selectedDish._id}`,
+        {
+          params: props.subCategory
+            ? {
+                categoryId: props.category._id,
+                subCategoryId: props.subCategory._id,
+              }
+            : {},
+        },
       )
       .then((response) => {
         setDishes((prevDishes) =>
@@ -100,6 +206,21 @@ export default function ListDishesComponent(props) {
       })
       .catch((error) => {
         console.error("Error deleting dish:", error);
+      })
+      .finally(() => setIsLoading(false));
+  }
+
+  function handleVisibilityToggle(subCategory) {
+    axios
+      .put(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes/categories/${props.category._id}/subcategories/${subCategory._id}`,
+        { visible: !subCategory.visible },
+      )
+      .then((response) => {
+        restaurantContext.setRestaurantData(response.data.restaurant);
+      })
+      .catch((error) => {
+        console.error("Error updating subcategory visibility:", error);
       });
   }
 
@@ -129,11 +250,12 @@ export default function ListDishesComponent(props) {
   function saveNewDishOrder(updatedDishes) {
     const orderedDishIds = updatedDishes.map((dish) => dish._id);
 
+    const apiUrl = props.subCategory
+      ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes/categories/${props.category._id}/subcategories/${props.subCategory._id}/dishes/order`
+      : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes/categories/${props.category._id}/dishes/order`;
+
     axios
-      .put(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes/categories/${props.category._id}/dishes/order`,
-        { orderedDishIds },
-      )
+      .put(apiUrl, { orderedDishIds })
       .then((response) => {
         restaurantContext.setRestaurantData(response.data.restaurant);
       })
@@ -142,8 +264,86 @@ export default function ListDishesComponent(props) {
       });
   }
 
+  function handleSubCategoryDragEnd(event) {
+    const { active, over } = event;
+    if (!active || !over || active.id === over.id) return;
+
+    setSubCategories((currentSubCategories) => {
+      const oldIndex = currentSubCategories.findIndex(
+        (subCategory) => subCategory._id === active.id,
+      );
+      const newIndex = currentSubCategories.findIndex(
+        (subCategory) => subCategory._id === over.id,
+      );
+      if (oldIndex === -1 || newIndex === -1) return currentSubCategories;
+
+      const nextSubCategories = arrayMove(
+        currentSubCategories,
+        oldIndex,
+        newIndex,
+      );
+      axios
+        .put(
+          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes/categories/${props.category._id}/list-subcategories/order`,
+          {
+            orderedSubCategoryIds: nextSubCategories.map(
+              (subCategory) => subCategory._id,
+            ),
+          },
+        )
+        .then((response) => {
+          restaurantContext.setRestaurantData(response.data.restaurant);
+        })
+        .catch((error) => {
+          console.error("Error saving subcategory order:", error);
+        });
+      return nextSubCategories;
+    });
+  }
+
+  function handleSubCategoryClick(subCategory) {
+    const formattedCategoryName = props.category.name
+      .replace(/\//g, "-")
+      .replace(/\s+/g, "&")
+      .toLowerCase();
+    const formattedSubCategoryName = subCategory.name
+      .replace(/\//g, "-")
+      .replace(/\s+/g, "&")
+      .toLowerCase();
+    router.push(
+      `/dashboard/dishes/${formattedCategoryName}-${props.category._id}/${formattedSubCategoryName}-${subCategory._id}`,
+    );
+  }
+
+  function onSubmit(data) {
+    setIsSubmitting(true);
+    const apiUrl = editingCategory
+      ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes/categories/${props.category._id}/subcategories/${editingCategory._id}`
+      : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/dishes/categories/${props.category._id}/subcategories`;
+    const method = isDeleting ? "delete" : editingCategory ? "put" : "post";
+
+    axios[method](apiUrl, isDeleting ? {} : { name: data.name })
+      .then((response) => {
+        restaurantContext.setRestaurantData(response.data.restaurant);
+        setIsModalOpen(false);
+        setEditingCategory(null);
+        setIsDeleting(false);
+        reset();
+      })
+      .catch((error) => {
+        console.error("Error modifying dish subcategory:", error);
+      })
+      .finally(() => setIsSubmitting(false));
+  }
+
   // Chemins formatés pour les niveaux de navigation
   const baseRoute = "/dashboard/dishes";
+  const formattedCategoryRoute = props.category
+    ? `/dashboard/dishes/${props.category.name
+        .replace(/\//g, "-")
+        .replace(/\s+/g, "&")
+        .toLowerCase()}-${props.category._id}`
+    : baseRoute;
 
   return (
     <div className="flex flex-col gap-6">
@@ -153,16 +353,68 @@ export default function ListDishesComponent(props) {
         icon={<DishSvg width={30} height={30} fillColor="#131E3690" />}
         title={t("titles.main")}
         onTitleClick={() => router.push(baseRoute)}
-        onBack={props.category ? () => router.push(baseRoute) : undefined}
+        onBack={
+          props.subCategory
+            ? () => router.push(formattedCategoryRoute)
+            : props.category
+              ? () => router.push(baseRoute)
+              : undefined
+        }
         backLabel={t("buttons.return", "Retour")}
-        subtitle={props.category?.name}
+        subtitleItems={
+          props.subCategory
+            ? [
+                {
+                  label: props.category?.name,
+                  onClick: () => router.push(formattedCategoryRoute),
+                },
+                { label: props.subCategory.name },
+              ]
+            : props.category?.name
+              ? [{ label: props.category.name }]
+              : []
+        }
         actions={
-          <CatalogActionButton
-            onClick={handleAddClick}
-            label={t("buttons.add")}
-          />
+          <>
+            <CatalogActionButton
+              onClick={handleAddClick}
+              label={t("buttons.add")}
+            />
+            {!props.subCategory && (
+              <CatalogCategoryActionButton
+                onClick={handleAddSubCategoryClick}
+                label={t("buttons.addSubCategory")}
+              />
+            )}
+          </>
         }
       />
+
+      {subCategories.length > 0 && (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleSubCategoryDragEnd}
+          modifiers={[restrictToParentElement]}
+        >
+          <SortableContext
+            items={subCategories.map((subCategory) => subCategory._id)}
+          >
+            <div className="grid grid-cols-1 midTablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-4 gap-4">
+              {subCategories.map((subCategory) => (
+                <CardCategoryListComponent
+                  key={subCategory._id}
+                  category={subCategory}
+                  handleEditClick={handleEditClickSubCategory}
+                  handleVisibilityToggle={handleVisibilityToggle}
+                  handleDeleteClick={handleDeleteSubCategoryClick}
+                  handleCategoryClick={handleSubCategoryClick}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
+      )}
 
       <div className="flex flex-col gap-2">
         <DndContext
@@ -209,19 +461,39 @@ export default function ListDishesComponent(props) {
               <button
                 className="px-4 py-2 rounded-lg bg-blue text-white"
                 onClick={handleDeleteConfirm}
+                disabled={isLoading}
               >
-                {t("buttons.yes")}
+                {isLoading ? t("buttons.loading") : t("buttons.yes")}
               </button>
 
               <button
                 className="px-4 py-2 rounded-lg bg-red text-white"
                 onClick={closeDeleteModal}
+                disabled={isLoading}
               >
                 {t("buttons.no")}
               </button>
             </div>
           </div>
         </div>
+      )}
+
+      {isModalOpen && (
+        <AddModaleDishesComponent
+          setIsModalOpen={setIsModalOpen}
+          setEditingCategory={setEditingCategory}
+          setIsDeleting={setIsDeleting}
+          isDeleting={isDeleting}
+          editingCategory={editingCategory}
+          onSubmit={onSubmit}
+          handleSubmit={handleSubmit}
+          register={register}
+          reset={reset}
+          errors={errors}
+          isSubmitting={isSubmitting}
+          hideDescription
+          isSubCategory
+        />
       )}
     </div>
   );

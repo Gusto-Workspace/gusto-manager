@@ -15,6 +15,7 @@ import { getAdminAuthConfig } from "../_shared/utils/admin-auth.utils";
 import FormInputComponent from "@/components/_shared/inputs/form-input.component";
 import { VisibleSvg } from "@/components/_shared/_svgs/visible.svg";
 import { NoVisibleSvg } from "@/components/_shared/_svgs/no-visible.svg";
+import ImportDishCardAdminComponent from "./import-dish-card.admin.component";
 
 // ICONS (lucide)
 import { X, Store, MapPin, Settings2, CreditCard, Users } from "lucide-react";
@@ -31,6 +32,7 @@ export default function AddRestaurantModal(props) {
   const [loading, setLoading] = useState(false);
   const [showStripeKey, setShowStripeKey] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [cardImportLoading, setCardImportLoading] = useState(false);
 
   // ✅ animation (mobile only thanks to tablet: overrides)
   const [isVisible, setIsVisible] = useState(false);
@@ -199,7 +201,7 @@ export default function AddRestaurantModal(props) {
   );
 
   const onPointerDown = (event) => {
-    if (isTabletUp) return;
+    if (isTabletUp || loading || cardImportLoading) return;
     if (event.pointerType === "mouse" && event.button !== 0) return;
 
     dragStateRef.current.active = true;
@@ -322,7 +324,7 @@ export default function AddRestaurantModal(props) {
         }`}
         style={{ transitionDuration: `${CLOSE_MS}ms`, willChange: "opacity" }}
         onClick={() => {
-          if (!loading) closeWithAnimation();
+          if (!loading && !cardImportLoading) closeWithAnimation();
         }}
       />
 
@@ -397,7 +399,7 @@ export default function AddRestaurantModal(props) {
               <button
                 type="button"
                 onClick={() => {
-                  if (!loading) closeWithAnimation();
+                  if (!loading && !cardImportLoading) closeWithAnimation();
                 }}
                 className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2"
                 aria-label="Close"
@@ -570,6 +572,15 @@ export default function AddRestaurantModal(props) {
               </div>
             </div>
 
+            {initialIsEdit ? (
+              <ImportDishCardAdminComponent
+                restaurantId={initialRestaurantId}
+                disabled={loading}
+                onLoadingChange={setCardImportLoading}
+                onImported={props.handleEditRestaurant}
+              />
+            ) : null}
+
             {/* CARD: Stripe */}
             <div className="rounded-2xl bg-white/70 border border-darkBlue/10 p-4">
               <div className="flex items-center gap-2 mb-3">
@@ -725,17 +736,17 @@ export default function AddRestaurantModal(props) {
               <button
                 type="button"
                 onClick={() => {
-                  if (!loading) closeWithAnimation();
+                  if (!loading && !cardImportLoading) closeWithAnimation();
                 }}
                 className="flex-1 inline-flex items-center justify-center rounded-xl border border-red bg-red/85 hover:bg-red/75 transition py-2 text-sm font-semibold text-white disabled:opacity-60"
-                disabled={loading}
+                disabled={loading || cardImportLoading}
               >
                 {t("restaurants.form.buttons.cancel")}
               </button>
 
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || cardImportLoading}
                 className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-blue text-white py-2 text-sm font-semibold shadow-sm hover:bg-blue/90 disabled:opacity-60"
               >
                 {loading

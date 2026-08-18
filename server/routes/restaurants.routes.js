@@ -247,9 +247,19 @@ router.get("/restaurants/:id", async (req, res) => {
 
     const resolveDish = (dishId) => {
       for (const category of restaurant.dish_categories || []) {
-        const dish = category.dishes.find(
+        const categoryDish = category.dishes.find(
           (currentDish) => currentDish._id.toString() === dishId.toString(),
         );
+        const subCategory = (category.subCategories || []).find((candidate) =>
+          candidate.dishes.some(
+            (currentDish) => currentDish._id.toString() === dishId.toString(),
+          ),
+        );
+        const dish =
+          categoryDish ||
+          subCategory?.dishes.find(
+            (currentDish) => currentDish._id.toString() === dishId.toString(),
+          );
 
         if (dish) {
           return {
@@ -263,6 +273,7 @@ router.get("/restaurants/:id", async (req, res) => {
             bio: dish.bio,
             glutenFree: dish.glutenFree,
             category: category.name,
+            subCategory: subCategory?.name || "",
           };
         }
       }

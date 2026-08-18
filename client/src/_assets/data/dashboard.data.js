@@ -40,12 +40,30 @@ export const dashboardData = [
     emptyLabel: "labels.emptyDish",
     getCounts: (restaurantData) => {
       const total = restaurantData?.dish_categories?.reduce(
-        (acc, category) => acc + (category.dishes?.length || 0),
+        (acc, category) =>
+          acc +
+          (category.dishes?.length || 0) +
+          (category.subCategories || []).reduce(
+            (subAcc, subCategory) => subAcc + (subCategory.dishes?.length || 0),
+            0,
+          ),
         0,
       );
       const visible = restaurantData?.dish_categories?.reduce(
-        (acc, category) =>
-          acc + category.dishes?.filter((dish) => dish.showOnWebsite).length,
+        (acc, category) => {
+          const visibleCategoryDishes =
+            category.dishes?.filter((dish) => dish.showOnWebsite).length || 0;
+          const visibleSubCategoryDishes = (
+            category.subCategories || []
+          ).reduce(
+            (subAcc, subCategory) =>
+              subAcc +
+              (subCategory.dishes?.filter((dish) => dish.showOnWebsite)
+                .length || 0),
+            0,
+          );
+          return acc + visibleCategoryDishes + visibleSubCategoryDishes;
+        },
         0,
       );
       const hidden = total - visible;
