@@ -203,7 +203,7 @@ async function onReservationCreated(customerId, reservation) {
   await recomputeCustomerTagsForId(customerId, now);
 }
 
-// ✅ Quand le statut change (pour canceled)
+// ✅ Quand le statut change (statistiques + historique)
 async function onReservationStatusChanged(
   customerId,
   reservation,
@@ -218,6 +218,12 @@ async function onReservationStatusChanged(
   }
   if (prevStatus === "Canceled" && nextStatus !== "Canceled") {
     inc["stats.reservationsCanceled"] = -1;
+  }
+  if (prevStatus !== "NoShow" && nextStatus === "NoShow") {
+    inc["stats.reservationsNoShow"] = 1;
+  }
+  if (prevStatus === "NoShow" && nextStatus !== "NoShow") {
+    inc["stats.reservationsNoShow"] = -1;
   }
 
   const now = new Date();
@@ -235,6 +241,10 @@ async function onReservationStatusChanged(
   await CustomerModel.updateOne(
     { _id: customerId, "stats.reservationsCanceled": { $lt: 0 } },
     { $set: { "stats.reservationsCanceled": 0 } },
+  );
+  await CustomerModel.updateOne(
+    { _id: customerId, "stats.reservationsNoShow": { $lt: 0 } },
+    { $set: { "stats.reservationsNoShow": 0 } },
   );
 
   await recomputeCustomerTagsForId(customerId, now);

@@ -1281,6 +1281,7 @@ export default function RestaurantContext() {
         Finished: "finishedAt",
         Canceled: "canceledAt",
         Rejected: "rejectedAt",
+        NoShow: "noShowAt",
       };
 
       reservations.forEach((reservation) => {

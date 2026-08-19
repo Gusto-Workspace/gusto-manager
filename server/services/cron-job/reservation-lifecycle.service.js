@@ -54,6 +54,10 @@ function applyActivationFields(reservation, nextStatus) {
   reservation.finishedAt = nextStatus === "Finished" ? new Date() : null;
 }
 
+function applyNoShowFields(reservation, nextStatus) {
+  reservation.noShowAt = nextStatus === "NoShow" ? new Date() : null;
+}
+
 async function getRestaurantCached(cache, restaurantId) {
   const key = String(restaurantId || "");
   if (cache.has(key)) return cache.get(key);
@@ -83,6 +87,7 @@ async function transitionReservationStatus({
 
   reservation.status = nextStatus;
   applyActivationFields(reservation, nextStatus);
+  applyNoShowFields(reservation, nextStatus);
   reservation.reminder24hDueAt = null;
   reservation.reminder24hSentAt = null;
   reservation.reminder24hLockedAt = null;
@@ -254,10 +259,14 @@ async function runReservationLifecycleCron() {
   }
 
   const inactiveReservations = await ReservationModel.find({
-    status: { $in: ["Canceled", "Rejected"] },
-    $or: [{ canceledAt: { $ne: null } }, { rejectedAt: { $ne: null } }],
+    status: { $in: ["Canceled", "Rejected", "NoShow"] },
+    $or: [
+      { canceledAt: { $ne: null } },
+      { rejectedAt: { $ne: null } },
+      { noShowAt: { $ne: null } },
+    ],
   }).select(
-    "_id restaurant_id customerFirstName customerLastName customerEmail customerPhone numberOfGuests reservationDate reservationTime status canceledAt rejectedAt bankHold",
+    "_id restaurant_id customerFirstName customerLastName customerEmail customerPhone numberOfGuests reservationDate reservationTime status canceledAt rejectedAt noShowAt bankHold",
   );
 
   for (const reservation of inactiveReservations) {
@@ -270,7 +279,9 @@ async function runReservationLifecycleCron() {
     const baseDate =
       reservation.status === "Canceled"
         ? reservation.canceledAt
-        : reservation.rejectedAt;
+        : reservation.status === "Rejected"
+          ? reservation.rejectedAt
+          : reservation.noShowAt;
 
     const base = baseDate ? new Date(baseDate) : null;
     if (!base || Number.isNaN(base.getTime())) continue;

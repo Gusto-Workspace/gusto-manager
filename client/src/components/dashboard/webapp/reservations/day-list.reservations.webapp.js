@@ -9,6 +9,7 @@ import axios from "axios";
 import CardReservationWebapp from "./card.reservations.webapp";
 import ReservationsDrawerComponent from "@/components/_shared/reservations/reservations-drawer.component";
 import { CommunitySvg } from "@/components/_shared/_svgs/_index";
+import { isReservationCountedInCovers } from "@/_assets/utils/reservation-service-time";
 
 export default function DayListReservationsWebapp(props) {
   const { t } = useTranslation("reservations");
@@ -18,8 +19,14 @@ export default function DayListReservationsWebapp(props) {
   const [actionError, setActionError] = useState("");
   const autoOpenedReservationRef = useRef(null);
 
-  const list = props?.dayData?.byStatus?.[props.activeDayTab] || [];
-  const allReservationsOfDay = props?.dayData?.byStatus?.All || [];
+  const list = useMemo(
+    () => props?.dayData?.byStatus?.[props.activeDayTab] || [],
+    [props.activeDayTab, props?.dayData?.byStatus],
+  );
+  const allReservationsOfDay = useMemo(
+    () => props?.dayData?.byStatus?.All || [],
+    [props?.dayData?.byStatus],
+  );
 
   const openDetails = (reservation) => {
     setSelectedReservation(reservation);
@@ -143,14 +150,21 @@ export default function DayListReservationsWebapp(props) {
     return Object.fromEntries(
       orderedTimes.map((time) => [
         time,
-        (byTime[time] || []).reduce(
-          (total, reservation) =>
-            total + Math.max(0, Number(reservation?.numberOfGuests || 0)),
-          0,
-        ),
+        allReservationsOfDay
+          .filter(
+            (reservation) =>
+              isReservationCountedInCovers(reservation) &&
+              String(reservation?.reservationTime || "--:--").slice(0, 5) ===
+                time,
+          )
+          .reduce(
+            (total, reservation) =>
+              total + Math.max(0, Number(reservation?.numberOfGuests || 0)),
+            0,
+          ),
       ]),
     );
-  }, [orderedTimes, byTime]);
+  }, [allReservationsOfDay, orderedTimes]);
 
   if (!props.selectedDay) return null;
 

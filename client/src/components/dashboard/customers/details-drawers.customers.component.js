@@ -7,7 +7,7 @@ import {
   User,
   Calendar,
   Gift,
-  Ticket,
+  UserX,
   ClipboardList,
   Pencil,
   Save,
@@ -316,7 +316,7 @@ export default function DetailsDrawerCustomersComponent({
 
   const stats = baseCustomer?.stats || {};
   const reservationsTotal = stats.reservationsTotal ?? 0;
-  const reservationsCanceled = stats.reservationsCanceled ?? 0;
+  const reservationsNoShow = stats.reservationsNoShow ?? 0;
   const giftCardsBought = stats.giftCardsBought ?? 0;
   const takeAwayOrdersTotal = stats.takeAwayOrdersTotal ?? 0;
 
@@ -775,11 +775,11 @@ export default function DetailsDrawerCustomersComponent({
 
             <div className="rounded-2xl bg-white/50 border border-darkBlue/10 shadow-sm p-4">
               <p className="text-[11px] text-darkBlue/50 flex items-center gap-2">
-                <Ticket className="size-4 text-darkBlue/40" />
-                Annulations
+                <UserX className="size-4 text-darkBlue/40" />
+                No-shows
               </p>
               <p className="mt-1 text-lg font-semibold text-darkBlue">
-                {reservationsCanceled}
+                {reservationsNoShow}
               </p>
             </div>
 

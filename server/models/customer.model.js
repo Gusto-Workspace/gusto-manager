@@ -39,6 +39,7 @@ const customerSchema = new mongoose.Schema(
     stats: {
       reservationsTotal: { type: Number, default: 0 },
       reservationsCanceled: { type: Number, default: 0 },
+      reservationsNoShow: { type: Number, default: 0 },
       giftCardsBought: { type: Number, default: 0 },
       takeAwayOrdersTotal: { type: Number, default: 0 },
       takeAwayOrdersCanceled: { type: Number, default: 0 },

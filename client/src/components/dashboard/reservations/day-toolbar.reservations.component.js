@@ -170,6 +170,24 @@ export default function DayToolbarReservationsComponent(props) {
           </div>
         </div>
       </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div className="flex items-center justify-between rounded-2xl border border-darkBlue/10 bg-white/70 px-4 py-3 shadow-sm">
+          <span className="text-sm font-medium text-darkBlue/60">Midi</span>
+          <span className="inline-flex items-center gap-2 text-sm font-semibold text-darkBlue">
+            <Users className="size-4 text-darkBlue/40" />
+            {props.dayData?.serviceCovers?.lunch || 0} couverts
+          </span>
+        </div>
+
+        <div className="flex items-center justify-between rounded-2xl border border-darkBlue/10 bg-white/70 px-4 py-3 shadow-sm">
+          <span className="text-sm font-medium text-darkBlue/60">Soir</span>
+          <span className="inline-flex items-center gap-2 text-sm font-semibold text-darkBlue">
+            <Users className="size-4 text-darkBlue/40" />
+            {props.dayData?.serviceCovers?.dinner || 0} couverts
+          </span>
+        </div>
+      </div>
     </div>
   );
 }

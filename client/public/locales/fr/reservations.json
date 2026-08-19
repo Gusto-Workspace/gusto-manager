@@ -53,7 +53,8 @@
       "confirmed": "Confirmées",
       "active": "En cours",
       "late": "En retard",
-      "finished": "Terminées"
+      "finished": "Terminées",
+      "noShow": "No-shows"
     },
     "card": {
       "empty": "Aucune réservation",

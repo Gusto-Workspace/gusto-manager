@@ -1644,6 +1644,14 @@ function applyRejectFields(reservation, nextStatus) {
   }
 }
 
+function applyNoShowFields(reservation, nextStatus) {
+  if (nextStatus === "NoShow") {
+    if (!reservation.noShowAt) reservation.noShowAt = new Date();
+  } else {
+    reservation.noShowAt = null;
+  }
+}
+
 async function acquireReservationDayLock({ restaurantId, reservationDateUTC }) {
   const normalizedDay = normalizeReservationDayToUTC(reservationDateUTC);
   if (!normalizedDay) {
@@ -2619,6 +2627,7 @@ async function updateReservationStatusInternal({
     "Finished",
     "Canceled",
     "Rejected",
+    "NoShow",
   ]);
 
   if (!ALLOWED.has(nextStatus)) {
@@ -2887,6 +2896,7 @@ async function updateReservationStatusInternal({
     applyActivationFields(reservation, nextStatus);
     applyCancelFields(reservation, nextStatus);
     applyRejectFields(reservation, nextStatus);
+    applyNoShowFields(reservation, nextStatus);
 
     if (nextStatus === "Pending") {
       if (!reservation.pendingExpiresAt) {
