@@ -65,9 +65,9 @@ export function buildReservationDateTime(dateInput, timeStr) {
   if (Number.isNaN(date.getTime()) || minutes === null) return null;
 
   const result = new Date(
-    date.getUTCFullYear(),
-    date.getUTCMonth(),
-    date.getUTCDate(),
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
     Math.floor(minutes / 60),
     minutes % 60,
     0,

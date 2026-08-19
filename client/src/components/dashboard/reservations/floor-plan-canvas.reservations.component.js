@@ -12,6 +12,7 @@ import {
 } from "react-konva";
 import { RotateCcw } from "lucide-react";
 import { getReservationStatusLabel } from "@/components/_shared/reservations/reservation-status.utils";
+import { buildReservationDateTime } from "@/_assets/utils/reservation-service-time";
 
 function safeArr(a) {
   return Array.isArray(a) ? a : [];
@@ -80,28 +81,6 @@ function getOccupancyMinutes(parameters, reservationTime) {
 
   const n = Number(v || 0);
   return Number.isFinite(n) && n > 0 ? n : 0;
-}
-
-function buildReservationDateTime(referenceDate, timeStr) {
-  const d =
-    referenceDate instanceof Date
-      ? new Date(referenceDate)
-      : new Date(referenceDate);
-  if (Number.isNaN(d.getTime())) return null;
-
-  const [hh = 0, mm = 0] = String(timeStr || "00:00")
-    .split(":")
-    .map(Number);
-
-  return new Date(
-    d.getUTCFullYear(),
-    d.getUTCMonth(),
-    d.getUTCDate(),
-    Number(hh) || 0,
-    Number(mm) || 0,
-    0,
-    0,
-  );
 }
 
 function isPendingStillBlocking(reservation) {
@@ -419,7 +398,7 @@ function getBlockedTableIdsMap(parameters, referenceDate, selectedTime) {
 
     if (!Number.isFinite(rStart) || !Number.isFinite(rEnd)) return;
 
-    if (start.getTime() <= rEnd && end.getTime() > rStart) {
+    if (start.getTime() < rEnd && end.getTime() > rStart) {
       ids.add(String(range.tableId));
     }
   });
