@@ -11,7 +11,7 @@ import {
   ChevronDown,
   LoaderCircle,
   StickyNote,
-  Ticket,
+  UserX,
 } from "lucide-react";
 import { TableSvg, CommentarySvg } from "@/components/_shared/_svgs/_index";
 import {
@@ -427,6 +427,25 @@ export default function ReservationsDrawerComponent({
       return { type: "finish", label: t?.("buttons.finish") || "Terminer" };
     return null;
   }, [status, t]);
+  const canEdit = !["Canceled", "Finished", "Rejected", "NoShow"].includes(
+    status,
+  );
+  const canMarkNoShow = ![
+    "AwaitingBankHold",
+    "Waitlist",
+    "Pending",
+    "NoShow",
+  ].includes(status);
+  const terminalActionCount = ["Canceled", "Rejected", "NoShow"].includes(
+    status,
+  )
+    ? 2
+    : 1;
+  const actionCount =
+    Number(Boolean(primaryAction)) +
+    Number(canEdit) +
+    Number(canMarkNoShow) +
+    terminalActionCount;
 
   if (!open) return null;
 
@@ -723,11 +742,11 @@ export default function ReservationsDrawerComponent({
 
                   <div className="rounded-2xl border border-darkBlue/10 bg-white/50 p-3">
                     <p className="text-[11px] text-darkBlue/50 flex items-center gap-2">
-                      <Ticket className="size-3.5 text-darkBlue/40" />
-                      Annulations
+                      <UserX className="size-3.5 text-darkBlue/40" />
+                      No-shows
                     </p>
                     <p className="mt-1 text-lg font-semibold text-darkBlue">
-                      {customerStats.reservationsCanceled || 0}
+                      {customerStats.reservationsNoShow || 0}
                     </p>
                   </div>
                 </div>
@@ -890,7 +909,11 @@ export default function ReservationsDrawerComponent({
               {t?.("labels.actions", "Actions")}
             </p>
 
-            <div className="flex gap-2">
+            <div
+              className={`grid gap-2 ${
+                actionCount === 3 ? "grid-cols-3" : "grid-cols-2"
+              }`}
+            >
               {primaryAction ? (
                 <button
                   onClick={() => onAction?.(reservation, primaryAction.type)}
@@ -900,9 +923,7 @@ export default function ReservationsDrawerComponent({
                 </button>
               ) : null}
 
-              {status !== "Canceled" &&
-              status !== "Finished" &&
-              status !== "Rejected" ? (
+              {canEdit ? (
                 <button
                   onClick={() => onAction?.(reservation, "edit")}
                   className="w-full inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition px-4 py-3 text-sm font-semibold text-darkBlue"
@@ -911,7 +932,16 @@ export default function ReservationsDrawerComponent({
                 </button>
               ) : null}
 
-              {["Canceled", "Rejected"].includes(status) ? (
+              {canMarkNoShow ? (
+                <button
+                  onClick={() => onAction?.(reservation, "no_show")}
+                  className="w-full inline-flex items-center justify-center rounded-xl border border-[#F59E0B66] bg-[#F59E0B1A] px-4 py-3 text-sm font-semibold text-[#B45309] transition hover:bg-[#F59E0B26]"
+                >
+                  No-show
+                </button>
+              ) : null}
+
+              {["Canceled", "Rejected", "NoShow"].includes(status) ? (
                 <>
                   <button
                     onClick={() => onAction?.(reservation, "restore_confirmed")}

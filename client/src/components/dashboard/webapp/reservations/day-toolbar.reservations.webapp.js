@@ -139,6 +139,24 @@ export default function DayHeaderReservationsWebapp(props) {
             </div>
           </div>
         </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <div className="rounded-2xl border border-darkBlue/10 bg-white/70 px-3 py-3 shadow-sm">
+            <p className="text-xs text-darkBlue/50">Midi</p>
+            <p className="mt-1 inline-flex items-center gap-2 text-sm font-semibold text-darkBlue">
+              <Users className="size-4 text-darkBlue/40" />
+              {props.dayData?.serviceCovers?.lunch || 0} couverts
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-darkBlue/10 bg-white/70 px-3 py-3 shadow-sm">
+            <p className="text-xs text-darkBlue/50">Soir</p>
+            <p className="mt-1 inline-flex items-center gap-2 text-sm font-semibold text-darkBlue">
+              <Users className="size-4 text-darkBlue/40" />
+              {props.dayData?.serviceCovers?.dinner || 0} couverts
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );

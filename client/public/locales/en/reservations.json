@@ -52,7 +52,8 @@
       "confirmed": "Confirmed",
       "active": "In progress",
       "late": "Late",
-      "finished": "Completed"
+      "finished": "Completed",
+      "noShow": "No-shows"
     },
     "card": {
       "empty": "No reservations",

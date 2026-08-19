@@ -28,6 +28,32 @@ export function getReservationServiceBucket(timeStr) {
     : "lunch";
 }
 
+const COVER_COUNT_STATUSES = new Set([
+  "Confirmed",
+  "Active",
+  "Late",
+  "Finished",
+]);
+
+export function isReservationCountedInCovers(reservation) {
+  return COVER_COUNT_STATUSES.has(String(reservation?.status || ""));
+}
+
+export function countReservationCoversByService(reservations = []) {
+  return (Array.isArray(reservations) ? reservations : []).reduce(
+    (totals, reservation) => {
+      if (!isReservationCountedInCovers(reservation)) {
+        return totals;
+      }
+
+      const bucket = getReservationServiceBucket(reservation?.reservationTime);
+      totals[bucket] += Math.max(0, Number(reservation?.numberOfGuests || 0));
+      return totals;
+    },
+    { lunch: 0, dinner: 0 },
+  );
+}
+
 export function generateReservationTimeOptions(openTime, closeTime, interval = 30) {
   const start = minutesFromHHmm(openTime);
   const rawEnd = minutesFromHHmm(closeTime);

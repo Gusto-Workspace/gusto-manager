@@ -79,37 +79,41 @@ export default function CalendarMonthReservationsWebapp(props) {
               </div>
 
               <div className="mt-2 space-y-1">
-                {["Pending", "Confirmed", "Finished", "Canceled"].map((s) => {
-                  const value = displayByStatus[s] || 0;
+                {["Pending", "Confirmed", "Finished", "NoShow", "Canceled"].map(
+                  (s) => {
+                    const value = displayByStatus[s] || 0;
 
-                  const pct = displayTotal
-                    ? Math.round((value / displayTotal) * 100)
-                    : 0;
+                    const pct = displayTotal
+                      ? Math.round((value / displayTotal) * 100)
+                      : 0;
 
-                  return (
-                    <div
-                      key={s}
-                      className="h-1 w-full rounded bg-[#131E3612] overflow-hidden"
-                    >
+                    return (
                       <div
-                        className="h-1"
-                        style={{
-                          width: `${pct}%`,
-                          backgroundColor:
-                            s === "Confirmed"
-                              ? "#3b82f6"
-                              : s === "Finished"
-                                ? "#22c55e"
-                                : s === "Pending"
-                                  ? "#93c5fd"
-                                  : s === "Canceled"
-                                    ? "#ff7664"
-                                    : "#cbd5e1",
-                        }}
-                      />
-                    </div>
-                  );
-                })}
+                        key={s}
+                        className="h-1 w-full rounded bg-[#131E3612] overflow-hidden"
+                      >
+                        <div
+                          className="h-1"
+                          style={{
+                            width: `${pct}%`,
+                            backgroundColor:
+                              s === "Confirmed"
+                                ? "#3b82f6"
+                                : s === "Finished"
+                                  ? "#22c55e"
+                                  : s === "Pending"
+                                    ? "#93c5fd"
+                                    : s === "NoShow"
+                                      ? "#f59e0b"
+                                      : s === "Canceled"
+                                        ? "#ff7664"
+                                        : "#cbd5e1",
+                          }}
+                        />
+                      </div>
+                    );
+                  },
+                )}
               </div>
             </button>
           );

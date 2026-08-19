@@ -25,6 +25,7 @@ import {
   matchesReservationGuestsFilter,
   RESERVATION_SEATS_FILTER_OPTIONS,
 } from "../../reservations/reservation-filters.reservations";
+import { countReservationCoversByService } from "@/_assets/utils/reservation-service-time";
 
 export default function ListReservationsWebapp(props) {
   const { t } = useTranslation("reservations");
@@ -94,6 +95,7 @@ export default function ListReservationsWebapp(props) {
     Pending: t("list.status.pending", "En attente"),
     Confirmed: t("list.status.confirmed", "Confirmées"),
     Finished: t("list.status.finished", "Terminées"),
+    NoShow: t("list.status.noShow", "No-shows"),
     Canceled: t("list.status.canceled", "Annulées"),
   };
 
@@ -322,18 +324,22 @@ export default function ListReservationsWebapp(props) {
           All: 0,
           ...createReservationDisplayStatusCounter(),
         },
+        serviceCovers: { lunch: 0, dinner: 0 },
       };
     }
 
     const key = toDateKey(selectedDay);
     const term = searchTerm.trim().toLowerCase();
 
+    const reservationsOfDay = (props.reservations || []).filter((r) => {
+      const dt = getReservationDateTime(r);
+      return dt && toDateKey(dt) === key;
+    });
+    const serviceCovers = countReservationCoversByService(reservationsOfDay);
+
     // Liste filtrée et triée pour TOUTES
-    const filteredSorted = (props.reservations || [])
+    const filteredSorted = reservationsOfDay
       .filter((r) => {
-        const dt = getReservationDateTime(r);
-        if (!dt) return false;
-        if (toDateKey(dt) !== key) return false;
         if (!matchesReservationGuestsFilter(r, minSeatsFilter)) return false;
 
         if (term) {
@@ -363,7 +369,7 @@ export default function ListReservationsWebapp(props) {
       dayStatusTabs.map((s) => [s, by[s].length]),
     );
 
-    return { byStatus: by, counts };
+    return { byStatus: by, counts, serviceCovers };
   }, [props.reservations, selectedDay, searchTerm, minSeatsFilter]);
 
   /* =========================================================
@@ -600,6 +606,11 @@ export default function ListReservationsWebapp(props) {
 
     if (actionType === "reject" || actionType === "rejected") {
       updateReservationStatus("Rejected");
+      return;
+    }
+
+    if (actionType === "no_show") {
+      updateReservationStatus("NoShow");
       return;
     }
 

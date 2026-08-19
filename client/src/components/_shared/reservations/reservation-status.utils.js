@@ -3,6 +3,7 @@ export const RESERVATION_DISPLAY_STATUS_KEYS = [
   "Pending",
   "Confirmed",
   "Finished",
+  "NoShow",
   "Canceled",
 ];
 
@@ -19,6 +20,8 @@ export function getReservationDisplayStatus(status) {
       return "Confirmed";
     case "Finished":
       return "Finished";
+    case "NoShow":
+      return "NoShow";
     case "Canceled":
     case "Rejected":
       return "Canceled";
@@ -37,6 +40,8 @@ export function getReservationStatusLabel(status) {
       return "Confirmée";
     case "Finished":
       return "Terminée";
+    case "NoShow":
+      return "No-show";
     case "Canceled":
       return "Annulée";
     default:
@@ -54,6 +59,8 @@ export function getReservationStatusClassName(status) {
       return "bg-blue/15 text-blue border-blue/40";
     case "Finished":
       return "bg-darkBlue/5 text-darkBlue/70 border-darkBlue/20";
+    case "NoShow":
+      return "bg-[#F59E0B1A] text-[#B45309] border-[#F59E0B66]";
     case "Canceled":
       return "bg-red/10 text-red border-red/30";
     default:
@@ -67,6 +74,7 @@ export function createReservationDisplayStatusCounter() {
     Pending: 0,
     Confirmed: 0,
     Finished: 0,
+    NoShow: 0,
     Canceled: 0,
   };
 }
@@ -77,6 +85,7 @@ export function createReservationDisplayStatusBuckets() {
     Pending: [],
     Confirmed: [],
     Finished: [],
+    NoShow: [],
     Canceled: [],
   };
 }

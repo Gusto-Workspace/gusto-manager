@@ -34,6 +34,7 @@ export default function ConfirmModalReservationsWebapp(props) {
     props.actionType === "reject" || props.actionType === "rejected";
   const isCaptureBankHold = props.actionType === "capture_bank_hold";
   const isReleaseBankHold = props.actionType === "release_bank_hold";
+  const isNoShow = props.actionType === "no_show";
 
   // --- UI texts (FR hardcodé) ---
   let title = "Action";
@@ -68,6 +69,10 @@ export default function ConfirmModalReservationsWebapp(props) {
     title = "Libérer l’empreinte bancaire";
     content = `L’autorisation bancaire de ${name} sera libérée sans débit. Cette action est irréversible.`;
     confirmLabel = props.isProcessing ? "Chargement..." : "Libérer";
+  } else if (isNoShow) {
+    title = "Signaler un no-show";
+    content = `La réservation de ${name} sera marquée comme no-show et ajoutée aux statistiques de sa fiche client.`;
+    confirmLabel = props.isProcessing ? "Chargement..." : "Signaler";
   } else {
     // fallback si actionType inconnu
     title = "Confirmer l’action";

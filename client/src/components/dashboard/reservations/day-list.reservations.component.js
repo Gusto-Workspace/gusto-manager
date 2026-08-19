@@ -8,7 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import CardReservationComponent from "./card.reservations.component";
 import ReservationsDrawerComponent from "@/components/_shared/reservations/reservations-drawer.component";
 import { CommunitySvg } from "@/components/_shared/_svgs/_index";
-import { getReservationDisplayStatus } from "@/components/_shared/reservations/reservation-status.utils";
+import { isReservationCountedInCovers } from "@/_assets/utils/reservation-service-time";
 
 export default function DayListReservationsComponent(props) {
   const { t } = useTranslation("reservations");
@@ -154,15 +154,14 @@ export default function DayListReservationsComponent(props) {
   }, [list]);
 
   const guestsByTime = useMemo(() => {
-    const confirmedReservations = allReservationsOfDay.filter(
-      (reservation) =>
-        getReservationDisplayStatus(reservation?.status) === "Confirmed",
+    const countedReservations = allReservationsOfDay.filter(
+      isReservationCountedInCovers,
     );
 
     return Object.fromEntries(
       orderedTimes.map((time) => [
         time,
-        confirmedReservations
+        countedReservations
           .filter(
             (reservation) =>
               String(reservation?.reservationTime || "--:--").slice(0, 5) ===
