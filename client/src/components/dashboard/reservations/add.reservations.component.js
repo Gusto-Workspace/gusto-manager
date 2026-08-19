@@ -631,7 +631,7 @@ function getBlockedTableIdsFront(parameters, reservationDate, reservationTime) {
 
     if (!Number.isFinite(start) || !Number.isFinite(end)) return;
 
-    if (candidateStart.getTime() <= end && candidateEnd.getTime() > start) {
+    if (candidateStart.getTime() < end && candidateEnd.getTime() > start) {
       ids.add(String(range.tableId));
     }
   });
@@ -664,7 +664,7 @@ function isDateTimeBlockedFront(parameters, reservationDate, reservationTime) {
     return (
       Number.isFinite(start) &&
       Number.isFinite(end) &&
-      candidateStart.getTime() <= end &&
+      candidateStart.getTime() < end &&
       candidateEnd.getTime() > start
     );
   });
@@ -1057,7 +1057,9 @@ export default function AddReservationComponent(props) {
     props.restaurantData.opening_hours,
     props.restaurantData?.reservationsSettings?.reservation_hours,
     props.restaurantData?.reservationsSettings?.interval,
+    props.restaurantData?.reservationsSettings?.blocked_ranges,
     props.restaurantData?.reservationsSettings?.slot_cover_limits,
+    props.restaurantData?.reservationsSettings?.table_blocked_ranges,
     props.restaurantData.reservationsSettings.manage_disponibilities,
     props.restaurantData.reservationsSettings.same_hours_as_restaurant,
     props.restaurantData.reservationsSettings.tables,

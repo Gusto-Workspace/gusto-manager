@@ -25,5 +25,9 @@
   },
   "buttons": {
     "logout": "Déconnexion"
+  },
+  "printMenu": {
+    "action": "Imprimer la carte",
+    "invalidWebsite": "Aucun site internet valide n’est associé à ce restaurant."
   }
 }

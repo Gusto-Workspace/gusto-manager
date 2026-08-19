@@ -13,6 +13,7 @@ import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import CategoriesListDishesComponent from "@/components/dashboard/dishes/categories-list.dishes.component";
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
+import RestaurantMenuPrintActionDashboardComponent from "@/components/dashboard/_shared/restaurant-menu-print-action.dashboard.component";
 
 export default function DishesPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
@@ -43,11 +44,11 @@ export default function DishesPage(props) {
 
   if (isEmployee && restaurant) {
     const employeeInRestaurant = restaurant.employees?.find(
-      (emp) => String(emp._id) === String(user.id)
+      (emp) => String(emp._id) === String(user.id),
     );
 
     const profile = employeeInRestaurant?.restaurantProfiles?.find(
-      (p) => String(p.restaurant) === String(restaurant._id)
+      (p) => String(p.restaurant) === String(restaurant._id),
     );
 
     employeeHasDishesAccess = profile?.options?.dishes === true;
@@ -72,6 +73,11 @@ export default function DishesPage(props) {
               restaurantData={restaurantContext.restaurantData}
             />
 
+            <RestaurantMenuPrintActionDashboardComponent
+              website={restaurant?.website}
+              dataLoading={restaurantContext.dataLoading}
+            />
+
             {!hasDishesModule ? (
               <NoAvailableComponent
                 dataLoading={restaurantContext.dataLoading}
@@ -80,7 +86,7 @@ export default function DishesPage(props) {
             ) : !employeeHasDishesAccess ? (
               <NoAvailableComponent
                 dataLoading={restaurantContext.dataLoading}
-                 />
+              />
             ) : (
               <CategoriesListDishesComponent />
             )}
