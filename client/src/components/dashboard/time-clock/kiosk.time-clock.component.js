@@ -265,7 +265,11 @@ export default function TimeClockKioskComponent({ offlineBootstrap = null }) {
       const cachedStates =
         cachedEntry?.anchorDate === currentDateKey
           ? cachedEntry?.statesByEmployee || {}
-          : {};
+          : Object.fromEntries(
+              Object.entries(cachedEntry?.statesByEmployee || {}).filter(
+                ([, state]) => Boolean(state?.state?.activeSession),
+              ),
+            );
 
       if (!silent) setLoadingSummary(true);
 
@@ -517,11 +521,13 @@ export default function TimeClockKioskComponent({ offlineBootstrap = null }) {
   }, [selectedEmployeeId]);
 
   async function queueCurrentPunchOffline(actionTime) {
+    const punchBusinessDate =
+      summary?.state?.activeSession?.businessDate || currentDateKey;
     const queuedPunch = queueOfflinePunch({
       restaurantId,
       employee: selectedEmployee,
       action: selectedAction,
-      businessDate: currentDateKey,
+      businessDate: punchBusinessDate,
       signatureStrokes,
       occurredAt: actionTime,
     });
@@ -563,6 +569,8 @@ export default function TimeClockKioskComponent({ offlineBootstrap = null }) {
     }
 
     const actionTime = new Date();
+    const punchBusinessDate =
+      summary?.state?.activeSession?.businessDate || currentDateKey;
 
     if (!isOnline) {
       await queueCurrentPunchOffline(actionTime);
@@ -578,7 +586,7 @@ export default function TimeClockKioskComponent({ offlineBootstrap = null }) {
         {
           employeeId: selectedEmployee._id,
           action: selectedAction,
-          businessDate: currentDateKey,
+          businessDate: punchBusinessDate,
           occurredAt: actionTime.toISOString(),
           clientMutationId,
           signature: {

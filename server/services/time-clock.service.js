@@ -5,6 +5,10 @@ const ACTIONS = {
   CLOCK_OUT: "clock_out",
 };
 
+// Une session peut legitiment traverser minuit. Elle n'est consideree oubliee
+// qu'apres une journee complete, independamment du changement de date civile.
+const STALE_OPEN_SESSION_MINUTES = 24 * 60;
+
 const { computeMealAllowance } = require("./meal-allowance.service");
 
 function pad2(value) {
@@ -338,7 +342,7 @@ function computeSessionDayBreakdown(session, { now = new Date() } = {}) {
 
 function computeSessionMetrics(
   session,
-  { now = new Date(), referenceDateKey = toLocalDateKey(now) } = {},
+  { now = new Date() } = {},
 ) {
   const activeBreak = findActiveBreak(session);
 
@@ -371,9 +375,7 @@ function computeSessionMetrics(
 
   if (
     !session?.clockOutAt &&
-    session?.businessDate &&
-    referenceDateKey &&
-    session.businessDate < referenceDateKey
+    grossMinutes >= STALE_OPEN_SESSION_MINUTES
   ) {
     anomalies.push("missing_clock_out");
   }

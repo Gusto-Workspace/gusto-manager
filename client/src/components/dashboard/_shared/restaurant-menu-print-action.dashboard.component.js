@@ -10,7 +10,7 @@ export default function RestaurantMenuPrintActionDashboardComponent({
   const printUrl = buildRestaurantMenuPrintUrl(website);
   const label = t("printMenu.action");
   const className =
-    "hidden min-h-[42px] items-center justify-center gap-2 self-start rounded-full bg-blue px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue/90 active:scale-[0.98]";
+    "inline-flex min-h-[42px] items-center justify-center gap-2 self-start rounded-full bg-blue px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue/90 active:scale-[0.98]";
 
   if (printUrl && !dataLoading) {
     return (
