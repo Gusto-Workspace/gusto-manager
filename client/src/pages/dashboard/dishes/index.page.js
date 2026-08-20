@@ -13,7 +13,6 @@ import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import CategoriesListDishesComponent from "@/components/dashboard/dishes/categories-list.dishes.component";
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
-import RestaurantMenuPrintActionDashboardComponent from "@/components/dashboard/_shared/restaurant-menu-print-action.dashboard.component";
 
 export default function DishesPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
@@ -71,11 +70,6 @@ export default function DishesPage(props) {
               closeEditing={restaurantContext.closeEditing}
               setRestaurantData={restaurantContext.setRestaurantData}
               restaurantData={restaurantContext.restaurantData}
-            />
-
-            <RestaurantMenuPrintActionDashboardComponent
-              website={restaurant?.website}
-              dataLoading={restaurantContext.dataLoading}
             />
 
             {!hasDishesModule ? (

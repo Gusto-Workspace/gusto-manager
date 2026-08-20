@@ -38,6 +38,7 @@ import {
 import CardCategoryListComponent from "./card-category-list.dishes.component";
 import AddModaleDishesComponent from "./add-modale.dishes.component";
 import GlobalDishesComponent from "./global.dishes.component";
+import RestaurantMenuPrintActionDashboardComponent from "../_shared/restaurant-menu-print-action.dashboard.component";
 
 export default function CategoriesListDishesComponent() {
   const { t } = useTranslation("dishes");
@@ -248,7 +249,11 @@ export default function CategoriesListDishesComponent() {
             <h1 className="pl-2 text-xl tablet:text-2xl">{t("titles.main")}</h1>
           </div>
 
-          <div className="shrink-0">
+          <div className="flex shrink-0 items-center gap-1">
+            <RestaurantMenuPrintActionDashboardComponent
+              website={restaurantContext?.restaurantData?.website}
+              dataLoading={restaurantContext.dataLoading}
+            />
             <CatalogCategoryActionButton
               onClick={() => {
                 setEditingCategory(null);

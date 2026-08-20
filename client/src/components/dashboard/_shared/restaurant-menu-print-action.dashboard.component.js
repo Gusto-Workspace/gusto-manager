@@ -10,7 +10,7 @@ export default function RestaurantMenuPrintActionDashboardComponent({
   const printUrl = buildRestaurantMenuPrintUrl(website);
   const label = t("printMenu.action");
   const className =
-    "inline-flex min-h-[42px] items-center justify-center gap-2 self-start rounded-full bg-blue px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue/90 active:scale-[0.98]";
+    "inline-flex h-[40px] w-[40px] shrink-0 items-center justify-center rounded-full bg-blue text-white shadow-sm transition hover:bg-blue/90 active:scale-[0.98]";
 
   if (printUrl && !dataLoading) {
     return (
@@ -18,30 +18,24 @@ export default function RestaurantMenuPrintActionDashboardComponent({
         href={printUrl}
         target="_blank"
         rel="noopener noreferrer"
+        aria-label={label}
+        title={label}
         className={className}
       >
         <Printer className="size-4" aria-hidden="true" />
-        {label}
       </a>
     );
   }
 
   return (
-    <div className="flex flex-col items-start gap-1">
-      <button
-        type="button"
-        disabled
-        title={t("printMenu.invalidWebsite")}
-        className={`${className} cursor-not-allowed opacity-45`}
-      >
-        <Printer className="size-4" aria-hidden="true" />
-        {label}
-      </button>
-      {!dataLoading ? (
-        <p className="text-xs text-darkBlue/60">
-          {t("printMenu.invalidWebsite")}
-        </p>
-      ) : null}
-    </div>
+    <button
+      type="button"
+      disabled
+      aria-label={label}
+      title={dataLoading ? label : t("printMenu.invalidWebsite")}
+      className={`${className} cursor-not-allowed opacity-45`}
+    >
+      <Printer className="size-4" aria-hidden="true" />
+    </button>
   );
 }
