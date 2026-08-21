@@ -2,6 +2,7 @@ import {
   ChevronDown,
   ChevronLeft,
   LayoutGrid,
+  Pin,
   Search,
   Users,
   X,
@@ -55,12 +56,26 @@ export default function DayHeaderReservationsWebapp(props) {
 
           <button
             onClick={props.handleOpenFloorPlanDrawer}
-            className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 shadow-sm active:scale-[0.98] transition p-3.5"
+            className={`inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 p-3.5 shadow-sm transition active:scale-[0.98] ${
+              props.hideFloorPlanButtonOnDesktop ? "min-[1024px]:hidden" : ""
+            }`}
             aria-label="Plan de salle"
             title="Plan de salle"
           >
             <LayoutGrid className="size-4 text-darkBlue/70" />
           </button>
+
+          {props.floorPlanPinned ? (
+            <button
+              type="button"
+              onClick={props.onToggleFloorPlanPinned}
+              className="hidden items-center justify-center rounded-full border border-blue/20 bg-blue/10 p-3.5 text-blue transition active:scale-[0.98] min-[1024px]:inline-flex"
+              aria-label="Désépingler le plan de salle"
+              title="Désépingler le plan de salle"
+            >
+              <Pin className="size-4" />
+            </button>
+          ) : null}
         </div>
 
         {/* Filters row */}

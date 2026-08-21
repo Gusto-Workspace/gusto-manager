@@ -662,7 +662,7 @@ export default function TimeClockKioskComponent({ offlineBootstrap = null }) {
   return (
     <section className="flex flex-col gap-6">
       <div className="rounded-[34px] bg-darkBlue px-6 py-6 text-white shadow-[0_24px_80px_rgba(19,30,54,0.22)]">
-        <div className="flex flex-col gap-5 desktop:flex-row desktop:items-end desktop:justify-between">
+        <div className="flex flex-col gap-5 tablet:flex-row tablet:items-end tablet:justify-between">
           <div>
             <div className="relative inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs uppercase tracking-[0.18em] text-white/80">
               <Clock3 className="size-3.5" />
@@ -697,7 +697,7 @@ export default function TimeClockKioskComponent({ offlineBootstrap = null }) {
         </div>
       </div>
 
-      <div className="grid gap-6 desktop:grid-cols-[0.95fr_1.05fr]">
+      <div className="grid gap-6 tablet:grid-cols-[0.95fr_1.05fr]">
         <section className="rounded-[30px] border border-darkBlue/10 bg-white px-5 py-5 shadow-sm">
           <div className="flex items-center gap-3">
             <span className="inline-flex size-11 items-center justify-center rounded-2xl border border-darkBlue/10 bg-lightGrey/60 text-blue">

@@ -176,7 +176,12 @@ router.get(
 
       // source filter basé sur stats
       if (source === "reservations") {
-        filter["stats.reservationsTotal"] = { $gt: 0 };
+        filter.$expr = {
+          $gt: [
+            { $ifNull: ["$stats.reservationsTotal", 0] },
+            { $ifNull: ["$stats.reservationsCanceled", 0] },
+          ],
+        };
       } else if (source === "gift_cards") {
         filter["stats.giftCardsBought"] = { $gt: 0 };
       }

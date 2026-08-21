@@ -297,8 +297,15 @@ export default function RestaurantContext() {
   );
 
   const refreshReservationsList = useCallback(
-    async (restaurantId = null, tokenOverride = null) =>
-      fetchReservationsList(tokenOverride, restaurantId),
+    async (restaurantId = null, tokenOverride = null) => {
+      const reservations = await fetchReservationsList(
+        tokenOverride,
+        restaurantId,
+      );
+
+      if (reservations) customersCacheRef.current.clear();
+      return reservations;
+    },
     [fetchReservationsList],
   );
 
@@ -502,6 +509,8 @@ export default function RestaurantContext() {
         if (payload.type === "reservation_created" && payload.reservation) {
           const r = payload.reservation;
 
+          customersCacheRef.current.clear();
+
           setReservationsList((prev) => {
             const list = Array.isArray(prev) ? prev : [];
             const exists = list.some((x) => String(x?._id) === String(r._id));
@@ -519,6 +528,8 @@ export default function RestaurantContext() {
         if (payload.type === "reservation_updated" && payload.reservation) {
           const r = payload.reservation;
 
+          customersCacheRef.current.clear();
+
           setReservationsList((prev) => {
             const list = Array.isArray(prev) ? prev : [];
             const id = String(r._id);
@@ -531,6 +542,8 @@ export default function RestaurantContext() {
 
         if (payload.type === "reservation_deleted" && payload.reservationId) {
           const deletedId = String(payload.reservationId);
+
+          customersCacheRef.current.clear();
 
           setReservationsList((prev) =>
             (Array.isArray(prev) ? prev : []).filter(

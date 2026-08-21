@@ -8,7 +8,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import CardReservationComponent from "./card.reservations.component";
 import ReservationsDrawerComponent from "@/components/_shared/reservations/reservations-drawer.component";
 import { CommunitySvg } from "@/components/_shared/_svgs/_index";
-import { isReservationCountedInCovers } from "@/_assets/utils/reservation-service-time";
+import {
+  isReservationCountedInCovers,
+  sortReservationTimesByServiceOrder,
+} from "@/_assets/utils/reservation-service-time";
 
 export default function DayListReservationsComponent(props) {
   const { t } = useTranslation("reservations");
@@ -149,7 +152,7 @@ export default function DayListReservationsComponent(props) {
       map[tkey].push(r);
     });
 
-    const times = Object.keys(map).sort((a, b) => a.localeCompare(b));
+    const times = sortReservationTimesByServiceOrder(Object.keys(map));
     return { orderedTimes: times, byTime: map };
   }, [list]);
 

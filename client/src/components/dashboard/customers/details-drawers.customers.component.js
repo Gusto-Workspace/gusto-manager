@@ -315,7 +315,11 @@ export default function DetailsDrawerCustomersComponent({
   );
 
   const stats = baseCustomer?.stats || {};
-  const reservationsTotal = stats.reservationsTotal ?? 0;
+  const reservationsTotal = Math.max(
+    0,
+    Number(stats.reservationsTotal || 0) -
+      Number(stats.reservationsCanceled || 0),
+  );
   const reservationsNoShow = stats.reservationsNoShow ?? 0;
   const giftCardsBought = stats.giftCardsBought ?? 0;
   const takeAwayOrdersTotal = stats.takeAwayOrdersTotal ?? 0;

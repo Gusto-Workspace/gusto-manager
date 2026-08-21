@@ -55,11 +55,11 @@ export default function ConfirmModalReservationsWebapp(props) {
     confirmLabel = props.isProcessing ? "Chargement..." : "Terminer";
   } else if (isCancel) {
     title = "Annuler la réservation";
-    content = `La réservation de ${name} sera marquée comme annulée. Elle sera supprimée automatiquement dans 10 minutes. Vous pouvez la repasser en confirmer entre temps si besoin.`;
+    content = `La réservation de ${name} sera marquée comme annulée. Vous pouvez la repasser en confirmée si besoin.`;
     confirmLabel = props.isProcessing ? "Chargement..." : "Confirmer";
   } else if (isReject) {
     title = "Refuser la réservation";
-    content = `La réservation de ${name} sera marquée comme refusée. Elle sera supprimée automatiquement dans 10 minutes. Vous pouvez la repasser en confirmer entre temps si besoin.`;
+    content = `La réservation de ${name} sera marquée comme refusée. Elle sera supprimée automatiquement selon le délai configuré dans les paramètres de réservation (6 mois par défaut). Vous pouvez la repasser en confirmée entre-temps si besoin.`;
     confirmLabel = props.isProcessing ? "Chargement..." : "Refuser";
   } else if (isCaptureBankHold) {
     title = "Capturer l’empreinte bancaire";
