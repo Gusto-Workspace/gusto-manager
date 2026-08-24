@@ -17,6 +17,7 @@ export default function SplashScreenWebAppComponent({
   loading,
   storageKey,
   forceShow = false,
+  showOnHardReturn = true,
   enabled = false,
   onSoftReturn,
   onHardReturn,
@@ -50,7 +51,7 @@ export default function SplashScreenWebAppComponent({
       onSoftReturn?.(elapsed, details);
     },
     onHardReturn: (elapsed, details) => {
-      setInternalForceShow(true);
+      if (showOnHardReturn) setInternalForceShow(true);
       onHardReturn?.(elapsed, details);
     },
   });

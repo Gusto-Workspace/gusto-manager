@@ -1,5 +1,5 @@
 import { useRouter } from "next/router";
-import { useContext, useEffect, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import Head from "next/head";
 
 // I18N
@@ -57,6 +57,15 @@ export default function WepAppReservationsPage(props) {
     startOfMonth(new Date()),
   );
   const [reservationsRouteActive, setReservationsRouteActive] = useState(true);
+  const [initialReservationsBootComplete, setInitialReservationsBootComplete] =
+    useState(false);
+  const initialCalendarMonthRef = useRef(null);
+
+  if (router.isReady && !initialCalendarMonthRef.current) {
+    initialCalendarMonthRef.current = startOfMonth(
+      getMonthFromDayKey(router.query.day) || activeCalendarMonth,
+    );
+  }
 
   useEffect(() => {
     const handleRouteChangeStart = (url) => {
@@ -113,6 +122,7 @@ export default function WepAppReservationsPage(props) {
   }, [restaurantContext?.isAuth, restaurantContext?.restaurantData?._id]);
 
   const restaurant = restaurantContext.restaurantData;
+  const restaurantReady = Boolean(restaurant?._id);
   const restaurantOptions = restaurant?.options || {};
   const hasReservationsModule = !!restaurantOptions.reservations;
 
@@ -135,17 +145,39 @@ export default function WepAppReservationsPage(props) {
 
   const canLoadReservations =
     hasReservationsModule && employeeHasReservationsAccess;
-  const activeMonthReservations = canLoadReservations
+  const initialMonthReservations =
+    canLoadReservations && initialCalendarMonthRef.current
     ? restaurantContext.getCachedReservationsMonth?.(
-        activeCalendarMonth,
+        initialCalendarMonthRef.current,
         restaurant?._id,
       )
-    : [];
-  const activeMonthReady = Array.isArray(activeMonthReservations);
-  const splashLoading =
+    : canLoadReservations
+      ? null
+      : [];
+  const initialMonthReady = Array.isArray(initialMonthReservations);
+  const initialReservationsBootLoading =
     reservationsRouteActive &&
+    !initialReservationsBootComplete &&
     (restaurantContext.dataLoading ||
-      (canLoadReservations && (!router.isReady || !activeMonthReady)));
+      !router.isReady ||
+      !restaurantReady ||
+      (canLoadReservations && !initialMonthReady));
+
+  useEffect(() => {
+    if (initialReservationsBootComplete) return;
+    if (restaurantContext.dataLoading || !router.isReady) return;
+    if (!restaurantReady) return;
+    if (canLoadReservations && !initialMonthReady) return;
+
+    setInitialReservationsBootComplete(true);
+  }, [
+    canLoadReservations,
+    initialMonthReady,
+    initialReservationsBootComplete,
+    restaurantContext.dataLoading,
+    restaurantReady,
+    router.isReady,
+  ]);
 
   return (
     <>
@@ -209,8 +241,9 @@ export default function WepAppReservationsPage(props) {
 
       {reservationsRouteActive ? (
         <SplashScreenWebAppComponent
-          loading={splashLoading}
-          forceShow={splashLoading}
+          loading={initialReservationsBootLoading}
+          forceShow={initialReservationsBootLoading}
+          showOnHardReturn={!initialReservationsBootComplete}
           storageKey="gm:splash:webapp:reservations"
           enabled={restaurantContext?.isAuth}
           lastActiveKey="gm:lastActive:webapp:reservations"
