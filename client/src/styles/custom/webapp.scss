@@ -2,6 +2,11 @@
   display: block;
 }
 
+.gm-webapp-scroll-container {
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
 .gm-webapp-device-blocked {
   display: none;
 }
