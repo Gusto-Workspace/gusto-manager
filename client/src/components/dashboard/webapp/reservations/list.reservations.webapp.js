@@ -14,6 +14,7 @@ import CalendarMonthReservationsWebapp from "./calendar-month.reservations.webap
 import DayToolbarReservationsWebapp from "./day-toolbar.reservations.webapp";
 import DayListReservationsWebapp from "./day-list.reservations.webapp";
 import FloorPlanDrawerReservationsComponent from "../../reservations/floor-plan-drawer.reservations.component";
+import ReservationsPeriodLoadingComponent from "@/components/_shared/reservations/reservations-period-loading.component";
 import {
   RESERVATION_DISPLAY_STATUS_KEYS,
   createReservationDisplayStatusBuckets,
@@ -26,6 +27,8 @@ import {
   RESERVATION_SEATS_FILTER_OPTIONS,
 } from "../../reservations/reservation-filters.reservations";
 import { countReservationCoversByService } from "@/_assets/utils/reservation-service-time";
+
+const EMPTY_RESERVATIONS = [];
 
 export default function ListReservationsWebapp(props) {
   const { t } = useTranslation("reservations");
@@ -50,9 +53,11 @@ export default function ListReservationsWebapp(props) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState(null);
 
-  const [currentMonth, setCurrentMonth] = useState(() =>
+  const [uncontrolledCurrentMonth, setUncontrolledCurrentMonth] = useState(() =>
     startOfMonth(new Date()),
   );
+  const currentMonth = props.currentMonth || uncontrolledCurrentMonth;
+  const setCurrentMonth = props.setCurrentMonth || setUncontrolledCurrentMonth;
   const [selectedDay, setSelectedDay] = useState(null);
   const [activeDayTab, setActiveDayTab] = useState("All");
   const [minSeatsFilter, setMinSeatsFilter] = useState(0);
@@ -68,6 +73,13 @@ export default function ListReservationsWebapp(props) {
   const restaurantId = props.restaurantData?._id
     ? String(props.restaurantData._id)
     : "";
+  const cachedReservations = props.getCachedReservationsMonth
+    ? props.getCachedReservationsMonth(currentMonth, restaurantId)
+    : props.reservations || EMPTY_RESERVATIONS;
+  const activePeriodReady = Array.isArray(cachedReservations);
+  const activeReservations = activePeriodReady
+    ? cachedReservations
+    : EMPTY_RESERVATIONS;
   const floorPlanPinnedStorageKey = restaurantId
     ? `gusto:reservations:floor-plan-pinned:${restaurantId}`
     : "";
@@ -120,7 +132,7 @@ export default function ListReservationsWebapp(props) {
     const nextSelectedDay = new Date(y, m - 1, d, 12, 0, 0, 0);
     setSelectedDay(nextSelectedDay);
     setCurrentMonth(startOfMonth(nextSelectedDay));
-  }, [selectedDayKey]);
+  }, [selectedDayKey, setCurrentMonth]);
 
   useEffect(() => {
     if (!restaurantId) return;
@@ -244,10 +256,9 @@ export default function ListReservationsWebapp(props) {
 
   useEffect(() => {
     if (!focusedReservationId) return;
-    if (!Array.isArray(props.reservations) || !props.reservations.length)
-      return;
+    if (!activeReservations.length) return;
 
-    const reservation = props.reservations.find(
+    const reservation = activeReservations.find(
       (item) => String(item?._id) === String(focusedReservationId),
     );
     if (!reservation) return;
@@ -268,7 +279,7 @@ export default function ListReservationsWebapp(props) {
       ),
     );
     setActiveDayTab("All");
-  }, [focusedReservationId, props.reservations]);
+  }, [focusedReservationId, activeReservations, setCurrentMonth]);
 
   useEffect(() => {
     if (!focusedNotificationId) {
@@ -297,7 +308,7 @@ export default function ListReservationsWebapp(props) {
 
     // Index par jour + comptage des matches de la recherche
     const dayAgg = {};
-    (props.reservations || []).forEach((r) => {
+    activeReservations.forEach((r) => {
       const dt = getReservationDateTime(r);
       if (!dt) return;
       if (dt < monthStart || dt > monthEnd) return;
@@ -368,7 +379,7 @@ export default function ListReservationsWebapp(props) {
       });
     }
     return days;
-  }, [props.reservations, currentMonth, searchTerm, minSeatsFilter]);
+  }, [activeReservations, currentMonth, searchTerm, minSeatsFilter]);
 
   /* =========================================================
    * Données vue Jour (réservations du jour + par statut)
@@ -392,7 +403,7 @@ export default function ListReservationsWebapp(props) {
     const key = toDateKey(selectedDay);
     const term = searchTerm.trim().toLowerCase();
 
-    const reservationsOfDay = (props.reservations || []).filter((r) => {
+    const reservationsOfDay = activeReservations.filter((r) => {
       const dt = getReservationDateTime(r);
       return dt && toDateKey(dt) === key;
     });
@@ -431,7 +442,7 @@ export default function ListReservationsWebapp(props) {
     );
 
     return { byStatus: by, counts, serviceCovers };
-  }, [props.reservations, selectedDay, searchTerm, minSeatsFilter]);
+  }, [activeReservations, selectedDay, searchTerm, minSeatsFilter]);
 
   /* =========================================================
    * Navigation / actions
@@ -782,17 +793,21 @@ export default function ListReservationsWebapp(props) {
             serviceFullSaving={serviceFullSaving}
             onToggleServiceFull={handleToggleServiceFull}
           />
-          <CalendarMonthReservationsWebapp
-            monthGridDays={monthGridDays}
-            toDateKey={toDateKey}
-            searchTerm={searchTerm}
-            setSelectedDay={setSelectedDay}
-            selectedDay={selectedDay}
-            setActiveDayTab={setActiveDayTab}
-            statusList={calendarStatusList}
-            disableDayClick={disableDayClick}
-            isKeyboardOpen={isKeyboardOpen}
-          />
+          {activePeriodReady ? (
+            <CalendarMonthReservationsWebapp
+              monthGridDays={monthGridDays}
+              toDateKey={toDateKey}
+              searchTerm={searchTerm}
+              setSelectedDay={setSelectedDay}
+              selectedDay={selectedDay}
+              setActiveDayTab={setActiveDayTab}
+              statusList={calendarStatusList}
+              disableDayClick={disableDayClick}
+              isKeyboardOpen={isKeyboardOpen}
+            />
+          ) : (
+            <ReservationsPeriodLoadingComponent />
+          )}
         </>
       ) : (
         <>
@@ -824,48 +839,52 @@ export default function ListReservationsWebapp(props) {
             setMinSeatsFilter={setMinSeatsFilter}
             seatsFilterOptions={RESERVATION_SEATS_FILTER_OPTIONS}
           />
-          <div
-            className={
-              showPinnedFloorPlan
-                ? "grid grid-cols-1 gap-6 min-[1024px]:grid-cols-2 min-[1024px]:items-start"
-                : "block"
-            }
-          >
-            <div className="min-w-0">
-              <DayListReservationsWebapp
-                selectedDay={selectedDay}
-                dayData={dayData}
-                activeDayTab={activeDayTab}
-                handleEditClick={handleEditClick}
-                openModalForAction={openModalForAction}
-                applyReservationUpdate={props.applyReservationUpdate}
-                focusedReservationId={focusedReservationId}
-                clearFocusedReservationId={clearFocusedReservationId}
-                restaurantId={props.restaurantData?._id}
-                tablesCatalog={
-                  props.restaurantData?.reservationsSettings?.tables
-                }
-                compactRows={showPinnedFloorPlan}
-              />
-            </div>
-
-            {showPinnedFloorPlan ? (
-              <div className="hidden min-[1024px]:sticky min-[1024px]:top-6 min-[1024px]:block min-[1024px]:max-h-[calc(100vh-3rem)] min-[1024px]:min-h-[680px]">
-                <FloorPlanDrawerReservationsComponent
-                  variant="panel"
-                  open
-                  restaurantId={props.restaurantData?._id}
-                  restaurantData={props.restaurantData}
-                  reservations={props.reservations || []}
+          {activePeriodReady ? (
+            <div
+              className={
+                showPinnedFloorPlan
+                  ? "grid grid-cols-1 gap-6 min-[1024px]:grid-cols-2 min-[1024px]:items-start"
+                  : "block"
+              }
+            >
+              <div className="min-w-0">
+                <DayListReservationsWebapp
                   selectedDay={selectedDay}
-                  floorPlanPinned={isFloorPlanPinned}
-                  onToggleFloorPlanPinned={() =>
-                    setFloorPlanPinnedPreference(false)
+                  dayData={dayData}
+                  activeDayTab={activeDayTab}
+                  handleEditClick={handleEditClick}
+                  openModalForAction={openModalForAction}
+                  applyReservationUpdate={props.applyReservationUpdate}
+                  focusedReservationId={focusedReservationId}
+                  clearFocusedReservationId={clearFocusedReservationId}
+                  restaurantId={props.restaurantData?._id}
+                  tablesCatalog={
+                    props.restaurantData?.reservationsSettings?.tables
                   }
+                  compactRows={showPinnedFloorPlan}
                 />
               </div>
-            ) : null}
-          </div>
+
+              {showPinnedFloorPlan ? (
+                <div className="hidden min-[1024px]:sticky min-[1024px]:top-6 min-[1024px]:block min-[1024px]:max-h-[calc(100vh-3rem)] min-[1024px]:min-h-[680px]">
+                  <FloorPlanDrawerReservationsComponent
+                    variant="panel"
+                    open
+                    restaurantId={props.restaurantData?._id}
+                    restaurantData={props.restaurantData}
+                    reservations={activeReservations}
+                    selectedDay={selectedDay}
+                    floorPlanPinned={isFloorPlanPinned}
+                    onToggleFloorPlanPinned={() =>
+                      setFloorPlanPinnedPreference(false)
+                    }
+                  />
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <ReservationsPeriodLoadingComponent />
+          )}
         </>
       )}
 
@@ -885,7 +904,7 @@ export default function ListReservationsWebapp(props) {
         onClose={handleCloseFloorPlanDrawer}
         restaurantId={props.restaurantData?._id}
         restaurantData={props.restaurantData}
-        reservations={props.reservations || []}
+        reservations={activeReservations}
         selectedDay={selectedDay}
         floorPlanPinned={isFloorPlanPinned}
         onToggleFloorPlanPinned={() =>

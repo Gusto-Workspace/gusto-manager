@@ -101,7 +101,7 @@ export default function RestaurantContext() {
 
   const [restaurantData, setRestaurantData] = useState(null);
   const [reservationsList, setReservationsList] = useState([]);
-  const [reservationsLoading, setReservationsLoading] = useState(false);
+  const [activePeriodLoading, setActivePeriodLoading] = useState(false);
   const [userConnected, setUserConnected] = useState(null);
   const [restaurantsList, setRestaurantsList] = useState([]);
   const [dataLoading, setDataLoading] = useState(true);
@@ -384,7 +384,10 @@ export default function RestaurantContext() {
       const rid = restaurantId || restaurantData?._id;
 
       if (!token || !rid || !from || !to) {
-        if (activate) setReservationsList([]);
+        if (activate) {
+          setReservationsList([]);
+          setActivePeriodLoading(false);
+        }
         markFrontendLoadPhase(loadId, "reservations_skipped", {
           reason,
           restaurantId: rid ? String(rid) : null,
@@ -418,15 +421,22 @@ export default function RestaurantContext() {
       if (!force && cached) {
         if (activate && canActivate() && isActivePeriod()) {
           setReservationsList(cached.reservations);
+          setActivePeriodLoading(false);
         }
         return cached.reservations;
       }
 
       const inFlight = reservationPeriodRequestsRef.current.get(cacheKey);
       if (!force && inFlight) {
+        if (activate && canActivate() && isActivePeriod()) {
+          setActivePeriodLoading(true);
+        }
         const reservations = await inFlight;
         if (activate && reservations && canActivate() && isActivePeriod()) {
           setReservationsList(reservations);
+        }
+        if (activate && canActivate() && isActivePeriod()) {
+          setActivePeriodLoading(false);
         }
         return reservations;
       }
@@ -439,7 +449,7 @@ export default function RestaurantContext() {
         to: period.to,
       });
 
-      if (activate) setReservationsLoading(true);
+      if (activate) setActivePeriodLoading(true);
 
       const requestPromise = (async () => {
         try {
@@ -497,7 +507,7 @@ export default function RestaurantContext() {
           return null;
         } finally {
           reservationPeriodRequestsRef.current.delete(cacheKey);
-          if (activate && isActivePeriod()) setReservationsLoading(false);
+          if (activate && isActivePeriod()) setActivePeriodLoading(false);
         }
       })();
 
@@ -548,6 +558,19 @@ export default function RestaurantContext() {
       return reservations;
     },
     [loadReservationPeriod, restaurantData?._id],
+  );
+
+  const getCachedReservationsMonth = useCallback(
+    (date = new Date(), restaurantId = null) => {
+      const range = getReservationMonthRange(date);
+      const rid = String(restaurantId || restaurantData?._id || "");
+      if (!range || !rid) return null;
+
+      const cacheKey = `${rid}:${range.from}:${range.to}`;
+      const cached = reservationPeriodsCacheRef.current.get(cacheKey);
+      return cached ? cached.reservations : null;
+    },
+    [restaurantData?._id],
   );
 
   const ensureReservationsDay = useCallback(
@@ -1088,7 +1111,7 @@ export default function RestaurantContext() {
     setRestaurantsList([]);
     setRestaurantData(null);
     setReservationsList([]);
-    setReservationsLoading(false);
+    setActivePeriodLoading(false);
     reservationPeriodsCacheRef.current.clear();
     reservationPeriodRequestsRef.current.clear();
     reservationMutationOverridesRef.current.clear();
@@ -1498,7 +1521,7 @@ export default function RestaurantContext() {
     reservationMutationOverridesRef.current.clear();
     activeReservationPeriodRef.current = null;
     currentRestaurantIdRef.current = String(restaurantId);
-    setReservationsLoading(false);
+    setActivePeriodLoading(false);
     setReservationsList([]);
 
     // ----- OWNER -----
@@ -1830,7 +1853,7 @@ export default function RestaurantContext() {
 
     setRestaurantData(null);
     setReservationsList([]);
-    setReservationsLoading(false);
+    setActivePeriodLoading(false);
     reservationPeriodsCacheRef.current.clear();
     reservationPeriodRequestsRef.current.clear();
     reservationMutationOverridesRef.current.clear();
@@ -1906,7 +1929,8 @@ export default function RestaurantContext() {
     setRestaurantData,
     reservationsList,
     setReservationsList,
-    reservationsLoading,
+    reservationsLoading: activePeriodLoading,
+    activePeriodLoading,
     userConnected,
     setUserConnected,
     restaurantsList,
@@ -1918,6 +1942,7 @@ export default function RestaurantContext() {
     fetchRestaurantData,
     ensureReservationsMonth,
     ensureReservationsDay,
+    getCachedReservationsMonth,
     loadReservationPeriod,
     applyReservationUpdate,
     removeReservationFromCache,
