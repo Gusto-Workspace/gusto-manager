@@ -4,7 +4,7 @@ import "@/styles/tailwind.css";
 import "@/styles/custom/_index.scss";
 
 // REACT
-import { useContext, useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
 import axios from "axios";
@@ -243,6 +243,66 @@ function EmployeeDashboardAccessGuard({ children }) {
   return children;
 }
 
+function IosLaunchSnapshotShield({ enabled }) {
+  const shieldRef = useRef(null);
+
+  useEffect(() => {
+    if (!enabled) return undefined;
+
+    const setShieldVisible = (nextVisible) => {
+      const shield = shieldRef.current;
+      if (!shield) return;
+
+      shield.style.display = nextVisible ? "block" : "none";
+
+      if (nextVisible) {
+        // Force WebKit à peindre le calque avant la capture système.
+        shield.getBoundingClientRect();
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      setShieldVisible(document.visibilityState === "hidden");
+    };
+    const showShield = () => setShieldVisible(true);
+    const hideShield = () => setShieldVisible(false);
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("blur", showShield);
+    window.addEventListener("pagehide", showShield);
+    window.addEventListener("pageshow", hideShield);
+    window.addEventListener("focus", hideShield);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("blur", showShield);
+      window.removeEventListener("pagehide", showShield);
+      window.removeEventListener("pageshow", hideShield);
+      window.removeEventListener("focus", hideShield);
+    };
+  }, [enabled]);
+
+  if (!enabled) return null;
+
+  return (
+    <div
+      ref={shieldRef}
+      aria-hidden="true"
+      style={{
+        position: "fixed",
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+        zIndex: 2147483647,
+        display: "none",
+        backgroundColor: "#131E36",
+        pointerEvents: "none",
+      }}
+    />
+  );
+}
+
 function App({ Component, pageProps }) {
   const router = useRouter();
   const isReservationsWebapp = (router.pathname || "").startsWith(
@@ -395,6 +455,7 @@ function App({ Component, pageProps }) {
       </Head>
 
       <GlobalProvider>
+        <IosLaunchSnapshotShield enabled={isReservationsWebapp} />
         <WebAppNotificationBadgeSync />
         <OwnerOnlyWebAppGuard>
           <EmployeeDashboardAccessGuard>
