@@ -1426,7 +1426,11 @@ export default function AddReservationComponent(props) {
       const { restaurant, tableReassigned, tableChange } = response.data || {};
 
       if (restaurant) props.setRestaurantData(restaurant);
-      await props.refreshReservationsList?.(props.restaurantData?._id);
+      await props.refreshReservationsList?.(
+        props.restaurantData?._id,
+        null,
+        "mutation",
+      );
 
       // ✅ MODALE: table réassignée
       if (tableReassigned) {

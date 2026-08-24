@@ -3,6 +3,7 @@ import Image from "next/image";
 
 // HOOK
 import useRefetchOnReturn from "@/_assets/utils/useRefetchOnReturn";
+import { markFrontendSplashHidden } from "@/_assets/utils/perf-diagnostics.client";
 
 const FADE_MS = 550;
 const MIN_DURATION = 1250;
@@ -34,6 +35,10 @@ export default function SplashScreenWebAppComponent({
 
   const effectiveForceShow = forceShow || internalForceShow;
 
+  useEffect(() => {
+    if (!visible) markFrontendSplashHidden();
+  }, [visible]);
+
   // =========================
   // ✅ Option A : refetch au retour
   // =========================
@@ -41,12 +46,12 @@ export default function SplashScreenWebAppComponent({
     enabled,
     storageKey: lastActiveKey,
     thresholdMs,
-    onSoftReturn: () => {
-      onSoftReturn?.();
+    onSoftReturn: (elapsed, details) => {
+      onSoftReturn?.(elapsed, details);
     },
-    onHardReturn: () => {
+    onHardReturn: (elapsed, details) => {
       setInternalForceShow(true);
-      onHardReturn?.();
+      onHardReturn?.(elapsed, details);
     },
   });
 

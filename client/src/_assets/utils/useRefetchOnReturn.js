@@ -32,18 +32,19 @@ export default function useRefetchOnReturn({
       }
     };
 
-    const handleResume = () => {
+    const handleResume = (reason) => {
       const now = Date.now();
 
       if (now - lastResumeAtRef.current < 1200) return;
       lastResumeAtRef.current = now;
 
       const elapsed = getElapsed();
+      const details = { reason };
 
       if (elapsed >= thresholdMs) {
-        onHardReturn?.(elapsed);
+        onHardReturn?.(elapsed, details);
       } else {
-        onSoftReturn?.(elapsed);
+        onSoftReturn?.(elapsed, details);
       }
     };
 
@@ -56,20 +57,20 @@ export default function useRefetchOnReturn({
       }
 
       if (document.visibilityState === "visible") {
-        handleResume();
+        handleResume("visibilitychange");
       }
     };
 
     const onPageShow = () => {
-      handleResume();
+      handleResume("pageshow");
     };
 
     const onFocus = () => {
-      handleResume();
+      handleResume("focus");
     };
 
     const onOnline = () => {
-      handleResume();
+      handleResume("online");
     };
 
     document.addEventListener("visibilitychange", onVis);

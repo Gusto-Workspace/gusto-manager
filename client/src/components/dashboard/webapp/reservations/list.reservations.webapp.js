@@ -466,7 +466,11 @@ export default function ListReservationsWebapp(props) {
         )
         .then(async (response) => {
           props.setRestaurantData(response.data.restaurant);
-          await props.refreshReservationsList?.(props.restaurantData?._id);
+          await props.refreshReservationsList?.(
+            props.restaurantData?._id,
+            null,
+            "mutation",
+          );
 
           closeModal();
         })
@@ -536,7 +540,11 @@ export default function ListReservationsWebapp(props) {
       )
       .then(async (response) => {
         props.setRestaurantData(response.data.restaurant);
-        await props.refreshReservationsList?.(props.restaurantData?._id);
+        await props.refreshReservationsList?.(
+          props.restaurantData?._id,
+          null,
+          "mutation",
+        );
         closeModal();
       })
       .catch((error) => {
@@ -571,7 +579,11 @@ export default function ListReservationsWebapp(props) {
       )
       .then(async (response) => {
         props.setRestaurantData(response.data.restaurant);
-        await props.refreshReservationsList?.(props.restaurantData?._id);
+        await props.refreshReservationsList?.(
+          props.restaurantData?._id,
+          null,
+          "mutation",
+        );
         closeModal();
       })
       .catch((error) => {
@@ -607,7 +619,11 @@ export default function ListReservationsWebapp(props) {
       )
       .then(async (response) => {
         props.setRestaurantData(response.data.restaurant);
-        await props.refreshReservationsList?.(props.restaurantData?._id);
+        await props.refreshReservationsList?.(
+          props.restaurantData?._id,
+          null,
+          "mutation",
+        );
         closeModal();
       })
       .catch((error) => {

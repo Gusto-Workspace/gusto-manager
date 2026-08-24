@@ -61,6 +61,18 @@ const {
   minutesFromHHmm,
   minutesFromServiceTime,
 } = require("../services/reservation-service-time.service");
+const {
+  categorizeUserAgent,
+  createPerfRun,
+  finishPerfRun,
+  getPerfRequestContext,
+  getPerfRequestId,
+  isPerfDiagnosticsEnabled,
+  perfLog,
+  perfNowMs,
+  setPerfRequestMetrics,
+  shouldLogPerfDetail,
+} = require("../services/perf-diagnostics.service");
 
 const BANK_HOLD_IMMEDIATE_WINDOW_HOURS = 168; // 7 jours
 
@@ -68,6 +80,10 @@ const BANK_HOLD_SCHEDULE_BEFORE_HOURS = 72;
 const RESERVATION_DAY_LOCK_HOLD_MS = 10 * 1000;
 const RESERVATION_DAY_LOCK_WAIT_MS = 4 * 1000;
 const RESERVATION_DAY_LOCK_RETRY_MS = 120;
+
+function roundPerfDuration(startedAtMs) {
+  return Math.round((perfNowMs() - startedAtMs) * 100) / 100;
+}
 
 /* ---------------------------------------------------------
    Helpers
@@ -1303,7 +1319,7 @@ function getActiveSlotCoverLimit(
 
 function buildSlotCoverUsageFromReservations(
   reservations = [],
-  { excludeReservationId = null } = {},
+  { excludeReservationId = null, diagnostics = null } = {},
 ) {
   const usageMap = new Map();
 
@@ -1316,12 +1332,15 @@ function buildSlotCoverUsageFromReservations(
     }
 
     if (!isBlockingReservation(reservation)) return;
+    if (diagnostics) diagnostics.blockingReservationCount += 1;
 
     const dateKey = normalizeReservationDateKey(reservation?.reservationDate);
     const time = String(reservation?.reservationTime || "").slice(0, 5);
     const covers = Math.max(0, Number(reservation?.numberOfGuests || 0));
 
     if (!dateKey || !isValidHHmm(time) || covers <= 0) return;
+
+    if (diagnostics) diagnostics.slotUsageReservationCount += 1;
 
     const key = `${dateKey}|${time}`;
     usageMap.set(key, (usageMap.get(key) || 0) + covers);
@@ -2656,6 +2675,12 @@ async function updateReservationDetailsInternal({
 
     const previousStatus = String(existing.status || "");
     const updatedStatus = String(updatedReservation.status || "");
+    setPerfRequestMetrics({
+      reservationStatusBefore: previousStatus,
+      reservationStatusAfter: updatedStatus,
+      reservationMutationChannel: channel,
+      restaurantId: String(restaurantId),
+    });
     if (previousStatus !== updatedStatus) {
       if (updatedStatus === "Confirmed" && !updatedReservation.customer) {
         await syncCustomerOnFirstReservationConfirmation(updatedReservation);
@@ -2733,6 +2758,11 @@ async function updateReservationStatusInternal({
   }
 
   const prevStatus = String(reservation.status || "");
+  setPerfRequestMetrics({
+    reservationStatusBefore: prevStatus,
+    reservationStatusTarget: nextStatus,
+    restaurantId: String(restaurantId),
+  });
   const previousReservationSlot = {
     restaurantId: String(reservation.restaurant_id),
     reservationDate: reservation.reservationDate,
@@ -2741,6 +2771,10 @@ async function updateReservationStatusInternal({
   };
 
   if (prevStatus === nextStatus) {
+    setPerfRequestMetrics({
+      reservationStatusAfter: prevStatus,
+      reservationMutationNoOp: true,
+    });
     return {
       updatedReservation: reservation,
       tableReassigned: false,
@@ -2986,6 +3020,7 @@ async function updateReservationStatusInternal({
     reservation.reminder24hLockedAt = reminderFields.reminder24hLockedAt;
 
     await reservation.save();
+    setPerfRequestMetrics({ reservationStatusAfter: nextStatus });
 
     let customerId = reservation.customer || null;
 
@@ -3744,72 +3779,172 @@ async function expireWaitlistOfferAndPromoteNext(reservation) {
 }
 
 async function runWaitlistMaintenance() {
+  const diagnosticsEnabled = isPerfDiagnosticsEnabled();
+  const perfRun = createPerfRun("waitlistMaintenance", "CRON");
+  const metrics = {
+    candidateCount: 0,
+    processedCount: 0,
+    modifiedCount: 0,
+    deletedCount: 0,
+    errorCount: 0,
+    expiredOffersLoaded: 0,
+    expiredOffersModified: 0,
+    simpleWaitlistsLoaded: 0,
+    restaurantsLoaded: 0,
+    expiredOffersQueryMs: 0,
+    expiredOffersProcessingMs: 0,
+    simpleWaitlistsQueryMs: 0,
+    simpleWaitlistsProcessingMs: 0,
+    restaurantQueryMs: 0,
+    deleteQueryMs: 0,
+    sseMs: 0,
+  };
   const now = new Date();
 
-  const expiredOffers = await ReservationModel.find({
-    status: "Waitlist",
-    "waitlistOffer.state": "offered",
-    "waitlistOffer.offerExpiresAt": { $ne: null, $lte: now },
-  }).select(
-    "_id restaurant_id reservationDate reservationTime status waitlistOffer table",
-  );
+  try {
+    const expiredOffersQueryStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
+    const expiredOffers = await ReservationModel.find({
+      status: "Waitlist",
+      "waitlistOffer.state": "offered",
+      "waitlistOffer.offerExpiresAt": { $ne: null, $lte: now },
+    }).select(
+      "_id restaurant_id reservationDate reservationTime status waitlistOffer table",
+    );
+    if (diagnosticsEnabled) {
+      metrics.expiredOffersQueryMs = roundPerfDuration(
+        expiredOffersQueryStartedAtMs,
+      );
+      metrics.expiredOffersLoaded = expiredOffers.length;
+      metrics.candidateCount += expiredOffers.length;
+    }
 
-  for (const reservation of expiredOffers) {
-    await expireWaitlistOfferAndPromoteNext(reservation);
-  }
-
-  const simpleWaitlists = await ReservationModel.find({
-    status: "Waitlist",
-    $or: [
-      { "waitlistOffer.state": { $exists: false } },
-      { "waitlistOffer.state": null },
-      { "waitlistOffer.state": "" },
-      { "waitlistOffer.state": "waiting" },
-    ],
-  }).select("_id restaurant_id reservationDate reservationTime waitlistOffer");
-
-  const restaurantCache = new Map();
-
-  for (const reservation of simpleWaitlists) {
-    const restaurantId = String(reservation.restaurant_id || "");
-    if (!restaurantId) continue;
-
-    if (!restaurantCache.has(restaurantId)) {
-      restaurantCache.set(
-        restaurantId,
-        await RestaurantModel.findById(restaurantId).select(
-          "reservationsSettings",
-        ),
+    const expiredOffersProcessingStartedAtMs = diagnosticsEnabled
+      ? perfNowMs()
+      : 0;
+    for (const reservation of expiredOffers) {
+      const expired = await expireWaitlistOfferAndPromoteNext(reservation);
+      if (diagnosticsEnabled) {
+        metrics.processedCount += 1;
+        if (expired) {
+          metrics.expiredOffersModified += 1;
+          metrics.modifiedCount += 1;
+        }
+      }
+    }
+    if (diagnosticsEnabled) {
+      metrics.expiredOffersProcessingMs = roundPerfDuration(
+        expiredOffersProcessingStartedAtMs,
       );
     }
 
-    const restaurant = restaurantCache.get(restaurantId);
-    const settings = getWaitlistSettings(restaurant);
-    if (!settings.auto_cleanup_enabled) continue;
-
-    const reservationDateTime = buildReservationDateTime(
-      reservation.reservationDate,
-      reservation.reservationTime,
-    );
-    if (!reservationDateTime) continue;
-
-    const cleanupAt = new Date(
-      reservationDateTime.getTime() +
-        settings.auto_cleanup_delay_minutes * 60 * 1000,
-    );
-
-    if (cleanupAt.getTime() > now.getTime()) continue;
-
-    await ReservationModel.deleteOne({
-      _id: reservation._id,
+    const simpleWaitlistsQueryStartedAtMs = diagnosticsEnabled
+      ? perfNowMs()
+      : 0;
+    const simpleWaitlists = await ReservationModel.find({
       status: "Waitlist",
-      ...getWaitlistWaitingStateQuery(),
-    });
+      $or: [
+        { "waitlistOffer.state": { $exists: false } },
+        { "waitlistOffer.state": null },
+        { "waitlistOffer.state": "" },
+        { "waitlistOffer.state": "waiting" },
+      ],
+    }).select(
+      "_id restaurant_id reservationDate reservationTime waitlistOffer",
+    );
+    if (diagnosticsEnabled) {
+      metrics.simpleWaitlistsQueryMs = roundPerfDuration(
+        simpleWaitlistsQueryStartedAtMs,
+      );
+      metrics.simpleWaitlistsLoaded = simpleWaitlists.length;
+      metrics.candidateCount += simpleWaitlists.length;
+    }
 
-    broadcastToRestaurant(restaurantId, {
-      type: "reservation_deleted",
-      restaurantId,
-      reservationId: String(reservation._id),
+    const restaurantCache = new Map();
+    const simpleWaitlistsProcessingStartedAtMs = diagnosticsEnabled
+      ? perfNowMs()
+      : 0;
+
+    for (const reservation of simpleWaitlists) {
+      if (diagnosticsEnabled) metrics.processedCount += 1;
+      const restaurantId = String(reservation.restaurant_id || "");
+      if (!restaurantId) continue;
+
+      if (!restaurantCache.has(restaurantId)) {
+        const restaurantQueryStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
+        const loadedRestaurant = await RestaurantModel.findById(
+          restaurantId,
+        ).select("reservationsSettings");
+        if (diagnosticsEnabled) {
+          metrics.restaurantQueryMs += roundPerfDuration(
+            restaurantQueryStartedAtMs,
+          );
+          metrics.restaurantsLoaded += 1;
+        }
+        restaurantCache.set(restaurantId, loadedRestaurant);
+      }
+
+      const restaurant = restaurantCache.get(restaurantId);
+      const settings = getWaitlistSettings(restaurant);
+      if (!settings.auto_cleanup_enabled) continue;
+
+      const reservationDateTime = buildReservationDateTime(
+        reservation.reservationDate,
+        reservation.reservationTime,
+      );
+      if (!reservationDateTime) continue;
+
+      const cleanupAt = new Date(
+        reservationDateTime.getTime() +
+          settings.auto_cleanup_delay_minutes * 60 * 1000,
+      );
+
+      if (cleanupAt.getTime() > now.getTime()) continue;
+
+      const deleteQueryStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
+      const deleteResult = await ReservationModel.deleteOne({
+        _id: reservation._id,
+        status: "Waitlist",
+        ...getWaitlistWaitingStateQuery(),
+      });
+      if (diagnosticsEnabled) {
+        metrics.deleteQueryMs += roundPerfDuration(deleteQueryStartedAtMs);
+        const deletedCount = Number(deleteResult?.deletedCount || 0);
+        metrics.deletedCount += deletedCount;
+        metrics.modifiedCount += deletedCount;
+      }
+
+      const sseStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
+      broadcastToRestaurant(restaurantId, {
+        type: "reservation_deleted",
+        restaurantId,
+        reservationId: String(reservation._id),
+      });
+      if (diagnosticsEnabled) {
+        metrics.sseMs += roundPerfDuration(sseStartedAtMs);
+      }
+    }
+    if (diagnosticsEnabled) {
+      metrics.simpleWaitlistsProcessingMs = roundPerfDuration(
+        simpleWaitlistsProcessingStartedAtMs,
+      );
+    }
+  } catch (error) {
+    if (diagnosticsEnabled) {
+      metrics.errorCount += 1;
+      metrics.errorName = error?.name || "Error";
+    }
+    throw error;
+  } finally {
+    finishPerfRun(perfRun, {
+      ...metrics,
+      mongoMs:
+        Math.round(
+          (metrics.expiredOffersQueryMs +
+            metrics.simpleWaitlistsQueryMs +
+            metrics.restaurantQueryMs +
+            metrics.deleteQueryMs) *
+            100,
+        ) / 100,
     });
   }
 }
@@ -4091,6 +4226,12 @@ async function captureReservationBankHold({ restaurantId, reservationId }) {
     throw new Error("Cette empreinte bancaire ne peut pas être capturée.");
   }
 
+  setPerfRequestMetrics({
+    bankHoldStatusBefore: String(reservation.bankHold?.status || ""),
+    bankHoldStatusTarget: "captured",
+    restaurantId: String(restaurantId),
+  });
+
   const paymentIntentId = String(
     reservation.bankHold?.paymentIntentId || "",
   ).trim();
@@ -4140,6 +4281,7 @@ async function captureReservationBankHold({ restaurantId, reservationId }) {
   reservation.bankHold.lastError = "";
 
   await reservation.save();
+  setPerfRequestMetrics({ bankHoldStatusAfter: "captured" });
 
   broadcastToRestaurant(String(reservation.restaurant_id), {
     type: "reservation_updated",
@@ -4176,6 +4318,12 @@ async function releaseReservationBankHold({ restaurantId, reservationId }) {
     throw new Error("Cette empreinte bancaire ne peut pas être libérée.");
   }
 
+  setPerfRequestMetrics({
+    bankHoldStatusBefore: String(reservation.bankHold?.status || ""),
+    bankHoldStatusTarget: "released",
+    restaurantId: String(restaurantId),
+  });
+
   const paymentIntentId = String(
     reservation.bankHold?.paymentIntentId || "",
   ).trim();
@@ -4200,6 +4348,7 @@ async function releaseReservationBankHold({ restaurantId, reservationId }) {
   reservation.bankHold.lastError = "";
 
   await reservation.save();
+  setPerfRequestMetrics({ bankHoldStatusAfter: "released" });
 
   broadcastToRestaurant(String(reservation.restaurant_id), {
     type: "reservation_updated",
@@ -5098,6 +5247,12 @@ router.post("/restaurants/:id/reservations/waitlist", async (req, res) => {
         finishedAt: null,
       });
 
+      setPerfRequestMetrics({
+        reservationStatusCreated: "Waitlist",
+        reservationMutationChannel: "public-waitlist",
+        restaurantId: String(restaurantId),
+      });
+
       broadcastToRestaurant(restaurantId, {
         type: "reservation_created",
         restaurantId,
@@ -5755,6 +5910,12 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
           customer: null,
         });
 
+        setPerfRequestMetrics({
+          reservationStatusCreated: computedStatus,
+          reservationMutationChannel: "public-create",
+          restaurantId: String(restaurantId),
+        });
+
         if (computedStatus === "Confirmed") {
           await syncCustomerOnFirstReservationConfirmation(newReservation);
         }
@@ -5891,6 +6052,12 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
 
         activatedAt: null,
         finishedAt: null,
+      });
+
+      setPerfRequestMetrics({
+        reservationStatusCreated: "AwaitingBankHold",
+        reservationMutationChannel: "public-create",
+        restaurantId: String(restaurantId),
       });
 
       try {
@@ -6127,6 +6294,12 @@ router.post(
             finishedAt: null,
           });
 
+          setPerfRequestMetrics({
+            reservationStatusCreated: "Confirmed",
+            reservationMutationChannel: "dashboard-create",
+            restaurantId: String(restaurantId),
+          });
+
           await syncCustomerOnFirstReservationConfirmation(newReservation);
 
           broadcastToRestaurant(restaurantId, {
@@ -6218,6 +6391,12 @@ router.post(
 
           activatedAt: null,
           finishedAt: null,
+        });
+
+        setPerfRequestMetrics({
+          reservationStatusCreated: "AwaitingBankHold",
+          reservationMutationChannel: "dashboard-create",
+          restaurantId: String(restaurantId),
         });
 
         try {
@@ -6600,6 +6779,12 @@ router.delete(
         return res.status(404).json({ message: "Reservation not found" });
       }
 
+      setPerfRequestMetrics({
+        reservationStatusBefore: String(reservation.status || ""),
+        reservationStatusTarget: "deleted",
+        restaurantId: String(restaurantId),
+      });
+
       if (
         String(reservation?.bankHold?.status || "") === "captured" &&
         String(reservation?.bankHold?.paymentIntentId || "").trim()
@@ -6641,7 +6826,11 @@ router.delete(
       }
 
       // delete reservation doc
-      await ReservationModel.findByIdAndDelete(reservationId);
+      const deletedReservation =
+        await ReservationModel.findByIdAndDelete(reservationId);
+      setPerfRequestMetrics({
+        reservationStatusAfter: deletedReservation ? "deleted" : "not-found",
+      });
 
       // ✅ SSE: suppression instantanée pour tous les devices
       broadcastToRestaurant(restaurantId, {
@@ -6675,6 +6864,8 @@ router.delete(
 --------------------------------------------------------- */
 router.get("/public/restaurants/:id/reservations", async (req, res) => {
   const restaurantId = req.params.id;
+  const diagnosticsEnabled = isPerfDiagnosticsEnabled();
+  const handlerStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
   const excludeReservationId = String(
     req.query?.excludeReservationId || "",
   ).trim();
@@ -6683,8 +6874,12 @@ router.get("/public/restaurants/:id/reservations", async (req, res) => {
     if (excludeReservationId) {
       assertReservationManageToken(req, excludeReservationId);
     }
+    const restaurantLookupStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
     const restaurant =
       await RestaurantModel.findById(restaurantId).select("_id");
+    const restaurantLookupMs = diagnosticsEnabled
+      ? roundPerfDuration(restaurantLookupStartedAtMs)
+      : null;
 
     if (!restaurant) {
       return res.status(404).json({ message: "Restaurant not found" });
@@ -6696,21 +6891,101 @@ router.get("/public/restaurants/:id/reservations", async (req, res) => {
       lean: true,
     });
 
+    const availabilityFilterStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
     const availabilityReservations = excludeReservationId
       ? reservations.filter(
           (reservation) =>
             String(reservation?._id || "") !== excludeReservationId,
         )
       : reservations;
+    const availabilityFilterMs = diagnosticsEnabled
+      ? roundPerfDuration(availabilityFilterStartedAtMs)
+      : null;
 
-    return res.status(200).json({
-      reservations: availabilityReservations.map(
-        sanitizePublicReservationAvailability,
-      ),
-      slotCoverUsage: buildSlotCoverUsageFromReservations(reservations, {
-        excludeReservationId,
-      }),
+    const sanitationStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
+    const sanitizedReservations = availabilityReservations.map(
+      sanitizePublicReservationAvailability,
+    );
+    const sanitationMs = diagnosticsEnabled
+      ? roundPerfDuration(sanitationStartedAtMs)
+      : null;
+
+    const slotDiagnostics = diagnosticsEnabled
+      ? { blockingReservationCount: 0, slotUsageReservationCount: 0 }
+      : null;
+    const slotCoverUsageStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
+    const slotCoverUsage = buildSlotCoverUsageFromReservations(reservations, {
+      excludeReservationId,
+      diagnostics: slotDiagnostics,
     });
+    const slotCoverUsageMs = diagnosticsEnabled
+      ? roundPerfDuration(slotCoverUsageStartedAtMs)
+      : null;
+
+    if (diagnosticsEnabled) {
+      setPerfRequestMetrics({
+        restaurantLookupMs,
+        availabilityFilterMs,
+        sanitationMs,
+        slotCoverUsageMs,
+        publicReservationCount: reservations.length,
+        publicAvailabilityCount: sanitizedReservations.length,
+        publicBlockingReservationCount:
+          slotDiagnostics.blockingReservationCount,
+        publicSlotUsageReservationCount:
+          slotDiagnostics.slotUsageReservationCount,
+        publicSlotCount: slotCoverUsage.length,
+      });
+    }
+
+    const response = res.status(200).json({
+      reservations: sanitizedReservations,
+      slotCoverUsage,
+    });
+
+    if (diagnosticsEnabled) {
+      const context = getPerfRequestContext();
+      const handlerMs = roundPerfDuration(handlerStartedAtMs);
+      if (
+        shouldLogPerfDetail("publicReservations", {
+          durationMs: handlerMs,
+          normalLimit: 10,
+        })
+      ) {
+        perfLog("PUBLIC", {
+          event: "reservation-list",
+          requestId: getPerfRequestId(),
+          route: "publicReservations",
+          restaurantId: String(restaurantId),
+          userAgentCategory: categorizeUserAgent(req.get("user-agent")),
+          restaurantLookupMs,
+          reservationsMongoMs: context?.metrics?.reservationsMongoMs || 0,
+          totalMongoMs:
+            Math.round(
+              ((context?.metrics?.reservationsMongoMs || 0) +
+                restaurantLookupMs) *
+                100,
+            ) / 100,
+          reservationCount: reservations.length,
+          firstDate: context?.metrics?.reservationsFirstDate || null,
+          lastDate: context?.metrics?.reservationsLastDate || null,
+          statusDistinctCount:
+            context?.metrics?.reservationsStatusDistinctCount || 0,
+          availabilityCount: sanitizedReservations.length,
+          blockingReservationCount: slotDiagnostics.blockingReservationCount,
+          slotUsageReservationCount: slotDiagnostics.slotUsageReservationCount,
+          availabilityFilterMs,
+          sanitationMs,
+          slotCoverUsageMs,
+          slotCount: slotCoverUsage.length,
+          resJsonSyncMs: context?.metrics?.resJsonSyncMs || null,
+          responseBytes: Number(res.getHeader("Content-Length")) || null,
+          handlerMs,
+        });
+      }
+    }
+
+    return response;
   } catch (error) {
     const knownError = buildReservationRouteErrorResponse(
       error,
@@ -6733,10 +7008,16 @@ router.get(
   authenticateToken,
   async (req, res) => {
     const restaurantId = req.params.id;
+    const diagnosticsEnabled = isPerfDiagnosticsEnabled();
+    const handlerStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
 
     try {
+      const restaurantLookupStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
       const restaurant =
         await RestaurantModel.findById(restaurantId).select("_id");
+      const restaurantLookupMs = diagnosticsEnabled
+        ? roundPerfDuration(restaurantLookupStartedAtMs)
+        : null;
 
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found" });
@@ -6746,7 +7027,53 @@ router.get(
         lean: true,
       });
 
-      return res.status(200).json({ reservations });
+      if (diagnosticsEnabled) {
+        setPerfRequestMetrics({ restaurantLookupMs });
+      }
+
+      const response = res.status(200).json({ reservations });
+
+      if (diagnosticsEnabled) {
+        const context = getPerfRequestContext();
+        const handlerMs = roundPerfDuration(handlerStartedAtMs);
+        if (
+          shouldLogPerfDetail("managerReservations", {
+            durationMs: handlerMs,
+            normalLimit: 30,
+          })
+        ) {
+          perfLog("RESERVATIONS", {
+            event: "manager-list-http",
+            requestId: getPerfRequestId(),
+            route: "managerReservations",
+            restaurantId: String(restaurantId),
+            restaurantLookupMs,
+            reservationsMongoMs: context?.metrics?.reservationsMongoMs || 0,
+            totalMongoMs:
+              Math.round(
+                ((context?.metrics?.reservationsMongoMs || 0) +
+                  restaurantLookupMs) *
+                  100,
+              ) / 100,
+            reservationCount: reservations.length,
+            firstDate: context?.metrics?.reservationsFirstDate || null,
+            lastDate: context?.metrics?.reservationsLastDate || null,
+            statusDistinctCount:
+              context?.metrics?.reservationsStatusDistinctCount || 0,
+            customerUniqueCount: context?.metrics?.customerUniqueCount || 0,
+            customerQueryMs: context?.metrics?.customerQueryMs || 0,
+            customerCount: context?.metrics?.customerCount || 0,
+            normalizationMs: context?.metrics?.reservationsNormalizationMs || 0,
+            enrichmentMs: context?.metrics?.reservationsEnrichmentMs || 0,
+            processingMs: context?.metrics?.reservationsProcessingMs || 0,
+            resJsonSyncMs: context?.metrics?.resJsonSyncMs || null,
+            responseBytes: Number(res.getHeader("Content-Length")) || null,
+            handlerMs,
+          });
+        }
+      }
+
+      return response;
     } catch (error) {
       console.error("Error fetching reservations:", error);
       return res.status(500).json({ message: "Internal server error" });
