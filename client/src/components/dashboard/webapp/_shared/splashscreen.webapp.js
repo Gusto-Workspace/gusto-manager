@@ -142,19 +142,43 @@ export default function SplashScreenWebAppComponent({
         }
       }}
       style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 9999,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        boxSizing: "border-box",
+        width: "100vw",
+        height: "100dvh",
+        paddingTop: "env(safe-area-inset-top)",
+        paddingBottom: "env(safe-area-inset-bottom)",
+        overscrollBehavior: "none",
         backgroundColor: "#131E36",
         opacity: fadeOut ? 0 : 1,
         pointerEvents: fadeOut ? "none" : "auto",
         touchAction: "none",
       }}
     >
-      <div className="animate-gm-splash-scale -mt-24">
+      <div
+        className="animate-gm-splash-scale"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: 150,
+          height: 150,
+          marginTop: "-6rem",
+          transformOrigin: "center",
+        }}
+      >
         <Image
           src="/img/logo-blanc.png"
           alt="App logo"
           width={150}
           height={150}
           priority
+          style={{ display: "block" }}
         />
       </div>
     </div>
