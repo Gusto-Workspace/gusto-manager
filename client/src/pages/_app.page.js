@@ -23,6 +23,24 @@ import {
 } from "@/_assets/utils/dashboard-access";
 import { startFrontendPerfDiagnostics } from "@/_assets/utils/perf-diagnostics.client";
 
+const RESERVATIONS_IPAD_STARTUP_SCREENS = [
+  [768, 1024, 1536, 2048],
+  [810, 1080, 1620, 2160],
+  [820, 1180, 1640, 2360],
+  [834, 1112, 1668, 2224],
+  [834, 1194, 1668, 2388],
+  [1024, 1366, 2048, 2732],
+].flatMap(([deviceWidth, deviceHeight, imageWidth, imageHeight]) => [
+  {
+    href: `/icons/ios/startup/reservations-${imageWidth}x${imageHeight}.png`,
+    media: `screen and (device-width: ${deviceWidth}px) and (device-height: ${deviceHeight}px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)`,
+  },
+  {
+    href: `/icons/ios/startup/reservations-${imageHeight}x${imageWidth}.png`,
+    media: `screen and (device-width: ${deviceWidth}px) and (device-height: ${deviceHeight}px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)`,
+  },
+]);
+
 function ensureAxiosApiAuthInterceptor() {
   if (typeof window === "undefined") return;
   if (window.__gustoApiAuthInterceptorId != null) return;
@@ -227,6 +245,9 @@ function EmployeeDashboardAccessGuard({ children }) {
 
 function App({ Component, pageProps }) {
   const router = useRouter();
+  const isReservationsWebapp = (router.pathname || "").startsWith(
+    "/dashboard/webapp/reservations",
+  );
 
   useEffect(() => startFrontendPerfDiagnostics(), []);
 
@@ -357,6 +378,17 @@ function App({ Component, pageProps }) {
       <Head>
         {/* ✅ Android/Chrome : manifest par module */}
         <link rel="manifest" href={manifestHref} />
+
+        {isReservationsWebapp
+          ? RESERVATIONS_IPAD_STARTUP_SCREENS.map(({ href, media }) => (
+              <link
+                key={href}
+                rel="apple-touch-startup-image"
+                href={href}
+                media={media}
+              />
+            ))
+          : null}
 
         {/* (optionnel) utile pour l'UI navigateur Android */}
         <meta name="theme-color" content="#131E36" />

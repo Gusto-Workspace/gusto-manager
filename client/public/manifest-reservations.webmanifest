@@ -6,7 +6,7 @@
   "scope": "/dashboard/webapp/reservations",
   "display": "standalone",
   "display_override": ["standalone"],
-  "background_color": "#ffffff",
+  "background_color": "#131E36",
   "theme_color": "#131E36",
   "icons": [
     {

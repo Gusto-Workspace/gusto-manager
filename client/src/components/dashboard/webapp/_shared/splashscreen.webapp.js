@@ -164,7 +164,7 @@ export default function SplashScreenWebAppComponent({
       }}
     >
       <div
-        className="animate-fade-in"
+        className="animate-gm-splash-scale"
         style={{
           width: 150,
           height: 199,
