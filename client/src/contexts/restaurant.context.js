@@ -9,19 +9,10 @@ import { jwtDecode } from "jwt-decode";
 
 import {
   beginFrontendLoad,
-  completeFrontendAutomationMutation,
-  finishFrontendAutomationScan,
   markFrontendDataLoadingFalse,
   markFrontendLoadPhase,
   measureFrontendRequest,
-  recordFrontendAutomationCandidate,
-  recordFrontendAutomationError,
-  recordFrontendAutomationMutation,
-  recordFrontendAutomationRefetch,
-  startFrontendAutomationRun,
 } from "@/_assets/utils/perf-diagnostics.client";
-
-const DEFAULT_RESERVATION_DELETION_MINUTES = 6 * 30 * 24 * 60;
 
 const EMPTY_UNREAD_BY_MODULE = {
   reservations: 0,
@@ -61,19 +52,61 @@ function mergeRealtimeReservation(prevReservation, nextReservation) {
   };
 }
 
+function padReservationDatePart(value) {
+  return String(value).padStart(2, "0");
+}
+
+function toReservationDateKey(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+
+  return `${date.getFullYear()}-${padReservationDatePart(
+    date.getMonth() + 1,
+  )}-${padReservationDatePart(date.getDate())}`;
+}
+
+function getReservationMonthRange(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const fromDate = new Date(date.getFullYear(), date.getMonth(), 1);
+  const toDate = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+  return {
+    from: toReservationDateKey(fromDate),
+    to: toReservationDateKey(toDate),
+  };
+}
+
+function getReservationDateKeyFromPayload(reservation) {
+  const raw = reservation?.reservationDate;
+  if (typeof raw === "string" && /^\d{4}-\d{2}-\d{2}/.test(raw)) {
+    return raw.slice(0, 10);
+  }
+  return toReservationDateKey(raw);
+}
+
+function isReservationInRange(reservation, from, to) {
+  const dateKey = getReservationDateKeyFromPayload(reservation);
+  return Boolean(dateKey && dateKey >= from && dateKey <= to);
+}
+
+function getRestaurantReadParams(pathname = "") {
+  return String(pathname).startsWith("/dashboard/webapp/reservations")
+    ? { scope: "reservations" }
+    : undefined;
+}
+
 export default function RestaurantContext() {
   const router = useRouter();
 
   const [restaurantData, setRestaurantData] = useState(null);
   const [reservationsList, setReservationsList] = useState([]);
+  const [reservationsLoading, setReservationsLoading] = useState(false);
   const [userConnected, setUserConnected] = useState(null);
   const [restaurantsList, setRestaurantsList] = useState([]);
   const [dataLoading, setDataLoading] = useState(true);
   const [closeEditing, setCloseEditing] = useState(false);
   const [isAuth, setIsAuth] = useState(false);
-
-  const [autoDeletingReservations, setAutoDeletingReservations] = useState([]);
-  const [autoUpdatingReservations, setAutoUpdatingReservations] = useState([]);
 
   const [unreadCounts, setUnreadCounts] = useState({
     total: 0,
@@ -103,10 +136,21 @@ export default function RestaurantContext() {
   const sseRef = useRef(null);
   const currentPathRef = useRef("");
   const customersCacheRef = useRef(new Map());
+  const reservationPeriodsCacheRef = useRef(new Map());
+  const reservationPeriodRequestsRef = useRef(new Map());
+  const reservationMutationOverridesRef = useRef(new Map());
+  const activeReservationPeriodRef = useRef(null);
+  const currentRestaurantIdRef = useRef(null);
 
   useEffect(() => {
     currentPathRef.current = router.pathname || "";
   }, [router.pathname]);
+
+  useEffect(() => {
+    currentRestaurantIdRef.current = restaurantData?._id
+      ? String(restaurantData._id)
+      : null;
+  }, [restaurantData?._id]);
 
   // ---------------------------
   // Notifications helpers (NEW)
@@ -323,16 +367,24 @@ export default function RestaurantContext() {
     [restaurantData?._id],
   );
 
-  const fetchReservationsList = useCallback(
-    async (tokenOverride = null, restaurantId = null, diagnostics = {}) => {
+  const loadReservationPeriod = useCallback(
+    async ({
+      tokenOverride = null,
+      restaurantId = null,
+      from,
+      to,
+      diagnostics = {},
+      force = false,
+      activate = true,
+    } = {}) => {
       const { reason, loadId } = normalizePerfContext(diagnostics);
       const token =
         tokenOverride ||
         (typeof window !== "undefined" ? localStorage.getItem("token") : null);
       const rid = restaurantId || restaurantData?._id;
 
-      if (!token || !rid) {
-        setReservationsList([]);
+      if (!token || !rid || !from || !to) {
+        if (activate) setReservationsList([]);
         markFrontendLoadPhase(loadId, "reservations_skipped", {
           reason,
           restaurantId: rid ? String(rid) : null,
@@ -340,84 +392,259 @@ export default function RestaurantContext() {
         return [];
       }
 
+      const period = {
+        restaurantId: String(rid),
+        from: String(from),
+        to: String(to),
+      };
+      const canActivate = () =>
+        !currentRestaurantIdRef.current ||
+        currentRestaurantIdRef.current === period.restaurantId;
+      const isActivePeriod = () => {
+        const active = activeReservationPeriodRef.current;
+        return (
+          active?.restaurantId === period.restaurantId &&
+          active?.from === period.from &&
+          active?.to === period.to
+        );
+      };
+      const cacheKey = `${period.restaurantId}:${period.from}:${period.to}`;
+      const cached = reservationPeriodsCacheRef.current.get(cacheKey);
+
+      if (activate && canActivate()) {
+        activeReservationPeriodRef.current = period;
+      }
+
+      if (!force && cached) {
+        if (activate && canActivate() && isActivePeriod()) {
+          setReservationsList(cached.reservations);
+        }
+        return cached.reservations;
+      }
+
+      const inFlight = reservationPeriodRequestsRef.current.get(cacheKey);
+      if (!force && inFlight) {
+        const reservations = await inFlight;
+        if (activate && reservations && canActivate() && isActivePeriod()) {
+          setReservationsList(reservations);
+        }
+        return reservations;
+      }
+
       const requestUrl = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${rid}/reservations`;
       markFrontendLoadPhase(loadId, "reservations_start", {
         reason,
         restaurantId: String(rid),
+        from: period.from,
+        to: period.to,
       });
 
-      try {
-        const { data } = await measureFrontendRequest({
-          name: "manager_reservations",
-          kind: "reservations",
-          requestUrl,
-          loadId,
-          reason,
-          restaurantId: String(rid),
-          request: () =>
-            axios.get(requestUrl, {
-              headers: { Authorization: `Bearer ${token}` },
-            }),
-        });
+      if (activate) setReservationsLoading(true);
 
-        const reservations = Array.isArray(data?.reservations)
-          ? data.reservations
-          : [];
+      const requestPromise = (async () => {
+        try {
+          const { data } = await measureFrontendRequest({
+            name: "manager_reservations",
+            kind: "reservations",
+            requestUrl,
+            loadId,
+            reason,
+            restaurantId: String(rid),
+            request: () =>
+              axios.get(requestUrl, {
+                headers: { Authorization: `Bearer ${token}` },
+                params: { from: period.from, to: period.to },
+              }),
+          });
 
+          let reservations = Array.isArray(data?.reservations)
+            ? data.reservations
+            : [];
+
+          reservationMutationOverridesRef.current.forEach(
+            (override, reservationId) => {
+              reservations = reservations.filter(
+                (item) => String(item?._id) !== reservationId,
+              );
+              if (
+                override &&
+                isReservationInRange(override, period.from, period.to)
+              ) {
+                reservations.unshift(override);
+              }
+            },
+          );
+
+          reservationPeriodsCacheRef.current.set(cacheKey, {
+            ...period,
+            reservations,
+          });
+          markFrontendLoadPhase(loadId, "reservations_end", {
+            reason,
+            restaurantId: String(rid),
+            from: period.from,
+            to: period.to,
+            reservationCount: reservations.length,
+          });
+          return reservations;
+        } catch (e) {
+          markFrontendLoadPhase(loadId, "reservations_error", {
+            reason,
+            restaurantId: String(rid),
+            status: e?.response?.status ?? null,
+          });
+          console.warn("Failed to fetch reservations list", e);
+          return null;
+        } finally {
+          reservationPeriodRequestsRef.current.delete(cacheKey);
+          if (activate && isActivePeriod()) setReservationsLoading(false);
+        }
+      })();
+
+      reservationPeriodRequestsRef.current.set(cacheKey, requestPromise);
+      const reservations = await requestPromise;
+      if (activate && reservations && canActivate() && isActivePeriod()) {
         setReservationsList(reservations);
-        markFrontendLoadPhase(loadId, "reservations_end", {
-          reason,
-          restaurantId: String(rid),
-          reservationCount: reservations.length,
-        });
-        return reservations;
-      } catch (e) {
-        markFrontendLoadPhase(loadId, "reservations_error", {
-          reason,
-          restaurantId: String(rid),
-          status: e?.response?.status ?? null,
-        });
-        console.warn("Failed to fetch reservations list", e);
-        return null;
       }
+      return reservations;
     },
     [restaurantData?._id],
   );
 
-  const refreshReservationsList = useCallback(
-    async (
-      restaurantId = null,
-      tokenOverride = null,
-      diagnostics = "manual",
-    ) => {
-      const reservations = await fetchReservationsList(
-        tokenOverride,
-        restaurantId,
-        diagnostics,
-      );
+  const ensureReservationsMonth = useCallback(
+    async (date = new Date(), options = {}) => {
+      const range = getReservationMonthRange(date);
+      if (!range) return null;
 
-      if (reservations) customersCacheRef.current.clear();
-      return reservations;
-    },
-    [fetchReservationsList],
-  );
+      const reservations = await loadReservationPeriod({
+        ...options,
+        restaurantId: options.restaurantId || restaurantData?._id,
+        ...range,
+        diagnostics: options.diagnostics || "manual",
+      });
 
-  const syncRestaurantReservations = useCallback(
-    async (restaurant, tokenOverride = null, diagnostics = {}) => {
-      const rid = restaurant?._id ? String(restaurant._id) : null;
-      const hasReservationsModule = restaurant?.options?.reservations === true;
+      if (reservations && options.prefetchAdjacent !== false) {
+        const sourceDate = date instanceof Date ? date : new Date(date);
+        const adjacentDates = [
+          new Date(sourceDate.getFullYear(), sourceDate.getMonth() - 1, 1),
+          new Date(sourceDate.getFullYear(), sourceDate.getMonth() + 1, 1),
+        ];
 
-      if (!rid || !hasReservationsModule) {
-        setReservationsList([]);
-        return [];
+        window.setTimeout(() => {
+          adjacentDates.forEach((adjacentDate) => {
+            const adjacentRange = getReservationMonthRange(adjacentDate);
+            loadReservationPeriod({
+              ...options,
+              restaurantId: options.restaurantId || restaurantData?._id,
+              ...adjacentRange,
+              diagnostics: "prefetch",
+              activate: false,
+              force: false,
+            });
+          });
+        }, 0);
       }
 
-      return (
-        (await fetchReservationsList(tokenOverride, rid, diagnostics)) || []
-      );
+      return reservations;
     },
-    [fetchReservationsList],
+    [loadReservationPeriod, restaurantData?._id],
   );
+
+  const ensureReservationsDay = useCallback(
+    async (date = new Date(), options = {}) => {
+      const dateKey = toReservationDateKey(date);
+      if (!dateKey) return null;
+      const restaurantId = String(
+        options.restaurantId || restaurantData?._id || "",
+      );
+      const coveringPeriod = Array.from(
+        reservationPeriodsCacheRef.current.values(),
+      ).find(
+        (entry) =>
+          entry.restaurantId === restaurantId &&
+          entry.from <= dateKey &&
+          entry.to >= dateKey,
+      );
+
+      return loadReservationPeriod({
+        ...options,
+        restaurantId,
+        from: coveringPeriod?.from || dateKey,
+        to: coveringPeriod?.to || dateKey,
+        diagnostics: options.diagnostics || "manual",
+      });
+    },
+    [loadReservationPeriod, restaurantData?._id],
+  );
+
+  const applyReservationUpdate = useCallback((reservation) => {
+    if (!reservation?._id) return;
+    const reservationId = String(reservation._id);
+    reservationMutationOverridesRef.current.set(reservationId, reservation);
+    if (reservationMutationOverridesRef.current.size > 500) {
+      const oldestKey = reservationMutationOverridesRef.current
+        .keys()
+        .next().value;
+      reservationMutationOverridesRef.current.delete(oldestKey);
+    }
+
+    reservationPeriodsCacheRef.current.forEach((entry, key) => {
+      const withoutReservation = (entry.reservations || []).filter(
+        (item) => String(item?._id) !== reservationId,
+      );
+      const nextReservations = isReservationInRange(
+        reservation,
+        entry.from,
+        entry.to,
+      )
+        ? [reservation, ...withoutReservation]
+        : withoutReservation;
+
+      reservationPeriodsCacheRef.current.set(key, {
+        ...entry,
+        reservations: nextReservations,
+      });
+    });
+
+    const activePeriod = activeReservationPeriodRef.current;
+    if (!activePeriod) return;
+    setReservationsList((current) => {
+      const list = Array.isArray(current) ? current : [];
+      const previous = list.find((item) => String(item?._id) === reservationId);
+      const withoutReservation = list.filter(
+        (item) => String(item?._id) !== reservationId,
+      );
+      if (
+        !isReservationInRange(reservation, activePeriod.from, activePeriod.to)
+      ) {
+        return withoutReservation;
+      }
+      return [
+        mergeRealtimeReservation(previous, reservation),
+        ...withoutReservation,
+      ];
+    });
+  }, []);
+
+  const removeReservationFromCache = useCallback((reservationId) => {
+    const id = String(reservationId || "");
+    if (!id) return;
+    reservationMutationOverridesRef.current.set(id, null);
+
+    reservationPeriodsCacheRef.current.forEach((entry, key) => {
+      reservationPeriodsCacheRef.current.set(key, {
+        ...entry,
+        reservations: (entry.reservations || []).filter(
+          (item) => String(item?._id) !== id,
+        ),
+      });
+    });
+    setReservationsList((current) =>
+      (Array.isArray(current) ? current : []).filter(
+        (item) => String(item?._id) !== id,
+      ),
+    );
+  }, []);
 
   const reconnectRealtime = useCallback(() => {
     if (sseRef.current) {
@@ -489,7 +716,9 @@ export default function RestaurantContext() {
                   return employee;
                 }
 
-                const currentLeaveRequests = Array.isArray(employee.leaveRequests)
+                const currentLeaveRequests = Array.isArray(
+                  employee.leaveRequests,
+                )
                   ? employee.leaveRequests
                   : [];
                 const hasLeaveRequest = currentLeaveRequests.some(
@@ -605,46 +834,21 @@ export default function RestaurantContext() {
           const r = payload.reservation;
 
           customersCacheRef.current.clear();
-
-          setReservationsList((prev) => {
-            const list = Array.isArray(prev) ? prev : [];
-            const exists = list.some((x) => String(x?._id) === String(r._id));
-            if (exists) {
-              return list.map((x) =>
-                String(x?._id) === String(r._id)
-                  ? mergeRealtimeReservation(x, r)
-                  : x,
-              );
-            }
-            return [r, ...list];
-          });
+          applyReservationUpdate(r);
         }
 
         if (payload.type === "reservation_updated" && payload.reservation) {
           const r = payload.reservation;
 
           customersCacheRef.current.clear();
-
-          setReservationsList((prev) => {
-            const list = Array.isArray(prev) ? prev : [];
-            const id = String(r._id);
-            const nextList = list.map((x) =>
-              String(x._id) === id ? mergeRealtimeReservation(x, r) : x,
-            );
-            return nextList;
-          });
+          applyReservationUpdate(r);
         }
 
         if (payload.type === "reservation_deleted" && payload.reservationId) {
           const deletedId = String(payload.reservationId);
 
           customersCacheRef.current.clear();
-
-          setReservationsList((prev) =>
-            (Array.isArray(prev) ? prev : []).filter(
-              (x) => String(x?._id) !== deletedId,
-            ),
-          );
+          removeReservationFromCache(deletedId);
         }
 
         if (payload.type === "giftcard_purchased" && payload.purchase) {
@@ -714,7 +918,12 @@ export default function RestaurantContext() {
     es.onerror = () => {
       // le navigateur va réessayer automatiquement
     };
-  }, [restaurantData?._id, userConnected?.role]);
+  }, [
+    applyReservationUpdate,
+    removeReservationFromCache,
+    restaurantData?._id,
+    userConnected?.role,
+  ]);
 
   // --------------------------------------------------------
   // SSE: keep real-time injections + NEW notification events
@@ -879,6 +1088,12 @@ export default function RestaurantContext() {
     setRestaurantsList([]);
     setRestaurantData(null);
     setReservationsList([]);
+    setReservationsLoading(false);
+    reservationPeriodsCacheRef.current.clear();
+    reservationPeriodRequestsRef.current.clear();
+    reservationMutationOverridesRef.current.clear();
+    activeReservationPeriodRef.current = null;
+    currentRestaurantIdRef.current = null;
     setUserConnected(null);
     setNotifications([]);
     setNotificationsNextCursor(null);
@@ -969,6 +1184,7 @@ export default function RestaurantContext() {
           request: () =>
             axios.get(requestUrl, {
               headers: { Authorization: `Bearer ${token}` },
+              params: getRestaurantReadParams(currentPathRef.current),
             }),
         });
 
@@ -981,13 +1197,9 @@ export default function RestaurantContext() {
         });
         setRestaurantsList(restaurants || []);
         setRestaurantData(restaurant || null);
-        await syncRestaurantReservations(restaurant, token, {
-          reason,
-          loadId,
-        });
 
         if (restaurant?._id) {
-          await fetchUnreadCounts(token, rid, { reason, loadId });
+          fetchUnreadCounts(token, rid, { reason, loadId });
         } else {
           setUnreadCounts({
             total: 0,
@@ -1014,6 +1226,7 @@ export default function RestaurantContext() {
         request: () =>
           axios.get(requestUrl, {
             headers: { Authorization: `Bearer ${token}` },
+            params: getRestaurantReadParams(currentPathRef.current),
           }),
       });
 
@@ -1026,10 +1239,9 @@ export default function RestaurantContext() {
         role,
       });
       setRestaurantData(restaurant);
-      await syncRestaurantReservations(restaurant, token, { reason, loadId });
 
       if (role === "owner") {
-        await fetchUnreadCounts(token, rid, { reason, loadId });
+        fetchUnreadCounts(token, rid, { reason, loadId });
       } else {
         setUnreadCounts({
           total: 0,
@@ -1201,14 +1413,10 @@ export default function RestaurantContext() {
 
           setRestaurantsList(restaurants || []);
           setRestaurantData(restaurant || null);
-          await syncRestaurantReservations(restaurant, token, {
-            reason,
-            loadId,
-          });
 
           // ✅ notifications counts aussi pour employee
           if (restaurant?._id) {
-            await fetchUnreadCounts(token, rid, { reason, loadId });
+            fetchUnreadCounts(token, rid, { reason, loadId });
           } else {
             setUnreadCounts({
               total: 0,
@@ -1285,6 +1493,12 @@ export default function RestaurantContext() {
     });
     setCloseEditing(true);
     customersCacheRef.current.clear();
+    reservationPeriodsCacheRef.current.clear();
+    reservationPeriodRequestsRef.current.clear();
+    reservationMutationOverridesRef.current.clear();
+    activeReservationPeriodRef.current = null;
+    currentRestaurantIdRef.current = String(restaurantId);
+    setReservationsLoading(false);
     setReservationsList([]);
 
     // ----- OWNER -----
@@ -1368,10 +1582,6 @@ export default function RestaurantContext() {
                 : String(restaurantId);
               setRestaurantsList(restaurants || []);
               setRestaurantData(restaurant || null);
-              await syncRestaurantReservations(restaurant, updatedToken, {
-                reason,
-                loadId,
-              });
 
               // ✅ reset drawer list
               setNotifications([]);
@@ -1387,7 +1597,7 @@ export default function RestaurantContext() {
 
               // ✅ refresh counts for new restaurant
               if (restaurant?._id) {
-                await fetchUnreadCounts(updatedToken, rid, {
+                fetchUnreadCounts(updatedToken, rid, {
                   reason,
                   loadId,
                 });
@@ -1496,6 +1706,7 @@ export default function RestaurantContext() {
           request: () =>
             axios.get(requestUrl, {
               headers: { Authorization: `Bearer ${token}` },
+              params: getRestaurantReadParams(currentPathRef.current),
             }),
         });
 
@@ -1506,10 +1717,6 @@ export default function RestaurantContext() {
           role,
         });
         setRestaurantData(restaurant);
-        await syncRestaurantReservations(restaurant, token, {
-          reason,
-          loadId,
-        });
 
         if (restaurant?._id) {
           await fetchUnreadCounts(token, String(restaurant._id), {
@@ -1554,10 +1761,6 @@ export default function RestaurantContext() {
         });
         setRestaurantsList(restaurants || []);
         setRestaurantData(restaurant || null);
-        await syncRestaurantReservations(restaurant, token, {
-          reason,
-          loadId,
-        });
 
         if (restaurant?._id) {
           await fetchUnreadCounts(token, String(restaurant._id), {
@@ -1612,232 +1815,6 @@ export default function RestaurantContext() {
     if (!hard) return;
   }
 
-  function getDeletionMinutes(parameters) {
-    const enabled = parameters?.deletion_duration === true;
-
-    // Si le switch est ON → on utilise la durée configurée
-    if (enabled) {
-      const n = Number(
-        parameters?.deletion_duration_minutes ||
-          DEFAULT_RESERVATION_DELETION_MINUTES,
-      );
-      return Number.isFinite(n) && n > 0
-        ? n
-        : DEFAULT_RESERVATION_DELETION_MINUTES;
-    }
-
-    // Si le switch est OFF → suppression auto avec le délai par défaut
-    return DEFAULT_RESERVATION_DELETION_MINUTES;
-  }
-
-  // ------------------------------------------------------------
-  // Auto reservation updates
-  // ------------------------------------------------------------
-  useEffect(() => {
-    if (!restaurantData) return;
-
-    const parameters = restaurantData?.reservationsSettings || {};
-    const deletionDurationMinutes = getDeletionMinutes(parameters);
-
-    const checkExpiredReservations = () => {
-      const now = new Date();
-      const reservations = reservationsList || [];
-      const automationRun = startFrontendAutomationRun({
-        type: "autoDelete",
-        restaurantId: restaurantData?._id ? String(restaurantData._id) : null,
-        reservationListLength: reservations.length,
-      });
-      const deletionBaseDateByStatus = {
-        Finished: "finishedAt",
-        Canceled: "canceledAt",
-        Rejected: "rejectedAt",
-        NoShow: "noShowAt",
-      };
-
-      reservations.forEach((reservation) => {
-        const dateField = deletionBaseDateByStatus[reservation.status];
-        if (!dateField) return;
-
-        const baseRaw = reservation?.[dateField];
-        const baseDate = baseRaw ? new Date(baseRaw) : null;
-        if (!baseDate || Number.isNaN(baseDate.getTime())) return;
-
-        const deletionThreshold = new Date(
-          baseDate.getTime() + deletionDurationMinutes * 60000,
-        );
-        if (now >= deletionThreshold) {
-          recordFrontendAutomationCandidate(automationRun);
-          autoDeleteReservation(reservation, automationRun);
-        }
-      });
-
-      finishFrontendAutomationScan(automationRun);
-    };
-
-    checkExpiredReservations();
-    const intervalId = setInterval(checkExpiredReservations, 30000);
-    return () => clearInterval(intervalId);
-  }, [
-    restaurantData?._id,
-    reservationsList,
-    restaurantData?.reservationsSettings?.deletion_duration,
-    restaurantData?.reservationsSettings?.deletion_duration_minutes,
-  ]);
-
-  function getServiceBucketFromTime(reservationTime) {
-    const [hh = "0"] = String(reservationTime || "00:00").split(":");
-    return Number(hh) < 16 ? "lunch" : "dinner";
-  }
-
-  function getOccupancyMinutesFromRestaurant(restaurantData, reservationTime) {
-    const p = restaurantData?.reservationsSettings || {};
-    const bucket = getServiceBucketFromTime(reservationTime);
-
-    const v =
-      bucket === "lunch"
-        ? p.table_occupancy_lunch_minutes
-        : p.table_occupancy_dinner_minutes;
-
-    const n = Number(v || 0);
-    return Number.isFinite(n) && n > 0 ? n : 0;
-  }
-
-  useEffect(() => {
-    if (!restaurantData) return;
-    const autoFinishEnabled =
-      restaurantData?.reservationsSettings?.auto_finish_reservations;
-    if (!autoFinishEnabled) return;
-
-    const checkAutoFinishReservations = () => {
-      const now = new Date();
-      const reservations = reservationsList || [];
-      const automationRun = startFrontendAutomationRun({
-        type: "autoFinish",
-        restaurantId: restaurantData?._id ? String(restaurantData._id) : null,
-        reservationListLength: reservations.length,
-      });
-
-      reservations.forEach((reservation) => {
-        const canAutoFinish = ["Confirmed", "Active", "Late"].includes(
-          reservation.status,
-        );
-
-        if (!canAutoFinish) return;
-
-        const minutes = getOccupancyMinutesFromRestaurant(
-          restaurantData,
-          reservation.reservationTime,
-        );
-
-        // sécurité : si pas de durée définie, on ne fait rien
-        if (!minutes) return;
-
-        const reservationStart = new Date(reservation.reservationDate);
-        const [hours, mins] = String(
-          reservation.reservationTime || "00:00",
-        ).split(":");
-        reservationStart.setHours(
-          parseInt(hours, 10),
-          parseInt(mins, 10),
-          0,
-          0,
-        );
-
-        const finishThreshold = new Date(
-          reservationStart.getTime() + minutes * 60000,
-        );
-
-        if (now >= finishThreshold) {
-          recordFrontendAutomationCandidate(automationRun);
-          autoUpdateToFinished(reservation, automationRun);
-        }
-      });
-
-      finishFrontendAutomationScan(automationRun);
-    };
-
-    checkAutoFinishReservations();
-    const intervalId = setInterval(checkAutoFinishReservations, 30000);
-    return () => clearInterval(intervalId);
-  }, [
-    restaurantData?._id,
-    reservationsList,
-    restaurantData?.reservationsSettings?.auto_finish_reservations,
-    restaurantData?.reservationsSettings?.table_occupancy_lunch_minutes,
-    restaurantData?.reservationsSettings?.table_occupancy_dinner_minutes,
-  ]);
-
-  function autoUpdateToFinished(reservation, automationRun = null) {
-    const id = String(reservation._id);
-
-    if (autoUpdatingReservations.includes(id)) return;
-    recordFrontendAutomationMutation(automationRun);
-    setAutoUpdatingReservations((prev) => [...prev, id]);
-    const token = localStorage.getItem("token");
-
-    axios
-      .put(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantData._id}/reservations/${reservation._id}/status`,
-        { status: "Finished" },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        },
-      )
-      .then(async (response) => {
-        const restaurant = response?.data?.restaurant || null;
-        if (restaurant) setRestaurantData(restaurant);
-        recordFrontendAutomationRefetch(automationRun);
-        await fetchReservationsList(token, restaurantData?._id, "timer");
-      })
-      .catch((error) => {
-        recordFrontendAutomationError(automationRun);
-        console.error("Error auto-updating reservation to Finished:", error);
-      })
-      .finally(() => {
-        setAutoUpdatingReservations((prev) => prev.filter((x) => x !== id));
-        completeFrontendAutomationMutation(automationRun);
-      });
-  }
-
-  function autoDeleteReservation(reservation, automationRun = null) {
-    const id = String(reservation._id);
-
-    if (autoDeletingReservations.includes(id)) return;
-    recordFrontendAutomationMutation(automationRun);
-    setAutoDeletingReservations((prev) => [...prev, id]);
-
-    const token = localStorage.getItem("token");
-
-    axios
-      .delete(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantData._id}/reservations/${reservation._id}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        },
-      )
-      .then(async (response) => {
-        const restaurant = response?.data?.restaurant || null;
-        if (restaurant) setRestaurantData(restaurant);
-        recordFrontendAutomationRefetch(automationRun);
-        await fetchReservationsList(token, restaurantData?._id, "timer");
-      })
-      .catch((error) => {
-        recordFrontendAutomationError(automationRun);
-        if (error?.response?.status === 404) return;
-        console.error("Error auto-deleting reservation:", error);
-      })
-      .finally(() => {
-        setAutoDeletingReservations((prev) => prev.filter((x) => x !== id)); // ✅
-        completeFrontendAutomationMutation(automationRun);
-      });
-  }
-
   function logout() {
     localStorage.removeItem("token");
 
@@ -1853,6 +1830,12 @@ export default function RestaurantContext() {
 
     setRestaurantData(null);
     setReservationsList([]);
+    setReservationsLoading(false);
+    reservationPeriodsCacheRef.current.clear();
+    reservationPeriodRequestsRef.current.clear();
+    reservationMutationOverridesRef.current.clear();
+    activeReservationPeriodRef.current = null;
+    currentRestaurantIdRef.current = null;
     setRestaurantsList([]);
     setNotifications([]);
     setNotificationsNextCursor(null);
@@ -1923,6 +1906,7 @@ export default function RestaurantContext() {
     setRestaurantData,
     reservationsList,
     setReservationsList,
+    reservationsLoading,
     userConnected,
     setUserConnected,
     restaurantsList,
@@ -1932,8 +1916,11 @@ export default function RestaurantContext() {
     handleRestaurantSelect,
     fetchRestaurantsList,
     fetchRestaurantData,
-    fetchReservationsList,
-    refreshReservationsList,
+    ensureReservationsMonth,
+    ensureReservationsDay,
+    loadReservationPeriod,
+    applyReservationUpdate,
+    removeReservationFromCache,
     logout,
     setCloseEditing,
     closeEditing,

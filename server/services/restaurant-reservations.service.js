@@ -16,6 +16,71 @@ const RESTAURANT_RESERVATIONS_SORT = {
   createdAt: 1,
 };
 
+const DATE_KEY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+function parseReservationDateKey(value) {
+  const match = DATE_KEY_PATTERN.exec(String(value || "").trim());
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return date;
+}
+
+function buildReservationDateRange({ from, to } = {}, { maxDays = 62 } = {}) {
+  const fromDate = parseReservationDateKey(from);
+  const toDate = parseReservationDateKey(to);
+
+  if (!fromDate || !toDate) {
+    const error = new Error(
+      "Les paramètres from et to sont requis au format yyyy-MM-dd.",
+    );
+    error.status = 400;
+    error.code = "INVALID_RESERVATION_DATE_RANGE";
+    throw error;
+  }
+
+  const rangeDays =
+    Math.floor((toDate.getTime() - fromDate.getTime()) / 86_400_000) + 1;
+  if (rangeDays < 1) {
+    const error = new Error("La date from doit précéder ou égaler la date to.");
+    error.status = 400;
+    error.code = "INVALID_RESERVATION_DATE_RANGE";
+    throw error;
+  }
+
+  if (rangeDays > maxDays) {
+    const error = new Error(
+      `La plage de réservations ne peut pas dépasser ${maxDays} jours.`,
+    );
+    error.status = 400;
+    error.code = "RESERVATION_DATE_RANGE_TOO_LARGE";
+    throw error;
+  }
+
+  const toExclusive = new Date(toDate);
+  toExclusive.setUTCDate(toExclusive.getUTCDate() + 1);
+
+  return {
+    from: String(from).trim(),
+    to: String(to).trim(),
+    fromDate,
+    toExclusive,
+    rangeDays,
+  };
+}
+
 function buildReservationCustomerName(reservation) {
   const firstName = String(reservation?.customerFirstName || "").trim();
   const lastName = String(reservation?.customerLastName || "").trim();
@@ -241,15 +306,37 @@ async function enrichReservationWithCustomerSummary(reservation) {
   return enriched || source;
 }
 
-function buildRestaurantReservationsQuery(restaurantId) {
-  return ReservationModel.find({
+function buildRestaurantReservationsQuery(
+  restaurantId,
+  { dateRange = null, statuses = null } = {},
+) {
+  const filter = {
     restaurant_id: restaurantId,
-  }).sort(RESTAURANT_RESERVATIONS_SORT);
+  };
+
+  if (dateRange) {
+    filter.reservationDate = {
+      $gte: dateRange.fromDate,
+      $lt: dateRange.toExclusive,
+    };
+  }
+
+  if (Array.isArray(statuses) && statuses.length) {
+    filter.status = { $in: statuses };
+  }
+
+  return ReservationModel.find(filter).sort(RESTAURANT_RESERVATIONS_SORT);
 }
 
 async function getRestaurantReservationsList(
   restaurantId,
-  { select = null, lean = true } = {},
+  {
+    select = null,
+    lean = true,
+    dateRange = null,
+    statuses = null,
+    enrichCustomers = true,
+  } = {},
 ) {
   const diagnosticsEnabled = isPerfDiagnosticsEnabled();
   const serviceStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
@@ -261,7 +348,10 @@ async function getRestaurantReservationsList(
         statusCounts: Object.create(null),
       }
     : null;
-  let query = buildRestaurantReservationsQuery(restaurantId);
+  let query = buildRestaurantReservationsQuery(restaurantId, {
+    dateRange,
+    statuses,
+  });
 
   if (select) {
     query = query.select(select);
@@ -337,10 +427,12 @@ async function getRestaurantReservationsList(
   }
 
   const enrichmentStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
-  const enrichedReservations = await enrichReservationsWithCustomerSummary(
-    normalizedReservations,
-    { restaurantId, diagnostics },
-  );
+  const enrichedReservations = enrichCustomers
+    ? await enrichReservationsWithCustomerSummary(normalizedReservations, {
+        restaurantId,
+        diagnostics,
+      })
+    : normalizedReservations;
   if (diagnosticsEnabled) {
     diagnostics.enrichmentMs = roundPerfDuration(enrichmentStartedAtMs);
     diagnostics.statusDistinctCount = Object.keys(
@@ -369,6 +461,8 @@ async function getRestaurantReservationsList(
       reservationsEnrichmentMs: diagnostics.enrichmentMs,
       reservationsProcessingMs: processingMs,
       reservationsServiceMs: totalServiceMs,
+      reservationsRangeFrom: dateRange?.from || null,
+      reservationsRangeTo: dateRange?.to || null,
     });
     const requestRoute = getPerfRequestContext()?.route || "reservationList";
     if (
@@ -382,6 +476,8 @@ async function getRestaurantReservationsList(
         requestId: getPerfRequestId(),
         requestRoute,
         restaurantId: String(restaurantId),
+        from: dateRange?.from || null,
+        to: dateRange?.to || null,
         mongoMs: diagnostics.mongoMs,
         reservationCount: diagnostics.reservationCount,
         firstDate: diagnostics.firstDate,
@@ -406,6 +502,7 @@ async function getRestaurantReservationsList(
 }
 
 module.exports = {
+  buildReservationDateRange,
   buildRestaurantReservationsQuery,
   enrichReservationWithCustomerSummary,
   enrichReservationsWithCustomerSummary,

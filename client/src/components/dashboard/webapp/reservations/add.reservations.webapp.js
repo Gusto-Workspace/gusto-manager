@@ -660,8 +660,7 @@ function getActiveSlotCoverLimitFront(
     : [];
   const dayIndex = getReservationDayIndexFront(reservationDate);
   const matchingTimeLimits = limits.filter(
-    (entry) =>
-      String(entry?.time || "").slice(0, 5) === time,
+    (entry) => String(entry?.time || "").slice(0, 5) === time,
   );
   const exactDayLimit =
     Number.isInteger(dayIndex) &&
@@ -731,7 +730,9 @@ function isSlotCoverCapacityAvailableFront({
       0,
     );
 
-  return usedCovers + Math.max(0, Number(numberOfGuests || 0)) <= limit.maxCovers;
+  return (
+    usedCovers + Math.max(0, Number(numberOfGuests || 0)) <= limit.maxCovers
+  );
 }
 
 export default function AddReservationComponent(props) {
@@ -827,6 +828,19 @@ export default function AddReservationComponent(props) {
       router.push("/dashboard/webapp/reservations");
     }
   };
+
+  useEffect(() => {
+    if (!props.restaurantData?._id || !reservationData.reservationDate) return;
+    props.ensureReservationsMonth?.(reservationData.reservationDate, {
+      restaurantId: props.restaurantData._id,
+      diagnostics: "reservation-form",
+      prefetchAdjacent: false,
+    });
+  }, [
+    props.ensureReservationsMonth,
+    props.restaurantData?._id,
+    reservationData.reservationDate,
+  ]);
 
   useEffect(() => {
     if (!props.reservation) return;
@@ -1422,15 +1436,9 @@ export default function AddReservationComponent(props) {
         );
       }
 
-      // ✅ backend peut renvoyer { restaurant, tableReassigned, tableChange: {oldTableName,newTableName} }
-      const { restaurant, tableReassigned, tableChange } = response.data || {};
+      const { reservation, tableReassigned, tableChange } = response.data || {};
 
-      if (restaurant) props.setRestaurantData(restaurant);
-      await props.refreshReservationsList?.(
-        props.restaurantData?._id,
-        null,
-        "mutation",
-      );
+      if (reservation) props.applyReservationUpdate?.(reservation);
 
       // ✅ MODALE: table réassignée
       if (tableReassigned) {

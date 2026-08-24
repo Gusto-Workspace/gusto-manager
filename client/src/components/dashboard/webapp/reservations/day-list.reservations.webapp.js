@@ -98,12 +98,15 @@ export default function DayListReservationsWebapp(props) {
           return; // ✅ drawer reste ouvert
         }
 
-        await axios.put(
+        const response = await axios.put(
           `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${rid}/reservations/${reservation._id}/status`,
           { status: "Confirmed" },
         );
+        if (response.data?.reservation) {
+          props.applyReservationUpdate?.(response.data.reservation);
+        }
 
-        // ✅ succès -> on peut fermer (SSE met à jour)
+        // ✅ succès -> réponse locale immédiate, SSE idempotent ensuite
         closeDetails();
         return;
       } catch (e) {

@@ -127,8 +127,12 @@ export default function WepAppReservationsPage(props) {
               restaurantData={restaurantContext.restaurantData}
               setRestaurantData={restaurantContext.setRestaurantData}
               reservations={restaurantContext.reservationsList}
-              refreshReservationsList={
-                restaurantContext.refreshReservationsList
+              ensureReservationsMonth={
+                restaurantContext.ensureReservationsMonth
+              }
+              applyReservationUpdate={restaurantContext.applyReservationUpdate}
+              removeReservationFromCache={
+                restaurantContext.removeReservationFromCache
               }
               markNotificationRead={restaurantContext.markNotificationRead}
             />
