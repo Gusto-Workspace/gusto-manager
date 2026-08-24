@@ -2,6 +2,9 @@ const cron = require("node-cron");
 const ReservationModel = require("../../models/reservation.model");
 const RestaurantModel = require("../../models/restaurant.model");
 const { sendReservationEmail } = require("../reservations-mailer.service");
+const {
+  createReservationManageToken,
+} = require("../reservation-manage-token.service");
 
 const LOCK_MAX_AGE_MS = 10 * 60 * 1000;
 const BATCH_SIZE = 50;
@@ -26,7 +29,9 @@ function buildReservationManageUrl({ website, reservationId }) {
   const id = String(reservationId || "").trim();
 
   if (!origin || !id) return "";
-  return `${origin}/reservations/${id}/manage`;
+  const token = createReservationManageToken(id);
+  if (!token) return "";
+  return `${origin}/reservations/${id}/manage?token=${encodeURIComponent(token)}`;
 }
 
 function looksDue(d) {

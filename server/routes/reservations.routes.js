@@ -32,6 +32,9 @@ const {
   sendRestaurantNewPublicReservationEmail,
   sanitizeReservationEmailTemplatesInput,
 } = require("../services/reservations-mailer.service");
+const {
+  verifyReservationManageToken,
+} = require("../services/reservation-manage-token.service");
 
 // SERVICE CUSTOMERS
 const {
@@ -1298,10 +1301,20 @@ function getActiveSlotCoverLimit(
   };
 }
 
-function buildSlotCoverUsageFromReservations(reservations = []) {
+function buildSlotCoverUsageFromReservations(
+  reservations = [],
+  { excludeReservationId = null } = {},
+) {
   const usageMap = new Map();
 
   (Array.isArray(reservations) ? reservations : []).forEach((reservation) => {
+    if (
+      excludeReservationId &&
+      String(reservation?._id || "") === String(excludeReservationId)
+    ) {
+      return;
+    }
+
     if (!isBlockingReservation(reservation)) return;
 
     const dateKey = normalizeReservationDateKey(reservation?.reservationDate);
@@ -1596,15 +1609,15 @@ function buildReminder24hFields({ status, reservationDate, reservationTime }) {
   };
 }
 
-function isDateTimeBlocked(parameters, candidateDT, occupancyMs = 0) {
+function isDateTimeBlocked(parameters, candidateDT) {
   if (!candidateDT) return false;
+  // Une pause ferme les nouveaux départs. La durée d'occupation est vérifiée
+  // séparément par le calcul de disponibilité des tables.
   const ranges = Array.isArray(parameters?.blocked_ranges)
     ? parameters.blocked_ranges
     : [];
   const candidateStart = new Date(candidateDT);
-  const candidateEnd = new Date(
-    candidateDT.getTime() + Math.max(1, Number(occupancyMs) || 0),
-  );
+  const candidateEnd = new Date(candidateDT.getTime() + 1);
 
   return ranges.some((r) => {
     const start = new Date(r.startAt).getTime();
@@ -1781,6 +1794,7 @@ function sanitizePublicReservationAvailability(reservation) {
   const table = reservation?.table
     ? {
         tableIds: normalizeTableIdList(reservation.table.tableIds),
+        name: String(reservation.table.name || "").trim(),
         seats: Number(reservation.table.seats || 0),
         source: String(reservation.table.source || "").trim() || null,
       }
@@ -1806,6 +1820,29 @@ function sanitizePublicReservationAvailability(reservation) {
         }
       : { state: null, offerExpiresAt: null },
   };
+}
+
+function getReservationManageTokenFromRequest(req) {
+  return String(
+    req?.query?.token || req?.headers?.["x-reservation-manage-token"] || "",
+  ).trim();
+}
+
+function assertReservationManageToken(req, reservationId) {
+  if (
+    verifyReservationManageToken(
+      getReservationManageTokenFromRequest(req),
+      reservationId,
+    )
+  ) {
+    return;
+  }
+
+  throw createReservationRouteError(
+    403,
+    "Ce lien de gestion est invalide ou incomplet.",
+    "INVALID_MANAGE_TOKEN",
+  );
 }
 
 async function fetchRestaurantFull(restaurantId) {
@@ -2013,8 +2050,33 @@ function buildPublicReservationManagement(reservation) {
 }
 
 function buildReservationPublicResponse(reservation) {
+  const source = reservation?.toObject
+    ? reservation.toObject({ virtuals: true })
+    : reservation || {};
+
   return {
-    reservation,
+    reservation: {
+      _id: source._id,
+      restaurant_id: source.restaurant_id,
+      customerFirstName: source.customerFirstName || "",
+      customerLastName: source.customerLastName || "",
+      customerName:
+        source.customerName ||
+        `${source.customerFirstName || ""} ${source.customerLastName || ""}`.trim(),
+      customerEmail: source.customerEmail || "",
+      customerPhone: source.customerPhone || "",
+      numberOfGuests: source.numberOfGuests,
+      reservationDate: source.reservationDate,
+      reservationTime: source.reservationTime,
+      commentary: source.commentary || "",
+      status: source.status,
+      bankHold: source.bankHold
+        ? {
+            enabled: Boolean(source.bankHold.enabled),
+            expiresAt: source.bankHold.expiresAt || null,
+          }
+        : { enabled: false, expiresAt: null },
+    },
     management: buildPublicReservationManagement(reservation),
   };
 }
@@ -2273,11 +2335,6 @@ async function updateReservationDetailsInternal({
     candidateGuests = slotValidation.guests;
   }
 
-  const candidateOccupancyMs = getReservationOccupancyMs(
-    parameters,
-    candidateTime,
-  );
-
   if (hasReservationDate) {
     nextUpdateData.reservationDate = candidateDate;
   }
@@ -2312,16 +2369,24 @@ async function updateReservationDetailsInternal({
     }
   }
 
-  if (touchesDateTime) {
+  if ((touchesDateTime || touchesGuests) && channel === "public") {
     const candidateDT = buildReservationDateTime(candidateDate, candidateTime);
 
-    if (isDateTimeBlocked(parameters, candidateDT, candidateOccupancyMs)) {
+    if (isDateTimeBlocked(parameters, candidateDT)) {
       throw createReservationRouteError(
         409,
         "Les réservations sont temporairement indisponibles sur ce créneau.",
         "SLOT_BLOCKED",
       );
     }
+  }
+
+  if (channel === "public") {
+    const autoAccept = Boolean(parameters.auto_accept);
+    nextUpdateData.status = autoAccept ? "Confirmed" : "Pending";
+    nextUpdateData.pendingExpiresAt = autoAccept
+      ? null
+      : computePendingExpiresAt(restaurantLean);
   }
 
   const statusExplicit = Object.prototype.hasOwnProperty.call(
@@ -2415,6 +2480,7 @@ async function updateReservationDetailsInternal({
         reservationTime: candidateTime,
         numberOfGuests: candidateGuests,
         reservationIdToExclude: reservationId,
+        channel,
         allowLargerSingleTables: allowLargerSingleTablesForManualSelection,
       });
       const availableOptions = availableConfig.options;
@@ -2426,7 +2492,7 @@ async function updateReservationDetailsInternal({
         currentTable: existing?.table,
         singleSeatSizes: availableConfig.singleSeatSizes,
         comboSeatSize: availableConfig.comboSeatSize,
-        channel: "dashboard",
+        channel,
         allowLargerSingleTables: !parameters.manage_disponibilities,
         minimumSingleSeats: availableConfig.minimumSingleSeats,
         maximumSingleSeats: availableConfig.maximumSingleSeats,
@@ -2588,10 +2654,26 @@ async function updateReservationDetailsInternal({
       throw createReservationRouteError(404, "Reservation not found");
     }
 
+    const previousStatus = String(existing.status || "");
+    const updatedStatus = String(updatedReservation.status || "");
+    if (previousStatus !== updatedStatus) {
+      if (updatedStatus === "Confirmed" && !updatedReservation.customer) {
+        await syncCustomerOnFirstReservationConfirmation(updatedReservation);
+      } else if (updatedReservation.customer) {
+        await onReservationStatusChanged(
+          updatedReservation.customer,
+          updatedReservation,
+          previousStatus,
+          updatedStatus,
+        );
+      }
+    }
+
     await broadcastReservationUpdated(restaurantId, updatedReservation);
 
     return {
       updatedReservation,
+      restaurant: restaurantLean,
       previousReservationSlot,
       tableReassigned,
       tableChange,
@@ -2704,19 +2786,6 @@ async function updateReservationStatusInternal({
     }
 
     if (willBlockSlot) {
-      const candidateDT = buildReservationDateTime(
-        normalizedDay,
-        normalizedTime,
-      );
-
-      if (isDateTimeBlocked(parameters, candidateDT, occupancyMs)) {
-        throw createReservationRouteError(
-          409,
-          "Le créneau n'est plus disponible.",
-          "SLOT_BLOCKED",
-        );
-      }
-
       const coverCapacity = await checkSlotCoverCapacity({
         restaurantId,
         parameters,
@@ -3347,9 +3416,8 @@ async function resolveWaitlistAssignableTable({
   }
 
   const candidateDT = buildReservationDateTime(normalizedDay, normalizedTime);
-  const occupancyMs = getReservationOccupancyMs(parameters, normalizedTime);
 
-  if (isDateTimeBlocked(parameters, candidateDT, occupancyMs)) {
+  if (isDateTimeBlocked(parameters, candidateDT)) {
     return { available: false, table: null, reason: "slot_blocked" };
   }
 
@@ -4916,7 +4984,7 @@ router.post("/restaurants/:id/reservations/waitlist", async (req, res) => {
       });
     }
 
-    if (isDateTimeBlocked(parameters, candidateDT, occupancyMs)) {
+    if (isDateTimeBlocked(parameters, candidateDT)) {
       return res.status(409).json({
         message:
           "Les réservations sont temporairement indisponibles sur ce créneau.",
@@ -5494,7 +5562,7 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
         numberOfGuests: normalizedGuests,
       });
 
-      if (isDateTimeBlocked(parameters, candidateDT, occupancyMs)) {
+      if (isDateTimeBlocked(parameters, candidateDT)) {
         return res.status(409).json({
           message:
             "Les réservations sont temporairement indisponibles sur ce créneau.",
@@ -5899,9 +5967,7 @@ router.post(
         normalizedDay,
         normalizedTime,
         guests: normalizedGuests,
-        candidateDT,
       } = slotValidation;
-      const occupancyMs = getReservationOccupancyMs(parameters, normalizedTime);
       let dayLock = null;
 
       try {
@@ -5928,13 +5994,6 @@ router.post(
               initialBankHoldStatus: "none",
               authorizationScheduledFor: null,
             };
-
-        if (isDateTimeBlocked(parameters, candidateDT, occupancyMs)) {
-          return res.status(409).json({
-            message:
-              "Les réservations sont temporairement indisponibles sur ce créneau.",
-          });
-        }
 
         const coverCapacity = await checkSlotCoverCapacity({
           restaurantId,
@@ -6345,6 +6404,14 @@ router.get("/reservations/:reservationId", async (req, res) => {
     }
     return res.status(200).json(buildReservationPublicResponse(reservation));
   } catch (error) {
+    const knownError = buildReservationRouteErrorResponse(
+      error,
+      "Impossible de retrouver cette réservation.",
+    );
+    if (knownError) {
+      return res.status(knownError.status).json(knownError.payload);
+    }
+
     console.error("Error fetching reservation:", error);
     return res.status(500).json({ message: "Internal server error" });
   }
@@ -6354,6 +6421,7 @@ router.put("/reservations/:reservationId", async (req, res) => {
   const { reservationId } = req.params;
 
   try {
+    assertReservationManageToken(req, reservationId);
     const updateData = sanitizePublicReservationUpdateData(req.body);
 
     if (Object.keys(updateData).length === 0) {
@@ -6381,8 +6449,32 @@ router.put("/reservations/:reservationId", async (req, res) => {
       result.previousReservationSlot,
     );
 
+    const updatedStatus = String(result.updatedReservation?.status || "");
+    const emailType = updatedStatus === "Pending" ? "pending" : "confirmed";
+    try {
+      const mailResult = await sendReservationEmail(emailType, {
+        reservation: result.updatedReservation,
+        restaurantName: result.restaurant?.name || "Restaurant",
+        restaurant: result.restaurant,
+      });
+      if (mailResult?.skipped) {
+        console.log("[reservation-email-skip]", `modified/${emailType}`, {
+          reservationId,
+          reason: mailResult.reason,
+        });
+      }
+    } catch (mailError) {
+      console.error(
+        "Email public reservation modification failed:",
+        mailError?.response?.body || mailError,
+      );
+    }
+
     return res.status(200).json({
-      message: "Votre réservation a bien été modifiée.",
+      message:
+        updatedStatus === "Pending"
+          ? "Votre demande de modification est en attente de confirmation."
+          : "Votre réservation a bien été modifiée.",
       ...buildReservationPublicResponse(result.updatedReservation),
     });
   } catch (error) {
@@ -6405,6 +6497,7 @@ router.post("/reservations/:reservationId/cancel", async (req, res) => {
   const { reservationId } = req.params;
 
   try {
+    assertReservationManageToken(req, reservationId);
     const existingReservation = await ReservationModel.findById(reservationId);
     if (!existingReservation) {
       return res.status(404).json({ message: "Reservation not found" });
@@ -6582,8 +6675,14 @@ router.delete(
 --------------------------------------------------------- */
 router.get("/public/restaurants/:id/reservations", async (req, res) => {
   const restaurantId = req.params.id;
+  const excludeReservationId = String(
+    req.query?.excludeReservationId || "",
+  ).trim();
 
   try {
+    if (excludeReservationId) {
+      assertReservationManageToken(req, excludeReservationId);
+    }
     const restaurant =
       await RestaurantModel.findById(restaurantId).select("_id");
 
@@ -6597,11 +6696,30 @@ router.get("/public/restaurants/:id/reservations", async (req, res) => {
       lean: true,
     });
 
+    const availabilityReservations = excludeReservationId
+      ? reservations.filter(
+          (reservation) =>
+            String(reservation?._id || "") !== excludeReservationId,
+        )
+      : reservations;
+
     return res.status(200).json({
-      reservations: reservations.map(sanitizePublicReservationAvailability),
-      slotCoverUsage: buildSlotCoverUsageFromReservations(reservations),
+      reservations: availabilityReservations.map(
+        sanitizePublicReservationAvailability,
+      ),
+      slotCoverUsage: buildSlotCoverUsageFromReservations(reservations, {
+        excludeReservationId,
+      }),
     });
   } catch (error) {
+    const knownError = buildReservationRouteErrorResponse(
+      error,
+      "Impossible de charger les disponibilités.",
+    );
+    if (knownError) {
+      return res.status(knownError.status).json(knownError.payload);
+    }
+
     console.error("Error fetching public reservations availability:", error);
     return res.status(500).json({ message: "Internal server error" });
   }

@@ -43,7 +43,7 @@ Nous vous confirmons que votre réservation pour {{guestCountLabel}} a bien ét�
 
 Nous vous remercions de votre confiance et nous nous réjouissons de vous accueillir chez {{restaurantName}}.
 
-Pour toute question ou modification, n'hésitez pas à nous contacter.
+Pour toute question ou demande particulière, n'hésitez pas à nous contacter.
 
 Cordialement,
 L'équipe de {{restaurantName}}`,

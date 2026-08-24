@@ -1,4 +1,7 @@
 const SibApiV3Sdk = require("sib-api-v3-sdk");
+const {
+  createReservationManageToken,
+} = require("./reservation-manage-token.service");
 
 const COMMON_TEMPLATE_VARIABLES = [
   "customerName",
@@ -43,7 +46,7 @@ Nous vous confirmons que votre réservation pour {{guestCountLabel}} a bien ét�
 
 Nous vous remercions de votre confiance et nous nous réjouissons de vous accueillir chez {{restaurantName}}.
 
-Pour toute question, n'hésitez pas à nous contacter.
+Pour toute question ou demande particulière, n'hésitez pas à nous contacter.
 
 Cordialement,
 L'équipe de {{restaurantName}}`,
@@ -429,7 +432,10 @@ function buildReservationManageUrl({ restaurant, reservation }) {
   const reservationId = String(reservation?._id || "").trim();
 
   if (!origin || !reservationId) return "";
-  return `${origin}/reservations/${reservationId}/manage`;
+  const token = createReservationManageToken(reservationId);
+  if (!token) return "";
+
+  return `${origin}/reservations/${reservationId}/manage?token=${encodeURIComponent(token)}`;
 }
 
 function resolveReservationEmailActionUrl({
@@ -478,17 +484,25 @@ function appendCancellationHintHtml(bodyHtml, actionUrl) {
   if (!safeActionUrl) {
     return `${content}
       <p style="margin:0 0 16px; line-height:1.6;">
-        Pour toute modification concernant votre réservation, merci de contacter directement le restaurant.
+        Pour modifier ou annuler votre réservation, merci de contacter directement le restaurant.
       </p>`;
   }
 
   return `${content}
       <p style="margin:0 0 16px; line-height:1.6;">
-        Si vous souhaitez annuler votre réservation, cliquez
+        Pour modifier ou annuler votre réservation, cliquez
         <a href="${escapeHtml(safeActionUrl)}" style="color:#1d4ed8;font-weight:700;text-decoration:underline;">ici</a>.
       </p>
+      `;
+}
+
+function appendPendingManagementHintHtml(bodyHtml) {
+  const content = String(bodyHtml || "").trim();
+  if (!content) return "";
+
+  return `${content}
       <p style="margin:0 0 16px; line-height:1.6;">
-        Pour toute modification concernant votre réservation, merci de contacter directement le restaurant.
+        Votre demande est en attente de confirmation. Lorsqu’elle sera confirmée, vous pourrez modifier ou annuler votre réservation en contactant directement le restaurant ou en utilisant le lien présent dans l’e-mail de confirmation.
       </p>`;
 }
 
@@ -626,6 +640,10 @@ async function sendReservationEmail(
     interpolateTemplate(template.body, variables).trim() || template.body;
   const action = getReservationEmailActionConfig(type, variables);
   let bodyHtml = renderBodyHtml(renderedBody);
+
+  if (type === "pending") {
+    bodyHtml = appendPendingManagementHintHtml(bodyHtml);
+  }
 
   if (type === "reminder24h" || type === "confirmed") {
     bodyHtml = appendCancellationHintHtml(bodyHtml, resolvedActionUrl);
