@@ -136,6 +136,7 @@ export default function RestaurantContext() {
   const sseRef = useRef(null);
   const currentPathRef = useRef("");
   const customersCacheRef = useRef(new Map());
+  const customerDetailsRequestsRef = useRef(new Map());
   const reservationPeriodsCacheRef = useRef(new Map());
   const reservationPeriodRequestsRef = useRef(new Map());
   const reservationMutationOverridesRef = useRef(new Map());
@@ -857,6 +858,7 @@ export default function RestaurantContext() {
           const r = payload.reservation;
 
           customersCacheRef.current.clear();
+          customerDetailsRequestsRef.current.clear();
           applyReservationUpdate(r);
         }
 
@@ -864,6 +866,7 @@ export default function RestaurantContext() {
           const r = payload.reservation;
 
           customersCacheRef.current.clear();
+          customerDetailsRequestsRef.current.clear();
           applyReservationUpdate(r);
         }
 
@@ -871,6 +874,7 @@ export default function RestaurantContext() {
           const deletedId = String(payload.reservationId);
 
           customersCacheRef.current.clear();
+          customerDetailsRequestsRef.current.clear();
           removeReservationFromCache(deletedId);
         }
 
@@ -1007,6 +1011,15 @@ export default function RestaurantContext() {
         if (String(obj.rid) === id) customersCacheRef.current.delete(k);
       } catch {}
     }
+
+    for (const k of customerDetailsRequestsRef.current.keys()) {
+      try {
+        const obj = JSON.parse(k);
+        if (String(obj.rid) === id) {
+          customerDetailsRequestsRef.current.delete(k);
+        }
+      } catch {}
+    }
   }
 
   function pruneCustomersCache(max = 50) {
@@ -1075,6 +1088,61 @@ export default function RestaurantContext() {
     [],
   );
 
+  const fetchCustomerDetailsCached = useCallback(
+    async ({ rid, customerId, ttlMs = 60_000, force = false } = {}) => {
+      const token =
+        typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      if (!token || !rid || !customerId) return null;
+
+      const key = JSON.stringify({
+        rid: String(rid),
+        type: "details",
+        customerId: String(customerId),
+      });
+      const now = Date.now();
+      const cached = customersCacheRef.current.get(key);
+
+      if (!force && cached && now - cached.ts < ttlMs) {
+        return cached.data;
+      }
+
+      const inFlight = customerDetailsRequestsRef.current.get(key);
+      if (!force && inFlight) return inFlight;
+
+      const requestPromise = axios
+        .get(
+          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${rid}/customers/${customerId}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+            params: {
+              resaPage: 1,
+              resaLimit: 6,
+              giftPage: 1,
+              giftLimit: 40,
+              takeAwayPage: 1,
+              takeAwayLimit: 40,
+            },
+          },
+        )
+        .then(({ data }) => {
+          if (customerDetailsRequestsRef.current.get(key) === requestPromise) {
+            customersCacheRef.current.set(key, { ts: Date.now(), data });
+            pruneCustomersCache(50);
+          }
+          return data;
+        })
+        .finally(() => {
+          if (customerDetailsRequestsRef.current.get(key) === requestPromise) {
+            customerDetailsRequestsRef.current.delete(key);
+          }
+        });
+
+      customerDetailsRequestsRef.current.set(key, requestPromise);
+      return requestPromise;
+    },
+    [],
+  );
+
   // ✅ peek synchro (évite skeleton si cache hit)
   function peekCustomersCache({
     rid,
@@ -1112,6 +1180,8 @@ export default function RestaurantContext() {
     setRestaurantData(null);
     setReservationsList([]);
     setActivePeriodLoading(false);
+    customersCacheRef.current.clear();
+    customerDetailsRequestsRef.current.clear();
     reservationPeriodsCacheRef.current.clear();
     reservationPeriodRequestsRef.current.clear();
     reservationMutationOverridesRef.current.clear();
@@ -1516,6 +1586,7 @@ export default function RestaurantContext() {
     });
     setCloseEditing(true);
     customersCacheRef.current.clear();
+    customerDetailsRequestsRef.current.clear();
     reservationPeriodsCacheRef.current.clear();
     reservationPeriodRequestsRef.current.clear();
     reservationMutationOverridesRef.current.clear();
@@ -1854,6 +1925,8 @@ export default function RestaurantContext() {
     setRestaurantData(null);
     setReservationsList([]);
     setActivePeriodLoading(false);
+    customersCacheRef.current.clear();
+    customerDetailsRequestsRef.current.clear();
     reservationPeriodsCacheRef.current.clear();
     reservationPeriodRequestsRef.current.clear();
     reservationMutationOverridesRef.current.clear();
@@ -1967,6 +2040,7 @@ export default function RestaurantContext() {
     reconnectRealtime,
     resyncAfterForeground,
     fetchCustomersCached,
+    fetchCustomerDetailsCached,
     invalidateCustomersCache,
     peekCustomersCache,
   };

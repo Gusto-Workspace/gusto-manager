@@ -9,9 +9,59 @@ const FADE_MS = 550;
 const MIN_DURATION = 1250;
 const REFRESH_ANTI_FLICKER_MS = 350;
 
+let splashScrollLockCount = 0;
+let splashScrollLockSnapshot = null;
+let splashTouchMoveHandler = null;
+
 // ✅ évite le warning "useLayoutEffect does nothing on the server"
 const useIsomorphicLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
+
+function acquireSplashScrollLock() {
+  if (typeof document === "undefined") return () => {};
+
+  const html = document.documentElement;
+  const body = document.body;
+
+  if (splashScrollLockCount === 0) {
+    splashScrollLockSnapshot = {
+      htmlOverflow: html.style.overflow || "",
+      bodyOverflow: body.style.overflow || "",
+      bodyTouchAction: body.style.touchAction || "",
+    };
+
+    splashTouchMoveHandler = (event) => event.preventDefault();
+    document.addEventListener("touchmove", splashTouchMoveHandler, {
+      passive: false,
+    });
+
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    body.style.touchAction = "none";
+  }
+
+  splashScrollLockCount += 1;
+  let released = false;
+
+  return () => {
+    if (released) return;
+    released = true;
+    splashScrollLockCount = Math.max(0, splashScrollLockCount - 1);
+
+    if (splashScrollLockCount > 0) return;
+
+    if (splashTouchMoveHandler) {
+      document.removeEventListener("touchmove", splashTouchMoveHandler);
+    }
+
+    html.style.overflow = splashScrollLockSnapshot?.htmlOverflow || "";
+    body.style.overflow = splashScrollLockSnapshot?.bodyOverflow || "";
+    body.style.touchAction = splashScrollLockSnapshot?.bodyTouchAction || "";
+
+    splashScrollLockSnapshot = null;
+    splashTouchMoveHandler = null;
+  };
+}
 
 export default function SplashScreenWebAppComponent({
   loading,
@@ -94,32 +144,12 @@ export default function SplashScreenWebAppComponent({
     setVisible(true);
   }, [storageKey, effectiveForceShow]);
 
-  // lock scroll quand visible
-  useEffect(() => {
+  // Lock partagé entre les éventuelles instances qui se chevauchent pendant
+  // une navigation. Le cleanup layout garantit le déverrouillage avant paint.
+  useIsomorphicLayoutEffect(() => {
     if (!visible) return;
 
-    const html = document.documentElement;
-    const body = document.body;
-
-    const prevHtmlOverflow = html.style.overflow || "";
-    const prevBodyOverflow = body.style.overflow || "";
-    const prevTouchAction = body.style.touchAction || "";
-
-    html.style.overflow = "hidden";
-    body.style.overflow = "hidden";
-    body.style.touchAction = "none";
-
-    const preventTouchMove = (e) => e.preventDefault();
-    document.addEventListener("touchmove", preventTouchMove, {
-      passive: false,
-    });
-
-    return () => {
-      document.removeEventListener("touchmove", preventTouchMove);
-      html.style.overflow = prevHtmlOverflow;
-      body.style.overflow = prevBodyOverflow;
-      body.style.touchAction = prevTouchAction;
-    };
+    return acquireSplashScrollLock();
   }, [visible]);
 
   // durée minimum
@@ -136,16 +166,17 @@ export default function SplashScreenWebAppComponent({
     if (!minTimeDone) return;
     if (loading) return;
 
+    // La page suivante ne doit pas remonter le même splash pendant le fade.
+    // On marque donc la session avant l'animation, et non après son timeout.
+    if (!effectiveForceShow) {
+      try {
+        sessionStorage.setItem(storageKey, "1");
+      } catch {}
+    }
+
     setFadeOut(true);
 
     const t = setTimeout(() => {
-      // ✅ on marque "seen" uniquement quand c’est le splash “première fois”
-      // (pas quand c’est un splash forcé au retour)
-      if (!effectiveForceShow) {
-        try {
-          sessionStorage.setItem(storageKey, "1");
-        } catch {}
-      }
       setVisible(false);
     }, FADE_MS);
 
