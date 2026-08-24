@@ -1,5 +1,4 @@
 import { useEffect, useLayoutEffect, useState } from "react";
-import Image from "next/image";
 
 // HOOK
 import useRefetchOnReturn from "@/_assets/utils/useRefetchOnReturn";
@@ -148,11 +147,14 @@ export default function SplashScreenWebAppComponent({
         bottom: 0,
         left: 0,
         zIndex: 9999,
-        display: "block",
+        display: "grid",
+        alignItems: "center",
+        justifyItems: "center",
         boxSizing: "border-box",
         width: "100%",
         height: "100%",
         minHeight: "100vh",
+        paddingBottom: "6rem",
         overflow: "hidden",
         overscrollBehavior: "none",
         backgroundColor: "#131E36",
@@ -162,44 +164,16 @@ export default function SplashScreenWebAppComponent({
       }}
     >
       <div
+        className="animate-fade-in"
         style={{
-          position: "absolute",
-          top: "50%",
-          left: "50%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flex: "0 0 auto",
           width: 150,
-          height: 150,
-          transform: "translate3d(-50%, calc(-50% - 3rem), 0)",
-          WebkitTransform: "translate3d(-50%, calc(-50% - 3rem), 0)",
+          height: 199,
+          backgroundImage: "url('/img/logo-blanc.png')",
+          backgroundPosition: "center",
+          backgroundRepeat: "no-repeat",
+          backgroundSize: "contain",
         }}
-      >
-        <div
-          className="animate-gm-splash-scale"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 150,
-            height: 150,
-            transformOrigin: "75px 75px",
-            willChange: "transform, opacity",
-            WebkitBackfaceVisibility: "hidden",
-            backfaceVisibility: "hidden",
-          }}
-        >
-          <Image
-            src="/img/logo-blanc.png"
-            alt="App logo"
-            width={150}
-            height={150}
-            priority
-            style={{ display: "block", width: 150, height: 150 }}
-          />
-        </div>
-      </div>
+      />
     </div>
   );
 }
