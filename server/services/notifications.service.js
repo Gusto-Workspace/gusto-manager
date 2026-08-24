@@ -131,6 +131,26 @@ function buildNotificationContent({ type, data }) {
       };
     }
 
+    case "reservation_customer_canceled": {
+      const name = data?.customerName || "Un client";
+      const guests = data?.numberOfGuests
+        ? `${data.numberOfGuests} pers.`
+        : "";
+      const when = fmtReservationRelativeFR(
+        data?.reservationDate,
+        data?.reservationTime,
+      );
+
+      return {
+        title: "Réservation annulée par le client",
+        message: [name, guests, when].filter(Boolean).join(" • "),
+        link: buildPath("/dashboard/reservations", {
+          day: toDateKey(data?.reservationDate),
+          reservationId: data?._id || data?.reservationId || null,
+        }),
+      };
+    }
+
     case "giftcard_purchased": {
       const euros =
         typeof data?.amount === "number"
@@ -245,6 +265,7 @@ function buildPushLink({
 function buildNotificationMeta({ type, data }) {
   switch (type) {
     case "reservation_created":
+    case "reservation_customer_canceled":
       return {
         reservationId: data?._id || data?.reservationId || null,
         reservationStatus: data?.status || null,
@@ -252,6 +273,7 @@ function buildNotificationMeta({ type, data }) {
         reservationTime: data?.reservationTime || null,
         numberOfGuests: data?.numberOfGuests || null,
         customerName: data?.customerName || null,
+        cancellationOrigin: data?.cancellationOrigin || null,
       };
 
     case "giftcard_purchased":

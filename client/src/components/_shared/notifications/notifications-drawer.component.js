@@ -60,6 +60,10 @@ function getReservationStatus(n) {
 
 function titleForNotification(n) {
   if (n?.module === "reservations") {
+    if (n?.type === "reservation_customer_canceled") {
+      return "Réservation annulée par le client";
+    }
+
     const st = getReservationDisplayStatus(getReservationStatus(n));
     if (st === "Pending") return "Nouvelle réservation en attente";
     if (st === "Confirmed") return "Réservation confirmée";
