@@ -14,6 +14,7 @@ const RestaurantModel = require("../models/restaurant.model");
 const ReservationModel = require("../models/reservation.model");
 const ReservationDayLockModel = require("../models/reservation-day-lock.model");
 const {
+  MANAGER_RESERVATION_LIST_SELECT,
   buildReservationDateRange,
   enrichReservationWithCustomerSummary,
   getRestaurantReservationsList,
@@ -7032,8 +7033,11 @@ router.get(
       }
 
       const reservations = await getRestaurantReservationsList(restaurantId, {
+        select: MANAGER_RESERVATION_LIST_SELECT,
         lean: true,
         dateRange,
+        customerSummaryMode: "list",
+        batchSize: 500,
       });
 
       if (diagnosticsEnabled) {
@@ -7080,6 +7084,7 @@ router.get(
             normalizationMs: context?.metrics?.reservationsNormalizationMs || 0,
             enrichmentMs: context?.metrics?.reservationsEnrichmentMs || 0,
             processingMs: context?.metrics?.reservationsProcessingMs || 0,
+            totalServiceMs: context?.metrics?.reservationsServiceMs || 0,
             resJsonSyncMs: context?.metrics?.resJsonSyncMs || null,
             responseBytes: Number(res.getHeader("Content-Length")) || null,
             handlerMs,

@@ -16,6 +16,38 @@ const RESTAURANT_RESERVATIONS_SORT = {
   createdAt: 1,
 };
 
+const MANAGER_RESERVATION_LIST_SELECT = [
+  "_id",
+  "customer",
+  "customerFirstName",
+  "customerLastName",
+  "customerEmail",
+  "customerPhone",
+  "numberOfGuests",
+  "reservationDate",
+  "reservationTime",
+  "commentary",
+  "table",
+  "status",
+  "pendingExpiresAt",
+  "bankHold.enabled",
+  "bankHold.status",
+  "bankHold.amountTotal",
+  "bankHold.currency",
+  "bankHold.expiresAt",
+  "bankHold.authorizedAt",
+  "bankHold.capturedAt",
+  "bankHold.releasedAt",
+  "bankHold.lastError",
+  "waitlistOffer.state",
+  "waitlistOffer.offerExpiresAt",
+].join(" ");
+
+const CUSTOMER_SUMMARY_SELECT = {
+  list: "_id tags",
+  detail: "_id tags stats notes lastReservationAt lastReservations createdAt",
+};
+
 const DATE_KEY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 function parseReservationDateKey(value) {
@@ -163,8 +195,15 @@ function normalizeCustomerLastReservations(lastReservations = []) {
     .slice(0, 5);
 }
 
-function normalizeCustomerSummary(customer) {
+function normalizeCustomerSummary(customer, mode = "detail") {
   if (!customer || typeof customer !== "object") return null;
+
+  if (mode === "list") {
+    return {
+      _id: customer._id,
+      tags: Array.isArray(customer.tags) ? customer.tags : [],
+    };
+  }
 
   return {
     _id: customer._id,
@@ -189,7 +228,7 @@ function setDiagnosticMetric(diagnostics, name, value) {
 
 async function enrichReservationsWithCustomerSummary(
   reservations = [],
-  { restaurantId = null, diagnostics = null } = {},
+  { restaurantId = null, diagnostics = null, summaryMode = "detail" } = {},
 ) {
   if (!Array.isArray(reservations) || !reservations.length) return reservations;
 
@@ -213,8 +252,13 @@ async function enrichReservationsWithCustomerSummary(
   if (!customerIds.length) return reservations;
 
   const customerQueryStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
-  const customers = await CustomerModel.find({ _id: { $in: customerIds } })
-    .select("_id tags stats notes lastReservationAt lastReservations createdAt")
+  const customers = await CustomerModel.find({
+    _id: { $in: customerIds },
+    ...(restaurantId ? { restaurant_id: restaurantId } : {}),
+  })
+    .select(
+      CUSTOMER_SUMMARY_SELECT[summaryMode] || CUSTOMER_SUMMARY_SELECT.detail,
+    )
     .lean();
   const customerQueryMs = diagnosticsEnabled
     ? roundPerfDuration(customerQueryStartedAtMs)
@@ -228,7 +272,7 @@ async function enrichReservationsWithCustomerSummary(
   const customerSummaryById = new Map(
     customers.map((customer) => {
       const customerId = String(customer._id);
-      return [customerId, normalizeCustomerSummary(customer)];
+      return [customerId, normalizeCustomerSummary(customer, summaryMode)];
     }),
   );
   const customerSummaryBuildMs = diagnosticsEnabled
@@ -336,6 +380,8 @@ async function getRestaurantReservationsList(
     dateRange = null,
     statuses = null,
     enrichCustomers = true,
+    customerSummaryMode = "detail",
+    batchSize = null,
   } = {},
 ) {
   const diagnosticsEnabled = isPerfDiagnosticsEnabled();
@@ -359,6 +405,10 @@ async function getRestaurantReservationsList(
 
   if (lean) {
     query = query.lean();
+  }
+
+  if (Number.isInteger(batchSize) && batchSize > 0) {
+    query = query.batchSize(batchSize);
   }
 
   const mongoStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
@@ -431,6 +481,7 @@ async function getRestaurantReservationsList(
     ? await enrichReservationsWithCustomerSummary(normalizedReservations, {
         restaurantId,
         diagnostics,
+        summaryMode: customerSummaryMode,
       })
     : normalizedReservations;
   if (diagnosticsEnabled) {
@@ -502,6 +553,7 @@ async function getRestaurantReservationsList(
 }
 
 module.exports = {
+  MANAGER_RESERVATION_LIST_SELECT,
   buildReservationDateRange,
   buildRestaurantReservationsQuery,
   enrichReservationWithCustomerSummary,

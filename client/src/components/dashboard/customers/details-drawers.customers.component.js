@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import {
   X,
@@ -15,6 +15,7 @@ import {
   LoaderCircle,
 } from "lucide-react";
 import { CustomerTagPill } from "@/components/_shared/customers/customer-tags-ui";
+import { GlobalContext } from "@/contexts/global.context";
 
 const CLOSE_MS = 280;
 
@@ -63,6 +64,9 @@ export default function DetailsDrawerCustomersComponent({
   onUpdated,
   onAction,
 }) {
+  const { restaurantContext } = useContext(GlobalContext);
+  const fetchCustomerDetailsCached =
+    restaurantContext?.fetchCustomerDetailsCached;
   const [isVisible, setIsVisible] = useState(false);
   const [tab, setTab] = useState("reservations");
 
@@ -227,27 +231,16 @@ export default function DetailsDrawerCustomersComponent({
     const run = async () => {
       if (!open || !restaurantId || !customerId) return;
 
-      const token =
-        typeof window !== "undefined" ? localStorage.getItem("token") : null;
-      if (!token) return;
+      if (typeof fetchCustomerDetailsCached !== "function") return;
 
       setLoadingDetails(true);
       setDetailsError(null);
 
       try {
-        const { data } = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/customers/${customerId}`,
-          {
-            params: {
-              resaPage: 1,
-              resaLimit: 5,
-              giftPage: 1,
-              giftLimit: 40,
-              takeAwayPage: 1,
-              takeAwayLimit: 40,
-            },
-          },
-        );
+        const data = await fetchCustomerDetailsCached({
+          rid: restaurantId,
+          customerId,
+        });
 
         setDetails(data || null);
 
@@ -274,7 +267,7 @@ export default function DetailsDrawerCustomersComponent({
     };
 
     run();
-  }, [open, restaurantId, customerId]);
+  }, [open, restaurantId, customerId, fetchCustomerDetailsCached]);
 
   function closeWithAnimation() {
     setIsEditing(false);

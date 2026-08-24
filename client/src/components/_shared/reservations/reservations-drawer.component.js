@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import axios from "axios";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   X,
   Phone,
@@ -19,6 +18,7 @@ import {
   getReservationStatusLabel,
 } from "./reservation-status.utils";
 import { CustomerTagPill } from "@/components/_shared/customers/customer-tags-ui";
+import { GlobalContext } from "@/contexts/global.context";
 
 const CLOSE_MS = 280;
 
@@ -128,6 +128,9 @@ export default function ReservationsDrawerComponent({
   tablesCatalog,
   restaurantId,
 }) {
+  const { restaurantContext } = useContext(GlobalContext);
+  const fetchCustomerDetailsCached =
+    restaurantContext?.fetchCustomerDetailsCached;
   const [isVisible, setIsVisible] = useState(false);
   const [bankHoldOpen, setBankHoldOpen] = useState(false);
   const [customerDetails, setCustomerDetails] = useState(null);
@@ -316,30 +319,15 @@ export default function ReservationsDrawerComponent({
       return;
     }
 
-    const token =
-      typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    if (typeof fetchCustomerDetailsCached !== "function") return;
     let ignore = false;
 
     setCustomerDetails(null);
     setCustomerLoading(true);
     setCustomerError("");
 
-    axios
-      .get(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/customers/${customerId}`,
-        {
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-          params: {
-            resaPage: 1,
-            resaLimit: 6,
-            giftPage: 1,
-            giftLimit: 5,
-            takeAwayPage: 1,
-            takeAwayLimit: 5,
-          },
-        },
-      )
-      .then(({ data }) => {
+    fetchCustomerDetailsCached({ rid: restaurantId, customerId })
+      .then((data) => {
         if (ignore) return;
         setCustomerDetails(data || null);
       })
@@ -359,10 +347,16 @@ export default function ReservationsDrawerComponent({
     return () => {
       ignore = true;
     };
-  }, [open, restaurantId, customerId]);
+  }, [open, restaurantId, customerId, fetchCustomerDetailsCached]);
 
   const customerSummary = reservation?.customerSummary || null;
   const customerProfile = customerDetails?.customer || customerSummary || null;
+  const customerDetailsAvailable = Boolean(
+    customerDetails?.customer ||
+      customerSummary?.stats ||
+      typeof customerSummary?.notes === "string" ||
+      Array.isArray(customerSummary?.lastReservations),
+  );
   const customerStats = customerProfile?.stats || {};
   const customerReservationsTotal = Math.max(
     0,
@@ -734,80 +728,84 @@ export default function ReservationsDrawerComponent({
                   )}
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  <div className="rounded-2xl border border-darkBlue/10 bg-white/50 p-3">
-                    <p className="text-[11px] text-darkBlue/50 flex items-center gap-2">
-                      <Calendar className="size-3.5 text-darkBlue/40" />
-                      Réservations
-                    </p>
-                    <p className="mt-1 text-lg font-semibold text-darkBlue">
-                      {customerReservationsTotal}
-                    </p>
+                {customerLoading && !customerDetailsAvailable ? (
+                  <div className="mt-4 flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/50 px-3 py-4 text-sm text-darkBlue/55">
+                    <LoaderCircle className="size-4 animate-spin text-darkBlue/40" />
+                    Chargement de la fiche client…
                   </div>
+                ) : (
+                  <>
+                    <div className="mt-4 grid grid-cols-2 gap-3">
+                      <div className="rounded-2xl border border-darkBlue/10 bg-white/50 p-3">
+                        <p className="text-[11px] text-darkBlue/50 flex items-center gap-2">
+                          <Calendar className="size-3.5 text-darkBlue/40" />
+                          Réservations
+                        </p>
+                        <p className="mt-1 text-lg font-semibold text-darkBlue">
+                          {customerReservationsTotal}
+                        </p>
+                      </div>
 
-                  <div className="rounded-2xl border border-darkBlue/10 bg-white/50 p-3">
-                    <p className="text-[11px] text-darkBlue/50 flex items-center gap-2">
-                      <UserX className="size-3.5 text-darkBlue/40" />
-                      No-shows
-                    </p>
-                    <p className="mt-1 text-lg font-semibold text-darkBlue">
-                      {customerStats.reservationsNoShow || 0}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-3 rounded-2xl border border-darkBlue/10 bg-white/50 px-3 py-3">
-                  <p className="text-[11px] text-darkBlue/50 flex items-center gap-2">
-                    <StickyNote className="size-3.5 text-darkBlue/40" />
-                    Note client
-                  </p>
-                  <p className="mt-1 text-sm text-darkBlue/80 whitespace-pre-wrap">
-                    {String(customerProfile?.notes || "").trim() || "—"}
-                  </p>
-                </div>
-
-                <div className="mt-3 rounded-2xl border border-darkBlue/10 bg-white/50 px-3 py-3">
-                  <p className="text-[11px] text-darkBlue/50">
-                    Dernières réservations
-                  </p>
-
-                  {customerLoading && !customerReservations.length ? (
-                    <div className="mt-2 flex items-center gap-2 text-sm text-darkBlue/55">
-                      <LoaderCircle className="size-4 animate-spin text-darkBlue/40" />
-                      Chargement des dernières réservations…
+                      <div className="rounded-2xl border border-darkBlue/10 bg-white/50 p-3">
+                        <p className="text-[11px] text-darkBlue/50 flex items-center gap-2">
+                          <UserX className="size-3.5 text-darkBlue/40" />
+                          No-shows
+                        </p>
+                        <p className="mt-1 text-lg font-semibold text-darkBlue">
+                          {customerStats.reservationsNoShow || 0}
+                        </p>
+                      </div>
                     </div>
-                  ) : customerReservations.length ? (
-                    <div className="mt-2 flex flex-col gap-2">
-                      {customerReservations.map((item, index) => (
-                        <div
-                          key={`${customerId}-last-reservation-${
-                            item?._id || item?.reservationId || index
-                          }`}
-                          className="flex items-center justify-between gap-3 rounded-xl border border-darkBlue/10 bg-white/60 px-3 py-2"
-                        >
-                          <div className="min-w-0">
-                            <p className="text-xs font-semibold text-darkBlue">
-                              {fmtDate(item?.reservationDate)} ·{" "}
-                              {fmtTime(item?.reservationTime)}
-                            </p>
-                            <p className="text-[11px] text-darkBlue/50">
-                              {getReservationStatusLabel(item?.status)}
-                            </p>
-                          </div>
 
-                          <span className="inline-flex items-center gap-1 rounded-full border border-darkBlue/10 bg-white px-2 py-1 text-[11px] font-semibold text-darkBlue/70">
-                            <Users className="size-3 text-darkBlue/40" />
-                            {item?.numberOfGuests || 0}
-                          </span>
+                    <div className="mt-3 rounded-2xl border border-darkBlue/10 bg-white/50 px-3 py-3">
+                      <p className="text-[11px] text-darkBlue/50 flex items-center gap-2">
+                        <StickyNote className="size-3.5 text-darkBlue/40" />
+                        Note client
+                      </p>
+                      <p className="mt-1 text-sm text-darkBlue/80 whitespace-pre-wrap">
+                        {String(customerProfile?.notes || "").trim() || "—"}
+                      </p>
+                    </div>
+
+                    <div className="mt-3 rounded-2xl border border-darkBlue/10 bg-white/50 px-3 py-3">
+                      <p className="text-[11px] text-darkBlue/50">
+                        Dernières réservations
+                      </p>
+
+                      {customerReservations.length ? (
+                        <div className="mt-2 flex flex-col gap-2">
+                          {customerReservations.map((item, index) => (
+                            <div
+                              key={`${customerId}-last-reservation-${
+                                item?._id || item?.reservationId || index
+                              }`}
+                              className="flex items-center justify-between gap-3 rounded-xl border border-darkBlue/10 bg-white/60 px-3 py-2"
+                            >
+                              <div className="min-w-0">
+                                <p className="text-xs font-semibold text-darkBlue">
+                                  {fmtDate(item?.reservationDate)} ·{" "}
+                                  {fmtTime(item?.reservationTime)}
+                                </p>
+                                <p className="text-[11px] text-darkBlue/50">
+                                  {getReservationStatusLabel(item?.status)}
+                                </p>
+                              </div>
+
+                              <span className="inline-flex items-center gap-1 rounded-full border border-darkBlue/10 bg-white px-2 py-1 text-[11px] font-semibold text-darkBlue/70">
+                                <Users className="size-3 text-darkBlue/40" />
+                                {item?.numberOfGuests || 0}
+                              </span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      ) : (
+                        <p className="mt-2 text-sm text-darkBlue/55">
+                          Aucune réservation passée récente.
+                        </p>
+                      )}
                     </div>
-                  ) : (
-                    <p className="mt-2 text-sm text-darkBlue/55">
-                      Aucune réservation passée récente.
-                    </p>
-                  )}
-                </div>
+                  </>
+                )}
               </>
             )}
           </div>

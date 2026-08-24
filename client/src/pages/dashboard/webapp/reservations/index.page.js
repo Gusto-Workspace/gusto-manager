@@ -29,6 +29,14 @@ function getMonthFromDayKey(dayKey) {
   return new Date(year, month - 1, 1, 0, 0, 0, 0);
 }
 
+function isReservationsIndexUrl(url) {
+  const pathname = String(url || "")
+    .split(/[?#]/, 1)[0]
+    .replace(/\/+$/, "");
+
+  return pathname.endsWith("/dashboard/webapp/reservations");
+}
+
 export default function WepAppReservationsPage(props) {
   let title;
   let description;
@@ -48,6 +56,24 @@ export default function WepAppReservationsPage(props) {
   const [activeCalendarMonth, setActiveCalendarMonth] = useState(() =>
     startOfMonth(new Date()),
   );
+  const [reservationsRouteActive, setReservationsRouteActive] = useState(true);
+
+  useEffect(() => {
+    const handleRouteChangeStart = (url) => {
+      setReservationsRouteActive(isReservationsIndexUrl(url));
+    };
+    const handleRouteChangeError = () => {
+      setReservationsRouteActive(true);
+    };
+
+    router.events.on("routeChangeStart", handleRouteChangeStart);
+    router.events.on("routeChangeError", handleRouteChangeError);
+
+    return () => {
+      router.events.off("routeChangeStart", handleRouteChangeStart);
+      router.events.off("routeChangeError", handleRouteChangeError);
+    };
+  }, [router.events]);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -117,8 +143,9 @@ export default function WepAppReservationsPage(props) {
     : [];
   const activeMonthReady = Array.isArray(activeMonthReservations);
   const splashLoading =
-    restaurantContext.dataLoading ||
-    (canLoadReservations && (!router.isReady || !activeMonthReady));
+    reservationsRouteActive &&
+    (restaurantContext.dataLoading ||
+      (canLoadReservations && (!router.isReady || !activeMonthReady)));
 
   return (
     <>
@@ -180,26 +207,28 @@ export default function WepAppReservationsPage(props) {
 
       <NotGoodDeviceWebAppComponent />
 
-      <SplashScreenWebAppComponent
-        loading={splashLoading}
-        forceShow={splashLoading}
-        storageKey="gm:splash:webapp:reservations"
-        enabled={restaurantContext?.isAuth}
-        lastActiveKey="gm:lastActive:webapp:reservations"
-        thresholdMs={5 * 60 * 1000}
-        onSoftReturn={(_elapsed, details) =>
-          restaurantContext.resyncAfterForeground?.({
-            hard: false,
-            reason: details?.reason || "unknown",
-          })
-        }
-        onHardReturn={(_elapsed, details) =>
-          restaurantContext.resyncAfterForeground?.({
-            hard: true,
-            reason: details?.reason || "unknown",
-          })
-        }
-      />
+      {reservationsRouteActive ? (
+        <SplashScreenWebAppComponent
+          loading={splashLoading}
+          forceShow={splashLoading}
+          storageKey="gm:splash:webapp:reservations"
+          enabled={restaurantContext?.isAuth}
+          lastActiveKey="gm:lastActive:webapp:reservations"
+          thresholdMs={5 * 60 * 1000}
+          onSoftReturn={(_elapsed, details) =>
+            restaurantContext.resyncAfterForeground?.({
+              hard: false,
+              reason: details?.reason || "unknown",
+            })
+          }
+          onHardReturn={(_elapsed, details) =>
+            restaurantContext.resyncAfterForeground?.({
+              hard: true,
+              reason: details?.reason || "unknown",
+            })
+          }
+        />
+      ) : null}
     </>
   );
 }
