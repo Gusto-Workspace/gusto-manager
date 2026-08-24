@@ -1,4 +1,4 @@
-import { useContext, useEffect } from "react";
+import { useContext, useEffect, useState } from "react";
 import Head from "next/head";
 
 // I18N
@@ -20,18 +20,65 @@ import { AnalyticsSvg } from "@/components/_shared/_svgs/analytics.svg";
 export default function DashboardPage(props) {
   const { t } = useTranslation("");
   const { restaurantContext } = useContext(GlobalContext);
+  const restaurantId = restaurantContext?.restaurantData?._id;
+  const hasReservationsModule =
+    restaurantContext?.restaurantData?.options?.reservations;
+  const dataLoading = restaurantContext.dataLoading;
+  const ensureReservationsDay = restaurantContext.ensureReservationsDay;
+  const ensureReservationsMonth = restaurantContext.ensureReservationsMonth;
+  const [dashboardReservationsReady, setDashboardReservationsReady] =
+    useState(false);
 
   useEffect(() => {
-    if (!restaurantContext?.restaurantData?._id) return;
-    if (!restaurantContext?.restaurantData?.options?.reservations) return;
+    if (!restaurantId) return;
+    if (!hasReservationsModule) return;
 
-    restaurantContext.ensureReservationsDay?.(new Date(), {
-      diagnostics: "dashboard-widget",
+    let cancelled = false;
+    setDashboardReservationsReady(false);
+
+    Promise.resolve(
+      ensureReservationsDay?.(new Date(), {
+        restaurantId,
+        diagnostics: "dashboard-widget",
+      }),
+    ).finally(() => {
+      if (!cancelled) setDashboardReservationsReady(true);
     });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [restaurantId, hasReservationsModule, ensureReservationsDay]);
+
+  useEffect(() => {
+    if (!restaurantId) return;
+    if (!hasReservationsModule) return;
+    if (dataLoading || !dashboardReservationsReady) return;
+
+    const prefetchCurrentMonth = () => {
+      ensureReservationsMonth?.(new Date(), {
+        restaurantId,
+        diagnostics: "dashboard-month-prefetch",
+        activate: false,
+        prefetchAdjacent: true,
+      });
+    };
+
+    if (typeof window.requestIdleCallback === "function") {
+      const idleId = window.requestIdleCallback(prefetchCurrentMonth, {
+        timeout: 1500,
+      });
+      return () => window.cancelIdleCallback?.(idleId);
+    }
+
+    const timeoutId = window.setTimeout(prefetchCurrentMonth, 0);
+    return () => window.clearTimeout(timeoutId);
   }, [
-    restaurantContext?.restaurantData?._id,
-    restaurantContext?.restaurantData?.options?.reservations,
-    restaurantContext.ensureReservationsDay,
+    dashboardReservationsReady,
+    dataLoading,
+    ensureReservationsMonth,
+    restaurantId,
+    hasReservationsModule,
   ]);
 
   let title;

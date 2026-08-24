@@ -1,5 +1,5 @@
 import { useRouter } from "next/router";
-import { useContext, useEffect } from "react";
+import { useContext, useEffect, useState } from "react";
 import Head from "next/head";
 
 // I18N
@@ -18,6 +18,17 @@ import NotGoodDeviceWebAppComponent from "@/components/dashboard/webapp/_shared/
 // WEB PUSB
 import { setupPushForModule } from "@/_assets/utils/webpush";
 
+function startOfMonth(date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1, 0, 0, 0, 0);
+}
+
+function getMonthFromDayKey(dayKey) {
+  if (typeof dayKey !== "string") return null;
+  const [year, month, day] = dayKey.split("-").map(Number);
+  if (!year || !month || !day) return null;
+  return new Date(year, month - 1, 1, 0, 0, 0, 0);
+}
+
 export default function WepAppReservationsPage(props) {
   let title;
   let description;
@@ -34,6 +45,15 @@ export default function WepAppReservationsPage(props) {
 
   const router = useRouter();
   const { restaurantContext } = useContext(GlobalContext);
+  const [activeCalendarMonth, setActiveCalendarMonth] = useState(() =>
+    startOfMonth(new Date()),
+  );
+
+  useEffect(() => {
+    if (!router.isReady) return;
+    const monthFromUrl = getMonthFromDayKey(router.query.day);
+    if (monthFromUrl) setActiveCalendarMonth(monthFromUrl);
+  }, [router.isReady, router.query.day]);
 
   // ✅ Protection token (redirect login)
   useEffect(() => {
@@ -87,6 +107,19 @@ export default function WepAppReservationsPage(props) {
     employeeHasReservationsAccess = profile?.options?.reservations === true;
   }
 
+  const canLoadReservations =
+    hasReservationsModule && employeeHasReservationsAccess;
+  const activeMonthReservations = canLoadReservations
+    ? restaurantContext.getCachedReservationsMonth?.(
+        activeCalendarMonth,
+        restaurant?._id,
+      )
+    : [];
+  const activeMonthReady = Array.isArray(activeMonthReservations);
+  const splashLoading =
+    restaurantContext.dataLoading ||
+    (canLoadReservations && (!router.isReady || !activeMonthReady));
+
   return (
     <>
       <Head>
@@ -130,6 +163,11 @@ export default function WepAppReservationsPage(props) {
               ensureReservationsMonth={
                 restaurantContext.ensureReservationsMonth
               }
+              getCachedReservationsMonth={
+                restaurantContext.getCachedReservationsMonth
+              }
+              currentMonth={activeCalendarMonth}
+              setCurrentMonth={setActiveCalendarMonth}
               applyReservationUpdate={restaurantContext.applyReservationUpdate}
               removeReservationFromCache={
                 restaurantContext.removeReservationFromCache
@@ -143,7 +181,8 @@ export default function WepAppReservationsPage(props) {
       <NotGoodDeviceWebAppComponent />
 
       <SplashScreenWebAppComponent
-        loading={restaurantContext.dataLoading}
+        loading={splashLoading}
+        forceShow={splashLoading}
         storageKey="gm:splash:webapp:reservations"
         enabled={restaurantContext?.isAuth}
         lastActiveKey="gm:lastActive:webapp:reservations"

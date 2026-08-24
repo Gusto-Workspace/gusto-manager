@@ -89,6 +89,9 @@ export default function ReservationsPage(props) {
                 ensureReservationsMonth={
                   restaurantContext.ensureReservationsMonth
                 }
+                getCachedReservationsMonth={
+                  restaurantContext.getCachedReservationsMonth
+                }
                 applyReservationUpdate={
                   restaurantContext.applyReservationUpdate
                 }
