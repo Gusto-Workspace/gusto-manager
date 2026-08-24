@@ -143,16 +143,17 @@ export default function SplashScreenWebAppComponent({
       }}
       style={{
         position: "fixed",
-        inset: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
         zIndex: 9999,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
+        display: "block",
         boxSizing: "border-box",
-        width: "100vw",
-        height: "100dvh",
-        paddingTop: "env(safe-area-inset-top)",
-        paddingBottom: "env(safe-area-inset-bottom)",
+        width: "100%",
+        height: "100%",
+        minHeight: "100vh",
+        overflow: "hidden",
         overscrollBehavior: "none",
         backgroundColor: "#131E36",
         opacity: fadeOut ? 0 : 1,
@@ -161,25 +162,43 @@ export default function SplashScreenWebAppComponent({
       }}
     >
       <div
-        className="animate-gm-splash-scale"
         style={{
+          position: "absolute",
+          top: "50%",
+          left: "50%",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
+          flex: "0 0 auto",
           width: 150,
           height: 150,
-          marginTop: "-6rem",
-          transformOrigin: "center",
+          transform: "translate3d(-50%, calc(-50% - 3rem), 0)",
+          WebkitTransform: "translate3d(-50%, calc(-50% - 3rem), 0)",
         }}
       >
-        <Image
-          src="/img/logo-blanc.png"
-          alt="App logo"
-          width={150}
-          height={150}
-          priority
-          style={{ display: "block" }}
-        />
+        <div
+          className="animate-gm-splash-scale"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 150,
+            height: 150,
+            transformOrigin: "75px 75px",
+            willChange: "transform, opacity",
+            WebkitBackfaceVisibility: "hidden",
+            backfaceVisibility: "hidden",
+          }}
+        >
+          <Image
+            src="/img/logo-blanc.png"
+            alt="App logo"
+            width={150}
+            height={150}
+            priority
+            style={{ display: "block", width: 150, height: 150 }}
+          />
+        </div>
       </div>
     </div>
   );

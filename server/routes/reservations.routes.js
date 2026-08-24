@@ -6694,6 +6694,25 @@ router.post("/reservations/:reservationId/cancel", async (req, res) => {
       await triggerWaitlistAutoPromotionIfBlockingSlotWasFreed(
         result.previousReservationSlot,
       );
+
+      const canceledReservation = result.updatedReservation;
+      await createAndBroadcastNotification({
+        restaurantId: String(canceledReservation.restaurant_id),
+        module: "reservations",
+        type: "reservation_customer_canceled",
+        data: {
+          reservationId: String(canceledReservation._id),
+          customerName: getCustomerFullNameFromReservation(
+            canceledReservation,
+          ),
+          numberOfGuests: canceledReservation.numberOfGuests,
+          reservationDate: canceledReservation.reservationDate,
+          reservationTime: canceledReservation.reservationTime,
+          status: canceledReservation.status,
+          tableName: canceledReservation?.table?.name || null,
+          cancellationOrigin: "customer",
+        },
+      });
     }
 
     return res.status(200).json({
