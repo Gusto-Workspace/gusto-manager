@@ -12,9 +12,6 @@ const RestaurantModel = require("../models/restaurant.model");
 const VisitCounterModel = require("../models/visit-counter.model");
 const EmployeeModel = require("../models/employee.model");
 const {
-  refreshGiftCardLifecycle,
-} = require("../services/gift-card-lifecycle.service");
-const {
   findRestaurantSubscription,
   listSubscriptionInvoicesHistory,
 } = require("../services/stripe-billing.service");
@@ -93,87 +90,6 @@ function getOrCreateRestaurantProfile(employee, restaurantId) {
   }
 
   return profile;
-}
-
-// fonction pour supprimer les blocages horaires manuels des réservations
-async function purgeExpiredBlockedRanges(restaurantId) {
-  const diagnosticsEnabled = isPerfDiagnosticsEnabled();
-  const totalStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
-  const queryStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
-  const restaurant = await RestaurantModel.findById(restaurantId);
-  const queryMs = diagnosticsEnabled
-    ? roundPerfDuration(queryStartedAtMs)
-    : null;
-  if (!restaurant) {
-    if (diagnosticsEnabled) {
-      setPerfRequestMetrics({ blockedRangesPurgeQueryMs: queryMs });
-      const totalMs = roundPerfDuration(totalStartedAtMs);
-      const requestRoute =
-        getPerfRequestContext()?.route || "blockedRangesPurge";
-      if (
-        shouldLogPerfDetail(requestRoute, {
-          durationMs: totalMs,
-          normalLimit: requestRoute === "publicRestaurant" ? 10 : 30,
-        })
-      ) {
-        perfLog("MONGO", {
-          operation: "purgeExpiredBlockedRanges",
-          requestId: getPerfRequestId(),
-          restaurantId: String(restaurantId),
-          found: false,
-          queryMs,
-          totalMs,
-        });
-      }
-    }
-    return;
-  }
-
-  const now = new Date();
-  const ranges = restaurant?.reservationsSettings?.blocked_ranges || [];
-
-  const processingStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
-  const filtered = ranges.filter((r) => new Date(r.endAt) > now);
-  const processingMs = diagnosticsEnabled
-    ? roundPerfDuration(processingStartedAtMs)
-    : null;
-
-  let saveMs = 0;
-  if (filtered.length !== ranges.length) {
-    restaurant.reservationsSettings.blocked_ranges = filtered;
-    const saveStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
-    await restaurant.save();
-    if (diagnosticsEnabled) saveMs = roundPerfDuration(saveStartedAtMs);
-  }
-
-  if (diagnosticsEnabled) {
-    const totalMs = roundPerfDuration(totalStartedAtMs);
-    setPerfRequestMetrics({
-      blockedRangesPurgeQueryMs: queryMs,
-      blockedRangesPurgeProcessingMs: processingMs,
-      blockedRangesPurgeSaveMs: saveMs,
-    });
-    const requestRoute = getPerfRequestContext()?.route || "blockedRangesPurge";
-    if (
-      shouldLogPerfDetail(requestRoute, {
-        durationMs: totalMs,
-        normalLimit: requestRoute === "publicRestaurant" ? 10 : 30,
-      })
-    ) {
-      perfLog("MONGO", {
-        operation: "purgeExpiredBlockedRanges",
-        requestId: getPerfRequestId(),
-        restaurantId: String(restaurantId),
-        queryMs,
-        processingMs,
-        saveMs,
-        totalMs,
-        rangesBefore: ranges.length,
-        rangesAfter: filtered.length,
-        removedCount: ranges.length - filtered.length,
-      });
-    }
-  }
 }
 
 // Trouve le profil de restaurant pour cet employé
@@ -275,24 +191,25 @@ router.get("/owner/restaurants/:id", authenticateToken, async (req, res) => {
   const diagnosticsEnabled = isPerfDiagnosticsEnabled();
   try {
     const { id } = req.params;
-
-    const giftCardLifecycleStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
-    await refreshGiftCardLifecycle(id);
-    const giftCardLifecycleMs = diagnosticsEnabled
-      ? roundPerfDuration(giftCardLifecycleStartedAtMs)
-      : null;
-
-    const purgeStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
-    await purgeExpiredBlockedRanges(id);
-    const purgeMs = diagnosticsEnabled
-      ? roundPerfDuration(purgeStartedAtMs)
-      : null;
+    const reservationsScope = req.query?.scope === "reservations";
 
     const restaurantQueryStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
-    const restaurant = await RestaurantModel.findById(id)
-      .populate("owner_id", "firstname")
-      .populate("menus")
-      .populate("employees");
+    let restaurantQuery = RestaurantModel.findById(id);
+    if (reservationsScope) {
+      restaurantQuery = restaurantQuery.select(
+        "_id name website opening_hours options reservationsSettings owner_id employees",
+      );
+    }
+    restaurantQuery = restaurantQuery.populate("owner_id", "firstname");
+    if (reservationsScope) {
+      restaurantQuery = restaurantQuery.populate(
+        "employees",
+        "_id firstname lastname restaurantProfiles",
+      );
+    } else {
+      restaurantQuery = restaurantQuery.populate("menus").populate("employees");
+    }
+    const restaurant = await restaurantQuery;
     const restaurantQueryAndPopulateMs = diagnosticsEnabled
       ? roundPerfDuration(restaurantQueryStartedAtMs)
       : null;
@@ -305,7 +222,10 @@ router.get("/owner/restaurants/:id", authenticateToken, async (req, res) => {
       return res.status(403).json({ message: "Forbidden" });
     }
 
-    if (String(restaurant.owner_id?._id || restaurant.owner_id) !== String(req.user.id)) {
+    if (
+      String(restaurant.owner_id?._id || restaurant.owner_id) !==
+      String(req.user.id)
+    ) {
       return res.status(403).json({ message: "Forbidden" });
     }
 
@@ -321,8 +241,8 @@ router.get("/owner/restaurants/:id", authenticateToken, async (req, res) => {
 
     if (diagnosticsEnabled) {
       setPerfRequestMetrics({
-        giftCardLifecycleMs,
-        purgeMs,
+        maintenanceMovedOffReadPath: true,
+        restaurantProjection: reservationsScope ? "reservations" : "full",
         restaurantQueryAndPopulateMs,
         processingMs,
       });
@@ -341,18 +261,6 @@ router.get("/restaurants/:id", async (req, res) => {
   const handlerStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
   try {
     const { id } = req.params;
-
-    const giftCardLifecycleStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
-    await refreshGiftCardLifecycle(id);
-    const giftCardLifecycleMs = diagnosticsEnabled
-      ? roundPerfDuration(giftCardLifecycleStartedAtMs)
-      : null;
-
-    const purgeStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
-    await purgeExpiredBlockedRanges(id);
-    const purgeMs = diagnosticsEnabled
-      ? roundPerfDuration(purgeStartedAtMs)
-      : null;
 
     const restaurantQueryStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
     const restaurant = await RestaurantModel.findById(id)
@@ -448,8 +356,7 @@ router.get("/restaurants/:id", async (req, res) => {
 
     if (diagnosticsEnabled) {
       setPerfRequestMetrics({
-        giftCardLifecycleMs,
-        purgeMs,
+        maintenanceMovedOffReadPath: true,
         restaurantQueryAndPopulateMs,
         processingMs,
       });
@@ -472,8 +379,7 @@ router.get("/restaurants/:id", async (req, res) => {
           route: "publicRestaurant",
           restaurantId: String(id),
           userAgentCategory: categorizeUserAgent(req.get("user-agent")),
-          giftCardLifecycleMs,
-          purgeMs,
+          maintenanceMovedOffReadPath: true,
           restaurantQueryAndPopulateMs,
           processingMs,
           resJsonSyncMs: context?.metrics?.resJsonSyncMs || null,
@@ -695,68 +601,70 @@ router.post(
   "/restaurants/:restaurantId/employees/import",
   authenticateToken,
   async (req, res) => {
-  try {
-    const { restaurantId } = req.params;
-    const { employeeId } = req.body;
+    try {
+      const { restaurantId } = req.params;
+      const { employeeId } = req.body;
 
-    const restaurant = await RestaurantModel.findById(restaurantId);
-    if (!restaurant) {
-      return res.status(404).json({ message: "Restaurant not found" });
+      const restaurant = await RestaurantModel.findById(restaurantId);
+      if (!restaurant) {
+        return res.status(404).json({ message: "Restaurant not found" });
+      }
+
+      if (req.user?.role !== "owner") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      if (String(restaurant.owner_id) !== String(req.user.id)) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const employee = await EmployeeModel.findById(employeeId);
+      if (!employee) {
+        return res.status(404).json({ message: "Employee not found" });
+      }
+
+      // sécurité : si déjà rattaché à ce resto, on refuse
+      const alreadyInRestaurant =
+        Array.isArray(employee.restaurants) &&
+        employee.restaurants.some(
+          (rId) => String(rId) === String(restaurantId),
+        );
+
+      if (alreadyInRestaurant) {
+        return res
+          .status(409)
+          .json({ message: "Employee already in this restaurant" });
+      }
+
+      // On lie l'employé à ce resto + on crée le profil pour ce resto au besoin
+      ensureEmployeeRestaurantLink(employee, restaurantId);
+      getOrCreateRestaurantProfile(employee, restaurantId);
+
+      await employee.save();
+
+      if (
+        !restaurant.employees.some((id) => String(id) === String(employee._id))
+      ) {
+        restaurant.employees.push(employee._id);
+        await restaurant.save();
+      }
+
+      const updatedRestaurant = await RestaurantModel.findById(restaurantId)
+        .populate("owner_id", "firstname")
+        .populate("menus")
+        .populate("employees");
+
+      const decoratedRestaurant = decorateRestaurantEmployees(
+        updatedRestaurant,
+        restaurantId,
+        updatedRestaurant?.employees || [],
+      );
+
+      return res.json({ restaurant: decoratedRestaurant });
+    } catch (e) {
+      console.error("Error importing employee:", e);
+      return res.status(500).json({ message: "Internal server error" });
     }
-
-    if (req.user?.role !== "owner") {
-      return res.status(403).json({ message: "Forbidden" });
-    }
-
-    if (String(restaurant.owner_id) !== String(req.user.id)) {
-      return res.status(403).json({ message: "Forbidden" });
-    }
-
-    const employee = await EmployeeModel.findById(employeeId);
-    if (!employee) {
-      return res.status(404).json({ message: "Employee not found" });
-    }
-
-    // sécurité : si déjà rattaché à ce resto, on refuse
-    const alreadyInRestaurant =
-      Array.isArray(employee.restaurants) &&
-      employee.restaurants.some((rId) => String(rId) === String(restaurantId));
-
-    if (alreadyInRestaurant) {
-      return res
-        .status(409)
-        .json({ message: "Employee already in this restaurant" });
-    }
-
-    // On lie l'employé à ce resto + on crée le profil pour ce resto au besoin
-    ensureEmployeeRestaurantLink(employee, restaurantId);
-    getOrCreateRestaurantProfile(employee, restaurantId);
-
-    await employee.save();
-
-    if (
-      !restaurant.employees.some((id) => String(id) === String(employee._id))
-    ) {
-      restaurant.employees.push(employee._id);
-      await restaurant.save();
-    }
-
-    const updatedRestaurant = await RestaurantModel.findById(restaurantId)
-      .populate("owner_id", "firstname")
-      .populate("menus")
-      .populate("employees");
-
-    const decoratedRestaurant = decorateRestaurantEmployees(
-      updatedRestaurant,
-      restaurantId,
-      updatedRestaurant?.employees || [],
-    );
-
-    return res.json({ restaurant: decoratedRestaurant });
-  } catch (e) {
-    console.error("Error importing employee:", e);
-    return res.status(500).json({ message: "Internal server error" });
-  }
   },
 );
 

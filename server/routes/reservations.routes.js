@@ -14,6 +14,7 @@ const RestaurantModel = require("../models/restaurant.model");
 const ReservationModel = require("../models/reservation.model");
 const ReservationDayLockModel = require("../models/reservation-day-lock.model");
 const {
+  buildReservationDateRange,
   enrichReservationWithCustomerSummary,
   getRestaurantReservationsList,
 } = require("../services/restaurant-reservations.service");
@@ -198,8 +199,12 @@ function sanitizeReservationExceptionalOpeningsInput(
 
     const hours = (Array.isArray(opening?.hours) ? opening.hours : [])
       .map((range) => ({
-        open: String(range?.open || "").trim().slice(0, 5),
-        close: String(range?.close || "").trim().slice(0, 5),
+        open: String(range?.open || "")
+          .trim()
+          .slice(0, 5),
+        close: String(range?.close || "")
+          .trim()
+          .slice(0, 5),
       }))
       .filter((range) => {
         if (!isValidHHmm(range.open) || !isValidHHmm(range.close)) {
@@ -1077,7 +1082,9 @@ async function getConfiguredTableAvailabilityForCandidate({
   const blockingReservations = dayReservations.filter(isBlockingReservation);
 
   const overlaps = (reservation) => {
-    const reservationStart = minutesFromServiceTime(reservation.reservationTime);
+    const reservationStart = minutesFromServiceTime(
+      reservation.reservationTime,
+    );
     const reservationDuration = getOccupancyMinutes(
       parameters,
       reservation.reservationTime,
@@ -1284,8 +1291,7 @@ function getActiveSlotCoverLimit(
 
   const dayIndex = getReservationDayIndexFromDate(reservationDateUTC);
   const matchingTimeLimits = limits.filter(
-    (entry) =>
-      String(entry?.time || "").slice(0, 5) === normalizedTime,
+    (entry) => String(entry?.time || "").slice(0, 5) === normalizedTime,
   );
 
   const exactDayLimit =
@@ -1351,9 +1357,7 @@ function buildSlotCoverUsageFromReservations(
       const [date, time] = key.split("|");
       return { date, time, covers };
     })
-    .sort((a, b) =>
-      `${a.date}|${a.time}`.localeCompare(`${b.date}|${b.time}`),
-    );
+    .sort((a, b) => `${a.date}|${a.time}`.localeCompare(`${b.date}|${b.time}`));
 }
 
 async function getSlotCoverUsage({
@@ -4289,11 +4293,8 @@ async function captureReservationBankHold({ restaurantId, reservationId }) {
     reservation: await buildRealtimeReservationPayload(reservation),
   });
 
-  const updatedRestaurant = await fetchRestaurantFull(restaurantId);
-
   return {
-    restaurant: updatedRestaurant,
-    reservation: reservation.toObject ? reservation.toObject() : reservation,
+    reservation: await buildRealtimeReservationPayload(reservation),
     paymentIntentStatus: paymentIntent?.status || null,
   };
 }
@@ -4356,11 +4357,8 @@ async function releaseReservationBankHold({ restaurantId, reservationId }) {
     reservation: await buildRealtimeReservationPayload(reservation),
   });
 
-  const updatedRestaurant = await fetchRestaurantFull(restaurantId);
-
   return {
-    restaurant: updatedRestaurant,
-    reservation: reservation.toObject ? reservation.toObject() : reservation,
+    reservation: await buildRealtimeReservationPayload(reservation),
     paymentIntentStatus: paymentIntent?.status || null,
   };
 }
@@ -4452,7 +4450,9 @@ router.put(
       const nextSlotCoverLimits =
         Object.prototype.hasOwnProperty.call(parameters, "slot_cover_limits") &&
         Array.isArray(parameters.slot_cover_limits)
-          ? sanitizeReservationSlotCoverLimitsInput(parameters.slot_cover_limits)
+          ? sanitizeReservationSlotCoverLimitsInput(
+              parameters.slot_cover_limits,
+            )
           : sanitizeReservationSlotCoverLimitsInput(
               existing.slot_cover_limits || [],
             );
@@ -4548,6 +4548,8 @@ router.put(
         const reservations = await getRestaurantReservationsList(restaurantId, {
           select: "status pendingExpiresAt table bankHold",
           lean: true,
+          statuses: BLOCKING_STATUSES,
+          enrichCustomers: false,
         });
 
         manualTablesNeedingAssignment = reservations.filter((r) => {
@@ -5998,8 +6000,9 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
           console.error("Email create(public) failed:", e?.response?.body || e);
         }
 
-        const updatedRestaurant = await fetchRestaurantFull(restaurantId);
-        return res.status(201).json({ restaurant: updatedRestaurant });
+        return res
+          .status(201)
+          .json(buildReservationPublicResponse(newReservation));
       }
 
       // -------------------------------------------------
@@ -6334,9 +6337,8 @@ router.post(
             );
           }
 
-          const updatedRestaurant = await fetchRestaurantFull(restaurantId);
           return res.status(201).json({
-            restaurant: updatedRestaurant,
+            reservation: await buildRealtimeReservationPayload(newReservation),
             bankHoldRequested: false,
           });
         }
@@ -6434,10 +6436,8 @@ router.post(
             );
           }
 
-          const updatedRestaurant = await fetchRestaurantFull(restaurantId);
-
           return res.status(201).json({
-            restaurant: updatedRestaurant,
+            reservation: await buildRealtimeReservationPayload(newReservation),
             bankHoldRequested: true,
             reservationId: newReservation._id,
             emailSent,
@@ -6547,10 +6547,10 @@ router.put(
           result.previousReservationSlot,
         );
       }
-      const updatedRestaurant = await fetchRestaurantFull(restaurantId);
-
       return res.status(200).json({
-        restaurant: updatedRestaurant,
+        reservation: await buildRealtimeReservationPayload(
+          result.updatedReservation,
+        ),
         tableReassigned: result.tableReassigned,
         tableChange: result.tableChange,
         ...(result.noOp ? { noOp: true } : {}),
@@ -6733,10 +6733,10 @@ router.put(
       await triggerWaitlistAutoPromotionIfBlockingSlotWasFreed(
         result.previousReservationSlot,
       );
-      const restaurant = await fetchRestaurantFull(restaurantId);
-
       return res.status(200).json({
-        restaurant,
+        reservation: await buildRealtimeReservationPayload(
+          result.updatedReservation,
+        ),
         tableReassigned: result.tableReassigned,
         tableChange: result.tableChange,
       });
@@ -6846,11 +6846,9 @@ router.delete(
         status: reservation.status,
       });
 
-      const updatedRestaurant = await fetchRestaurantFull(restaurantId);
-
       return res.status(200).json({
         message: "Reservation deleted successfully",
-        restaurant: updatedRestaurant,
+        reservationId: String(reservationId),
       });
     } catch (error) {
       console.error("Error deleting reservation:", error);
@@ -6871,6 +6869,7 @@ router.get("/public/restaurants/:id/reservations", async (req, res) => {
   ).trim();
 
   try {
+    const dateRange = buildReservationDateRange(req.query, { maxDays: 31 });
     if (excludeReservationId) {
       assertReservationManageToken(req, excludeReservationId);
     }
@@ -6889,15 +6888,18 @@ router.get("/public/restaurants/:id/reservations", async (req, res) => {
       select:
         "reservationDate reservationTime numberOfGuests status pendingExpiresAt table bankHold.enabled bankHold.expiresAt waitlistOffer.state waitlistOffer.offerExpiresAt",
       lean: true,
+      dateRange,
+      statuses: BLOCKING_STATUSES,
+      enrichCustomers: false,
     });
 
     const availabilityFilterStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
-    const availabilityReservations = excludeReservationId
-      ? reservations.filter(
-          (reservation) =>
-            String(reservation?._id || "") !== excludeReservationId,
-        )
-      : reservations;
+    const availabilityReservations = reservations.filter(
+      (reservation) =>
+        isBlockingReservation(reservation) &&
+        (!excludeReservationId ||
+          String(reservation?._id || "") !== excludeReservationId),
+    );
     const availabilityFilterMs = diagnosticsEnabled
       ? roundPerfDuration(availabilityFilterStartedAtMs)
       : null;
@@ -6914,10 +6916,12 @@ router.get("/public/restaurants/:id/reservations", async (req, res) => {
       ? { blockingReservationCount: 0, slotUsageReservationCount: 0 }
       : null;
     const slotCoverUsageStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
-    const slotCoverUsage = buildSlotCoverUsageFromReservations(reservations, {
-      excludeReservationId,
-      diagnostics: slotDiagnostics,
-    });
+    const slotCoverUsage = buildSlotCoverUsageFromReservations(
+      availabilityReservations,
+      {
+        diagnostics: slotDiagnostics,
+      },
+    );
     const slotCoverUsageMs = diagnosticsEnabled
       ? roundPerfDuration(slotCoverUsageStartedAtMs)
       : null;
@@ -6941,6 +6945,7 @@ router.get("/public/restaurants/:id/reservations", async (req, res) => {
     const response = res.status(200).json({
       reservations: sanitizedReservations,
       slotCoverUsage,
+      period: { from: dateRange.from, to: dateRange.to },
     });
 
     if (diagnosticsEnabled) {
@@ -6957,6 +6962,8 @@ router.get("/public/restaurants/:id/reservations", async (req, res) => {
           requestId: getPerfRequestId(),
           route: "publicReservations",
           restaurantId: String(restaurantId),
+          from: dateRange.from,
+          to: dateRange.to,
           userAgentCategory: categorizeUserAgent(req.get("user-agent")),
           restaurantLookupMs,
           reservationsMongoMs: context?.metrics?.reservationsMongoMs || 0,
@@ -7012,6 +7019,7 @@ router.get(
     const handlerStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
 
     try {
+      const dateRange = buildReservationDateRange(req.query, { maxDays: 62 });
       const restaurantLookupStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
       const restaurant =
         await RestaurantModel.findById(restaurantId).select("_id");
@@ -7025,13 +7033,17 @@ router.get(
 
       const reservations = await getRestaurantReservationsList(restaurantId, {
         lean: true,
+        dateRange,
       });
 
       if (diagnosticsEnabled) {
         setPerfRequestMetrics({ restaurantLookupMs });
       }
 
-      const response = res.status(200).json({ reservations });
+      const response = res.status(200).json({
+        reservations,
+        period: { from: dateRange.from, to: dateRange.to },
+      });
 
       if (diagnosticsEnabled) {
         const context = getPerfRequestContext();
@@ -7047,6 +7059,8 @@ router.get(
             requestId: getPerfRequestId(),
             route: "managerReservations",
             restaurantId: String(restaurantId),
+            from: dateRange.from,
+            to: dateRange.to,
             restaurantLookupMs,
             reservationsMongoMs: context?.metrics?.reservationsMongoMs || 0,
             totalMongoMs:
@@ -7075,6 +7089,12 @@ router.get(
 
       return response;
     } catch (error) {
+      if (error?.status === 400) {
+        return res.status(400).json({
+          message: error.message,
+          ...(error.code ? { code: error.code } : {}),
+        });
+      }
       console.error("Error fetching reservations:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
@@ -7108,6 +7128,8 @@ router.get(
         select:
           "customerFirstName customerLastName numberOfGuests reservationDate reservationTime status table source pendingExpiresAt",
         lean: true,
+        statuses: BLOCKING_STATUSES,
+        enrichCustomers: false,
       });
 
       const toFix = reservations
@@ -7180,6 +7202,8 @@ router.get(
         select:
           "customerFirstName customerLastName numberOfGuests reservationDate reservationTime status table source pendingExpiresAt",
         lean: true,
+        statuses: BLOCKING_STATUSES,
+        enrichCustomers: false,
       });
 
       const toFix = reservations

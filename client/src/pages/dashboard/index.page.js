@@ -1,4 +1,4 @@
-import { useContext } from "react";
+import { useContext, useEffect } from "react";
 import Head from "next/head";
 
 // I18N
@@ -20,6 +20,19 @@ import { AnalyticsSvg } from "@/components/_shared/_svgs/analytics.svg";
 export default function DashboardPage(props) {
   const { t } = useTranslation("");
   const { restaurantContext } = useContext(GlobalContext);
+
+  useEffect(() => {
+    if (!restaurantContext?.restaurantData?._id) return;
+    if (!restaurantContext?.restaurantData?.options?.reservations) return;
+
+    restaurantContext.ensureReservationsDay?.(new Date(), {
+      diagnostics: "dashboard-widget",
+    });
+  }, [
+    restaurantContext?.restaurantData?._id,
+    restaurantContext?.restaurantData?.options?.reservations,
+    restaurantContext.ensureReservationsDay,
+  ]);
 
   let title;
   let description;

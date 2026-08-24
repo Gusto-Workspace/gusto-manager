@@ -117,8 +117,28 @@ export default function ListReservationsWebapp(props) {
     if (!y || !m || !d) return;
 
     // midi pour éviter bugs fuseaux
-    setSelectedDay(new Date(y, m - 1, d, 12, 0, 0, 0));
+    const nextSelectedDay = new Date(y, m - 1, d, 12, 0, 0, 0);
+    setSelectedDay(nextSelectedDay);
+    setCurrentMonth(startOfMonth(nextSelectedDay));
   }, [selectedDayKey]);
+
+  useEffect(() => {
+    if (!restaurantId) return;
+    const currentMonthKey = `${currentMonth.getFullYear()}-${pad2(
+      currentMonth.getMonth() + 1,
+    )}`;
+    if (selectedDayKey && !selectedDayKey.startsWith(currentMonthKey)) return;
+    props.ensureReservationsMonth?.(currentMonth, {
+      restaurantId,
+      diagnostics: "calendar-month",
+      prefetchAdjacent: true,
+    });
+  }, [
+    currentMonth,
+    props.ensureReservationsMonth,
+    restaurantId,
+    selectedDayKey,
+  ]);
 
   useEffect(() => {
     if (!floorPlanPinnedStorageKey) {
@@ -464,14 +484,10 @@ export default function ListReservationsWebapp(props) {
             },
           },
         )
-        .then(async (response) => {
-          props.setRestaurantData(response.data.restaurant);
-          await props.refreshReservationsList?.(
-            props.restaurantData?._id,
-            null,
-            "mutation",
-          );
-
+        .then((response) => {
+          if (response.data?.reservation) {
+            props.applyReservationUpdate?.(response.data.reservation);
+          }
           closeModal();
         })
         .catch((error) => {
@@ -515,12 +531,7 @@ export default function ListReservationsWebapp(props) {
           setIsProcessing(false);
         });
     },
-    [
-      selectedReservation,
-      props.restaurantData,
-      props.setRestaurantData,
-      props.refreshReservationsList,
-    ],
+    [selectedReservation, props.restaurantData, props.applyReservationUpdate],
   );
 
   function deleteReservation() {
@@ -538,13 +549,8 @@ export default function ListReservationsWebapp(props) {
           },
         },
       )
-      .then(async (response) => {
-        props.setRestaurantData(response.data.restaurant);
-        await props.refreshReservationsList?.(
-          props.restaurantData?._id,
-          null,
-          "mutation",
-        );
+      .then(() => {
+        props.removeReservationFromCache?.(selectedReservation._id);
         closeModal();
       })
       .catch((error) => {
@@ -577,13 +583,10 @@ export default function ListReservationsWebapp(props) {
           },
         },
       )
-      .then(async (response) => {
-        props.setRestaurantData(response.data.restaurant);
-        await props.refreshReservationsList?.(
-          props.restaurantData?._id,
-          null,
-          "mutation",
-        );
+      .then((response) => {
+        if (response.data?.reservation) {
+          props.applyReservationUpdate?.(response.data.reservation);
+        }
         closeModal();
       })
       .catch((error) => {
@@ -617,13 +620,10 @@ export default function ListReservationsWebapp(props) {
           },
         },
       )
-      .then(async (response) => {
-        props.setRestaurantData(response.data.restaurant);
-        await props.refreshReservationsList?.(
-          props.restaurantData?._id,
-          null,
-          "mutation",
-        );
+      .then((response) => {
+        if (response.data?.reservation) {
+          props.applyReservationUpdate?.(response.data.reservation);
+        }
         closeModal();
       })
       .catch((error) => {
@@ -838,6 +838,7 @@ export default function ListReservationsWebapp(props) {
                 activeDayTab={activeDayTab}
                 handleEditClick={handleEditClick}
                 openModalForAction={openModalForAction}
+                applyReservationUpdate={props.applyReservationUpdate}
                 focusedReservationId={focusedReservationId}
                 clearFocusedReservationId={clearFocusedReservationId}
                 restaurantId={props.restaurantData?._id}

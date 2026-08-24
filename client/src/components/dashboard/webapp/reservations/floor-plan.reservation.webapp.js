@@ -84,6 +84,7 @@ export default function FloorPlanReservationsWebapp({
   restaurantData,
   reservations,
   selectedDay,
+  ensureReservationsDay,
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const openSidebar = () => setSidebarOpen(true);
@@ -124,6 +125,14 @@ export default function FloorPlanReservationsWebapp({
   const isDayContext = Boolean(selectedDay);
   const isTodayContext = isSameDay(contextDate, new Date());
   const showLiveToggle = !isDayContext || isTodayContext;
+
+  useEffect(() => {
+    if (!restaurantId) return;
+    ensureReservationsDay?.(contextDateKey, {
+      restaurantId,
+      diagnostics: "floor-plan",
+    });
+  }, [contextDateKey, ensureReservationsDay, restaurantId]);
 
   const dayReservations = useMemo(() => {
     return safeArr(reservations).filter((r) => {

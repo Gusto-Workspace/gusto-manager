@@ -21,6 +21,13 @@ const {
 } = require("../perf-diagnostics.service");
 
 const DEFAULT_RESERVATION_DELETION_MINUTES = 6 * 30 * 24 * 60;
+const TERMINAL_STATUS_DATE_FIELDS = {
+  Finished: "finishedAt",
+  Canceled: "canceledAt",
+  Rejected: "rejectedAt",
+  NoShow: "noShowAt",
+};
+let lifecycleRunInProgress = false;
 
 function getOccupancyMinutes(restaurant, reservationTime) {
   const parameters = restaurant?.reservationsSettings || {};
@@ -47,6 +54,22 @@ function getDeletionMinutes(restaurant) {
   }
 
   return DEFAULT_RESERVATION_DELETION_MINUTES;
+}
+
+function getCurrentServiceDayEnd(now) {
+  return new Date(
+    Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999),
+  );
+}
+
+function groupRestaurantsByDeletionMinutes(restaurants = []) {
+  const groups = new Map();
+  restaurants.forEach((restaurant) => {
+    const deletionMinutes = getDeletionMinutes(restaurant);
+    if (!groups.has(deletionMinutes)) groups.set(deletionMinutes, []);
+    groups.get(deletionMinutes).push(restaurant._id);
+  });
+  return groups;
 }
 
 function applyActivationFields(reservation, nextStatus) {
@@ -95,7 +118,6 @@ async function broadcastReservationUpdated(reservation, perfRun, perfMetrics) {
 async function transitionReservationStatus({
   reservation,
   nextStatus,
-  restaurantCache,
   perfRun,
   perfMetrics,
 }) {
@@ -261,6 +283,10 @@ async function deleteReservation({
 }
 
 async function runReservationLifecycleCron() {
+  if (lifecycleRunInProgress) {
+    return { skipped: true, reason: "previous-run-active" };
+  }
+  lifecycleRunInProgress = true;
   const perfRun = createPerfRun("reservationLifecycle");
   const perfMetrics = {
     autoFinishCandidateCount: 0,
@@ -288,16 +314,60 @@ async function runReservationLifecycleCron() {
     inactiveMongoMs: 0,
     inactiveCleanupPhaseMs: 0,
     waitlistMaintenanceMs: 0,
+    configurationMongoMs: 0,
+    configurationRestaurantCount: 0,
+    cleanupQueryCount: 0,
+    blockedRangesModifiedRestaurantCount: 0,
+    blockedRangesPurgeMongoMs: 0,
   };
   const now = new Date();
   const restaurantCache = new Map();
   let runFailed = false;
 
   try {
+    const configurationQueryStartedAt = perfRun.enabled ? perfNowMs() : 0;
+    const lifecycleRestaurantIds = await ReservationModel.distinct(
+      "restaurant_id",
+      {
+        status: {
+          $in: [
+            "Confirmed",
+            "Active",
+            "Late",
+            "Finished",
+            "Canceled",
+            "Rejected",
+            "NoShow",
+          ],
+        },
+      },
+    );
+    const lifecycleRestaurants = await RestaurantModel.find({
+      _id: { $in: lifecycleRestaurantIds },
+    })
+      .select("_id name stripeSecretKey reservationsSettings")
+      .lean();
+    if (perfRun.enabled) {
+      perfMetrics.configurationMongoMs =
+        perfNowMs() - configurationQueryStartedAt;
+      perfMetrics.configurationRestaurantCount = lifecycleRestaurants.length;
+    }
+    lifecycleRestaurants.forEach((restaurant) => {
+      restaurantCache.set(String(restaurant._id), restaurant);
+    });
+
     const autoFinishPhaseStartedAt = perfRun.enabled ? perfNowMs() : 0;
     const autoFinishQueryStartedAt = perfRun.enabled ? perfNowMs() : 0;
+    const autoFinishRestaurantIds = lifecycleRestaurants
+      .filter(
+        (restaurant) =>
+          restaurant?.reservationsSettings?.auto_finish_reservations === true,
+      )
+      .map((restaurant) => restaurant._id);
     const autoFinishReservations = await ReservationModel.find({
+      restaurant_id: { $in: autoFinishRestaurantIds },
       status: { $in: ["Confirmed", "Active", "Late"] },
+      reservationDate: { $lte: getCurrentServiceDayEnd(now) },
     }).select(
       "_id restaurant_id customer customerFirstName customerLastName customerEmail customerPhone numberOfGuests reservationDate reservationTime status activatedAt finishedAt reminder24hDueAt reminder24hSentAt reminder24hLockedAt",
     );
@@ -335,7 +405,6 @@ async function runReservationLifecycleCron() {
         const changed = await transitionReservationStatus({
           reservation,
           nextStatus: "Finished",
-          restaurantCache,
           perfRun,
           perfMetrics,
         });
@@ -346,48 +415,50 @@ async function runReservationLifecycleCron() {
       perfMetrics.autoFinishPhaseMs = perfNowMs() - autoFinishPhaseStartedAt;
     }
 
-    const finishedCleanupPhaseStartedAt = perfRun.enabled ? perfNowMs() : 0;
-    const finishedQueryStartedAt = perfRun.enabled ? perfNowMs() : 0;
-    const finishedReservations = await ReservationModel.find({
-      status: "Finished",
-      finishedAt: { $ne: null },
-    }).select(
-      "_id restaurant_id customerFirstName customerLastName customerEmail customerPhone numberOfGuests reservationDate reservationTime status finishedAt bankHold",
+    const deletionGroups =
+      groupRestaurantsByDeletionMinutes(lifecycleRestaurants);
+    const dueByStatus = new Map(
+      Object.keys(TERMINAL_STATUS_DATE_FIELDS).map((status) => [status, []]),
     );
-    if (perfRun.enabled) {
-      perfMetrics.finishedMongoMs = perfNowMs() - finishedQueryStartedAt;
-      perfMetrics.finishedCandidateCount = finishedReservations.length;
+
+    for (const [deletionMinutes, restaurantIds] of deletionGroups) {
+      const cutoff = new Date(now.getTime() - deletionMinutes * 60 * 1000);
+
+      for (const [status, dateField] of Object.entries(
+        TERMINAL_STATUS_DATE_FIELDS,
+      )) {
+        const queryStartedAt = perfRun.enabled ? perfNowMs() : 0;
+        const dueReservations = await ReservationModel.find({
+          restaurant_id: { $in: restaurantIds },
+          status,
+          [dateField]: { $lte: cutoff },
+        }).select(
+          `_id restaurant_id customerFirstName customerLastName customerEmail customerPhone numberOfGuests reservationDate reservationTime status ${dateField} bankHold`,
+        );
+        if (perfRun.enabled) {
+          const queryMs = perfNowMs() - queryStartedAt;
+          perfMetrics.cleanupQueryCount += 1;
+          if (status === "Finished") {
+            perfMetrics.finishedMongoMs += queryMs;
+            perfMetrics.finishedCandidateCount += dueReservations.length;
+          } else {
+            perfMetrics.inactiveMongoMs += queryMs;
+            perfMetrics.inactiveCandidateCount += dueReservations.length;
+          }
+        }
+        dueByStatus.get(status).push(...dueReservations);
+      }
     }
 
-    for (const reservation of finishedReservations) {
-      const restaurant = await getRestaurantCached(
+    const finishedCleanupPhaseStartedAt = perfRun.enabled ? perfNowMs() : 0;
+    for (const reservation of dueByStatus.get("Finished")) {
+      const deleted = await deleteReservation({
+        reservation,
         restaurantCache,
-        reservation.restaurant_id,
         perfRun,
         perfMetrics,
-      );
-      if (!restaurant) continue;
-
-      const finishedAt = reservation?.finishedAt
-        ? new Date(reservation.finishedAt)
-        : null;
-      if (!finishedAt || Number.isNaN(finishedAt.getTime())) continue;
-
-      const deleteThreshold = new Date(
-        finishedAt.getTime() + getDeletionMinutes(restaurant) * 60 * 1000,
-      );
-
-      if (now >= deleteThreshold) {
-        const deleted = await deleteReservation({
-          reservation,
-          restaurantCache,
-          perfRun,
-          perfMetrics,
-        });
-        if (perfRun.enabled && deleted) {
-          perfMetrics.deletedFinishedCount += 1;
-        }
-      }
+      });
+      if (perfRun.enabled && deleted) perfMetrics.deletedFinishedCount += 1;
     }
     if (perfRun.enabled) {
       perfMetrics.finishedCleanupPhaseMs =
@@ -395,59 +466,37 @@ async function runReservationLifecycleCron() {
     }
 
     const inactiveCleanupPhaseStartedAt = perfRun.enabled ? perfNowMs() : 0;
-    const inactiveQueryStartedAt = perfRun.enabled ? perfNowMs() : 0;
-    const inactiveReservations = await ReservationModel.find({
-      status: { $in: ["Canceled", "Rejected", "NoShow"] },
-      $or: [
-        { canceledAt: { $ne: null } },
-        { rejectedAt: { $ne: null } },
-        { noShowAt: { $ne: null } },
-      ],
-    }).select(
-      "_id restaurant_id customerFirstName customerLastName customerEmail customerPhone numberOfGuests reservationDate reservationTime status canceledAt rejectedAt noShowAt bankHold",
-    );
-    if (perfRun.enabled) {
-      perfMetrics.inactiveMongoMs = perfNowMs() - inactiveQueryStartedAt;
-      perfMetrics.inactiveCandidateCount = inactiveReservations.length;
-    }
-
-    for (const reservation of inactiveReservations) {
-      const restaurant = await getRestaurantCached(
-        restaurantCache,
-        reservation.restaurant_id,
-        perfRun,
-        perfMetrics,
-      );
-      if (!restaurant) continue;
-
-      const baseDate =
-        reservation.status === "Canceled"
-          ? reservation.canceledAt
-          : reservation.status === "Rejected"
-            ? reservation.rejectedAt
-            : reservation.noShowAt;
-
-      const base = baseDate ? new Date(baseDate) : null;
-      if (!base || Number.isNaN(base.getTime())) continue;
-
-      const deleteThreshold = new Date(
-        base.getTime() + getDeletionMinutes(restaurant) * 60 * 1000,
-      );
-      if (now >= deleteThreshold) {
+    for (const status of ["Canceled", "Rejected", "NoShow"]) {
+      for (const reservation of dueByStatus.get(status)) {
         const deleted = await deleteReservation({
           reservation,
           restaurantCache,
           perfRun,
           perfMetrics,
         });
-        if (perfRun.enabled && deleted) {
-          perfMetrics.deletedInactiveCount += 1;
-        }
+        if (perfRun.enabled && deleted) perfMetrics.deletedInactiveCount += 1;
       }
     }
     if (perfRun.enabled) {
       perfMetrics.inactiveCleanupPhaseMs =
         perfNowMs() - inactiveCleanupPhaseStartedAt;
+    }
+
+    const blockedRangesPurgeStartedAt = perfRun.enabled ? perfNowMs() : 0;
+    const blockedRangesPurgeResult = await RestaurantModel.updateMany(
+      { "reservationsSettings.blocked_ranges.endAt": { $lte: now } },
+      {
+        $pull: {
+          "reservationsSettings.blocked_ranges": { endAt: { $lte: now } },
+        },
+      },
+    );
+    if (perfRun.enabled) {
+      perfMetrics.blockedRangesPurgeMongoMs =
+        perfNowMs() - blockedRangesPurgeStartedAt;
+      perfMetrics.blockedRangesModifiedRestaurantCount = Number(
+        blockedRangesPurgeResult?.modifiedCount || 0,
+      );
     }
 
     const waitlistStartedAt = perfRun.enabled ? perfNowMs() : 0;
@@ -460,6 +509,7 @@ async function runReservationLifecycleCron() {
     if (perfRun.enabled) perfMetrics.errorCount += 1;
     throw error;
   } finally {
+    lifecycleRunInProgress = false;
     finishPerfRun(perfRun, {
       ...perfMetrics,
       restaurantCount: restaurantCache.size,
@@ -473,6 +523,8 @@ async function runReservationLifecycleCron() {
         perfMetrics.autoFinishMongoMs +
         perfMetrics.finishedMongoMs +
         perfMetrics.inactiveMongoMs +
+        perfMetrics.configurationMongoMs +
+        perfMetrics.blockedRangesPurgeMongoMs +
         perfMetrics.restaurantQueryMs,
       failed: runFailed,
     });

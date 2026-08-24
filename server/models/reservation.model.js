@@ -187,6 +187,36 @@ ReservationSchema.index({
   reservationDate: 1,
 });
 
+ReservationSchema.index(
+  {
+    restaurant_id: 1,
+    reservationDate: 1,
+    reservationTime: 1,
+    createdAt: 1,
+  },
+  { name: "manager_reservations_period_sort" },
+);
+
+ReservationSchema.index(
+  { restaurant_id: 1, status: 1, reservationDate: 1 },
+  { name: "reservation_lifecycle_auto_finish" },
+);
+
+[
+  ["Finished", "finishedAt"],
+  ["Canceled", "canceledAt"],
+  ["Rejected", "rejectedAt"],
+  ["NoShow", "noShowAt"],
+].forEach(([status, dateField]) => {
+  ReservationSchema.index(
+    { restaurant_id: 1, status: 1, [dateField]: 1 },
+    {
+      name: `reservation_lifecycle_${status.toLowerCase()}`,
+      partialFilterExpression: { status },
+    },
+  );
+});
+
 ReservationSchema.index({
   restaurant_id: 1,
   reservationDate: 1,
