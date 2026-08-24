@@ -13,7 +13,6 @@ import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import ListMenusComponent from "@/components/dashboard/menus/list.menus.component";
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
-import RestaurantMenuPrintActionDashboardComponent from "@/components/dashboard/_shared/restaurant-menu-print-action.dashboard.component";
 
 export default function MenusPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
@@ -71,11 +70,6 @@ export default function MenusPage(props) {
               closeEditing={restaurantContext.closeEditing}
               setRestaurantData={restaurantContext.setRestaurantData}
               restaurantData={restaurantContext.restaurantData}
-            />
-
-            <RestaurantMenuPrintActionDashboardComponent
-              website={restaurant?.website}
-              dataLoading={restaurantContext.dataLoading}
             />
 
             {!hasMenusModule ? (

@@ -144,11 +144,17 @@ export default function WepAppReservationsPage(props) {
         enabled={restaurantContext?.isAuth}
         lastActiveKey="gm:lastActive:webapp:reservations"
         thresholdMs={5 * 60 * 1000}
-        onSoftReturn={() =>
-          restaurantContext.resyncAfterForeground?.({ hard: false })
+        onSoftReturn={(_elapsed, details) =>
+          restaurantContext.resyncAfterForeground?.({
+            hard: false,
+            reason: details?.reason || "unknown",
+          })
         }
-        onHardReturn={() =>
-          restaurantContext.resyncAfterForeground?.({ hard: true })
+        onHardReturn={(_elapsed, details) =>
+          restaurantContext.resyncAfterForeground?.({
+            hard: true,
+            reason: details?.reason || "unknown",
+          })
         }
       />
     </>

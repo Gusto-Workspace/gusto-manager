@@ -2,6 +2,14 @@ const cron = require("node-cron");
 const ReservationModel = require("../../models/reservation.model");
 const RestaurantModel = require("../../models/restaurant.model");
 const { sendReservationEmail } = require("../reservations-mailer.service");
+const {
+  createReservationManageToken,
+} = require("../reservation-manage-token.service");
+const {
+  createPerfRun,
+  finishPerfRun,
+  perfNowMs,
+} = require("../perf-diagnostics.service");
 
 const LOCK_MAX_AGE_MS = 10 * 60 * 1000;
 const BATCH_SIZE = 50;
@@ -26,7 +34,9 @@ function buildReservationManageUrl({ website, reservationId }) {
   const id = String(reservationId || "").trim();
 
   if (!origin || !id) return "";
-  return `${origin}/reservations/${id}/manage`;
+  const token = createReservationManageToken(id);
+  if (!token) return "";
+  return `${origin}/reservations/${id}/manage?token=${encodeURIComponent(token)}`;
 }
 
 function looksDue(d) {
@@ -83,66 +93,136 @@ async function releaseReminderLock(reservationId) {
 }
 
 async function runReservationReminder24h() {
+  const perfRun = createPerfRun("reservationReminder24h");
+  const perfMetrics = {
+    candidateCount: 0,
+    processedCount: 0,
+    modifiedCount: 0,
+    skippedCount: 0,
+    lockMissCount: 0,
+    errorCount: 0,
+    mongoMs: 0,
+    emailCalls: 0,
+    emailTotalMs: 0,
+  };
   const now = new Date();
+  let runFailed = false;
 
-  const candidates = await ReservationModel.find({
-    status: "Confirmed",
-    reminder24hSentAt: null,
-    reminder24hDueAt: { $ne: null, $lte: now },
-    customerEmail: { $exists: true, $ne: "" },
-  })
-    .sort({ reminder24hDueAt: 1 })
-    .limit(BATCH_SIZE);
+  try {
+    const candidatesQueryStartedAt = perfRun.enabled ? perfNowMs() : 0;
+    const candidates = await ReservationModel.find({
+      status: "Confirmed",
+      reminder24hSentAt: null,
+      reminder24hDueAt: { $ne: null, $lte: now },
+      customerEmail: { $exists: true, $ne: "" },
+    })
+      .sort({ reminder24hDueAt: 1 })
+      .limit(BATCH_SIZE);
+    if (perfRun.enabled) {
+      perfMetrics.mongoMs += perfNowMs() - candidatesQueryStartedAt;
+      perfMetrics.candidateCount = candidates.length;
+    }
 
-  if (!candidates.length) return;
+    if (!candidates.length) return;
 
-  for (const candidate of candidates) {
-    const locked = await lockReservationForReminder(candidate._id);
-    if (!locked) continue;
-
-    try {
-      if (!looksDue(locked.reminder24hDueAt)) {
-        await releaseReminderLock(locked._id);
+    for (const candidate of candidates) {
+      const lockStartedAt = perfRun.enabled ? perfNowMs() : 0;
+      const locked = await lockReservationForReminder(candidate._id);
+      if (perfRun.enabled) {
+        perfMetrics.mongoMs += perfNowMs() - lockStartedAt;
+      }
+      if (!locked) {
+        if (perfRun.enabled) perfMetrics.lockMissCount += 1;
         continue;
       }
+      if (perfRun.enabled) perfMetrics.processedCount += 1;
 
-      const restaurant = await RestaurantModel.findById(
-        locked.restaurant_id,
-      ).select("name website reservationsSettings.email_templates");
+      try {
+        if (!looksDue(locked.reminder24hDueAt)) {
+          const releaseStartedAt = perfRun.enabled ? perfNowMs() : 0;
+          await releaseReminderLock(locked._id);
+          if (perfRun.enabled) {
+            perfMetrics.mongoMs += perfNowMs() - releaseStartedAt;
+            perfMetrics.skippedCount += 1;
+          }
+          continue;
+        }
 
-      const restaurantName = restaurant?.name || "Restaurant";
-      const actionUrl = buildReservationManageUrl({
-        website: restaurant?.website,
-        reservationId: locked._id,
-      });
+        const restaurantQueryStartedAt = perfRun.enabled ? perfNowMs() : 0;
+        const restaurant = await RestaurantModel.findById(
+          locked.restaurant_id,
+        ).select("name website reservationsSettings.email_templates");
+        if (perfRun.enabled) {
+          perfMetrics.mongoMs += perfNowMs() - restaurantQueryStartedAt;
+        }
 
-      const result = await sendReservationEmail("reminder24h", {
-        reservation: locked,
-        restaurantName,
-        restaurant,
-        actionUrl,
-      });
-
-      if (result?.skipped) {
-        console.log("[reservation-reminder-skip]", {
-          reservationId: String(locked._id),
-          reason: result.reason,
+        const restaurantName = restaurant?.name || "Restaurant";
+        const actionUrl = buildReservationManageUrl({
+          website: restaurant?.website,
+          reservationId: locked._id,
         });
 
+        const emailStartedAt = perfRun.enabled ? perfNowMs() : 0;
+        if (perfRun.enabled) perfMetrics.emailCalls += 1;
+        let result;
+        try {
+          result = await sendReservationEmail("reminder24h", {
+            reservation: locked,
+            restaurantName,
+            restaurant,
+            actionUrl,
+          });
+        } finally {
+          if (perfRun.enabled) {
+            perfMetrics.emailTotalMs += perfNowMs() - emailStartedAt;
+          }
+        }
+
+        if (result?.skipped) {
+          console.log("[reservation-reminder-skip]", {
+            reservationId: String(locked._id),
+            reason: result.reason,
+          });
+
+          const releaseStartedAt = perfRun.enabled ? perfNowMs() : 0;
+          await releaseReminderLock(locked._id);
+          if (perfRun.enabled) {
+            perfMetrics.mongoMs += perfNowMs() - releaseStartedAt;
+            perfMetrics.skippedCount += 1;
+          }
+          continue;
+        }
+
+        const markStartedAt = perfRun.enabled ? perfNowMs() : 0;
+        await markReminderSent(locked._id);
+        if (perfRun.enabled) {
+          perfMetrics.mongoMs += perfNowMs() - markStartedAt;
+          perfMetrics.modifiedCount += 1;
+        }
+      } catch (e) {
+        if (perfRun.enabled) perfMetrics.errorCount += 1;
+        console.error(
+          "[reservation-reminder-error]",
+          String(locked?._id),
+          e?.response?.body || e,
+        );
+
+        const releaseStartedAt = perfRun.enabled ? perfNowMs() : 0;
         await releaseReminderLock(locked._id);
-        continue;
+        if (perfRun.enabled) {
+          perfMetrics.mongoMs += perfNowMs() - releaseStartedAt;
+        }
       }
-
-      await markReminderSent(locked._id);
-    } catch (e) {
-      console.error(
-        "[reservation-reminder-error]",
-        String(locked?._id),
-        e?.response?.body || e,
-      );
-
-      await releaseReminderLock(locked._id);
     }
+  } catch (error) {
+    runFailed = true;
+    if (perfRun.enabled) perfMetrics.errorCount += 1;
+    throw error;
+  } finally {
+    finishPerfRun(perfRun, {
+      ...perfMetrics,
+      failed: runFailed,
+    });
   }
 }
 

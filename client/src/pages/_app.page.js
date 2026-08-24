@@ -21,6 +21,7 @@ import {
   isEmployeeDashboardRouteAllowed,
   normalizeDashboardPath,
 } from "@/_assets/utils/dashboard-access";
+import { startFrontendPerfDiagnostics } from "@/_assets/utils/perf-diagnostics.client";
 
 function ensureAxiosApiAuthInterceptor() {
   if (typeof window === "undefined") return;
@@ -226,6 +227,8 @@ function EmployeeDashboardAccessGuard({ children }) {
 
 function App({ Component, pageProps }) {
   const router = useRouter();
+
+  useEffect(() => startFrontendPerfDiagnostics(), []);
 
   // ✅ Choix du manifest selon le module (Android)
   const manifestHref = useMemo(() => {

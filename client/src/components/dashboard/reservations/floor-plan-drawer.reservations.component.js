@@ -15,6 +15,7 @@ import {
   getActiveFloorPlanRooms,
   getDefaultActiveFloorPlanRoomId,
 } from "./floor-plan.rooms.utils";
+import { sortReservationTimesByServiceOrder } from "@/_assets/utils/reservation-service-time";
 
 const CLOSE_MS = 240;
 const OPEN_MS = 240;
@@ -230,7 +231,7 @@ export default function FloorPlanDrawerReservationsComponent({
           .filter(Boolean),
       ),
     );
-    return uniq.sort((a, b) => a.localeCompare(b));
+    return sortReservationTimesByServiceOrder(uniq);
   }, [dayReservations]);
 
   const activeRooms = useMemo(() => getActiveFloorPlanRooms(rooms), [rooms]);

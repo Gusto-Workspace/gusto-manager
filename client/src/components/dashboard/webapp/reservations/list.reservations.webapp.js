@@ -63,7 +63,15 @@ export default function ListReservationsWebapp(props) {
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const [disableDayClick, setDisableDayClick] = useState(false);
   const [isFloorPlanDrawerOpen, setIsFloorPlanDrawerOpen] = useState(false);
+  const [isFloorPlanPinned, setIsFloorPlanPinned] = useState(false);
   const autoMarkedNotificationRef = useRef(null);
+  const restaurantId = props.restaurantData?._id
+    ? String(props.restaurantData._id)
+    : "";
+  const floorPlanPinnedStorageKey = restaurantId
+    ? `gusto:reservations:floor-plan-pinned:${restaurantId}`
+    : "";
+  const showPinnedFloorPlan = Boolean(selectedDay && isFloorPlanPinned);
   const {
     serviceClosureState,
     serviceFullSaving,
@@ -111,6 +119,39 @@ export default function ListReservationsWebapp(props) {
     // midi pour éviter bugs fuseaux
     setSelectedDay(new Date(y, m - 1, d, 12, 0, 0, 0));
   }, [selectedDayKey]);
+
+  useEffect(() => {
+    if (!floorPlanPinnedStorageKey) {
+      setIsFloorPlanPinned(false);
+      return;
+    }
+
+    try {
+      setIsFloorPlanPinned(
+        localStorage.getItem(floorPlanPinnedStorageKey) === "true",
+      );
+    } catch {
+      setIsFloorPlanPinned(false);
+    }
+  }, [floorPlanPinnedStorageKey]);
+
+  const setFloorPlanPinnedPreference = useCallback(
+    (nextValue) => {
+      const next = Boolean(nextValue);
+      setIsFloorPlanPinned(next);
+
+      if (next) setIsFloorPlanDrawerOpen(false);
+      if (!floorPlanPinnedStorageKey) return;
+
+      try {
+        localStorage.setItem(
+          floorPlanPinnedStorageKey,
+          next ? "true" : "false",
+        );
+      } catch {}
+    },
+    [floorPlanPinnedStorageKey],
+  );
 
   const clearFocusedReservationId = useCallback(() => {
     if (!router.isReady) return;
@@ -425,7 +466,11 @@ export default function ListReservationsWebapp(props) {
         )
         .then(async (response) => {
           props.setRestaurantData(response.data.restaurant);
-          await props.refreshReservationsList?.(props.restaurantData?._id);
+          await props.refreshReservationsList?.(
+            props.restaurantData?._id,
+            null,
+            "mutation",
+          );
 
           closeModal();
         })
@@ -495,7 +540,11 @@ export default function ListReservationsWebapp(props) {
       )
       .then(async (response) => {
         props.setRestaurantData(response.data.restaurant);
-        await props.refreshReservationsList?.(props.restaurantData?._id);
+        await props.refreshReservationsList?.(
+          props.restaurantData?._id,
+          null,
+          "mutation",
+        );
         closeModal();
       })
       .catch((error) => {
@@ -530,7 +579,11 @@ export default function ListReservationsWebapp(props) {
       )
       .then(async (response) => {
         props.setRestaurantData(response.data.restaurant);
-        await props.refreshReservationsList?.(props.restaurantData?._id);
+        await props.refreshReservationsList?.(
+          props.restaurantData?._id,
+          null,
+          "mutation",
+        );
         closeModal();
       })
       .catch((error) => {
@@ -566,7 +619,11 @@ export default function ListReservationsWebapp(props) {
       )
       .then(async (response) => {
         props.setRestaurantData(response.data.restaurant);
-        await props.refreshReservationsList?.(props.restaurantData?._id);
+        await props.refreshReservationsList?.(
+          props.restaurantData?._id,
+          null,
+          "mutation",
+        );
         closeModal();
       })
       .catch((error) => {
@@ -758,22 +815,56 @@ export default function ListReservationsWebapp(props) {
             handleSearchChangeDay={handleSearchChangeDay}
             setIsKeyboardOpen={setIsKeyboardOpen}
             handleOpenFloorPlanDrawer={handleOpenFloorPlanDrawer}
+            hideFloorPlanButtonOnDesktop={showPinnedFloorPlan}
+            floorPlanPinned={isFloorPlanPinned}
+            onToggleFloorPlanPinned={() =>
+              setFloorPlanPinnedPreference(!isFloorPlanPinned)
+            }
             minSeatsFilter={minSeatsFilter}
             setMinSeatsFilter={setMinSeatsFilter}
             seatsFilterOptions={RESERVATION_SEATS_FILTER_OPTIONS}
           />
-          {/* Liste du statut actif */}
-          <DayListReservationsWebapp
-            selectedDay={selectedDay}
-            dayData={dayData}
-            activeDayTab={activeDayTab}
-            handleEditClick={handleEditClick}
-            openModalForAction={openModalForAction}
-            focusedReservationId={focusedReservationId}
-            clearFocusedReservationId={clearFocusedReservationId}
-            restaurantId={props.restaurantData?._id}
-            tablesCatalog={props.restaurantData?.reservationsSettings?.tables}
-          />
+          <div
+            className={
+              showPinnedFloorPlan
+                ? "grid grid-cols-1 gap-6 min-[1024px]:grid-cols-2 min-[1024px]:items-start"
+                : "block"
+            }
+          >
+            <div className="min-w-0">
+              <DayListReservationsWebapp
+                selectedDay={selectedDay}
+                dayData={dayData}
+                activeDayTab={activeDayTab}
+                handleEditClick={handleEditClick}
+                openModalForAction={openModalForAction}
+                focusedReservationId={focusedReservationId}
+                clearFocusedReservationId={clearFocusedReservationId}
+                restaurantId={props.restaurantData?._id}
+                tablesCatalog={
+                  props.restaurantData?.reservationsSettings?.tables
+                }
+                compactRows={showPinnedFloorPlan}
+              />
+            </div>
+
+            {showPinnedFloorPlan ? (
+              <div className="hidden min-[1024px]:sticky min-[1024px]:top-6 min-[1024px]:block min-[1024px]:max-h-[calc(100vh-3rem)] min-[1024px]:min-h-[680px]">
+                <FloorPlanDrawerReservationsComponent
+                  variant="panel"
+                  open
+                  restaurantId={props.restaurantData?._id}
+                  restaurantData={props.restaurantData}
+                  reservations={props.reservations || []}
+                  selectedDay={selectedDay}
+                  floorPlanPinned={isFloorPlanPinned}
+                  onToggleFloorPlanPinned={() =>
+                    setFloorPlanPinnedPreference(false)
+                  }
+                />
+              </div>
+            ) : null}
+          </div>
         </>
       )}
 
@@ -795,6 +886,10 @@ export default function ListReservationsWebapp(props) {
         restaurantData={props.restaurantData}
         reservations={props.reservations || []}
         selectedDay={selectedDay}
+        floorPlanPinned={isFloorPlanPinned}
+        onToggleFloorPlanPinned={() =>
+          setFloorPlanPinnedPreference(!isFloorPlanPinned)
+        }
       />
     </section>
   );

@@ -364,6 +364,11 @@ export default function ReservationsDrawerComponent({
   const customerSummary = reservation?.customerSummary || null;
   const customerProfile = customerDetails?.customer || customerSummary || null;
   const customerStats = customerProfile?.stats || {};
+  const customerReservationsTotal = Math.max(
+    0,
+    Number(customerStats.reservationsTotal || 0) -
+      Number(customerStats.reservationsCanceled || 0),
+  );
   const currentReservationId = String(reservation?._id || "").trim();
   const now = new Date();
   const detailedCustomerReservations =
@@ -736,7 +741,7 @@ export default function ReservationsDrawerComponent({
                       Réservations
                     </p>
                     <p className="mt-1 text-lg font-semibold text-darkBlue">
-                      {customerStats.reservationsTotal || 0}
+                      {customerReservationsTotal}
                     </p>
                   </div>
 

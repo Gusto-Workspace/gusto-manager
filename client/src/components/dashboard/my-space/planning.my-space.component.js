@@ -26,6 +26,16 @@ const normalizeTitle = (value) =>
     .trim()
     .toLowerCase();
 
+const getLocalDateKey = (value = new Date()) => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
 const isLeaveShiftRecord = (shift) =>
   Boolean(
     shift?.isLeave ||
@@ -142,8 +152,8 @@ export default function PlanningMySpaceComponent({
   const [events, setEvents] = useState([]);
   const [leaveModalOpen, setLeaveModalOpen] = useState(false);
   const [leaveModalData, setLeaveModalData] = useState({
-    startDate: new Date().toISOString().slice(0, 10),
-    endDate: new Date().toISOString().slice(0, 10),
+    startDate: getLocalDateKey(),
+    endDate: getLocalDateKey(),
     type: "full",
   });
 
@@ -316,7 +326,7 @@ export default function PlanningMySpaceComponent({
   };
 
   function openLeaveModal() {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getLocalDateKey();
     setLeaveModalData({ startDate: today, endDate: today, type: "full" });
     setLeaveModalOpen(true);
   }

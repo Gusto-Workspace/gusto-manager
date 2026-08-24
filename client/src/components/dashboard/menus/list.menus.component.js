@@ -18,6 +18,7 @@ import CardListMenuComponent from "./card-list-menu.menus.component";
 import CatalogHeaderDashboardComponent, {
   CatalogActionButton,
 } from "../_shared/catalog-header.dashboard.component";
+import RestaurantMenuPrintActionDashboardComponent from "../_shared/restaurant-menu-print-action.dashboard.component";
 
 // DND
 import {
@@ -158,10 +159,16 @@ export default function ListMenusComponent() {
         icon={<MenuSvg width={30} height={30} fillColor="#131E3690" />}
         title={t("titles.main")}
         actions={
-          <CatalogActionButton
-            onClick={handleAddClick}
-            label={t("buttons.add")}
-          />
+          <>
+            <RestaurantMenuPrintActionDashboardComponent
+              website={restaurantContext?.restaurantData?.website}
+              dataLoading={restaurantContext.dataLoading}
+            />
+            <CatalogActionButton
+              onClick={handleAddClick}
+              label={t("buttons.add")}
+            />
+          </>
         }
       />
 

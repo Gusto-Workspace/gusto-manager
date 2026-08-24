@@ -58,14 +58,21 @@ function maxDate(...values) {
 }
 
 function getReservationsTotal(source) {
-  const raw =
+  const totalRaw =
     source?.stats?.reservationsTotal ??
     source?.bookingsTotal ??
     source?.reservationsTotal ??
     0;
-  const out = Number(raw);
-  if (!Number.isFinite(out) || out < 0) return 0;
-  return Math.trunc(out);
+  const canceledRaw = source?.stats?.reservationsCanceled ?? 0;
+  const total = Number(totalRaw);
+  const canceled = Number(canceledRaw);
+
+  if (!Number.isFinite(total) || total < 0) return 0;
+
+  const safeCanceled =
+    Number.isFinite(canceled) && canceled > 0 ? Math.trunc(canceled) : 0;
+
+  return Math.max(0, Math.trunc(total) - safeCanceled);
 }
 
 function getLastEngagementAt(source) {

@@ -78,6 +78,47 @@ function getOpeningSegments(slot = {}) {
   return [{ start: open, end: 24 * 60 }];
 }
 
+function getOpeningSegmentsForDay(openingHours, date) {
+  const currentDay = getOpeningDay(openingHours, date);
+  const currentSegments = currentDay?.isClosed
+    ? []
+    : safeArr(currentDay?.hours).flatMap((slot) =>
+        getOpeningSegments(slot).map((segment) => ({
+          ...segment,
+          continuesDinner: false,
+        })),
+      );
+
+  const previousDate = new Date(date.getTime());
+  previousDate.setDate(previousDate.getDate() - 1);
+  const previousDay = getOpeningDay(openingHours, previousDate);
+  const carryOverSegments = previousDay?.isClosed
+    ? []
+    : safeArr(previousDay?.hours).flatMap((slot) => {
+        const open = parseTimeToMinutes(slot?.open);
+        const close = parseTimeToMinutes(slot?.close);
+
+        if (open === null || close === null || close >= open || close === 0) {
+          return [];
+        }
+
+        return [
+          {
+            start: 0,
+            end: close,
+            continuesDinner: rangesOverlap(
+              open,
+              24 * 60,
+              MEAL_WINDOWS.dinner.start,
+              24 * 60,
+            ),
+          },
+        ];
+      });
+
+  return [...currentSegments, ...carryOverSegments];
+}
+
 function toPositiveNumber(value, fallback = 0) {
   const out = Number(value);
   if (!Number.isFinite(out) || out < 0) return fallback;
@@ -145,10 +186,9 @@ function computeMealAllowance({
   const lastDay = getDayCursor(shiftEnd);
 
   while (dayCursor <= lastDay) {
-    const openingDay = getOpeningDay(openingHours, dayCursor);
-    const daySlots = openingDay?.isClosed ? [] : safeArr(openingDay?.hours);
+    const openingSegments = getOpeningSegmentsForDay(openingHours, dayCursor);
 
-    if (daySlots.length > 0) {
+    if (openingSegments.length > 0) {
       const shiftSegmentStart = isSameCalendarDay(dayCursor, shiftStart)
         ? getMinutesSinceStartOfDay(shiftStart)
         : 0;
@@ -156,35 +196,34 @@ function computeMealAllowance({
         ? getMinutesSinceStartOfDay(shiftEnd)
         : 24 * 60;
 
-      daySlots.forEach((slot) => {
-        getOpeningSegments(slot).forEach((segment) => {
-          const effectiveStart = Math.max(shiftSegmentStart, segment.start);
-          const effectiveEnd = Math.min(shiftSegmentEnd, segment.end);
+      openingSegments.forEach((segment) => {
+        const effectiveStart = Math.max(shiftSegmentStart, segment.start);
+        const effectiveEnd = Math.min(shiftSegmentEnd, segment.end);
 
-          if (effectiveEnd <= effectiveStart) return;
+        if (effectiveEnd <= effectiveStart) return;
 
-          if (
-            rangesOverlap(
-              effectiveStart,
-              effectiveEnd,
-              MEAL_WINDOWS.lunch.start,
-              MEAL_WINDOWS.lunch.end,
-            )
-          ) {
-            mealPeriods.add("lunch");
-          }
+        if (
+          rangesOverlap(
+            effectiveStart,
+            effectiveEnd,
+            MEAL_WINDOWS.lunch.start,
+            MEAL_WINDOWS.lunch.end,
+          )
+        ) {
+          mealPeriods.add("lunch");
+        }
 
-          if (
-            rangesOverlap(
-              effectiveStart,
-              effectiveEnd,
-              MEAL_WINDOWS.dinner.start,
-              MEAL_WINDOWS.dinner.end,
-            )
-          ) {
-            mealPeriods.add("dinner");
-          }
-        });
+        if (
+          segment.continuesDinner ||
+          rangesOverlap(
+            effectiveStart,
+            effectiveEnd,
+            MEAL_WINDOWS.dinner.start,
+            MEAL_WINDOWS.dinner.end,
+          )
+        ) {
+          mealPeriods.add("dinner");
+        }
       });
     }
 

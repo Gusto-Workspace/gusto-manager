@@ -27,6 +27,20 @@ const {
 const {
   buildPublicReservationServiceBlockedRange,
 } = require("../services/reservation-service-closure.service");
+const {
+  categorizeUserAgent,
+  getPerfRequestContext,
+  getPerfRequestId,
+  isPerfDiagnosticsEnabled,
+  perfLog,
+  perfNowMs,
+  setPerfRequestMetrics,
+  shouldLogPerfDetail,
+} = require("../services/perf-diagnostics.service");
+
+function roundPerfDuration(startedAtMs) {
+  return Math.round((perfNowMs() - startedAtMs) * 100) / 100;
+}
 
 // Ajoute le restaurant dans employee.restaurants s'il n'y est pas déjà
 function ensureEmployeeRestaurantLink(employee, restaurantId) {
@@ -83,17 +97,82 @@ function getOrCreateRestaurantProfile(employee, restaurantId) {
 
 // fonction pour supprimer les blocages horaires manuels des réservations
 async function purgeExpiredBlockedRanges(restaurantId) {
+  const diagnosticsEnabled = isPerfDiagnosticsEnabled();
+  const totalStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
+  const queryStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
   const restaurant = await RestaurantModel.findById(restaurantId);
-  if (!restaurant) return;
+  const queryMs = diagnosticsEnabled
+    ? roundPerfDuration(queryStartedAtMs)
+    : null;
+  if (!restaurant) {
+    if (diagnosticsEnabled) {
+      setPerfRequestMetrics({ blockedRangesPurgeQueryMs: queryMs });
+      const totalMs = roundPerfDuration(totalStartedAtMs);
+      const requestRoute =
+        getPerfRequestContext()?.route || "blockedRangesPurge";
+      if (
+        shouldLogPerfDetail(requestRoute, {
+          durationMs: totalMs,
+          normalLimit: requestRoute === "publicRestaurant" ? 10 : 30,
+        })
+      ) {
+        perfLog("MONGO", {
+          operation: "purgeExpiredBlockedRanges",
+          requestId: getPerfRequestId(),
+          restaurantId: String(restaurantId),
+          found: false,
+          queryMs,
+          totalMs,
+        });
+      }
+    }
+    return;
+  }
 
   const now = new Date();
   const ranges = restaurant?.reservationsSettings?.blocked_ranges || [];
 
+  const processingStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
   const filtered = ranges.filter((r) => new Date(r.endAt) > now);
+  const processingMs = diagnosticsEnabled
+    ? roundPerfDuration(processingStartedAtMs)
+    : null;
 
+  let saveMs = 0;
   if (filtered.length !== ranges.length) {
     restaurant.reservationsSettings.blocked_ranges = filtered;
+    const saveStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
     await restaurant.save();
+    if (diagnosticsEnabled) saveMs = roundPerfDuration(saveStartedAtMs);
+  }
+
+  if (diagnosticsEnabled) {
+    const totalMs = roundPerfDuration(totalStartedAtMs);
+    setPerfRequestMetrics({
+      blockedRangesPurgeQueryMs: queryMs,
+      blockedRangesPurgeProcessingMs: processingMs,
+      blockedRangesPurgeSaveMs: saveMs,
+    });
+    const requestRoute = getPerfRequestContext()?.route || "blockedRangesPurge";
+    if (
+      shouldLogPerfDetail(requestRoute, {
+        durationMs: totalMs,
+        normalLimit: requestRoute === "publicRestaurant" ? 10 : 30,
+      })
+    ) {
+      perfLog("MONGO", {
+        operation: "purgeExpiredBlockedRanges",
+        requestId: getPerfRequestId(),
+        restaurantId: String(restaurantId),
+        queryMs,
+        processingMs,
+        saveMs,
+        totalMs,
+        rangesBefore: ranges.length,
+        rangesAfter: filtered.length,
+        removedCount: ranges.length - filtered.length,
+      });
+    }
   }
 }
 
@@ -193,16 +272,30 @@ router.post(
 
 // GET RESTAURANT DETAILS FROM PANEL
 router.get("/owner/restaurants/:id", authenticateToken, async (req, res) => {
+  const diagnosticsEnabled = isPerfDiagnosticsEnabled();
   try {
     const { id } = req.params;
 
+    const giftCardLifecycleStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
     await refreshGiftCardLifecycle(id);
-    await purgeExpiredBlockedRanges(id);
+    const giftCardLifecycleMs = diagnosticsEnabled
+      ? roundPerfDuration(giftCardLifecycleStartedAtMs)
+      : null;
 
+    const purgeStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
+    await purgeExpiredBlockedRanges(id);
+    const purgeMs = diagnosticsEnabled
+      ? roundPerfDuration(purgeStartedAtMs)
+      : null;
+
+    const restaurantQueryStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
     const restaurant = await RestaurantModel.findById(id)
       .populate("owner_id", "firstname")
       .populate("menus")
       .populate("employees");
+    const restaurantQueryAndPopulateMs = diagnosticsEnabled
+      ? roundPerfDuration(restaurantQueryStartedAtMs)
+      : null;
 
     if (!restaurant) {
       return res.status(404).json({ message: "Restaurant not found" });
@@ -216,11 +309,24 @@ router.get("/owner/restaurants/:id", authenticateToken, async (req, res) => {
       return res.status(403).json({ message: "Forbidden" });
     }
 
+    const processingStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
     const decoratedRestaurant = decorateRestaurantEmployees(
       restaurant,
       id,
       restaurant.employees || [],
     );
+    const processingMs = diagnosticsEnabled
+      ? roundPerfDuration(processingStartedAtMs)
+      : null;
+
+    if (diagnosticsEnabled) {
+      setPerfRequestMetrics({
+        giftCardLifecycleMs,
+        purgeMs,
+        restaurantQueryAndPopulateMs,
+        processingMs,
+      });
+    }
 
     res.status(200).json({ restaurant: decoratedRestaurant });
   } catch (error) {
@@ -231,15 +337,30 @@ router.get("/owner/restaurants/:id", authenticateToken, async (req, res) => {
 
 // GET RESTAURANT DETAILS FROM SITE
 router.get("/restaurants/:id", async (req, res) => {
+  const diagnosticsEnabled = isPerfDiagnosticsEnabled();
+  const handlerStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
   try {
     const { id } = req.params;
 
+    const giftCardLifecycleStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
     await refreshGiftCardLifecycle(id);
-    await purgeExpiredBlockedRanges(id);
+    const giftCardLifecycleMs = diagnosticsEnabled
+      ? roundPerfDuration(giftCardLifecycleStartedAtMs)
+      : null;
 
+    const purgeStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
+    await purgeExpiredBlockedRanges(id);
+    const purgeMs = diagnosticsEnabled
+      ? roundPerfDuration(purgeStartedAtMs)
+      : null;
+
+    const restaurantQueryStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
     const restaurant = await RestaurantModel.findById(id)
       .populate("owner_id", "firstname")
       .populate("menus");
+    const restaurantQueryAndPopulateMs = diagnosticsEnabled
+      ? roundPerfDuration(restaurantQueryStartedAtMs)
+      : null;
 
     if (!restaurant) {
       return res.status(404).json({ message: "Restaurant not found" });
@@ -281,6 +402,7 @@ router.get("/restaurants/:id", async (req, res) => {
       return dishId;
     };
 
+    const processingStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
     const restaurantData = {
       ...restaurant.toObject(),
       menus: restaurant.menus.map((menu) => ({
@@ -320,7 +442,49 @@ router.get("/restaurants/:id", async (req, res) => {
       };
     }
 
+    const processingMs = diagnosticsEnabled
+      ? roundPerfDuration(processingStartedAtMs)
+      : null;
+
+    if (diagnosticsEnabled) {
+      setPerfRequestMetrics({
+        giftCardLifecycleMs,
+        purgeMs,
+        restaurantQueryAndPopulateMs,
+        processingMs,
+      });
+    }
+
     res.status(200).json({ restaurant: restaurantData });
+
+    if (diagnosticsEnabled) {
+      const context = getPerfRequestContext();
+      const handlerMs = roundPerfDuration(handlerStartedAtMs);
+      if (
+        shouldLogPerfDetail("publicRestaurant", {
+          durationMs: handlerMs,
+          normalLimit: 10,
+        })
+      ) {
+        perfLog("PUBLIC", {
+          event: "restaurant-detail",
+          requestId: getPerfRequestId(),
+          route: "publicRestaurant",
+          restaurantId: String(id),
+          userAgentCategory: categorizeUserAgent(req.get("user-agent")),
+          giftCardLifecycleMs,
+          purgeMs,
+          restaurantQueryAndPopulateMs,
+          processingMs,
+          resJsonSyncMs: context?.metrics?.resJsonSyncMs || null,
+          responseBytes: Number(res.getHeader("Content-Length")) || null,
+          handlerMs,
+          menuCount: Array.isArray(restaurant.menus)
+            ? restaurant.menus.length
+            : 0,
+        });
+      }
+    }
   } catch (error) {
     console.error("Erreur lors de la récupération du restaurant:", error);
     res.status(500).json({ message: "Erreur interne du serveur" });

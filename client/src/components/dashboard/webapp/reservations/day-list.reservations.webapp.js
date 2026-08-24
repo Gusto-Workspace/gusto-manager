@@ -9,7 +9,10 @@ import axios from "axios";
 import CardReservationWebapp from "./card.reservations.webapp";
 import ReservationsDrawerComponent from "@/components/_shared/reservations/reservations-drawer.component";
 import { CommunitySvg } from "@/components/_shared/_svgs/_index";
-import { isReservationCountedInCovers } from "@/_assets/utils/reservation-service-time";
+import {
+  isReservationCountedInCovers,
+  sortReservationTimesByServiceOrder,
+} from "@/_assets/utils/reservation-service-time";
 
 export default function DayListReservationsWebapp(props) {
   const { t } = useTranslation("reservations");
@@ -142,7 +145,7 @@ export default function DayListReservationsWebapp(props) {
       map[tkey].push(r);
     });
 
-    const times = Object.keys(map).sort((a, b) => a.localeCompare(b));
+    const times = sortReservationTimesByServiceOrder(Object.keys(map));
     return { orderedTimes: times, byTime: map };
   }, [list]);
 
@@ -203,7 +206,13 @@ export default function DayListReservationsWebapp(props) {
                 <div className="h-px flex-1 bg-darkBlue/10" />
               </div>
 
-              <ul className="flex flex-col gap-2">
+              <ul
+                className={
+                  props.compactRows
+                    ? "flex flex-col gap-2"
+                    : "flex flex-col gap-2 midTablet:grid midTablet:grid-cols-2 desktop:grid-cols-3 ultraWild:grid-cols-4"
+                }
+              >
                 {byTime[time].map((reservation) => (
                   <CardReservationWebapp
                     key={reservation._id}

@@ -634,37 +634,6 @@ function getBlockedTableIdsFront(parameters, reservationDate, reservationTime) {
   return ids;
 }
 
-function isDateTimeBlockedFront(parameters, reservationDate, reservationTime) {
-  const ranges = Array.isArray(parameters?.blocked_ranges)
-    ? parameters?.blocked_ranges
-    : [];
-
-  const candidateStart = buildReservationDateTimeFront(
-    reservationDate,
-    reservationTime,
-  );
-  if (!candidateStart) return false;
-
-  const occupancyMinutes = getOccupancyMinutesFront(
-    parameters,
-    reservationTime,
-  );
-  const candidateEnd = new Date(
-    candidateStart.getTime() + Math.max(1, occupancyMinutes) * 60 * 1000,
-  );
-
-  return ranges.some((range) => {
-    const start = new Date(range?.startAt).getTime();
-    const end = new Date(range?.endAt).getTime();
-    return (
-      Number.isFinite(start) &&
-      Number.isFinite(end) &&
-      candidateStart.getTime() < end &&
-      candidateEnd.getTime() > start
-    );
-  });
-}
-
 function getReservationDayIndexFront(reservationDate) {
   if (!(reservationDate instanceof Date)) return null;
   if (Number.isNaN(reservationDate.getTime())) return null;
@@ -948,21 +917,15 @@ export default function AddReservationComponent(props) {
         ),
       );
 
-      allAvailableTimes = allAvailableTimes.filter(
-        (time) =>
-          !isDateTimeBlockedFront(
-            parameters,
-            reservationData.reservationDate,
-            time,
-          ) &&
-          isSlotCoverCapacityAvailableFront({
-            parameters,
-            reservations,
-            reservationDate: reservationData.reservationDate,
-            reservationTime: time,
-            numberOfGuests: reservationData.numberOfGuests,
-            excludeReservationId: isEditing ? props.reservation?._id : null,
-          }),
+      allAvailableTimes = allAvailableTimes.filter((time) =>
+        isSlotCoverCapacityAvailableFront({
+          parameters,
+          reservations,
+          reservationDate: reservationData.reservationDate,
+          reservationTime: time,
+          numberOfGuests: reservationData.numberOfGuests,
+          excludeReservationId: isEditing ? props.reservation?._id : null,
+        }),
       );
 
       // -----------------------------
@@ -993,16 +956,6 @@ export default function AddReservationComponent(props) {
           });
 
           allAvailableTimes = allAvailableTimes.filter((time) => {
-            if (
-              isDateTimeBlockedFront(
-                parameters,
-                reservationData.reservationDate,
-                time,
-              )
-            ) {
-              return false;
-            }
-
             const candidateStart = minutesFromReservationServiceTime(time);
             const durCandidate = getOccupancyMinutesFront(parameters, time);
             const candidateEnd = candidateStart + durCandidate;
@@ -1050,7 +1003,6 @@ export default function AddReservationComponent(props) {
     props.restaurantData.opening_hours,
     props.restaurantData?.reservationsSettings?.reservation_hours,
     props.restaurantData?.reservationsSettings?.interval,
-    props.restaurantData?.reservationsSettings?.blocked_ranges,
     props.restaurantData?.reservationsSettings?.slot_cover_limits,
     props.restaurantData?.reservationsSettings?.table_blocked_ranges,
     props.restaurantData.reservationsSettings.manage_disponibilities,
@@ -1087,17 +1039,6 @@ export default function AddReservationComponent(props) {
     const maximumSingleSeats =
       getMaximumSingleTableSeatsFromGuestsFront(guests);
     if (!singleSeatSizes.length) {
-      setAvailableTables([]);
-      return;
-    }
-
-    if (
-      isDateTimeBlockedFront(
-        parameters,
-        reservationData.reservationDate,
-        reservationData.reservationTime,
-      )
-    ) {
       setAvailableTables([]);
       return;
     }
@@ -1485,7 +1426,11 @@ export default function AddReservationComponent(props) {
       const { restaurant, tableReassigned, tableChange } = response.data || {};
 
       if (restaurant) props.setRestaurantData(restaurant);
-      await props.refreshReservationsList?.(props.restaurantData?._id);
+      await props.refreshReservationsList?.(
+        props.restaurantData?._id,
+        null,
+        "mutation",
+      );
 
       // ✅ MODALE: table réassignée
       if (tableReassigned) {

@@ -20,7 +20,7 @@ export async function setupPushForModule({
     return;
 
   const isReservations = module === "reservations";
-  const swVersion = "2026-03-26-badge-2";
+  const swVersion = "2026-08-20-notification-icons-1";
   const swUrl = isReservations
     ? `/sw-reservations.js?v=${swVersion}`
     : `/sw-giftcards.js?v=${swVersion}`;
