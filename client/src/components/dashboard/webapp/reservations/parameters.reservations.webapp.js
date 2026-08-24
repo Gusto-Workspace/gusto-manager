@@ -1,4 +1,11 @@
-import { useContext, useState, useEffect, useMemo, useRef } from "react";
+import {
+  useContext,
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+} from "react";
 
 // CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
@@ -38,6 +45,8 @@ import {
 import { getReservationStatusLabel } from "@/components/_shared/reservations/reservation-status.utils";
 
 const DEFAULT_DELETION_DURATION_MINUTES = 6 * 30 * 24 * 60;
+const useIsomorphicLayoutEffect =
+  typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 // Helpers
 const statusLabel = (status) => {
@@ -374,8 +383,9 @@ export default function ParametersReservationComponent(props) {
     }));
   };
 
-  // Init depuis le contexte
-  useEffect(() => {
+  // Init avant paint : lors d'une navigation interne, les paramètres déjà en
+  // mémoire ne doivent pas produire un écran "Chargement…" intermédiaire.
+  useIsomorphicLayoutEffect(() => {
     if (restaurantContext?.restaurantData) {
       const parameters = restaurantContext.restaurantData.reservationsSettings;
 

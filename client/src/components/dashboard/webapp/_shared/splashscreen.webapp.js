@@ -9,59 +9,9 @@ const FADE_MS = 550;
 const MIN_DURATION = 1250;
 const REFRESH_ANTI_FLICKER_MS = 350;
 
-let splashScrollLockCount = 0;
-let splashScrollLockSnapshot = null;
-let splashTouchMoveHandler = null;
-
 // ✅ évite le warning "useLayoutEffect does nothing on the server"
 const useIsomorphicLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
-
-function acquireSplashScrollLock() {
-  if (typeof document === "undefined") return () => {};
-
-  const html = document.documentElement;
-  const body = document.body;
-
-  if (splashScrollLockCount === 0) {
-    splashScrollLockSnapshot = {
-      htmlOverflow: html.style.overflow || "",
-      bodyOverflow: body.style.overflow || "",
-      bodyTouchAction: body.style.touchAction || "",
-    };
-
-    splashTouchMoveHandler = (event) => event.preventDefault();
-    document.addEventListener("touchmove", splashTouchMoveHandler, {
-      passive: false,
-    });
-
-    html.style.overflow = "hidden";
-    body.style.overflow = "hidden";
-    body.style.touchAction = "none";
-  }
-
-  splashScrollLockCount += 1;
-  let released = false;
-
-  return () => {
-    if (released) return;
-    released = true;
-    splashScrollLockCount = Math.max(0, splashScrollLockCount - 1);
-
-    if (splashScrollLockCount > 0) return;
-
-    if (splashTouchMoveHandler) {
-      document.removeEventListener("touchmove", splashTouchMoveHandler);
-    }
-
-    html.style.overflow = splashScrollLockSnapshot?.htmlOverflow || "";
-    body.style.overflow = splashScrollLockSnapshot?.bodyOverflow || "";
-    body.style.touchAction = splashScrollLockSnapshot?.bodyTouchAction || "";
-
-    splashScrollLockSnapshot = null;
-    splashTouchMoveHandler = null;
-  };
-}
 
 export default function SplashScreenWebAppComponent({
   loading,
@@ -144,14 +94,6 @@ export default function SplashScreenWebAppComponent({
     setVisible(true);
   }, [storageKey, effectiveForceShow]);
 
-  // Lock partagé entre les éventuelles instances qui se chevauchent pendant
-  // une navigation. Le cleanup layout garantit le déverrouillage avant paint.
-  useIsomorphicLayoutEffect(() => {
-    if (!visible) return;
-
-    return acquireSplashScrollLock();
-  }, [visible]);
-
   // durée minimum
   useEffect(() => {
     if (!visible) return;
@@ -188,10 +130,21 @@ export default function SplashScreenWebAppComponent({
   return (
     <div
       className="gm-splash-layer transition-opacity duration-[550ms]"
+      aria-hidden={fadeOut}
+      onTransitionEnd={(event) => {
+        if (
+          fadeOut &&
+          event.target === event.currentTarget &&
+          event.propertyName === "opacity"
+        ) {
+          setVisible(false);
+        }
+      }}
       style={{
         backgroundColor: "#131E36",
         opacity: fadeOut ? 0 : 1,
         pointerEvents: fadeOut ? "none" : "auto",
+        touchAction: "none",
       }}
     >
       <div className="animate-gm-splash-scale -mt-24">
