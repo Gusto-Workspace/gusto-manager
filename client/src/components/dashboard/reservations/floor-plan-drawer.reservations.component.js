@@ -551,7 +551,7 @@ export default function FloorPlanDrawerReservationsComponent({
     <div
       className={
         isPanel
-          ? "gm-reservations-floor-plan relative z-0 h-full min-h-[680px] w-full"
+          ? "relative z-0 h-full min-h-[680px] w-full"
           : `fixed inset-0 z-[260] ${
               open ? "pointer-events-auto" : "pointer-events-none"
             }`
@@ -580,7 +580,7 @@ export default function FloorPlanDrawerReservationsComponent({
         className={
           isPanel
             ? `
-              gm-reservations-floor-plan-aside relative z-[1] flex h-full min-h-[680px] w-full flex-col overflow-hidden
+              relative z-[1] flex h-full min-h-[680px] w-full flex-col overflow-hidden
               rounded-[28px] border border-darkBlue/10 bg-lightGrey shadow-sm
             `
             : `

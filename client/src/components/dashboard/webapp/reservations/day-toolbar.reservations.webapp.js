@@ -27,9 +27,9 @@ export default function DayHeaderReservationsWebapp(props) {
   }).format(props.selectedDay);
 
   return (
-    <div className="gm-reservations-day-toolbar flex flex-col gap-6">
-      <div className="gm-reservations-day-toolbar-content bg-lightGrey">
-        <div className="gm-reservations-day-heading flex items-center justify-between gap-2">
+    <div className="flex flex-col gap-6">
+      <div className="bg-lightGrey">
+        <div className="flex items-center justify-between gap-2">
           <div className="flex items-center justify-between gap-3">
             <button
               onClick={() => {
@@ -79,7 +79,7 @@ export default function DayHeaderReservationsWebapp(props) {
         </div>
 
         {/* Filters row */}
-        <div className="gm-reservations-day-filters mt-6 flex flex-col gap-2">
+        <div className="mt-6 flex flex-col gap-2">
           {/* Select */}
           <label className="sr-only" htmlFor="day-status-select-mobile">
             {t("list.status.filter", "Filtrer par statut")}
@@ -155,7 +155,7 @@ export default function DayHeaderReservationsWebapp(props) {
           </div>
         </div>
 
-        <div className="gm-reservations-day-stats mt-4 grid grid-cols-2 gap-2">
+        <div className="mt-4 grid grid-cols-2 gap-2">
           <div className="rounded-2xl border border-darkBlue/10 bg-white/70 px-3 py-3 shadow-sm">
             <p className="text-xs text-darkBlue/50">Midi</p>
             <p className="mt-1 inline-flex items-center gap-2 text-sm font-semibold text-darkBlue">
