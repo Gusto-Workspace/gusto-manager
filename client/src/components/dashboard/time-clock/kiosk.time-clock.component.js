@@ -890,7 +890,7 @@ export default function TimeClockKioskComponent({ offlineBootstrap = null }) {
 
               {!statesReady ||
               !(summary?.state?.availableActions || []).length ? (
-                <div className="rounded-[24px] border border-dashed border-darkBlue/15 bg-lightGrey/35 px-4 py-6 text-sm text-darkBlue/55 midTablet:col-span-2">
+                <div className="gm-time-clock-actions-empty rounded-[24px] border border-dashed border-darkBlue/15 bg-lightGrey/35 px-4 py-6 text-sm text-darkBlue/55 midTablet:col-span-2">
                   {loadingSummary
                     ? "Chargement de l'état de la borne."
                     : "Sélectionnez un salarié pour connaître les actions disponibles."}

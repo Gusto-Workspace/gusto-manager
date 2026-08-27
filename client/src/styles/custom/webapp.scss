@@ -192,6 +192,15 @@
 
   .gm-time-clock-action-panel {
     overflow: hidden;
+    padding-bottom: 24px;
+  }
+
+  .gm-time-clock-actions {
+    margin-top: 6px;
+  }
+
+  .gm-time-clock-signature-wrap {
+    margin-top: 6px;
   }
 
   .gm-time-clock-summary,
@@ -202,6 +211,12 @@
 
   .gm-time-clock-actions > div {
     gap: 8px;
+    margin-top: 0;
+  }
+
+  .gm-time-clock-actions-empty {
+    padding-top: 12px;
+    padding-bottom: 12px;
   }
 
   .gm-time-clock-actions button p:nth-child(2) {
