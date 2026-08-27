@@ -761,7 +761,11 @@ export default function ListReservationsWebapp(props) {
   const calendarStatusList = statusList;
 
   return (
-    <section className="flex flex-col gap-6">
+    <section
+      className={`gm-reservations-content flex flex-col gap-6 ${
+        selectedDay ? "gm-reservations-content-day" : ""
+      }`}
+    >
       {serviceFullError ? (
         <p className="rounded-2xl border border-red/20 bg-red/5 px-4 py-3 text-sm text-red">
           {serviceFullError}
@@ -843,11 +847,11 @@ export default function ListReservationsWebapp(props) {
             <div
               className={
                 showPinnedFloorPlan
-                  ? "grid grid-cols-1 gap-6 min-[1024px]:grid-cols-2 min-[1024px]:items-start"
-                  : "block"
+                  ? "gm-reservations-day-body grid grid-cols-1 gap-6 min-[1024px]:grid-cols-2 min-[1024px]:items-start"
+                  : "gm-reservations-day-body block"
               }
             >
-              <div className="min-w-0">
+              <div className="gm-reservations-day-list min-w-0">
                 <DayListReservationsWebapp
                   selectedDay={selectedDay}
                   dayData={dayData}
@@ -866,7 +870,7 @@ export default function ListReservationsWebapp(props) {
               </div>
 
               {showPinnedFloorPlan ? (
-                <div className="hidden min-[1024px]:sticky min-[1024px]:top-6 min-[1024px]:block min-[1024px]:max-h-[calc(100vh-3rem)] min-[1024px]:min-h-[680px]">
+                <div className="gm-reservations-floor-plan-panel hidden min-[1024px]:sticky min-[1024px]:top-6 min-[1024px]:block min-[1024px]:max-h-[calc(100vh-3rem)] min-[1024px]:min-h-[680px]">
                   <FloorPlanDrawerReservationsComponent
                     variant="panel"
                     open

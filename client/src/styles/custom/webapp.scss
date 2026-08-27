@@ -33,3 +33,254 @@
     display: block;
   }
 }
+
+/* Sur tablette paysage, la pointeuse occupe toujours toute la hauteur de la
+   PWA : le bandeau garde sa hauteur naturelle et les deux panneaux se
+   prolongent jusqu'en bas de l'écran. */
+@media (min-width: 1024px) {
+  .gm-time-clock-page {
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .gm-time-clock-kiosk {
+    height: 100%;
+    min-height: 0;
+  }
+
+  .gm-time-clock-header {
+    flex: none;
+  }
+
+  .gm-time-clock-columns {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .gm-time-clock-panel {
+    height: 100%;
+    min-height: 0;
+  }
+
+  .gm-time-clock-employees {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .gm-time-clock-employee-list {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+    align-content: start;
+    grid-auto-rows: max-content;
+  }
+
+  .gm-time-clock-action-panel {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+  }
+
+  .gm-time-clock-action-panel::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Tablettes paysage 11 pouces (ex. Honor Pad X8a, viewport proche de
+   1280 x 800). La page reste fixe ; seules les listes longues défilent. */
+@media (min-width: 1024px) and (max-height: 900px) {
+  .gm-time-clock-page {
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+    padding: 12px 16px;
+  }
+
+  .gm-time-clock-kiosk {
+    height: 100%;
+    min-height: 0;
+    gap: 12px;
+  }
+
+  .gm-time-clock-header {
+    flex: none;
+    border-radius: 26px;
+    padding: 12px 18px;
+  }
+
+  .gm-time-clock-header-layout {
+    align-items: center;
+    gap: 16px;
+  }
+
+  .gm-time-clock-title {
+    margin-top: 8px;
+    font-size: 1.75rem;
+  }
+
+  .gm-time-clock-intro {
+    margin-top: 4px;
+    font-size: 0.875rem;
+  }
+
+  .gm-time-clock-now {
+    min-width: 250px;
+    border-radius: 22px;
+    padding: 10px 18px;
+  }
+
+  .gm-time-clock-now p:nth-of-type(2) {
+    margin-top: 4px;
+  }
+
+  .gm-time-clock-now p:nth-of-type(3) {
+    margin-top: 0;
+    font-size: 1.875rem;
+  }
+
+  .gm-time-clock-columns {
+    flex: 1;
+    min-height: 0;
+    gap: 12px;
+  }
+
+  .gm-time-clock-panel {
+    min-height: 0;
+    overflow: hidden;
+    border-radius: 24px;
+    padding: 14px;
+  }
+
+  .gm-time-clock-employees {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .gm-time-clock-search,
+  .gm-time-clock-employee-list,
+  .gm-time-clock-summary,
+  .gm-time-clock-actions,
+  .gm-time-clock-signature-wrap,
+  .gm-time-clock-submit {
+    margin-top: 10px;
+  }
+
+  .gm-time-clock-search input {
+    height: 46px;
+  }
+
+  .gm-time-clock-employee-list {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+    align-content: start;
+    grid-auto-rows: max-content;
+  }
+
+  .gm-time-clock-action-panel {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+  }
+
+  .gm-time-clock-action-panel::-webkit-scrollbar {
+    display: none;
+  }
+
+  .gm-time-clock-summary,
+  .gm-time-clock-actions button {
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+
+  .gm-time-clock-actions > div {
+    gap: 8px;
+  }
+
+  .gm-time-clock-actions button p:nth-child(2) {
+    display: none;
+  }
+
+  .gm-time-clock-signature {
+    height: 140px !important;
+    margin-top: 0;
+  }
+
+  .gm-time-clock-submit {
+    border-radius: 22px;
+    padding-top: 11px;
+    padding-bottom: 11px;
+  }
+
+  .gm-reservations-page {
+    overflow: hidden;
+    padding: 12px 16px;
+  }
+
+  .gm-reservations-content-day {
+    height: 100%;
+    min-height: 0;
+    gap: 12px;
+  }
+
+  .gm-reservations-day-toolbar {
+    flex: none;
+  }
+
+  .gm-reservations-day-toolbar-content {
+    display: grid;
+    grid-template-columns: minmax(230px, 0.75fr) minmax(360px, 1.35fr) minmax(260px, 0.9fr);
+    align-items: end;
+    gap: 12px;
+  }
+
+  .gm-reservations-day-filters,
+  .gm-reservations-day-stats {
+    margin-top: 0;
+  }
+
+  .gm-reservations-day-filters {
+    display: grid;
+    grid-template-columns: minmax(140px, 0.55fr) minmax(220px, 1fr);
+    align-items: end;
+  }
+
+  .gm-reservations-day-stats > div {
+    padding-top: 7px;
+    padding-bottom: 7px;
+  }
+
+  .gm-reservations-day-body {
+    flex: 1;
+    min-height: 0;
+    gap: 12px;
+    overflow: hidden;
+  }
+
+  .gm-reservations-day-list {
+    height: 100%;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-right: 4px;
+    scrollbar-width: none;
+  }
+
+  .gm-reservations-day-list::-webkit-scrollbar {
+    display: none;
+  }
+
+  .gm-reservations-floor-plan-panel {
+    position: relative;
+    top: 0;
+    height: 100%;
+    min-height: 0;
+    max-height: none;
+  }
+
+  .gm-reservations-floor-plan,
+  .gm-reservations-floor-plan-aside {
+    min-height: 0;
+  }
+}

@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { X } from "lucide-react";
 
 import {
   cloneSignatureStrokes,
@@ -149,6 +150,18 @@ const SignaturePadTimeClockComponent = forwardRef(function SignaturePadTimeClock
           {placeholder}
         </div>
       )}
+
+      {hasSignature && !disabled ? (
+        <button
+          type="button"
+          onClick={clear}
+          className="absolute right-3 top-3 z-10 inline-flex size-9 items-center justify-center rounded-full border border-darkBlue/10 bg-white/90 text-darkBlue/55 shadow-sm transition hover:bg-lightGrey hover:text-darkBlue active:scale-95"
+          aria-label="Effacer la signature"
+          title="Effacer la signature"
+        >
+          <X className="size-4" />
+        </button>
+      ) : null}
     </div>
   );
 });
