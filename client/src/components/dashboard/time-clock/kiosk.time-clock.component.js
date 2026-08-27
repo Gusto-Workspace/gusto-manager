@@ -660,25 +660,25 @@ export default function TimeClockKioskComponent({ offlineBootstrap = null }) {
   }
 
   return (
-    <section className="flex flex-col gap-6">
-      <div className="rounded-[34px] bg-darkBlue px-6 py-6 text-white shadow-[0_24px_80px_rgba(19,30,54,0.22)]">
-        <div className="flex flex-col gap-5 tablet:flex-row tablet:items-end tablet:justify-between">
+    <section className="gm-time-clock-kiosk flex flex-col gap-6">
+      <div className="gm-time-clock-header rounded-[34px] bg-darkBlue px-6 py-6 text-white shadow-[0_24px_80px_rgba(19,30,54,0.22)]">
+        <div className="gm-time-clock-header-layout flex flex-col gap-5 tablet:flex-row tablet:items-end tablet:justify-between">
           <div>
             <div className="relative inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs uppercase tracking-[0.18em] text-white/80">
               <Clock3 className="size-3.5" />
               Pointeuse
             </div>
 
-            <h1 className="mt-4 text-3xl font-semibold leading-tight midTablet:text-4xl">
+            <h1 className="gm-time-clock-title mt-4 text-3xl font-semibold leading-tight midTablet:text-4xl">
               Borne de pointage
             </h1>
-            <p className="mt-2 max-w-2xl text-sm text-white/75 midTablet:text-base">
+            <p className="gm-time-clock-intro mt-2 max-w-2xl text-sm text-white/75 midTablet:text-base">
               Sélectionnez un salarié, choisissez l&apos;action proposée, signez,
               puis validez le pointage.
             </p>
           </div>
 
-          <div className="relative rounded-[28px] border border-white/10 bg-white/10 px-5 py-4 text-right">
+          <div className="gm-time-clock-now relative rounded-[28px] border border-white/10 bg-white/10 px-5 py-4 text-right">
             <p className="text-sm uppercase tracking-[0.16em] text-white/60">
               Date et heure
             </p>
@@ -697,8 +697,8 @@ export default function TimeClockKioskComponent({ offlineBootstrap = null }) {
         </div>
       </div>
 
-      <div className="grid gap-6 tablet:grid-cols-[0.95fr_1.05fr]">
-        <section className="rounded-[30px] border border-darkBlue/10 bg-white px-5 py-5 shadow-sm">
+      <div className="gm-time-clock-columns grid gap-6 tablet:grid-cols-[0.95fr_1.05fr]">
+        <section className="gm-time-clock-panel gm-time-clock-employees rounded-[30px] border border-darkBlue/10 bg-white px-5 py-5 shadow-sm">
           <div className="flex items-center gap-3">
             <span className="inline-flex size-11 items-center justify-center rounded-2xl border border-darkBlue/10 bg-lightGrey/60 text-blue">
               <Users className="size-5" />
@@ -715,7 +715,7 @@ export default function TimeClockKioskComponent({ offlineBootstrap = null }) {
           </div>
 
           {availableEmployees.length > 1 ? (
-            <div className="relative mt-5">
+            <div className="gm-time-clock-search relative mt-5">
               <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-darkBlue/35" />
               <input
                 type="text"
@@ -738,7 +738,7 @@ export default function TimeClockKioskComponent({ offlineBootstrap = null }) {
             </div>
           ) : null}
 
-          <div className="mt-5 grid max-h-[58vh] grid-cols-1 gap-2 overflow-y-auto pr-1 midTablet:grid-cols-2">
+          <div className="gm-time-clock-employee-list mt-5 grid max-h-[58vh] grid-cols-1 gap-2 overflow-y-auto pr-1 midTablet:grid-cols-2">
             {filteredEmployees.length ? (
               filteredEmployees.map((employee) => {
                 const isSelected =
@@ -773,7 +773,7 @@ export default function TimeClockKioskComponent({ offlineBootstrap = null }) {
 
                       <span
                         className={[
-                          "mt-0.5 inline-flex size-3 rounded-full",
+                          "mt-0.5 inline-flex size-3 shrink-0 rounded-full",
                           isSelected ? "bg-white" : "bg-blue/30",
                         ].join(" ")}
                       />
@@ -789,7 +789,7 @@ export default function TimeClockKioskComponent({ offlineBootstrap = null }) {
           </div>
         </section>
 
-        <section className="rounded-[30px] border border-darkBlue/10 bg-white px-5 py-5 shadow-sm">
+        <section className="gm-time-clock-panel gm-time-clock-action-panel rounded-[30px] border border-darkBlue/10 bg-white px-5 py-5 shadow-sm">
           <div className="flex flex-row items-start justify-between gap-4">
             <div>
               <p className="text-sm text-darkBlue/55">Salarié sélectionné</p>
@@ -806,19 +806,20 @@ export default function TimeClockKioskComponent({ offlineBootstrap = null }) {
             <button
               type="button"
               onClick={handleRefresh}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-darkBlue/10 bg-lightGrey/45 px-4 py-3 text-sm font-medium text-darkBlue transition hover:bg-darkBlue/5"
+              className="inline-flex size-11 shrink-0 items-center justify-center rounded-2xl border border-darkBlue/10 bg-lightGrey/45 text-darkBlue transition hover:bg-darkBlue/5 active:scale-95"
+              aria-label="Actualiser"
+              title="Actualiser"
             >
               <RefreshCw
                 className={[
-                  "size-4",
+                  "size-5",
                   loadingSummary || syncingPending ? "animate-spin" : "",
                 ].join(" ")}
               />
-              Actualiser
             </button>
           </div>
 
-          <div className="mt-5 rounded-[26px] border border-darkBlue/10 bg-lightGrey/45 px-4 py-4">
+          <div className="gm-time-clock-summary mt-5 rounded-[26px] border border-darkBlue/10 bg-lightGrey/45 px-4 py-4">
             <div className="flex flex-col gap-3 midTablet:flex-row midTablet:items-center midTablet:justify-between">
               <div>
                 <span
@@ -835,11 +836,11 @@ export default function TimeClockKioskComponent({ offlineBootstrap = null }) {
                 <p className="mt-3 text-sm text-darkBlue/65">
                   {summary?.state?.activeSession
                     ? `Service démarré à ${formatTime(summary.state.activeSession.clockInAt)}`
-                    : "Aucun service ouvert pour le moment."}
+                    : "Aucun service ouvert."}
                 </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-3 text-sm text-darkBlue/70">
+              <div className="flex flex-col items-start gap-1 text-sm text-darkBlue/70">
                 <span>
                   Aujourd&apos;hui{" "}
                   {formatMinutes(summary?.day?.totalWorkedMinutes || 0)}
@@ -851,7 +852,7 @@ export default function TimeClockKioskComponent({ offlineBootstrap = null }) {
             </div>
           </div>
 
-          <div className="mt-5">
+          <div className="gm-time-clock-actions mt-5">
             <div className="mt-3 grid gap-3 midTablet:grid-cols-2">
               {(statesReady ? summary?.state?.availableActions || [] : []).map(
                 (action) => (
@@ -860,7 +861,7 @@ export default function TimeClockKioskComponent({ offlineBootstrap = null }) {
                     type="button"
                     onClick={() => setSelectedAction(action)}
                     className={[
-                      "rounded-[26px] border px-4 py-4 text-left transition",
+                      "rounded-[26px] border px-4 py-4 text-center transition",
                       getActionClasses(selectedAction === action),
                     ].join(" ")}
                   >
@@ -898,25 +899,14 @@ export default function TimeClockKioskComponent({ offlineBootstrap = null }) {
             </div>
           </div>
 
-          <div className="mt-5">
+          <div className="gm-time-clock-signature-wrap mt-5">
             <SignaturePadTimeClockComponent
               ref={signaturePadRef}
-              className="mt-3"
+              className="gm-time-clock-signature mt-3"
               onChange={setSignatureStrokes}
               placeholder="Signature du salarié"
             />
           </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              signaturePadRef.current?.clear?.();
-              setSignatureStrokes([]);
-            }}
-            className="text-sm text-darkBlue/55 transition hover:text-darkBlue mt-5 w-full text-end"
-          >
-            Effacer
-          </button>
 
           <button
             type="button"
@@ -927,7 +917,7 @@ export default function TimeClockKioskComponent({ offlineBootstrap = null }) {
               !signatureStrokes.length ||
               saving
             }
-            className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-[28px] bg-blue px-5 py-4 text-base font-medium text-white shadow-sm transition hover:bg-blue/90 disabled:cursor-not-allowed disabled:opacity-45"
+            className="gm-time-clock-submit mt-5 inline-flex w-full items-center justify-center gap-2 rounded-[28px] bg-blue px-5 py-4 text-base font-medium text-white shadow-sm transition hover:bg-blue/90 disabled:cursor-not-allowed disabled:opacity-45"
           >
             {saving ? (
               <>
