@@ -77,13 +77,25 @@
   }
 
   .gm-time-clock-action-panel {
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    scrollbar-width: none;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
 
-  .gm-time-clock-action-panel::-webkit-scrollbar {
-    display: none;
+  .gm-time-clock-signature-wrap {
+    display: flex;
+    flex: 1;
+    min-height: 100px;
+  }
+
+  .gm-time-clock-signature {
+    width: 100%;
+    height: 100% !important;
+    margin-top: 0;
+  }
+
+  .gm-time-clock-submit {
+    flex: none;
   }
 }
 
@@ -179,13 +191,7 @@
   }
 
   .gm-time-clock-action-panel {
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    scrollbar-width: none;
-  }
-
-  .gm-time-clock-action-panel::-webkit-scrollbar {
-    display: none;
+    overflow: hidden;
   }
 
   .gm-time-clock-summary,
@@ -203,7 +209,7 @@
   }
 
   .gm-time-clock-signature {
-    height: 140px !important;
+    height: 100% !important;
     margin-top: 0;
   }
 
@@ -211,11 +217,5 @@
     border-radius: 22px;
     padding-top: 11px;
     padding-bottom: 11px;
-  }
-}
-
-@media (min-width: 1024px) {
-  .gm-time-clock-page.gm-time-clock-page-android {
-    padding-bottom: calc(44px + env(safe-area-inset-bottom));
   }
 }
