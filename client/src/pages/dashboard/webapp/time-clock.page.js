@@ -18,6 +18,7 @@ export default function TimeClockWebAppPage() {
   const { restaurantContext } = useContext(GlobalContext);
   const [clientReady, setClientReady] = useState(false);
   const [offlineBootstrap, setOfflineBootstrap] = useState(null);
+  const [isAndroid, setIsAndroid] = useState(false);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -35,6 +36,7 @@ export default function TimeClockWebAppPage() {
 
   useEffect(() => {
     setOfflineBootstrap(getTimeClockOfflineBootstrap());
+    setIsAndroid(/Android/i.test(window.navigator.userAgent));
     setClientReady(true);
   }, []);
 
@@ -76,7 +78,11 @@ export default function TimeClockWebAppPage() {
         <meta name="format-detection" content="telephone=no" />
       </Head>
 
-      <div className="gm-webapp-device-content gm-time-clock-page min-h-[100dvh] bg-lightGrey px-3 py-4 text-darkBlue midTablet:px-5 midTablet:py-5">
+      <div
+        className={`gm-webapp-device-content gm-time-clock-page min-h-[100dvh] bg-lightGrey px-3 py-4 text-darkBlue midTablet:px-5 midTablet:py-5 ${
+          isAndroid ? "gm-time-clock-page-android" : ""
+        }`}
+      >
         {!clientReady ? (
           <div className="min-h-[40dvh]" />
         ) : !hasEmployeesModule ? (

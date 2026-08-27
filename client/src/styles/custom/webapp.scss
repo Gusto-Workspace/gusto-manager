@@ -212,75 +212,10 @@
     padding-top: 11px;
     padding-bottom: 11px;
   }
+}
 
-  .gm-reservations-page {
-    overflow: hidden;
-    padding: 12px 16px;
-  }
-
-  .gm-reservations-content-day {
-    height: 100%;
-    min-height: 0;
-    gap: 12px;
-  }
-
-  .gm-reservations-day-toolbar {
-    flex: none;
-  }
-
-  .gm-reservations-day-toolbar-content {
-    display: grid;
-    grid-template-columns: minmax(230px, 0.75fr) minmax(360px, 1.35fr) minmax(260px, 0.9fr);
-    align-items: end;
-    gap: 12px;
-  }
-
-  .gm-reservations-day-filters,
-  .gm-reservations-day-stats {
-    margin-top: 0;
-  }
-
-  .gm-reservations-day-filters {
-    display: grid;
-    grid-template-columns: minmax(140px, 0.55fr) minmax(220px, 1fr);
-    align-items: end;
-  }
-
-  .gm-reservations-day-stats > div {
-    padding-top: 7px;
-    padding-bottom: 7px;
-  }
-
-  .gm-reservations-day-body {
-    flex: 1;
-    min-height: 0;
-    gap: 12px;
-    overflow: hidden;
-  }
-
-  .gm-reservations-day-list {
-    height: 100%;
-    min-height: 0;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    padding-right: 4px;
-    scrollbar-width: none;
-  }
-
-  .gm-reservations-day-list::-webkit-scrollbar {
-    display: none;
-  }
-
-  .gm-reservations-floor-plan-panel {
-    position: relative;
-    top: 0;
-    height: 100%;
-    min-height: 0;
-    max-height: none;
-  }
-
-  .gm-reservations-floor-plan,
-  .gm-reservations-floor-plan-aside {
-    min-height: 0;
+@media (min-width: 1024px) {
+  .gm-time-clock-page.gm-time-clock-page-android {
+    padding-bottom: calc(44px + env(safe-area-inset-bottom));
   }
 }
