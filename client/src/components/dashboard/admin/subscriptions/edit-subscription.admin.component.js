@@ -10,6 +10,7 @@ import {
   computeCatalogTotal,
   formatCatalogProductLabel,
   splitSubscriptionCatalogProducts,
+  supportsMultipleQuantity,
 } from "../_shared/utils/subscription-catalog.utils";
 import { getAdminAuthConfig } from "../_shared/utils/admin-auth.utils";
 
@@ -55,6 +56,7 @@ export default function EditSubscriptionAdminComponent() {
   const [messageType, setMessageType] = useState("info");
   const [selectedPlanPriceId, setSelectedPlanPriceId] = useState("");
   const [selectedAddonPriceIds, setSelectedAddonPriceIds] = useState([]);
+  const [selectedAddonQuantities, setSelectedAddonQuantities] = useState({});
   const [updateDone, setUpdateDone] = useState(false);
   const [redirecting, setRedirecting] = useState(false);
 
@@ -80,6 +82,18 @@ export default function EditSubscriptionAdminComponent() {
         setSelectedAddonPriceIds(
           nextPreview?.subscription?.addonPriceIds || [],
         );
+        setSelectedAddonQuantities(
+          (nextPreview?.subscription?.addons || []).reduce(
+            (quantities, item) => {
+              if (item.code !== "tab_rental") return quantities;
+              return {
+                ...quantities,
+                [item.priceId]: item.quantity || 1,
+              };
+            },
+            {},
+          ),
+        );
       } catch (error) {
         console.error("Erreur chargement configuration abonnement:", error);
         setPreview(null);
@@ -102,8 +116,14 @@ export default function EditSubscriptionAdminComponent() {
         products: catalogProducts,
         selectedPlanPriceId,
         selectedAddonPriceIds,
+        selectedAddonQuantities,
       }),
-    [catalogProducts, selectedPlanPriceId, selectedAddonPriceIds],
+    [
+      catalogProducts,
+      selectedPlanPriceId,
+      selectedAddonPriceIds,
+      selectedAddonQuantities,
+    ],
   );
 
   const currentPlanMissingFromCatalog =
@@ -130,6 +150,16 @@ export default function EditSubscriptionAdminComponent() {
           subscriptionId,
           planPriceId: selectedPlanPriceId,
           addonPriceIds: selectedAddonPriceIds,
+          addonItems: selectedAddonPriceIds.map((priceId) => ({
+            priceId,
+            quantity: supportsMultipleQuantity(
+              catalogProducts.find(
+                (product) => product?.default_price?.id === priceId,
+              ),
+            )
+              ? selectedAddonQuantities[priceId] || 1
+              : 1,
+          })),
         },
         getAdminAuthConfig(),
       );
@@ -291,7 +321,12 @@ export default function EditSubscriptionAdminComponent() {
                 {preview.subscription?.addons?.length ? (
                   <ul className="mt-2 flex flex-col gap-1 text-sm text-darkBlue/80">
                     {preview.subscription.addons.map((addon) => (
-                      <li key={addon.priceId}>{addon.name}</li>
+                      <li key={addon.priceId}>
+                        {addon.name}
+                        {supportsMultipleQuantity(addon)
+                          ? ` × ${addon.quantity || 1}`
+                          : ""}
+                      </li>
                     ))}
                   </ul>
                 ) : (
@@ -362,39 +397,76 @@ export default function EditSubscriptionAdminComponent() {
                   {addons.map((addon) => {
                     const priceId = addon?.default_price?.id || "";
                     const checked = selectedAddonPriceIds.includes(priceId);
+                    const canChangeQuantity = supportsMultipleQuantity(addon);
 
                     return (
-                      <label
+                      <div
                         key={addon.id}
                         className="flex items-start gap-3 rounded-xl border border-darkBlue/10 bg-white/70 px-3 py-3 cursor-pointer hover:bg-darkBlue/5 transition"
                       >
                         <input
+                          id={`addon-${priceId}`}
                           className="mt-0.5 size-4 accent-blue"
                           type="checkbox"
                           checked={checked}
                           disabled={loading || redirecting}
                           onChange={() => {
-                            setSelectedAddonPriceIds((prev) => {
-                              if (prev.includes(priceId)) {
-                                return prev.filter(
-                                  (entry) => entry !== priceId,
-                                );
-                              }
-
-                              return [...prev, priceId];
+                            setSelectedAddonPriceIds((prev) =>
+                              checked
+                                ? prev.filter((entry) => entry !== priceId)
+                                : [...prev, priceId],
+                            );
+                            setSelectedAddonQuantities((quantities) => {
+                              const next = { ...quantities };
+                              if (checked) delete next[priceId];
+                              else next[priceId] = 1;
+                              return next;
                             });
                             setUpdateDone(false);
                           }}
                         />
-                        <span className="min-w-0">
+                        <label
+                          htmlFor={`addon-${priceId}`}
+                          className="min-w-0 flex-1 cursor-pointer"
+                        >
                           <span className="block text-sm font-semibold text-darkBlue">
                             {addon.name}
                           </span>
                           <span className="block text-xs text-darkBlue/50">
                             {formatCatalogProductLabel(addon)}
                           </span>
-                        </span>
-                      </label>
+                        </label>
+                        {checked && canChangeQuantity && (
+                          <label className="flex flex-col gap-1 text-xs font-semibold text-darkBlue/60">
+                            Quantité
+                            <input
+                              type="number"
+                              min="1"
+                              max="100"
+                              step="1"
+                              value={selectedAddonQuantities[priceId] || 1}
+                              disabled={loading || redirecting}
+                              onChange={(event) => {
+                                const quantity = Math.min(
+                                  100,
+                                  Math.max(
+                                    1,
+                                    Math.trunc(
+                                      Number(event.target.value) || 1,
+                                    ),
+                                  ),
+                                );
+                                setSelectedAddonQuantities((prev) => ({
+                                  ...prev,
+                                  [priceId]: quantity,
+                                }));
+                                setUpdateDone(false);
+                              }}
+                              className="w-20 rounded-lg border border-darkBlue/10 bg-white px-2 py-1 text-sm text-darkBlue outline-none focus:border-blue/40"
+                            />
+                          </label>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
@@ -436,7 +508,16 @@ export default function EditSubscriptionAdminComponent() {
                 ) : (
                   <ul className="mt-1 flex flex-col gap-1 text-sm text-darkBlue/80">
                     {selectedAddons.map((addon) => (
-                      <li key={addon.id}>{addon.name}</li>
+                      <li key={addon.id}>
+                        {addon.name}
+                        {supportsMultipleQuantity(addon)
+                          ? ` × ${
+                              selectedAddonQuantities[
+                                addon?.default_price?.id
+                              ] || 1
+                            }`
+                          : ""}
+                      </li>
                     ))}
                   </ul>
                 )}

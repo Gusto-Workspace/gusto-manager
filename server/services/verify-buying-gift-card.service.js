@@ -22,7 +22,7 @@ function verifyPurchaseProof(req, res, next) {
     const { paymentIntentId, amount } = req.body;
 
     const amt = Number(amount);
-    if (!paymentIntentId || !Number.isFinite(amt) || amt <= 0) {
+    if (!paymentIntentId || !Number.isSafeInteger(amt) || amt <= 0) {
       return res
         .status(400)
         .json({ error: "paymentIntentId and amount (>0) are required" });

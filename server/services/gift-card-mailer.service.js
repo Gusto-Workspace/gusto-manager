@@ -1,7 +1,86 @@
 const axios = require("axios");
+const path = require("path");
 const PDFDocument = require("pdfkit");
 const sharp = require("sharp");
 const SibApiV3Sdk = require("sib-api-v3-sdk");
+const {
+  resolveGiftCardTypographyPreset,
+} = require("./gift-card-typography.service");
+
+const GIFT_CARD_FONT_DIR = path.join(__dirname, "..", "assets", "fonts");
+const GIFT_CARD_FONT_FILES = {
+  abel: path.join(GIFT_CARD_FONT_DIR, "Abel-Regular.ttf"),
+  bodoni: path.join(GIFT_CARD_FONT_DIR, "BodoniModa.ttf"),
+  bodoniItalic: path.join(GIFT_CARD_FONT_DIR, "BodoniModa-Italic.ttf"),
+  montserrat: path.join(GIFT_CARD_FONT_DIR, "Montserrat-Regular.ttf"),
+  montserratSemiBold: path.join(
+    GIFT_CARD_FONT_DIR,
+    "Montserrat-SemiBold.ttf",
+  ),
+};
+
+const CLASSIC_TYPOGRAPHY = {
+  restaurant: "Helvetica-Bold",
+  title: "Helvetica",
+  amount: "Helvetica",
+  description: "Helvetica",
+  beneficiary: "Helvetica-Oblique",
+  message: "Helvetica",
+  sender: "Helvetica-Oblique",
+  meta: "Helvetica",
+  uppercaseRestaurant: false,
+  uppercaseTitle: false,
+  restaurantCharacterSpacing: 0,
+};
+
+function getGiftCardTypography(doc, restaurant, purchase) {
+  const preset = resolveGiftCardTypographyPreset(
+    restaurant,
+    purchase?.visualSnapshot,
+  );
+
+  if (preset === "ambassade") {
+    doc.registerFont("GiftBodoni", GIFT_CARD_FONT_FILES.bodoni);
+    doc.registerFont("GiftBodoniItalic", GIFT_CARD_FONT_FILES.bodoniItalic);
+    doc.registerFont("GiftMontserrat", GIFT_CARD_FONT_FILES.montserrat);
+    doc.registerFont(
+      "GiftMontserratSemiBold",
+      GIFT_CARD_FONT_FILES.montserratSemiBold,
+    );
+    return {
+      restaurant: "GiftMontserratSemiBold",
+      title: "GiftBodoni",
+      amount: "GiftBodoni",
+      description: "GiftMontserrat",
+      beneficiary: "GiftMontserrat",
+      message: "GiftBodoniItalic",
+      sender: "GiftMontserrat",
+      meta: "GiftMontserrat",
+      uppercaseRestaurant: true,
+      uppercaseTitle: true,
+      restaurantCharacterSpacing: 2.2,
+    };
+  }
+
+  if (preset === "coquille") {
+    doc.registerFont("GiftAbel", GIFT_CARD_FONT_FILES.abel);
+    return {
+      restaurant: "GiftAbel",
+      title: "GiftAbel",
+      amount: "GiftAbel",
+      description: "GiftAbel",
+      beneficiary: "GiftAbel",
+      message: "GiftAbel",
+      sender: "GiftAbel",
+      meta: "GiftAbel",
+      uppercaseRestaurant: false,
+      uppercaseTitle: false,
+      restaurantCharacterSpacing: 0,
+    };
+  }
+
+  return CLASSIC_TYPOGRAPHY;
+}
 
 function looksLikeEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || "").trim());
@@ -70,15 +149,24 @@ function collectPdfBuffer(doc) {
   });
 }
 
-function drawCenteredText(doc, text, { x, width, y, fontSize, font, color }) {
+function drawCenteredText(
+  doc,
+  text,
+  { x, width, y, fontSize, font, color, characterSpacing = 0 },
+) {
   doc.font(font).fontSize(fontSize).fillColor(color);
-  const textWidth = doc.widthOfString(text);
+  const textWidth = doc.widthOfString(text, { characterSpacing });
   doc.text(text, x + (width - textWidth) / 2, y, {
     lineBreak: false,
+    characterSpacing,
   });
 }
 
-function wrapText(doc, text, { font, fontSize, maxWidth }) {
+function wrapText(
+  doc,
+  text,
+  { font, fontSize, maxWidth, characterSpacing = 0 },
+) {
   const words = String(text || "").split(/\s+/).filter(Boolean);
   const lines = [];
   let currentLine = "";
@@ -87,7 +175,7 @@ function wrapText(doc, text, { font, fontSize, maxWidth }) {
 
   words.forEach((word) => {
     const testLine = currentLine ? `${currentLine} ${word}` : word;
-    if (doc.widthOfString(testLine) <= maxWidth) {
+    if (doc.widthOfString(testLine, { characterSpacing }) <= maxWidth) {
       currentLine = testLine;
     } else {
       if (currentLine) lines.push(currentLine);
@@ -100,6 +188,7 @@ function wrapText(doc, text, { font, fontSize, maxWidth }) {
 }
 
 async function generateGiftCardPdfBuffer({
+  restaurant,
   purchase,
   message,
   hidePrice,
@@ -109,6 +198,7 @@ async function generateGiftCardPdfBuffer({
   const height = 675;
   const doc = new PDFDocument({ size: [width, height], margin: 0 });
   const done = collectPdfBuffer(doc);
+  const typography = getGiftCardTypography(doc, restaurant, purchase);
 
   const visual = purchase?.visualSnapshot || {};
   const imageUrl = visual.imageUrl || fallbackImageUrl || "";
@@ -132,31 +222,63 @@ async function generateGiftCardPdfBuffer({
   }
 
   const titleFontSize = 54;
+  const restaurantNameFontSize = 20;
   const amountFontSize = 34;
   const mainFontSize = 31;
   const metaFontSize = 24;
   const lineGap = 12;
 
-  const lines = [
-    { type: "text", text: "Carte Cadeau", fontSize: titleFontSize, font: "Helvetica" },
-  ];
+  const lines = [];
+  const rawRestaurantName = String(restaurant?.name || "").trim();
+  const restaurantName = typography.uppercaseRestaurant
+    ? rawRestaurantName.toLocaleUpperCase("fr-FR")
+    : rawRestaurantName;
+
+  if (restaurantName) {
+    wrapText(doc, restaurantName, {
+      font: typography.restaurant,
+      fontSize: restaurantNameFontSize,
+      maxWidth: contentWidth * 0.88,
+      characterSpacing: typography.restaurantCharacterSpacing,
+    }).forEach((line) =>
+      lines.push({
+        type: "text",
+        text: line,
+        fontSize: restaurantNameFontSize,
+        font: typography.restaurant,
+        characterSpacing: typography.restaurantCharacterSpacing,
+      }),
+    );
+  }
+
+  lines.push({
+    type: "text",
+    text: typography.uppercaseTitle ? "CARTE CADEAU" : "Carte Cadeau",
+    fontSize: titleFontSize,
+    font: typography.title,
+  });
 
   if (!hidePrice && purchase?.value) {
     lines.push({
       type: "text",
       text: `${purchase.value} €`,
       fontSize: amountFontSize,
-      font: "Helvetica",
+      font: typography.amount,
     });
   }
 
   if (purchase?.description) {
     wrapText(doc, purchase.description, {
-      font: "Helvetica",
+      font: typography.description,
       fontSize: mainFontSize,
       maxWidth: contentWidth * 0.88,
     }).forEach((line) =>
-      lines.push({ type: "text", text: line, fontSize: mainFontSize, font: "Helvetica" }),
+      lines.push({
+        type: "text",
+        text: line,
+        fontSize: mainFontSize,
+        font: typography.description,
+      }),
     );
   }
 
@@ -171,17 +293,22 @@ async function generateGiftCardPdfBuffer({
       type: "text",
       text: `Pour : ${beneficiaryName}`,
       fontSize: mainFontSize,
-      font: "Helvetica-Oblique",
+      font: typography.beneficiary,
     });
   }
 
   if (message) {
     wrapText(doc, `"${message}"`, {
-      font: "Helvetica",
+      font: typography.message,
       fontSize: mainFontSize,
       maxWidth: contentWidth * 0.88,
     }).forEach((line) =>
-      lines.push({ type: "text", text: line, fontSize: mainFontSize, font: "Helvetica" }),
+      lines.push({
+        type: "text",
+        text: line,
+        fontSize: mainFontSize,
+        font: typography.message,
+      }),
     );
   }
 
@@ -190,7 +317,7 @@ async function generateGiftCardPdfBuffer({
       type: "text",
       text: `De la part de : ${purchase.sender}`,
       fontSize: mainFontSize,
-      font: "Helvetica-Oblique",
+      font: typography.sender,
     });
   }
 
@@ -202,13 +329,13 @@ async function generateGiftCardPdfBuffer({
     type: "text",
     text: `Code : ${purchase?.purchaseCode || ""}`,
     fontSize: metaFontSize,
-    font: "Helvetica",
+    font: typography.meta,
   });
   lines.push({
     type: "text",
     text: `Valable jusqu'au : ${formatDateFR(purchase?.validUntil)}`,
     fontSize: metaFontSize,
-    font: "Helvetica",
+    font: typography.meta,
   });
 
   const totalHeight = lines.reduce((sum, line) => {
@@ -230,6 +357,7 @@ async function generateGiftCardPdfBuffer({
       fontSize: line.fontSize,
       font: line.font,
       color: textColor,
+      characterSpacing: line.characterSpacing,
     });
     currentY += line.fontSize + lineGap;
   });
@@ -303,6 +431,7 @@ async function sendGiftCardPurchaseEmail({
   }
 
   const pdfBuffer = await generateGiftCardPdfBuffer({
+    restaurant,
     purchase,
     message,
     hidePrice,

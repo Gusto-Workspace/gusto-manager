@@ -4,6 +4,7 @@ import SidebarReservationsWebapp from "../_shared/sidebar.webapp";
 import GiftCardSettingsFormComponent, {
   useGiftCardSettingsController,
 } from "../../../_shared/gift-cards/settings-form.gift-cards.component";
+import PushNotificationsSettingsWebapp from "../_shared/push-notifications-settings.webapp";
 
 export default function ParametersGiftCardsWebapp() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -43,6 +44,8 @@ export default function ParametersGiftCardsWebapp() {
         onSave={saveSettings}
         savePresentation="icon"
       />
+
+      <PushNotificationsSettingsWebapp module="gift_cards" />
     </div>
   );
 }

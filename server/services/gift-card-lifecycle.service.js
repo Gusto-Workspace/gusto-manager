@@ -1,5 +1,8 @@
 const RestaurantModel = require("../models/restaurant.model");
 const {
+  normalizeTypographyPreset,
+} = require("./gift-card-typography.service");
+const {
   getPerfRequestContext,
   getPerfRequestId,
   isPerfDiagnosticsEnabled,
@@ -346,6 +349,10 @@ function sanitizeGiftCardSettingsInput(input = {}) {
       current.archive_used_after_months,
       0,
       60,
+    ),
+    typographyPreset: normalizeTypographyPreset(
+      raw?.typographyPreset,
+      "",
     ),
     visuals: Array.isArray(raw.visuals) ? raw.visuals : [],
     defaultVisualId: raw.defaultVisualId || "",

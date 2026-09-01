@@ -1,6 +1,7 @@
 const stripe = require("stripe")(process.env.STRIPE_API_SECRET_KEY);
 
 const SUBSCRIPTION_CATALOG_NAME = "restaurant_subscription";
+const MULTI_QUANTITY_ADDON_CODE = "tab_rental";
 
 function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -177,6 +178,7 @@ async function retrieveCatalogPriceEntry(priceId) {
 async function resolveCatalogSelection({
   planPriceId,
   addonPriceIds = [],
+  addonItems = [],
 } = {}) {
   const plan = await retrieveCatalogPriceEntry(planPriceId);
   if (plan.kind !== "plan") {
@@ -187,22 +189,75 @@ async function resolveCatalogSelection({
     throw error;
   }
 
-  const uniqueAddonPriceIds = Array.from(
-    new Set(
-      (Array.isArray(addonPriceIds) ? addonPriceIds : [])
-        .map((value) => normalizeString(value))
-        .filter(Boolean),
-    ),
-  );
+  const requestedAddonItems = Array.isArray(addonItems) && addonItems.length
+    ? addonItems
+    : (Array.isArray(addonPriceIds) ? addonPriceIds : []).map((priceId) => ({
+        priceId,
+        quantity: 1,
+      }));
+
+  const normalizedAddonItems = requestedAddonItems
+    .map((item) => {
+      const rawQuantity = typeof item === "string" ? 1 : item?.quantity;
+      const numericQuantity = Number(rawQuantity ?? 1);
+
+      return {
+        priceId: normalizeString(
+          typeof item === "string" ? item : item?.priceId,
+        ),
+        quantity: numericQuantity,
+      };
+    })
+    .filter((item) => item.priceId);
+
+  if (
+    normalizedAddonItems.some(
+      (item) =>
+        !Number.isInteger(item.quantity) ||
+        item.quantity < 1 ||
+        item.quantity > 100,
+    )
+  ) {
+    const error = new Error(
+      "La quantité de chaque module doit être comprise entre 1 et 100.",
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (
+    new Set(normalizedAddonItems.map((item) => item.priceId)).size !==
+    normalizedAddonItems.length
+  ) {
+    const error = new Error(
+      "La sélection contient plusieurs fois le même module additionnel.",
+    );
+    error.statusCode = 400;
+    throw error;
+  }
 
   const addons = await Promise.all(
-    uniqueAddonPriceIds.map((priceId) => retrieveCatalogPriceEntry(priceId)),
+    normalizedAddonItems.map(async ({ priceId, quantity }) => ({
+      ...(await retrieveCatalogPriceEntry(priceId)),
+      quantity,
+    })),
   );
 
   addons.forEach((addon) => {
     if (addon.kind !== "addon") {
       const error = new Error(
         "Un des tarifs sélectionnés n'est pas un module additionnel.",
+      );
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (
+      addon.quantity > 1 &&
+      normalizeString(addon.code) !== MULTI_QUANTITY_ADDON_CODE
+    ) {
+      const error = new Error(
+        "Seul le module Location tablette peut avoir une quantité supérieure à 1.",
       );
       error.statusCode = 400;
       throw error;
@@ -242,7 +297,11 @@ async function resolveCatalogSelection({
       return left.productName.localeCompare(right.productName, "fr");
     }),
     totalAmount:
-      plan.amount + addons.reduce((sum, addon) => sum + addon.amount, 0),
+      plan.amount +
+      addons.reduce(
+        (sum, addon) => sum + addon.amount * addon.quantity,
+        0,
+      ),
     currency: plan.currency,
   };
 }

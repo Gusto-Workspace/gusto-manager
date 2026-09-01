@@ -381,6 +381,12 @@ function serializeSubscriptionSummary(summary = {}) {
           .map((item) => normalizeString(item?.priceId))
           .filter(Boolean)
       : [],
+    addonItems: Array.isArray(summary?.addons)
+      ? summary.addons.map((item) => ({
+          priceId: normalizeString(item?.priceId),
+          quantity: Number(item?.quantity || 1),
+        }))
+      : [],
     totalAmount: Number(summary?.totalAmount || 0),
     currency: summary?.currency || "",
   };
@@ -430,12 +436,15 @@ function buildSubscriptionItemUpdatePayload({ currentSummary, selection }) {
       operations.push({
         id: existingAddon.subscriptionItemId,
         price: existingAddon.priceId,
-        quantity: Number(existingAddon.quantity || 1),
+        quantity: Number(addon.quantity || 1),
       });
       return;
     }
 
-    operations.push({ price: addon.priceId });
+    operations.push({
+      price: addon.priceId,
+      quantity: Number(addon.quantity || 1),
+    });
   });
 
   Array.from(currentAddonsByPriceId.values())
@@ -849,6 +858,7 @@ router.post("/admin/create-subscription-sepa", async (req, res) => {
     priceId,
     planPriceId,
     addonPriceIds,
+    addonItems,
     paymentMethodId,
     billingAddress,
     phone,
@@ -935,6 +945,7 @@ router.post("/admin/create-subscription-sepa", async (req, res) => {
     const selection = await resolveCatalogSelection({
       planPriceId: planPriceId || priceId,
       addonPriceIds,
+      addonItems,
     });
 
     // Créer l'abonnement en prélèvement automatique
@@ -942,7 +953,10 @@ router.post("/admin/create-subscription-sepa", async (req, res) => {
       customer: resolvedStripeCustomerId,
       items: [
         { price: selection.plan.priceId },
-        ...selection.addons.map((addon) => ({ price: addon.priceId })),
+        ...selection.addons.map((addon) => ({
+          price: addon.priceId,
+          quantity: addon.quantity,
+        })),
       ],
       default_payment_method: paymentMethodId,
       collection_method: "charge_automatically",
@@ -1420,7 +1434,7 @@ router.post("/admin/update-subscription-payer-sepa", async (req, res) => {
 });
 
 router.post("/admin/update-subscription-configuration", async (req, res) => {
-  const { subscriptionId, planPriceId, addonPriceIds } = req.body;
+  const { subscriptionId, planPriceId, addonPriceIds, addonItems } = req.body;
 
   try {
     if (!subscriptionId) {
@@ -1443,6 +1457,7 @@ router.post("/admin/update-subscription-configuration", async (req, res) => {
     const selection = await resolveCatalogSelection({
       planPriceId,
       addonPriceIds,
+      addonItems,
     });
 
     if (

@@ -2,6 +2,15 @@ function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+export const MULTI_QUANTITY_ADDON_CODE = "tab_rental";
+
+export function supportsMultipleQuantity(product) {
+  return (
+    normalizeString(product?.catalogCode || product?.code) ===
+    MULTI_QUANTITY_ADDON_CODE
+  );
+}
+
 export function getCatalogProductByPriceId(products = [], priceId) {
   const normalizedPriceId = normalizeString(priceId);
   if (!normalizedPriceId) return null;
@@ -46,6 +55,7 @@ export function computeCatalogTotal({
   products = [],
   selectedPlanPriceId = "",
   selectedAddonPriceIds = [],
+  selectedAddonQuantities = {},
 }) {
   const selectedPlan = getCatalogProductByPriceId(
     products,
@@ -58,7 +68,15 @@ export function computeCatalogTotal({
     .filter(Boolean);
 
   const totalAmountCents = [selectedPlan, ...selectedAddons].reduce(
-    (sum, product) => sum + Number(product?.default_price?.unit_amount || 0),
+    (sum, product) => {
+      const priceId = product?.default_price?.id || "";
+      const quantity =
+        product === selectedPlan || !supportsMultipleQuantity(product)
+          ? 1
+          : Math.max(1, Number(selectedAddonQuantities?.[priceId] || 1));
+
+      return sum + Number(product?.default_price?.unit_amount || 0) * quantity;
+    },
     0,
   );
 

@@ -16,6 +16,7 @@ import {
   computeCatalogTotal,
   formatCatalogProductLabel,
   splitSubscriptionCatalogProducts,
+  supportsMultipleQuantity,
 } from "../_shared/utils/subscription-catalog.utils";
 import { getAdminAuthConfig } from "../_shared/utils/admin-auth.utils";
 
@@ -54,6 +55,7 @@ export default function AddSubscriptionsAdminComponent() {
   const [selectedRestaurantId, setSelectedRestaurantId] = useState("");
   const [selectedPlanPriceId, setSelectedPlanPriceId] = useState("");
   const [selectedAddonPriceIds, setSelectedAddonPriceIds] = useState([]);
+  const [selectedAddonQuantities, setSelectedAddonQuantities] = useState({});
 
   const [restaurantData, setRestaurantData] = useState({});
   const [loading, setLoading] = useState(false);
@@ -87,8 +89,14 @@ export default function AddSubscriptionsAdminComponent() {
         products: subscriptionProducts,
         selectedPlanPriceId,
         selectedAddonPriceIds,
+        selectedAddonQuantities,
       }),
-    [subscriptionProducts, selectedPlanPriceId, selectedAddonPriceIds],
+    [
+      subscriptionProducts,
+      selectedPlanPriceId,
+      selectedAddonPriceIds,
+      selectedAddonQuantities,
+    ],
   );
 
   function resetStripeFlow() {
@@ -106,6 +114,7 @@ export default function AddSubscriptionsAdminComponent() {
     setSelectedRestaurantId("");
     setSelectedPlanPriceId("");
     setSelectedAddonPriceIds([]);
+    setSelectedAddonQuantities({});
     setRestaurantData({});
     resetStripeFlow();
   }
@@ -126,6 +135,7 @@ export default function AddSubscriptionsAdminComponent() {
 
     setSelectedPlanPriceId("");
     setSelectedAddonPriceIds([]);
+    setSelectedAddonQuantities({});
     resetStripeFlow();
   }
 
@@ -135,13 +145,27 @@ export default function AddSubscriptionsAdminComponent() {
   }
 
   function handleAddonToggle(priceId) {
-    setSelectedAddonPriceIds((prev) => {
-      if (prev.includes(priceId)) {
-        return prev.filter((entry) => entry !== priceId);
-      }
-
-      return [...prev, priceId];
+    const isSelected = selectedAddonPriceIds.includes(priceId);
+    setSelectedAddonPriceIds((prev) =>
+      isSelected
+        ? prev.filter((entry) => entry !== priceId)
+        : [...prev, priceId],
+    );
+    setSelectedAddonQuantities((quantities) => {
+      const next = { ...quantities };
+      if (isSelected) delete next[priceId];
+      else next[priceId] = 1;
+      return next;
     });
+    resetStripeFlow();
+  }
+
+  function handleAddonQuantityChange(priceId, rawQuantity) {
+    const quantity = Math.min(
+      100,
+      Math.max(1, Math.trunc(Number(rawQuantity) || 1)),
+    );
+    setSelectedAddonQuantities((prev) => ({ ...prev, [priceId]: quantity }));
     resetStripeFlow();
   }
 
@@ -197,6 +221,16 @@ export default function AddSubscriptionsAdminComponent() {
         {
           planPriceId: selectedPlanPriceId,
           addonPriceIds: selectedAddonPriceIds,
+          addonItems: selectedAddonPriceIds.map((priceId) => ({
+            priceId,
+            quantity: supportsMultipleQuantity(
+              subscriptionProducts.find(
+                (product) => product?.default_price?.id === priceId,
+              ),
+            )
+              ? selectedAddonQuantities[priceId] || 1
+              : 1,
+          })),
           paymentMethodId,
           billingAddress: restaurantData.address,
           phone: restaurantData.phone,
@@ -437,13 +471,15 @@ export default function AddSubscriptionsAdminComponent() {
                 {addons.map((addon) => {
                   const priceId = addon?.default_price?.id || "";
                   const checked = selectedAddonPriceIds.includes(priceId);
+                  const canChangeQuantity = supportsMultipleQuantity(addon);
 
                   return (
-                    <label
+                    <div
                       key={addon.id}
                       className="flex items-start gap-3 rounded-xl border border-darkBlue/10 bg-white/60 px-3 py-3 hover:bg-darkBlue/5 transition cursor-pointer"
                     >
                       <input
+                        id={`addon-${priceId}`}
                         className="mt-0.5 size-4 accent-blue"
                         type="checkbox"
                         checked={checked}
@@ -452,15 +488,38 @@ export default function AddSubscriptionsAdminComponent() {
                         }
                         onChange={() => handleAddonToggle(priceId)}
                       />
-                      <span className="min-w-0">
+                      <label
+                        htmlFor={`addon-${priceId}`}
+                        className="min-w-0 flex-1 cursor-pointer"
+                      >
                         <span className="block text-sm font-semibold text-darkBlue">
                           {addon.name}
                         </span>
                         <span className="block text-xs text-darkBlue/50">
                           {formatCatalogProductLabel(addon)}
                         </span>
-                      </span>
-                    </label>
+                      </label>
+                      {checked && canChangeQuantity && (
+                        <label className="flex flex-col gap-1 text-xs font-semibold text-darkBlue/60">
+                          Quantité
+                          <input
+                            type="number"
+                            min="1"
+                            max="100"
+                            step="1"
+                            value={selectedAddonQuantities[priceId] || 1}
+                            disabled={loading || redirecting}
+                            onChange={(event) =>
+                              handleAddonQuantityChange(
+                                priceId,
+                                event.target.value,
+                              )
+                            }
+                            className="w-20 rounded-lg border border-darkBlue/10 bg-white px-2 py-1 text-sm text-darkBlue outline-none focus:border-blue/40"
+                          />
+                        </label>
+                      )}
+                    </div>
                   );
                 })}
               </div>
@@ -502,7 +561,16 @@ export default function AddSubscriptionsAdminComponent() {
                 ) : (
                   <ul className="mt-1 flex flex-col gap-1 text-sm text-darkBlue/80">
                     {selectedAddons.map((addon) => (
-                      <li key={addon.id}>{addon.name}</li>
+                      <li key={addon.id}>
+                        {addon.name}
+                        {supportsMultipleQuantity(addon)
+                          ? ` × ${
+                              selectedAddonQuantities[
+                                addon?.default_price?.id
+                              ] || 1
+                            }`
+                          : ""}
+                      </li>
                     ))}
                   </ul>
                 )}

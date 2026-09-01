@@ -513,6 +513,11 @@ const giftCardVisualSnapshotSchema = new mongoose.Schema(
       enum: ["right", "center", "left"],
       default: "right",
     },
+    typographyPreset: {
+      type: String,
+      enum: ["", "classic", "ambassade", "coquille"],
+      default: "",
+    },
   },
   { _id: false },
 );
@@ -530,7 +535,7 @@ const giftCardPurchaseSchema = new mongoose.Schema({
   },
   useDate: { type: Date },
   beneficiaryFirstName: { type: String, required: true },
-  beneficiaryLastName: { type: String, required: true },
+  beneficiaryLastName: { type: String, default: "" },
   sender: { type: String },
   message: { type: String, default: "" },
   hidePrice: { type: Boolean, default: false },
@@ -607,6 +612,11 @@ const giftCardSettingsSchema = new mongoose.Schema(
     validity_until_day: { type: Number, min: 1, max: 31, default: 25 },
     validity_until_month: { type: Number, min: 1, max: 12, default: 6 },
     archive_used_after_months: { type: Number, min: 0, default: 2 },
+    typographyPreset: {
+      type: String,
+      enum: ["", "classic", "ambassade", "coquille"],
+      default: "",
+    },
     visuals: { type: [giftCardVisualSchema], default: [] },
     defaultVisualId: { type: String, default: "" },
   },
