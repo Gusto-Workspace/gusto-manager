@@ -38,6 +38,7 @@ import {
 import WebAppPurchasesGiftListComponent from "./purshases-gift-list.gift-cards.component";
 import CardGiftsComponent from "./card.gift-cards.component";
 import CreateDrawerGiftCardsComponent from "../../../_shared/gift-cards/create-drawer.gift-cards.component";
+import { normalizeGiftCardSettings } from "../../../_shared/gift-cards/settings-form.gift-cards.component";
 
 import BottomSheetChangeRestaurantComponent from "../_shared/bottom-sheet-change-restaurant.webapp";
 import NotificationsDrawerComponent from "@/components/_shared/notifications/notifications-drawer.component";
@@ -128,20 +129,33 @@ export default function WebAppListGiftCardsComponent(props) {
   }, [restaurantContext?.restaurantData]);
 
   useEffect(() => {
+    const validitySettings = normalizeGiftCardSettings(
+      editingGift,
+      giftCardValidityFallback,
+    );
+
     if (editingGift) {
       reset({
         value: editingGift.value,
         description: editingGift.description || "",
         visualId: editingGift.visualId || "",
+        validity_mode: validitySettings.validity_mode,
+        validity_fixed_months: String(validitySettings.validity_fixed_months),
+        validity_until_day: String(validitySettings.validity_until_day),
+        validity_until_month: String(validitySettings.validity_until_month),
       });
     } else {
       reset({
         value: "",
         description: "",
         visualId: "",
+        validity_mode: validitySettings.validity_mode,
+        validity_fixed_months: String(validitySettings.validity_fixed_months),
+        validity_until_day: String(validitySettings.validity_until_day),
+        validity_until_month: String(validitySettings.validity_until_month),
       });
     }
-  }, [editingGift, reset]);
+  }, [editingGift, giftCardValidityFallback, reset]);
 
   function handleEditClick(gift) {
     setEditingGift(gift);
@@ -155,28 +169,26 @@ export default function WebAppListGiftCardsComponent(props) {
     setIsModalOpen(true);
   }
 
-  function onSubmit(data) {
+  async function onSubmit(data) {
     const apiUrl = editingGift
       ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/gifts/${editingGift._id}`
       : `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}/gifts`;
 
     const method = isDeleting ? "delete" : editingGift ? "put" : "post";
 
-    axios[method](apiUrl, isDeleting ? {} : data)
-      .then((response) => {
-        restaurantContext.setRestaurantData((prev) => ({
-          ...prev,
-          giftCards: response.data.restaurant.giftCards,
-        }));
+    try {
+      const response = await axios[method](apiUrl, isDeleting ? {} : data);
 
-        setIsModalOpen(false);
-        reset();
-        setEditingGift(null);
-        setIsDeleting(false);
-      })
-      .catch((error) => {
-        console.error("Error modifying, adding or deleting gift:", error);
-      });
+      restaurantContext.setRestaurantData((prev) => ({
+        ...prev,
+        giftCards: response.data.restaurant.giftCards,
+      }));
+
+      return true;
+    } catch (error) {
+      console.error("Error modifying, adding or deleting gift:", error);
+      throw error;
+    }
   }
 
   function handleVisibilityToggle(gift) {
@@ -248,6 +260,7 @@ export default function WebAppListGiftCardsComponent(props) {
     setIsModalOpen(false);
     setEditingGift(null);
     setIsDeleting(false);
+    reset();
   };
 
   return (
@@ -472,7 +485,8 @@ export default function WebAppListGiftCardsComponent(props) {
                 ? t("buttons.editGift")
                 : t("buttons.addGift")
           }
-          onSubmit={handleSubmit(onSubmit)}
+          onSubmit={onSubmit}
+          handleSubmit={handleSubmit}
           register={register}
           errors={errors}
           currencySymbol={currencySymbol}

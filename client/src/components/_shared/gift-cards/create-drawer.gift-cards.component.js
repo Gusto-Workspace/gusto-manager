@@ -48,6 +48,7 @@ export default function CreateDrawerGiftCardsComponent({
     editingGift?.visualId || "",
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   const prevBodyOverflowRef = useRef("");
   const prevHtmlOverflowRef = useRef("");
@@ -123,11 +124,16 @@ export default function CreateDrawerGiftCardsComponent({
     if (isSubmitting) return;
 
     setIsSubmitting(true);
+    setSubmitError("");
     try {
       await onSubmit?.(data);
       closeWithAnimation();
-    } catch (_error) {
-      // L'erreur est déjà loggée par le parent ; on garde le drawer ouvert.
+    } catch (error) {
+      setSubmitError(
+        error?.response?.data?.error ||
+          error?.response?.data?.message ||
+          "Impossible d’enregistrer la carte cadeau. Veuillez réessayer.",
+      );
       setIsSubmitting(false);
     }
   };
@@ -169,6 +175,7 @@ export default function CreateDrawerGiftCardsComponent({
     lockScroll();
     setIsVisible(false);
     setDragY(0);
+    setSubmitError("");
 
     const raf = requestAnimationFrame(() => {
       setIsVisible(true);
@@ -598,6 +605,14 @@ export default function CreateDrawerGiftCardsComponent({
           </div>
 
           <div className="sticky bottom-0 border-t border-darkBlue/10 bg-white/70 backdrop-blur-xl px-4 py-3 pb-[calc(env(safe-area-inset-bottom)+24px)] tablet:pb-4">
+            {submitError ? (
+              <p
+                className="mb-3 rounded-xl border border-red/20 bg-red/5 px-3 py-2 text-sm text-red"
+                role="alert"
+              >
+                {submitError}
+              </p>
+            ) : null}
             <div className="flex gap-2">
               <button
                 type="button"
