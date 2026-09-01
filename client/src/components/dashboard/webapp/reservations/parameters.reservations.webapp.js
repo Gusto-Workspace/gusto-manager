@@ -31,6 +31,7 @@ import EmailsParametersComponent from "../../reservations/parameters/emails.para
 import SmartParametersComponent from "../../reservations/parameters/smart.parameters.component";
 import FloorPlanParametersComponent from "../../reservations/parameters/floor-plan.parameters.component";
 import SidebarReservationsWebapp from "../_shared/sidebar.webapp";
+import PushNotificationsSettingsWebapp from "../_shared/push-notifications-settings.webapp";
 import BankHoldParametersComponent from "../../reservations/parameters/bank-hold.parameters.component";
 import WaitlistParametersComponent from "../../reservations/parameters/waitlist.parameters.component";
 import {
@@ -1217,6 +1218,8 @@ export default function ParametersReservationComponent(props) {
           savePresentation="icon"
         />
       </form>
+
+      <PushNotificationsSettingsWebapp module="reservations" />
     </section>
   );
 }

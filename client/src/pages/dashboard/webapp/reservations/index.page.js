@@ -16,7 +16,10 @@ import SplashScreenWebAppComponent from "@/components/dashboard/webapp/_shared/s
 import NotGoodDeviceWebAppComponent from "@/components/dashboard/webapp/_shared/not-good-device.webapp";
 
 // WEB PUSB
-import { setupPushForModule } from "@/_assets/utils/webpush";
+import {
+  isPushDisabledForModule,
+  setupPushForModule,
+} from "@/_assets/utils/webpush";
 
 function startOfMonth(date) {
   return new Date(date.getFullYear(), date.getMonth(), 1, 0, 0, 0, 0);
@@ -109,13 +112,17 @@ export default function WepAppReservationsPage(props) {
     if (!restaurantContext?.isAuth) return;
     if (!restaurantContext?.restaurantData?._id) return;
 
+    const restaurantId = restaurantContext.restaurantData._id;
+    if (isPushDisabledForModule(restaurantId, "reservations")) return;
+
     const token = localStorage.getItem("token");
 
     setupPushForModule({
       module: "reservations",
-      restaurantId: restaurantContext.restaurantData._id,
+      restaurantId,
       token,
       apiUrl: process.env.NEXT_PUBLIC_API_URL,
+      requestPermission: false,
     }).catch(() => {
       // noop
     });

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import DoubleSkeletonComponent from "@/components/_shared/skeleton/double-skeleton.component";
 import SimpleSkeletonComponent from "@/components/_shared/skeleton/simple-skeleton.component";
+import { supportsMultipleQuantity } from "../_shared/utils/subscription-catalog.utils";
 
 import {
   AlertTriangle,
@@ -186,7 +187,7 @@ export default function InvoicesDrawerSubscriptionsComponent({
   const periodEnd =
     sub?.currentPeriodEnd || sub?.nextChargeAt || sub?.cancelAt || 0;
   const invoiceCount = Array.isArray(invoices) ? invoices.length : 0;
-  const addonNames = Array.isArray(sub?.addonNames) ? sub.addonNames : [];
+  const subscriptionAddons = Array.isArray(sub?.addons) ? sub.addons : [];
 
   if (!open) return null;
 
@@ -438,7 +439,7 @@ export default function InvoicesDrawerSubscriptionsComponent({
                     />
                   </div>
 
-                  {addonNames.length > 0 ? (
+                  {subscriptionAddons.length > 0 ? (
                     <div className="rounded-xl border border-darkBlue/10 bg-white/80 px-3 py-3">
                       <div className="flex items-start gap-2">
                         <Receipt className="mt-0.5 size-4 shrink-0 text-darkBlue/40" />
@@ -447,8 +448,13 @@ export default function InvoicesDrawerSubscriptionsComponent({
                             {t("subscriptions.list.modules", "Modules")}
                           </p>
                           <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-darkBlue/80">
-                            {addonNames.map((addonName) => (
-                              <li key={addonName}>{addonName}</li>
+                            {subscriptionAddons.map((addon) => (
+                              <li key={addon.priceId}>
+                                {addon.name}
+                                {supportsMultipleQuantity(addon)
+                                  ? ` × ${addon.quantity || 1}`
+                                  : ""}
+                              </li>
                             ))}
                           </ul>
                         </div>

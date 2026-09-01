@@ -30,6 +30,7 @@ self.addEventListener("push", (event) => {
   const title = payload.title || "Nouvelle notification";
   const options = {
     body: payload.message || "",
+    icon: "/icons/android/gift-cards-192.png",
     data: { link: payload.link || "/dashboard/webapp/gift-cards", ...payload },
   };
 

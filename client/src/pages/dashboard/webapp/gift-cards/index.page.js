@@ -16,7 +16,10 @@ import SplashScreenWebAppComponent from "@/components/dashboard/webapp/_shared/s
 import NotGoodDeviceWebAppComponent from "@/components/dashboard/webapp/_shared/not-good-device.webapp";
 
 // WEB PUSB
-import { setupPushForModule } from "@/_assets/utils/webpush";
+import {
+  isPushDisabledForModule,
+  setupPushForModule,
+} from "@/_assets/utils/webpush";
 
 export default function GiftsPage(props) {
   const router = useRouter();
@@ -44,6 +47,8 @@ export default function GiftsPage(props) {
 
     const restaurantId = restaurantContext.restaurantData._id;
 
+    if (isPushDisabledForModule(restaurantId, "gift_cards")) return;
+
     const token = localStorage.getItem("token");
 
     setupPushForModule({
@@ -51,6 +56,7 @@ export default function GiftsPage(props) {
       restaurantId,
       token,
       apiUrl: process.env.NEXT_PUBLIC_API_URL,
+      requestPermission: false,
     }).catch(() => {});
   }, [restaurantContext?.isAuth, restaurantContext?.restaurantData?._id]);
 

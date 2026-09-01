@@ -14,6 +14,7 @@ import { Elements } from "@stripe/react-stripe-js";
 // COMPONENTS
 import SepaMandateForm from "./sepa-mandate-form.admin.component";
 import { getAdminAuthConfig } from "../_shared/utils/admin-auth.utils";
+import { supportsMultipleQuantity } from "../_shared/utils/subscription-catalog.utils";
 
 // ICONS
 import {
@@ -401,7 +402,12 @@ export default function ChangePayerSubscriptionAdminComponent() {
                   <p className="mt-2 text-xs text-darkBlue/55">
                     Modules :{" "}
                     {preview.subscription.addons
-                      .map((addon) => addon.name)
+                      .map(
+                        (addon) =>
+                          supportsMultipleQuantity(addon)
+                            ? `${addon.name} × ${addon.quantity || 1}`
+                            : addon.name,
+                      )
                       .join(", ")}
                   </p>
                 ) : (

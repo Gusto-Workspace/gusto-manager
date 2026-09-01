@@ -40,10 +40,16 @@ router.post("/push/subscribe", authenticateToken, async (req, res) => {
 });
 
 router.post("/push/unsubscribe", authenticateToken, async (req, res) => {
-  const { endpoint } = req.body;
-  if (!endpoint) return res.status(400).json({ message: "Missing endpoint" });
+  const { restaurantId, module, endpoint } = req.body;
+  if (!restaurantId || !module || !endpoint) {
+    return res.status(400).json({ message: "Missing fields" });
+  }
 
-  await PushSubscriptionModel.deleteOne({ endpoint });
+  if (String(req.user.restaurantId) !== String(restaurantId)) {
+    return res.status(403).json({ message: "Restaurant mismatch" });
+  }
+
+  await PushSubscriptionModel.deleteOne({ restaurantId, module, endpoint });
   res.json({ ok: true });
 });
 

@@ -5,28 +5,125 @@ export function urlBase64ToUint8Array(base64String) {
   return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
 }
 
+export function getPushPermissionStatus() {
+  if (typeof window === "undefined") return "loading";
+  if (
+    !window.isSecureContext ||
+    !("serviceWorker" in navigator) ||
+    !("PushManager" in window) ||
+    !("Notification" in window)
+  ) {
+    return "unsupported";
+  }
+
+  return Notification.permission;
+}
+
+function getPushDisabledPreferenceKey(restaurantId, module) {
+  return `gusto-push-disabled:${restaurantId}:${module}`;
+}
+
+export function isPushDisabledForModule(restaurantId, module) {
+  if (typeof window === "undefined" || !restaurantId) return false;
+
+  try {
+    return (
+      localStorage.getItem(
+        getPushDisabledPreferenceKey(restaurantId, module),
+      ) === "1"
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function setPushDisabledForModule(restaurantId, module, disabled) {
+  if (typeof window === "undefined" || !restaurantId) return;
+
+  try {
+    const key = getPushDisabledPreferenceKey(restaurantId, module);
+    if (disabled) localStorage.setItem(key, "1");
+    else localStorage.removeItem(key);
+  } catch {
+    // La désinscription reste effective même si le stockage local est bloqué.
+  }
+}
+
+function createPushError(message, code) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
+async function parseResponseBody(response) {
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) return null;
+  return response.json().catch(() => null);
+}
+
+function getPushServiceWorkerConfig(module) {
+  const isReservations = module === "reservations";
+  const swVersion = "2026-09-01-notification-settings-1";
+
+  return {
+    swUrl: isReservations
+      ? `/sw-reservations.js?v=${swVersion}`
+      : `/sw-giftcards.js?v=${swVersion}`,
+    scope: isReservations
+      ? "/dashboard/webapp/reservations/"
+      : "/dashboard/webapp/gift-cards/",
+  };
+}
+
 export async function setupPushForModule({
   module,
   restaurantId,
   token,
   apiUrl,
+  requestPermission = false,
 }) {
-  if (typeof window === "undefined") return;
-  if (
-    !("serviceWorker" in navigator) ||
-    !("PushManager" in window) ||
-    !("Notification" in window)
-  )
-    return;
+  const initialStatus = getPushPermissionStatus();
+  if (initialStatus === "loading") {
+    throw createPushError("Le navigateur n’est pas encore prêt.", "NOT_READY");
+  }
+  if (initialStatus === "unsupported") {
+    throw createPushError(
+      "Les notifications ne sont pas disponibles sur ce navigateur ou cette connexion.",
+      "UNSUPPORTED",
+    );
+  }
 
-  const isReservations = module === "reservations";
-  const swVersion = "2026-08-20-notification-icons-1";
-  const swUrl = isReservations
-    ? `/sw-reservations.js?v=${swVersion}`
-    : `/sw-giftcards.js?v=${swVersion}`;
-  const scope = isReservations
-    ? "/dashboard/webapp/reservations/"
-    : "/dashboard/webapp/gift-cards/";
+  // La permission doit être demandée directement depuis le clic utilisateur,
+  // avant tout autre await, sinon Chrome Android peut ignorer le prompt.
+  let permission = initialStatus;
+  if (permission === "default" && requestPermission) {
+    permission = await Notification.requestPermission();
+  }
+  if (permission === "default") {
+    return { status: "permission_required" };
+  }
+  if (permission !== "granted") {
+    return { status: "denied" };
+  }
+
+  if (!restaurantId || !token || !apiUrl) {
+    throw createPushError(
+      "La session ou le restaurant n’est pas disponible.",
+      "MISSING_CONTEXT",
+    );
+  }
+
+  const publicKey = String(
+    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "",
+  ).trim();
+  if (!publicKey) {
+    throw createPushError(
+      "La clé de notification du site est absente.",
+      "MISSING_VAPID_KEY",
+    );
+  }
+
+  const { swUrl, scope } = getPushServiceWorkerConfig(module);
 
   // 1) register SW spécifique
   const reg = await navigator.serviceWorker.register(swUrl, { scope });
@@ -34,15 +131,7 @@ export async function setupPushForModule({
     await reg.update();
   } catch {}
 
-  // 2) permission
-  let perm = Notification.permission;
-  if (perm === "default") {
-    perm = await Notification.requestPermission();
-  }
-  if (perm !== "granted") return;
-
-  // 3) subscribe
-  const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+  // 2) subscribe
   const applicationServerKey = urlBase64ToUint8Array(publicKey);
 
   let sub = await reg.pushManager.getSubscription();
@@ -54,13 +143,83 @@ export async function setupPushForModule({
     });
   }
 
-  // 4) envoyer au backend
-  await fetch(`${apiUrl}/push/subscribe`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
+  // 3) envoyer au backend
+  const response = await fetch(
+    `${String(apiUrl).replace(/\/+$/, "")}/push/subscribe`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ restaurantId, module, subscription: sub }),
     },
-    body: JSON.stringify({ restaurantId, module, subscription: sub }),
-  });
+  );
+
+  const responseBody = await parseResponseBody(response);
+  if (!response.ok) {
+    throw createPushError(
+      responseBody?.error ||
+        responseBody?.message ||
+        "L’abonnement aux notifications n’a pas pu être enregistré.",
+      "SUBSCRIPTION_REJECTED",
+    );
+  }
+
+  return { status: "subscribed", subscription: sub };
+}
+
+export async function disablePushForModule({
+  module,
+  restaurantId,
+  token,
+  apiUrl,
+}) {
+  const permission = getPushPermissionStatus();
+  if (permission === "loading" || permission === "unsupported") {
+    throw createPushError(
+      "Les notifications ne sont pas disponibles sur cet appareil.",
+      "UNSUPPORTED",
+    );
+  }
+  if (!restaurantId || !token || !apiUrl) {
+    throw createPushError(
+      "La session n’est pas disponible.",
+      "MISSING_CONTEXT",
+    );
+  }
+
+  const { scope } = getPushServiceWorkerConfig(module);
+  const registration = await navigator.serviceWorker.getRegistration(scope);
+  const subscription = await registration?.pushManager.getSubscription();
+
+  if (!subscription) return { status: "unsubscribed" };
+
+  const response = await fetch(
+    `${String(apiUrl).replace(/\/+$/, "")}/push/unsubscribe`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        restaurantId,
+        module,
+        endpoint: subscription.endpoint,
+      }),
+    },
+  );
+  const responseBody = await parseResponseBody(response);
+  if (!response.ok) {
+    throw createPushError(
+      responseBody?.error ||
+        responseBody?.message ||
+        "La désactivation des notifications a échoué.",
+      "UNSUBSCRIPTION_REJECTED",
+    );
+  }
+
+  await subscription.unsubscribe();
+  return { status: "unsubscribed" };
 }

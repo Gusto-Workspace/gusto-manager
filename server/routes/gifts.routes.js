@@ -29,6 +29,9 @@ const {
 const {
   sendGiftCardPurchaseEmail,
 } = require("../services/gift-card-mailer.service");
+const {
+  resolveGiftCardTypographyPreset,
+} = require("../services/gift-card-typography.service");
 
 function generateGiftCode() {
   const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -132,7 +135,8 @@ function getResolvedGiftCardVisual(restaurant, gift) {
 
 function buildGiftCardVisualSnapshot(restaurant, gift) {
   const visual = getResolvedGiftCardVisual(restaurant, gift);
-  if (!visual) return {};
+  const typographyPreset = resolveGiftCardTypographyPreset(restaurant);
+  if (!visual) return { typographyPreset };
 
   return {
     visualId: String(visual._id || ""),
@@ -141,6 +145,7 @@ function buildGiftCardVisualSnapshot(restaurant, gift) {
     imagePublicId: visual.imagePublicId || "",
     textColor: visual.textColor || "#000000",
     textLayout: visual.textLayout || "right",
+    typographyPreset,
   };
 }
 
@@ -583,8 +588,13 @@ router.post(
 
     try {
       const amt = Number(amount);
-      if (!paymentIntentId || !Number.isFinite(amt) || amt <= 0) {
+      if (!paymentIntentId || !Number.isSafeInteger(amt) || amt <= 0) {
         return res.status(400).json({ error: "Invalid payment data" });
+      }
+
+      const beneficiary = String(beneficiaryFirstName || "").trim();
+      if (!beneficiary) {
+        return res.status(400).json({ error: "Beneficiary is required" });
       }
 
       // 1) Charger restaurant + gift (pour vérifier montant)
@@ -598,7 +608,10 @@ router.post(
         return res.status(404).json({ error: "Gift card not found" });
       }
 
-      const expectedAmount = Number(gift.value) * 100;
+      const expectedAmount = Math.round(Number(gift.value) * 100);
+      if (!Number.isSafeInteger(expectedAmount) || expectedAmount <= 0) {
+        return res.status(400).json({ error: "Invalid gift card amount" });
+      }
       if (amt !== expectedAmount) {
         return res.status(400).json({ error: "Amount mismatch" });
       }
@@ -633,8 +646,8 @@ router.post(
         purchaseCode,
         validUntil,
         status: "Valid",
-        beneficiaryFirstName,
-        beneficiaryLastName,
+        beneficiaryFirstName: beneficiary,
+        beneficiaryLastName: String(beneficiaryLastName || "").trim(),
         sender,
         message: String(comment || "").slice(0, 500),
         hidePrice: Boolean(hidePrice),
