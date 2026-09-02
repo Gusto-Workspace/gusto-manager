@@ -130,7 +130,6 @@ export default function FloorPlanReservationsWebapp({
     if (!restaurantId) return;
     ensureReservationsDay?.(contextDateKey, {
       restaurantId,
-      diagnostics: "floor-plan",
     });
   }, [contextDateKey, ensureReservationsDay, restaurantId]);
 

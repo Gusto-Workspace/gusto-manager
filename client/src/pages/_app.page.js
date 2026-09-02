@@ -21,7 +21,6 @@ import {
   isEmployeeDashboardRouteAllowed,
   normalizeDashboardPath,
 } from "@/_assets/utils/dashboard-access";
-import { startFrontendPerfDiagnostics } from "@/_assets/utils/perf-diagnostics.client";
 
 const RESERVATIONS_IPAD_STARTUP_SCREENS = [
   [768, 1024, 1536, 2048],
@@ -308,8 +307,6 @@ function App({ Component, pageProps }) {
   const isReservationsWebapp = (router.pathname || "").startsWith(
     "/dashboard/webapp/reservations",
   );
-
-  useEffect(() => startFrontendPerfDiagnostics(), []);
 
   // ✅ Choix du manifest selon le module (Android)
   const manifestHref = useMemo(() => {

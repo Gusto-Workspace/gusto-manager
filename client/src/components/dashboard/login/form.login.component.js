@@ -213,9 +213,7 @@ export default function FormLoginComponent() {
       applyAuthToken(newToken);
 
       // ✅ fetch data resto puis redirection
-      await restaurantContext.fetchRestaurantData(newToken, restaurantId, {
-        reason: "login",
-      });
+      await restaurantContext.fetchRestaurantData(newToken, restaurantId);
       restaurantContext.setIsAuth(true);
 
       goAfterLogin(role);

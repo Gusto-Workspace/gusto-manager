@@ -263,11 +263,12 @@ export default function WebAppPurchasesGiftListComponent() {
   };
 
   const handleDrawerAction = async (purchase, type) => {
-    closeDetails();
     try {
       await runAction(purchase, type);
+      closeDetails();
     } catch (e) {
       console.error("Erreur action carte cadeau :", e);
+      throw e;
     }
   };
 

@@ -37,7 +37,8 @@ export default function DashboardComponent(props) {
   const [hasMorePayouts, setHasMorePayouts] = useState(false);
   const [lastPayoutId, setLastPayoutId] = useState(null);
 
-  const [dataLoading, setDataLoading] = useState(true);
+  const [paymentsLoading, setPaymentsLoading] = useState(true);
+  const [payoutsLoading, setPayoutsLoading] = useState(true);
   const [showPaymentsDetails, setShowPaymentsDetails] = useState(false);
   const [monthlySales, setMonthlySales] = useState([]);
   const [monthlyDataLoading, setMonthlyDataLoading] = useState(true);
@@ -81,7 +82,7 @@ export default function DashboardComponent(props) {
 
   // ---- Requête pour paiements (charges) ----
   async function fetchGiftCardSales(starting_after) {
-    setDataLoading(true);
+    setPaymentsLoading(true);
     try {
       const response = await axios.get(
         `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${
@@ -106,7 +107,7 @@ export default function DashboardComponent(props) {
         error,
       );
     } finally {
-      setDataLoading(false);
+      setPaymentsLoading(false);
     }
   }
 
@@ -149,7 +150,7 @@ export default function DashboardComponent(props) {
 
   // ---- Requête pour les virements (payouts) ----
   async function fetchGiftCardPayouts(starting_after) {
-    setDataLoading(true);
+    setPayoutsLoading(true);
     try {
       const response = await axios.get(
         `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${
@@ -171,7 +172,7 @@ export default function DashboardComponent(props) {
     } catch (error) {
       console.error("Erreur lors de la récupération des virements :", error);
     } finally {
-      setDataLoading(false);
+      setPayoutsLoading(false);
     }
   }
 
@@ -336,7 +337,7 @@ export default function DashboardComponent(props) {
             )}
 
             <LastPayoutDashboardComponent
-              dataLoading={dataLoading}
+              dataLoading={payoutsLoading}
               payouts={payouts}
               setShowPaymentsDetails={setShowPaymentsDetails}
               showPaymentsDetails={showPaymentsDetails}
@@ -353,7 +354,7 @@ export default function DashboardComponent(props) {
           restaurantId={props.restaurantData._id}
           hasMorePayments={hasMorePayments}
           hasMorePayouts={hasMorePayouts}
-          dataLoading={dataLoading}
+          dataLoading={paymentsLoading}
           filterLoading={filterLoading}
           handleRefundSuccess={handleRefundSuccess}
           fetchMonthlySales={fetchMonthlySales}

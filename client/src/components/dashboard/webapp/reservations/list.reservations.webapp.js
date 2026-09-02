@@ -142,7 +142,6 @@ export default function ListReservationsWebapp(props) {
     if (selectedDayKey && !selectedDayKey.startsWith(currentMonthKey)) return;
     props.ensureReservationsMonth?.(currentMonth, {
       restaurantId,
-      diagnostics: "calendar-month",
       prefetchAdjacent: true,
     });
   }, [

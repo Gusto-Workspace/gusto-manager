@@ -1,16 +1,5 @@
 const RestaurantModel = require("../models/restaurant.model");
-const {
-  normalizeTypographyPreset,
-} = require("./gift-card-typography.service");
-const {
-  getPerfRequestContext,
-  getPerfRequestId,
-  isPerfDiagnosticsEnabled,
-  perfLog,
-  perfNowMs,
-  setPerfRequestMetrics,
-  shouldLogPerfDetail,
-} = require("./perf-diagnostics.service");
+const { normalizeTypographyPreset } = require("./gift-card-typography.service");
 
 const DEFAULT_GIFT_CARD_SETTINGS = {
   validity_mode: "fixed_duration",
@@ -92,10 +81,7 @@ function buildConfiguredAnnualDate(year, monthNumber, dayNumber) {
   const safeMonth = clampInteger(monthNumber, 1, 1, 12);
   const monthIndex = safeMonth - 1;
   const lastDayOfMonth = new Date(year, safeMonth, 0).getDate();
-  const safeDay = Math.min(
-    clampInteger(dayNumber, 1, 1, 31),
-    lastDayOfMonth,
-  );
+  const safeDay = Math.min(clampInteger(dayNumber, 1, 1, 31), lastDayOfMonth);
 
   return new Date(year, monthIndex, safeDay, 23, 59, 59, 999);
 }
@@ -169,9 +155,7 @@ function computeGiftCardValidUntil(
   }
 
   const validUntil = new Date(baseDate);
-  validUntil.setMonth(
-    validUntil.getMonth() + settings.validity_fixed_months,
-  );
+  validUntil.setMonth(validUntil.getMonth() + settings.validity_fixed_months);
   validUntil.setHours(23, 59, 59, 999);
   return validUntil;
 }
@@ -236,84 +220,14 @@ function applyGiftCardLifecycle(restaurant, now = new Date()) {
 async function refreshGiftCardLifecycle(restaurantId) {
   if (!restaurantId) return null;
 
-  const diagnosticsEnabled = isPerfDiagnosticsEnabled();
-  const totalStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
-  const queryStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
   const restaurant = await RestaurantModel.findById(restaurantId);
-  const queryMs = diagnosticsEnabled
-    ? Math.round((perfNowMs() - queryStartedAtMs) * 100) / 100
-    : null;
   if (!restaurant) {
-    if (diagnosticsEnabled) {
-      setPerfRequestMetrics({ giftCardLifecycleQueryMs: queryMs });
-      const requestRoute =
-        getPerfRequestContext()?.route || "giftCardLifecycleRefresh";
-      const totalMs = Math.round((perfNowMs() - totalStartedAtMs) * 100) / 100;
-      if (
-        shouldLogPerfDetail(requestRoute, {
-          durationMs: totalMs,
-          normalLimit: requestRoute === "publicRestaurant" ? 10 : 30,
-        })
-      ) {
-        perfLog("MONGO", {
-          operation: "refreshGiftCardLifecycle",
-          requestId: getPerfRequestId(),
-          restaurantId: String(restaurantId),
-          queryMs,
-          found: false,
-          totalMs,
-        });
-      }
-    }
     return null;
   }
 
-  const processingStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
   const changed = applyGiftCardLifecycle(restaurant);
-  const processingMs = diagnosticsEnabled
-    ? Math.round((perfNowMs() - processingStartedAtMs) * 100) / 100
-    : null;
-  let saveMs = 0;
   if (changed) {
-    const saveStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
     await restaurant.save();
-    if (diagnosticsEnabled) {
-      saveMs = Math.round((perfNowMs() - saveStartedAtMs) * 100) / 100;
-    }
-  }
-
-  if (diagnosticsEnabled) {
-    const totalMs = Math.round((perfNowMs() - totalStartedAtMs) * 100) / 100;
-    setPerfRequestMetrics({
-      giftCardLifecycleQueryMs: queryMs,
-      giftCardLifecycleProcessingMs: processingMs,
-      giftCardLifecycleSaveMs: saveMs,
-    });
-    const requestRoute =
-      getPerfRequestContext()?.route || "giftCardLifecycleRefresh";
-    if (
-      shouldLogPerfDetail(requestRoute, {
-        durationMs: totalMs,
-        normalLimit: requestRoute === "publicRestaurant" ? 10 : 30,
-      })
-    ) {
-      perfLog("MONGO", {
-        operation: "refreshGiftCardLifecycle",
-        requestId: getPerfRequestId(),
-        restaurantId: String(restaurantId),
-        queryMs,
-        processingMs,
-        saveMs,
-        totalMs,
-        changed,
-        giftCardCount: Array.isArray(restaurant.giftCards)
-          ? restaurant.giftCards.length
-          : 0,
-        purchaseGiftCardCount: Array.isArray(restaurant.purchasesGiftCards)
-          ? restaurant.purchasesGiftCards.length
-          : 0,
-      });
-    }
   }
 
   return restaurant;
@@ -350,10 +264,7 @@ function sanitizeGiftCardSettingsInput(input = {}) {
       0,
       60,
     ),
-    typographyPreset: normalizeTypographyPreset(
-      raw?.typographyPreset,
-      "",
-    ),
+    typographyPreset: normalizeTypographyPreset(raw?.typographyPreset, ""),
     visuals: Array.isArray(raw.visuals) ? raw.visuals : [],
     defaultVisualId: raw.defaultVisualId || "",
   };

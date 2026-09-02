@@ -160,8 +160,6 @@ export default function PurchasesGiftListComponent() {
   }
 
   const handleDrawerAction = async (purchase, type) => {
-    closeDetails();
-
     if (!purchase) return;
 
     const baseUrl = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext.restaurantData._id}/purchases/${purchase._id}`;
@@ -180,8 +178,10 @@ export default function PurchasesGiftListComponent() {
         ...prev,
         purchasesGiftCards: response.data.restaurant.purchasesGiftCards,
       }));
+      closeDetails();
     } catch (error) {
       console.error("Erreur action carte cadeau :", error);
+      throw error;
     }
   };
 
