@@ -1,6 +1,7 @@
 {
   "name": "Gusto Manager – Admin",
   "short_name": "Admin",
+  "id": "/dashboard/admin",
   "start_url": "/dashboard/admin",
   "scope": "/dashboard/admin",
   "display": "standalone",

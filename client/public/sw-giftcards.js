@@ -31,6 +31,7 @@ self.addEventListener("push", (event) => {
   const options = {
     body: payload.message || "",
     icon: "/icons/android/gift-cards-192.png",
+    badge: "/icons/android/gift-cards-notification-badge.png",
     data: { link: payload.link || "/dashboard/webapp/gift-cards", ...payload },
   };
 
