@@ -253,7 +253,7 @@ export default function WebAppPurchasesGiftListComponent() {
           ? `${baseUrl}/validate`
           : `${baseUrl}/delete`;
 
-    const method = type === "Delete" ? "delete" : "put";
+    const method = type === "Archive" ? "delete" : "put";
     const response = await axios[method](url);
 
     restaurantContext.setRestaurantData((prev) => ({

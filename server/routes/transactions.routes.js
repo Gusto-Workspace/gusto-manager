@@ -49,6 +49,25 @@ function isReservationBankHoldTransaction(charge) {
   return getStripeTransactionType(charge).startsWith("reservation_bank_hold_");
 }
 
+function isStripeGiftCardTransaction(charge, expectedRestaurantId = "") {
+  const transactionType = getStripeTransactionType(charge);
+  const priceValidated = getStripeMetadataValue(
+    charge,
+    "gustoGiftPriceValidated",
+  );
+
+  if (transactionType !== "gift_card_purchase" && priceValidated !== "true") {
+    return false;
+  }
+
+  const metadataRestaurantId = getStripeMetadataValue(charge, "restaurantId");
+  return (
+    !expectedRestaurantId ||
+    !metadataRestaurantId ||
+    metadataRestaurantId === String(expectedRestaurantId)
+  );
+}
+
 function getStripeCustomerLabel(charge) {
   const billingName = String(charge?.billing_details?.name || "").trim();
   if (billingName) return billingName;
@@ -530,12 +549,17 @@ function formatChargeForDashboard({
   giftPurchaseByPaymentIntent = new Map(),
   reservationByPaymentIntent = new Map(),
   reservationById = new Map(),
+  expectedRestaurantId = "",
 }) {
   const balanceTx = balanceTransaction || charge.balance_transaction;
   const paymentIntentId = getStripePaymentIntentId(charge?.payment_intent);
   const reservationId = getStripeReservationId(charge);
   const stripeTransactionType = getStripeTransactionType(charge);
   const isBankHoldTransaction = isReservationBankHoldTransaction(charge);
+  const isGiftCardTransaction = isStripeGiftCardTransaction(
+    charge,
+    expectedRestaurantId,
+  );
   const giftPurchase = giftPurchaseByPaymentIntent.get(paymentIntentId) || null;
   const matchedReservation =
     reservationByPaymentIntent.get(paymentIntentId) ||
@@ -549,7 +573,12 @@ function formatChargeForDashboard({
     metadataReservation,
   );
 
-  if (!giftPurchase && !isBankHoldTransaction && !resolvedReservation) {
+  if (
+    !giftPurchase &&
+    !isGiftCardTransaction &&
+    !isBankHoldTransaction &&
+    !resolvedReservation
+  ) {
     return null;
   }
 
@@ -584,17 +613,17 @@ function formatChargeForDashboard({
     stripeTransactionType,
   };
 
-  if (giftPurchase) {
+  if (giftPurchase || isGiftCardTransaction) {
     const buyerName = buildFullName(
-      giftPurchase.buyerFirstName,
-      giftPurchase.buyerLastName,
+      giftPurchase?.buyerFirstName,
+      giftPurchase?.buyerLastName,
     );
 
     return {
       ...commonPayload,
       type: "gift_card_purchase",
       customer: buyerName || fallbackCustomerLabel,
-      purchaseCode: giftPurchase.purchaseCode,
+      purchaseCode: giftPurchase?.purchaseCode || "",
       giftPurchase,
       reservation: null,
       bankHold: null,
@@ -652,6 +681,7 @@ async function buildChargeFormattingContext({
 
   return {
     giftPurchaseByPaymentIntent: buildGiftPurchaseMap(purchasesGiftCards),
+    expectedRestaurantId: String(restaurantId || ""),
     ...(await buildReservationPaymentMaps({
       restaurantId,
       paymentIntentIds,
@@ -691,7 +721,12 @@ async function fetchVisibleDashboardCharges({
       await stripeInstance.balanceTransactions.list({
         limit: pageSize,
         ...(cursor ? { starting_after: cursor } : {}),
-        expand: ["data.source", "data.source.customer", "data.source.refunds"],
+        expand: [
+          "data.source",
+          "data.source.customer",
+          "data.source.refunds",
+          "data.source.payment_intent",
+        ],
       });
 
     if (!balanceTransactionsList.data.length) {

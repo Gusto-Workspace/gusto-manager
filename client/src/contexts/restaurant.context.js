@@ -1595,10 +1595,41 @@ export default function RestaurantContext() {
   }
 
   async function resyncAfterForeground({ hard = false } = {}) {
+    const activeReservationPeriod = activeReservationPeriodRef.current;
+    const shouldRefreshReservations = Boolean(
+      activeReservationPeriod &&
+        String(currentPathRef.current || "").includes("/reservations"),
+    );
+
+    if (shouldRefreshReservations) {
+      // Un retour au premier plan peut arriver après la suspension du SSE.
+      // Les overrides protègent normalement les mutations temps réel contre une
+      // réponse HTTP plus ancienne, mais ils ne doivent pas écraser ici la
+      // nouvelle lecture autoritative du serveur.
+      reservationMutationOverridesRef.current.clear();
+
+      const activeCacheKey = `${activeReservationPeriod.restaurantId}:${activeReservationPeriod.from}:${activeReservationPeriod.to}`;
+      reservationPeriodsCacheRef.current.forEach((_entry, cacheKey) => {
+        if (cacheKey !== activeCacheKey) {
+          reservationPeriodsCacheRef.current.delete(cacheKey);
+        }
+      });
+    }
+
     await refetchCurrentRestaurant({
       reconnectSSE: true,
       syncNotifications: true,
     });
+
+    if (shouldRefreshReservations) {
+      await loadReservationPeriod({
+        restaurantId: activeReservationPeriod.restaurantId,
+        from: activeReservationPeriod.from,
+        to: activeReservationPeriod.to,
+        force: true,
+        activate: true,
+      });
+    }
 
     if (!hard) return;
   }

@@ -819,7 +819,12 @@ router.put(
       const restaurant = await RestaurantModel.findOneAndUpdate(
         {
           _id: restaurantId,
-          "purchasesGiftCards._id": purchaseId,
+          purchasesGiftCards: {
+            $elemMatch: {
+              _id: purchaseId,
+              status: { $ne: "Archived" },
+            },
+          },
         },
         {
           $set: {
@@ -858,7 +863,12 @@ router.put(
       const restaurant = await RestaurantModel.findOneAndUpdate(
         {
           _id: restaurantId,
-          "purchasesGiftCards._id": purchaseId,
+          purchasesGiftCards: {
+            $elemMatch: {
+              _id: purchaseId,
+              status: { $ne: "Archived" },
+            },
+          },
         },
         {
           $set: { "purchasesGiftCards.$.status": "Valid" },
@@ -883,17 +893,25 @@ router.put(
   },
 );
 
-// DELETE PURCHASED GIFT CARD
+// ARCHIVE PURCHASED GIFT CARD
+// The historical `/delete` URL is kept for compatibility with existing clients.
+// A paid purchase must remain stored so its Stripe transaction stays auditable.
 router.delete(
   "/restaurants/:restaurantId/purchases/:purchaseId/delete",
   async (req, res) => {
     const { restaurantId, purchaseId } = req.params;
 
     try {
-      // Supprime une carte cadeau achetée spécifique
       const restaurant = await RestaurantModel.findOneAndUpdate(
-        { _id: restaurantId },
-        { $pull: { purchasesGiftCards: { _id: purchaseId } } },
+        {
+          _id: restaurantId,
+          "purchasesGiftCards._id": purchaseId,
+        },
+        {
+          $set: {
+            "purchasesGiftCards.$.status": "Archived",
+          },
+        },
         { new: true },
       )
         .populate("owner_id", "firstname")
@@ -908,10 +926,10 @@ router.delete(
 
       res
         .status(200)
-        .json({ message: "Purchased gift card deleted", restaurant });
+        .json({ message: "Purchased gift card archived", restaurant });
     } catch (error) {
-      console.error("Error deleting purchased gift card:", error);
-      res.status(500).json({ error: "Error deleting purchased gift card" });
+      console.error("Error archiving purchased gift card:", error);
+      res.status(500).json({ error: "Error archiving purchased gift card" });
     }
   },
 );
