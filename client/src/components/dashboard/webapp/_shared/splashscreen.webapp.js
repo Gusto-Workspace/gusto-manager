@@ -2,7 +2,6 @@ import { useEffect, useLayoutEffect, useState } from "react";
 
 // HOOK
 import useRefetchOnReturn from "@/_assets/utils/useRefetchOnReturn";
-import { markFrontendSplashHidden } from "@/_assets/utils/perf-diagnostics.client";
 
 const FADE_MS = 550;
 const MIN_DURATION = 1250;
@@ -34,10 +33,6 @@ export default function SplashScreenWebAppComponent({
   const [fadeOut, setFadeOut] = useState(false);
 
   const effectiveForceShow = forceShow || internalForceShow;
-
-  useEffect(() => {
-    if (!visible) markFrontendSplashHidden();
-  }, [visible]);
 
   // =========================
   // ✅ Option A : refetch au retour

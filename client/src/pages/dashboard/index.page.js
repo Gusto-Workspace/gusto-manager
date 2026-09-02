@@ -39,7 +39,6 @@ export default function DashboardPage(props) {
     Promise.resolve(
       ensureReservationsDay?.(new Date(), {
         restaurantId,
-        diagnostics: "dashboard-widget",
       }),
     ).finally(() => {
       if (!cancelled) setDashboardReservationsReady(true);
@@ -58,7 +57,6 @@ export default function DashboardPage(props) {
     const prefetchCurrentMonth = () => {
       ensureReservationsMonth?.(new Date(), {
         restaurantId,
-        diagnostics: "dashboard-month-prefetch",
         activate: false,
         prefetchAdjacent: true,
       });

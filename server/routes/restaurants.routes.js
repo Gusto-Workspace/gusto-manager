@@ -24,20 +24,6 @@ const {
 const {
   buildPublicReservationServiceBlockedRange,
 } = require("../services/reservation-service-closure.service");
-const {
-  categorizeUserAgent,
-  getPerfRequestContext,
-  getPerfRequestId,
-  isPerfDiagnosticsEnabled,
-  perfLog,
-  perfNowMs,
-  setPerfRequestMetrics,
-  shouldLogPerfDetail,
-} = require("../services/perf-diagnostics.service");
-
-function roundPerfDuration(startedAtMs) {
-  return Math.round((perfNowMs() - startedAtMs) * 100) / 100;
-}
 
 // Ajoute le restaurant dans employee.restaurants s'il n'y est pas déjà
 function ensureEmployeeRestaurantLink(employee, restaurantId) {
@@ -188,12 +174,10 @@ router.post(
 
 // GET RESTAURANT DETAILS FROM PANEL
 router.get("/owner/restaurants/:id", authenticateToken, async (req, res) => {
-  const diagnosticsEnabled = isPerfDiagnosticsEnabled();
   try {
     const { id } = req.params;
     const reservationsScope = req.query?.scope === "reservations";
 
-    const restaurantQueryStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
     let restaurantQuery = RestaurantModel.findById(id);
     if (reservationsScope) {
       restaurantQuery = restaurantQuery.select(
@@ -210,9 +194,6 @@ router.get("/owner/restaurants/:id", authenticateToken, async (req, res) => {
       restaurantQuery = restaurantQuery.populate("menus").populate("employees");
     }
     const restaurant = await restaurantQuery;
-    const restaurantQueryAndPopulateMs = diagnosticsEnabled
-      ? roundPerfDuration(restaurantQueryStartedAtMs)
-      : null;
 
     if (!restaurant) {
       return res.status(404).json({ message: "Restaurant not found" });
@@ -229,24 +210,11 @@ router.get("/owner/restaurants/:id", authenticateToken, async (req, res) => {
       return res.status(403).json({ message: "Forbidden" });
     }
 
-    const processingStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
     const decoratedRestaurant = decorateRestaurantEmployees(
       restaurant,
       id,
       restaurant.employees || [],
     );
-    const processingMs = diagnosticsEnabled
-      ? roundPerfDuration(processingStartedAtMs)
-      : null;
-
-    if (diagnosticsEnabled) {
-      setPerfRequestMetrics({
-        maintenanceMovedOffReadPath: true,
-        restaurantProjection: reservationsScope ? "reservations" : "full",
-        restaurantQueryAndPopulateMs,
-        processingMs,
-      });
-    }
 
     res.status(200).json({ restaurant: decoratedRestaurant });
   } catch (error) {
@@ -257,18 +225,12 @@ router.get("/owner/restaurants/:id", authenticateToken, async (req, res) => {
 
 // GET RESTAURANT DETAILS FROM SITE
 router.get("/restaurants/:id", async (req, res) => {
-  const diagnosticsEnabled = isPerfDiagnosticsEnabled();
-  const handlerStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
   try {
     const { id } = req.params;
 
-    const restaurantQueryStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
     const restaurant = await RestaurantModel.findById(id)
       .populate("owner_id", "firstname")
       .populate("menus");
-    const restaurantQueryAndPopulateMs = diagnosticsEnabled
-      ? roundPerfDuration(restaurantQueryStartedAtMs)
-      : null;
 
     if (!restaurant) {
       return res.status(404).json({ message: "Restaurant not found" });
@@ -310,7 +272,6 @@ router.get("/restaurants/:id", async (req, res) => {
       return dishId;
     };
 
-    const processingStartedAtMs = diagnosticsEnabled ? perfNowMs() : 0;
     const restaurantData = {
       ...restaurant.toObject(),
       menus: restaurant.menus.map((menu) => ({
@@ -350,47 +311,7 @@ router.get("/restaurants/:id", async (req, res) => {
       };
     }
 
-    const processingMs = diagnosticsEnabled
-      ? roundPerfDuration(processingStartedAtMs)
-      : null;
-
-    if (diagnosticsEnabled) {
-      setPerfRequestMetrics({
-        maintenanceMovedOffReadPath: true,
-        restaurantQueryAndPopulateMs,
-        processingMs,
-      });
-    }
-
     res.status(200).json({ restaurant: restaurantData });
-
-    if (diagnosticsEnabled) {
-      const context = getPerfRequestContext();
-      const handlerMs = roundPerfDuration(handlerStartedAtMs);
-      if (
-        shouldLogPerfDetail("publicRestaurant", {
-          durationMs: handlerMs,
-          normalLimit: 10,
-        })
-      ) {
-        perfLog("PUBLIC", {
-          event: "restaurant-detail",
-          requestId: getPerfRequestId(),
-          route: "publicRestaurant",
-          restaurantId: String(id),
-          userAgentCategory: categorizeUserAgent(req.get("user-agent")),
-          maintenanceMovedOffReadPath: true,
-          restaurantQueryAndPopulateMs,
-          processingMs,
-          resJsonSyncMs: context?.metrics?.resJsonSyncMs || null,
-          responseBytes: Number(res.getHeader("Content-Length")) || null,
-          handlerMs,
-          menuCount: Array.isArray(restaurant.menus)
-            ? restaurant.menus.length
-            : 0,
-        });
-      }
-    }
   } catch (error) {
     console.error("Erreur lors de la récupération du restaurant:", error);
     res.status(500).json({ message: "Erreur interne du serveur" });

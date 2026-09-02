@@ -11,10 +11,6 @@ const http = require("http");
 const cors = require("cors");
 const mongoose = require("mongoose");
 const { mountSseRoute } = require("./services/sse-bus.service");
-const {
-  perfHttpMiddleware,
-  startPerfEventLoopProbe,
-} = require("./services/perf-diagnostics.service");
 
 // APP
 const app = express();
@@ -22,10 +18,6 @@ const PORT = process.env.PORT || 8012;
 
 // HTTP
 const server = http.createServer(app);
-
-// TEMPORARY PERFORMANCE DIAGNOSTICS (enabled with PERF_DIAGNOSTICS=true)
-app.use(perfHttpMiddleware);
-startPerfEventLoopProbe();
 
 // JSON
 app.use("/api/stripe/wh", express.raw({ type: "application/json" }));

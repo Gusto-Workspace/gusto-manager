@@ -7,13 +7,6 @@ import axios from "axios";
 // JWT
 import { jwtDecode } from "jwt-decode";
 
-import {
-  beginFrontendLoad,
-  markFrontendDataLoadingFalse,
-  markFrontendLoadPhase,
-  measureFrontendRequest,
-} from "@/_assets/utils/perf-diagnostics.client";
-
 const EMPTY_UNREAD_BY_MODULE = {
   reservations: 0,
   gift_cards: 0,
@@ -26,17 +19,6 @@ function countUnreadTotal(byModule = {}) {
     (total, value) => total + (Number(value) || 0),
     0,
   );
-}
-
-function normalizePerfContext(value, fallbackReason = "unknown") {
-  if (typeof value === "string") {
-    return { reason: value || fallbackReason, loadId: null };
-  }
-
-  return {
-    reason: value?.reason || fallbackReason,
-    loadId: value?.loadId || null,
-  };
 }
 
 function mergeRealtimeReservation(prevReservation, nextReservation) {
@@ -165,8 +147,6 @@ export default function RestaurantContext() {
       limit = 30,
       cursor = null,
       reset = true,
-      reason = "unknown",
-      loadId = null,
     } = {}) => {
       const token =
         typeof window !== "undefined" ? localStorage.getItem("token") : null;
@@ -188,23 +168,14 @@ export default function RestaurantContext() {
 
       try {
         const requestUrl = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${rid}/notifications`;
-        const { data } = await measureFrontendRequest({
-          name: "notifications",
-          kind: "notifications",
-          requestUrl,
-          loadId,
-          reason,
-          restaurantId: String(rid),
-          request: () =>
-            axios.get(requestUrl, {
-              headers: { Authorization: `Bearer ${token}` },
-              params: {
-                limit,
-                unreadOnly: unreadOnly ? "true" : "false",
-                ...(module ? { module } : {}),
-                ...(cursor ? { cursor } : {}),
-              },
-            }),
+        const { data } = await axios.get(requestUrl, {
+          headers: { Authorization: `Bearer ${token}` },
+          params: {
+            limit,
+            unreadOnly: unreadOnly ? "true" : "false",
+            ...(module ? { module } : {}),
+            ...(cursor ? { cursor } : {}),
+          },
         });
 
         const items = Array.isArray(data?.notifications)
@@ -239,29 +210,14 @@ export default function RestaurantContext() {
     [restaurantData?._id],
   );
 
-  async function fetchUnreadCounts(token, rid, diagnostics = {}) {
+  async function fetchUnreadCounts(token, rid) {
     if (!token || !rid) return;
 
-    const { reason, loadId } = normalizePerfContext(diagnostics);
     const requestUrl = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${rid}/notifications/unread-counts`;
 
-    markFrontendLoadPhase(loadId, "unread_counts_start", {
-      reason,
-      restaurantId: String(rid),
-    });
-
     try {
-      const { data } = await measureFrontendRequest({
-        name: "unread_counts",
-        kind: "unread",
-        requestUrl,
-        loadId,
-        reason,
-        restaurantId: String(rid),
-        request: () =>
-          axios.get(requestUrl, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
+      const { data } = await axios.get(requestUrl, {
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       // attendu : { total, byModule: { reservations, gift_cards, employees } }
@@ -274,16 +230,7 @@ export default function RestaurantContext() {
           take_away: data?.byModule?.take_away ?? 0,
         },
       });
-      markFrontendLoadPhase(loadId, "unread_counts_end", {
-        reason,
-        restaurantId: String(rid),
-      });
     } catch (e) {
-      markFrontendLoadPhase(loadId, "unread_counts_error", {
-        reason,
-        restaurantId: String(rid),
-        status: e?.response?.status ?? null,
-      });
       console.warn("Failed to fetch unread notifications counts", e);
       // en cas d'erreur -> on garde l'état précédent
     }
@@ -374,11 +321,9 @@ export default function RestaurantContext() {
       restaurantId = null,
       from,
       to,
-      diagnostics = {},
       force = false,
       activate = true,
     } = {}) => {
-      const { reason, loadId } = normalizePerfContext(diagnostics);
       const token =
         tokenOverride ||
         (typeof window !== "undefined" ? localStorage.getItem("token") : null);
@@ -389,10 +334,7 @@ export default function RestaurantContext() {
           setReservationsList([]);
           setActivePeriodLoading(false);
         }
-        markFrontendLoadPhase(loadId, "reservations_skipped", {
-          reason,
-          restaurantId: rid ? String(rid) : null,
-        });
+
         return [];
       }
 
@@ -443,29 +385,14 @@ export default function RestaurantContext() {
       }
 
       const requestUrl = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${rid}/reservations`;
-      markFrontendLoadPhase(loadId, "reservations_start", {
-        reason,
-        restaurantId: String(rid),
-        from: period.from,
-        to: period.to,
-      });
 
       if (activate) setActivePeriodLoading(true);
 
       const requestPromise = (async () => {
         try {
-          const { data } = await measureFrontendRequest({
-            name: "manager_reservations",
-            kind: "reservations",
-            requestUrl,
-            loadId,
-            reason,
-            restaurantId: String(rid),
-            request: () =>
-              axios.get(requestUrl, {
-                headers: { Authorization: `Bearer ${token}` },
-                params: { from: period.from, to: period.to },
-              }),
+          const { data } = await axios.get(requestUrl, {
+            headers: { Authorization: `Bearer ${token}` },
+            params: { from: period.from, to: period.to },
           });
 
           let reservations = Array.isArray(data?.reservations)
@@ -490,20 +417,9 @@ export default function RestaurantContext() {
             ...period,
             reservations,
           });
-          markFrontendLoadPhase(loadId, "reservations_end", {
-            reason,
-            restaurantId: String(rid),
-            from: period.from,
-            to: period.to,
-            reservationCount: reservations.length,
-          });
+
           return reservations;
         } catch (e) {
-          markFrontendLoadPhase(loadId, "reservations_error", {
-            reason,
-            restaurantId: String(rid),
-            status: e?.response?.status ?? null,
-          });
           console.warn("Failed to fetch reservations list", e);
           return null;
         } finally {
@@ -531,7 +447,6 @@ export default function RestaurantContext() {
         ...options,
         restaurantId: options.restaurantId || restaurantData?._id,
         ...range,
-        diagnostics: options.diagnostics || "manual",
       });
 
       if (reservations && options.prefetchAdjacent !== false) {
@@ -548,7 +463,6 @@ export default function RestaurantContext() {
               ...options,
               restaurantId: options.restaurantId || restaurantData?._id,
               ...adjacentRange,
-              diagnostics: "prefetch",
               activate: false,
               force: false,
             });
@@ -595,7 +509,6 @@ export default function RestaurantContext() {
         restaurantId,
         from: coveringPeriod?.from || dateKey,
         to: coveringPeriod?.to || dateKey,
-        diagnostics: options.diagnostics || "manual",
       });
     },
     [loadReservationPeriod, restaurantData?._id],
@@ -1231,17 +1144,8 @@ export default function RestaurantContext() {
   // ---------------------------
   // Fetch restaurant data
   // ---------------------------
-  async function fetchRestaurantData(token, restaurantId, diagnostics = {}) {
-    const perfContext = normalizePerfContext(diagnostics);
-    const reason = perfContext.reason;
-    const loadId =
-      perfContext.loadId || beginFrontendLoad(reason, restaurantId || null);
-
+  async function fetchRestaurantData(token, restaurantId) {
     setDataLoading(true);
-    markFrontendLoadPhase(loadId, "data_loading_true", {
-      reason,
-      restaurantId: restaurantId ? String(restaurantId) : null,
-    });
 
     let role = null;
     try {
@@ -1262,37 +1166,20 @@ export default function RestaurantContext() {
 
       if (role === "employee") {
         const requestUrl = `${process.env.NEXT_PUBLIC_API_URL}/employees/me`;
-        markFrontendLoadPhase(loadId, "restaurant_data_start", {
-          reason,
-          restaurantId: restaurantId ? String(restaurantId) : null,
-          role,
-        });
-        const response = await measureFrontendRequest({
-          name: "employee_restaurant_data",
-          kind: "restaurant",
-          requestUrl,
-          loadId,
-          reason,
-          restaurantId: restaurantId ? String(restaurantId) : null,
-          request: () =>
-            axios.get(requestUrl, {
-              headers: { Authorization: `Bearer ${token}` },
-              params: getRestaurantReadParams(currentPathRef.current),
-            }),
+
+        const response = await axios.get(requestUrl, {
+          headers: { Authorization: `Bearer ${token}` },
+          params: getRestaurantReadParams(currentPathRef.current),
         });
 
         const { restaurant, restaurants } = response.data || {};
         const rid = restaurant?._id ? String(restaurant._id) : null;
-        markFrontendLoadPhase(loadId, "restaurant_data_end", {
-          reason,
-          restaurantId: rid,
-          role,
-        });
+
         setRestaurantsList(restaurants || []);
         setRestaurantData(restaurant || null);
 
         if (restaurant?._id) {
-          fetchUnreadCounts(token, rid, { reason, loadId });
+          fetchUnreadCounts(token, rid);
         } else {
           setUnreadCounts({
             total: 0,
@@ -1304,37 +1191,19 @@ export default function RestaurantContext() {
       }
 
       const requestUrl = `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${restaurantId}`;
-      markFrontendLoadPhase(loadId, "restaurant_data_start", {
-        reason,
-        restaurantId: String(restaurantId),
-        role,
-      });
-      const response = await measureFrontendRequest({
-        name: "owner_restaurant_data",
-        kind: "restaurant",
-        requestUrl,
-        loadId,
-        reason,
-        restaurantId: String(restaurantId),
-        request: () =>
-          axios.get(requestUrl, {
-            headers: { Authorization: `Bearer ${token}` },
-            params: getRestaurantReadParams(currentPathRef.current),
-          }),
+
+      const response = await axios.get(requestUrl, {
+        headers: { Authorization: `Bearer ${token}` },
+        params: getRestaurantReadParams(currentPathRef.current),
       });
 
       const restaurant = response.data.restaurant;
       const rid = String(restaurant._id);
 
-      markFrontendLoadPhase(loadId, "restaurant_data_end", {
-        reason,
-        restaurantId: rid,
-        role,
-      });
       setRestaurantData(restaurant);
 
       if (role === "owner") {
-        fetchUnreadCounts(token, rid, { reason, loadId });
+        fetchUnreadCounts(token, rid);
       } else {
         setUnreadCounts({
           total: 0,
@@ -1352,14 +1221,10 @@ export default function RestaurantContext() {
       }
     } finally {
       setDataLoading(false);
-      markFrontendDataLoadingFalse(loadId, {
-        reason,
-        restaurantId: restaurantId ? String(restaurantId) : null,
-      });
     }
   }
 
-  function fetchRestaurantsList(diagnostics = { reason: "bootstrap" }) {
+  function fetchRestaurantsList() {
     const token = localStorage.getItem("token");
 
     if (!token) {
@@ -1383,52 +1248,27 @@ export default function RestaurantContext() {
       return;
     }
 
-    const perfContext = normalizePerfContext(diagnostics, "bootstrap");
-    const reason = perfContext.reason;
-    const loadId =
-      perfContext.loadId ||
-      beginFrontendLoad(reason, decodedToken.restaurantId || null);
-
     setDataLoading(true);
-    markFrontendLoadPhase(loadId, "data_loading_true", {
-      reason,
-      restaurantId: decodedToken.restaurantId || null,
-    });
 
     // ----- OWNER -----
     if (role === "owner") {
       const requestUrl = `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants`;
-      markFrontendLoadPhase(loadId, "restaurants_list_start", {
-        reason,
-        restaurantId: decodedToken.restaurantId || null,
-      });
-      measureFrontendRequest({
-        name: "restaurants_list",
-        kind: "restaurant",
-        requestUrl,
-        loadId,
-        reason,
-        restaurantId: decodedToken.restaurantId || null,
-        request: () =>
-          axios.get(requestUrl, {
-            headers: { Authorization: `Bearer ${token}` },
-            params: { ownerId: decodedToken.id },
-          }),
-      })
+
+      axios
+        .get(requestUrl, {
+          headers: { Authorization: `Bearer ${token}` },
+          params: { ownerId: decodedToken.id },
+        })
         .then((response) => {
           const restaurants = response.data.restaurants || [];
-          markFrontendLoadPhase(loadId, "restaurants_list_end", {
-            reason,
-            restaurantId: decodedToken.restaurantId || null,
-            restaurantCount: restaurants.length,
-          });
+
           setRestaurantsList(restaurants);
 
           if (!restaurants.length) {
             setRestaurantData(null);
             setReservationsList([]);
             setDataLoading(false);
-            markFrontendDataLoadingFalse(loadId, { reason });
+
             setIsAuth(true);
             return;
           }
@@ -1446,18 +1286,10 @@ export default function RestaurantContext() {
 
           if (!selectedRestaurantId) selectedRestaurantId = restaurants[0]._id;
 
-          fetchRestaurantData(token, selectedRestaurantId, {
-            reason,
-            loadId,
-          });
+          fetchRestaurantData(token, selectedRestaurantId);
           setIsAuth(true);
         })
         .catch((error) => {
-          markFrontendLoadPhase(loadId, "restaurants_list_error", {
-            reason,
-            restaurantId: decodedToken.restaurantId || null,
-            status: error?.response?.status ?? null,
-          });
           if (error.response?.status === 403) {
             handleInvalidToken();
           } else {
@@ -1467,7 +1299,6 @@ export default function RestaurantContext() {
             );
             setDataLoading(false);
           }
-          markFrontendDataLoadingFalse(loadId, { reason });
         });
 
       return;
@@ -1476,40 +1307,21 @@ export default function RestaurantContext() {
     // ----- EMPLOYEE -----
     if (role === "employee") {
       const requestUrl = `${process.env.NEXT_PUBLIC_API_URL}/employees/me`;
-      markFrontendLoadPhase(loadId, "restaurants_list_start", {
-        reason,
-        restaurantId: decodedToken.restaurantId || null,
-      });
-      measureFrontendRequest({
-        name: "employee_restaurants_list",
-        kind: "restaurant",
-        requestUrl,
-        loadId,
-        reason,
-        restaurantId: decodedToken.restaurantId || null,
-        request: () =>
-          axios.get(requestUrl, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-      })
+
+      axios
+        .get(requestUrl, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
         .then(async (res) => {
           const { restaurant, restaurants } = res.data;
           const rid = restaurant?._id ? String(restaurant._id) : null;
-
-          markFrontendLoadPhase(loadId, "restaurants_list_end", {
-            reason,
-            restaurantId: rid,
-            restaurantCount: Array.isArray(restaurants)
-              ? restaurants.length
-              : 0,
-          });
 
           setRestaurantsList(restaurants || []);
           setRestaurantData(restaurant || null);
 
           // ✅ notifications counts aussi pour employee
           if (restaurant?._id) {
-            fetchUnreadCounts(token, rid, { reason, loadId });
+            fetchUnreadCounts(token, rid);
           } else {
             setUnreadCounts({
               total: 0,
@@ -1531,17 +1343,8 @@ export default function RestaurantContext() {
 
           setIsAuth(true);
           setDataLoading(false);
-          markFrontendDataLoadingFalse(loadId, {
-            reason,
-            restaurantId: rid,
-          });
         })
         .catch((error) => {
-          markFrontendLoadPhase(loadId, "restaurants_list_error", {
-            reason,
-            restaurantId: decodedToken.restaurantId || null,
-            status: error?.response?.status ?? null,
-          });
           if (error.response?.status === 403) {
             handleInvalidToken();
           } else {
@@ -1551,7 +1354,6 @@ export default function RestaurantContext() {
             );
             setDataLoading(false);
           }
-          markFrontendDataLoadingFalse(loadId, { reason });
         });
 
       return;
@@ -1559,7 +1361,6 @@ export default function RestaurantContext() {
 
     console.warn("Unknown role in token:", role);
     handleInvalidToken();
-    markFrontendDataLoadingFalse(loadId, { reason });
   }
 
   function handleRestaurantSelect(restaurantId) {
@@ -1576,14 +1377,8 @@ export default function RestaurantContext() {
     }
 
     const role = decoded.role;
-    const reason = "restaurant-change";
-    const loadId = beginFrontendLoad(reason, String(restaurantId));
-
     setDataLoading(true);
-    markFrontendLoadPhase(loadId, "data_loading_true", {
-      reason,
-      restaurantId: String(restaurantId),
-    });
+
     setCloseEditing(true);
     customersCacheRef.current.clear();
     customerDetailsRequestsRef.current.clear();
@@ -1598,23 +1393,16 @@ export default function RestaurantContext() {
     // ----- OWNER -----
     if (role === "owner") {
       const requestUrl = `${process.env.NEXT_PUBLIC_API_URL}/owner/change-restaurant`;
-      measureFrontendRequest({
-        name: "owner_change_restaurant",
-        requestUrl,
-        loadId,
-        reason,
-        restaurantId: String(restaurantId),
-        request: () =>
-          axios.post(
-            requestUrl,
-            { restaurantId },
-            { headers: { Authorization: `Bearer ${token}` } },
-          ),
-      })
+      axios
+        .post(
+          requestUrl,
+          { restaurantId },
+          { headers: { Authorization: `Bearer ${token}` } },
+        )
         .then((response) => {
           const { token: updatedToken } = response.data;
           localStorage.setItem("token", updatedToken);
-          fetchRestaurantData(updatedToken, restaurantId, { reason, loadId });
+          fetchRestaurantData(updatedToken, restaurantId);
           setCloseEditing(false);
         })
         .catch((error) => {
@@ -1628,10 +1416,6 @@ export default function RestaurantContext() {
             setDataLoading(false);
             setCloseEditing(false);
           }
-          markFrontendDataLoadingFalse(loadId, {
-            reason,
-            restaurantId: String(restaurantId),
-          });
         });
       return;
     }
@@ -1639,36 +1423,21 @@ export default function RestaurantContext() {
     // ----- EMPLOYEE -----
     if (role === "employee") {
       const requestUrl = `${process.env.NEXT_PUBLIC_API_URL}/employees/change-restaurant`;
-      measureFrontendRequest({
-        name: "employee_change_restaurant",
-        requestUrl,
-        loadId,
-        reason,
-        restaurantId: String(restaurantId),
-        request: () =>
-          axios.post(
-            requestUrl,
-            { restaurantId },
-            { headers: { Authorization: `Bearer ${token}` } },
-          ),
-      })
+      axios
+        .post(
+          requestUrl,
+          { restaurantId },
+          { headers: { Authorization: `Bearer ${token}` } },
+        )
         .then((response) => {
           const { token: updatedToken } = response.data;
           localStorage.setItem("token", updatedToken);
 
           const employeeRequestUrl = `${process.env.NEXT_PUBLIC_API_URL}/employees/me`;
-          measureFrontendRequest({
-            name: "employee_restaurant_data",
-            kind: "restaurant",
-            requestUrl: employeeRequestUrl,
-            loadId,
-            reason,
-            restaurantId: String(restaurantId),
-            request: () =>
-              axios.get(employeeRequestUrl, {
-                headers: { Authorization: `Bearer ${updatedToken}` },
-              }),
-          })
+          axios
+            .get(employeeRequestUrl, {
+              headers: { Authorization: `Bearer ${updatedToken}` },
+            })
             .then(async (res) => {
               const { restaurant, restaurants } = res.data;
               const rid = restaurant?._id
@@ -1691,10 +1460,7 @@ export default function RestaurantContext() {
 
               // ✅ refresh counts for new restaurant
               if (restaurant?._id) {
-                fetchUnreadCounts(updatedToken, rid, {
-                  reason,
-                  loadId,
-                });
+                fetchUnreadCounts(updatedToken, rid);
               } else {
                 setUnreadCounts({
                   total: 0,
@@ -1703,10 +1469,7 @@ export default function RestaurantContext() {
               }
 
               setDataLoading(false);
-              markFrontendDataLoadingFalse(loadId, {
-                reason,
-                restaurantId: rid,
-              });
+
               setCloseEditing(false);
             })
             .catch((err) => {
@@ -1715,10 +1478,7 @@ export default function RestaurantContext() {
                 err,
               );
               setDataLoading(false);
-              markFrontendDataLoadingFalse(loadId, {
-                reason,
-                restaurantId: String(restaurantId),
-              });
+
               setCloseEditing(false);
             });
         })
@@ -1733,26 +1493,18 @@ export default function RestaurantContext() {
             setDataLoading(false);
             setCloseEditing(false);
           }
-          markFrontendDataLoadingFalse(loadId, {
-            reason,
-            restaurantId: String(restaurantId),
-          });
         });
       return;
     }
 
     setDataLoading(false);
-    markFrontendDataLoadingFalse(loadId, {
-      reason,
-      restaurantId: String(restaurantId),
-    });
+
     setCloseEditing(false);
   }
 
   async function refetchCurrentRestaurant({
     reconnectSSE = false,
     syncNotifications = true,
-    reason = "manual",
   } = {}) {
     const token =
       typeof window !== "undefined" ? localStorage.getItem("token") : null;
@@ -1774,100 +1526,50 @@ export default function RestaurantContext() {
     }
 
     const role = decoded?.role;
-    const loadId = beginFrontendLoad(reason, String(rid));
-
     try {
       setDataLoading(true);
-      markFrontendLoadPhase(loadId, "data_loading_true", {
-        reason,
-        restaurantId: String(rid),
-      });
 
       if (role === "owner") {
         const requestUrl = `${process.env.NEXT_PUBLIC_API_URL}/owner/restaurants/${rid}`;
-        markFrontendLoadPhase(loadId, "restaurant_data_start", {
-          reason,
-          restaurantId: String(rid),
-          role,
-        });
-        const response = await measureFrontendRequest({
-          name: "owner_restaurant_data",
-          kind: "restaurant",
-          requestUrl,
-          loadId,
-          reason,
-          restaurantId: String(rid),
-          request: () =>
-            axios.get(requestUrl, {
-              headers: { Authorization: `Bearer ${token}` },
-              params: getRestaurantReadParams(currentPathRef.current),
-            }),
+
+        const response = await axios.get(requestUrl, {
+          headers: { Authorization: `Bearer ${token}` },
+          params: getRestaurantReadParams(currentPathRef.current),
         });
 
         const restaurant = response?.data?.restaurant || null;
-        markFrontendLoadPhase(loadId, "restaurant_data_end", {
-          reason,
-          restaurantId: String(rid),
-          role,
-        });
+
         setRestaurantData(restaurant);
 
         if (restaurant?._id) {
-          await fetchUnreadCounts(token, String(restaurant._id), {
-            reason,
-            loadId,
-          });
+          await fetchUnreadCounts(token, String(restaurant._id));
 
           if (syncNotifications) {
             await fetchNotifications({
               restaurantId: String(restaurant._id),
               reset: true,
-              reason,
-              loadId,
             });
           }
         }
       } else if (role === "employee") {
         const requestUrl = `${process.env.NEXT_PUBLIC_API_URL}/employees/me`;
-        markFrontendLoadPhase(loadId, "restaurant_data_start", {
-          reason,
-          restaurantId: String(rid),
-          role,
-        });
-        const res = await measureFrontendRequest({
-          name: "employee_restaurant_data",
-          kind: "restaurant",
-          requestUrl,
-          loadId,
-          reason,
-          restaurantId: String(rid),
-          request: () =>
-            axios.get(requestUrl, {
-              headers: { Authorization: `Bearer ${token}` },
-            }),
+
+        const res = await axios.get(requestUrl, {
+          headers: { Authorization: `Bearer ${token}` },
         });
 
         const { restaurant, restaurants } = res.data || {};
-        markFrontendLoadPhase(loadId, "restaurant_data_end", {
-          reason,
-          restaurantId: String(rid),
-          role,
-        });
+
         setRestaurantsList(restaurants || []);
         setRestaurantData(restaurant || null);
 
         if (restaurant?._id) {
-          await fetchUnreadCounts(token, String(restaurant._id), {
-            reason,
-            loadId,
-          });
+          await fetchUnreadCounts(token, String(restaurant._id));
 
           if (syncNotifications) {
             await fetchNotifications({
               restaurantId: String(restaurant._id),
               reset: true,
-              reason,
-              loadId,
             });
           }
         } else {
@@ -1889,21 +1591,13 @@ export default function RestaurantContext() {
       }
     } finally {
       setDataLoading(false);
-      markFrontendDataLoadingFalse(loadId, {
-        reason,
-        restaurantId: String(rid),
-      });
     }
   }
 
-  async function resyncAfterForeground({
-    hard = false,
-    reason = "unknown",
-  } = {}) {
+  async function resyncAfterForeground({ hard = false } = {}) {
     await refetchCurrentRestaurant({
       reconnectSSE: true,
       syncNotifications: true,
-      reason,
     });
 
     if (!hard) return;

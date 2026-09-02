@@ -838,7 +838,6 @@ export default function AddReservationComponent(props) {
     if (!props.restaurantData?._id || !reservationData.reservationDate) return;
     props.ensureReservationsMonth?.(reservationData.reservationDate, {
       restaurantId: props.restaurantData._id,
-      diagnostics: "reservation-form",
       prefetchAdjacent: false,
     });
   }, [
