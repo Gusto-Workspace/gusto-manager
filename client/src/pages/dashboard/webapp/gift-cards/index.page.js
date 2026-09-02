@@ -15,12 +15,6 @@ import WebAppListGiftCardsComponent from "@/components/dashboard/webapp/gift-car
 import SplashScreenWebAppComponent from "@/components/dashboard/webapp/_shared/splashscreen.webapp";
 import NotGoodDeviceWebAppComponent from "@/components/dashboard/webapp/_shared/not-good-device.webapp";
 
-// WEB PUSB
-import {
-  isPushDisabledForModule,
-  setupPushForModule,
-} from "@/_assets/utils/webpush";
-
 export default function GiftsPage(props) {
   const router = useRouter();
   const { restaurantContext } = useContext(GlobalContext);
@@ -38,27 +32,6 @@ export default function GiftsPage(props) {
       );
     }
   }, [router.isReady, router.asPath]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    if (!restaurantContext?.isAuth) return;
-    if (!restaurantContext?.restaurantData?._id) return;
-
-    const restaurantId = restaurantContext.restaurantData._id;
-
-    if (isPushDisabledForModule(restaurantId, "gift_cards")) return;
-
-    const token = localStorage.getItem("token");
-
-    setupPushForModule({
-      module: "gift_cards",
-      restaurantId,
-      token,
-      apiUrl: process.env.NEXT_PUBLIC_API_URL,
-      requestPermission: false,
-    }).catch(() => {});
-  }, [restaurantContext?.isAuth, restaurantContext?.restaurantData?._id]);
 
   let title;
   let description;

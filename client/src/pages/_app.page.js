@@ -21,6 +21,11 @@ import {
   isEmployeeDashboardRouteAllowed,
   normalizeDashboardPath,
 } from "@/_assets/utils/dashboard-access";
+import {
+  getPushPermissionStatus,
+  isPushDisabledForModule,
+  setupPushForModule,
+} from "@/_assets/utils/webpush";
 
 const RESERVATIONS_IPAD_STARTUP_SCREENS = [
   [768, 1024, 1536, 2048],
@@ -121,6 +126,125 @@ function WebAppNotificationBadgeSync() {
       })
       .catch(() => {});
   }, [badgeCount, restaurantContext?.dataLoading, targetModule]);
+
+  return null;
+}
+
+function WebAppPushSubscriptionSync() {
+  const router = useRouter();
+  const { restaurantContext } = useContext(GlobalContext);
+
+  const targetModule = useMemo(() => {
+    const pathname = router.pathname || "";
+    if (pathname.startsWith("/dashboard/webapp/reservations")) {
+      return "reservations";
+    }
+    if (pathname.startsWith("/dashboard/webapp/gift-cards")) {
+      return "gift_cards";
+    }
+    return null;
+  }, [router.pathname]);
+
+  const restaurantId = restaurantContext?.restaurantData?._id;
+
+  useEffect(() => {
+    if (!targetModule || !restaurantContext?.isAuth || !restaurantId) return;
+    if (getPushPermissionStatus() !== "granted") return;
+    if (isPushDisabledForModule(restaurantId, targetModule)) return;
+
+    let stopped = false;
+    let requestInProgress = null;
+    let retryTimeout = null;
+    let retryDelayMs = 2000;
+
+    const synchronize = (trigger) => {
+      if (stopped || requestInProgress) return requestInProgress;
+      if (getPushPermissionStatus() !== "granted") return null;
+      if (isPushDisabledForModule(restaurantId, targetModule)) return null;
+
+      const token = localStorage.getItem("token");
+      requestInProgress = setupPushForModule({
+        module: targetModule,
+        restaurantId,
+        token,
+        apiUrl: process.env.NEXT_PUBLIC_API_URL,
+        requestPermission: false,
+      })
+        .then((result) => {
+          window.clearTimeout(retryTimeout);
+          retryTimeout = null;
+          retryDelayMs = 2000;
+          console.info(
+            "[webpush-subscription-sync]",
+            JSON.stringify({
+              module: targetModule,
+              restaurantId: String(restaurantId),
+              endpointHash: result?.endpointHash || null,
+              trigger,
+              result: "synchronized",
+            }),
+          );
+          return result;
+        })
+        .catch((error) => {
+          console.warn(
+            "[webpush-subscription-sync]",
+            JSON.stringify({
+              module: targetModule,
+              restaurantId: String(restaurantId),
+              trigger,
+              result: "failed",
+              statusCode: error?.statusCode || null,
+              errorCode: error?.code || null,
+              errorMessage: error?.message || "Push synchronization failed",
+            }),
+          );
+
+          if (!stopped && navigator.onLine !== false) {
+            window.clearTimeout(retryTimeout);
+            retryTimeout = window.setTimeout(() => {
+              retryTimeout = null;
+              synchronize("retry");
+            }, retryDelayMs);
+            retryDelayMs = Math.min(retryDelayMs * 2, 30000);
+          }
+          return null;
+        })
+        .finally(() => {
+          requestInProgress = null;
+        });
+
+      return requestInProgress;
+    };
+
+    const handlePageShow = () => synchronize("pageshow");
+    const handleOnline = () => synchronize("online");
+    const handleControllerChange = () => synchronize("controllerchange");
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") synchronize("visible");
+    };
+
+    synchronize("startup");
+    window.addEventListener("pageshow", handlePageShow);
+    window.addEventListener("online", handleOnline);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    navigator.serviceWorker?.addEventListener(
+      "controllerchange",
+      handleControllerChange,
+    );
+
+    return () => {
+      stopped = true;
+      window.clearTimeout(retryTimeout);
+      window.removeEventListener("pageshow", handlePageShow);
+      window.removeEventListener("online", handleOnline);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      navigator.serviceWorker?.removeEventListener(
+        "controllerchange",
+        handleControllerChange,
+      );
+    };
+  }, [restaurantContext?.isAuth, restaurantId, targetModule]);
 
   return null;
 }
@@ -454,6 +578,7 @@ function App({ Component, pageProps }) {
       <GlobalProvider>
         <IosLaunchSnapshotShield enabled={isReservationsWebapp} />
         <WebAppNotificationBadgeSync />
+        <WebAppPushSubscriptionSync />
         <OwnerOnlyWebAppGuard>
           <EmployeeDashboardAccessGuard>
             <Component {...pageProps} />
