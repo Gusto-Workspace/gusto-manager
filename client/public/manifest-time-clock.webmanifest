@@ -1,6 +1,7 @@
 {
   "name": "Gusto Manager – Pointeuse",
   "short_name": "Pointeuse",
+  "id": "/dashboard/webapp/time-clock",
   "start_url": "/dashboard/webapp/time-clock",
   "scope": "/dashboard/webapp/time-clock",
   "display": "standalone",

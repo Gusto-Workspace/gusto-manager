@@ -1,6 +1,7 @@
 {
   "name": "Gusto Manager – Cartes cadeaux",
   "short_name": "Cartes Cadeaux",
+  "id": "/dashboard/webapp/gift-cards",
   "start_url": "/dashboard/webapp/gift-cards",
   "scope": "/dashboard/webapp/gift-cards",
   "display": "standalone",
