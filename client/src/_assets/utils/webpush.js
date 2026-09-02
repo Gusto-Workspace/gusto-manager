@@ -55,6 +55,55 @@ function createPushError(message, code) {
   return error;
 }
 
+function waitForActiveServiceWorker(registration) {
+  if (registration.active) return Promise.resolve(registration);
+
+  const worker = registration.installing || registration.waiting;
+  if (!worker) {
+    return Promise.reject(
+      createPushError(
+        "Le service de notifications n’est pas encore actif.",
+        "SERVICE_WORKER_NOT_ACTIVE",
+      ),
+    );
+  }
+
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      worker.removeEventListener("statechange", handleStateChange);
+      reject(
+        createPushError(
+          "Le service de notifications met trop de temps à démarrer.",
+          "SERVICE_WORKER_ACTIVATION_TIMEOUT",
+        ),
+      );
+    }, 15000);
+
+    function handleStateChange() {
+      if (registration.active || worker.state === "activated") {
+        window.clearTimeout(timeout);
+        worker.removeEventListener("statechange", handleStateChange);
+        resolve(registration);
+        return;
+      }
+
+      if (worker.state === "redundant") {
+        window.clearTimeout(timeout);
+        worker.removeEventListener("statechange", handleStateChange);
+        reject(
+          createPushError(
+            "Le service de notifications n’a pas pu démarrer.",
+            "SERVICE_WORKER_REDUNDANT",
+          ),
+        );
+      }
+    }
+
+    worker.addEventListener("statechange", handleStateChange);
+    handleStateChange();
+  });
+}
+
 async function parseResponseBody(response) {
   const contentType = response.headers.get("content-type") || "";
   if (!contentType.includes("application/json")) return null;
@@ -130,6 +179,7 @@ export async function setupPushForModule({
   try {
     await reg.update();
   } catch {}
+  await waitForActiveServiceWorker(reg);
 
   // 2) subscribe
   const applicationServerKey = urlBase64ToUint8Array(publicKey);
@@ -158,15 +208,21 @@ export async function setupPushForModule({
 
   const responseBody = await parseResponseBody(response);
   if (!response.ok) {
-    throw createPushError(
+    const error = createPushError(
       responseBody?.error ||
         responseBody?.message ||
         "L’abonnement aux notifications n’a pas pu être enregistré.",
       "SUBSCRIPTION_REJECTED",
     );
+    error.statusCode = response.status;
+    throw error;
   }
 
-  return { status: "subscribed", subscription: sub };
+  return {
+    status: "subscribed",
+    subscription: sub,
+    endpointHash: responseBody?.endpointHash || null,
+  };
 }
 
 export async function disablePushForModule({

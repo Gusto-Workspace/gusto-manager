@@ -15,12 +15,6 @@ import ListReservationsWebapp from "@/components/dashboard/webapp/reservations/l
 import SplashScreenWebAppComponent from "@/components/dashboard/webapp/_shared/splashscreen.webapp";
 import NotGoodDeviceWebAppComponent from "@/components/dashboard/webapp/_shared/not-good-device.webapp";
 
-// WEB PUSB
-import {
-  isPushDisabledForModule,
-  setupPushForModule,
-} from "@/_assets/utils/webpush";
-
 function startOfMonth(date) {
   return new Date(date.getFullYear(), date.getMonth(), 1, 0, 0, 0, 0);
 }
@@ -107,26 +101,6 @@ export default function WepAppReservationsPage(props) {
       );
     }
   }, [router.isReady, router.asPath]);
-
-  useEffect(() => {
-    if (!restaurantContext?.isAuth) return;
-    if (!restaurantContext?.restaurantData?._id) return;
-
-    const restaurantId = restaurantContext.restaurantData._id;
-    if (isPushDisabledForModule(restaurantId, "reservations")) return;
-
-    const token = localStorage.getItem("token");
-
-    setupPushForModule({
-      module: "reservations",
-      restaurantId,
-      token,
-      apiUrl: process.env.NEXT_PUBLIC_API_URL,
-      requestPermission: false,
-    }).catch(() => {
-      // noop
-    });
-  }, [restaurantContext?.isAuth, restaurantContext?.restaurantData?._id]);
 
   const restaurant = restaurantContext.restaurantData;
   const restaurantReady = Boolean(restaurant?._id);
