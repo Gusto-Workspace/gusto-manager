@@ -28,7 +28,7 @@ export default function PushNotificationsSettingsWebapp({ module }) {
   const restaurantId = restaurantContext?.restaurantData?._id;
 
   const synchronizeSubscription = useCallback(
-    async ({ requestPermission }) => {
+    async ({ requestPermission, trigger }) => {
       const token = localStorage.getItem("token");
       return setupPushForModule({
         module,
@@ -36,6 +36,7 @@ export default function PushNotificationsSettingsWebapp({ module }) {
         token,
         apiUrl: process.env.NEXT_PUBLIC_API_URL,
         requestPermission,
+        trigger,
       });
     },
     [module, restaurantId],
@@ -61,7 +62,10 @@ export default function PushNotificationsSettingsWebapp({ module }) {
     setStatus("syncing");
 
     let cancelled = false;
-    synchronizeSubscription({ requestPermission: false })
+    synchronizeSubscription({
+      requestPermission: false,
+      trigger: "settings_mount",
+    })
       .then(() => {
         if (!cancelled) setStatus("granted");
       })
@@ -97,7 +101,10 @@ export default function PushNotificationsSettingsWebapp({ module }) {
         return;
       }
 
-      const result = await synchronizeSubscription({ requestPermission: true });
+      const result = await synchronizeSubscription({
+        requestPermission: true,
+        trigger: "settings_toggle",
+      });
       if (result?.status === "subscribed") {
         setPushDisabledForModule(restaurantId, module, false);
         setStatus("granted");

@@ -112,7 +112,21 @@ router.post("/push/unsubscribe", authenticateToken, async (req, res) => {
       return res.status(403).json({ message: "Restaurant mismatch" });
     }
 
-    await PushSubscriptionModel.deleteOne({ restaurantId, module, endpoint });
+    const endpointHash = hashEndpoint(endpoint);
+    const result = await PushSubscriptionModel.deleteOne({
+      restaurantId,
+      module,
+      endpoint,
+    });
+    console.info(
+      `[webpush-subscription-unsubscribe] ${JSON.stringify({
+        unsubscribedAt: new Date().toISOString(),
+        restaurantId: String(restaurantId),
+        module,
+        endpointHash,
+        removed: Number(result?.deletedCount || 0),
+      })}`,
+    );
     return res.json({ ok: true });
   } catch (error) {
     console.error("[webpush-unsubscribe-error]", {
