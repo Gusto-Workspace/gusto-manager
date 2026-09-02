@@ -6,7 +6,7 @@ import {
   Calendar,
   CreditCard,
   Hash,
-  Trash2,
+  Archive,
 } from "lucide-react";
 
 const CLOSE_MS = 160;
@@ -36,9 +36,9 @@ export default function BottomSheetPurchasesComponent({
 }) {
   const [isVisible, setIsVisible] = useState(false);
   const [isTabletUp, setIsTabletUp] = useState(false);
-  const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
-  const [deleteLoading, setDeleteLoading] = useState(false);
-  const [deleteError, setDeleteError] = useState("");
+  const [archiveConfirmationOpen, setArchiveConfirmationOpen] = useState(false);
+  const [archiveLoading, setArchiveLoading] = useState(false);
+  const [archiveError, setArchiveError] = useState("");
 
   const prevBodyOverflowRef = useRef("");
   const prevHtmlOverflowRef = useRef("");
@@ -105,9 +105,9 @@ export default function BottomSheetPurchasesComponent({
     if (!open) return;
 
     lockScroll();
-    setDeleteConfirmationOpen(false);
-    setDeleteLoading(false);
-    setDeleteError("");
+    setArchiveConfirmationOpen(false);
+    setArchiveLoading(false);
+    setArchiveError("");
     const raf = requestAnimationFrame(() => {
       setIsVisible(true);
       requestAnimationFrame(measurePanel);
@@ -187,20 +187,20 @@ export default function BottomSheetPurchasesComponent({
     return null;
   }, [purchase, status, t]);
 
-  async function confirmDelete() {
-    if (!purchase || deleteLoading) return;
+  async function confirmArchive() {
+    if (!purchase || archiveLoading) return;
 
-    setDeleteLoading(true);
-    setDeleteError("");
+    setArchiveLoading(true);
+    setArchiveError("");
     try {
-      await onAction?.(purchase, "Delete");
+      await onAction?.(purchase, "Archive");
     } catch (error) {
-      setDeleteError(
+      setArchiveError(
         error?.response?.data?.error ||
           error?.response?.data?.message ||
-          "Impossible de supprimer cette carte cadeau.",
+          "Impossible d’archiver cette carte cadeau.",
       );
-      setDeleteLoading(false);
+      setArchiveLoading(false);
     }
   }
 
@@ -442,33 +442,37 @@ export default function BottomSheetPurchasesComponent({
           </div>
 
           {/* Actions */}
-          <div className="mt-4 rounded-2xl bg-white/60 border border-darkBlue/10 shadow-sm p-4">
-            <p className="text-xs text-darkBlue/50 mb-3">
-              {t("labels.actions", "Actions")}
-            </p>
+          {primaryAction || status !== "Archived" ? (
+            <div className="mt-4 rounded-2xl bg-white/60 border border-darkBlue/10 shadow-sm p-4">
+              <p className="text-xs text-darkBlue/50 mb-3">
+                {t("labels.actions", "Actions")}
+              </p>
 
-            <div className="flex gap-2">
-              {primaryAction ? (
-                <button
-                  onClick={() => onAction?.(purchase, primaryAction.type)}
-                  className="w-full inline-flex items-center justify-center rounded-xl bg-blue px-4 py-3 text-white text-sm font-semibold shadow-sm hover:bg-blue/90 active:scale-[0.98] transition"
-                >
-                  {primaryAction.label}
-                </button>
-              ) : null}
+              <div className="flex gap-2">
+                {primaryAction ? (
+                  <button
+                    onClick={() => onAction?.(purchase, primaryAction.type)}
+                    className="w-full inline-flex items-center justify-center rounded-xl bg-blue px-4 py-3 text-white text-sm font-semibold shadow-sm hover:bg-blue/90 active:scale-[0.98] transition"
+                  >
+                    {primaryAction.label}
+                  </button>
+                ) : null}
 
-              <button
-                onClick={() => {
-                  setDeleteError("");
-                  setDeleteConfirmationOpen(true);
-                }}
-                className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-red/20 bg-red/10 text-red hover:bg-red/15 transition px-4 py-3 text-sm font-semibold"
-              >
-                <Trash2 className="size-4" />
-                {t("buttons.delete", "Supprimer")}
-              </button>
+                {status !== "Archived" ? (
+                  <button
+                    onClick={() => {
+                      setArchiveError("");
+                      setArchiveConfirmationOpen(true);
+                    }}
+                    className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-darkBlue/15 bg-darkBlue/5 text-darkBlue/75 hover:bg-darkBlue/10 transition px-4 py-3 text-sm font-semibold"
+                  >
+                    <Archive className="size-4" />
+                    Archiver
+                  </button>
+                ) : null}
+              </div>
             </div>
-          </div>
+          ) : null}
         </div>
 
         {/* Footer */}
@@ -482,54 +486,56 @@ export default function BottomSheetPurchasesComponent({
         </div>
       </div>
 
-      {deleteConfirmationOpen ? (
+      {archiveConfirmationOpen ? (
         <div
           className="fixed inset-0 z-[190] flex items-center justify-center bg-darkBlue/45 px-4"
           role="alertdialog"
           aria-modal="true"
-          aria-labelledby="gift-card-delete-title"
-          onClick={() => !deleteLoading && setDeleteConfirmationOpen(false)}
+          aria-labelledby="gift-card-archive-title"
+          onClick={() =>
+            !archiveLoading && setArchiveConfirmationOpen(false)
+          }
         >
           <div
             className="w-full max-w-md rounded-3xl border border-darkBlue/10 bg-white p-6 shadow-[0_24px_80px_rgba(19,30,54,0.28)]"
             onClick={(event) => event.stopPropagation()}
           >
             <h2
-              id="gift-card-delete-title"
+              id="gift-card-archive-title"
               className="text-lg font-semibold text-darkBlue"
             >
-              Supprimer cette carte cadeau ?
+              Archiver cette carte cadeau ?
             </h2>
             <p className="mt-2 text-sm leading-6 text-darkBlue/65">
-              Cette action est définitive. La carte et son historique ne
-              pourront pas être récupérés.
+              Son code deviendra inutilisable. La carte et la transaction
+              resteront conservées dans l’historique.
             </p>
 
-            {deleteError ? (
+            {archiveError ? (
               <p
                 className="mt-4 rounded-xl border border-red/20 bg-red/5 px-3 py-2 text-sm text-red"
                 role="alert"
               >
-                {deleteError}
+                {archiveError}
               </p>
             ) : null}
 
             <div className="mt-6 flex gap-3">
               <button
                 type="button"
-                onClick={() => setDeleteConfirmationOpen(false)}
-                disabled={deleteLoading}
+                onClick={() => setArchiveConfirmationOpen(false)}
+                disabled={archiveLoading}
                 className="w-full rounded-xl border border-darkBlue/10 bg-white px-4 py-3 text-sm font-semibold text-darkBlue disabled:opacity-50"
               >
                 Annuler
               </button>
               <button
                 type="button"
-                onClick={confirmDelete}
-                disabled={deleteLoading}
-                className="w-full rounded-xl bg-red px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                onClick={confirmArchive}
+                disabled={archiveLoading}
+                className="w-full rounded-xl bg-darkBlue px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
               >
-                {deleteLoading ? "Suppression…" : "Supprimer définitivement"}
+                {archiveLoading ? "Archivage…" : "Confirmer l’archivage"}
               </button>
             </div>
           </div>

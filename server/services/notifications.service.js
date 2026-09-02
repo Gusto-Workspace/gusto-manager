@@ -358,6 +358,7 @@ async function createAndBroadcastNotification({
     await sendPushToModule({
       restaurantId,
       module,
+      type,
       title: content.title,
       message: content.message,
       link: buildPushLink({

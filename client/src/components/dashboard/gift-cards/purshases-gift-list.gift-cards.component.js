@@ -170,7 +170,7 @@ export default function PurchasesGiftListComponent() {
           ? `${baseUrl}/validate`
           : `${baseUrl}/delete`;
 
-    const method = type === "Delete" ? "delete" : "put";
+    const method = type === "Archive" ? "delete" : "put";
 
     try {
       const response = await axios[method](url);
