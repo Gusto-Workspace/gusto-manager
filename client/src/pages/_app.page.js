@@ -169,6 +169,7 @@ function WebAppPushSubscriptionSync() {
         token,
         apiUrl: process.env.NEXT_PUBLIC_API_URL,
         requestPermission: false,
+        trigger,
       })
         .then((result) => {
           window.clearTimeout(retryTimeout);
