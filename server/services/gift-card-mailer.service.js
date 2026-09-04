@@ -13,10 +13,7 @@ const GIFT_CARD_FONT_FILES = {
   bodoni: path.join(GIFT_CARD_FONT_DIR, "BodoniModa.ttf"),
   bodoniItalic: path.join(GIFT_CARD_FONT_DIR, "BodoniModa-Italic.ttf"),
   montserrat: path.join(GIFT_CARD_FONT_DIR, "Montserrat-Regular.ttf"),
-  montserratSemiBold: path.join(
-    GIFT_CARD_FONT_DIR,
-    "Montserrat-SemiBold.ttf",
-  ),
+  montserratSemiBold: path.join(GIFT_CARD_FONT_DIR, "Montserrat-SemiBold.ttf"),
 };
 
 const CLASSIC_TYPOGRAPHY = {
@@ -124,7 +121,8 @@ function formatAddress(restaurant) {
 function getGiftCardTextZone(layout, width) {
   const zoneWidth = width * 0.62;
   if (layout === "left") return { x: 0, width: zoneWidth };
-  if (layout === "center") return { x: (width - zoneWidth) / 2, width: zoneWidth };
+  if (layout === "center")
+    return { x: (width - zoneWidth) / 2, width: zoneWidth };
   return { x: width - zoneWidth, width: zoneWidth };
 }
 
@@ -167,7 +165,9 @@ function wrapText(
   text,
   { font, fontSize, maxWidth, characterSpacing = 0 },
 ) {
-  const words = String(text || "").split(/\s+/).filter(Boolean);
+  const words = String(text || "")
+    .split(/\s+/)
+    .filter(Boolean);
   const lines = [];
   let currentLine = "";
 
@@ -193,15 +193,22 @@ async function generateGiftCardPdfBuffer({
   message,
   hidePrice,
   fallbackImageUrl,
+  allowImageFallback = true,
 }) {
   const width = 1200;
   const height = 675;
+  const visual = purchase?.visualSnapshot || {};
+  const imageUrl = visual.imageUrl || fallbackImageUrl || "";
+  let imageBuffer = null;
+  try {
+    imageBuffer = await fetchImageAsPngBuffer(imageUrl);
+  } catch (error) {
+    if (!allowImageFallback) throw error;
+  }
+
   const doc = new PDFDocument({ size: [width, height], margin: 0 });
   const done = collectPdfBuffer(doc);
   const typography = getGiftCardTypography(doc, restaurant, purchase);
-
-  const visual = purchase?.visualSnapshot || {};
-  const imageUrl = visual.imageUrl || fallbackImageUrl || "";
   const textColor = parseHexColor(visual.textColor);
   const textLayout = ["left", "center", "right"].includes(visual.textLayout)
     ? visual.textLayout
@@ -211,12 +218,9 @@ async function generateGiftCardPdfBuffer({
   const contentX = zone.x + zonePadding;
   const contentWidth = zone.width - zonePadding * 2;
 
-  try {
-    const imageBuffer = await fetchImageAsPngBuffer(imageUrl);
-    if (imageBuffer) {
-      doc.image(imageBuffer, 0, 0, { width, height });
-    }
-  } catch (error) {
+  if (imageBuffer) {
+    doc.image(imageBuffer, 0, 0, { width, height });
+  } else {
     doc.rect(0, 0, width, height).fill("#f7f8fb");
     doc.rect(0, 0, width * 0.34, height).fill("#6d99b6");
   }
@@ -422,6 +426,8 @@ async function sendGiftCardPurchaseEmail({
   message,
   hidePrice,
   fallbackImageUrl,
+  idempotencyKey,
+  allowImageFallback = true,
 }) {
   if (!looksLikeEmail(purchase?.sendEmail)) {
     return { skipped: true, reason: "invalid_email" };
@@ -436,6 +442,7 @@ async function sendGiftCardPurchaseEmail({
     message,
     hidePrice,
     fallbackImageUrl,
+    allowImageFallback,
   });
 
   const restaurantName = restaurant?.name || "Gusto Manager";
@@ -459,6 +466,9 @@ async function sendGiftCardPurchaseEmail({
         content: pdfBuffer.toString("base64"),
       },
     ],
+    ...(idempotencyKey
+      ? { headers: { idempotencyKey: String(idempotencyKey) } }
+      : {}),
   };
 
   return apiInstance.sendTransacEmail(email);

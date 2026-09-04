@@ -8,45 +8,14 @@ const streamifier = require("streamifier");
 const RestaurantModel = require("../models/restaurant.model");
 const authenticateToken = require("../middleware/authentificate-token");
 
-// SSE BUS
-const { broadcastToRestaurant } = require("../services/sse-bus.service");
-
-// MIDDLEWARE VERIFY BUYING GIFT CARDS
 const {
-  verifyPurchaseProof,
-} = require("../services/verify-buying-gift-card.service");
-
-// SERVICE NOTIFS
-const {
-  createAndBroadcastNotification,
-} = require("../services/notifications.service");
-const {
-  computeGiftCardValidUntil,
   getGiftCardAutoHiddenYearForVisibility,
   sanitizeGiftCardSettingsInput,
   sanitizeGiftCardValidityInput,
 } = require("../services/gift-card-lifecycle.service");
 const {
-  sendGiftCardPurchaseEmail,
-} = require("../services/gift-card-mailer.service");
-const {
-  resolveGiftCardTypographyPreset,
-} = require("../services/gift-card-typography.service");
-
-function generateGiftCode() {
-  const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  let code = "";
-  for (let i = 0; i < 6; i++) {
-    code += characters.charAt(Math.floor(Math.random() * characters.length));
-  }
-  return code;
-}
-
-// SERVICE CUSTOMERS
-const {
-  upsertCustomer,
-  onGiftPurchased,
-} = require("../services/customers.service");
+  getGiftCardVisualById,
+} = require("../services/gift-card-snapshot.service");
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -101,7 +70,9 @@ function uploadFromBuffer(buffer, folder) {
 }
 
 function sanitizeGiftCardVisualInput(input = {}) {
-  const name = String(input.name || "").trim().slice(0, 80);
+  const name = String(input.name || "")
+    .trim()
+    .slice(0, 80);
   const rawTextColor = String(input.textColor || "").trim();
   const textColor = /^#[0-9a-fA-F]{6}$/.test(rawTextColor)
     ? rawTextColor
@@ -114,38 +85,6 @@ function sanitizeGiftCardVisualInput(input = {}) {
     name: name || "Visuel carte cadeau",
     textColor,
     textLayout,
-  };
-}
-
-function getGiftCardVisualById(restaurant, visualId) {
-  if (!visualId) return null;
-  return restaurant?.giftCardSettings?.visuals?.id?.(visualId) || null;
-}
-
-function getResolvedGiftCardVisual(restaurant, gift) {
-  const visuals = restaurant?.giftCardSettings?.visuals || [];
-  const giftVisual = getGiftCardVisualById(restaurant, gift?.visualId);
-  const defaultVisual = getGiftCardVisualById(
-    restaurant,
-    restaurant?.giftCardSettings?.defaultVisualId,
-  );
-
-  return giftVisual || defaultVisual || visuals[0] || null;
-}
-
-function buildGiftCardVisualSnapshot(restaurant, gift) {
-  const visual = getResolvedGiftCardVisual(restaurant, gift);
-  const typographyPreset = resolveGiftCardTypographyPreset(restaurant);
-  if (!visual) return { typographyPreset };
-
-  return {
-    visualId: String(visual._id || ""),
-    name: visual.name || "",
-    imageUrl: visual.imageUrl || "",
-    imagePublicId: visual.imagePublicId || "",
-    textColor: visual.textColor || "#000000",
-    textLayout: visual.textLayout || "right",
-    typographyPreset,
   };
 }
 
@@ -562,251 +501,6 @@ router.delete("/restaurants/:id/gifts/:giftId", async (req, res) => {
     res.status(500).json({ error: "Error deleting gift card" });
   }
 });
-
-// BUY A GIFT CARD (GÉNÉRATION DU CODE)
-router.post(
-  "/restaurants/:id/gifts/:giftId/purchase",
-  verifyPurchaseProof,
-  async (req, res) => {
-    const restaurantId = req.params.id;
-    const giftId = req.params.giftId;
-
-    const {
-      beneficiaryFirstName,
-      beneficiaryLastName,
-      sender,
-      sendEmail,
-      buyerFirstName,
-      buyerLastName,
-      buyerPhone,
-      comment,
-      hidePrice,
-      fallbackGiftCardBackgroundUrl,
-      paymentIntentId,
-      amount,
-    } = req.body;
-
-    try {
-      const amt = Number(amount);
-      if (!paymentIntentId || !Number.isSafeInteger(amt) || amt <= 0) {
-        return res.status(400).json({ error: "Invalid payment data" });
-      }
-
-      const beneficiary = String(beneficiaryFirstName || "").trim();
-      if (!beneficiary) {
-        return res.status(400).json({ error: "Beneficiary is required" });
-      }
-
-      // 1) Charger restaurant + gift (pour vérifier montant)
-      const restaurant = await RestaurantModel.findOne({ _id: restaurantId });
-      if (!restaurant) {
-        return res.status(404).json({ error: "Restaurant not found" });
-      }
-
-      const gift = restaurant.giftCards?.id(giftId);
-      if (!gift) {
-        return res.status(404).json({ error: "Gift card not found" });
-      }
-
-      const expectedAmount = Math.round(Number(gift.value) * 100);
-      if (!Number.isSafeInteger(expectedAmount) || expectedAmount <= 0) {
-        return res.status(400).json({ error: "Invalid gift card amount" });
-      }
-      if (amt !== expectedAmount) {
-        return res.status(400).json({ error: "Amount mismatch" });
-      }
-
-      // 2) Init giftCardSold si absent (requête séparée => pas de conflit)
-      await RestaurantModel.updateOne(
-        { _id: restaurantId, giftCardSold: { $exists: false } },
-        { $set: { giftCardSold: { totalSold: 0, totalRefunded: 0 } } },
-      );
-
-      // 3) validUntil depuis la carte achetée (fallback anciens paramètres)
-      const validUntil = computeGiftCardValidUntil(
-        gift,
-        new Date(),
-        restaurant?.giftCardSettings,
-      );
-
-      const customer = await upsertCustomer({
-        restaurantId,
-        firstName: buyerFirstName,
-        lastName: buyerLastName,
-        email: sendEmail,
-        phone: buyerPhone,
-      });
-
-      const createdAt = new Date();
-      const purchaseCode = generateGiftCode();
-
-      const newPurchase = {
-        value: gift.value,
-        description: gift.description,
-        purchaseCode,
-        validUntil,
-        status: "Valid",
-        beneficiaryFirstName: beneficiary,
-        beneficiaryLastName: String(beneficiaryLastName || "").trim(),
-        sender,
-        message: String(comment || "").slice(0, 500),
-        hidePrice: Boolean(hidePrice),
-        sendEmail,
-        senderPhone: buyerPhone,
-        customer: customer?._id || null,
-        paymentIntentId,
-        amount: amt,
-        visualSnapshot: buildGiftCardVisualSnapshot(restaurant, gift),
-        buyerFirstName: buyerFirstName || "",
-        buyerLastName: buyerLastName || "",
-        created_at: createdAt,
-      };
-
-      // 4) Insertion atomique anti-doublon
-      const upd = await RestaurantModel.updateOne(
-        {
-          _id: restaurantId,
-          "purchasesGiftCards.paymentIntentId": { $ne: paymentIntentId },
-        },
-        {
-          $push: { purchasesGiftCards: newPurchase },
-          $inc: { "giftCardSold.totalSold": 1 },
-        },
-      );
-
-      const modified =
-        typeof upd.modifiedCount === "number"
-          ? upd.modifiedCount
-          : typeof upd.nModified === "number"
-            ? upd.nModified
-            : 0;
-
-      // 5) Relecture de la purchase (pour SSE + réponse) => elle aura created_at
-      const doc = await RestaurantModel.findOne(
-        {
-          _id: restaurantId,
-          "purchasesGiftCards.paymentIntentId": paymentIntentId,
-        },
-        {
-          purchasesGiftCards: { $elemMatch: { paymentIntentId } },
-          giftCardSold: 1,
-        },
-      ).lean();
-
-      const created = doc?.purchasesGiftCards?.[0];
-      if (!created) {
-        return res
-          .status(500)
-          .json({ error: "Purchase not found after update" });
-      }
-
-      const requestOrigin = req.get("origin");
-      const fallbackImageUrl =
-        String(fallbackGiftCardBackgroundUrl || "").trim() ||
-        (requestOrigin ? `${requestOrigin}/img/assets/bg-gift-card.png` : "");
-      let emailStatus = created.emailSentAt
-        ? { sent: true, alreadySent: true }
-        : { sent: false };
-
-      // 6) SSE : on broadcast la vraie purchase (avec created_at)
-      // ✅ broadcast seulement si c'est une création réelle (pas un retry)
-      if (modified === 1) {
-        broadcastToRestaurant(String(restaurantId), {
-          type: "giftcard_purchased",
-          purchase: created,
-          giftCardStats: doc.giftCardSold,
-        });
-
-        await createAndBroadcastNotification({
-          restaurantId: String(restaurantId),
-          module: "gift_cards",
-          type: "giftcard_purchased",
-          data: {
-            purchaseId: String(created?._id),
-            amount: created?.amount,
-            value: created?.value,
-            beneficiaryFirstName: created?.beneficiaryFirstName,
-            beneficiaryLastName: created?.beneficiaryLastName,
-            purchaseCode: created?.purchaseCode,
-            status: created?.status,
-            created_at: created?.created_at,
-          },
-        });
-
-        await onGiftPurchased(customer?._id, created);
-      }
-
-      if (!created.emailSentAt) {
-        try {
-          const emailResponse = await sendGiftCardPurchaseEmail({
-            restaurant,
-            purchase: created,
-            message: created.message || comment,
-            hidePrice: Boolean(created.hidePrice ?? hidePrice),
-            fallbackImageUrl,
-          });
-
-          if (emailResponse?.skipped) {
-            emailStatus = {
-              sent: false,
-              skipped: true,
-              reason: emailResponse.reason,
-            };
-          } else {
-            await RestaurantModel.updateOne(
-              { _id: restaurantId, "purchasesGiftCards._id": created._id },
-              {
-                $set: {
-                  "purchasesGiftCards.$.emailSentAt": new Date(),
-                  "purchasesGiftCards.$.emailSendError": "",
-                },
-              },
-            );
-            emailStatus = { sent: true };
-          }
-        } catch (emailError) {
-          const emailErrorMessage =
-            emailError?.response?.body?.message ||
-            emailError?.message ||
-            "Gift card email failed";
-
-          await RestaurantModel.updateOne(
-            { _id: restaurantId, "purchasesGiftCards._id": created._id },
-            {
-              $set: {
-                "purchasesGiftCards.$.emailSendError": String(
-                  emailErrorMessage,
-                ).slice(0, 500),
-              },
-            },
-          );
-
-          return res.status(500).json({
-            error: "Gift card purchased but email failed",
-            emailError: emailErrorMessage,
-            purchaseCode: created.purchaseCode,
-            validUntil: created.validUntil,
-            visualSnapshot: created.visualSnapshot,
-            alreadyExisted: modified === 0,
-          });
-        }
-      }
-
-      // 7) Réponse idempotente : si retry, on renvoie quand même 200 avec la même purchase
-      return res.status(200).json({
-        purchaseCode: created.purchaseCode,
-        validUntil: created.validUntil,
-        visualSnapshot: created.visualSnapshot,
-        emailStatus,
-        created_at: created.created_at,
-        alreadyExisted: modified === 0,
-      });
-    } catch (error) {
-      console.error("Error during gift card purchase:", error);
-      return res.status(500).json({ error: "Error during gift card purchase" });
-    }
-  },
-);
 
 // UPDATE GIFT CARD STATUS TO USED
 router.put(

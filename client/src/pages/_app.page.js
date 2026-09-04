@@ -157,7 +157,7 @@ function WebAppPushSubscriptionSync() {
     let retryTimeout = null;
     let retryDelayMs = 2000;
 
-    const synchronize = (trigger) => {
+    const synchronize = () => {
       if (stopped || requestInProgress) return requestInProgress;
       if (getPushPermissionStatus() !== "granted") return null;
       if (isPushDisabledForModule(restaurantId, targetModule)) return null;
@@ -169,43 +169,19 @@ function WebAppPushSubscriptionSync() {
         token,
         apiUrl: process.env.NEXT_PUBLIC_API_URL,
         requestPermission: false,
-        trigger,
       })
         .then((result) => {
           window.clearTimeout(retryTimeout);
           retryTimeout = null;
           retryDelayMs = 2000;
-          console.info(
-            "[webpush-subscription-sync]",
-            JSON.stringify({
-              module: targetModule,
-              restaurantId: String(restaurantId),
-              endpointHash: result?.endpointHash || null,
-              trigger,
-              result: "synchronized",
-            }),
-          );
           return result;
         })
-        .catch((error) => {
-          console.warn(
-            "[webpush-subscription-sync]",
-            JSON.stringify({
-              module: targetModule,
-              restaurantId: String(restaurantId),
-              trigger,
-              result: "failed",
-              statusCode: error?.statusCode || null,
-              errorCode: error?.code || null,
-              errorMessage: error?.message || "Push synchronization failed",
-            }),
-          );
-
+        .catch(() => {
           if (!stopped && navigator.onLine !== false) {
             window.clearTimeout(retryTimeout);
             retryTimeout = window.setTimeout(() => {
               retryTimeout = null;
-              synchronize("retry");
+              synchronize();
             }, retryDelayMs);
             retryDelayMs = Math.min(retryDelayMs * 2, 30000);
           }
@@ -218,14 +194,14 @@ function WebAppPushSubscriptionSync() {
       return requestInProgress;
     };
 
-    const handlePageShow = () => synchronize("pageshow");
-    const handleOnline = () => synchronize("online");
-    const handleControllerChange = () => synchronize("controllerchange");
+    const handlePageShow = () => synchronize();
+    const handleOnline = () => synchronize();
+    const handleControllerChange = () => synchronize();
     const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") synchronize("visible");
+      if (document.visibilityState === "visible") synchronize();
     };
 
-    synchronize("startup");
+    synchronize();
     window.addEventListener("pageshow", handlePageShow);
     window.addEventListener("online", handleOnline);
     document.addEventListener("visibilitychange", handleVisibilityChange);

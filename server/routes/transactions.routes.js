@@ -51,20 +51,24 @@ function isReservationBankHoldTransaction(charge) {
 
 function isStripeGiftCardTransaction(charge, expectedRestaurantId = "") {
   const transactionType = getStripeTransactionType(charge);
-  const priceValidated = getStripeMetadataValue(
-    charge,
-    "gustoGiftPriceValidated",
-  );
-
-  if (transactionType !== "gift_card_purchase" && priceValidated !== "true") {
-    return false;
-  }
+  if (transactionType !== "gift_card") return false;
 
   const metadataRestaurantId = getStripeMetadataValue(charge, "restaurantId");
   return (
     !expectedRestaurantId ||
     !metadataRestaurantId ||
     metadataRestaurantId === String(expectedRestaurantId)
+  );
+}
+
+function isMissingStripePaymentIntentError(error) {
+  const code = String(error?.code || error?.raw?.code || "").toLowerCase();
+  const message = String(
+    error?.raw?.message || error?.message || "",
+  ).toLowerCase();
+
+  return (
+    code === "resource_missing" || message.includes("no such payment_intent")
   );
 }
 
@@ -528,11 +532,13 @@ async function fetchGiftPurchaseFallbackTransactions({
           reservationById: new Map(),
         });
       } catch (error) {
-        console.error(
-          "[payments-dashboard-gift-fallback-error]",
-          paymentIntentId,
-          error?.raw?.message || error?.message || error,
-        );
+        if (!isMissingStripePaymentIntentError(error)) {
+          console.error(
+            "[payments-dashboard-gift-fallback-error]",
+            paymentIntentId,
+            error?.raw?.message || error?.message || error,
+          );
+        }
         return null;
       }
     }),

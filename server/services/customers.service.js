@@ -252,12 +252,15 @@ async function onReservationStatusChanged(
 
 // ✅ Stats + mini-historique (gift purchase)
 async function onGiftPurchased(customerId, purchaseSubdoc) {
-  if (!customerId) return;
+  if (!customerId || !purchaseSubdoc?._id) return false;
 
   const now = new Date();
 
-  await CustomerModel.updateOne(
-    { _id: customerId },
+  const result = await CustomerModel.updateOne(
+    {
+      _id: customerId,
+      processedGiftPurchaseIds: { $ne: purchaseSubdoc._id },
+    },
     {
       $inc: { "stats.giftCardsBought": 1 },
       $set: {
@@ -278,10 +281,13 @@ async function onGiftPurchased(customerId, purchaseSubdoc) {
           $slice: -30,
         },
       },
+      $addToSet: { processedGiftPurchaseIds: purchaseSubdoc._id },
     },
   );
 
-  await recomputeCustomerTagsForId(customerId, now);
+  const modified = Number(result.modifiedCount ?? result.nModified ?? 0);
+  if (modified) await recomputeCustomerTagsForId(customerId, now);
+  return modified === 1;
 }
 
 async function onTakeAwayOrderCreated(customerId, order) {
