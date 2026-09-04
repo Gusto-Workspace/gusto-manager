@@ -169,19 +169,27 @@ export default function TimeClockKioskComponent({ offlineBootstrap = null }) {
           (employee) => String(employee._id) === String(user?.id),
         );
 
-    return baseList.map((employee) => {
-      const snapshot = getEmployeeSnapshot(employee, restaurantId);
+    return baseList
+      .map((employee) => {
+        const snapshot = getEmployeeSnapshot(employee, restaurantId);
 
-      return {
-        ...employee,
-        firstname: snapshot.firstname || employee.firstname || "",
-        lastname: snapshot.lastname || employee.lastname || "",
-        post: snapshot.post || employee.post || "",
-        searchText: normalizeSearchText(
-          `${snapshot.firstname || employee.firstname || ""} ${snapshot.lastname || employee.lastname || ""} ${snapshot.post || employee.post || ""}`,
+        return {
+          ...employee,
+          firstname: snapshot.firstname || employee.firstname || "",
+          lastname: snapshot.lastname || employee.lastname || "",
+          post: snapshot.post || employee.post || "",
+          searchText: normalizeSearchText(
+            `${snapshot.firstname || employee.firstname || ""} ${snapshot.lastname || employee.lastname || ""} ${snapshot.post || employee.post || ""}`,
+          ),
+        };
+      })
+      .sort((employeeA, employeeB) =>
+        getEmployeeDisplayName(employeeA).localeCompare(
+          getEmployeeDisplayName(employeeB),
+          "fr",
+          { sensitivity: "base" },
         ),
-      };
-    });
+      );
   }, [canManageAllEmployees, employees, restaurantId, user?.id]);
 
   const filteredEmployees = useMemo(() => {
