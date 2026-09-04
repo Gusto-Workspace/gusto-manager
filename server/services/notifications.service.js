@@ -133,9 +133,7 @@ function buildNotificationContent({ type, data }) {
 
     case "reservation_customer_canceled": {
       const name = data?.customerName || "Un client";
-      const guests = data?.numberOfGuests
-        ? `${data.numberOfGuests} pers.`
-        : "";
+      const guests = data?.numberOfGuests ? `${data.numberOfGuests} pers.` : "";
       const when = fmtReservationRelativeFR(
         data?.reservationDate,
         data?.reservationTime,
@@ -156,10 +154,6 @@ function buildNotificationContent({ type, data }) {
         typeof data?.amount === "number"
           ? `${(data.amount / 100).toFixed(2)}€`
           : "";
-      const benef = [data?.beneficiaryFirstName, data?.beneficiaryLastName]
-        .filter(Boolean)
-        .join(" ");
-
       return {
         title: "Carte cadeau vendue",
         message: `${euros ? `Montant ${euros}` : "Nouvel achat"}`.trim(),
@@ -313,22 +307,32 @@ async function createAndBroadcastNotification({
   module,
   type,
   data = {},
+  dedupeKey = null,
 }) {
   const content = buildNotificationContent({ type, data });
   const meta = buildNotificationMeta({ type, data });
 
-  const notif = await NotificationModel.create({
-    restaurantId,
-    module,
-    type,
-    title: content.title,
-    message: content.message,
-    link: content.link,
-    data,
-    meta,
-    read: false,
-    readAt: null,
-  });
+  let notif;
+  try {
+    notif = await NotificationModel.create({
+      restaurantId,
+      module,
+      type,
+      title: content.title,
+      message: content.message,
+      link: content.link,
+      data,
+      meta,
+      dedupeKey: dedupeKey || null,
+      read: false,
+      readAt: null,
+    });
+  } catch (error) {
+    if (dedupeKey && error?.code === 11000) {
+      return NotificationModel.findOne({ dedupeKey });
+    }
+    throw error;
+  }
 
   const unreadBadgeCount = await NotificationModel.countDocuments({
     restaurantId,

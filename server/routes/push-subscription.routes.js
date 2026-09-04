@@ -28,10 +28,6 @@ async function userCanAccessRestaurant(user, restaurantId) {
   return Boolean(await RestaurantModel.exists(accessFilter));
 }
 
-function logSubscriptionSync(details) {
-  console.info(`[webpush-subscription-sync] ${JSON.stringify(details)}`);
-}
-
 router.post("/push/subscribe", authenticateToken, async (req, res) => {
   try {
     const { restaurantId, module, subscription } = req.body;
@@ -50,16 +46,7 @@ router.post("/push/subscribe", authenticateToken, async (req, res) => {
       return res.status(400).json({ message: "Invalid module" });
     }
 
-    const endpointHash = hashEndpoint(subscription.endpoint);
     if (!(await userCanAccessRestaurant(req.user, restaurantId))) {
-      logSubscriptionSync({
-        synchronizedAt: new Date().toISOString(),
-        restaurantId: String(restaurantId),
-        module,
-        endpointHash,
-        result: "rejected",
-        statusCode: 403,
-      });
       return res.status(403).json({ message: "Restaurant mismatch" });
     }
 
@@ -72,27 +59,19 @@ router.post("/push/subscribe", authenticateToken, async (req, res) => {
       lastSeenAt: new Date(),
     };
 
-    const result = await PushSubscriptionModel.updateOne(
+    await PushSubscriptionModel.updateOne(
       { endpoint: subscription.endpoint },
       { $set: payload },
       { upsert: true },
     );
 
-    logSubscriptionSync({
-      synchronizedAt: new Date().toISOString(),
-      restaurantId: String(restaurantId),
+    return res.json({
+      ok: true,
+      restaurantId,
       module,
-      endpointHash,
-      result: result.upsertedCount ? "created" : "refreshed",
+      endpointHash: hashEndpoint(subscription.endpoint),
     });
-
-    return res.json({ ok: true, restaurantId, module, endpointHash });
-  } catch (error) {
-    console.error("[webpush-subscription-sync-error]", {
-      errorName: error?.name || "Error",
-      errorCode: error?.code || null,
-      errorMessage: "Subscription synchronization failed",
-    });
+  } catch (_error) {
     return res.status(500).json({ message: "Subscription sync failed" });
   }
 });
@@ -112,28 +91,13 @@ router.post("/push/unsubscribe", authenticateToken, async (req, res) => {
       return res.status(403).json({ message: "Restaurant mismatch" });
     }
 
-    const endpointHash = hashEndpoint(endpoint);
-    const result = await PushSubscriptionModel.deleteOne({
+    await PushSubscriptionModel.deleteOne({
       restaurantId,
       module,
       endpoint,
     });
-    console.info(
-      `[webpush-subscription-unsubscribe] ${JSON.stringify({
-        unsubscribedAt: new Date().toISOString(),
-        restaurantId: String(restaurantId),
-        module,
-        endpointHash,
-        removed: Number(result?.deletedCount || 0),
-      })}`,
-    );
     return res.json({ ok: true });
-  } catch (error) {
-    console.error("[webpush-unsubscribe-error]", {
-      errorName: error?.name || "Error",
-      errorCode: error?.code || null,
-      errorMessage: "Push unsubscription failed",
-    });
+  } catch (_error) {
     return res.status(500).json({ message: "Push unsubscription failed" });
   }
 });

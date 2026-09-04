@@ -50,6 +50,12 @@ const customerSchema = new mongoose.Schema(
     lastTakeAwayOrderAt: { type: Date, default: null },
     lastActivityAt: { type: Date, default: null },
 
+    processedGiftPurchaseIds: {
+      type: [mongoose.Schema.Types.ObjectId],
+      default: [],
+      select: false,
+    },
+
     // ✅ mini-historique cappé pour ton drawer (rapide)
     lastReservations: {
       type: [
@@ -73,7 +79,9 @@ const customerSchema = new mongoose.Schema(
           purchaseId: { type: mongoose.Schema.Types.ObjectId }, // _id du subdoc embed
           created_at: { type: Date },
           amount: { type: Number },
+          value: { type: Number },
           description: { type: String },
+          purchaseCode: { type: String, default: "" },
         },
       ],
       default: [],
