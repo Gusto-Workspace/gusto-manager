@@ -47,29 +47,61 @@ const RESERVATIONS_IPAD_STARTUP_SCREENS = [
 
 function ensureAxiosApiAuthInterceptor() {
   if (typeof window === "undefined") return;
-  if (window.__gustoApiAuthInterceptorId != null) return;
 
-  window.__gustoApiAuthInterceptorId = axios.interceptors.request.use(
-    (config) => {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-      const targetUrl = String(config?.url || "");
-      const isApiRequest = apiUrl && targetUrl.startsWith(apiUrl);
+  if (window.__gustoApiAuthInterceptorId == null) {
+    window.__gustoApiAuthInterceptorId = axios.interceptors.request.use(
+      (config) => {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+        const targetUrl = String(config?.url || "");
+        const isApiRequest = apiUrl && targetUrl.startsWith(apiUrl);
 
-      if (!isApiRequest) return config;
+        if (!isApiRequest) return config;
 
-      const token = localStorage.getItem("token");
+        const token = localStorage.getItem("token");
 
-      if (!token || config?.headers?.Authorization) return config;
+        if (!token || config?.headers?.Authorization) return config;
 
-      return {
-        ...config,
-        headers: {
-          ...(config.headers || {}),
-          Authorization: `Bearer ${token}`,
-        },
-      };
-    },
-  );
+        return {
+          ...config,
+          headers: {
+            ...(config.headers || {}),
+            Authorization: `Bearer ${token}`,
+          },
+        };
+      },
+    );
+  }
+
+  if (window.__gustoApiSessionInterceptorId == null) {
+    window.__gustoApiSessionInterceptorId = axios.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+        const targetUrl = String(error?.config?.url || "");
+        const sessionWasRevoked =
+          apiUrl &&
+          targetUrl.startsWith(apiUrl) &&
+          error?.response?.status === 403 &&
+          error?.response?.data?.message === "Session revoked";
+
+        if (sessionWasRevoked && localStorage.getItem("token")) {
+          localStorage.removeItem("token");
+
+          const currentPath =
+            window.location.pathname +
+            window.location.search +
+            window.location.hash;
+          const loginUrl = currentPath.startsWith("/dashboard/login")
+            ? "/dashboard/login"
+            : `/dashboard/login?redirect=${encodeURIComponent(currentPath)}`;
+
+          window.location.replace(loginUrl);
+        }
+
+        return Promise.reject(error);
+      },
+    );
+  }
 }
 
 ensureAxiosApiAuthInterceptor();

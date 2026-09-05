@@ -6,6 +6,7 @@ import axios from "axios";
 
 // JWT
 import { jwtDecode } from "jwt-decode";
+import { createAuthenticatedEventSource } from "@/_assets/utils/authenticated-events";
 
 const EMPTY_UNREAD_BY_MODULE = {
   reservations: 0,
@@ -597,7 +598,7 @@ export default function RestaurantContext() {
     if (!restaurantId || !role) return;
 
     const url = `${process.env.NEXT_PUBLIC_API_URL}/events/${restaurantId}`;
-    const es = new EventSource(url, { withCredentials: false });
+    const es = createAuthenticatedEventSource(url);
     sseRef.current = es;
 
     es.onmessage = (evt) => {
@@ -798,7 +799,10 @@ export default function RestaurantContext() {
             const id = String(payload.purchase._id);
             const exists = list.some((x) => String(x._id) === id);
             if (exists) return prev;
-            return { ...prev, purchasesGiftCards: [...list, payload.purchase] };
+            return {
+              ...prev,
+              purchasesGiftCards: [...list, payload.purchase],
+            };
           });
         }
 
@@ -856,7 +860,7 @@ export default function RestaurantContext() {
     };
 
     es.onerror = () => {
-      // le navigateur va réessayer automatiquement
+      // Le client SSE authentifié gère la reconnexion.
     };
   }, [
     applyReservationUpdate,

@@ -3,6 +3,7 @@ import { useForm } from "react-hook-form";
 import axios from "axios";
 import { useTranslation } from "next-i18next";
 import { GlobalContext } from "@/contexts/global.context";
+import { jwtDecode } from "jwt-decode";
 import { NoVisibleSvg, VisibleSvg } from "../../_shared/_svgs/_index";
 
 export default function PasswordFormSettingsComponent() {
@@ -57,12 +58,19 @@ export default function PasswordFormSettingsComponent() {
       ? `${process.env.NEXT_PUBLIC_API_URL}/owner/update-password`
       : `${process.env.NEXT_PUBLIC_API_URL}/employees/update-password`;
 
-    const { confirmNewPassword, ...payload } = data;
+    const payload = {
+      currentPassword: data.currentPassword,
+      newPassword: data.newPassword,
+    };
 
     axios
       .put(endpoint, payload, {
       })
-      .then(() => {
+      .then(({ data: responseData }) => {
+        if (responseData?.token) {
+          localStorage.setItem("token", responseData.token);
+          restaurantContext.setUserConnected(jwtDecode(responseData.token));
+        }
         setPasswordSuccess("Modifications effectuées");
         reset({ currentPassword: "", newPassword: "", confirmNewPassword: "" });
         setShowCurrentPassword(false);

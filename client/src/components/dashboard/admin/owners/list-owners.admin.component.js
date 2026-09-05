@@ -21,6 +21,7 @@ import {
   AlertTriangle,
   Search,
   X,
+  LogOut,
 } from "lucide-react";
 
 export default function ListOwnersAdminComponent(props) {
@@ -28,6 +29,8 @@ export default function ListOwnersAdminComponent(props) {
 
   const [ownerToDelete, setOwnerToDelete] = useState(null);
   const [loadingDeleteId, setLoadingDeleteId] = useState(null);
+  const [loadingRevokeId, setLoadingRevokeId] = useState(null);
+  const [revokedOwnerId, setRevokedOwnerId] = useState(null);
   const [search, setSearch] = useState("");
 
   const owners = useMemo(() => props.owners || [], [props.owners]);
@@ -72,6 +75,29 @@ export default function ListOwnersAdminComponent(props) {
       console.error("Erreur lors de la suppression du propriétaire:", error);
     } finally {
       setLoadingDeleteId(null);
+    }
+  }
+
+  async function revokeOwnerSessions(owner) {
+    const confirmed = window.confirm(
+      `Déconnecter tous les appareils de ${owner.firstname || "ce propriétaire"} ${owner.lastname || ""} ?`,
+    );
+    if (!confirmed) return;
+
+    setLoadingRevokeId(owner._id);
+    setRevokedOwnerId(null);
+
+    try {
+      await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/admin/owners/${owner._id}/revoke-sessions`,
+        {},
+        getAdminAuthConfig(),
+      );
+      setRevokedOwnerId(owner._id);
+    } catch (error) {
+      console.error("Erreur lors de la révocation des sessions:", error);
+    } finally {
+      setLoadingRevokeId(null);
     }
   }
 
@@ -160,6 +186,7 @@ export default function ListOwnersAdminComponent(props) {
             {filteredOwners.map((owner) => {
               const isConfirming = ownerToDelete === owner._id;
               const isDeleting = loadingDeleteId === owner._id;
+              const isRevoking = loadingRevokeId === owner._id;
 
               const restaurantsLabel =
                 owner?.restaurants?.length > 0
@@ -189,6 +216,20 @@ export default function ListOwnersAdminComponent(props) {
                     {!isConfirming && (
                       <div className="flex items-center gap-2">
                         <button
+                          onClick={() => revokeOwnerSessions(owner)}
+                          className="inline-flex items-center justify-center rounded-xl border border-orange/20 bg-orange/10 p-2 transition hover:bg-orange/15 disabled:opacity-25"
+                          aria-label="Déconnecter tous les appareils"
+                          title="Déconnecter tous les appareils"
+                          disabled={!props?.isAdmin || isRevoking}
+                        >
+                          {isRevoking ? (
+                            <Loader2 className="size-4 animate-spin text-orange" />
+                          ) : (
+                            <LogOut className="size-4 text-orange" />
+                          )}
+                        </button>
+
+                        <button
                           onClick={() => props.handleEditClick(owner)}
                           className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2 disabled:opacity-25"
                           aria-label={t("owner.list.buttons.edit")}
@@ -210,6 +251,11 @@ export default function ListOwnersAdminComponent(props) {
                   </div>
 
                   <div className="flex flex-col gap-2">
+                    {revokedOwnerId === owner._id ? (
+                      <p className="text-xs font-medium text-green-700">
+                        Tous les appareils ont été déconnectés.
+                      </p>
+                    ) : null}
                     <div className="flex items-start gap-2 text-sm text-darkBlue/80">
                       <Mail className="size-4 mt-0.5 text-darkBlue/40" />
                       {owner?.email ? (
