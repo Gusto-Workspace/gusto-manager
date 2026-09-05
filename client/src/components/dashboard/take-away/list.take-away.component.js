@@ -13,6 +13,7 @@ import {
 import { useRouter } from "next/router";
 
 import { GlobalContext } from "@/contexts/global.context";
+import { createAuthenticatedEventSource } from "@/_assets/utils/authenticated-events";
 import CatalogHeaderDashboardComponent from "../_shared/catalog-header.dashboard.component";
 import TakeAwayHeaderComponent, {
   AddOrderAction,
@@ -118,7 +119,7 @@ export default function ListTakeAwayComponent() {
   useEffect(() => {
     if (!restaurantId) return undefined;
     const url = `${process.env.NEXT_PUBLIC_API_URL}/events/${restaurantId}`;
-    const es = new EventSource(url);
+    const es = createAuthenticatedEventSource(url);
     es.onmessage = (event) => {
       try {
         const payload = JSON.parse(event.data);
