@@ -10,6 +10,9 @@ const RestaurantModel = require("../../models/restaurant.model");
 const {
   stripeCustomerUsedByAnyRestaurant,
 } = require("../../services/stripe-billing.service");
+const {
+  revokeAllAccountSessions,
+} = require("../../services/account-session.service");
 
 router.use("/admin", authenticateAdmin);
 
@@ -18,7 +21,7 @@ router.get("/admin/owners", async (req, res) => {
   try {
     const owners = await OwnerModel.find(
       {},
-      "firstname lastname phoneNumber restaurants email _id created_at stripeCustomerId"
+      "firstname lastname phoneNumber restaurants email _id created_at stripeCustomerId",
     ).populate({
       path: "restaurants",
       select: "name address phone",
@@ -77,7 +80,7 @@ router.put("/admin/owners/:id", requireAdminRole, async (req, res) => {
       } catch (stripeError) {
         console.error(
           "Erreur lors de la mise à jour du client Stripe :",
-          stripeError
+          stripeError,
         );
         return res
           .status(500)
@@ -95,6 +98,28 @@ router.put("/admin/owners/:id", requireAdminRole, async (req, res) => {
     res.status(500).json({ message: "Erreur interne du serveur" });
   }
 });
+
+// REVOKE EVERY ACTIVE OWNER SESSION
+router.post(
+  "/admin/owners/:id/revoke-sessions",
+  requireAdminRole,
+  async (req, res) => {
+    try {
+      const owner = await revokeAllAccountSessions(OwnerModel, req.params.id);
+
+      if (!owner) {
+        return res.status(404).json({ message: "Propriétaire non trouvé" });
+      }
+
+      return res.status(200).json({
+        message: "Toutes les sessions du propriétaire ont été révoquées",
+      });
+    } catch (error) {
+      console.error("Erreur lors de la révocation des sessions:", error);
+      return res.status(500).json({ message: "Erreur interne du serveur" });
+    }
+  },
+);
 
 // ADD OWNER
 router.post("/admin/add-owner", async (req, res) => {
@@ -170,7 +195,7 @@ router.delete("/admin/owners/:id", requireAdminRole, async (req, res) => {
         } catch (stripeError) {
           console.error(
             "Erreur lors de la suppression du client Stripe:",
-            stripeError
+            stripeError,
           );
           return res.status(500).json({
             message: "Erreur lors de la suppression du client Stripe",
@@ -182,7 +207,7 @@ router.delete("/admin/owners/:id", requireAdminRole, async (req, res) => {
     // 3. Mettre à jour tous les restaurants qui appartiennent à ce propriétaire
     await RestaurantModel.updateMany(
       { owner_id: req.params.id },
-      { owner_id: null } // On retire le propriétaire du restaurant
+      { owner_id: null }, // On retire le propriétaire du restaurant
     );
 
     // 4. Supprimer le propriétaire de la base de données

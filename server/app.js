@@ -20,6 +20,9 @@ const PORT = process.env.PORT || 8012;
 // HTTP
 const server = http.createServer(app);
 
+// Render/reverse proxy: req.ip doit refléter le client pour le rate limiting.
+app.set("trust proxy", 1);
+
 // JSON
 app.use("/api/stripe/wh", express.raw({ type: "application/json" }));
 app.use(express.json());

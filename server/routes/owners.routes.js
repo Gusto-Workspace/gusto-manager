@@ -18,6 +18,17 @@ const {
 // MIDDLEWARE
 const authenticateToken = require("../middleware/authentificate-token");
 const EmployeeModel = require("../models/employee.model");
+const {
+  canUpdateOwnerEmail,
+  incrementSessionVersion,
+  isAccountSessionValid,
+  isSuperAdminSession,
+  normalizeSessionVersion,
+  rotatePasswordSession,
+  signAccountToken,
+  stripJwtMetadata,
+  validatePasswordChangeInput,
+} = require("../services/account-session.service");
 
 // ---------- CLOUDINARY / MULTER (pour owners) ----------
 cloudinary.config({
@@ -36,7 +47,7 @@ const uploadFromBuffer = (buffer, folder) => {
       (error, result) => {
         if (result) resolve(result);
         else reject(error);
-      }
+      },
     );
     streamifier.createReadStream(buffer).pipe(stream);
   });
@@ -107,7 +118,7 @@ router.post("/owner/send-reset-code", async (req, res) => {
   } catch (error) {
     console.error(
       "Erreur lors de l'envoi du code de réinitialisation :",
-      error
+      error,
     );
     res.status(500).json({ message: "Erreur serveur" });
   }
@@ -132,7 +143,7 @@ router.post("/owner/verify-reset-code", async (req, res) => {
   } catch (error) {
     console.error(
       "Erreur lors de la vérification du code de réinitialisation :",
-      error
+      error,
     );
     res.status(500).json({ message: "Erreur serveur" });
   }
@@ -143,7 +154,7 @@ router.put("/owner/reset-password", async (req, res) => {
   const { email, code, newPassword } = req.body;
 
   try {
-    const owner = await OwnerModel.findOne({ email });
+    const owner = await OwnerModel.findOne({ email }).select("+sessionVersion");
     if (!owner) {
       return res.status(404).json({ message: "Email non trouvé" });
     }
@@ -155,6 +166,7 @@ router.put("/owner/reset-password", async (req, res) => {
 
     // Mettre à jour le mot de passe
     owner.password = newPassword; // Le hashing est géré dans le hook "pre('save')"
+    incrementSessionVersion(owner);
     owner.resetCode = undefined; // Supprime le code de réinitialisation
     owner.resetCodeExpires = undefined; // Supprime l'expiration du code
     await owner.save();
@@ -163,7 +175,7 @@ router.put("/owner/reset-password", async (req, res) => {
   } catch (error) {
     console.error(
       "Erreur lors de la réinitialisation du mot de passe :",
-      error
+      error,
     );
     res.status(500).json({ message: "Erreur serveur" });
   }
@@ -204,6 +216,12 @@ router.put(
 
       const normalizedEmail = (email || "").trim().toLowerCase();
 
+      if (!canUpdateOwnerEmail(req.user, owner.email, normalizedEmail)) {
+        return res.status(403).json({
+          message: "Super-admin sessions cannot change the owner email",
+        });
+      }
+
       // Only check if email actually changes
       if (normalizedEmail && normalizedEmail !== owner.email) {
         const [ownerDup, employeeDup] = await Promise.all([
@@ -237,14 +255,14 @@ router.put(
           } catch (err) {
             console.warn(
               "Erreur lors de la suppression de l'ancienne photo owner :",
-              err?.message || err
+              err?.message || err,
             );
           }
         }
 
         const result = await uploadFromBuffer(
           req.file.buffer,
-          `Gusto_Workspace/owners/${owner._id}`
+          `Gusto_Workspace/owners/${owner._id}`,
         );
 
         owner.profilePicture = {
@@ -258,7 +276,7 @@ router.put(
           } catch (err) {
             console.warn(
               "Erreur lors de la suppression de la photo owner :",
-              err?.message || err
+              err?.message || err,
             );
           }
         }
@@ -267,9 +285,13 @@ router.put(
 
       await owner.save();
 
+      if (!(await isAccountSessionValid(req.user))) {
+        return res.status(403).json({ message: "Session revoked" });
+      }
+
       // fresh token (owners)
-      const jwt = require("jsonwebtoken");
       const payload = {
+        ...stripJwtMetadata(req.user),
         id: owner._id,
         role: "owner",
         restaurantId: req.user.restaurantId,
@@ -279,9 +301,10 @@ router.put(
         phoneNumber: owner.phoneNumber,
         stripeCustomerId: owner.stripeCustomerId || null,
         profilePictureUrl: owner.profilePicture?.url || null,
+        sessionVersion: normalizeSessionVersion(req.user.sessionVersion),
       };
 
-      const token = jwt.sign(payload, process.env.JWT_SECRET);
+      const token = signAccountToken(payload);
 
       // Optional: keep Stripe in sync
       if (
@@ -306,7 +329,7 @@ router.put(
       console.error("Erreur MAJ owner :", error);
       return res.status(500).json({ message: "Erreur serveur" });
     }
-  }
+  },
 );
 
 // UPDATE OWNER PASSWORD
@@ -314,20 +337,52 @@ router.put("/owner/update-password", authenticateToken, async (req, res) => {
   const { currentPassword, newPassword } = req.body;
 
   try {
-    const owner = await OwnerModel.findById(req.user.id);
+    if (isSuperAdminSession(req.user)) {
+      return res.status(403).json({
+        message: "Super-admin sessions cannot change the owner password",
+      });
+    }
+
+    const validationError = validatePasswordChangeInput(
+      currentPassword,
+      newPassword,
+    );
+    if (validationError) {
+      return res.status(400).json(validationError);
+    }
+
+    const owner = await OwnerModel.findById(req.user.id).select({
+      _id: 1,
+      password: 1,
+    });
     if (!owner) return res.status(404).json({ message: "Owner not found" });
 
     const isMatch = await owner.comparePassword(
       currentPassword,
-      owner.password
+      owner.password,
     );
     if (!isMatch)
       return res.status(401).json({ message: "Incorrect current password" });
 
-    owner.password = newPassword;
-    await owner.save();
+    const previousVersion = normalizeSessionVersion(req.user.sessionVersion);
+    const updatedOwner = await rotatePasswordSession({
+      AccountModel: OwnerModel,
+      accountId: owner._id,
+      currentPasswordHash: owner.password,
+      expectedSessionVersion: previousVersion,
+      newPassword,
+    });
 
-    res.status(200).json({ message: "Password updated successfully" });
+    if (!updatedOwner) {
+      return res.status(403).json({ message: "Session revoked" });
+    }
+
+    const token = signAccountToken({
+      ...stripJwtMetadata(req.user),
+      sessionVersion: previousVersion + 1,
+    });
+
+    res.status(200).json({ message: "Password updated successfully", token });
   } catch (error) {
     console.error("Erreur lors de la mise à jour du mot de passe :", error);
     res.status(500).json({ message: "Erreur serveur" });

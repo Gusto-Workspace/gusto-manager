@@ -167,6 +167,7 @@ const employeeSchema = new mongoose.Schema({
 
   resetCode: String,
   resetCodeExpires: Date,
+  sessionVersion: { type: Number, default: 0, select: false },
 });
 
 // Index pour des recherches optimisées
@@ -214,8 +215,8 @@ employeeSchema.methods.comparePassword = async function (
 ) {
   try {
     return await bcrypt.compare(enteredPassword, userPassword);
-  } catch (err) {
-    return { err };
+  } catch {
+    return false;
   }
 };
 

@@ -1,4 +1,8 @@
 const clientsPerRestaurant = new Map();
+const authenticateToken = require("../middleware/authentificate-token");
+const EmployeeModel = require("../models/employee.model");
+const RestaurantModel = require("../models/restaurant.model");
+const { isAccountSessionValid } = require("./account-session.service");
 
 function addClient(restaurantId, res) {
   const key = String(restaurantId);
@@ -28,6 +32,38 @@ function broadcastToRestaurant(restaurantId, payload) {
   }
 }
 
+async function canAccessRestaurantEvents(user, restaurantId) {
+  if (user?.role === "owner") {
+    return Boolean(
+      await RestaurantModel.exists({ _id: restaurantId, owner_id: user.id }),
+    );
+  }
+
+  if (user?.role === "employee") {
+    return Boolean(
+      await EmployeeModel.exists({
+        _id: user.id,
+        restaurants: restaurantId,
+      }),
+    );
+  }
+
+  return false;
+}
+
+async function isEventSessionAuthorized(
+  user,
+  restaurantId,
+  {
+    validateSession = isAccountSessionValid,
+    validateAccess = canAccessRestaurantEvents,
+  } = {},
+) {
+  return (
+    (await validateSession(user)) && (await validateAccess(user, restaurantId))
+  );
+}
+
 /**
  * Monte la route SSE (même headers / keep-alive / CORS que ton code actuel).
  * @param {import('express').Application|import('express').Router} appOrRouter
@@ -41,8 +77,16 @@ function mountSseRoute(appOrRouter, opts = {}) {
     heartbeatMs = 25000,
   } = opts;
 
-  appOrRouter.get(path, (req, res) => {
+  appOrRouter.get(path, authenticateToken, async (req, res) => {
     const { restaurantId } = req.params;
+
+    try {
+      if (!(await canAccessRestaurantEvents(req.user, restaurantId))) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+    } catch {
+      return res.status(500).json({ message: "Server error" });
+    }
 
     // headers SSE
     res.set({
@@ -54,19 +98,51 @@ function mountSseRoute(appOrRouter, opts = {}) {
     res.flushHeaders?.();
 
     // ping pour garder la connexion vivante
-    const keepAlive = setInterval(() => {
+    let accessCheckInProgress = false;
+    let closed = false;
+
+    const close = () => {
+      if (closed) return;
+      closed = true;
+      clearInterval(keepAlive);
+      removeClient(restaurantId, res);
+    };
+
+    const keepAlive = setInterval(async () => {
+      if (accessCheckInProgress || closed) return;
+      accessCheckInProgress = true;
+
       try {
+        const stillHasAccess = await isEventSessionAuthorized(
+          req.user,
+          restaurantId,
+        );
+
+        if (!stillHasAccess) {
+          res.write(
+            `event: auth_error\ndata: ${JSON.stringify({ message: "Session revoked" })}\n\n`,
+          );
+          close();
+          return res.end();
+        }
+
         res.write(":\n\n");
       } catch (_error) {
-        // Ignore keep-alive write failures for clients that are disconnecting.
+        close();
+        try {
+          res.end();
+        } catch (_endError) {
+          // Response already closed.
+        }
+      } finally {
+        accessCheckInProgress = false;
       }
     }, heartbeatMs);
 
     addClient(restaurantId, res);
 
     req.on("close", () => {
-      clearInterval(keepAlive);
-      removeClient(restaurantId, res);
+      close();
       try {
         res.end();
       } catch (_error) {
@@ -85,4 +161,6 @@ module.exports = {
   _addClient: addClient,
   _removeClient: removeClient,
   _clientsPerRestaurant: clientsPerRestaurant,
+  _canAccessRestaurantEvents: canAccessRestaurantEvents,
+  _isEventSessionAuthorized: isEventSessionAuthorized,
 };

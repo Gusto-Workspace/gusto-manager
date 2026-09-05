@@ -18,6 +18,7 @@ const ownerSchema = new mongoose.Schema({
   created_at: { type: Date, default: Date.now },
   resetCode: String,
   resetCodeExpires: Date,
+  sessionVersion: { type: Number, default: 0, select: false },
 });
 
 // Index sur les champs pour rendre les recherches rapides
@@ -48,12 +49,12 @@ ownerSchema.pre("save", async function (next) {
 
 ownerSchema.methods.comparePassword = async function (
   enteredPassword,
-  userPassword
+  userPassword,
 ) {
   try {
     return await bcrypt.compare(enteredPassword, userPassword);
-  } catch (err) {
-    return { err };
+  } catch {
+    return false;
   }
 };
 
