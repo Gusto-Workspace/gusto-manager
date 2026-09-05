@@ -11,6 +11,14 @@ const { broadcastToRestaurant } = require("../services/sse-bus.service");
 
 // MIDDLEWARE
 const authenticateToken = require("../middleware/authentificate-token");
+const {
+  isAccountSessionValid,
+  normalizeSessionVersion,
+  rotatePasswordSession,
+  signAccountToken,
+  stripJwtMetadata,
+  validatePasswordChangeInput,
+} = require("../services/account-session.service");
 
 // MODELS
 const EmployeeModel = require("../models/employee.model");
@@ -2160,7 +2168,6 @@ router.delete(
 
 router.post(
   "/restaurants/:restaurantId/employees/planning/export/pdf",
-  authenticateToken,
   async (req, res) => {
     try {
       const { restaurantId } = req.params;
@@ -2258,7 +2265,6 @@ router.post(
 
 router.post(
   "/restaurants/:restaurantId/employees/planning/export/excel",
-  authenticateToken,
   async (req, res) => {
     try {
       const { restaurantId } = req.params;
@@ -2359,7 +2365,6 @@ router.post(
 
 router.post(
   "/restaurants/:restaurantId/employees/planning/send",
-  authenticateToken,
   async (req, res) => {
     try {
       const { restaurantId } = req.params;
@@ -3041,8 +3046,12 @@ router.put(
       await emp.save();
       broadcastEmployeeUpdate(emp);
 
-      const jwt = require("jsonwebtoken");
+      if (!(await isAccountSessionValid(req.user))) {
+        return res.status(403).json({ message: "Session revoked" });
+      }
+
       const payload = {
+        ...stripJwtMetadata(req.user),
         id: emp._id,
         role: "employee",
         firstname: emp.firstname,
@@ -3052,9 +3061,10 @@ router.put(
         restaurantId: req.user.restaurantId,
         options: req.user.options || {},
         profilePictureUrl: emp.profilePicture?.url || null,
+        sessionVersion: normalizeSessionVersion(req.user.sessionVersion),
       };
 
-      const token = jwt.sign(payload, process.env.JWT_SECRET, {
+      const token = signAccountToken(payload, {
         expiresIn: "7d",
       });
 
@@ -3076,17 +3086,46 @@ router.put(
       }
       const { currentPassword, newPassword } = req.body;
 
-      const emp = await EmployeeModel.findById(req.user.id).select("+password");
+      const validationError = validatePasswordChangeInput(
+        currentPassword,
+        newPassword,
+      );
+      if (validationError) {
+        return res.status(400).json(validationError);
+      }
+
+      const emp = await EmployeeModel.findById(req.user.id).select({
+        _id: 1,
+        password: 1,
+      });
       if (!emp) return res.status(404).json({ message: "Employee not found" });
 
       const ok = await emp.comparePassword(currentPassword, emp.password);
       if (!ok)
         return res.status(401).json({ message: "Incorrect current password" });
 
-      emp.password = newPassword; // hash via pre('save')
-      await emp.save();
+      const previousVersion = normalizeSessionVersion(req.user.sessionVersion);
+      const updatedEmployee = await rotatePasswordSession({
+        AccountModel: EmployeeModel,
+        accountId: emp._id,
+        currentPasswordHash: emp.password,
+        expectedSessionVersion: previousVersion,
+        newPassword,
+      });
 
-      return res.json({ message: "Password updated successfully" });
+      if (!updatedEmployee) {
+        return res.status(403).json({ message: "Session revoked" });
+      }
+
+      const token = signAccountToken(
+        {
+          ...stripJwtMetadata(req.user),
+          sessionVersion: previousVersion + 1,
+        },
+        { expiresIn: "7d" },
+      );
+
+      return res.json({ message: "Password updated successfully", token });
     } catch (e) {
       console.error(e);
       return res.status(500).json({ message: "Server error" });

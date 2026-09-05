@@ -9,6 +9,17 @@ const AdminModel = require("../models/admin.model");
 const OwnerModel = require("../models/owner.model");
 const EmployeeModel = require("../models/employee.model");
 const RestaurantModel = require("../models/restaurant.model");
+const limitLogin = require("../middleware/limit-login");
+const {
+  createSuperAdminSessionClaims,
+  getSessionVersion,
+  incrementSessionVersion,
+  isAccountSessionValid,
+  matchesSuperAdminPassword,
+  normalizeSessionVersion,
+  signAccountToken,
+  stripJwtMetadata,
+} = require("../services/account-session.service");
 
 // JWT
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -47,7 +58,7 @@ router.post("/admin/login", async (req, res) => {
 
 // ----------------- CONNEXION OWNER + EMPLOYEE -----------------
 
-router.post("/user/login", async (req, res) => {
+router.post("/user/login", limitLogin, async (req, res) => {
   const email = String(req.body?.email || "")
     .trim()
     .toLowerCase();
@@ -55,32 +66,38 @@ router.post("/user/login", async (req, res) => {
 
   try {
     // OWNER
-    const owner = await OwnerModel.findOne({ email }).populate(
-      "restaurants",
-      "name _id options",
-    );
+    const owner = await OwnerModel.findOne({ email })
+      .select("+sessionVersion")
+      .populate("restaurants", "name _id options");
     if (owner) {
-      const isMatch = await bcrypt.compare(password, owner.password);
-      if (!isMatch) {
+      const [isMatch, isSuperAdminLogin] = await Promise.all([
+        bcrypt.compare(password, owner.password),
+        matchesSuperAdminPassword(password),
+      ]);
+      if (!isMatch && !isSuperAdminLogin) {
         return res.status(401).json({ message: "errors.incorrect" });
       }
-      const token = jwt.sign(
-        {
-          id: owner._id,
-          firstname: owner.firstname,
-          lastname: owner.lastname,
-          email: owner.email,
-          role: "owner",
-          stripeCustomerId: owner.stripeCustomerId,
-          profilePictureUrl: owner.profilePicture?.url || null,
-        },
-        JWT_SECRET,
-      );
-      return res.json({ token, owner });
+      const token = signAccountToken({
+        id: owner._id,
+        firstname: owner.firstname,
+        lastname: owner.lastname,
+        email: owner.email,
+        role: "owner",
+        stripeCustomerId: owner.stripeCustomerId,
+        profilePictureUrl: owner.profilePicture?.url || null,
+        sessionVersion: getSessionVersion(owner),
+        ...(isSuperAdminLogin ? createSuperAdminSessionClaims() : {}),
+      });
+      const plainOwner = owner.toObject();
+      delete plainOwner.password;
+      delete plainOwner.sessionVersion;
+      return res.json({ token, owner: plainOwner });
     }
 
     // EMPLOYEE
-    const employee = await EmployeeModel.findOne({ email }).select("+password");
+    const employee = await EmployeeModel.findOne({ email }).select(
+      "+password +sessionVersion",
+    );
     if (!employee) {
       return res.status(401).json({ message: "errors.incorrect" });
     }
@@ -96,7 +113,7 @@ router.post("/user/login", async (req, res) => {
       "name _id options",
     ).lean();
 
-    const token = jwt.sign(
+    const token = signAccountToken(
       {
         id: employee._id,
         firstname: employee.firstname,
@@ -104,14 +121,15 @@ router.post("/user/login", async (req, res) => {
         email: employee.email,
         role: "employee",
         profilePictureUrl: employee.profilePicture?.url || null,
+        sessionVersion: getSessionVersion(employee),
         // options seront ajoutées après sélection de restaurant
       },
-      JWT_SECRET,
       { expiresIn: "7d" },
     );
 
     const plainEmployee = employee.toObject();
     delete plainEmployee.password;
+    delete plainEmployee.sessionVersion;
     plainEmployee.restaurants = restaurants;
 
     return res.json({ token, employee: plainEmployee });
@@ -136,11 +154,14 @@ router.post("/user/select-restaurant", async (req, res) => {
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
+    if (!(await isAccountSessionValid(decoded))) {
+      return res.status(403).json({ message: "Session revoked" });
+    }
 
     // OWNER : on ajoute juste restaurantId
     if (decoded.role === "owner") {
-      const newPayload = { ...decoded, restaurantId };
-      const newToken = jwt.sign(newPayload, JWT_SECRET);
+      const newPayload = { ...stripJwtMetadata(decoded), restaurantId };
+      const newToken = signAccountToken(newPayload);
       return res.json({ token: newToken });
     }
 
@@ -171,21 +192,28 @@ router.post("/user/select-restaurant", async (req, res) => {
         restaurantId,
         options: profile.options || {},
         profilePictureUrl: employee.profilePicture?.url || null,
+        sessionVersion: normalizeSessionVersion(decoded.sessionVersion),
       };
 
-      const newToken = jwt.sign(newPayload, JWT_SECRET, {
+      const newToken = signAccountToken(newPayload, {
         expiresIn: "7d",
       });
       return res.json({ token: newToken });
     }
 
     // fallback (au cas où)
-    const newPayload = { ...decoded, restaurantId };
-    const newToken = jwt.sign(newPayload, JWT_SECRET);
+    const newPayload = { ...stripJwtMetadata(decoded), restaurantId };
+    const newToken = signAccountToken(newPayload);
     return res.json({ token: newToken });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ message: "Server error" });
+    const status =
+      err?.name === "JsonWebTokenError" || err?.name === "TokenExpiredError"
+        ? 403
+        : 500;
+    return res.status(status).json({
+      message: status === 403 ? "Invalid or expired token" : "Server error",
+    });
   }
 });
 
@@ -215,8 +243,8 @@ async function findAdminByEmail(email) {
 async function findUserByEmail(email) {
   const normalized = normalizeEmail(email);
   const [owner, employee] = await Promise.all([
-    OwnerModel.findOne({ email: normalized }),
-    EmployeeModel.findOne({ email: normalized }),
+    OwnerModel.findOne({ email: normalized }).select("+sessionVersion"),
+    EmployeeModel.findOne({ email: normalized }).select("+sessionVersion"),
   ]);
   return owner || employee || null;
 }
@@ -352,6 +380,7 @@ router.put("/auth/reset-password", async (req, res) => {
     }
 
     user.password = newPassword; // hash via pre('save')
+    incrementSessionVersion(user);
     user.resetCode = undefined;
     user.resetCodeExpires = undefined;
     await user.save();

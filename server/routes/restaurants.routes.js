@@ -1,7 +1,5 @@
 const express = require("express");
 const router = express.Router();
-const jwt = require("jsonwebtoken");
-const JWT_SECRET = process.env.JWT_SECRET;
 const stripe = require("stripe")(process.env.STRIPE_API_SECRET_KEY);
 
 // MIDDLEWARE
@@ -11,6 +9,10 @@ const authenticateToken = require("../middleware/authentificate-token");
 const RestaurantModel = require("../models/restaurant.model");
 const VisitCounterModel = require("../models/visit-counter.model");
 const EmployeeModel = require("../models/employee.model");
+const {
+  signAccountToken,
+  stripJwtMetadata,
+} = require("../services/account-session.service");
 const {
   findRestaurantSubscription,
   listSubscriptionInvoicesHistory,
@@ -114,7 +116,10 @@ router.post("/owner/change-restaurant", authenticateToken, (req, res) => {
 
   const decodedToken = req.user;
 
-  const updatedToken = jwt.sign({ ...decodedToken, restaurantId }, JWT_SECRET);
+  const updatedToken = signAccountToken({
+    ...stripJwtMetadata(decodedToken),
+    restaurantId,
+  });
 
   res.status(200).json({ token: updatedToken });
 });
@@ -153,7 +158,7 @@ router.post(
 
       // On repart du token courant, mais SANS exp / iat
       const decodedToken = req.user;
-      const { exp, iat, ...rest } = decodedToken; // on enlève ces champs
+      const rest = stripJwtMetadata(decodedToken);
 
       const payload = {
         ...rest,
@@ -162,7 +167,7 @@ router.post(
       };
 
       // 🔴 IMPORTANT : pas d'option expiresIn ici
-      const updatedToken = jwt.sign(payload, JWT_SECRET);
+      const updatedToken = signAccountToken(payload);
 
       return res.status(200).json({ token: updatedToken });
     } catch (e) {
