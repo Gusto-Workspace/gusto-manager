@@ -647,7 +647,7 @@ export default function FloorPlanDrawerReservationsComponent({
           <div className="border-b border-darkBlue/10">
             {showHeader ? (
               <div className="sticky top-0 z-20 bg-white border-b border-darkBlue/10">
-                <div className="px-4 pb-3 desktop:py-3 flex items-start justify-between gap-4">
+                <div className="flex items-start justify-between gap-4 px-4 pb-3 midTablet:pt-4 desktop:py-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <LayoutGrid className="size-5 text-darkBlue/70" />
@@ -686,7 +686,7 @@ export default function FloorPlanDrawerReservationsComponent({
                     <button
                       type="button"
                       onClick={closeWithAnimation}
-                      className="inline-flex items-center justify-center size-10 rounded-full border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition"
+                      className="inline-flex size-10 shrink-0 items-center justify-center rounded-full border border-darkBlue/10 bg-white text-darkBlue/70 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue/30 focus-visible:ring-offset-2 [@media(hover:hover)]:hover:bg-darkBlue/5"
                       aria-label="Fermer"
                       title="Fermer"
                     >

@@ -450,7 +450,7 @@ export default function RangesParametersComponent({
 
         <div className={divider} />
 
-        <div className="flex flex-col gap-3">
+        <div className="flex max-h-[274px] flex-col gap-3 overflow-y-auto overscroll-contain pr-1">
           {blockedRanges.length === 0 ? (
             <p className="text-sm text-darkBlue/55 mx-auto midTablet:mx-0">
               Aucune pause configurée.

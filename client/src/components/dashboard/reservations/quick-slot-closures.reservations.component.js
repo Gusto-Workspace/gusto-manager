@@ -18,6 +18,7 @@ const CLOSE_RATIO = 0.25;
 export function QuickSlotClosureActionButton({
   onClick,
   compact = false,
+  iconOnly = false,
   closedSlotCount = 0,
   className = "",
 }) {
@@ -28,25 +29,34 @@ export function QuickSlotClosureActionButton({
       type="button"
       onClick={onClick}
       className={[
-        "inline-flex items-center justify-center gap-2 border border-darkBlue/10 bg-white/70 font-semibold text-darkBlue/70 shadow-sm transition hover:bg-darkBlue/5 active:scale-[0.98]",
-        compact
-          ? "h-[42px] rounded-2xl px-3 text-xs"
-          : "h-[40px] rounded-full px-4 text-sm",
+        "inline-flex items-center justify-center gap-2 border border-darkBlue/10 bg-white/70 font-semibold text-darkBlue/70 shadow-sm transition active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue/30 focus-visible:ring-offset-2 [@media(hover:hover)]:hover:bg-darkBlue/5",
+        iconOnly
+          ? "relative shrink-0 rounded-full p-3.5"
+          : compact
+            ? "h-[42px] rounded-2xl px-3 text-xs"
+            : "h-[40px] rounded-full px-4 text-sm",
         className,
       ].join(" ")}
       aria-label={
-        count
-          ? `Fermer des créneaux, ${count} départ${count > 1 ? "s" : ""} fermé${count > 1 ? "s" : ""}`
-          : "Fermer des créneaux"
+        iconOnly
+          ? "Fermer des créneaux"
+          : count
+            ? `Fermer des créneaux, ${count} départ${count > 1 ? "s" : ""} fermé${count > 1 ? "s" : ""}`
+            : "Fermer des créneaux"
       }
       title="Fermer précisément certains horaires aux réservations en ligne"
     >
       <CalendarX2 className="size-4 shrink-0" />
-      <span>Fermer des créneaux</span>
+      {!iconOnly ? <span>Fermer des créneaux</span> : null}
       {count ? (
         <span
-          className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-red/10 px-1.5 text-[11px] font-bold leading-none text-red"
+          className={
+            iconOnly
+              ? "absolute -right-1 -top-1 inline-flex size-[18px] items-center justify-center rounded-full bg-red text-[10px] font-bold leading-none text-white ring-2 ring-lightGrey"
+              : "inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-red/10 px-1.5 text-[11px] font-bold leading-none text-red"
+          }
           title={`${count} départ${count > 1 ? "s" : ""} actuellement fermé${count > 1 ? "s" : ""}`}
+          aria-hidden={iconOnly ? "true" : undefined}
         >
           {count}
         </span>
@@ -177,6 +187,7 @@ function QuickSlotClosureDrawer({
   const [dragY, setDragY] = useState(0);
   const panelRef = useRef(null);
   const closeTimerRef = useRef(null);
+  const returnFocusRef = useRef(null);
   const scrollYRef = useRef(0);
   const scrollLockedRef = useRef(false);
   const busyRef = useRef(false);
@@ -249,8 +260,14 @@ function QuickSlotClosureDrawer({
     setDragY(0);
     window.clearTimeout(closeTimerRef.current);
     closeTimerRef.current = window.setTimeout(() => {
+      const returnFocusElement = returnFocusRef.current;
       restoreScroll();
       onClose?.();
+      window.requestAnimationFrame(() => {
+        if (returnFocusElement?.isConnected) {
+          returnFocusElement.focus({ preventScroll: true });
+        }
+      });
     }, CLOSE_MS);
   }
 
@@ -276,6 +293,7 @@ function QuickSlotClosureDrawer({
   useEffect(() => {
     if (!open) return;
 
+    returnFocusRef.current = document.activeElement;
     lockScroll();
     setIsVisible(false);
     setDragY(0);
@@ -441,7 +459,7 @@ function QuickSlotClosureDrawer({
               type="button"
               disabled={saving || Boolean(reopeningId)}
               onClick={closeWithAnimation}
-              className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white p-2 transition hover:bg-darkBlue/5 disabled:opacity-50"
+              className="inline-flex size-10 shrink-0 items-center justify-center rounded-full border border-darkBlue/10 bg-white text-darkBlue/70 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue/30 focus-visible:ring-offset-2 disabled:opacity-50 [@media(hover:hover)]:hover:bg-darkBlue/5"
               aria-label="Fermer"
               title="Fermer"
             >
@@ -457,10 +475,6 @@ function QuickSlotClosureDrawer({
             </div>
           ) : (
             <>
-              <p className="text-sm text-darkBlue/60">
-                Sélectionnez les départs à fermer. Touchez un créneau fermé
-                rapidement pour le rouvrir.
-              </p>
               <SlotGroup
                 title="Midi"
                 slots={lunchSlots}

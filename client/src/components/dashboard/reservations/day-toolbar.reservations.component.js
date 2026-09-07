@@ -32,8 +32,8 @@ export default function DayToolbarReservationsComponent(props) {
     year: "numeric",
   }).format(props.selectedDay);
   const seatsFilterLabel = props.minSeatsFilter
-    ? `${props.minSeatsFilter}+ couverts`
-    : "Toutes les réservations";
+    ? `Couverts : ${props.minSeatsFilter}+`
+    : "Couverts : tous";
 
   return (
     <div className="flex flex-col gap-2">
@@ -142,7 +142,7 @@ export default function DayToolbarReservationsComponent(props) {
             >
               {(props.seatsFilterOptions || []).map((value) => (
                 <option key={value} value={value}>
-                  {value ? `${value}+ couverts` : "Toutes les réservations"}
+                  {value ? `Couverts : ${value}+` : "Couverts : tous"}
                 </option>
               ))}
             </select>
@@ -160,7 +160,10 @@ export default function DayToolbarReservationsComponent(props) {
             >
               {props.dayStatusTabs.map((s) => (
                 <option key={s} value={s}>
-                  {props.statusTranslations[s]} ({props.dayData.counts[s] || 0})
+                  {s === "All"
+                    ? "Statut : tous"
+                    : `Statut : ${props.statusTranslations[s]}`}{" "}
+                  ({props.dayData.counts[s] || 0})
                 </option>
               ))}
             </select>

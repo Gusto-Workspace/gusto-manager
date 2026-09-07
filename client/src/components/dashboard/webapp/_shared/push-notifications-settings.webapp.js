@@ -137,33 +137,24 @@ export default function PushNotificationsSettingsWebapp({ module }) {
     isUnsupported ||
     isLoading ||
     isSyncing ||
-    Boolean(errorMessage) ||
-    isGranted;
+    Boolean(errorMessage);
 
   return (
     <section className="rounded-3xl border border-darkBlue/10 bg-white/70 p-4 shadow-sm mobile:p-6">
-      <div className="flex items-start gap-3">
-        <div className="inline-flex size-11 shrink-0 items-center justify-center rounded-2xl bg-blue/10 text-blue">
+      <div className="flex items-center justify-between gap-4">
+        <h2 className="flex min-w-0 flex-1 items-center gap-2 text-base font-semibold text-darkBlue">
           {isGranted ? (
-            <CheckCircle2 className="size-5" />
+            <CheckCircle2 className="size-4 shrink-0 opacity-60" />
           ) : status === "disabled" ||
             isDenied ||
             isUnsupported ||
             hasSubscriptionError ? (
-            <BellOff className="size-5" />
+            <BellOff className="size-4 shrink-0 opacity-60" />
           ) : (
-            <BellRing className="size-5" />
+            <BellRing className="size-4 shrink-0 opacity-60" />
           )}
-        </div>
-        <div className="min-w-0 flex-1">
-          <h2 className="text-base font-semibold text-darkBlue">
-            Notifications
-          </h2>
-          <p className="mt-1 text-sm leading-6 text-darkBlue/60">
-            Recevez une alerte sur cet appareil lors de chaque{" "}
-            {notificationLabel}.
-          </p>
-        </div>
+          Notifications
+        </h2>
         <button
           type="button"
           role="switch"
@@ -175,9 +166,8 @@ export default function PushNotificationsSettingsWebapp({ module }) {
           }
           onClick={handleToggleNotifications}
           disabled={isToggleDisabled}
-          className="inline-flex shrink-0 items-center gap-2 text-xs font-semibold text-darkBlue/65 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex shrink-0 items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue/30 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <span>{isGranted ? "Activées" : "Désactivées"}</span>
           <span
             className={`relative inline-flex h-6 w-11 rounded-full transition ${
               isGranted ? "bg-blue" : "bg-darkBlue/15"
@@ -190,6 +180,17 @@ export default function PushNotificationsSettingsWebapp({ module }) {
             />
           </span>
         </button>
+      </div>
+
+      <div className="mt-3">
+        <p className="text-sm leading-6 text-darkBlue/60">
+          Recevez une alerte sur cet appareil lors de chaque {notificationLabel}
+          .
+        </p>
+        <p className="mt-2 text-xs leading-5 text-darkBlue/50">
+          Si aucune alerte n’apparaît, vérifiez également que les notifications
+          de l’application sont autorisées dans les réglages de votre appareil.
+        </p>
       </div>
 
       {showDetails ? (
@@ -222,14 +223,6 @@ export default function PushNotificationsSettingsWebapp({ module }) {
               <TriangleAlert className="mt-0.5 size-4 shrink-0" />
               <p>{errorMessage}</p>
             </div>
-          ) : null}
-
-          {isGranted ? (
-            <p className="mt-3 text-xs leading-5 text-darkBlue/50">
-              Si aucune alerte n’apparaît, vérifiez également que les
-              notifications de l’application sont autorisées dans les réglages
-              de votre appareil.
-            </p>
           ) : null}
         </div>
       ) : null}

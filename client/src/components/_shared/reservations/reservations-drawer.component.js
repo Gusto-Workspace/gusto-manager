@@ -607,9 +607,11 @@ export default function ReservationsDrawerComponent({
             </div>
 
             <button
+              type="button"
               onClick={closeWithAnimation}
-              className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2"
+              className="inline-flex size-10 shrink-0 items-center justify-center rounded-full border border-darkBlue/10 bg-white text-darkBlue/70 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue/30 focus-visible:ring-offset-2 [@media(hover:hover)]:hover:bg-darkBlue/5"
               aria-label={t?.("buttons.close", "Fermer")}
+              title={t?.("buttons.close", "Fermer")}
             >
               <X className="size-4 text-darkBlue/70" />
             </button>
