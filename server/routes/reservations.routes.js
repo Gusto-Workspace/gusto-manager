@@ -1,4 +1,5 @@
 const express = require("express");
+const mongoose = require("mongoose");
 const Stripe = require("stripe");
 const { createHash, randomBytes, randomUUID } = require("crypto");
 const router = express.Router();
@@ -12,6 +13,7 @@ const authenticateToken = require("../middleware/authentificate-token");
 // MODELS
 const RestaurantModel = require("../models/restaurant.model");
 const ReservationModel = require("../models/reservation.model");
+const EmployeeModel = require("../models/employee.model");
 const ReservationDayLockModel = require("../models/reservation-day-lock.model");
 const {
   MANAGER_RESERVATION_LIST_SELECT,
@@ -63,6 +65,12 @@ const {
   minutesFromHHmm,
   minutesFromServiceTime,
 } = require("../services/reservation-service-time.service");
+const {
+  QUICK_SLOT_CLOSURE_SOURCE,
+  QuickSlotClosureError,
+  buildQuickSlotClosureRanges,
+  isDepartureCoveredByRange,
+} = require("../services/reservation-quick-slot-closure.service");
 
 const BANK_HOLD_IMMEDIATE_WINDOW_HOURS = 168; // 7 jours
 
@@ -131,6 +139,57 @@ function sleep(ms) {
 
 function isValidHHmm(value) {
   return /^([01]\d|2[0-3]):([0-5]\d)$/.test(String(value || "").trim());
+}
+
+async function canManageRestaurantReservations(user, restaurant) {
+  if (!user?.id || !restaurant?._id) return false;
+
+  if (user.role === "owner") {
+    return String(restaurant.owner_id) === String(user.id);
+  }
+
+  if (user.role !== "employee") return false;
+
+  return Boolean(
+    await EmployeeModel.exists({
+      _id: user.id,
+      restaurants: restaurant._id,
+      restaurantProfiles: {
+        $elemMatch: {
+          restaurant: restaurant._id,
+          "options.reservations": true,
+        },
+      },
+    }),
+  );
+}
+
+function broadcastReservationSettingsUpdated(restaurantId, restaurant) {
+  broadcastToRestaurant(String(restaurantId), {
+    type: "reservation_settings_updated",
+    restaurantId: String(restaurantId),
+    reservationsSettings: restaurant?.reservationsSettings || {},
+  });
+}
+
+function isBlockedRangeCandidateAlreadyCovered(candidate, range, quickSlot) {
+  if (quickSlot) {
+    return isDepartureCoveredByRange(candidate.startAt, range);
+  }
+
+  const candidateStart = new Date(candidate?.startAt).getTime();
+  const candidateEnd = new Date(candidate?.endAt).getTime();
+  const rangeStart = new Date(range?.startAt).getTime();
+  const rangeEnd = new Date(range?.endAt).getTime();
+
+  return (
+    Number.isFinite(candidateStart) &&
+    Number.isFinite(candidateEnd) &&
+    Number.isFinite(rangeStart) &&
+    Number.isFinite(rangeEnd) &&
+    candidateStart >= rangeStart &&
+    candidateEnd <= rangeEnd
+  );
 }
 
 function normalizeReservationDateKey(value) {
@@ -4451,64 +4510,183 @@ router.post(
   authenticateToken,
   async (req, res) => {
     const restaurantId = req.params.id;
-    const { startAt, endAt, note, allDay } = req.body;
+    const { startAt, endAt, note, allDay, date, times } = req.body || {};
 
     try {
-      if (!startAt || !endAt) {
-        return res
-          .status(400)
-          .json({ message: "startAt and endAt are required" });
-      }
-
-      const start = new Date(startAt);
-      const end = new Date(endAt);
-
-      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-        return res.status(400).json({ message: "Invalid dates" });
-      }
-      if (end <= start) {
-        return res.status(400).json({ message: "endAt must be after startAt" });
-      }
-
-      if (end <= new Date()) {
-        return res.status(400).json({
-          message: "endAt must be in the future",
-        });
-      }
-
       const restaurant = await RestaurantModel.findById(restaurantId);
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found" });
       }
+      if (!(await canManageRestaurantReservations(req.user, restaurant))) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
 
-      // ✅ SAFE INIT (évite crash si reservations/parameters n'existent pas)
-      restaurant.reservationsSettings = restaurant.reservationsSettings || {};
-      restaurant.reservationsSettings.blocked_ranges =
-        restaurant.reservationsSettings.blocked_ranges || [];
-
-      // purge rapide des ranges finies
       const now = new Date();
-      const ranges = restaurant.reservationsSettings.blocked_ranges;
-      restaurant.reservationsSettings.blocked_ranges = ranges.filter(
-        (r) => new Date(r.endAt) > now,
-      );
 
-      restaurant.reservationsSettings.blocked_ranges.push({
-        startAt: start,
-        endAt: end,
-        allDay: Boolean(allDay),
-        note: (note || "").toString(),
-      });
+      const isQuickSlotRequest = Array.isArray(times);
+      let candidates;
 
-      await restaurant.save();
+      if (isQuickSlotRequest) {
+        candidates = buildQuickSlotClosureRanges({
+          restaurant,
+          date,
+          times,
+          note,
+          now,
+        });
+      } else {
+        if (!startAt || !endAt) {
+          return res
+            .status(400)
+            .json({ message: "startAt and endAt are required" });
+        }
+
+        const start = new Date(startAt);
+        const end = new Date(endAt);
+
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+          return res.status(400).json({ message: "Invalid dates" });
+        }
+        if (end <= start) {
+          return res
+            .status(400)
+            .json({ message: "endAt must be after startAt" });
+        }
+        if (end <= now) {
+          return res.status(400).json({
+            message: "endAt must be in the future",
+          });
+        }
+
+        candidates = [
+          {
+            startAt: start,
+            endAt: end,
+            allDay: Boolean(allDay),
+            note: String(note || "")
+              .trim()
+              .slice(0, 500),
+          },
+        ];
+      }
+
+      const created = [];
+      const skipped = [];
+      let pendingCandidates = candidates;
+
+      for (
+        let attempt = 0;
+        attempt < 4 && pendingCandidates.length;
+        attempt += 1
+      ) {
+        const latestRestaurant =
+          attempt === 0
+            ? restaurant
+            : await RestaurantModel.findById(restaurantId).select(
+                "reservationsSettings.blocked_ranges",
+              );
+        const currentRanges = Array.isArray(
+          latestRestaurant?.reservationsSettings?.blocked_ranges,
+        )
+          ? latestRestaurant.reservationsSettings.blocked_ranges
+          : [];
+        const uncoveredCandidates = [];
+
+        pendingCandidates.forEach((candidate) => {
+          const alreadyCovered = currentRanges.some((range) =>
+            isBlockedRangeCandidateAlreadyCovered(
+              candidate,
+              range,
+              isQuickSlotRequest,
+            ),
+          );
+
+          if (alreadyCovered) {
+            skipped.push(candidate.time || null);
+          } else {
+            uncoveredCandidates.push(candidate);
+          }
+        });
+
+        pendingCandidates = uncoveredCandidates;
+        if (!pendingCandidates.length) break;
+
+        const rangesToInsert = pendingCandidates.map((candidate) => ({
+          _id: new mongoose.Types.ObjectId(),
+          startAt: candidate.startAt,
+          endAt: candidate.endAt,
+          allDay: Boolean(candidate.allDay),
+          note: candidate.note || "",
+          ...(candidate.source ? { source: candidate.source } : {}),
+          createdAt: now,
+        }));
+        const noCoverageConditions = pendingCandidates.map((candidate) => ({
+          "reservationsSettings.blocked_ranges": {
+            $not: {
+              $elemMatch: {
+                startAt: { $lte: candidate.startAt },
+                endAt: isQuickSlotRequest
+                  ? { $gt: candidate.startAt }
+                  : { $gte: candidate.endAt },
+              },
+            },
+          },
+        }));
+        const updateResult = await RestaurantModel.updateOne(
+          {
+            _id: restaurantId,
+            ...(noCoverageConditions.length
+              ? { $and: noCoverageConditions }
+              : {}),
+          },
+          {
+            $push: {
+              "reservationsSettings.blocked_ranges": {
+                $each: rangesToInsert,
+              },
+            },
+          },
+        );
+
+        if (updateResult.modifiedCount === 1) {
+          created.push(
+            ...pendingCandidates.map((candidate) => candidate.time || null),
+          );
+          pendingCandidates = [];
+        }
+      }
+
+      if (pendingCandidates.length) {
+        return res.status(409).json({
+          code: "BLOCKED_RANGE_CONFLICT",
+          message:
+            "Les fermetures ont changé sur un autre appareil. Actualisez puis réessayez.",
+        });
+      }
 
       const updatedRestaurant = await fetchRestaurantFull(restaurantId);
+      if (created.length) {
+        broadcastReservationSettingsUpdated(restaurantId, updatedRestaurant);
+      }
 
-      return res.status(201).json({
-        message: "Blocked range added",
+      return res.status(created.length ? 201 : 200).json({
+        message: created.length
+          ? isQuickSlotRequest
+            ? "Quick slot closures added"
+            : "Blocked range added"
+          : "The selected slot is already blocked",
         restaurant: updatedRestaurant,
+        createdCount: created.length,
+        createdTimes: created.filter(Boolean),
+        skippedTimes: skipped.filter(Boolean),
       });
     } catch (e) {
+      if (e instanceof QuickSlotClosureError) {
+        return res.status(e.statusCode).json({
+          code: e.code,
+          message: e.message,
+        });
+      }
       console.error("Error adding blocked range:", e);
       return res.status(500).json({ message: "Internal server error" });
     }
@@ -4529,22 +4707,51 @@ router.delete(
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found" });
       }
+      if (!(await canManageRestaurantReservations(req.user, restaurant))) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
 
-      // ✅ SAFE INIT (évite crash si reservations/parameters n'existent pas)
       restaurant.reservationsSettings = restaurant.reservationsSettings || {};
       restaurant.reservationsSettings.blocked_ranges =
         restaurant.reservationsSettings.blocked_ranges || [];
 
       const ranges = restaurant.reservationsSettings.blocked_ranges;
-      restaurant.reservationsSettings.blocked_ranges = ranges.filter(
-        (r) => String(r._id) !== String(rangeId),
+      const targetRange = ranges.find(
+        (range) => String(range._id) === String(rangeId),
       );
+      if (!targetRange) {
+        return res.status(404).json({ message: "Blocked range not found" });
+      }
 
-      await restaurant.save();
+      if (
+        req.query?.source === QUICK_SLOT_CLOSURE_SOURCE &&
+        targetRange.source !== QUICK_SLOT_CLOSURE_SOURCE
+      ) {
+        return res.status(409).json({
+          code: "ADVANCED_BLOCKED_RANGE",
+          message:
+            "Cette fermeture provient d’une plage avancée et doit être gérée dans les paramètres.",
+        });
+      }
+
+      const deleteResult = await RestaurantModel.updateOne(
+        { _id: restaurantId },
+        {
+          $pull: {
+            "reservationsSettings.blocked_ranges": { _id: targetRange._id },
+          },
+        },
+      );
+      if (deleteResult.modifiedCount !== 1) {
+        return res.status(409).json({
+          message: "Cette fermeture a déjà été modifiée sur un autre appareil.",
+        });
+      }
 
       await triggerWaitlistAutoPromotionForRestaurant(restaurantId);
 
       const updatedRestaurant = await fetchRestaurantFull(restaurantId);
+      broadcastReservationSettingsUpdated(restaurantId, updatedRestaurant);
 
       return res.status(200).json({
         message: "Blocked range removed",

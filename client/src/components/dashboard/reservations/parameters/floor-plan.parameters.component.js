@@ -13,6 +13,7 @@ import {
   Save,
   Check,
   Loader2,
+  LayoutGrid,
 } from "lucide-react";
 
 import dynamic from "next/dynamic";
@@ -480,7 +481,9 @@ export default function FloorPlanParametersComponent({
         ? responseData.reservationParameters
         : null;
     const hasResponseTables = Array.isArray(responseData?.tables);
-    const hasReservationTables = Array.isArray(nextReservationParameters?.tables);
+    const hasReservationTables = Array.isArray(
+      nextReservationParameters?.tables,
+    );
     const nextTables = hasResponseTables
       ? responseData.tables
       : hasReservationTables
@@ -561,7 +564,7 @@ export default function FloorPlanParametersComponent({
 
   const card = "rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm";
   const cardInner = "px-2 py-4 mobile:p-4 midTablet:p-6";
-  const title = "text-base font-semibold text-darkBlue";
+  const title = "flex items-center gap-2 text-base font-semibold text-darkBlue";
   const hint = "text-sm text-darkBlue/60";
   const isActiveRoomDraft =
     draftRoomId && String(draftRoomId) === String(activeRoomId || "");
@@ -787,7 +790,10 @@ export default function FloorPlanParametersComponent({
         <div className={cardInner}>
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <p className={title}>Plan de salle</p>
+              <p className={title}>
+                <LayoutGrid className="size-4 shrink-0 opacity-60" />
+                Plan de salle
+              </p>
               <p className={hint}>
                 Créez les salles (salle principale, terrasse…) puis placer des
                 tables sur le plan.

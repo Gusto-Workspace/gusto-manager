@@ -14,6 +14,7 @@ import CalendarMonthReservationsComponent from "./calendar-month.reservations.co
 import DayToolbarReservationsComponent from "./day-toolbar.reservations.component";
 import DayListReservationsComponent from "./day-list.reservations.component";
 import FloorPlanDrawerReservationsComponent from "./floor-plan-drawer.reservations.component";
+import QuickSlotClosuresReservationsComponent from "./quick-slot-closures.reservations.component";
 import ReservationsPeriodLoadingComponent from "@/components/_shared/reservations/reservations-period-loading.component";
 import {
   RESERVATION_DISPLAY_STATUS_KEYS,
@@ -27,6 +28,7 @@ import {
   RESERVATION_SEATS_FILTER_OPTIONS,
 } from "./reservation-filters.reservations";
 import { countReservationCoversByService } from "@/_assets/utils/reservation-service-time";
+import { buildQuickClosureSlots } from "@/_assets/utils/reservation-quick-slot-closure";
 
 const EMPTY_RESERVATIONS = [];
 
@@ -60,6 +62,7 @@ export default function ListReservationsComponent(props) {
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const [disableDayClick, setDisableDayClick] = useState(false);
   const [isFloorPlanDrawerOpen, setIsFloorPlanDrawerOpen] = useState(false);
+  const [isQuickSlotDrawerOpen, setIsQuickSlotDrawerOpen] = useState(false);
   const [floorPlanMinSeatsFilter, setFloorPlanMinSeatsFilter] = useState(0);
   const [isFloorPlanPinned, setIsFloorPlanPinned] = useState(false);
 
@@ -86,6 +89,16 @@ export default function ListReservationsComponent(props) {
     restaurantData: props.restaurantData,
     setRestaurantData: props.setRestaurantData,
   });
+  const quickClosureSlots = useMemo(
+    () =>
+      selectedDay
+        ? buildQuickClosureSlots(props.restaurantData, selectedDay)
+        : [],
+    [props.restaurantData, selectedDay],
+  );
+  const closedSlotCount = quickClosureSlots.filter(
+    (slot) => slot.closed,
+  ).length;
 
   const closeKeyboardOnly = useCallback(() => {
     setDisableDayClick(true);
@@ -801,11 +814,8 @@ export default function ListReservationsComponent(props) {
             minSeatsFilter={floorPlanMinSeatsFilter}
             setMinSeatsFilter={setFloorPlanMinSeatsFilter}
             seatsFilterOptions={RESERVATION_SEATS_FILTER_OPTIONS}
-            serviceFullActive={serviceClosureState.closed}
-            serviceFullAutomatic={serviceClosureState.automatic}
-            hasCurrentService={Boolean(serviceClosureState.currentService)}
-            serviceFullSaving={serviceFullSaving}
-            onToggleServiceFull={handleToggleServiceFull}
+            onOpenQuickSlotClosures={() => setIsQuickSlotDrawerOpen(true)}
+            closedSlotCount={closedSlotCount}
           />
           {activePeriodReady ? (
             <div
@@ -816,6 +826,14 @@ export default function ListReservationsComponent(props) {
               }
             >
               <div className="min-w-0">
+                <QuickSlotClosuresReservationsComponent
+                  open={isQuickSlotDrawerOpen}
+                  onClose={() => setIsQuickSlotDrawerOpen(false)}
+                  selectedDay={selectedDay}
+                  restaurantData={props.restaurantData}
+                  setRestaurantData={props.setRestaurantData}
+                  slots={quickClosureSlots}
+                />
                 <DayListReservationsComponent
                   selectedDay={selectedDay}
                   dayData={dayData}
