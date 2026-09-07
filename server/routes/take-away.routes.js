@@ -2,6 +2,9 @@ const express = require("express");
 const router = express.Router();
 
 const authenticateToken = require("../middleware/authentificate-token");
+const {
+  userCanAccessRestaurant,
+} = require("../middleware/authorize-restaurant-access");
 const RestaurantModel = require("../models/restaurant.model");
 const TakeAwayOrderModel = require("../models/take-away-order.model");
 const {
@@ -16,35 +19,9 @@ const {
   confirmOrderPayment,
   updateOrderStatus,
   loadRestaurantForTakeAway,
-  cleanupCompletedTakeAwayOrders,
+  constructTakeAwayWebhookEvent,
+  handleTakeAwayStripeWebhookEvent,
 } = require("../services/take-away.service");
-
-function canAccessRestaurant(req, restaurant) {
-  if (!restaurant || !req.user) return false;
-
-  if (req.user.role === "owner") {
-    return (
-      String(restaurant.owner_id?._id || restaurant.owner_id) ===
-      String(req.user.id)
-    );
-  }
-
-  if (req.user.role === "employee") {
-    if (String(req.user.restaurantId || "") !== String(restaurant._id))
-      return false;
-    if (req.user.options?.take_away === true) return true;
-
-    const employeeInRestaurant = restaurant.employees?.find(
-      (emp) => String(emp._id) === String(req.user.id),
-    );
-    const profile = employeeInRestaurant?.restaurantProfiles?.find(
-      (p) => String(p.restaurant) === String(restaurant._id),
-    );
-    return profile?.options?.take_away === true;
-  }
-
-  return false;
-}
 
 async function loadAuthorizedRestaurant(req, res) {
   const restaurant = await loadRestaurantForTakeAway(req.params.restaurantId);
@@ -52,7 +29,11 @@ async function loadAuthorizedRestaurant(req, res) {
     res.status(404).json({ message: "Restaurant not found" });
     return null;
   }
-  if (!canAccessRestaurant(req, restaurant)) {
+  if (
+    !(await userCanAccessRestaurant(req.user, restaurant, {
+      requiredOption: "take_away",
+    }))
+  ) {
     res.status(403).json({ message: "Forbidden" });
     return null;
   }
@@ -61,7 +42,12 @@ async function loadAuthorizedRestaurant(req, res) {
 
 function serializePublicCatalog(restaurant) {
   return (restaurant.takeAwayCatalog || [])
-    .filter((item) => item.active !== false && item.visible !== false)
+    .filter(
+      (item) =>
+        item.active !== false &&
+        item.visible !== false &&
+        item.sourceDeleted !== true,
+    )
     .sort((a, b) => {
       const aOrder = Number(a.sortOrder || 0);
       const bOrder = Number(b.sortOrder || 0);
@@ -97,6 +83,22 @@ function handleError(res, error) {
     message: error?.message || "Internal server error",
   });
 }
+
+router.post("/take-away/stripe/webhook", async (req, res) => {
+  try {
+    const { event, restaurant } = await constructTakeAwayWebhookEvent({
+      rawBody: req.body,
+      signature: req.headers["stripe-signature"],
+    });
+    const result = await handleTakeAwayStripeWebhookEvent({
+      event,
+      restaurant,
+    });
+    return res.status(200).json({ received: true, handled: result.handled });
+  } catch (error) {
+    return handleError(res, error);
+  }
+});
 
 router.get(
   "/restaurants/:restaurantId/take-away/public/catalog",
@@ -145,6 +147,20 @@ router.get(
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found" });
       }
+      const settings = restaurant.takeAwaySettings || {};
+      if (!restaurant.options?.take_away || !settings.enabled) {
+        return res.status(403).json({ message: "Take-away unavailable" });
+      }
+      const mode = String(req.query.mode || "pickup");
+      if (
+        (mode === "pickup" && settings.pickupEnabled === false) ||
+        (mode === "delivery" && settings.deliveryEnabled !== true) ||
+        !["pickup", "delivery"].includes(mode)
+      ) {
+        return res
+          .status(400)
+          .json({ message: "Fulfillment mode unavailable" });
+      }
       const dateKey = String(req.query.date || "").trim();
       const slots = await getAvailableSlots({ restaurant, dateKey });
       return res.status(200).json({ slots });
@@ -164,10 +180,16 @@ router.post(
       }
       const order = await createTakeAwayOrder({
         restaurant,
-        payload: req.body || {},
+        payload: {
+          ...(req.body || {}),
+          idempotencyKey:
+            req.get("Idempotency-Key") || req.body?.idempotencyKey,
+        },
         source: "public",
       });
-      return res.status(201).json({ order });
+      return res
+        .status(order?.$locals?.idempotentReplay ? 200 : 201)
+        .json({ order });
     } catch (error) {
       return handleError(res, error);
     }
@@ -185,6 +207,7 @@ router.post(
       const order = await TakeAwayOrderModel.findOne({
         _id: req.params.orderId,
         restaurant_id: req.params.restaurantId,
+        source: "public",
       });
       if (!order) {
         return res.status(404).json({ message: "Order not found" });
@@ -232,9 +255,14 @@ router.get(
     try {
       const restaurant = await loadAuthorizedRestaurant(req, res);
       if (!restaurant) return;
-      await cleanupCompletedTakeAwayOrders(restaurant);
-
-      const query = { restaurant_id: restaurant._id };
+      const query = {
+        restaurant_id: restaurant._id,
+        $or: [
+          { source: "dashboard" },
+          { paymentMethod: { $ne: "online" } },
+          { paymentStatus: { $in: ["paid", "refunded"] } },
+        ],
+      };
       if (req.query.status && req.query.status !== "all") {
         query.status = req.query.status;
       }
@@ -304,6 +332,32 @@ router.post(
   },
 );
 
+router.get(
+  "/restaurants/:restaurantId/take-away/orders/:orderId",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const restaurant = await loadAuthorizedRestaurant(req, res);
+      if (!restaurant) return;
+      const order = await TakeAwayOrderModel.findOne({
+        _id: req.params.orderId,
+        restaurant_id: restaurant._id,
+        $or: [
+          { source: "dashboard" },
+          { paymentMethod: { $ne: "online" } },
+          { paymentStatus: { $in: ["paid", "refunded"] } },
+        ],
+      });
+      if (!order) {
+        return res.status(404).json({ message: "Order not found" });
+      }
+      return res.status(200).json({ order });
+    } catch (error) {
+      return handleError(res, error);
+    }
+  },
+);
+
 router.patch(
   "/restaurants/:restaurantId/take-away/orders/:orderId/status",
   authenticateToken,
@@ -312,7 +366,7 @@ router.patch(
       const restaurant = await loadAuthorizedRestaurant(req, res);
       if (!restaurant) return;
       const order = await updateOrderStatus({
-        restaurantId: restaurant._id,
+        restaurant,
         orderId: req.params.orderId,
         status: req.body?.status,
       });
@@ -425,6 +479,14 @@ router.patch(
         item,
         normalizeCatalogItemInput({ ...item.toObject(), ...req.body }),
       );
+      if (item.sourceDeleted === true && req.body?.active === true) {
+        item.sourceType = "custom";
+        item.sourceCategoryId = null;
+        item.sourceSubCategoryId = null;
+        item.sourceItemId = null;
+        item.sourceDeleted = false;
+        item.syncedWithSource = false;
+      }
       item.updatedAt = new Date();
       await restaurant.save();
 

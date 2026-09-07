@@ -915,6 +915,7 @@ export default function RestaurantContext() {
       return "reservations";
     if (pathname.startsWith("/dashboard/webapp/gift-cards"))
       return "gift_cards";
+    if (pathname.startsWith("/dashboard/take-away")) return "take_away";
     if (pathname.startsWith("/dashboard/webapp/time-clock")) return "employees";
     return null;
   }

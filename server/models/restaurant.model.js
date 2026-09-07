@@ -381,7 +381,8 @@ const takeAwayCatalogItemSchema = new mongoose.Schema(
     imagePublicId: { type: String, default: "" },
     sortOrder: { type: Number, default: 0 },
     options: { type: [takeAwayOptionSchema], default: [] },
-    syncedWithSource: { type: Boolean, default: true },
+    // Champ legacy conservé pour compatibilité : aucune synchronisation continue.
+    syncedWithSource: { type: Boolean, default: false },
     sourceDeleted: { type: Boolean, default: false },
     importedAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now },

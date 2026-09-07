@@ -265,6 +265,12 @@ export default function TakeAwayCatalogComponent() {
                   >
                     <div className="min-w-0">
                       <p className="font-semibold text-darkBlue">{item.name}</p>
+                      {item.sourceDeleted ? (
+                        <p className="mt-1 text-xs font-semibold text-orange">
+                          Source supprimée. Réactive cet article pour le
+                          conserver comme article indépendant.
+                        </p>
+                      ) : null}
                       {item.description ? (
                         <p className="mt-1 truncate text-xs text-darkBlue/45">
                           {item.description}

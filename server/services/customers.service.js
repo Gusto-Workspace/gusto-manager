@@ -291,12 +291,15 @@ async function onGiftPurchased(customerId, purchaseSubdoc) {
 }
 
 async function onTakeAwayOrderCreated(customerId, order) {
-  if (!customerId) return;
+  if (!customerId || !order?._id) return false;
 
   const now = new Date();
 
-  await CustomerModel.updateOne(
-    { _id: customerId },
+  const result = await CustomerModel.updateOne(
+    {
+      _id: customerId,
+      processedTakeAwayOrderIds: { $ne: order._id },
+    },
     {
       $inc: { "stats.takeAwayOrdersTotal": 1 },
       $set: {
@@ -314,15 +317,22 @@ async function onTakeAwayOrderCreated(customerId, order) {
               status: order.status,
               paymentStatus: order.paymentStatus,
               total: order.total,
+              itemCount: (order.items || []).reduce(
+                (sum, item) => sum + Number(item?.quantity || 0),
+                0,
+              ),
             },
           ],
           $slice: -30,
         },
       },
+      $addToSet: { processedTakeAwayOrderIds: order._id },
     },
   );
 
-  await recomputeCustomerTagsForId(customerId, now);
+  const modified = Number(result.modifiedCount ?? result.nModified ?? 0);
+  if (modified) await recomputeCustomerTagsForId(customerId, now);
+  return modified === 1;
 }
 
 async function onTakeAwayOrderStatusChanged(
@@ -331,7 +341,7 @@ async function onTakeAwayOrderStatusChanged(
   prevStatus,
   nextStatus,
 ) {
-  if (!customerId) return;
+  if (!customerId || !order?._id) return false;
 
   const inc = {};
   if (
@@ -343,6 +353,7 @@ async function onTakeAwayOrderStatusChanged(
   }
 
   const now = new Date();
+  const eventKey = `${String(order._id)}:${prevStatus}:${nextStatus}`;
   const update = {
     $set: { lastActivityAt: now },
     $push: {
@@ -356,6 +367,10 @@ async function onTakeAwayOrderStatusChanged(
             status: nextStatus,
             paymentStatus: order.paymentStatus,
             total: order.total,
+            itemCount: (order.items || []).reduce(
+              (sum, item) => sum + Number(item?.quantity || 0),
+              0,
+            ),
           },
         ],
         $slice: -30,
@@ -364,9 +379,18 @@ async function onTakeAwayOrderStatusChanged(
   };
 
   if (Object.keys(inc).length) update.$inc = inc;
+  update.$addToSet = { processedTakeAwayStatusEvents: eventKey };
 
-  await CustomerModel.updateOne({ _id: customerId }, update);
-  await recomputeCustomerTagsForId(customerId, now);
+  const result = await CustomerModel.updateOne(
+    {
+      _id: customerId,
+      processedTakeAwayStatusEvents: { $ne: eventKey },
+    },
+    update,
+  );
+  const modified = Number(result.modifiedCount ?? result.nModified ?? 0);
+  if (modified) await recomputeCustomerTagsForId(customerId, now);
+  return modified === 1;
 }
 
 module.exports = {

@@ -974,10 +974,12 @@ export default function DetailsDrawerCustomersComponent({
                 <div className="flex flex-col gap-2">
                   {sortedTakeAwayOrders.length ? (
                     sortedTakeAwayOrders.map((order) => {
-                      const count = (order.items || []).reduce(
-                        (sum, item) => sum + Number(item.quantity || 0),
-                        0,
-                      );
+                      const count =
+                        Number(order.itemCount || 0) ||
+                        (order.items || []).reduce(
+                          (sum, item) => sum + Number(item.quantity || 0),
+                          0,
+                        );
                       return (
                         <div
                           key={String(order._id)}

@@ -51,6 +51,8 @@ export default function ListTakeAwayComponent() {
   const restaurantId = restaurant?._id;
   const selectedDayKey =
     typeof router.query.day === "string" ? router.query.day : null;
+  const focusedOrderId =
+    typeof router.query.orderId === "string" ? router.query.orderId : null;
   const token =
     typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
@@ -115,6 +117,57 @@ export default function ListTakeAwayComponent() {
     setCurrentMonth(startOfMonth(nextDay));
     setSelectedDay(nextDay);
   }, [selectedDayKey]);
+
+  useEffect(() => {
+    if (!router.isReady || !restaurantId || !token || !focusedOrderId) return;
+    let cancelled = false;
+
+    request({
+      method: "get",
+      url: `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/take-away/orders/${focusedOrderId}`,
+    })
+      .then(({ data }) => {
+        if (cancelled || !data?.order) return;
+        const order = data.order;
+        const orderDay = new Date(order.scheduledFor);
+        if (!Number.isNaN(orderDay.getTime())) {
+          setCurrentMonth(startOfMonth(orderDay));
+          setSelectedDay(orderDay);
+        }
+        setOrders((current) => {
+          const withoutOrder = current.filter(
+            (entry) => String(entry._id) !== String(order._id),
+          );
+          return [order, ...withoutOrder];
+        });
+        setSelectedOrder(order);
+        setDrawerError("");
+        setDetailsOpen(true);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error(error);
+        setDetailsOpen(false);
+        setSelectedOrder(null);
+        setMessage(
+          error?.response?.status === 403
+            ? "Vous n’avez pas accès à cette commande."
+            : "Commande introuvable ou supprimée.",
+        );
+        const nextQuery = { ...router.query };
+        delete nextQuery.orderId;
+        delete nextQuery.notificationId;
+        router.replace(
+          { pathname: router.pathname, query: nextQuery },
+          undefined,
+          { shallow: true, scroll: false },
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [focusedOrderId, restaurantId, router.isReady, token]);
 
   useEffect(() => {
     if (!restaurantId) return undefined;
@@ -230,6 +283,19 @@ export default function ListTakeAwayComponent() {
     setSelectedOrder(order);
     setDrawerError("");
     setDetailsOpen(true);
+  }
+
+  function closeDetails() {
+    setDetailsOpen(false);
+    if (!focusedOrderId) return;
+    const nextQuery = { ...router.query };
+    delete nextQuery.orderId;
+    delete nextQuery.notificationId;
+    router.replace(
+      { pathname: router.pathname, query: nextQuery },
+      undefined,
+      { shallow: true, scroll: false },
+    );
   }
 
   const monthYearLabel = capitalizeFirst(
@@ -501,7 +567,7 @@ export default function ListTakeAwayComponent() {
       <TakeAwayOrderDrawerComponent
         open={detailsOpen}
         order={selectedOrder}
-        onClose={() => setDetailsOpen(false)}
+        onClose={closeDetails}
         onAction={updateOrderStatus}
         loading={loading}
         errorMessage={drawerError}

@@ -4,9 +4,10 @@ const router = express.Router();
 
 const PushSubscriptionModel = require("../models/push-subscription.model");
 const RestaurantModel = require("../models/restaurant.model");
+const EmployeeModel = require("../models/employee.model");
 const authenticateToken = require("../middleware/authentificate-token");
 
-const PUSH_MODULES = new Set(["reservations", "gift_cards"]);
+const PUSH_MODULES = new Set(["reservations", "gift_cards", "take_away"]);
 
 function hashEndpoint(endpoint) {
   return crypto
@@ -16,7 +17,7 @@ function hashEndpoint(endpoint) {
     .slice(0, 12);
 }
 
-async function userCanAccessRestaurant(user, restaurantId) {
+async function userCanAccessRestaurant(user, restaurantId, module) {
   const accessFilter =
     user?.role === "owner"
       ? { _id: restaurantId, owner_id: user.id }
@@ -25,7 +26,27 @@ async function userCanAccessRestaurant(user, restaurantId) {
         : null;
 
   if (!accessFilter) return false;
-  return Boolean(await RestaurantModel.exists(accessFilter));
+  const restaurant = await RestaurantModel.findOne(accessFilter).select(
+    "_id options.take_away",
+  );
+  if (!restaurant) return false;
+
+  if (module !== "take_away") return true;
+  if (restaurant.options?.take_away !== true) return false;
+  if (user.role === "owner") return true;
+
+  return Boolean(
+    await EmployeeModel.exists({
+      _id: user.id,
+      restaurants: restaurantId,
+      restaurantProfiles: {
+        $elemMatch: {
+          restaurant: restaurantId,
+          "options.take_away": true,
+        },
+      },
+    }),
+  );
 }
 
 router.post("/push/subscribe", authenticateToken, async (req, res) => {
@@ -46,7 +67,7 @@ router.post("/push/subscribe", authenticateToken, async (req, res) => {
       return res.status(400).json({ message: "Invalid module" });
     }
 
-    if (!(await userCanAccessRestaurant(req.user, restaurantId))) {
+    if (!(await userCanAccessRestaurant(req.user, restaurantId, module))) {
       return res.status(403).json({ message: "Restaurant mismatch" });
     }
 
@@ -87,7 +108,7 @@ router.post("/push/unsubscribe", authenticateToken, async (req, res) => {
       return res.status(400).json({ message: "Invalid module" });
     }
 
-    if (!(await userCanAccessRestaurant(req.user, restaurantId))) {
+    if (!(await userCanAccessRestaurant(req.user, restaurantId, module))) {
       return res.status(403).json({ message: "Restaurant mismatch" });
     }
 
@@ -103,3 +124,4 @@ router.post("/push/unsubscribe", authenticateToken, async (req, res) => {
 });
 
 module.exports = router;
+module.exports.userCanAccessRestaurant = userCanAccessRestaurant;

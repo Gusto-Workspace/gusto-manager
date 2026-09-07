@@ -13,6 +13,7 @@ import {
 import { GlobalContext } from "@/contexts/global.context";
 import HoursRestaurantComponent from "@/components/dashboard/restaurant/hours.restaurant.component";
 import TakeAwayHeaderComponent from "./header.take-away.component";
+import PushNotificationsSettingsWebapp from "@/components/dashboard/webapp/_shared/push-notifications-settings.webapp";
 import { EmptyState, FormField, ToggleField } from "./form.take-away.component";
 import {
   buildDeliveryZonesPayload,
@@ -893,6 +894,8 @@ export default function TakeAwayParametersComponent() {
             Ajouter une zone
           </button>
         </SectionCard>
+
+        <PushNotificationsSettingsWebapp module="take_away" />
 
         {paymentRequiresStripe && !stripeReady ? (
           <div className="rounded-xl border border-orange/20 bg-orange/10 px-4 py-3 text-sm font-semibold text-orange">

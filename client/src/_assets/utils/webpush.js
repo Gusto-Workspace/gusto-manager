@@ -111,6 +111,12 @@ async function parseResponseBody(response) {
 }
 
 function getPushServiceWorkerConfig(module) {
+  if (module === "take_away") {
+    return {
+      swUrl: "/sw-take-away.js?v=2026-09-07-take-away-1",
+      scope: "/dashboard/take-away",
+    };
+  }
   const isReservations = module === "reservations";
   const swVersion = "2026-09-01-notification-settings-1";
 

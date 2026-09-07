@@ -7,6 +7,7 @@ import {
   CalendarClock,
   CalendarCheck2,
   Gift,
+  ShoppingBag,
   Users,
   MessageSquareText,
   Info,
@@ -73,6 +74,7 @@ function titleForNotification(n) {
   }
 
   if (n?.module === "gift_cards") return "Carte cadeau vendue";
+  if (n?.module === "take_away") return "Nouvelle commande à emporter";
   if (n?.module === "employees") return "Demande de congés";
   if (n?.module === "messages") return "Message";
 
@@ -88,6 +90,7 @@ function IconForNotification({ n }) {
   }
 
   if (n?.module === "gift_cards") return <Gift className="size-4" />;
+  if (n?.module === "take_away") return <ShoppingBag className="size-4" />;
   if (n?.module === "employees") return <Users className="size-4" />;
   if (n?.module === "messages") return <MessageSquareText className="size-4" />;
 

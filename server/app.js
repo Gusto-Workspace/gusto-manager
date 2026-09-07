@@ -7,6 +7,7 @@ require("./services/cron-job/reservation-bank-hold-expiration.service");
 require("./services/cron-job/reservation-lifecycle.service");
 require("./services/cron-job/gift-card-lifecycle.service");
 require("./services/cron-job/gift-card-fulfillment.service");
+require("./services/cron-job/take-away-lifecycle.service");
 const express = require("express");
 const http = require("http");
 const cors = require("cors");
@@ -25,6 +26,10 @@ app.set("trust proxy", 1);
 
 // JSON
 app.use("/api/stripe/wh", express.raw({ type: "application/json" }));
+app.use(
+  "/api/take-away/stripe/webhook",
+  express.raw({ type: "application/json", limit: "100kb" }),
+);
 app.use(express.json());
 
 // MONGOOSE
@@ -56,6 +61,8 @@ app.use(
       "x-gusto-signature",
       "X-Request-Id",
       "X-Correlation-Id",
+      "Idempotency-Key",
+      "X-Take-Away-Token",
     ],
     exposedHeaders: ["X-Request-Id"],
   }),

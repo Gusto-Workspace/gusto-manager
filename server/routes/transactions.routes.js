@@ -1,9 +1,15 @@
 const express = require("express");
 const router = express.Router();
 
+const authenticateToken = require("../middleware/authentificate-token");
+const {
+  authorizeRestaurantAccess,
+} = require("../middleware/authorize-restaurant-access");
+
 // MODELS
 const RestaurantModel = require("../models/restaurant.model");
 const ReservationModel = require("../models/reservation.model");
+const TakeAwayOrderModel = require("../models/take-away-order.model");
 
 // CRYPTO
 const { decryptApiKey } = require("../services/encryption.service");
@@ -58,6 +64,16 @@ function isStripeGiftCardTransaction(charge, expectedRestaurantId = "") {
     !expectedRestaurantId ||
     !metadataRestaurantId ||
     metadataRestaurantId === String(expectedRestaurantId)
+  );
+}
+
+function isStripeTakeAwayTransaction(charge, expectedRestaurantId = "") {
+  if (getStripeTransactionType(charge) !== "takeaway_order") return false;
+  const metadataRestaurantId = getStripeMetadataValue(charge, "restaurantId");
+  return (
+    !expectedRestaurantId ||
+    (metadataRestaurantId &&
+      metadataRestaurantId === String(expectedRestaurantId))
   );
 }
 
@@ -136,6 +152,13 @@ function choosePreferredTransaction(existingTransaction, incomingTransaction) {
   }
 
   if (!existingTransaction?.bankHold && incomingTransaction?.bankHold) {
+    return incomingTransaction;
+  }
+
+  if (
+    !existingTransaction?.takeAwayOrder &&
+    incomingTransaction?.takeAwayOrder
+  ) {
     return incomingTransaction;
   }
 
@@ -274,6 +297,65 @@ async function buildReservationPaymentMaps({
     byPaymentIntent,
     byReservationId,
   };
+}
+
+function normalizeTakeAwayOrderForTransaction(order) {
+  return {
+    orderId: String(order?._id || "").trim(),
+    orderNumber: String(order?.orderNumber || "").trim(),
+    customerFirstName: String(order?.customerFirstName || "").trim(),
+    customerLastName: String(order?.customerLastName || "").trim(),
+    customerEmail: String(order?.customerEmail || "").trim(),
+    customerPhone: String(order?.customerPhone || "").trim(),
+    fulfillmentMode: String(order?.fulfillmentMode || "").trim(),
+    scheduledFor: order?.scheduledFor || null,
+    orderStatus: String(order?.status || "").trim(),
+    paymentStatus: String(order?.paymentStatus || "").trim(),
+    total: Number(order?.total || 0),
+    refundedAt: order?.refundedAt || null,
+    stripeRefundId: String(order?.stripeRefundId || "").trim(),
+  };
+}
+
+async function buildTakeAwayPaymentMaps({
+  restaurantId,
+  paymentIntentIds = [],
+  orderIds = [],
+}) {
+  const filters = [];
+  const normalizedPaymentIntentIds = Array.from(
+    new Set(paymentIntentIds.map((value) => String(value || "").trim()).filter(Boolean)),
+  );
+  const normalizedOrderIds = Array.from(
+    new Set(orderIds.map((value) => String(value || "").trim()).filter(Boolean)),
+  );
+  if (normalizedPaymentIntentIds.length) {
+    filters.push({ stripePaymentIntentId: { $in: normalizedPaymentIntentIds } });
+  }
+  if (normalizedOrderIds.length) {
+    filters.push({ _id: { $in: normalizedOrderIds } });
+  }
+  if (!filters.length) {
+    return { byPaymentIntent: new Map(), byOrderId: new Map() };
+  }
+
+  const orders = await TakeAwayOrderModel.find({
+    restaurant_id: restaurantId,
+    $or: filters,
+  })
+    .select(
+      "orderNumber customerFirstName customerLastName customerEmail customerPhone fulfillmentMode scheduledFor status paymentStatus total refundedAt stripeRefundId stripePaymentIntentId",
+    )
+    .lean();
+  const byPaymentIntent = new Map();
+  const byOrderId = new Map();
+  for (const order of orders) {
+    const normalized = normalizeTakeAwayOrderForTransaction(order);
+    const paymentIntentId = String(order?.stripePaymentIntentId || "").trim();
+    if (paymentIntentId) byPaymentIntent.set(paymentIntentId, normalized);
+    if (normalized.orderId) byOrderId.set(normalized.orderId, normalized);
+  }
+  return { byPaymentIntent, byOrderId };
 }
 
 async function retrieveChargeFromPaymentIntent({
@@ -555,6 +637,8 @@ function formatChargeForDashboard({
   giftPurchaseByPaymentIntent = new Map(),
   reservationByPaymentIntent = new Map(),
   reservationById = new Map(),
+  takeAwayByPaymentIntent = new Map(),
+  takeAwayByOrderId = new Map(),
   expectedRestaurantId = "",
 }) {
   const balanceTx = balanceTransaction || charge.balance_transaction;
@@ -563,6 +647,10 @@ function formatChargeForDashboard({
   const stripeTransactionType = getStripeTransactionType(charge);
   const isBankHoldTransaction = isReservationBankHoldTransaction(charge);
   const isGiftCardTransaction = isStripeGiftCardTransaction(
+    charge,
+    expectedRestaurantId,
+  );
+  const isTakeAwayTransaction = isStripeTakeAwayTransaction(
     charge,
     expectedRestaurantId,
   );
@@ -578,12 +666,19 @@ function formatChargeForDashboard({
     matchedReservation,
     metadataReservation,
   );
+  const takeAwayOrderId = getStripeMetadataValue(charge, "orderId");
+  const takeAwayOrder =
+    takeAwayByPaymentIntent.get(paymentIntentId) ||
+    takeAwayByOrderId.get(takeAwayOrderId) ||
+    null;
 
   if (
     !giftPurchase &&
     !isGiftCardTransaction &&
     !isBankHoldTransaction &&
-    !resolvedReservation
+    !resolvedReservation &&
+    !isTakeAwayTransaction &&
+    !takeAwayOrder
   ) {
     return null;
   }
@@ -636,6 +731,38 @@ function formatChargeForDashboard({
     };
   }
 
+  if (isTakeAwayTransaction || takeAwayOrder) {
+    const customerName = buildFullName(
+      takeAwayOrder?.customerFirstName,
+      takeAwayOrder?.customerLastName,
+    );
+    const databaseRefundedAt = takeAwayOrder?.refundedAt
+      ? Math.floor(new Date(takeAwayOrder.refundedAt).getTime() / 1000)
+      : null;
+    const orderNumber =
+      takeAwayOrder?.orderNumber ||
+      getStripeMetadataValue(charge, "orderNumber");
+
+    return {
+      ...commonPayload,
+      type: "take_away_order",
+      customer: customerName || fallbackCustomerLabel,
+      orderNumber,
+      refunded:
+        commonPayload.refunded || takeAwayOrder?.paymentStatus === "refunded",
+      refundedAt: commonPayload.refundedAt || databaseRefundedAt,
+      purchaseCode: "",
+      giftPurchase: null,
+      reservation: null,
+      bankHold: null,
+      takeAwayOrder: {
+        ...(takeAwayOrder || {}),
+        orderId: takeAwayOrder?.orderId || takeAwayOrderId,
+        orderNumber,
+      },
+    };
+  }
+
   const reservationCustomerName = buildFullName(
     resolvedReservation?.customerFirstName,
     resolvedReservation?.customerLastName,
@@ -684,15 +811,30 @@ async function buildChargeFormattingContext({
   const reservationIds = charges
     .map((charge) => getStripeReservationId(charge))
     .filter(Boolean);
+  const takeAwayOrderIds = charges
+    .map((charge) => getStripeMetadataValue(charge, "orderId"))
+    .filter(Boolean);
+
+  const [reservationMaps, takeAwayMaps] = await Promise.all([
+    buildReservationPaymentMaps({
+      restaurantId,
+      paymentIntentIds,
+      reservationIds,
+    }),
+    buildTakeAwayPaymentMaps({
+      restaurantId,
+      paymentIntentIds,
+      orderIds: takeAwayOrderIds,
+    }),
+  ]);
 
   return {
     giftPurchaseByPaymentIntent: buildGiftPurchaseMap(purchasesGiftCards),
     expectedRestaurantId: String(restaurantId || ""),
-    ...(await buildReservationPaymentMaps({
-      restaurantId,
-      paymentIntentIds,
-      reservationIds,
-    })),
+    reservationByPaymentIntent: reservationMaps.byPaymentIntent,
+    reservationById: reservationMaps.byReservationId,
+    takeAwayByPaymentIntent: takeAwayMaps.byPaymentIntent,
+    takeAwayByOrderId: takeAwayMaps.byOrderId,
   };
 }
 
@@ -922,7 +1064,7 @@ router.get("/owner/restaurants/:id/payments/search", async (req, res) => {
     // 3) Filtrer sur le nom client réellement affiché
     const lowerQuery = query.toLowerCase();
     const charges = allCharges.filter((charge) =>
-      String(charge?.customer || "")
+      `${charge?.customer || ""} ${charge?.orderNumber || ""}`
         .toLowerCase()
         .includes(lowerQuery),
     );
@@ -1171,76 +1313,88 @@ router.get(
 );
 
 // Rembourser un paiement
-router.post("/owner/restaurants/:id/payments/refund", async (req, res) => {
-  const { id } = req.params; // restaurant ID
-  const { paymentId } = req.body; // ID du paiement (charge.id)
+router.post(
+  "/owner/restaurants/:id/payments/refund",
+  authenticateToken,
+  authorizeRestaurantAccess({ paramName: "id", ownerOnly: true }),
+  async (req, res) => {
+    const { id } = req.params; // restaurant ID
+    const { paymentId } = req.body; // ID du paiement (charge.id)
 
-  try {
-    const restaurant = await RestaurantModel.findById(id).select(
-      "stripeSecretKey purchasesGiftCards giftCardSold",
-    );
-    if (!restaurant || !restaurant.stripeSecretKey) {
+    if (!/^ch_[A-Za-z0-9]+$/.test(String(paymentId || ""))) {
       return res
-        .status(404)
-        .json({ message: "Clé Stripe introuvable pour ce restaurant." });
+        .status(400)
+        .json({ message: "Identifiant de paiement invalide." });
     }
 
-    const stripeInstance = require("stripe")(
-      decryptApiKey(restaurant.stripeSecretKey),
-    );
-
-    const charge = await stripeInstance.charges.retrieve(paymentId);
-    const paymentIntentId = getStripePaymentIntentId(charge?.payment_intent);
-    const giftPurchaseByPaymentIntent = buildGiftPurchaseMap(
-      restaurant?.purchasesGiftCards,
-    );
-    const refundedGiftPurchase =
-      giftPurchaseByPaymentIntent.get(paymentIntentId) || null;
-
-    // On crée le remboursement via Stripe
-    const refund = await stripeInstance.refunds.create({
-      charge: paymentId,
-    });
-
-    if (refundedGiftPurchase) {
-      // 🔁 MAJ stats Stripe cartes cadeaux
-      if (!restaurant.giftCardSold) {
-        restaurant.giftCardSold = { totalSold: 0, totalRefunded: 0 };
+    try {
+      const restaurant = await RestaurantModel.findById(id).select(
+        "stripeSecretKey purchasesGiftCards giftCardSold",
+      );
+      if (!restaurant || !restaurant.stripeSecretKey) {
+        return res
+          .status(404)
+          .json({ message: "Clé Stripe introuvable pour ce restaurant." });
       }
-      if (restaurant.giftCardSold.totalSold > 0) {
-        restaurant.giftCardSold.totalSold -= 1;
+
+      const stripeInstance = require("stripe")(
+        decryptApiKey(restaurant.stripeSecretKey),
+      );
+
+      const charge = await stripeInstance.charges.retrieve(paymentId);
+      const paymentIntentId = getStripePaymentIntentId(charge?.payment_intent);
+      const giftPurchaseByPaymentIntent = buildGiftPurchaseMap(
+        restaurant?.purchasesGiftCards,
+      );
+      const refundedGiftPurchase =
+        giftPurchaseByPaymentIntent.get(paymentIntentId) || null;
+
+      // On crée le remboursement via Stripe
+      const refund = await stripeInstance.refunds.create({
+        charge: paymentId,
+      });
+
+      if (refundedGiftPurchase) {
+        // 🔁 MAJ stats Stripe cartes cadeaux
+        if (!restaurant.giftCardSold) {
+          restaurant.giftCardSold = { totalSold: 0, totalRefunded: 0 };
+        }
+        if (restaurant.giftCardSold.totalSold > 0) {
+          restaurant.giftCardSold.totalSold -= 1;
+        }
+        restaurant.giftCardSold.totalRefunded += 1;
       }
-      restaurant.giftCardSold.totalRefunded += 1;
-    }
 
-    if (refundedGiftPurchase) {
-      // 🔔 SSE: remboursement effectué + stats à jour
-      await restaurant.save();
+      if (refundedGiftPurchase) {
+        // 🔔 SSE: remboursement effectué + stats à jour
+        await restaurant.save();
 
-      broadcastToRestaurant(String(restaurant._id), {
-        type: "giftcard_refunded",
-        paymentId,
-        giftCardStats: restaurant.giftCardSold,
+        broadcastToRestaurant(String(restaurant._id), {
+          type: "giftcard_refunded",
+          paymentId,
+          giftCardStats: restaurant.giftCardSold,
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: "Remboursement effectué avec succès",
+        transactionType: refundedGiftPurchase
+          ? "gift_card_purchase"
+          : "bank_hold_capture",
+        refundedAt: refund?.created || null,
+        refund,
+      });
+    } catch (error) {
+      console.error("Erreur lors du remboursement :", error);
+      return res.status(500).json({
+        success: false,
+        message: "Erreur interne lors du remboursement",
+        error: error?.message || error,
       });
     }
-
-    return res.status(200).json({
-      success: true,
-      message: "Remboursement effectué avec succès",
-      transactionType: refundedGiftPurchase
-        ? "gift_card_purchase"
-        : "bank_hold_capture",
-      refundedAt: refund?.created || null,
-      refund,
-    });
-  } catch (error) {
-    console.error("Erreur lors du remboursement :", error);
-    return res.status(500).json({
-      success: false,
-      message: "Erreur interne lors du remboursement",
-      error: error?.message || error,
-    });
-  }
-});
+  },
+);
 
 module.exports = router;
+module.exports.formatChargeForDashboard = formatChargeForDashboard;

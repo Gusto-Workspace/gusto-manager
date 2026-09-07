@@ -2,9 +2,18 @@ const express = require("express");
 const router = express.Router();
 
 const authenticateToken = require("../middleware/authentificate-token");
+const {
+  authorizeRestaurantAccess,
+} = require("../middleware/authorize-restaurant-access");
 const NotificationModel = require("../models/notification.model");
 
 const { broadcastToRestaurant } = require("../services/sse-bus.service");
+
+router.use(
+  "/restaurants/:restaurantId/notifications",
+  authenticateToken,
+  authorizeRestaurantAccess({ paramName: "restaurantId" }),
+);
 
 // LIST (avec pagination simple)
 router.get(

@@ -13,6 +13,8 @@ import {
   ReceiptText,
   RotateCcw,
   Wallet,
+  ShoppingBag,
+  Bike,
 } from "lucide-react";
 
 const CLOSE_MS = 280;
@@ -59,6 +61,13 @@ function formatCurrency(amount, currency = "eur") {
 }
 
 function getTransactionTypeUi(transaction, t) {
+  if (transaction?.type === "take_away_order") {
+    return {
+      icon: ShoppingBag,
+      label: "Vente à emporter",
+      cls: "bg-green/10 text-green border-green/30",
+    };
+  }
   if (transaction?.type === "gift_card_purchase") {
     return {
       icon: Gift,
@@ -133,6 +142,18 @@ function DetailRow({ icon: Icon, label, value, mono = false }) {
         </p>
       </div>
     </div>
+  );
+}
+
+function getTakeAwayPaymentStatusLabel(status) {
+  return (
+    {
+      pending: "En attente",
+      paid: "Payé",
+      failed: "Échoué",
+      refunded: "Remboursé",
+      not_required: "Paiement sur place",
+    }[status] || status || "-"
   );
 }
 
@@ -265,6 +286,7 @@ export default function PaymentsDrawerDashboardComponent({
     Boolean(transaction) &&
     !transaction?.refunded &&
     transaction?.status === "succeeded" &&
+    transaction?.type !== "take_away_order" &&
     !refundLoading;
 
   if (!open || !transaction) return null;
@@ -576,6 +598,53 @@ export default function PaymentsDrawerDashboardComponent({
                   icon={Phone}
                   label={t?.("payments.phone", "Téléphone")}
                   value={transaction.reservation.customerPhone || "-"}
+                />
+              </Section>
+            ) : null}
+
+            {transaction?.takeAwayOrder ? (
+              <Section title="Vente à emporter">
+                <DetailRow
+                  icon={ShoppingBag}
+                  label="Numéro de commande"
+                  value={transaction.takeAwayOrder.orderNumber || "-"}
+                  mono
+                />
+                <DetailRow
+                  icon={Calendar}
+                  label="Date prévue"
+                  value={formatDateTime(transaction.takeAwayOrder.scheduledFor)}
+                />
+                <DetailRow
+                  icon={Bike}
+                  label="Mode"
+                  value={
+                    transaction.takeAwayOrder.fulfillmentMode === "delivery"
+                      ? "Livraison"
+                      : "Retrait"
+                  }
+                />
+                <DetailRow
+                  icon={CreditCard}
+                  label="Statut du paiement"
+                  value={getTakeAwayPaymentStatusLabel(
+                    transaction.takeAwayOrder.paymentStatus,
+                  )}
+                />
+                <DetailRow
+                  icon={User}
+                  label="Client"
+                  value={transaction.customer}
+                />
+                <DetailRow
+                  icon={Mail}
+                  label="Email"
+                  value={transaction.takeAwayOrder.customerEmail || "-"}
+                />
+                <DetailRow
+                  icon={Phone}
+                  label="Téléphone"
+                  value={transaction.takeAwayOrder.customerPhone || "-"}
                 />
               </Section>
             ) : null}

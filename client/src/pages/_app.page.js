@@ -121,6 +121,10 @@ function WebAppNotificationBadgeSync() {
       return "gift_cards";
     }
 
+    if (pathname.startsWith("/dashboard/take-away")) {
+      return "take_away";
+    }
+
     return null;
   }, [router.pathname]);
 
@@ -173,6 +177,9 @@ function WebAppPushSubscriptionSync() {
     }
     if (pathname.startsWith("/dashboard/webapp/gift-cards")) {
       return "gift_cards";
+    }
+    if (pathname.startsWith("/dashboard/take-away")) {
+      return "take_away";
     }
     return null;
   }, [router.pathname]);

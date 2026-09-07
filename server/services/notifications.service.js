@@ -208,6 +208,7 @@ function buildNotificationContent({ type, data }) {
         title: "Nouvelle commande à emporter",
         message: `${name || "Client"} • ${mode}${total ? ` • ${total}` : ""}`,
         link: buildPath("/dashboard/take-away", {
+          day: toDateKey(data?.scheduledFor),
           orderId: data?._id || data?.orderId || null,
         }),
       };
@@ -242,6 +243,7 @@ function buildPushLink({
 
   if (module === "take_away") {
     return buildPath("/dashboard/take-away", {
+      day: toDateKey(data?.scheduledFor),
       orderId: data?._id || data?.orderId || null,
       notificationId,
     });
@@ -294,6 +296,7 @@ function buildNotificationMeta({ type, data }) {
         fulfillmentMode: data?.fulfillmentMode || null,
         status: data?.status || null,
         paymentStatus: data?.paymentStatus || null,
+        scheduledFor: data?.scheduledFor || null,
         total: data?.total ?? null,
       };
 
@@ -385,4 +388,9 @@ async function createAndBroadcastNotification({
   return notif;
 }
 
-module.exports = { createAndBroadcastNotification };
+module.exports = {
+  createAndBroadcastNotification,
+  buildNotificationContent,
+  buildPushLink,
+  buildNotificationMeta,
+};

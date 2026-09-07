@@ -5,12 +5,23 @@ const mongoose = require("mongoose");
 
 // MIDDLEWARE
 const authenticateToken = require("../middleware/authentificate-token");
+const {
+  authorizeRestaurantAccess,
+} = require("../middleware/authorize-restaurant-access");
 
 // MODELS
 const RestaurantModel = require("../models/restaurant.model");
 const CustomerModel = require("../models/customer.model");
 const ReservationModel = require("../models/reservation.model");
-const TakeAwayOrderModel = require("../models/take-away-order.model");
+
+router.use(
+  "/restaurants/:id/customers",
+  authenticateToken,
+  authorizeRestaurantAccess({
+    paramName: "id",
+    requiredOption: "customers",
+  }),
+);
 
 /* ---------------------------------------------------------
    Helpers
@@ -132,6 +143,49 @@ function pickReservationHistoryForCustomer(customerDoc, page, limit) {
   const items = filtered.slice(start, start + limit);
 
   return { items, page: safePage, totalPages, total };
+}
+
+function pickTakeAwayHistoryForCustomer(customerDoc, page, limit) {
+  const list = Array.isArray(customerDoc?.lastTakeAwayOrders)
+    ? customerDoc.lastTakeAwayOrders
+    : [];
+  const seen = new Set();
+  const filtered = list
+    .slice()
+    .reverse()
+    .reduce((items, item) => {
+      const orderId = String(item?.orderId || item?._id || "");
+      if (orderId && seen.has(orderId)) return items;
+      if (orderId) seen.add(orderId);
+      items.push({
+        _id: item?.orderId || item?._id,
+        orderId: item?.orderId || item?._id,
+        orderNumber: item?.orderNumber || "",
+        fulfillmentMode: item?.fulfillmentMode || "pickup",
+        scheduledFor: item?.scheduledFor || null,
+        status: item?.status || "",
+        paymentStatus: item?.paymentStatus || "",
+        total: Number(item?.total || 0),
+        itemCount: Number(item?.itemCount || 0),
+      });
+      return items;
+    }, [])
+    .sort(
+      (a, b) =>
+        new Date(b?.scheduledFor || 0).getTime() -
+        new Date(a?.scheduledFor || 0).getTime(),
+    );
+
+  const total = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const start = (safePage - 1) * limit;
+  return {
+    items: filtered.slice(start, start + limit),
+    page: safePage,
+    totalPages,
+    total,
+  };
 }
 
 /* ---------------------------------------------------------
@@ -306,25 +360,11 @@ router.get(
         giftLimit,
       );
 
-      const takeAwayFilter = {
-        restaurant_id: restaurantId,
-        customer: customerId,
-      };
-      const takeAwayTotal =
-        await TakeAwayOrderModel.countDocuments(takeAwayFilter);
-      const takeAwayTotalPages = Math.max(
-        1,
-        Math.ceil(takeAwayTotal / takeAwayLimit),
+      const takeAway = pickTakeAwayHistoryForCustomer(
+        customer,
+        takeAwayPage,
+        takeAwayLimit,
       );
-      const takeAwaySafePage = Math.min(takeAwayPage, takeAwayTotalPages);
-      const takeAwayOrders = await TakeAwayOrderModel.find(takeAwayFilter)
-        .sort({ scheduledFor: -1, createdAt: -1 })
-        .skip((takeAwaySafePage - 1) * takeAwayLimit)
-        .limit(takeAwayLimit)
-        .select(
-          "orderNumber fulfillmentMode scheduledFor status paymentStatus total items createdAt",
-        )
-        .lean();
 
       return res.status(200).json({
         customer,
@@ -348,12 +388,12 @@ router.get(
             },
           },
           takeAwayOrders: {
-            items: takeAwayOrders,
+            items: takeAway.items,
             pagination: {
-              page: takeAwaySafePage,
+              page: takeAway.page,
               limit: takeAwayLimit,
-              total: takeAwayTotal,
-              totalPages: takeAwayTotalPages,
+              total: takeAway.total,
+              totalPages: takeAway.totalPages,
             },
           },
         },

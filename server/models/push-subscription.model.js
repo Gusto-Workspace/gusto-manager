@@ -10,7 +10,7 @@ const PushSubscriptionSchema = new mongoose.Schema(
     },
     module: {
       type: String,
-      enum: ["reservations", "gift_cards"],
+      enum: ["reservations", "gift_cards", "take_away"],
       required: true,
       index: true,
     },
