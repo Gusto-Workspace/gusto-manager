@@ -29,6 +29,11 @@ const blockedRangeSchema = new mongoose.Schema(
     endAt: { type: Date, required: true },
     allDay: { type: Boolean, default: false },
     note: { type: String, default: "" },
+    source: {
+      type: String,
+      enum: ["quick_slot_closure"],
+      default: undefined,
+    },
     createdAt: { type: Date, default: Date.now },
   },
   { _id: true },

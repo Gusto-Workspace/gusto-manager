@@ -38,6 +38,7 @@ import {
   minutesFromReservationServiceTime,
   sortReservationTimesByServiceOrder,
 } from "@/_assets/utils/reservation-service-time";
+import { isReservationDepartureBlocked } from "@/_assets/utils/reservation-quick-slot-closure";
 
 // LUCIDE
 import { Loader2, Save, X, ChevronLeft, List } from "lucide-react";
@@ -1526,6 +1527,20 @@ export default function AddReservationComponent(props) {
 
   const canPickTime = Boolean(reservationData.numberOfGuests);
   const canSubmit = Boolean(reservationData.reservationTime) && !isSubmitting;
+  const selectedTimeBlockedOnline = useMemo(
+    () =>
+      isReservationDepartureBlocked({
+        date: reservationData.reservationDate,
+        time: reservationData.reservationTime,
+        ranges:
+          props.restaurantData?.reservationsSettings?.blocked_ranges || [],
+      }),
+    [
+      props.restaurantData?.reservationsSettings?.blocked_ranges,
+      reservationData.reservationDate,
+      reservationData.reservationTime,
+    ],
+  );
 
   const reservationDateLabel = reservationData?.reservationDate
     ? new Intl.DateTimeFormat("fr-FR", {
@@ -1832,6 +1847,13 @@ export default function AddReservationComponent(props) {
                   {t("labels.add.close")}
                 </div>
               )}
+
+              {selectedTimeBlockedOnline ? (
+                <div className="mt-3 rounded-2xl border border-orange-300/50 bg-orange-50 px-4 py-3 text-sm text-orange-800">
+                  Les réservations en ligne sont fermées pour ce créneau. Vous
+                  pouvez néanmoins ajouter cette réservation manuellement.
+                </div>
+              ) : null}
             </div>
           </div>
 

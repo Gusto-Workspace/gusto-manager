@@ -10,7 +10,7 @@ import {
   Users,
   PinOff,
 } from "lucide-react";
-import ServiceFullToggleReservationsComponent from "./service-full-toggle.reservations.component";
+import { QuickSlotClosureActionButton } from "./quick-slot-closures.reservations.component";
 
 // I18N
 import { useTranslation } from "next-i18next";
@@ -44,12 +44,9 @@ export default function DayToolbarReservationsComponent(props) {
         subtitle={dateStrLong}
         actions={
           <>
-            <ServiceFullToggleReservationsComponent
-              active={props.serviceFullActive}
-              automatic={props.serviceFullAutomatic}
-              hasCurrentService={props.hasCurrentService}
-              saving={props.serviceFullSaving}
-              onToggle={props.onToggleServiceFull}
+            <QuickSlotClosureActionButton
+              onClick={props.onOpenQuickSlotClosures}
+              closedSlotCount={props.closedSlotCount}
             />
 
             <button

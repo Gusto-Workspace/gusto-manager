@@ -792,6 +792,26 @@ export default function RestaurantContext() {
           removeReservationFromCache(deletedId);
         }
 
+        if (
+          payload.type === "reservation_settings_updated" &&
+          payload.reservationsSettings
+        ) {
+          setRestaurantData((prev) => {
+            if (!prev) return prev;
+            if (
+              payload.restaurantId &&
+              String(payload.restaurantId) !== String(prev._id)
+            ) {
+              return prev;
+            }
+
+            return {
+              ...prev,
+              reservationsSettings: payload.reservationsSettings,
+            };
+          });
+        }
+
         if (payload.type === "giftcard_purchased" && payload.purchase) {
           setRestaurantData((prev) => {
             if (!prev) return prev;

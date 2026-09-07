@@ -12,6 +12,7 @@
     "lint:files:fix": "../client/node_modules/.bin/eslint --fix",
     "test:gift-card-typography": "node --test tests/gift-card-typography.test.js",
     "test:personnel-overnight": "TZ=Europe/Paris node --test tests/personnel-overnight.test.js",
+    "test:quick-slot-closures": "TZ=Europe/Paris node --test tests/reservation-quick-slot-closure.test.js",
     "import:customers:xlsx": "node utils/script/importCustomersFromXlsx.script.js",
     "customers:recompute-tags": "node utils/script/recomputeCustomerTags.script.js"
   },

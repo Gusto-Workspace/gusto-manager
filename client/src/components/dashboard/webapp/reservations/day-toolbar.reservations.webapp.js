@@ -7,6 +7,7 @@ import {
   Users,
   X,
 } from "lucide-react";
+import { QuickSlotClosureActionButton } from "../../reservations/quick-slot-closures.reservations.component";
 
 // I18N
 import { useTranslation } from "next-i18next";
@@ -78,8 +79,17 @@ export default function DayHeaderReservationsWebapp(props) {
           ) : null}
         </div>
 
+        <div className="mt-4">
+          <QuickSlotClosureActionButton
+            compact
+            onClick={props.onOpenQuickSlotClosures}
+            closedSlotCount={props.closedSlotCount}
+            className="w-full"
+          />
+        </div>
+
         {/* Filters row */}
-        <div className="mt-6 flex flex-col gap-2">
+        <div className="mt-3 flex flex-col gap-2">
           {/* Select */}
           <label className="sr-only" htmlFor="day-status-select-mobile">
             {t("list.status.filter", "Filtrer par statut")}
