@@ -432,7 +432,17 @@ export default function ListReservationsComponent(props) {
    * Navigation / actions
    * =======================================================*/
   function handleAddClick() {
-    router.push(`/dashboard/reservations/add`);
+    const pathname = "/dashboard/reservations/add";
+
+    if (!selectedDay) {
+      router.push(pathname);
+      return;
+    }
+
+    router.push({
+      pathname,
+      query: { date: toDateKey(selectedDay) },
+    });
   }
   function handleParametersClick() {
     router.push(`/dashboard/reservations/parameters`);
